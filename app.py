@@ -4229,7 +4229,7 @@ def mostra_statistiche(df_completo):
     
     # Selectbox
     periodo_selezionato = st.selectbox(
-        "📅 Filtra per Periodo",
+        "",
         options=periodo_options,
         index=periodo_options.index(st.session_state.periodo_dropdown) if st.session_state.periodo_dropdown in periodo_options else 0,
         key="filtro_periodo_main"

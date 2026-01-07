@@ -9,6 +9,7 @@ secrets.toml*
 # File con secrets nelle conversazioni
 FILE/CONVERSAZIONI PERPLEXITY/
 FILE/KEYS*
+FILE/VERSIONI CODICE/
 __test_archive__/test_brevo.py
 
 # Altri file sensibili
