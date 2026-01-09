@@ -266,7 +266,7 @@ def salva_correzione_in_memoria_globale(descrizione, vecchia_categoria, nuova_ca
 
 
 # ============================================================
-# 🏪 CHECK FORNITORI AI - VERSIONE 3.2 FINAL COMPLETA
+# 🔍 ANALISI FATTURE AI - VERSIONE 3.2 FINAL COMPLETA
 # ============================================================
 # CHANGELOG V3.2 FINAL:
 # ✅ BUGFIX CRITICO: safe_get con keep_list per DettaglioLinee
@@ -1470,7 +1470,8 @@ def calcola_prezzo_standard_intelligente(descrizione, um, prezzo_unitario):
 
 
 st.set_page_config(
-    page_title="CHECK FORNITORI AI",
+    page_title="Analisi Fatture AI",
+    page_icon="🧠",
     layout="wide",
     initial_sidebar_state="collapsed",
     menu_items={
@@ -1747,17 +1748,17 @@ def invia_codice_reset(email):
         return False, "Errore nell'invio email"
     
     sender_email = brevo_cfg.get('sender_email', 'contact@updates.brevo.com')
-    sender_name = brevo_cfg.get('sender_name', 'Check Fornitori AI')
+    sender_name = brevo_cfg.get('sender_name', 'Analisi Fatture AI')
     
     payload = {
         "sender": {"name": sender_name, "email": sender_email},
         "to": [{"email": email}],
-        "subject": "Reset Password - CHECK FORNITORI AI",
+        "subject": "Reset Password - Analisi Fatture AI",
         "htmlContent": f"""<html>
 <body style="font-family: Arial, sans-serif; padding: 20px;">
     <div style="max-width: 600px; margin: 0 auto; background: #f8f9fa; padding: 30px; border-radius: 10px;">
         <h2 style="color: #0284c7;">Reset Password</h2>
-        <p>Hai richiesto il reset della password per il tuo account <strong>Check Fornitori AI</strong>.</p>
+        <p>Hai richiesto il reset della password per il tuo account <strong>Analisi Fatture AI</strong>.</p>
         <p>Usa questo codice per reimpostare la tua password:</p>
         <div style="background: white; padding: 20px; border-radius: 5px; text-align: center; margin: 20px 0;">
             <h1 style="color: #0284c7; letter-spacing: 5px; font-size: 32px;">{code}</h1>
@@ -1765,7 +1766,7 @@ def invia_codice_reset(email):
         <p><strong>Il codice scade tra 1 ora.</strong></p>
         <p style="color: #dc2626;">Se non hai richiesto tu questo reset, ignora questa email.</p>
         <hr style="margin: 20px 0; border: none; border-top: 1px solid #e5e7eb;">
-        <p style="font-size: 12px; color: #6b7280;">Check Fornitori AI 2025</p>
+        <p style="font-size: 12px; color: #6b7280;">Analisi Fatture AI 2025</p>
     </div>
 </body>
 </html>"""
@@ -1861,7 +1862,7 @@ def mostra_pagina_login():
         </style>
     """, unsafe_allow_html=True)
     
-    st.markdown("## 🏪 CHECK FORNITORI AI")
+    st.markdown("## 🧠 Analisi Fatture AI")
     st.markdown("### Accedi al Sistema")
     
     tab1, tab2 = st.tabs(["🔑 Login", "🔄 Recupera Password"])
@@ -2039,7 +2040,14 @@ else:
 
 
 with col1:
-    st.markdown(f"## 🏪 CHECK FORNITORI AI")
+    st.markdown("""
+<h1 style="font-size: 52px; font-weight: 700; margin: 0; display: inline-block;">
+    🧠 <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;">Analisi Fatture AI</span>
+</h1>
+""", unsafe_allow_html=True)
     st.caption(f"👤 {user.get('nome_ristorante', 'Utente')} | 📧 {user.get('email')}")
 
 
@@ -4335,115 +4343,113 @@ def mostra_statistiche(df_completo):
     
     st.markdown("---")
 
+    # CSS per stilizzare le metrics con colori diversi per ogni card
+    st.markdown("""
+    <style>
+        [data-testid="stMetricValue"] {
+            font-size: 36px;
+            font-weight: bold;
+            color: white !important;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 15px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.9) !important;
+        }
+        div[data-testid="metric-container"] {
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+            color: white;
+            min-height: 120px;
+        }
+        /* Colori diversi per ogni colonna */
+        div[data-testid="column"]:nth-child(1) div[data-testid="metric-container"] {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        div[data-testid="column"]:nth-child(2) div[data-testid="metric-container"] {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        div[data-testid="column"]:nth-child(3) div[data-testid="metric-container"] {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        div[data-testid="column"]:nth-child(4) div[data-testid="metric-container"] {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+        div[data-testid="column"]:nth-child(5) div[data-testid="metric-container"] {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+        /* Nascondi il delta sotto variazione */
+        div[data-testid="column"]:nth-child(5) [data-testid="stMetricDelta"] {
+            display: none;
+        }
+    </style>
+    """, unsafe_allow_html=True)
 
-    # KPI
-    col1, col2, col3 = st.columns(3)
-    col1.metric("🍽️ Spesa F&B", f"€ {df_food['TotaleRiga'].sum():.2f}")
-    col2.metric("🏢 Spese Generali", f"€ {df_spese_generali['TotaleRiga'].sum():.2f}")
-    col3.metric("🏪 N. Fornitori", f"{df_food['Fornitore'].nunique()}")
+    # Calcola variabili per i KPI
+    spesa_fb = df_food['TotaleRiga'].sum()
+    spesa_generale = df_spese_generali['TotaleRiga'].sum()
+    num_fornitori = df_food['Fornitore'].nunique()
+    
+    # Layout 5 colonne per i KPI - Stile minimal
+    col1, col2, col3, col4, col5 = st.columns(5)
 
+    # Calcola spesa totale
+    spesa_totale = spesa_fb + spesa_generale
 
-    c1, c2 = st.columns(2)
+    with col1:
+        st.markdown("""
+        <div style="background: #f8f9fa; border-left: 4px solid #667eea;
+                    padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
+                    height: 130px; display: flex; flex-direction: column; justify-content: center;">
+            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">💰 Spesa Totale (F&B + Spese Generali)</p>
+            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">€ """ + f"{spesa_totale:.2f}" + """</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
+    with col2:
+        st.markdown("""
+        <div style="background: #f8f9fa; border-left: 4px solid #f093fb;
+                    padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
+                    height: 130px; display: flex; flex-direction: column; justify-content: center;">
+            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">🔥 Spesa F&B</p>
+            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">€ """ + f"{spesa_fb:.2f}" + """</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # GRAFICI
-    with c1:
-        st.subheader("📊 Spesa per Categoria")
-        spesa_cat = (
-            df_food.groupby("Categoria")["TotaleRiga"]
-              .sum()
-              .reset_index()
-              .sort_values("TotaleRiga", ascending=False)
-        )
+    with col3:
+        st.markdown("""
+        <div style="background: #f8f9fa; border-left: 4px solid #4facfe;
+                    padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
+                    height: 130px; display: flex; flex-direction: column; justify-content: center;">
+            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">🛒 Spesa Generale</p>
+            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">€ """ + f"{spesa_generale:.2f}" + """</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
+    with col4:
+        st.markdown("""
+        <div style="background: #f8f9fa; border-left: 4px solid #43e97b;
+                    padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
+                    height: 130px; display: flex; flex-direction: column; justify-content: center;">
+            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">🏪 N. Fornitori Analizzati</p>
+            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">""" + str(num_fornitori) + """</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
-        fig1 = px.bar(
-            spesa_cat,
-            x="Categoria",
-            y="TotaleRiga",
-            text="TotaleRiga",
-            color="Categoria",
-            color_discrete_sequence=COLORI_PLOTLY,
-        )
-
-
-        fig1.update_traces(
-            texttemplate="€ %{text:.2f}",
-            textposition="outside",
-            textfont_size=18,
-            hovertemplate="<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>",
-        )
-
-
-        fig1.update_layout(
-            font=dict(size=20),
-            xaxis_title="Categoria",
-            yaxis_title="Spesa (€)",
-            yaxis_title_font=dict(size=24, color="#333"),
-            xaxis=dict(tickfont=dict(size=1), showticklabels=False),
-            yaxis=dict(tickfont=dict(size=18)),
-            showlegend=False,
-            height=600,
-            hoverlabel=dict(bgcolor="white", font_size=16, font_family="Arial"),
-        )
-
-
-        st.plotly_chart(
-            fig1,
-            use_container_width=True,
-            key="grafico_categorie",
-            config={"displayModeBar": False},
-        )
-
-
-    with c2:
-        st.subheader("🏪 Spesa per Fornitore")
-        spesa_forn = (
-            df_food.groupby("Fornitore")["TotaleRiga"]
-              .sum()
-              .reset_index()
-              .sort_values("TotaleRiga", ascending=False)
-        )
-
-
-        fig2 = px.bar(
-            spesa_forn,
-            x="Fornitore",
-            y="TotaleRiga",
-            text="TotaleRiga",
-            color="Fornitore",
-            color_discrete_sequence=COLORI_PLOTLY,
-        )
-
-
-        fig2.update_traces(
-            texttemplate="€ %{text:.2f}",
-            textposition="outside",
-            textfont_size=18,
-            hovertemplate="<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>",
-        )
-
-
-        fig2.update_layout(
-            font=dict(size=20),
-            xaxis_title="Fornitore",
-            yaxis_title="Spesa (€)",
-            yaxis_title_font=dict(size=24, color="#333"),
-            xaxis=dict(tickfont=dict(size=1), showticklabels=False),
-            yaxis=dict(tickfont=dict(size=18)),
-            showlegend=False,
-            height=600,
-            hoverlabel=dict(bgcolor="white", font_size=16, font_family="Arial"),
-        )
-
-
-        st.plotly_chart(
-            fig2,
-            use_container_width=True,
-            key="grafico_fornitori",
-            config={"displayModeBar": False},
-        )
-
+    with col5:
+        # Calcola spesa media mensile
+        mesi_periodo = len(pd.to_datetime(df_completo['DataDocumento']).dt.to_period('M').unique())
+        spesa_media = spesa_totale / mesi_periodo if mesi_periodo > 0 else 0
+        
+        st.markdown("""
+        <div style="background: #f8f9fa; border-left: 4px solid #fa709a;
+                    padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
+                    height: 130px; display: flex; flex-direction: column; justify-content: center;">
+            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">📊 Spesa Media Mensile (F&B + Spese Generali)</p>
+            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">€ """ + f"{spesa_media:.2f}" + """</h2>
+        </div>
+        """, unsafe_allow_html=True)
 
     st.markdown("---")
     
@@ -4890,23 +4896,20 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             
             df_export.columns = col_names
 
-
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                 df_export.to_excel(writer, index=False, sheet_name='Articoli')
             
-            col_spacer, col_btn = st.columns([4, 2])
-            with col_btn:
-                st.download_button(
-                    label="📊 Excel",
-                    data=excel_buffer.getvalue(),
-                    file_name=f"dettaglio_articoli_FB_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="download_excel",
-                    type="primary",
-                    use_container_width=False,
-                    help="Scarica dettaglio articoli Food & Beverage"
-                )
+            st.download_button(
+                label="📊 Excel",
+                data=excel_buffer.getvalue(),
+                file_name=f"dettaglio_articoli_FB_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="download_excel",
+                type="primary",
+                use_container_width=True,
+                help="Scarica dettaglio articoli Food & Beverage"
+            )
 
 
         if salva_modifiche:
@@ -5466,6 +5469,51 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                         type="primary",
                         use_container_width=False
                     )
+            
+            # GRAFICO SPESA PER CATEGORIA
+            st.markdown("---")
+            st.subheader("📊 Spesa per Categoria")
+            spesa_cat = (
+                df_food.groupby("Categoria")["TotaleRiga"]
+                  .sum()
+                  .reset_index()
+                  .sort_values("TotaleRiga", ascending=False)
+            )
+
+            fig1 = px.bar(
+                spesa_cat,
+                x="Categoria",
+                y="TotaleRiga",
+                text="TotaleRiga",
+                color="Categoria",
+                color_discrete_sequence=COLORI_PLOTLY,
+            )
+
+            fig1.update_traces(
+                texttemplate="€ %{text:.2f}",
+                textposition="outside",
+                textfont_size=18,
+                hovertemplate="<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>",
+            )
+
+            fig1.update_layout(
+                font=dict(size=20),
+                xaxis_title="Categoria",
+                yaxis_title="Spesa (€)",
+                yaxis_title_font=dict(size=24, color="#333"),
+                xaxis=dict(tickfont=dict(size=1), showticklabels=False),
+                yaxis=dict(tickfont=dict(size=18)),
+                showlegend=False,
+                height=600,
+                hoverlabel=dict(bgcolor="white", font_size=16, font_family="Arial"),
+            )
+
+            st.plotly_chart(
+                fig1,
+                use_container_width=True,
+                key="grafico_categorie_tab",
+                config={"displayModeBar": False},
+            )
         else:
             st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
 
@@ -5540,6 +5588,51 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                         type="primary",
                         use_container_width=False
                     )
+            
+            # GRAFICO SPESA PER FORNITORE
+            st.markdown("---")
+            st.subheader("🏪 Spesa per Fornitore")
+            spesa_forn = (
+                df_food.groupby("Fornitore")["TotaleRiga"]
+                  .sum()
+                  .reset_index()
+                  .sort_values("TotaleRiga", ascending=False)
+            )
+
+            fig2 = px.bar(
+                spesa_forn,
+                x="Fornitore",
+                y="TotaleRiga",
+                text="TotaleRiga",
+                color="Fornitore",
+                color_discrete_sequence=COLORI_PLOTLY,
+            )
+
+            fig2.update_traces(
+                texttemplate="€ %{text:.2f}",
+                textposition="outside",
+                textfont_size=18,
+                hovertemplate="<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>",
+            )
+
+            fig2.update_layout(
+                font=dict(size=20),
+                xaxis_title="Fornitore",
+                yaxis_title="Spesa (€)",
+                yaxis_title_font=dict(size=24, color="#333"),
+                xaxis=dict(tickfont=dict(size=1), showticklabels=False),
+                yaxis=dict(tickfont=dict(size=18)),
+                showlegend=False,
+                height=600,
+                hoverlabel=dict(bgcolor="white", font_size=16, font_family="Arial"),
+            )
+
+            st.plotly_chart(
+                fig2,
+                use_container_width=True,
+                key="grafico_fornitori_tab",
+                config={"displayModeBar": False},
+            )
         else:
             st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
 
@@ -5611,6 +5704,95 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             num_righe_spese_forn = len(pivot_forn_display)
             altezza_spese_forn = max(num_righe_spese_forn * 35 + 50, 200)
             st.dataframe(pivot_forn_display, use_container_width=True, height=altezza_spese_forn)
+            
+            st.markdown("---")
+            
+            # ============================================
+            # GRAFICI SPESE GENERALI AFFIANCATI
+            # ============================================
+            col_chart1, col_chart2 = st.columns(2)
+            
+            with col_chart1:
+                st.subheader("📊 Spesa per Categoria")
+                # Prepara dati per grafico (usa colonna TOTALE)
+                spesa_cat_grafico = pivot_cat.reset_index()
+                spesa_cat_grafico = spesa_cat_grafico[['Categoria', 'TOTALE']].sort_values('TOTALE', ascending=False)
+                
+                fig_categoria_generale = px.bar(
+                    spesa_cat_grafico,
+                    x='Categoria',
+                    y='TOTALE',
+                    text='TOTALE',
+                    color='Categoria',
+                    color_discrete_sequence=COLORI_PLOTLY,
+                )
+                
+                fig_categoria_generale.update_traces(
+                    texttemplate='€ %{text:.2f}',
+                    textposition='outside',
+                    textfont_size=18,
+                    hovertemplate='<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>',
+                )
+                
+                fig_categoria_generale.update_layout(
+                    font=dict(size=20),
+                    xaxis_title='Categoria',
+                    yaxis_title='Spesa (€)',
+                    yaxis_title_font=dict(size=24, color='#333'),
+                    xaxis=dict(tickfont=dict(size=1), showticklabels=False),
+                    yaxis=dict(tickfont=dict(size=18)),
+                    showlegend=False,
+                    height=600,
+                    hoverlabel=dict(bgcolor='white', font_size=16, font_family='Arial'),
+                )
+                
+                st.plotly_chart(
+                    fig_categoria_generale,
+                    use_container_width=True,
+                    key='grafico_categorie_spese_generali',
+                    config={'displayModeBar': False},
+                )
+            
+            with col_chart2:
+                st.subheader("🏪 Spesa per Fornitore")
+                # Prepara dati per grafico (usa colonna TOTALE)
+                spesa_forn_grafico = pivot_forn.reset_index()
+                spesa_forn_grafico = spesa_forn_grafico[['Fornitore', 'TOTALE']].sort_values('TOTALE', ascending=False)
+                
+                fig_fornitore_generale = px.bar(
+                    spesa_forn_grafico,
+                    x='Fornitore',
+                    y='TOTALE',
+                    text='TOTALE',
+                    color='Fornitore',
+                    color_discrete_sequence=COLORI_PLOTLY,
+                )
+                
+                fig_fornitore_generale.update_traces(
+                    texttemplate='€ %{text:.2f}',
+                    textposition='outside',
+                    textfont_size=18,
+                    hovertemplate='<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>',
+                )
+                
+                fig_fornitore_generale.update_layout(
+                    font=dict(size=20),
+                    xaxis_title='Fornitore',
+                    yaxis_title='Spesa (€)',
+                    yaxis_title_font=dict(size=24, color='#333'),
+                    xaxis=dict(tickfont=dict(size=1), showticklabels=False),
+                    yaxis=dict(tickfont=dict(size=18)),
+                    showlegend=False,
+                    height=600,
+                    hoverlabel=dict(bgcolor='white', font_size=16, font_family='Arial'),
+                )
+                
+                st.plotly_chart(
+                    fig_fornitore_generale,
+                    use_container_width=True,
+                    key='grafico_fornitori_spese_generali',
+                    config={'displayModeBar': False},
+                )
             
             st.markdown("---")
             
