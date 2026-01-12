@@ -918,8 +918,9 @@ if tab1:
                         st.error(f"❌ Email {new_email} già registrata")
                     else:
                         # Hash password con Argon2
-                        from services import hash_password
-                        password_hash = hash_password(new_password)
+                        import argon2
+                        ph = argon2.PasswordHasher()
+                        password_hash = ph.hash(new_password)
                         
                         # Inserisci nuovo utente
                         nuovo_utente = {
