@@ -489,72 +489,6 @@ if st.query_params.get("logout") == "1":
     st.rerun()
 
 
-# ============================================
-# VERIFICA FLAG FORCE_LOGOUT
-# ============================================
-# Se c'è force_logout, blocca qualsiasi tentativo di auto-login
-if st.session_state.get('force_logout', False):
-    logger.warning("🚫 Flag force_logout attivo - blocco auto-login")
-    st.session_state.logged_in = False
-    st.session_state.user_data = None
-    # Mantieni il flag per sicurezza
-# ============================================
-# VERIFICA VALIDITÀ SESSIONE CON TIMESTAMP - BLOCCO TOTALE
-# ============================================
-# CONTROLLO BLOCCANTE: se la sessione non è valida, STOP IMMEDIATO
-
-# Prima di tutto: se c'è logged_in=True, DEVO verificare
-if st.session_state.get('logged_in', False):
-    session_timestamp = st.session_state.get('session_timestamp', None)
-    user_data = st.session_state.get('user_data', {})
-    user_email = user_data.get('email') if user_data else None
-    
-    sessione_invalida = False
-    motivo = ""
-    
-    # Check 1: Timestamp mancante
-    if not session_timestamp:
-        sessione_invalida = True
-        motivo = "timestamp mancante"
-        logger.error("🚨 BLOCCO: Sessione senza timestamp")
-    
-    # Check 2: Email mancante
-    elif not user_email:
-        sessione_invalida = True
-        motivo = "email mancante"
-        logger.error("🚨 BLOCCO: Sessione senza email")
-    
-    # Check 3: Verifica contro database (logout più recente)
-    elif not verifica_sessione_valida(user_email, session_timestamp):
-        sessione_invalida = True
-        motivo = "logout nel database più recente"
-        logger.error(f"🚨 BLOCCO: Sessione {user_email} invalidata da logout DB")
-    
-    # Check 4: Scadenza temporale (12 ore)
-    else:
-        current_time = time.time()
-        if (current_time - session_timestamp) > 43200:  # 12 ore
-            sessione_invalida = True
-            motivo = f"scaduta ({(current_time - session_timestamp)/3600:.1f} ore)"
-            logger.error(f"🚨 BLOCCO: Sessione {user_email} scaduta")
-    
-    # SE INVALIDA: FORZA LOGOUT COMPLETO E BLOCCA
-    if sessione_invalida:
-        logger.critical(f"⛔ SESSIONE INVALIDA ({motivo}) - FORZANDO LOGOUT TOTALE")
-        # Cancella TUTTO
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.session_state.clear()
-        # Imposta esplicitamente a False
-        st.session_state.logged_in = False
-        st.session_state.user_data = None
-        st.session_state.force_logout = True
-        # STOP IMMEDIATO - non processare altro codice
-        st.cache_data.clear()
-        logger.critical("⛔ STOP FORZATO - redirect a login")
-        st.rerun()
-
-
 # ============================================================
 # FUNZIONI AUTENTICAZIONE (SPOSTATA IN services/auth_service.py)
 # ============================================================
@@ -684,11 +618,8 @@ def mostra_pagina_login():
                         if user:
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
-                            st.session_state.session_timestamp = time.time()  # ← TIMESTAMP SESSIONE
-                            st.session_state.force_logout = False  # Rimuovi flag logout
                             
-                            # Cookie disabilitati - sessione solo in memoria
-                            logger.info(f"✅ Login effettuato per: {user.get('email')} - timestamp: {st.session_state.session_timestamp}")
+                            logger.info(f"✅ Login effettuato per: {user.get('email')}")
                             
                             st.success("✅ Accesso effettuato!")
                             time.sleep(1)
@@ -730,8 +661,6 @@ def mostra_pagina_login():
                 if user:
                     st.session_state.logged_in = True
                     st.session_state.user_data = user
-                    st.session_state.session_timestamp = time.time()  # ← TIMESTAMP SESSIONE
-                    st.session_state.force_logout = False  # Rimuovi flag logout
                     st.success("✅ Password aggiornata! Accesso automatico...")
                     time.sleep(1.5)
                     st.rerun()
@@ -858,31 +787,13 @@ if user.get('email') in ADMIN_EMAILS:
     
     with col4:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
-            # REGISTRA LOGOUT NEL DATABASE
-            user_email = st.session_state.get('user_data', {}).get('email')
-            if user_email:
-                registra_logout_utente(user_email)
+        if st.button("🚺 Logout", type="primary", use_container_width=True, key="logout_btn"):
+            # Reset completo session_state
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             
-            # Reset file processati quando cambia utente
-            if 'files_processati_sessione' in st.session_state:
-                st.session_state.files_processati_sessione = set()
-            
-            # Cancella sessione
-            st.session_state.clear()
-            st.session_state.logged_in = False
-            st.session_state.force_logout = True
-            
-            # FORZARE HARD RELOAD con JavaScript - chiude WebSocket
-            logger.warning("🚨 Logout - forzando hard reload JavaScript")
-            st.markdown("""
-            <script>
-                // Forza reload completo della pagina (chiude WebSocket)
-                window.parent.location.href = window.parent.location.origin;
-            </script>
-            """, unsafe_allow_html=True)
-            time.sleep(0.5)
-            st.stop()
+            # Rerun per applicare
+            st.rerun()
 else:
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
@@ -891,31 +802,13 @@ else:
     
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
-            # REGISTRA LOGOUT NEL DATABASE
-            user_email = st.session_state.get('user_data', {}).get('email')
-            if user_email:
-                registra_logout_utente(user_email)
+        if st.button("🚺 Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
+            # Reset completo session_state
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
             
-            # Reset file processati quando cambia utente
-            if 'files_processati_sessione' in st.session_state:
-                st.session_state.files_processati_sessione = set()
-            
-            # Cancella sessione
-            st.session_state.clear()
-            st.session_state.logged_in = False
-            st.session_state.force_logout = True
-            
-            # FORZARE HARD RELOAD con JavaScript - chiude WebSocket
-            logger.warning("🚨 Logout - forzando hard reload JavaScript")
-            st.markdown("""
-            <script>
-                // Forza reload completo della pagina (chiude WebSocket)
-                window.parent.location.href = window.parent.location.origin;
-            </script>
-            """, unsafe_allow_html=True)
-            time.sleep(0.5)
-            st.stop()
+            # Rerun per applicare
+            st.rerun()
 
 
 st.markdown("---")
