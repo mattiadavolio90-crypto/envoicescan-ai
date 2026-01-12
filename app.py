@@ -3316,14 +3316,18 @@ if not df_cache.empty:
                         except Exception as e:
                             logger.exception("Errore verifica post-delete")
                         
-                        # Reset checkbox prima del rerun
+                        # Reset checkbox
                         if 'check_conferma_svuota' in st.session_state:
                             del st.session_state.check_conferma_svuota
                         
+                        # 🔥 FLAG FORCE EMPTY: Indica che il DB è vuoto, forza DataFrame vuoto fino a nuovo upload
+                        st.session_state.force_empty_until_upload = True
+                        
                         # 🔥 TRIPLE CLEAR: Ultima pulizia cache prima del rerun
                         st.cache_data.clear()
+                        invalida_cache_memoria()
                         
-                        time.sleep(0.5)  # Delay per garantire che la cache sia pulita
+                        time.sleep(0.5)
                         st.rerun()
                     else:
                         st.error(f"❌ Errore: {result['error']}")
@@ -3533,6 +3537,11 @@ if uploaded_files:
                             salvati_supabase += 1
                         elif result["location"] == "json":
                             salvati_json += 1
+                        
+                        # 🔥 RIMUOVI FLAG FORCE EMPTY: Ci sono nuovi dati, riabilita caricamento normale
+                        if 'force_empty_until_upload' in st.session_state:
+                            del st.session_state.force_empty_until_upload
+                            logger.info("✅ Flag force_empty rimosso: nuovi dati caricati")
                         
                         # Traccia successo
                         file_ok.append(file.name)

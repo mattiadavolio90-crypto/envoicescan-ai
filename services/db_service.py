@@ -39,6 +39,17 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     - Nessun fallback JSON o altre fonti
     - Cache invalidata SOLO con clear() esplicito
     """
+    # 🔥 FORCE EMPTY: Se c'è flag force_empty, ritorna DataFrame vuoto senza query
+    # Questo previene che dati cached riappaiano dopo eliminazione massiva
+    try:
+        import streamlit as st
+        if hasattr(st, 'session_state') and st.session_state.get('force_empty_until_upload', False):
+            logger.info(f"🚫 FORCE EMPTY attivo: ritorno DataFrame vuoto per user_id={user_id}")
+            print(f"🚫 DEBUG: force_empty_until_upload=True, ritorno DataFrame vuoto")
+            return pd.DataFrame()
+    except Exception as e:
+        logger.warning(f"⚠️ Impossibile controllare force_empty flag: {e}")
+    
     # Inizializza client Supabase
     if supabase_client is None:
         try:
