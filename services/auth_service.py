@@ -253,8 +253,16 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         return False, "Errore nell'invio email"
 
 
+def hash_password(password: str) -> str:
+    """Hash password con Argon2"""
+    from argon2 import PasswordHasher
+    ph = PasswordHasher()
+    return ph.hash(password)
+
+
 __all__ = [
     'verify_and_migrate_password',
     'verifica_credenziali',
     'invia_codice_reset',
+    'hash_password',
 ]

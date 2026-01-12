@@ -28,6 +28,7 @@ from .auth_service import (
     verify_and_migrate_password,
     verifica_credenziali,
     invia_codice_reset,
+    hash_password,
 )
 
 from .invoice_service import (
@@ -61,6 +62,7 @@ __all__ = [
     'verify_and_migrate_password',
     'verifica_credenziali',
     'invia_codice_reset',
+    'hash_password',
     # Invoice functions
     'estrai_dati_da_xml',
     'estrai_dati_da_scontrino_vision',

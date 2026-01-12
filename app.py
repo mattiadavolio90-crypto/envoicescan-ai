@@ -147,6 +147,14 @@ st.set_page_config(
     }
 )
 
+# Nascondi bottone "Manage app"
+st.markdown("""
+<style>
+    [data-testid="manage-app-button"] {display: none !important;}
+    [data-testid="stDecoration"] {display: none !important;}
+</style>
+""", unsafe_allow_html=True)
+
 
 # Elimina completamente sidebar in tutta l'app
 st.markdown("""
