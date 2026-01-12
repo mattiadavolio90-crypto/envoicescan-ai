@@ -313,10 +313,19 @@ try:
     if 'logout_in_progress' not in st.session_state:
         st.session_state.logout_in_progress = False
     
-    # Ripristina sessione da cookie SOLO se:
-    # 1. NON è già loggato
-    # 2. NON sta facendo logout
-    if not st.session_state.logged_in and not st.session_state.logout_in_progress:
+    # Se è appena stato fatto logout, cancella il cookie e NON ripristinare
+    if st.session_state.logout_in_progress:
+        try:
+            cookie_manager = stx.CookieManager(key="cookie_manager_clear")
+            cookie_manager.delete("user_email")
+            logger.info("Cookie cancellato dopo logout")
+        except Exception:
+            logger.exception('Errore cancellazione cookie post-logout')
+        
+        # Reset del flag solo DOPO aver cancellato il cookie
+        st.session_state.logout_in_progress = False
+    # Ripristina sessione da cookie SOLO se NON è già loggato
+    elif not st.session_state.logged_in:
         cookie_manager = stx.CookieManager(key="cookie_manager_init")
         user_email_cookie = cookie_manager.get("user_email")
         logger.debug(f"Cookie recuperato all'avvio: {user_email_cookie}")
@@ -329,10 +338,6 @@ try:
                     logger.debug(f"Sessione ripristinata per: {user_email_cookie}")
             except Exception:
                 logger.exception('Errore recupero utente da cookie')
-    
-    # Reset del flag logout dopo il primo rerun
-    if st.session_state.logout_in_progress:
-        st.session_state.logout_in_progress = False
 except Exception:
     # Non fatale: se qualcosa va storto non blocchiamo l'app
     logger.exception('Errore controllo cookie sessione')
