@@ -3558,75 +3558,87 @@ if uploaded_files:
     if file_nuovi:
         # Crea placeholder per loading AI
         upload_placeholder = st.empty()
+        progress_bar = st.progress(0)
+        status_text = st.empty()
         
         try:
             # Mostra animazione AI
             mostra_loading_ai(upload_placeholder, f"Analisi AI di {len(file_nuovi)} Fatture")
             
-            # Contatori per statistiche
+            # Contatori per statistiche DETTAGLIATE
             file_processati = 0
             righe_totali = 0
             salvati_supabase = 0
             salvati_json = 0
             errori = []
+            file_ok = []
+            file_errore = {}  # {nome_file: messaggio_errore}
             
-            # Elabora tutti i file
+            total_files = len(file_nuovi)
+            
+            # Elabora tutti i file con PROGRESS BAR
             for idx, file in enumerate(file_nuovi, 1):
                 nome_file = file.name.lower()
                 
-                # Routing automatico per tipo file (SILENZIOSO)
+                # Aggiorna progress
+                progress = idx / total_files
+                progress_bar.progress(progress)
+                status_text.text(f"📄 Elaborazione {idx}/{total_files}: {file.name[:40]}...")
+                
+                # Routing automatico per tipo file con TRY/EXCEPT ROBUSTO
                 try:
+                    # 🔍 DEBUG: Log dettagli file
+                    file_size_kb = len(file.getvalue()) / 1024
+                    file_type = "XML" if nome_file.endswith('.xml') else "PDF/IMG"
+                    logger.info(f"🔍 DEBUG: File={file.name}, Tipo={file_type}, Dimensione={file_size_kb:.1f}KB")
+                    
                     if nome_file.endswith('.xml'):
                         items = estrai_dati_da_xml(file)
                     elif nome_file.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
                         items = estrai_dati_da_scontrino_vision(file)
                     else:
-                        errori.append(f"{file.name}: Formato non supportato")
-                        # CRITICO: Aggiungi a processati per evitare loop
-                        st.session_state.files_processati_sessione.add(file.name)
-                        continue
+                        raise ValueError("Formato non supportato")
+                    
+                    # Validazione risultato parsing
+                    if items is None:
+                        raise ValueError("Parsing ritornato None")
+                    if len(items) == 0:
+                        raise ValueError("Nessuna riga estratta - DataFrame vuoto")
+                    
+                    # 🔍 DEBUG: Log risultato parsing
+                    logger.info(f"🔍 DEBUG: {file.name} → {len(items)} righe estratte")
                     
                     # Salva in memoria se trovati dati (SILENZIOSO)
-                    if items:
-                        result = salva_fattura_processata(file.name, items, silent=True)
+                    result = salva_fattura_processata(file.name, items, silent=True)
+                    
+                    if result["success"]:
+                        file_processati += 1
+                        righe_totali += result["righe"]
+                        if result["location"] == "supabase":
+                            salvati_supabase += 1
+                        elif result["location"] == "json":
+                            salvati_json += 1
                         
-                        if result["success"]:
-                            file_processati += 1
-                            righe_totali += result["righe"]
-                            if result["location"] == "supabase":
-                                salvati_supabase += 1
-                            elif result["location"] == "json":
-                                salvati_json += 1
-                            
-                            # Aggiungi a processati
-                            st.session_state.files_processati_sessione.add(file.name)
-                        else:
-                            errori.append(f"{file.name}: Errore salvataggio")
-                            # CRITICO: Aggiungi a processati anche se salvataggio fallito
-                            st.session_state.files_processati_sessione.add(file.name)
-                    else:
-                        # Nessun dato estratto - controlla se c'è errore specifico
-                        if file.name in st.session_state.files_con_errori:
-                            errore_dettaglio = st.session_state.files_con_errori[file.name]
-                            errori.append(f"{file.name}: {errore_dettaglio}")
-                        else:
-                            errori.append(f"{file.name}: Nessun dato estratto")
-                        
-                        # CRITICO: Aggiungi a processati per evitare loop infinito
+                        # Traccia successo
+                        file_ok.append(file.name)
                         st.session_state.files_processati_sessione.add(file.name)
+                    else:
+                        raise ValueError(f"Errore salvataggio: {result.get('error', 'Sconosciuto')}")
                 
                 except Exception as e:
-                    logger.exception(f"Errore elaborazione {file.name}")
-                    errori.append(f"{file.name}: {str(e)[:50]}")
+                    # TRACCIA ERRORE DETTAGLIATO
+                    error_msg = str(e)[:150]
+                    logger.exception(f"❌ Errore elaborazione {file.name}")
+                    file_errore[file.name] = error_msg
+                    errori.append(f"{file.name}: {error_msg}")
                     
-                    # ============================================================
-                    # LOG UPLOAD EVENT - FAILED (parsing/vision error)
-                    # ============================================================
+                    # Aggiungi a session state per evitare loop
+                    st.session_state.files_processati_sessione.add(file.name)
+                    
+                    # Log upload event FAILED
                     try:
                         user_id = st.session_state.user_data.get("id")
                         user_email = st.session_state.user_data.get("email", "unknown")
-                        
-                        # Determina error_stage in base al tipo di file
                         error_stage = "PARSING" if file.name.endswith('.xml') else "VISION"
                         
                         log_upload_event(
@@ -3637,22 +3649,26 @@ if uploaded_files:
                             rows_parsed=0,
                             rows_saved=0,
                             error_stage=error_stage,
-                            error_message=str(e)[:500],
+                            error_message=error_msg,
                             details={"exception_type": type(e).__name__}
                         )
                     except Exception as log_error:
                         logger.error(f"Errore logging failed event: {log_error}")
-                    # ============================================================
                     
-                    # CRITICO: Aggiungi a processati per evitare loop infinito
-                    st.session_state.files_processati_sessione.add(file.name)
+                    # CONTINUA con il prossimo file invece di crashare
+                    continue
             
-            # Rimuovi loading SEMPRE
+            # Rimuovi loading e progress bar
             upload_placeholder.empty()
+            progress_bar.empty()
+            status_text.empty()
             
-            # MESSAGGIO FINALE RIASSUNTIVO
+            # ============================================
+            # REPORT FINALE FORMATTATO
+            # ============================================
+            
+            # Report successi
             if file_processati > 0:
-                # Messaggio di successo
                 location_text = ""
                 if salvati_supabase > 0 and salvati_json == 0:
                     location_text = " su **Supabase Cloud** ☁️"
@@ -3661,19 +3677,29 @@ if uploaded_files:
                 elif salvati_supabase > 0 and salvati_json > 0:
                     location_text = f" (☁️ {salvati_supabase} su Supabase, 💾 {salvati_json} su JSON)"
                 
-                st.success(f"✅ **Caricate {file_processati} fatture con successo!** ({righe_totali} righe elaborate){location_text}")
+                st.success(f"✅ **{file_processati}/{total_files} file elaborati con successo!** ({righe_totali} righe){location_text}")
             
-            # Mostra errori se presenti (SOLO ERRORI CRITICI)
-            if errori:
-                with st.expander(f"⚠️ {len(errori)} file con problemi", expanded=False):
-                    for errore in errori:
-                        st.warning(errore)
+            # Report errori con dettaglio
+            if file_errore:
+                st.error(f"❌ **{len(file_errore)}/{total_files} file FALLITI**")
+                
+                with st.expander("📋 DETTAGLIO ERRORI", expanded=True):
+                    for nome_file, errore in file_errore.items():
+                        st.code(f"❌ {nome_file}\n   → {errore}", language="text")
+                    
+                    # Download log errori
+                    error_log = "\n".join([f"{nome}: {err}" for nome, err in file_errore.items()])
+                    st.download_button(
+                        label="💾 Scarica log errori",
+                        data=error_log,
+                        file_name="errori_upload.txt",
+                        mime="text/plain"
+                    )
             
-            # Piccola pausa per vedere il messaggio di successo
+            # Audit coerenza post-upload
             if file_processati > 0:
                 time.sleep(0.3)
-                
-                # 🔍 AUDIT: Verifica coerenza post-upload
+                user_id = st.session_state.user_data.get("id")
                 audit_result = audit_data_consistency(user_id, context="post-upload")
                 if not audit_result["consistent"]:
                     st.warning(f"⚠️ Audit: DB ha {audit_result['db_count']} righe ma cache ne mostra {audit_result['cache_count']}")
@@ -3685,6 +3711,10 @@ if uploaded_files:
         except Exception as e:
             # CRITICO: rimuovi loading anche in caso di errore
             upload_placeholder.empty()
+            if 'progress_bar' in locals():
+                progress_bar.empty()
+            if 'status_text' in locals():
+                status_text.empty()
             st.error(f"❌ Errore durante l'elaborazione: {e}")
             logger.exception("Errore upload fatture")
 
