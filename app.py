@@ -163,6 +163,8 @@ st.markdown("""
         display: none !important;
         height: 0 !important;
         overflow: hidden !important;
+        position: absolute !important;
+        bottom: -9999px !important;
     }
     
     /* Nascondi "Created by" e "Hosted with" */
@@ -199,6 +201,21 @@ st.markdown("""
     a[href*="streamlit.io"],
     a[target="_blank"][rel*="noopener"] {
         display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+    
+    /* OVERLAY BIANCO per coprire footer se reinserito */
+    body::after {
+        content: "";
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 100px;
+        background: white;
+        z-index: 999999;
+        pointer-events: none;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -209,7 +226,13 @@ st.markdown("""
 (function() {
     function hideStreamlitBranding() {
         // Rimuovi TUTTI i footer
-        document.querySelectorAll('footer').forEach(el => el.remove());
+        document.querySelectorAll('footer').forEach(el => {
+            el.style.display = 'none';
+            el.style.visibility = 'hidden';
+            el.style.height = '0';
+            el.style.overflow = 'hidden';
+            el.remove();
+        });
         document.querySelectorAll('[role="contentinfo"]').forEach(el => el.remove());
         document.querySelectorAll('[data-testid="stFooter"]').forEach(el => el.remove());
         
@@ -224,18 +247,24 @@ st.markdown("""
         document.querySelectorAll('header[data-testid="stHeader"]').forEach(el => el.remove());
         
         // Rimuovi ViewerBadge (Made with Streamlit)
-        document.querySelectorAll('[class*="viewerBadge"]').forEach(el => el.remove());
+        document.querySelectorAll('[class*="viewerBadge"]').forEach(el => {
+            el.style.display = 'none';
+            el.remove();
+        });
         document.querySelectorAll('a[href*="streamlit.io"]').forEach(el => {
             if (el.textContent.includes('Streamlit') || el.textContent.includes('Made with')) {
                 el.remove();
             }
         });
         
-        // Cerca e rimuovi qualsiasi elemento che contiene "Made with" o "Hosted with"
+        // Cerca e rimuovi qualsiasi elemento che contiene "Made with" o "Hosted"
         document.querySelectorAll('*').forEach(el => {
-            if (el.textContent && (el.textContent.includes('Made with Streamlit') || 
-                el.textContent.includes('Hosted with Streamlit'))) {
-                el.remove();
+            const text = el.textContent || '';
+            if (text.includes('Made with') || text.includes('Hosted with') || text.includes('Streamlit')) {
+                if (el.tagName === 'A' || el.tagName === 'DIV' || el.tagName === 'SPAN') {
+                    el.style.display = 'none';
+                    el.remove();
+                }
             }
         });
     }
@@ -243,8 +272,8 @@ st.markdown("""
     // Esegui subito
     hideStreamlitBranding();
     
-    // Ripeti ogni 200ms (più frequente)
-    setInterval(hideStreamlitBranding, 200);
+    // Ripeti ogni 100ms (ancora più frequente)
+    setInterval(hideStreamlitBranding, 100);
     
     // Observer per nuovi elementi
     const observer = new MutationObserver(hideStreamlitBranding);
