@@ -150,8 +150,24 @@ st.set_page_config(
 # Nascondi bottone "Manage app"
 st.markdown("""
 <style>
-    [data-testid="manage-app-button"] {display: none !important;}
-    [data-testid="stDecoration"] {display: none !important;}
+    /* Nascondi Manage App con tutti i selettori possibili */
+    [data-testid="manage-app-button"],
+    [data-testid="stDecoration"],
+    button[kind="header"],
+    button[aria-label*="Manage"],
+    button[title*="Manage"],
+    .stApp > header,
+    header[data-testid="stHeader"],
+    div[data-testid="stToolbar"],
+    .stDeployButton,
+    footer,
+    #MainMenu {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
