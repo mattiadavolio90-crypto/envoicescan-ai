@@ -357,36 +357,61 @@ if st.session_state.get('force_logout', False):
     st.session_state.logged_in = False
     st.session_state.user_data = None
     # Mantieni il flag per sicurezza
-    
+# ============================================
+# VERIFICA VALIDITÀ SESSIONE CON TIMESTAMP - BLOCCO TOTALE
+# ============================================
+# CONTROLLO BLOCCANTE: se la sessione non è valida, STOP IMMEDIATO
 
-# ============================================
-# VERIFICA VALIDITÀ SESSIONE CON TIMESTAMP
-# ============================================
-# Ogni sessione deve avere un timestamp. Senza timestamp = sessione non valida
+# Prima di tutto: se c'è logged_in=True, DEVO verificare
 if st.session_state.get('logged_in', False):
     session_timestamp = st.session_state.get('session_timestamp', None)
-    user_email = st.session_state.get('user_data', {}).get('email')
+    user_data = st.session_state.get('user_data', {})
+    user_email = user_data.get('email') if user_data else None
     
+    sessione_invalida = False
+    motivo = ""
+    
+    # Check 1: Timestamp mancante
     if not session_timestamp:
-        # Sessione senza timestamp = invalida, probabilmente vecchia
-        logger.warning("⚠️ Sessione logged_in trovata SENZA timestamp - pulizia forzata")
-        st.session_state.clear()
-        st.session_state.logged_in = False
-        st.session_state.force_logout = True
-    elif user_email and not verifica_sessione_valida(user_email, session_timestamp):
-        # VERIFICA CONTRO DATABASE: se l'utente ha fatto logout dopo questo login, invalida sessione
-        logger.warning(f"🚨 Sessione INVALIDATA per {user_email} - logout nel DB più recente del login")
-        st.session_state.clear()
-        st.session_state.logged_in = False
-        st.session_state.force_logout = True
+        sessione_invalida = True
+        motivo = "timestamp mancante"
+        logger.error("🚨 BLOCCO: Sessione senza timestamp")
+    
+    # Check 2: Email mancante
+    elif not user_email:
+        sessione_invalida = True
+        motivo = "email mancante"
+        logger.error("🚨 BLOCCO: Sessione senza email")
+    
+    # Check 3: Verifica contro database (logout più recente)
+    elif not verifica_sessione_valida(user_email, session_timestamp):
+        sessione_invalida = True
+        motivo = "logout nel database più recente"
+        logger.error(f"🚨 BLOCCO: Sessione {user_email} invalidata da logout DB")
+    
+    # Check 4: Scadenza temporale (12 ore)
     else:
-        # Controlla se sessione è troppo vecchia (più di 12 ore)
         current_time = time.time()
         if (current_time - session_timestamp) > 43200:  # 12 ore
-            logger.warning(f"⚠️ Sessione scaduta ({(current_time - session_timestamp)/3600:.1f} ore)")
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.session_state.logged_in = False
+            sessione_invalida = True
+            motivo = f"scaduta ({(current_time - session_timestamp)/3600:.1f} ore)"
+            logger.error(f"🚨 BLOCCO: Sessione {user_email} scaduta")
+    
+    # SE INVALIDA: FORZA LOGOUT COMPLETO E BLOCCA
+    if sessione_invalida:
+        logger.critical(f"⛔ SESSIONE INVALIDA ({motivo}) - FORZANDO LOGOUT TOTALE")
+        # Cancella TUTTO
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.session_state.clear()
+        # Imposta esplicitamente a False
+        st.session_state.logged_in = False
+        st.session_state.user_data = None
+        st.session_state.force_logout = True
+        # STOP IMMEDIATO - non processare altro codice
+        st.cache_data.clear()
+        logger.critical("⛔ STOP FORZATO - redirect a login")
+        st.rerun()
 
 
 # ============================================================
@@ -577,17 +602,31 @@ def mostra_pagina_login():
 # CHECK LOGIN ALL'AVVIO
 # ============================================================
 
+# INIZIALIZZA logged_in se non esiste
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 
-# logged_in già inizializzato nella sezione RIPRISTINO SESSIONE DA COOKIE
+# VERIFICA FINALE: se force_logout è attivo, FORZA logged_in = False
+if st.session_state.get('force_logout', False):
+    logger.critical("⛔ force_logout attivo - forzando logged_in=False")
+    st.session_state.logged_in = False
+    st.session_state.user_data = None
 
-
-if not st.session_state.logged_in:
+# Se NON loggato, mostra login e STOP
+if not st.session_state.get('logged_in', False):
+    logger.info("👤 Utente non loggato - mostrando pagina login")
     mostra_pagina_login()
     st.stop()
 
-
 # Se arrivi qui, sei loggato! Vai DIRETTO ALL'APP
 user = st.session_state.user_data
+
+# ULTIMA VERIFICA: se user_data è None, FORZA logout
+if not user or not user.get('email'):
+    logger.critical("⛔ user_data invalido - forzando logout")
+    st.session_state.clear()
+    st.session_state.logged_in = False
+    st.rerun()
 
 
 # ============================================
