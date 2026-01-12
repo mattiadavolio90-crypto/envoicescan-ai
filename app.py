@@ -3351,6 +3351,9 @@ if not df_cache.empty:
                         # 🔥 FLAG FORCE EMPTY: Indica che il DB è vuoto, forza DataFrame vuoto fino a nuovo upload
                         st.session_state.force_empty_until_upload = True
                         
+                        # 🔥 RESET FILE UPLOADER: Cambia chiave per forzare reset widget
+                        st.session_state.uploader_key = st.session_state.get('uploader_key', 0) + 1
+                        
                         # 🔥 TRIPLE CLEAR: Ultima pulizia cache prima del rerun
                         st.cache_data.clear()
                         invalida_cache_memoria()
@@ -3412,11 +3415,14 @@ if not df_cache.empty:
 
 
 # File uploader sempre visibile (solo Supabase, no JSON)
+# 🔥 Usa chiave dinamica per forzare reset dopo eliminazione massiva
+uploader_key = st.session_state.get('uploader_key', 0)
 uploaded_files = st.file_uploader(
     "Carica file XML, PDF o Immagini", 
     accept_multiple_files=True, 
     type=['xml', 'pdf', 'jpg', 'jpeg', 'png'], 
-    label_visibility="collapsed"
+    label_visibility="collapsed",
+    key=f"file_uploader_{uploader_key}"  # Chiave dinamica per reset
 )
 
 # Bottone Reset Upload
