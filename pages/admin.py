@@ -938,7 +938,7 @@ if tab1:
                             try:
                                 brevo_api_key = st.secrets["brevo"]["api_key"]
                                 sender_email = st.secrets["brevo"]["sender_email"]
-                                app_url = st.secrets.get("app", {}).get("url", "https://analisifatture-ai.streamlit.app")
+                                app_url = st.secrets.get("app", {}).get("url", "https://envoicescan-ai.streamlit.app")
                                 
                                 url_brevo = "https://api.brevo.com/v3/smtp/email"
                                 
