@@ -391,6 +391,20 @@ def mostra_pagina_login():
         .css-1d391kg {
             display: none !important;
         }
+        /* Nascondi bottone Manage App */
+        [data-testid="manage-app-button"] {
+            display: none !important;
+        }
+        [data-testid="stDecoration"] {
+            display: none !important;
+        }
+        /* Nascondi toolbar sviluppatore */
+        .stDeployButton {
+            display: none !important;
+        }
+        footer {
+            display: none !important;
+        }
         </style>
     """, unsafe_allow_html=True)
     
