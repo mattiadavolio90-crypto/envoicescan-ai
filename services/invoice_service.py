@@ -470,7 +470,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             logger.info(f"âœ… {nome_file}: {righe_confermate} righe confermate su DB")
             
             # Verifica integritÃ 
-            verifica = verifica_integrita_fattura(nome_file, dati_prodotti, user_id)
+            verifica = verifica_integrita_fattura(nome_file, dati_prodotti, user_id, supabase_client)
             
             # Log upload event
             try:

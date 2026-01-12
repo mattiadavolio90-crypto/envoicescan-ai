@@ -938,10 +938,21 @@ def elimina_tutte_fatture(user_id):
         if num_righe == 0:
             return {"success": False, "error": "no_data", "righe_eliminate": 0, "fatture_eliminate": 0}
         
-        # Elimina TUTTO per questo user_id
-        response = supabase.table("fatture").delete().eq("user_id", user_id).execute()
+        # 🔥 ELIMINA TUTTO per questo user_id - VERSIONE AGGRESSIVA
+        print(f"🗑️ Esecuzione DELETE per user_id={user_id}...")
+        logger.info(f"🗑️ Esecuzione DELETE per user_id={user_id}...")
         
-        # 🔍 LOG DETTAGLIATO NUOVO
+        try:
+            # Prova DELETE standard
+            response = supabase.table("fatture").delete().eq("user_id", user_id).execute()
+            print(f"📊 DELETE response.data length: {len(response.data) if response.data else 0}")
+            print(f"📊 DELETE response.count: {getattr(response, 'count', 'N/A')}")
+        except Exception as delete_error:
+            print(f"❌ ERRORE DELETE: {delete_error}")
+            logger.error(f"❌ ERRORE DELETE: {delete_error}")
+            raise
+        
+        # 🔍 LOG DETTAGLIATO
         print(f"🗑️ DELETE executed for user_id={user_id}")
         print(f"📊 DELETE result: {response}")
         logger.info(f"🗑️ DELETE executed for user_id={user_id}")
@@ -969,6 +980,23 @@ def elimina_tutte_fatture(user_id):
             
             if user_id not in user_ids_rimasti and 'N/A' not in user_ids_rimasti:
                 print(f"🚨 PROBLEMA RLS: Le righe rimaste hanno user_id DIVERSO!")
+            
+            # 🔥 TENTATIVO 2: Re-DELETE per righe rimaste
+            print(f"🔄 TENTATIVO 2: Ri-esecuzione DELETE per {num_rimaste} righe rimaste...")
+            try:
+                response2 = supabase.table("fatture").delete().eq("user_id", user_id).execute()
+                verify2 = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).execute()
+                num_dopo_retry = len(verify2.data) if verify2.data else 0
+                print(f"🔄 Dopo TENTATIVO 2: {num_dopo_retry} righe rimaste")
+                
+                if num_dopo_retry > 0:
+                    logger.error(f"❌ DELETE FALLITA anche dopo retry: {num_dopo_retry} righe ancora presenti")
+                else:
+                    print(f"✅ TENTATIVO 2 SUCCESSO: Database pulito")
+                    logger.info(f"✅ DELETE completata al secondo tentativo")
+            except Exception as retry_error:
+                print(f"❌ ERRORE nel retry DELETE: {retry_error}")
+                logger.error(f"❌ ERRORE nel retry DELETE: {retry_error}")
             
             logger.error(f"⚠️ DELETE PARZIALE: {num_rimaste} righe ancora presenti per user {user_id}")
             logger.error(f"📋 Prime 5 righe rimaste: {verify_response.data[:5]}")
