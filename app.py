@@ -1038,12 +1038,8 @@ def audit_data_consistency(user_id: str, context: str = "unknown") -> dict:
         result["db_count"] = db_response.count if db_response.count else 0
         result["db_files"] = len(set([r['file_origine'] for r in db_response.data])) if db_response.data else 0
         
-        # 2. Query cache con force_refresh se recentemente eliminato
-        force_refresh = False
-        if 'last_delete_timestamp' in st.session_state:
-            if time.time() - st.session_state.last_delete_timestamp < 5:
-                force_refresh = True
-        df_cached = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh)
+        # 2. Query cache (potrebbe essere stale)
+        df_cached = carica_e_prepara_dataframe(user_id)
         result["cache_count"] = len(df_cached)
         result["cache_files"] = df_cached['FileOrigine'].nunique() if not df_cached.empty else 0
         
@@ -3177,16 +3173,9 @@ if 'timestamp_ultimo_caricamento' not in st.session_state:
 # 🔒 IMPORTANTE: user_id per cache isolata (multi-tenancy)
 user_id = st.session_state.user_data["id"]
 
-# 🔥 FORCE REFRESH: Se c'è stato un delete recente (< 5 secondi fa), bypassa cache
-force_refresh_delete = False
-if 'last_delete_timestamp' in st.session_state:
-    time_since_delete = time.time() - st.session_state.last_delete_timestamp
-    if time_since_delete < 5:
-        force_refresh_delete = True
-        logger.info(f"🔄 FORCE REFRESH attivato: delete {time_since_delete:.1f}s fa")
 
 with st.spinner("⏳ Caricamento dati..."):
-    df_cache = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh_delete)
+    df_cache = carica_e_prepara_dataframe(user_id)
 
 
 # 🗂️ GESTIONE FATTURE - Eliminazione (prima del file uploader)
@@ -3302,6 +3291,10 @@ if not df_cache.empty:
                         except:
                             pass
                     
+                    # 🔥 ULTIMA PULIZIA CACHE: Doppia invalidazione per sicurezza
+                    st.cache_data.clear()
+                    invalida_cache_memoria()
+                    
                     progress.progress(100, text="Completato!")
                     time.sleep(0.3)
                     
@@ -3327,7 +3320,10 @@ if not df_cache.empty:
                         if 'check_conferma_svuota' in st.session_state:
                             del st.session_state.check_conferma_svuota
                         
-                        time.sleep(1.5)
+                        # 🔥 TRIPLE CLEAR: Ultima pulizia cache prima del rerun
+                        st.cache_data.clear()
+                        
+                        time.sleep(0.5)  # Delay per garantire che la cache sia pulita
                         st.rerun()
                     else:
                         st.error(f"❌ Errore: {result['error']}")
