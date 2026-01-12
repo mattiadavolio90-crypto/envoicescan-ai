@@ -446,22 +446,10 @@ def mostra_pagina_login():
                         if user:
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
-
-
-                            # SALVA COOKIE PER MANTENERE SESSIONE
-                            cookie_manager = stx.CookieManager(key="cookie_manager_login")
-                            try:
-                                # Impostiamo expires_at come oggetto datetime (expectation di CookieManager)
-                                expires_at = datetime.now() + timedelta(days=7)
-                                res = cookie_manager.set("user_email", user['email'], expires_at=expires_at)
-                                logger.debug(f"Cookie set result: {res}")
-                                # Leggiamo immediatamente il cookie per verifica
-                                read_back = cookie_manager.get("user_email")
-                                logger.debug(f"Cookie letto dopo set: {read_back}")
-                            except Exception:
-                                logger.exception('Impossibile impostare cookie')
-
-
+                            
+                            # Cookie disabilitati - sessione solo in memoria
+                            logger.info(f"Login effettuato per: {user.get('email')}")
+                            
                             st.success("✅ Accesso effettuato!")
                             time.sleep(1)
                             st.rerun()
