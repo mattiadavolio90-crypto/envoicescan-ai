@@ -149,6 +149,74 @@ st.set_page_config(
     }
 )
 
+# ============================================
+# NASCONDI FOOTER BRANDING STREAMLIT
+# ============================================
+st.markdown("""
+<style>
+    /* Nascondi footer Streamlit */
+    footer {
+        visibility: hidden !important;
+        display: none !important;
+    }
+    
+    /* Nascondi "Created by" e "Hosted with" */
+    [data-testid="stStatusWidget"] {
+        display: none !important;
+    }
+    
+    /* Nascondi link profilo e branding */
+    div[data-testid="stDecoration"] {
+        display: none !important;
+    }
+    
+    /* Target specifico per footer icons */
+    footer::after,
+    footer::before {
+        display: none !important;
+    }
+    
+    /* Nascondi toolbar */
+    header[data-testid="stHeader"] {
+        display: none !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# JavaScript aggressivo per rimuovere elementi branding
+st.markdown("""
+<script>
+(function() {
+    function hideStreamlitBranding() {
+        // Rimuovi tutti gli elementi del footer
+        const footer = document.getElementsByTagName('footer')[0];
+        if (footer) footer.remove();
+        
+        // Rimuovi status widget
+        document.querySelectorAll('[data-testid="stStatusWidget"]').forEach(el => el.remove());
+        
+        // Rimuovi decorazioni
+        document.querySelectorAll('[data-testid="stDecoration"]').forEach(el => el.remove());
+        
+        // Rimuovi header
+        document.querySelectorAll('header[data-testid="stHeader"]').forEach(el => el.remove());
+    }
+    
+    // Esegui subito
+    hideStreamlitBranding();
+    
+    // Ripeti ogni 300ms
+    setInterval(hideStreamlitBranding, 300);
+    
+    // Observer per nuovi elementi
+    new MutationObserver(hideStreamlitBranding).observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+})();
+</script>
+""", unsafe_allow_html=True)
+
 # Nascondi bottone "Manage app"
 st.markdown("""
 <style>
