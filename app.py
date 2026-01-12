@@ -332,6 +332,21 @@ except Exception:
 
 
 # ============================================
+# GESTIONE LOGOUT FORZATO VIA QUERY PARAMS
+# ============================================
+# Se c'è il parametro logout=1, forza logout completo (funziona anche su Streamlit Cloud)
+if st.query_params.get("logout") == "1":
+    logger.warning("🚨 LOGOUT FORZATO via query params - pulizia totale sessione")
+    # Cancella TUTTO
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.session_state.logged_in = False
+    # Rimuovi parametro logout dall'URL
+    st.query_params.clear()
+    st.rerun()
+
+
+# ============================================
 # VERIFICA VALIDITÀ SESSIONE CON TIMESTAMP
 # ============================================
 # Ogni sessione deve avere un timestamp. Senza timestamp = sessione non valida
@@ -642,18 +657,9 @@ if user.get('email') in ADMIN_EMAILS:
     with col4:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
-            # Pulisci TUTTA la sessione
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            
-            # Reimposta stati base
-            st.session_state.logged_in = False
-            st.session_state.user_data = None
-            
-            # Invalida cache
-            st.cache_data.clear()
-            
-            logger.info("Logout completato")
+            # LOGOUT FORZATO con query param - funziona anche su Streamlit Cloud
+            logger.info("🚨 Logout richiesto - reindirizzo con ?logout=1")
+            st.query_params["logout"] = "1"
             st.rerun()
 else:
     with col2:
@@ -664,18 +670,9 @@ else:
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
-            # Pulisci TUTTA la sessione
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            
-            # Reimposta stati base
-            st.session_state.logged_in = False
-            st.session_state.user_data = None
-            
-            # Invalida cache
-            st.cache_data.clear()
-            
-            logger.info("Logout completato")
+            # LOGOUT FORZATO con query param - funziona anche su Streamlit Cloud
+            logger.info("🚨 Logout richiesto - reindirizzo con ?logout=1")
+            st.query_params["logout"] = "1"
             st.rerun()
 
 
