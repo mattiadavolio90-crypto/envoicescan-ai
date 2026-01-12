@@ -1315,7 +1315,7 @@ def mostra_statistiche(df_completo):
             # Rimuovi il flag automaticamente quando tutti i file sono stati rimossi (dopo aver cliccato la X)
         if not uploaded_files and st.session_state.get("force_empty_until_upload"):
             st.session_state.force_empty_until_upload = False
-                st.stop()
+            st.stop()
             
             # ============================================================
             # CHIAMATA AI (SOLO DESCRIZIONI DA CLASSIFICARE)
