@@ -141,9 +141,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
     menu_items={
-        "Get help": None,
-        "Report a bug": None,
-        "About": ""
+        'Get Help': None,
+        'Report a bug': None,
+        'About': None
     }
 )
 

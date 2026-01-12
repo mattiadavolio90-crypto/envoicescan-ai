@@ -14,6 +14,7 @@ import time
 import logging
 import extra_streamlit_components as stx
 import plotly.express as px
+import requests
 
 # Importa funzioni categorie dinamiche da app.py
 import sys
@@ -879,6 +880,137 @@ def fix_automatico_tutti_problemi(dettagli):
 if tab1:
     st.markdown("### 📊 Gestione Clienti e Statistiche")
     st.caption("Visualizza statistiche clienti e accedi come utente per debug/supporto")
+    
+    # ============================================================
+    # CREA NUOVO CLIENTE (solo admin)
+    # ============================================================
+    st.markdown("### ➕ Crea Nuovo Cliente")
+    
+    with st.expander("➕ Crea Nuovo Cliente", expanded=False):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            new_email = st.text_input("📧 Email cliente", key="new_email", placeholder="cliente@esempio.com")
+            new_name = st.text_input("🏪 Nome ristorante", key="new_name", placeholder="Es: Ristorante Da Mario")
+        
+        with col2:
+            new_password = st.text_input("🔑 Password temporanea (min 8 caratteri)", type="password", key="new_pwd", placeholder="Password sicura")
+            confirm_password = st.text_input("🔑 Conferma password", type="password", key="confirm_pwd", placeholder="Ripeti password")
+        
+        st.markdown("---")
+        
+        if st.button("🆕 Crea Account Cliente", type="primary", use_container_width=True):
+            # Validazione input
+            if not new_email or not new_name or not new_password or not confirm_password:
+                st.error("⚠️ Compila tutti i campi")
+            elif new_password != confirm_password:
+                st.error("❌ Le password non coincidono")
+            elif len(new_password) < 8:
+                st.error("❌ Password troppo corta (minimo 8 caratteri)")
+            elif '@' not in new_email:
+                st.error("❌ Email non valida")
+            else:
+                try:
+                    # Verifica se email già esiste
+                    check_existing = supabase.table('users').select('id').eq('email', new_email).execute()
+                    
+                    if check_existing.data:
+                        st.error(f"❌ Email {new_email} già registrata")
+                    else:
+                        # Hash password con Argon2
+                        from services.auth_service import hash_password
+                        password_hash = hash_password(new_password)
+                        
+                        # Inserisci nuovo utente
+                        nuovo_utente = {
+                            'email': new_email,
+                            'nome_ristorante': new_name,
+                            'password': password_hash,
+                            'attivo': True,
+                            'created_at': datetime.now(timezone.utc).isoformat()
+                        }
+                        
+                        result = supabase.table('users').insert(nuovo_utente).execute()
+                        
+                        if result.data:
+                            # ===== INVIO EMAIL AUTOMATICO BREVO =====
+                            email_inviata = False
+                            try:
+                                brevo_api_key = st.secrets["brevo"]["api_key"]
+                                sender_email = st.secrets["brevo"]["sender_email"]
+                                app_url = st.secrets.get("app", {}).get("url", "https://checkfornitori.streamlit.app")
+                                
+                                url_brevo = "https://api.brevo.com/v3/smtp/email"
+                                
+                                email_html = f"""
+                                <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                                    <h2 style="color: #0ea5e9;">🧠 Benvenuto in Check Fornitori AI</h2>
+                                    <p>Il tuo account è stato creato con successo!</p>
+                                    
+                                    <div style="background: #f1f5f9; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                                        <p><strong>📧 Email:</strong> {new_email}</p>
+                                        <p><strong>🔑 Password:</strong> <code style="background: #e2e8f0; padding: 4px 8px; border-radius: 4px;">{new_password}</code></p>
+                                    </div>
+                                    
+                                    <p style="margin: 25px 0;">
+                                        <a href="{app_url}" style="display: inline-block; background: #0ea5e9; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+                                            🚀 Accedi all'App
+                                        </a>
+                                    </p>
+                                    
+                                    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
+                                    <p style="color: #94a3b8; font-size: 12px;">
+                                        Questa email è stata generata automaticamente. Se non hai richiesto la creazione di questo account, contatta l'amministratore.
+                                    </p>
+                                </div>
+                                """
+                                
+                                payload = {
+                                    "sender": {"email": sender_email, "name": "Check Fornitori AI"},
+                                    "to": [{"email": new_email, "name": new_name}],
+                                    "subject": "🆕 Benvenuto - Credenziali Accesso Check Fornitori AI",
+                                    "htmlContent": email_html
+                                }
+                                
+                                response = requests.post(
+                                    url_brevo, 
+                                    json=payload, 
+                                    headers={
+                                        "api-key": brevo_api_key,
+                                        "Content-Type": "application/json"
+                                    },
+                                    timeout=10
+                                )
+                                
+                                if response.status_code == 201:
+                                    email_inviata = True
+                                    logger.info(f"✅ Email credenziali inviata a {new_email}")
+                                else:
+                                    logger.warning(f"⚠️ Email non inviata: {response.status_code} - {response.text}")
+                                    
+                            except Exception as e:
+                                logger.error(f"❌ Errore invio email: {e}")
+                            
+                            # Mostra messaggio di successo
+                            if email_inviata:
+                                st.success(f"✅ Cliente {new_email} creato con successo!")
+                                st.info(f"📧 Email con credenziali inviata automaticamente a: **{new_email}**")
+                            else:
+                                st.success(f"✅ Cliente {new_email} creato con successo!")
+                                st.warning(f"⚠️ Errore invio email automatico. Comunica manualmente le credenziali:")
+                                st.info(f"📧 Email: {new_email}\n🔑 Password temporanea: {new_password}")
+                            
+                            logger.info(f"✅ Nuovo cliente creato da admin: {new_email} | Email inviata: {email_inviata}")
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error("❌ Errore durante la creazione dell'account")
+                            
+                except Exception as e:
+                    st.error(f"❌ Errore creazione cliente: {e}")
+                    logger.exception(f"Errore creazione cliente {new_email}")
+    
+    st.markdown("---")
     
     try:
         # Query utenti
