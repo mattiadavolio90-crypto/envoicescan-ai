@@ -787,7 +787,7 @@ if user.get('email') in ADMIN_EMAILS:
     
     with col4:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
+        if st.button("🚺 Logout", type="primary", use_container_width=True, key="logout_btn"):
             # Reset completo session_state
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
@@ -802,7 +802,7 @@ else:
     
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
+        if st.button("🚺 Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
             # Reset completo session_state
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
