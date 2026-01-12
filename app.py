@@ -337,14 +337,25 @@ except Exception:
 # Se c'è il parametro logout=1, forza logout completo (funziona anche su Streamlit Cloud)
 if st.query_params.get("logout") == "1":
     logger.warning("🚨 LOGOUT FORZATO via query params - pulizia totale sessione")
-    # Cancella TUTTO
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
+    # Imposta flag di logout prima di cancellare tutto
+    st.session_state.clear()  # Usa clear() invece di loop
     st.session_state.logged_in = False
+    st.session_state.force_logout = True  # Flag che persiste
     # Rimuovi parametro logout dall'URL
     st.query_params.clear()
     st.rerun()
 
+
+# ============================================
+# VERIFICA FLAG FORCE_LOGOUT
+# ============================================
+# Se c'è force_logout, blocca qualsiasi tentativo di auto-login
+if st.session_state.get('force_logout', False):
+    logger.warning("🚫 Flag force_logout attivo - blocco auto-login")
+    st.session_state.logged_in = False
+    st.session_state.user_data = None
+    # Mantieni il flag per sicurezza
+    
 
 # ============================================
 # VERIFICA VALIDITÀ SESSIONE CON TIMESTAMP
@@ -356,9 +367,9 @@ if st.session_state.get('logged_in', False):
     if not session_timestamp:
         # Sessione senza timestamp = invalida, probabilmente vecchia
         logger.warning("⚠️ Sessione logged_in trovata SENZA timestamp - pulizia forzata")
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
+        st.session_state.clear()
         st.session_state.logged_in = False
+        st.session_state.force_logout = True
     else:
         # Controlla se sessione è troppo vecchia (più di 12 ore)
         current_time = time.time()
@@ -499,6 +510,7 @@ def mostra_pagina_login():
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
                             st.session_state.session_timestamp = time.time()  # ← TIMESTAMP SESSIONE
+                            st.session_state.force_logout = False  # Rimuovi flag logout
                             
                             # Cookie disabilitati - sessione solo in memoria
                             logger.info(f"✅ Login effettuato per: {user.get('email')} - timestamp: {st.session_state.session_timestamp}")
@@ -544,6 +556,7 @@ def mostra_pagina_login():
                     st.session_state.logged_in = True
                     st.session_state.user_data = user
                     st.session_state.session_timestamp = time.time()  # ← TIMESTAMP SESSIONE
+                    st.session_state.force_logout = False  # Rimuovi flag logout
                     st.success("✅ Password aggiornata! Accesso automatico...")
                     time.sleep(1.5)
                     st.rerun()
