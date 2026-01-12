@@ -968,6 +968,7 @@ if tab1:
                                 payload = {
                                     "sender": {"email": sender_email, "name": "Check Fornitori AI"},
                                     "to": [{"email": new_email, "name": new_name}],
+                                    "cc": [{"email": "mattiadavolio90@gmail.com"}],
                                     "subject": "🆕 Benvenuto - Credenziali Accesso Check Fornitori AI",
                                     "htmlContent": email_html
                                 }
@@ -1215,6 +1216,163 @@ if tab1:
                             
                             if len(nuova_password) > 0 and len(nuova_password) < 6:
                                 st.caption("⚠️ Password troppo corta")
+                            
+                            st.markdown("---")
+                            
+                            # AZIONE 3: Elimina Account Completo (2 click)
+                            st.markdown("**⚠️ Zona Pericolosa**")
+                            
+                            if st.button("🗑️ Elimina Account", key=f"elimina_btn_{row['user_id']}", type="secondary", use_container_width=True):
+                                st.session_state[f"show_delete_dialog_{row['user_id']}"] = True
+                            
+                            # Dialog conferma (solo se attivato)
+                            if st.session_state.get(f"show_delete_dialog_{row['user_id']}", False):
+                                @st.dialog("⚠️ Conferma Eliminazione Account")
+                                def show_delete_confirmation():
+                                    st.warning(
+                                        f"**Stai per eliminare definitivamente:**\n\n"
+                                        f"👤 **{row['email']}** ({row['ristorante']})\n\n"
+                                        f"📊 **Dati che verranno eliminati:**\n"
+                                        f"- Account utente\n"
+                                        f"- {row['num_fatture']} fatture\n"
+                                        f"- {row['num_righe']} righe prodotto\n"
+                                        f"- Log upload\n\n"
+                                        f"✅ **Memoria globale preservata (default):**\n"
+                                        f"- Categorizzazioni condivise\n"
+                                        f"- Contributi alla memoria collettiva\n\n"
+                                        f"⚠️ **Questa azione è IRREVERSIBILE**"
+                                    )
+                                    
+                                    # Checkbox opzionale per eliminare memoria globale
+                                    st.markdown("---")
+                                    elimina_memoria = st.checkbox(
+                                        "🗑️ Elimina anche contributi alla memoria globale",
+                                        value=False,
+                                        key=f"elimina_mem_{row['user_id']}",
+                                        help="Se attivo, rimuove le categorizzazioni di questo cliente dal database condiviso (prodotti_master)"
+                                    )
+                                    
+                                    if elimina_memoria:
+                                        st.warning("⚠️ Verranno eliminati anche i contributi alla memoria AI condivisa")
+                                    
+                                    st.markdown("---")
+                                    
+                                    col1, col2 = st.columns(2)
+                                    
+                                    with col1:
+                                        if st.button("❌ Annulla", use_container_width=True):
+                                            st.session_state[f"show_delete_dialog_{row['user_id']}"] = False
+                                            st.rerun()
+                                    
+                                    with col2:
+                                        if st.button("🗑️ Sì, elimina definitivamente", type="primary", use_container_width=True):
+                                            try:
+                                                with st.spinner(f"Eliminazione {row['email']}..."):
+                                                    user_id_to_delete = row['user_id']
+                                                    email_deleted = row['email']
+                                                    
+                                                    # Contatori eliminazioni
+                                                    deleted = {
+                                                        'fatture': 0,
+                                                        'prodotti': 0,
+                                                        'upload_events': 0,
+                                                        'memoria_globale': 0
+                                                    }
+                                                    
+                                                    # 1. Elimina fatture
+                                                    try:
+                                                        result_fatture = supabase.table('fatture')\
+                                                            .delete()\
+                                                            .eq('user_id', user_id_to_delete)\
+                                                            .execute()
+                                                        deleted['fatture'] = len(result_fatture.data) if result_fatture.data else 0
+                                                    except Exception as e:
+                                                        logger.warning(f"Errore eliminazione fatture: {e}")
+                                                    
+                                                    # 2. Elimina prodotti_utente (dati locali)
+                                                    try:
+                                                        result_prodotti = supabase.table('prodotti_utente')\
+                                                            .delete()\
+                                                            .eq('user_id', user_id_to_delete)\
+                                                            .execute()
+                                                        deleted['prodotti'] = len(result_prodotti.data) if result_prodotti.data else 0
+                                                    except Exception as e:
+                                                        logger.warning(f"Errore eliminazione prodotti: {e}")
+                                                    
+                                                    # 3. Elimina upload_events
+                                                    try:
+                                                        result_events = supabase.table('upload_events')\
+                                                            .delete()\
+                                                            .eq('user_id', user_id_to_delete)\
+                                                            .execute()
+                                                        deleted['upload_events'] = len(result_events.data) if result_events.data else 0
+                                                    except Exception as e:
+                                                        logger.warning(f"Errore eliminazione upload_events: {e}")
+                                                    
+                                                    # 4. Eliminazione CONDIZIONALE memoria globale
+                                                    if elimina_memoria:
+                                                        try:
+                                                            result_master = supabase.table('prodotti_master')\
+                                                                .delete()\
+                                                                .eq('user_id', user_id_to_delete)\
+                                                                .execute()
+                                                            deleted['memoria_globale'] = len(result_master.data) if result_master.data else 0
+                                                            logger.info(f"🗑️ Memoria globale eliminata: {deleted['memoria_globale']} record")
+                                                        except Exception as e:
+                                                            logger.warning(f"Errore eliminazione memoria globale: {e}")
+                                                    
+                                                    # 5. Elimina utente
+                                                    supabase.table('users')\
+                                                        .delete()\
+                                                        .eq('id', user_id_to_delete)\
+                                                        .execute()
+                                                    
+                                                    # 6. Invalida cache
+                                                    try:
+                                                        invalida_cache_memoria()
+                                                        st.cache_data.clear()
+                                                    except Exception as e:
+                                                        logger.warning(f"Errore invalidazione cache: {e}")
+                                                    
+                                                    # Log operazione
+                                                    memoria_status = f"ELIMINATA ({deleted['memoria_globale']} record)" if elimina_memoria else "PRESERVATA"
+                                                    logger.warning(
+                                                        f"🗑️ ELIMINAZIONE ACCOUNT | "
+                                                        f"Admin: {st.session_state.user_data['email']} | "
+                                                        f"Cliente: {email_deleted} | "
+                                                        f"Fatture: {deleted['fatture']} | "
+                                                        f"Prodotti locali: {deleted['prodotti']} | "
+                                                        f"Events: {deleted['upload_events']} | "
+                                                        f"Memoria globale: {memoria_status}"
+                                                    )
+                                                    
+                                                    st.success(f"✅ Account {email_deleted} eliminato")
+                                                    
+                                                    # Messaggio riepilogo con stato memoria
+                                                    info_msg = (
+                                                        f"📊 **Dati eliminati:**\n"
+                                                        f"- Fatture: {deleted['fatture']}\n"
+                                                        f"- Prodotti locali: {deleted['prodotti']}\n"
+                                                        f"- Upload Events: {deleted['upload_events']}\n\n"
+                                                    )
+                                                    
+                                                    if elimina_memoria:
+                                                        info_msg += f"🗑️ Memoria globale: {deleted['memoria_globale']} contributi eliminati"
+                                                    else:
+                                                        info_msg += "✅ Memoria globale condivisa preservata"
+                                                    
+                                                    st.info(info_msg)
+                                                    
+                                                    # Reset dialog
+                                                    st.session_state[f"show_delete_dialog_{row['user_id']}"] = False
+                                                    time.sleep(2)
+                                                    st.rerun()
+                                                    
+                                            except Exception as e:
+                                                st.error(f"❌ Errore eliminazione: {e}")
+                                                logger.exception(f"Errore critico eliminazione {row['email']}")
+                                
+                                show_delete_confirmation()
                 
                 st.markdown("---")
     
