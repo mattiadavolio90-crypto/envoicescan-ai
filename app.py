@@ -763,14 +763,14 @@ else:
 
 with col1:
     st.markdown("""
-<h1 style="font-size: 52px; font-weight: 700; margin: 0; display: inline-block;">
+<h1 style="font-size: 52px; font-weight: 700; margin: 0; margin-top: 20px; display: inline-block;">
     🧠 <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;">Analisi Fatture AI</span>
 </h1>
 """, unsafe_allow_html=True)
-    st.caption(f"👤 {user.get('nome_ristorante', 'Utente')} | 📧 {user.get('email')}")
+    st.caption(f"👤 {user.get('nome_ristorante', 'Utente')} | {st.session_state.get('user_email', 'N/A')}")
 
 
 # Pulsanti diversi per admin e clienti
@@ -1591,7 +1591,7 @@ def mostra_statistiche(df_completo):
             display: none;
         }
     </style>
-    """, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
     # Calcola variabili per i KPI
     spesa_fb = df_food['TotaleRiga'].sum()
@@ -2092,8 +2092,8 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                         'Quantità', 'U.M.', 'Prezzo Unit.', 'IVA %', 'Totale (€)', 'Categoria']
             
             # Aggiungi prezzo_standard se presente
-            if 'PrezzoStandard' in df_export.columns:
-                col_names.append('LISTINO')
+            # if 'PrezzoStandard' in df_export.columns:
+            #     col_names.append('LISTINO')
             
             # ✅ VERIFICA: Numero colonne deve corrispondere
             if len(df_export.columns) == len(col_names):
@@ -2408,7 +2408,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     border-radius: 5px;
                     height: 110px;
                 ">
-                    <div style="font-size: 14px; color: #666;">Sconti Applicati</div>
+                    <div style="font-size: 14px; color: #666; font-weight: 500;">Sconti Applicati</div>
                     <div style="font-size: 24px; font-weight: bold; margin: 8px 0;">{} righe</div>
                     <div style="font-size: 16px; color: #dc3545;">-€{:.2f}</div>
                 </div>
@@ -2424,7 +2424,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     border-radius: 5px;
                     height: 110px;
                 ">
-                    <div style="font-size: 14px; color: #666;">Omaggi Ricevuti</div>
+                    <div style="font-size: 14px; color: #666; font-weight: 500;">Omaggi Ricevuti</div>
                     <div style="font-size: 24px; font-weight: bold; margin: 8px 0;">{} righe</div>
                     <div style="font-size: 16px; color: #999;">Prodotti gratuiti</div>
                 </div>
@@ -2440,7 +2440,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     border-radius: 5px;
                     height: 110px;
                 ">
-                    <div style="font-size: 14px; color: #666;">Totale Risparmiato</div>
+                    <div style="font-size: 14px; color: #666; font-weight: 500;">Totale Risparmiato</div>
                     <div style="font-size: 24px; font-weight: bold; margin: 8px 0; color: #28a745;">€{:.2f}</div>
                     <div style="font-size: 16px; color: #999;">{}</div>
                 </div>
@@ -2522,7 +2522,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             
             else:
                 st.info(f"📊 Nessuno sconto applicato nel periodo {label_periodo.lower()}")
-            
+                
             # ============================================================
             # TABELLA OMAGGI
             # ============================================================
@@ -2553,7 +2553,6 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     # Altezza dinamica scrollabile
                     num_righe_omaggi = len(df_omaggi_view)
                     altezza_omaggi = min(max(num_righe_omaggi * 35 + 50, 200), 500)
-                    
                     st.dataframe(
                         df_omaggi_view,
                         hide_index=True,
@@ -3694,10 +3693,8 @@ if uploaded_files:
         except Exception as e:
             # CRITICO: rimuovi loading anche in caso di errore
             upload_placeholder.empty()
-            if 'progress_bar' in locals():
-                progress_bar.empty()
-            if 'status_text' in locals():
-                status_text.empty()
+            progress_bar.empty()
+            status_text.empty()
             st.error(f"❌ Errore durante l'elaborazione: {e}")
             logger.exception("Errore upload fatture")
 
