@@ -51,22 +51,22 @@ _memoria_cache = {
 # ============================================================
 # INIZIALIZZAZIONE OPENAI CLIENT
 # ============================================================
-def _get_openai_client(api_key: str = None) -> OpenAI:
+@st.cache_resource
+def _get_openai_client() -> OpenAI:
     """
-    Ottiene client OpenAI inizializzato.
-    
-    Args:
-        api_key: API key OpenAI (se None, legge da secrets)
+    Ottiene client OpenAI singleton (cached).
     
     Returns:
-        OpenAI: Client inizializzato
+        OpenAI: Client inizializzato e cached per tutta la sessione
+        
+    Raises:
+        ValueError: Se API key non trovata in secrets
     """
-    if api_key is None:
-        try:
-            api_key = st.secrets["OPENAI_API_KEY"]
-        except Exception as e:
-            logger.exception("API Key OpenAI non trovata")
-            raise ValueError("API Key OpenAI mancante") from e
+    try:
+        api_key = st.secrets["OPENAI_API_KEY"]
+    except Exception as e:
+        logger.exception("API Key OpenAI non trovata")
+        raise ValueError("API Key OpenAI mancante") from e
     
     return OpenAI(api_key=api_key)
 
@@ -93,13 +93,11 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
     if _memoria_cache['loaded']:
         return _memoria_cache
     
-    # Usa client iniettato o fallback a st.secrets
+    # Usa client iniettato o fallback a singleton
     if supabase_client is None:
         try:
-            from supabase import create_client
-            url = st.secrets["SUPABASE_URL"]
-            key = st.secrets["SUPABASE_KEY"]
-            supabase_client = create_client(url, key)
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
         except Exception as e:
             logger.error(f"Impossibile creare client Supabase: {e}")
             return _memoria_cache
@@ -265,13 +263,11 @@ def salva_correzione_in_memoria_globale(
     Returns:
         bool: True se successo, False altrimenti
     """
-    # Usa client iniettato o fallback
+    # Usa client iniettato o fallback a singleton
     if supabase_client is None:
         try:
-            from supabase import create_client
-            url = st.secrets["SUPABASE_URL"]
-            key = st.secrets["SUPABASE_KEY"]
-            supabase_client = create_client(url, key)
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
         except Exception as e:
             logger.error(f"Impossibile creare client Supabase: {e}")
             return False
@@ -360,10 +356,8 @@ def categorizza_con_memoria(
     # Usa client iniettato o fallback
     if supabase_client is None:
         try:
-            from supabase import create_client
-            url = st.secrets["SUPABASE_URL"]
-            key = st.secrets["SUPABASE_KEY"]
-            supabase_client = create_client(url, key)
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
         except Exception:
             pass  # Procedi senza client
     

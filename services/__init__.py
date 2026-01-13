@@ -72,5 +72,27 @@ __all__ = [
     'ricalcola_prezzi_con_sconti',
     'calcola_alert',
     'carica_sconti_e_omaggi',
+    # Supabase singleton
+    'get_supabase_client',
 ]
+
+# ============================================
+# SUPABASE SINGLETON (Cached Resource)
+# ============================================
+import streamlit as st
+from supabase import create_client
+
+@st.cache_resource
+def get_supabase_client():
+    """
+    Restituisce istanza singleton del client Supabase.
+    Cached per tutta la sessione dell'app per evitare ricreare connessioni.
+    
+    Returns:
+        Client Supabase configurato
+    """
+    return create_client(
+        st.secrets["supabase"]["url"],
+        st.secrets["supabase"]["key"]
+    )
 

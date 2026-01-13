@@ -827,33 +827,18 @@ with col1:
     background-clip: text;">Analisi Fatture AI</span>
 </h1>
 """, unsafe_allow_html=True)
-    # Visualizza email utente - verifica TUTTE le possibili chiavi
-    # Il campo potrebbe essere 'email', 'Email', 'user_email', 'e_mail', ecc.
-    possible_email_keys = ['email', 'Email', 'user_email', 'e_mail', 'EMAIL']
-    user_email = None
-    for key in possible_email_keys:
-        if user and user.get(key):
-            user_email = user.get(key)
-            break
     
-    # Fallback a session_state se non trovato in user
-    if not user_email and st.session_state.user_data:
-        for key in possible_email_keys:
-            if st.session_state.user_data.get(key):
-                user_email = st.session_state.user_data.get(key)
-                break
+    # Recupera email e nome ristorante
+    user_email = (user.get('email') or user.get('Email') or user.get('user_email') or 
+                  st.session_state.user_data.get('email') if st.session_state.user_data else None or 
+                  'Email non disponibile')
     
-    # Default finale se ancora vuoto
-    if not user_email:
-        user_email = 'N/A'
+    nome_ristorante = (user.get('nome_ristorante') or user.get('restaurant_name') or 
+                       user.get('nome') or user.get('name') or 'Ristorante')
     
-    user_name = user.get('nome_ristorante') or user.get('nome') or user.get('name') or 'Utente'
-    
-    # DEBUG temporaneo: mostra chiavi disponibili se email è N/A
-    if user_email == 'N/A':
-        st.warning(f"⚠️ DEBUG EMAIL: Chiavi in user: {list(user.keys()) if user else 'None'}")
-    
-    st.caption(f"👤 {user_name} | {user_email}")
+    # Mostra nome ristorante ed email
+    st.markdown(f"<p style='font-size: 14px; color: #666; margin-top: -10px;'>🏪 {nome_ristorante} | 📧 {user_email}</p>", 
+                unsafe_allow_html=True)
 
 
 # Pulsanti diversi per admin e clienti
@@ -1021,74 +1006,56 @@ def elimina_tutte_fatture(user_id):
         if num_righe == 0:
             return {"success": False, "error": "no_data", "righe_eliminate": 0, "fatture_eliminate": 0}
         
-        # 🔥 ELIMINA TUTTO per questo user_id - VERSIONE AGGRESSIVA
-        print(f"🗑️ Esecuzione DELETE per user_id={user_id}...")
+        # 🔥 ELIMINA TUTTO per questo user_id
         logger.info(f"🗑️ Esecuzione DELETE per user_id={user_id}...")
         
         try:
-            # Prova DELETE standard
+            # Esegui DELETE
             response = supabase.table("fatture").delete().eq("user_id", user_id).execute()
-            print(f"📊 DELETE response.data length: {len(response.data) if response.data else 0}")
-            print(f"📊 DELETE response.count: {getattr(response, 'count', 'N/A')}")
+            logger.info(f"📊 DELETE executed for user_id={user_id}")
         except Exception as delete_error:
-            print(f"❌ ERRORE DELETE: {delete_error}")
             logger.error(f"❌ ERRORE DELETE: {delete_error}")
             raise
         
-        # 🔍 LOG DETTAGLIATO
-        print(f"🗑️ DELETE executed for user_id={user_id}")
-        print(f"📊 DELETE result: {response}")
-        logger.info(f"🗑️ DELETE executed for user_id={user_id}")
-        logger.info(f"📊 DELETE result: {response}")
+        # ✅ VERIFICA POST-DELETE ATOMICA (conferma eliminazione)
+        verify_response = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).execute()
+        num_rimaste = verify_response.count if verify_response.count else 0
         
-        # Verifica post-delete (conferma eliminazione)
-        verify_response = supabase.table("fatture").select("id, file_origine, data_documento").eq("user_id", user_id).execute()
-        num_rimaste = len(verify_response.data) if verify_response.data else 0
-        
-        print(f"✅ Righe rimaste dopo DELETE: {num_rimaste}")
-        logger.info(f"✅ Righe rimaste dopo DELETE: {num_rimaste}")
+        logger.info(f"✅ Verifica post-delete: {num_rimaste} righe rimaste")
         
         if num_rimaste > 0:
-            print(f"⚠️ ATTENZIONE: DELETE NON COMPLETA!")
-            print(f"📋 Prime 5 righe rimaste: {verify_response.data[:5]}")
+            logger.error(f"❌ DELETE FALLITA: {num_rimaste} righe ancora presenti per user {user_id}")
             
-            # Analizza QUALI righe sono sopravvissute
-            fornitori_rimasti = set([r.get('file_origine', 'N/A') for r in verify_response.data])
-            print(f"📊 File rimasti: {list(fornitori_rimasti)[:10]}")
-            
-            # Verifica se hanno lo stesso user_id
-            user_ids_rimasti = set([r.get('user_id', 'N/A') for r in verify_response.data]) if 'user_id' in verify_response.data[0] else {'N/A'}
-            print(f"🆔 User IDs delle righe rimaste: {user_ids_rimasti}")
-            print(f"🆔 User ID attuale richiesto: {user_id}")
-            
-            if user_id not in user_ids_rimasti and 'N/A' not in user_ids_rimasti:
-                print(f"🚨 PROBLEMA RLS: Le righe rimaste hanno user_id DIVERSO!")
-            
-            # 🔥 TENTATIVO 2: Re-DELETE per righe rimaste
-            print(f"🔄 TENTATIVO 2: Ri-esecuzione DELETE per {num_rimaste} righe rimaste...")
+            # 🔄 TENTATIVO 2: Re-DELETE per righe rimaste
             try:
+                logger.info(f"🔄 TENTATIVO 2: Ri-esecuzione DELETE per {num_rimaste} righe rimaste...")
                 response2 = supabase.table("fatture").delete().eq("user_id", user_id).execute()
-                verify2 = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).execute()
-                num_dopo_retry = len(verify2.data) if verify2.data else 0
-                print(f"🔄 Dopo TENTATIVO 2: {num_dopo_retry} righe rimaste")
                 
-                if num_dopo_retry > 0:
-                    logger.error(f"❌ DELETE FALLITA anche dopo retry: {num_dopo_retry} righe ancora presenti")
+                # Verifica finale dopo retry
+                verify_final = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).execute()
+                num_finali = verify_final.count if verify_final.count else 0
+                
+                if num_finali > 0:
+                    logger.critical(f"🚨 DELETE FALLITA ANCHE DOPO RETRY: {num_finali} righe ancora presenti")
+                    return {
+                        "success": False, 
+                        "error": f"Eliminazione parziale: {num_finali} righe non eliminate", 
+                        "righe_eliminate": num_righe - num_finali, 
+                        "fatture_eliminate": num_fatture
+                    }
                 else:
-                    print(f"✅ TENTATIVO 2 SUCCESSO: Database pulito")
                     logger.info(f"✅ DELETE completata al secondo tentativo")
             except Exception as retry_error:
-                print(f"❌ ERRORE nel retry DELETE: {retry_error}")
-                logger.error(f"❌ ERRORE nel retry DELETE: {retry_error}")
-            
-            logger.error(f"⚠️ DELETE PARZIALE: {num_rimaste} righe ancora presenti per user {user_id}")
-            logger.error(f"📋 Prime 5 righe rimaste: {verify_response.data[:5]}")
-        else:
-            print(f"✅ DELETE VERIFIED: Database completamente pulito")
-            logger.info(f"✅ DELETE COMPLETA: 0 righe rimaste per user {user_id}")
+                logger.critical(f"❌ ERRORE nel retry DELETE: {retry_error}")
+                return {
+                    "success": False, 
+                    "error": f"Delete fallita: {str(retry_error)}", 
+                    "righe_eliminate": 0, 
+                    "fatture_eliminate": 0
+                }
         
-        # Log operazione
-        logger.warning(f"⚠️ ELIMINAZIONE MASSIVA: {num_fatture} fatture ({num_righe} righe) da user {user_id}")
+        # Success solo se 0 righe rimaste
+        logger.warning(f"⚠️ ELIMINAZIONE MASSIVA SUCCESSO: {num_fatture} fatture ({num_righe} righe) da user {user_id}")
         
         # 🔥 PULIZIA CACHE COMPLETA: Multiple invalidazioni per garantire reset
         st.cache_data.clear()
@@ -2118,19 +2085,32 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         num_righe = len(edited_df)
         
         # Box riepilogo + bottone Excel affiancati - LAYOUT SEMPLICE
-        col_left, col_right = st.columns([3, 1])
+        col_left, col_right = st.columns([5, 1])
         
         with col_left:
             # Box blu con statistiche
             st.markdown(f"""
-            <div style="background-color: #E3F2FD; padding: 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px;">
-                <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0;">
-                    📋 N. Righe: {num_righe:,}<br>💰 Totale: € {totale_tabella:.2f}
+            <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
+                <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+                    📋 N. Righe: {num_righe:,} | 💰 Totale: € {totale_tabella:.2f}
                 </p>
             </div>
             """, unsafe_allow_html=True)
         
         with col_right:
+            # Allinea il pulsante a destra
+            st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+            
+            st.markdown("""
+                <style>
+                [data-testid="stDownloadButton"] button {
+                    border: none !important;
+                    outline: none !important;
+                    box-shadow: none !important;
+                }
+                </style>
+            """, unsafe_allow_html=True)
+            
             # Prepara Excel
             try:
                 df_export = edited_df.copy()
@@ -2148,10 +2128,12 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="btn_excel_dettaglio",
                     type="primary",
-                    use_container_width=True
+                    use_container_width=False
                 )
             except Exception as e:
                 st.error(f"Errore: {e}")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
 
 
         if salva_modifiche:
@@ -2672,27 +2654,30 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             )
             
             totale_cat = pivot_cat['TOTALE ANNO'].sum()
-            col_left, col_right = st.columns([1, 1])
+            col_left, col_right = st.columns([5, 1])
             
             with col_left:
-                st.markdown(genera_box_recap(num_righe_cat, totale_cat), unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
+                    <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+                        📋 N. Righe: {num_righe_cat:,} | 💰 Totale: € {totale_cat:.2f}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
             
             with col_right:
+                st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+                
                 st.markdown("""
                     <style>
-                    [data-testid="stDownloadButton"] {
-                        margin-top: 10px !important;
-                    }
                     [data-testid="stDownloadButton"] button {
                         background-color: #28a745 !important;
                         color: white !important;
                         font-weight: 600 !important;
-                        font-size: 13px !important;
                         border-radius: 6px !important;
                         border: none !important;
-                        width: 140px !important;
-                        height: 38px !important;
-                        padding: 0 !important;
+                        outline: none !important;
+                        box-shadow: none !important;
                     }
                     [data-testid="stDownloadButton"] button:hover {
                         background-color: #218838 !important;
@@ -2704,17 +2689,17 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 with pd.ExcelWriter(excel_buffer_cat, engine='openpyxl') as writer:
                     pivot_cat.to_excel(writer, index=False, sheet_name='Categorie')
                 
-                col_spacer, col_btn = st.columns([4, 2])
-                with col_btn:
-                    st.download_button(
-                        label="📊 Excel",
-                        data=excel_buffer_cat.getvalue(),
-                        file_name=f"categorie_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="download_excel_categorie",
-                        type="primary",
-                        use_container_width=False
-                    )
+                st.download_button(
+                    label="📊 EXCEL",
+                    data=excel_buffer_cat.getvalue(),
+                    file_name=f"categorie_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_excel_categorie",
+                    type="primary",
+                    use_container_width=False
+                )
+                
+                st.markdown('</div>', unsafe_allow_html=True)
             
             # GRAFICO SPESA PER CATEGORIA
             st.markdown("---")
@@ -2789,27 +2774,30 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             )
             
             totale_forn = pivot_forn['TOTALE ANNO'].sum()
-            col_left, col_right = st.columns([1, 1])
+            col_left, col_right = st.columns([5, 1])
             
             with col_left:
-                st.markdown(genera_box_recap(num_righe_forn, totale_forn), unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
+                    <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+                        📋 N. Righe: {num_righe_forn:,} | 💰 Totale: € {totale_forn:.2f}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
             
             with col_right:
+                st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+                
                 st.markdown("""
                     <style>
-                    [data-testid="stDownloadButton"] {
-                        margin-top: 10px !important;
-                    }
                     [data-testid="stDownloadButton"] button {
                         background-color: #28a745 !important;
                         color: white !important;
                         font-weight: 600 !important;
-                        font-size: 13px !important;
                         border-radius: 6px !important;
                         border: none !important;
-                        width: 140px !important;
-                        height: 38px !important;
-                        padding: 0 !important;
+                        outline: none !important;
+                        box-shadow: none !important;
                     }
                     [data-testid="stDownloadButton"] button:hover {
                         background-color: #218838 !important;
@@ -2821,17 +2809,17 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 with pd.ExcelWriter(excel_buffer_forn, engine='openpyxl') as writer:
                     pivot_forn.to_excel(writer, index=False, sheet_name='Fornitori')
                 
-                col_spacer, col_btn = st.columns([4, 2])
-                with col_btn:
-                    st.download_button(
-                        label="📊 Excel",
-                        data=excel_buffer_forn.getvalue(),
-                        file_name=f"fornitori_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="download_excel_fornitori",
-                        type="primary",
-                        use_container_width=False
-                    )
+                st.download_button(
+                    label="📊 EXCEL",
+                    data=excel_buffer_forn.getvalue(),
+                    file_name=f"fornitori_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_excel_fornitori",
+                    type="primary",
+                    use_container_width=False
+                )
+                
+                st.markdown('</div>', unsafe_allow_html=True)
             
             # GRAFICO SPESA PER FORNITORE
             st.markdown("---")
@@ -2920,6 +2908,55 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             altezza_spese_cat = max(num_righe_spese_cat * 35 + 50, 200)
             st.dataframe(pivot_cat_display, use_container_width=True, height=altezza_spese_cat)
             
+            # Box + Excel per Categorie
+            totale_cat_spese = pivot_cat['TOTALE'].sum()
+            col_left, col_right = st.columns([5, 1])
+            
+            with col_left:
+                st.markdown(f"""
+                <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
+                    <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+                        📋 N. Righe: {num_righe_spese_cat:,} | 💰 Totale: € {totale_cat_spese:.2f}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col_right:
+                st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+                
+                st.markdown("""
+                    <style>
+                    [data-testid="stDownloadButton"] button {
+                        background-color: #28a745 !important;
+                        color: white !important;
+                        font-weight: 600 !important;
+                        border-radius: 6px !important;
+                        border: none !important;
+                        outline: none !important;
+                        box-shadow: none !important;
+                    }
+                    [data-testid="stDownloadButton"] button:hover {
+                        background-color: #218838 !important;
+                    }
+                    </style>
+                """, unsafe_allow_html=True)
+                
+                excel_buffer_spese_cat = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer_spese_cat, engine='openpyxl') as writer:
+                    pivot_cat.to_excel(writer, sheet_name='Categorie_Spese')
+                
+                st.download_button(
+                    label="📊 EXCEL",
+                    data=excel_buffer_spese_cat.getvalue(),
+                    file_name=f"spese_categorie_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_excel_spese_categorie",
+                    type="primary",
+                    use_container_width=False
+                )
+                
+                st.markdown('</div>', unsafe_allow_html=True)
+            
             st.markdown("---")
             
             # ============================================
@@ -2948,6 +2985,55 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             num_righe_spese_forn = len(pivot_forn_display)
             altezza_spese_forn = max(num_righe_spese_forn * 35 + 50, 200)
             st.dataframe(pivot_forn_display, use_container_width=True, height=altezza_spese_forn)
+            
+            # Box + Excel per Fornitori
+            totale_forn_spese = pivot_forn['TOTALE'].sum()
+            col_left, col_right = st.columns([5, 1])
+            
+            with col_left:
+                st.markdown(f"""
+                <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
+                    <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+                        📋 N. Righe: {num_righe_spese_forn:,} | 💰 Totale: € {totale_forn_spese:.2f}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col_right:
+                st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+                
+                st.markdown("""
+                    <style>
+                    [data-testid="stDownloadButton"] button {
+                        background-color: #28a745 !important;
+                        color: white !important;
+                        font-weight: 600 !important;
+                        border-radius: 6px !important;
+                        border: none !important;
+                        outline: none !important;
+                        box-shadow: none !important;
+                    }
+                    [data-testid="stDownloadButton"] button:hover {
+                        background-color: #218838 !important;
+                    }
+                    </style>
+                """, unsafe_allow_html=True)
+                
+                excel_buffer_spese_forn = io.BytesIO()
+                with pd.ExcelWriter(excel_buffer_spese_forn, engine='openpyxl') as writer:
+                    pivot_forn.to_excel(writer, sheet_name='Fornitori_Spese')
+                
+                st.download_button(
+                    label="📊 EXCEL",
+                    data=excel_buffer_spese_forn.getvalue(),
+                    file_name=f"spese_fornitori_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="download_excel_spese_fornitori",
+                    type="primary",
+                    use_container_width=False
+                )
+                
+                st.markdown('</div>', unsafe_allow_html=True)
             
             st.markdown("---")
             
@@ -3037,60 +3123,6 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     key='grafico_fornitori_spese_generali',
                     config={'displayModeBar': False},
                 )
-            
-            st.markdown("---")
-            
-            # ============================================
-            # BOX RIEPILOGATIVO + EXCEL EXPORT
-            # ============================================
-            totale_spese_generali = df_spese_generali['TotaleRiga'].sum()
-            num_righe_spese = len(df_spese_generali)
-            
-            col_recap, col_excel = st.columns([3, 1])
-            
-            with col_recap:
-                st.markdown(genera_box_recap(num_righe_spese, totale_spese_generali), unsafe_allow_html=True)
-            
-            with col_excel:
-                st.markdown("""
-                    <style>
-                    [data-testid="stDownloadButton"] {
-                        margin-top: 10px !important;
-                    }
-                    [data-testid="stDownloadButton"] button {
-                        background-color: #28a745 !important;
-                        color: white !important;
-                        font-weight: 600 !important;
-                        font-size: 13px !important;
-                        border-radius: 6px !important;
-                        border: none !important;
-                        width: 140px !important;
-                        height: 38px !important;
-                        padding: 0 !important;
-                    }
-                    [data-testid="stDownloadButton"] button:hover {
-                        background-color: #218838 !important;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-                
-                # Prepara Excel con entrambe le tabelle
-                excel_buffer_spese = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer_spese, engine='openpyxl') as writer:
-                    pivot_cat.to_excel(writer, sheet_name='Per Categoria')
-                    pivot_forn.to_excel(writer, sheet_name='Per Fornitore')
-                
-                col_spacer, col_btn = st.columns([3, 3])
-                with col_btn:
-                    st.download_button(
-                        label="📊 Excel",
-                        data=excel_buffer_spese.getvalue(),
-                        file_name=f"spese_generali_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="download_excel_spese",
-                        type="primary",
-                        use_container_width=False
-                    )
 
 # ============================================================
 # STILI CSS (COMPLETI)

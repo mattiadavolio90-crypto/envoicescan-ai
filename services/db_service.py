@@ -50,14 +50,11 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     except Exception as e:
         logger.warning(f"⚠️ Impossibile controllare force_empty flag: {e}")
     
-    # Inizializza client Supabase
+    # Inizializza client Supabase (singleton)
     if supabase_client is None:
         try:
-            from supabase import create_client
-            supabase_client = create_client(
-                st.secrets["supabase"]["url"],
-                st.secrets["supabase"]["key"]
-            )
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
         except Exception as e:
             logger.critical(f"❌ CRITICAL: Impossibile inizializzare Supabase: {e}")
             return pd.DataFrame()
@@ -185,14 +182,11 @@ def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
     Returns:
         int: Numero di righe aggiornate
     """
-    # Inizializza client Supabase
+    # Inizializza client Supabase (singleton)
     if supabase_client is None:
         try:
-            from supabase import create_client
-            supabase_client = create_client(
-                st.secrets["supabase"]["url"],
-                st.secrets["supabase"]["key"]
-            )
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
         except Exception as e:
             logger.error(f"❌ Impossibile inizializzare Supabase: {e}")
             return 0
@@ -375,11 +369,8 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
     # Inizializza client Supabase
     if supabase_client is None:
         try:
-            from supabase import create_client
-            supabase_client = create_client(
-                st.secrets["supabase"]["url"],
-                st.secrets["supabase"]["key"]
-            )
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
         except Exception as e:
             logger.error(f"❌ Impossibile inizializzare Supabase: {e}")
             return {

@@ -405,25 +405,23 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
     Note:
         - PrioritÃ : Supabase SEMPRE (no fallback JSON)
         - Forza categoria valida (mai NULL/vuoto â†’ "Da Classificare")
-        - Verifica integritÃ  post-salvataggio
+        - Verifica integrità post-salvataggio
         - Logging automatico su tabella upload_events
     """
-    from supabase import create_client
+    from services import get_supabase_client
     
     # Verifica autenticazione
     if "user_data" not in st.session_state or "id" not in st.session_state.user_data:
         if not silent:
-            st.error("âŒ Errore: Utente non autenticato. Effettua il login.")
+            st.error("❌ Errore: Utente non autenticato. Effettua il login.")
         return {"success": False, "error": "not_authenticated", "righe": 0, "location": None}
     
     user_id = st.session_state.user_data["id"]
     num_righe = len(dati_prodotti)
     
-    # Ottieni client se non fornito
+    # Ottieni client singleton se non fornito
     if supabase_client is None:
-        supabase_url = st.secrets["supabase"]["url"]
-        supabase_key = st.secrets["supabase"]["key"]
-        supabase_client = create_client(supabase_url, supabase_key)
+        supabase_client = get_supabase_client()
     
     # Salvataggio Supabase
     if supabase_client is not None:

@@ -59,16 +59,14 @@ def verify_and_migrate_password(user_record: dict, password: str) -> bool:
     # Fallback SHA256 con migrazione automatica
     try:
         import streamlit as st
-        from supabase import create_client
+        from services import get_supabase_client
         
         sha = hashlib.sha256(password.encode()).hexdigest()
         if sha == stored:
             # Password corretta - migra ad Argon2
             try:
                 new_hash = ph.hash(password)
-                supabase_url = st.secrets["supabase"]["url"]
-                supabase_key = st.secrets["supabase"]["key"]
-                supabase = create_client(supabase_url, supabase_key)
+                supabase = get_supabase_client()
                 supabase.table('users').update({'password_hash': new_hash}).eq('id', user_record.get('id')).execute()
                 logger.info(f"Password migrata ad Argon2 per user_id={user_record.get('id')}")
             except Exception:
@@ -101,13 +99,11 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
     """
     try:
         import streamlit as st
-        from supabase import create_client
+        from services import get_supabase_client
         
-        # Ottieni client Supabase
+        # Ottieni client Supabase (singleton)
         if supabase_client is None:
-            supabase_url = st.secrets["supabase"]["url"]
-            supabase_key = st.secrets["supabase"]["key"]
-            supabase_client = create_client(supabase_url, supabase_key)
+            supabase_client = get_supabase_client()
         
         # Query utente attivo
         response = supabase_client.table("users").select("*").eq("email", email).eq("attivo", True).execute()
@@ -163,17 +159,15 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
     """
     try:
         import streamlit as st
-        from supabase import create_client
+        from services import get_supabase_client
         
         # Genera codice sicuro
         code = secrets.token_urlsafe(8)
         expires = (datetime.utcnow() + timedelta(hours=1)).isoformat()
         
-        # Ottieni client Supabase
+        # Ottieni client Supabase (singleton)
         if supabase_client is None:
-            supabase_url = st.secrets["supabase"]["url"]
-            supabase_key = st.secrets["supabase"]["key"]
-            supabase_client = create_client(supabase_url, supabase_key)
+            supabase_client = get_supabase_client()
         
         # Salva codice nel DB
         stored_in_db = True
