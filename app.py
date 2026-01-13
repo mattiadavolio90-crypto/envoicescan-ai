@@ -823,15 +823,31 @@ with col1:
     background-clip: text;">Analisi Fatture AI</span>
 </h1>
 """, unsafe_allow_html=True)
-    # Visualizza email utente (usa user già verificato + fallback a session_state)
-    user_email = user.get('email') or st.session_state.user_data.get('email', 'N/A')
-    user_name = user.get('nome_ristorante', 'Utente')
+    # Visualizza email utente - verifica TUTTE le possibili chiavi
+    # Il campo potrebbe essere 'email', 'Email', 'user_email', 'e_mail', ecc.
+    possible_email_keys = ['email', 'Email', 'user_email', 'e_mail', 'EMAIL']
+    user_email = None
+    for key in possible_email_keys:
+        if user and user.get(key):
+            user_email = user.get(key)
+            break
     
-    # DEBUG: Mostra contenuto user_data se email è vuota
-    if user_email == 'N/A' or not user_email:
-        st.warning(f"⚠️ DEBUG: Email non trovata. user_data keys: {list(st.session_state.user_data.keys()) if st.session_state.user_data else 'None'}")
-        if st.session_state.user_data:
-            st.json(st.session_state.user_data)  # Mostra tutto user_data per debug
+    # Fallback a session_state se non trovato in user
+    if not user_email and st.session_state.user_data:
+        for key in possible_email_keys:
+            if st.session_state.user_data.get(key):
+                user_email = st.session_state.user_data.get(key)
+                break
+    
+    # Default finale se ancora vuoto
+    if not user_email:
+        user_email = 'N/A'
+    
+    user_name = user.get('nome_ristorante') or user.get('nome') or user.get('name') or 'Utente'
+    
+    # DEBUG temporaneo: mostra chiavi disponibili se email è N/A
+    if user_email == 'N/A':
+        st.warning(f"⚠️ DEBUG EMAIL: Chiavi in user: {list(user.keys()) if user else 'None'}")
     
     st.caption(f"👤 {user_name} | {user_email}")
 
@@ -1604,8 +1620,19 @@ def mostra_statistiche(df_completo):
     df_completo_filtrato = df_completo[df_completo['DataDocumento'].isin(df_food['DataDocumento'])]
     num_doc_filtrati = df_completo_filtrato['FileOrigine'].nunique()
     
-    # Mostra info periodo
-    st.info(f"🔍 **{label_periodo}** ({giorni} giorni) | Righe F&B: **{len(df_food):,}** | Righe Totali: {stats_totali['num_righe']:,} | Fatture: {num_doc_filtrati} di {stats_totali['num_uniche']}")
+    # Mostra info periodo con box ben visibile (evita troncamento)
+    info_testo = f"🔍 **{label_periodo}** ({giorni} giorni) | Righe F&B: **{len(df_food):,}** | Righe Totali: {stats_totali['num_righe']:,} | Fatture: {num_doc_filtrati} di {stats_totali['num_uniche']}"
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); 
+                padding: 15px 20px; 
+                border-radius: 10px; 
+                border-left: 5px solid #f59e0b;
+                margin-bottom: 15px;
+                font-size: 14px;
+                line-height: 1.6;">
+        {info_testo}
+    </div>
+    """, unsafe_allow_html=True)
     
     if df_food.empty and df_spese_generali.empty:
         st.warning("⚠️ Nessuna fattura nel periodo selezionato")
