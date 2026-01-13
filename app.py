@@ -826,6 +826,13 @@ with col1:
     # Visualizza email utente (usa user già verificato + fallback a session_state)
     user_email = user.get('email') or st.session_state.user_data.get('email', 'N/A')
     user_name = user.get('nome_ristorante', 'Utente')
+    
+    # DEBUG: Mostra contenuto user_data se email è vuota
+    if user_email == 'N/A' or not user_email:
+        st.warning(f"⚠️ DEBUG: Email non trovata. user_data keys: {list(st.session_state.user_data.keys()) if st.session_state.user_data else 'None'}")
+        if st.session_state.user_data:
+            st.json(st.session_state.user_data)  # Mostra tutto user_data per debug
+    
     st.caption(f"👤 {user_name} | {user_email}")
 
 
@@ -2079,98 +2086,97 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         totale_tabella = edited_df['TotaleRiga'].sum()
         num_righe = len(edited_df)
         
-        col_left, col_right = st.columns([1, 1])
+        # Box riepilogo
+        st.markdown(genera_box_recap(num_righe, totale_tabella), unsafe_allow_html=True)
         
-        with col_left:
-            st.markdown(genera_box_recap(num_righe, totale_tabella), unsafe_allow_html=True)
+        # Prepara export Excel
+        df_export = edited_df.copy()
         
-        with col_right:
-            df_export = edited_df.copy()
-            
-            # 🧼 STEP 1: NORMALIZZA Unità di Misura (PRIMA di tutto)
-            um_mapping = {
-                # PESO
-                'KG': 'KG', 'KG.': 'KG', 'Kg': 'KG', 'kg': 'KG',
-                'KILOGRAMMI': 'KG', 'Kilogrammi': 'KG', 'kilogrammi': 'KG',
-                'GR': 'GR', 'Gr': 'GR', 'gr': 'GR', 'GRAMMI': 'GR', 'Grammi': 'GR',
-                # LITRI
-                'LT': 'LT', 'Lt': 'LT', 'lt': 'LT', 'LT.': 'LT',
-                'LITRI': 'LT', 'Litri': 'LT', 'litri': 'LT', 'LITRO': 'LT',
-                'L': 'LT', 'l': 'LT',
-                'ML': 'ML', 'ml': 'ML', 'MILLILITRI': 'ML',
-                # PEZZI/NUMERO
-                'PZ': 'PZ', 'Pz': 'PZ', 'pz': 'PZ',
-                'NR': 'PZ', 'Nr': 'PZ', 'nr': 'PZ', 'NR.': 'PZ',
-                'NUMERO': 'PZ', 'Numero': 'PZ', 'numero': 'PZ',
-                'PEZZI': 'PZ', 'Pezzi': 'PZ', 'pezzi': 'PZ', 'PEZZO': 'PZ',
-                # CONFEZIONI
-                'CT': 'CT', 'Ct': 'CT', 'ct': 'CT', 'CARTONE': 'CT',
-                # FUSTI
-                'FS': 'FS', 'Fs': 'FS', 'fs': 'FS', 'FUSTO': 'FS',
-            }
-            
-            if 'UnitaMisura' in df_export.columns:
-                # Rimuovi spazi e normalizza
-                df_export['UnitaMisura'] = df_export['UnitaMisura'].astype(str).str.strip()
-                df_export['UnitaMisura'] = df_export['UnitaMisura'].map(lambda x: um_mapping.get(x, x))
-            
-            # 🧼 STEP 2: FILTRA righe informative (DDT, CASSA, BOLLO)
-            righe_prima = len(df_export)
-            df_export = df_export[
-                (~df_export['Descrizione'].str.contains('DDT|DIT|BOLLO|CASSA', na=False, case=False)) &
-                (df_export['TotaleRiga'] != 0)
-            ]
-            righe_dopo = len(df_export)
-            righe_filtrate = righe_prima - righe_dopo
-            
-            if righe_filtrate > 0:
-                logger.info(f"✅ Export: filtrate {righe_filtrate} righe informative (DDT/CASSA/BOLLO)")
-            
-            # 🧼 STEP 3: RICALCOLA Prezzo Standard (DOPO normalizzazione U.M.)
-            if 'PrezzoStandard' in df_export.columns:
-                df_export['PrezzoStandard'] = df_export.apply(
-                    lambda row: calcola_prezzo_standard_intelligente(
-                        row['Descrizione'],
-                        row['UnitaMisura'],
-                        row['PrezzoUnitario']
-                    ),
-                    axis=1
-                )
-                # Arrotonda a 4 decimali
-                df_export['PrezzoStandard'] = df_export['PrezzoStandard'].round(4)
-            
-            # 🔧 FIX: Reset index prima di rinominare colonne (evita errore "Columns must be same length")
-            df_export = df_export.reset_index(drop=True)
-            
-            # 🚫 RIMUOVI colonna Listino dal DataFrame (non serve nell'export)
-            df_export = df_export.drop(columns=['PrezzoStandard'], errors='ignore')
-            
-            # Prepara nomi colonne per export (SENZA Listino)
-            col_names = ['File', 'Data', 'Fornitore', 'Descrizione',
-                        'Quantità', 'U.M.', 'Prezzo Unit.', 'IVA %', 'Totale (€)', 'Categoria']
-            
-            # ✅ VERIFICA: Numero colonne deve corrispondere
-            if len(df_export.columns) == len(col_names):
-                df_export.columns = col_names
-            else:
-                logger.warning(f"⚠️ Mismatch colonne: DataFrame ha {len(df_export.columns)}, col_names ha {len(col_names)}")
-                # Fallback sicuro: usa solo le colonne esistenti
-                df_export.columns = col_names[:len(df_export.columns)]
-
-            excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                df_export.to_excel(writer, index=False, sheet_name='Articoli')
-            
-            st.download_button(
-                label="📊 Excel",
-                data=excel_buffer.getvalue(),
-                file_name=f"dettaglio_articoli_FB_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="download_excel",
-                type="primary",
-                use_container_width=True,
-                help="Scarica dettaglio articoli Food & Beverage"
+        # 🧼 STEP 1: NORMALIZZA Unità di Misura (PRIMA di tutto)
+        um_mapping = {
+            # PESO
+            'KG': 'KG', 'KG.': 'KG', 'Kg': 'KG', 'kg': 'KG',
+            'KILOGRAMMI': 'KG', 'Kilogrammi': 'KG', 'kilogrammi': 'KG',
+            'GR': 'GR', 'Gr': 'GR', 'gr': 'GR', 'GRAMMI': 'GR', 'Grammi': 'GR',
+            # LITRI
+            'LT': 'LT', 'Lt': 'LT', 'lt': 'LT', 'LT.': 'LT',
+            'LITRI': 'LT', 'Litri': 'LT', 'litri': 'LT', 'LITRO': 'LT',
+            'L': 'LT', 'l': 'LT',
+            'ML': 'ML', 'ml': 'ML', 'MILLILITRI': 'ML',
+            # PEZZI/NUMERO
+            'PZ': 'PZ', 'Pz': 'PZ', 'pz': 'PZ',
+            'NR': 'PZ', 'Nr': 'PZ', 'nr': 'PZ', 'NR.': 'PZ',
+            'NUMERO': 'PZ', 'Numero': 'PZ', 'numero': 'PZ',
+            'PEZZI': 'PZ', 'Pezzi': 'PZ', 'pezzi': 'PZ', 'PEZZO': 'PZ',
+            # CONFEZIONI
+            'CT': 'CT', 'Ct': 'CT', 'ct': 'CT', 'CARTONE': 'CT',
+            # FUSTI
+            'FS': 'FS', 'Fs': 'FS', 'fs': 'FS', 'FUSTO': 'FS',
+        }
+        
+        if 'UnitaMisura' in df_export.columns:
+            # Rimuovi spazi e normalizza
+            df_export['UnitaMisura'] = df_export['UnitaMisura'].astype(str).str.strip()
+            df_export['UnitaMisura'] = df_export['UnitaMisura'].map(lambda x: um_mapping.get(x, x))
+        
+        # 🧼 STEP 2: FILTRA righe informative (DDT, CASSA, BOLLO)
+        righe_prima = len(df_export)
+        df_export = df_export[
+            (~df_export['Descrizione'].str.contains('DDT|DIT|BOLLO|CASSA', na=False, case=False)) &
+            (df_export['TotaleRiga'] != 0)
+        ]
+        righe_dopo = len(df_export)
+        righe_filtrate = righe_prima - righe_dopo
+        
+        if righe_filtrate > 0:
+            logger.info(f"✅ Export: filtrate {righe_filtrate} righe informative (DDT/CASSA/BOLLO)")
+        
+        # 🧼 STEP 3: RICALCOLA Prezzo Standard (DOPO normalizzazione U.M.)
+        if 'PrezzoStandard' in df_export.columns:
+            df_export['PrezzoStandard'] = df_export.apply(
+                lambda row: calcola_prezzo_standard_intelligente(
+                    row['Descrizione'],
+                    row['UnitaMisura'],
+                    row['PrezzoUnitario']
+                ),
+                axis=1
             )
+            # Arrotonda a 4 decimali
+            df_export['PrezzoStandard'] = df_export['PrezzoStandard'].round(4)
+        
+        # 🔧 FIX: Reset index prima di rinominare colonne (evita errore "Columns must be same length")
+        df_export = df_export.reset_index(drop=True)
+        
+        # 🚫 RIMUOVI colonna Listino dal DataFrame (non serve nell'export)
+        df_export = df_export.drop(columns=['PrezzoStandard'], errors='ignore')
+        
+        # Prepara nomi colonne per export (SENZA Listino)
+        col_names = ['File', 'Data', 'Fornitore', 'Descrizione',
+                    'Quantità', 'U.M.', 'Prezzo Unit.', 'IVA %', 'Totale (€)', 'Categoria']
+        
+        # ✅ VERIFICA: Numero colonne deve corrispondere
+        if len(df_export.columns) == len(col_names):
+            df_export.columns = col_names
+        else:
+            logger.warning(f"⚠️ Mismatch colonne: DataFrame ha {len(df_export.columns)}, col_names ha {len(col_names)}")
+            # Fallback sicuro: usa solo le colonne esistenti
+            df_export.columns = col_names[:len(df_export.columns)]
+
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            df_export.to_excel(writer, index=False, sheet_name='Articoli')
+        
+        # 📥 BOTTONE DOWNLOAD EXCEL (reso più visibile fuori dalle colonne)
+        st.download_button(
+            label="📥 SCARICA EXCEL",
+            data=excel_buffer.getvalue(),
+            file_name=f"dettaglio_articoli_FB_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_excel",
+            type="primary",
+            use_container_width=True,
+            help="Scarica dettaglio articoli Food & Beverage"
+        )
 
 
         if salva_modifiche:
