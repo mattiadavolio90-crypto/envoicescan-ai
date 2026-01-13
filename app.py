@@ -770,7 +770,7 @@ with col1:
     background-clip: text;">Analisi Fatture AI</span>
 </h1>
 """, unsafe_allow_html=True)
-    st.caption(f"👤 {user.get('nome_ristorante', 'Utente')} | {st.session_state.get('user_email', 'N/A')}")
+    st.caption(f"👤 {user.get('nome_ristorante', 'Utente')} | {st.session_state.user_data.get('email', 'N/A')}")
 
 
 # Pulsanti diversi per admin e clienti
@@ -2092,8 +2092,8 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                         'Quantità', 'U.M.', 'Prezzo Unit.', 'IVA %', 'Totale (€)', 'Categoria']
             
             # Aggiungi prezzo_standard se presente
-            # if 'PrezzoStandard' in df_export.columns:
-            #     col_names.append('LISTINO')
+            if 'PrezzoStandard' in df_export.columns:
+                col_names.append('LISTINO')
             
             # ✅ VERIFICA: Numero colonne deve corrispondere
             if len(df_export.columns) == len(col_names):
