@@ -16,20 +16,14 @@ import extra_streamlit_components as stx
 import plotly.express as px
 import requests
 
-# Importa funzioni categorie dinamiche da app.py
+# Importa funzioni categorie dinamiche da utils
 import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-try:
-    from app import carica_categorie_da_db, estrai_nome_categoria, aggiungi_icona_categoria
-except ImportError:
-    # Fallback se import fallisce
-    def carica_categorie_da_db():
-        return ["❓ Da Classificare", "🍖 CARNE", "🐟 PESCE"]
-    def estrai_nome_categoria(cat):
-        return cat.split(' ', 1)[1] if ' ' in cat else cat
-    def aggiungi_icona_categoria(cat):
-        return cat
+
+# Import corretto da utils (non da app.py per evitare esecuzione interfaccia)
+from utils.formatters import carica_categorie_da_db
+from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria
 
 # ============================================================
 # SETUP
@@ -654,7 +648,7 @@ def invalida_cache_memoria():
 # ============================================================
 
 st.title("👨‍💼 Pannello Amministrazione")
-st.caption(f"Admin: {user.get('email')}")
+st.caption(f"Admin: {user.get('email')} | [🏠 Torna all'App](/) | [🔓 Cambia Password](/cambio_password)")
 st.markdown("---")
 
 # ============================================================
