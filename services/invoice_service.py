@@ -103,6 +103,14 @@ def estrai_dati_da_xml(file_caricato):
         if isinstance(linee, dict):
             linee = [linee]
         
+        # ============================================================
+        # STEP 2: LIMITA A 25 RIGHE (evita timeout OpenAI)
+        # ============================================================
+        righe_originali_count = len(linee)
+        if righe_originali_count > 25:
+            logger.warning(f"{file_caricato.name}: {righe_originali_count} righe totali, limitate a 25")
+            linee = linee[:25]
+        
         memoria_ai = carica_memoria_ai()
         
         righe_prodotti = []
@@ -111,6 +119,42 @@ def estrai_dati_da_xml(file_caricato):
                 continue
             
             try:
+                # ============================================================
+                # STEP 2: VALIDAZIONE E SKIP RIGHE INVALIDE
+                # ============================================================
+                # Estrai valori base per validazione
+                descrizione_raw = riga.get('Descrizione', '')
+                quantita_raw = riga.get('Quantita')
+                prezzo_base = float(riga.get('PrezzoUnitario', 0) or 0)
+                totale_riga = float(riga.get('PrezzoTotale', 0) or 0)
+                
+                # SKIP: Prezzo zero o mancante
+                if not prezzo_base or prezzo_base == 0:
+                    logger.debug(f"{file_caricato.name} - Skip riga {idx}: prezzo 0 o mancante")
+                    continue
+                
+                # QUANTITÀ: Default = 1 per servizi (se manca ma c'è PrezzoTotale)
+                if quantita_raw is None or float(quantita_raw or 0) == 0:
+                    if totale_riga and totale_riga > 0:
+                        quantita = 1.0
+                        logger.debug(f"{file_caricato.name} - Riga {idx}: Quantità mancante, default = 1 (servizi)")
+                    else:
+                        logger.debug(f"{file_caricato.name} - Skip riga {idx}: quantità e prezzo totale = 0")
+                        continue
+                else:
+                    quantita = float(quantita_raw)
+                
+                # SKIP: Descrizione vuota o invalida (DDT, numeri)
+                descrizione = normalizza_stringa(descrizione_raw)
+                if not descrizione or descrizione.strip().upper() in ['DDT', 'DT', 'N/A']:
+                    logger.debug(f"{file_caricato.name} - Skip riga {idx}: descrizione vuota/invalida")
+                    continue
+                
+                # TRIM: Descrizioni lunghe (max 100 caratteri)
+                if len(descrizione) > 100:
+                    descrizione = descrizione[:100] + "..."
+                    logger.debug(f"{file_caricato.name} - Riga {idx}: descrizione troncata a 100 caratteri")
+                
                 # Codice articolo
                 codice_articolo = ""
                 codice_articolo_raw = riga.get('CodiceArticolo', [])
@@ -119,14 +163,8 @@ def estrai_dati_da_xml(file_caricato):
                 elif isinstance(codice_articolo_raw, dict):
                     codice_articolo = codice_articolo_raw.get('CodiceValore', '')
                 
-                descrizione_raw = riga.get('Descrizione', 'Articolo senza nome')
-                descrizione = normalizza_stringa(descrizione_raw)
-                
-                quantita = float(riga.get('Quantita', 0) or 1)
                 unita_misura = riga.get('UnitaMisura', '')
-                prezzo_base = float(riga.get('PrezzoUnitario', 0))
                 aliquota_iva = float(riga.get('AliquotaIVA', 0))
-                totale_riga = float(riga.get('PrezzoTotale', 0))
                 
                 # Calcola prezzo effettivo (include sconti)
                 if quantita > 0 and totale_riga > 0:
@@ -179,7 +217,7 @@ def estrai_dati_da_xml(file_caricato):
                     'Prezzo_Standard': prezzo_std
                 })
             except Exception as e:
-                logger.exception(f"Errore parsing riga {idx}")
+                logger.warning(f"{file_caricato.name} - Riga {idx} skippata: {str(e)[:100]}")
                 continue
         
         return righe_prodotti

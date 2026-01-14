@@ -3521,6 +3521,24 @@ if st.session_state.get("hide_uploader", False):
         )
     uploaded_files = None  # Fix NameError: uploaded_files sempre definito
 else:
+    # ============================================================
+    # CHECK LIMITE RIGHE GLOBALE (STEP 1 - Performance)
+    # ============================================================
+    # Recupera user_id da session state (già definito sopra ma riusato qui per chiarezza)
+    user_id = st.session_state.user_data["id"]
+    
+    stats_db = get_fatture_stats(user_id)
+    righe_totali = stats_db['num_righe']
+    LIMITE_MAX_RIGHE = 6000
+    
+    if righe_totali >= LIMITE_MAX_RIGHE:
+        st.error(f"⚠️ DATABASE PIENO ({righe_totali:,} righe)")
+        st.warning("Elimina fatture vecchie prima di caricarne altre")
+        st.info("Usa 'Gestione Fatture Caricate' sopra per eliminare")
+        st.stop()  # Blocca file_uploader
+    elif righe_totali >= 5000:
+        st.warning(f"⚠️ Attenzione: {righe_totali:,}/6000 righe ({(righe_totali/6000*100):.0f}%)")
+    
     uploaded_files = st.file_uploader(
         "Carica file XML, PDF o Immagini",
         accept_multiple_files=True,
@@ -3634,7 +3652,7 @@ if uploaded_files:
             # Mostra animazione AI
             mostra_loading_ai(upload_placeholder, f"Analisi AI di {len(file_nuovi)} Fatture")
             
-            # Contatori per statistiche DETTAGLIATE
+            # Contatori per statistiche DETTAGLIATE (GLOBALI - fuori batch)
             file_processati = 0
             righe_totali = 0
             salvati_supabase = 0
@@ -3645,97 +3663,120 @@ if uploaded_files:
             
             total_files = len(file_nuovi)
             
-            # Elabora tutti i file con PROGRESS BAR
-            for idx, file in enumerate(file_nuovi, 1):
-                nome_file = file.name.lower()
+            # ============================================================
+            # BATCH PROCESSING - 15 file alla volta (evita memoria piena)
+            # ============================================================
+            BATCH_SIZE = 15
+            
+            # Loop batch invisibile
+            for batch_start in range(0, total_files, BATCH_SIZE):
+                batch_end = min(batch_start + BATCH_SIZE, total_files)
+                batch_corrente = file_nuovi[batch_start:batch_end]
                 
-                # Aggiorna progress
-                progress = idx / total_files
-                progress_bar.progress(progress)
-                status_text.text(f"📄 Elaborazione {idx}/{total_files}: {file.name[:40]}...")
+                # DEBUG batch solo admin
+                if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+                    batch_num = (batch_start // BATCH_SIZE) + 1
+                    total_batch = (total_files + BATCH_SIZE - 1) // BATCH_SIZE
+                    st.write(f"🔍 DEBUG Batch {batch_num}/{total_batch}: File {batch_start+1}-{batch_end}")
                 
-                # Routing automatico per tipo file con TRY/EXCEPT ROBUSTO
-                try:
-                    # 🔍 DEBUG: Log dettagli file (solo admin)
-                    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-                        file_size_kb = len(file.getvalue()) / 1024
-                        file_type = "XML" if nome_file.endswith('.xml') else "PDF/IMG"
-                        logger.info(f"🔍 DEBUG: File={file.name}, Tipo={file_type}, Dimensione={file_size_kb:.1f}KB")
+                # Elabora file nel batch corrente
+                for idx_in_batch, file in enumerate(batch_corrente):
+                    idx_globale = batch_start + idx_in_batch + 1
+                    nome_file = file.name.lower()
                     
-                    if nome_file.endswith('.xml'):
-                        items = estrai_dati_da_xml(file)
-                    elif nome_file.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
-                        items = estrai_dati_da_scontrino_vision(file)
-                    else:
-                        raise ValueError("Formato non supportato")
+                    # Aggiorna progress GLOBALE
+                    progress = idx_globale / total_files
+                    progress_bar.progress(progress)
+                    status_text.text(f"📄 Elaborazione {idx_globale}/{total_files}: {file.name[:40]}...")
                     
-                    # Validazione risultato parsing
-                    if items is None:
-                        raise ValueError("Parsing ritornato None")
-                    if len(items) == 0:
-                        raise ValueError("Nessuna riga estratta - DataFrame vuoto")
-                    
-                    # 🔍 DEBUG: Log risultato parsing (solo admin)
-                    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-                        logger.info(f"🔍 DEBUG: {file.name} → {len(items)} righe estratte")
-                    
-                    # Salva in memoria se trovati dati (SILENZIOSO)
-                    result = salva_fattura_processata(file.name, items, silent=True)
-                    
-                    if result["success"]:
-                        file_processati += 1
-                        righe_totali += result["righe"]
-                        if result["location"] == "supabase":
-                            salvati_supabase += 1
-                        elif result["location"] == "json":
-                            salvati_json += 1
-                        
-                        # 🔥 RIMUOVI FLAG FORCE EMPTY: Ci sono nuovi dati, riabilita caricamento normale
-                        if 'force_empty_until_upload' in st.session_state:
-                            del st.session_state.force_empty_until_upload
-                            logger.info("✅ Flag force_empty rimosso: nuovi dati caricati")
-                        
-                        # Traccia successo
-                        file_ok.append(file.name)
-                        st.session_state.files_processati_sessione.add(file.name)
-                    else:
-                        raise ValueError(f"Errore salvataggio: {result.get('error', 'Sconosciuto')}")
-                
-                except Exception as e:
-                    # TRACCIA ERRORE DETTAGLIATO
-                    error_msg = str(e)[:150]
-                    logger.exception(f"❌ Errore elaborazione {file.name}")
-                    file_errore[file.name] = error_msg
-                    errori.append(f"{file.name}: {error_msg}")
-                    
-                    # Warning immediato per file fallito
-                    st.warning(f"⚠️ ERRORE file: {file.name} - {error_msg}")
-                    
-                    # Aggiungi a session state per evitare loop
-                    st.session_state.files_processati_sessione.add(file.name)
-                    
-                    # Log upload event FAILED
+                    # Routing automatico per tipo file con TRY/EXCEPT ROBUSTO
                     try:
-                        user_id = st.session_state.user_data.get("id")
-                        user_email = st.session_state.user_data.get("email", "unknown")
-                        error_stage = "PARSING" if file.name.endswith('.xml') else "VISION"
+                        # 🔍 DEBUG: Log dettagli file (solo admin)
+                        if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+                            file_size_kb = len(file.getvalue()) / 1024
+                            file_type = "XML" if nome_file.endswith('.xml') else "PDF/IMG"
+                            logger.info(f"🔍 DEBUG: File={file.name}, Tipo={file_type}, Dimensione={file_size_kb:.1f}KB")
                         
-                        log_upload_event(
-                            user_id=user_id,
-                            user_email=user_email,
-                            file_name=file.name,
-                            status="FAILED",
-                            rows_parsed=0,
-                            rows_saved=0,
-                            error_stage=error_stage,
-                            error_message=error_msg,
-                            details={"exception_type": type(e).__name__}
-                        )
-                    except Exception as log_error:
-                        logger.error(f"Errore logging failed event: {log_error}")
+                        if nome_file.endswith('.xml'):
+                            items = estrai_dati_da_xml(file)
+                        elif nome_file.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
+                            items = estrai_dati_da_scontrino_vision(file)
+                        else:
+                            raise ValueError("Formato non supportato")
+                        
+                        # Validazione risultato parsing
+                        if items is None:
+                            raise ValueError("Parsing ritornato None")
+                        if len(items) == 0:
+                            raise ValueError("Nessuna riga estratta - DataFrame vuoto")
+                        
+                        # 🔍 DEBUG: Log risultato parsing (solo admin)
+                        if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+                            logger.info(f"🔍 DEBUG: {file.name} → {len(items)} righe estratte")
+                        
+                        # Salva in memoria se trovati dati (SILENZIOSO)
+                        result = salva_fattura_processata(file.name, items, silent=True)
+                        
+                        if result["success"]:
+                            file_processati += 1
+                            righe_totali += result["righe"]
+                            if result["location"] == "supabase":
+                                salvati_supabase += 1
+                            elif result["location"] == "json":
+                                salvati_json += 1
+                            
+                            # 🔥 RIMUOVI FLAG FORCE EMPTY: Ci sono nuovi dati, riabilita caricamento normale
+                            if 'force_empty_until_upload' in st.session_state:
+                                del st.session_state.force_empty_until_upload
+                                logger.info("✅ Flag force_empty rimosso: nuovi dati caricati")
+                            
+                            # Traccia successo
+                            file_ok.append(file.name)
+                            st.session_state.files_processati_sessione.add(file.name)
+                        else:
+                            raise ValueError(f"Errore salvataggio: {result.get('error', 'Sconosciuto')}")
                     
-                    # CONTINUA con il prossimo file invece di crashare
-                    continue
+                    except Exception as e:
+                        # TRACCIA ERRORE DETTAGLIATO
+                        error_msg = str(e)[:150]
+                        logger.exception(f"❌ Errore elaborazione {file.name}")
+                        file_errore[file.name] = error_msg
+                        errori.append(f"{file.name}: {error_msg}")
+                        
+                        # Warning immediato per file fallito
+                        st.warning(f"⚠️ ERRORE file: {file.name} - {error_msg}")
+                        
+                        # Aggiungi a session state per evitare loop
+                        st.session_state.files_processati_sessione.add(file.name)
+                        
+                        # Log upload event FAILED
+                        try:
+                            user_id = st.session_state.user_data.get("id")
+                            user_email = st.session_state.user_data.get("email", "unknown")
+                            error_stage = "PARSING" if file.name.endswith('.xml') else "VISION"
+                            
+                            log_upload_event(
+                                user_id=user_id,
+                                user_email=user_email,
+                                file_name=file.name,
+                                status="FAILED",
+                                rows_parsed=0,
+                                rows_saved=0,
+                                error_stage=error_stage,
+                                error_message=error_msg,
+                                details={"exception_type": type(e).__name__}
+                            )
+                        except Exception as log_error:
+                            logger.error(f"Errore logging failed event: {log_error}")
+                        
+                        # CONTINUA con il prossimo file invece di crashare
+                        continue
+                
+                # ============================================================
+                # PAUSA TRA BATCH (rate limit OpenAI + liberazione memoria)
+                # ============================================================
+                if batch_end < total_files:
+                    time.sleep(2)  # 2 secondi tra batch per evitare rate limit
             
             # Rimuovi loading e progress bar
             upload_placeholder.empty()
@@ -3758,36 +3799,23 @@ if uploaded_files:
                 
                 st.success(f"✅ **{file_processati}/{total_files} file elaborati con successo!** ({righe_totali} righe){location_text}")
             
-            # Report errori con dettaglio
+            # Report errori con dettaglio PERSISTENTE
             if len(file_errore) > 0:
-                st.error(f"❌ {len(file_errore)} file FALLITI:")
+                st.error(f"⚠️ {len(file_errore)} file FALLITI")
                 
-                # Clienti vedono solo nome file
-                is_admin = st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False)
-                
-                if is_admin:
-                    # Admin vedono messaggio errore completo
+                # EXPANDER SEMPRE VISIBILE (aperto di default)
+                with st.expander("📋 DETTAGLIO ERRORI COMPLETO", expanded=True):
                     for nome_file, errore in file_errore.items():
-                        st.write(f"- {nome_file}: {errore}")
-                else:
-                    # Clienti vedono solo nome file
-                    for nome_file in file_errore.keys():
-                        st.write(f"- {nome_file}")
-                
-                # Dettaglio completo solo per admin
-                if is_admin:
-                    with st.expander("📋 DETTAGLIO ERRORI COMPLETO", expanded=False):
-                        for nome_file, errore in file_errore.items():
-                            st.code(f"❌ {nome_file}\n   → {errore}", language="text")
-                        
-                        # Download log errori
-                        error_log = "\n".join([f"{nome}: {err}" for nome, err in file_errore.items()])
-                        st.download_button(
-                            label="💾 Scarica log errori",
-                            data=error_log,
-                            file_name="errori_upload.txt",
-                            mime="text/plain"
-                        )
+                        st.code(f"❌ {nome_file}\n{errore}", language="text")
+                    
+                    # Bottone download log errori
+                    error_log = "\n".join([f"{nome}: {err}" for nome, err in file_errore.items()])
+                    st.download_button(
+                        label="💾 Scarica log errori",
+                        data=error_log,
+                        file_name="errori_upload.txt",
+                        mime="text/plain"
+                    )
             
             # Audit coerenza post-upload
             if file_processati > 0:
