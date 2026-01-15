@@ -1421,15 +1421,10 @@ def mostra_statistiche(df_completo):
             # ============================================================
             if righe_da_classificare == 0:
                 st.warning("⚠️ Nessun prodotto da classificare")
-            # Rimuovi il flag automaticamente quando tutti i file sono stati rimossi (dopo aver cliccato la X)
-        if not uploaded_files and st.session_state.get("force_empty_until_upload"):
-            st.session_state.force_empty_until_upload = False
-            st.stop()
-            
-            # ============================================================
-            # CHIAMATA AI (SOLO DESCRIZIONI DA CLASSIFICARE)
-            # ============================================================
-            with st.spinner(f"L'AI sta analizzando i tuoi prodotti..."):
+            else:
+                # ============================================================
+                # CHIAMATA AI (SOLO DESCRIZIONI DA CLASSIFICARE)
+                # ============================================================
                 descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
                 fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
 
@@ -1489,6 +1484,11 @@ def mostra_statistiche(df_completo):
                     except Exception as e:
                         logger.exception("Errore aggiornamento categorie AI su Supabase")
                         st.error(f"❌ Errore aggiornamento categorie: {e}")
+    
+    # Rimuovi il flag automaticamente quando tutti i file sono stati rimossi (dopo aver cliccato la X)
+    if not uploaded_files and st.session_state.get("force_empty_until_upload"):
+        st.session_state.force_empty_until_upload = False
+        st.stop()
     
     with col_info:
         # ============================================================
