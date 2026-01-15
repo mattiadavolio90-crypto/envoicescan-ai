@@ -1462,14 +1462,20 @@ def mostra_statistiche(df_completo):
                     try:
                         user_id = st.session_state.user_data["id"]
                         
+                        righe_aggiornate_totali = 0
                         for desc, cat in mappa_categorie.items():
                             # Aggiorna tutte le righe con questa descrizione
-                            supabase.table("fatture").update(
+                            result = supabase.table("fatture").update(
                                 {"categoria": cat}
                             ).eq("user_id", user_id).eq("descrizione", desc).execute()
+                            
+                            num_aggiornate = len(result.data) if result.data else 0
+                            righe_aggiornate_totali += num_aggiornate
+                            
+                            logger.info(f"🔄 '{desc[:40]}...' → {cat} ({num_aggiornate} righe)")
                         
-                        st.toast(f"✅ Categorizzati {len(descrizioni_da_classificare)} prodotti su Supabase!")
-                        logger.info(f"🔄 CATEGORIZZAZIONE AI: Aggiornate {len(descrizioni_da_classificare)} descrizioni")
+                        st.toast(f"✅ Categorizzati {len(descrizioni_da_classificare)} prodotti ({righe_aggiornate_totali} righe) su Supabase!")
+                        logger.info(f"🔄 CATEGORIZZAZIONE AI: Aggiornate {len(descrizioni_da_classificare)} descrizioni uniche, {righe_aggiornate_totali} righe totali")
                         
                         # Pulisci cache PRIMA del delay per garantire ricaricamento
                         st.cache_data.clear()
@@ -1477,6 +1483,17 @@ def mostra_statistiche(df_completo):
                         
                         # Delay per garantire propagazione modifiche su Supabase
                         time.sleep(2)
+                        
+                        # Verifica se rimangono prodotti da categorizzare
+                        try:
+                            df_check = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id).execute()
+                            if df_check.data:
+                                df_temp = pd.DataFrame(df_check.data)
+                                ancora_da_class = df_temp[(df_temp['categoria'].isna()) | (df_temp['categoria'] == 'Da Classificare')]['descrizione'].unique()
+                                if len(ancora_da_class) > 0:
+                                    logger.warning(f"⚠️ Rimangono {len(ancora_da_class)} prodotti da categorizzare: {ancora_da_class.tolist()[:5]}")
+                        except Exception as log_err:
+                            logger.error(f"Errore verifica post-categorizzazione: {log_err}")
                         
                         # Rerun per ricaricare dati freschi
                         st.rerun()
