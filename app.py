@@ -2174,7 +2174,13 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         # Rimuovi TUTTI i valori non validi (None, vuoti, solo spazi)
         categorie_disponibili = [
             cat for cat in categorie_disponibili 
-            if cat is not None and str(cat).strip() != ''
+            if cat is not None and str(cat).strip() != '' and cat != 'Da Classificare'
+        ]
+        
+        # 🚫 RIMUOVI "NOTE E DICITURE" - Categoria riservata SOLO per Admin Panel (Review Righe Zero)
+        categorie_disponibili = [
+            cat for cat in categorie_disponibili 
+            if 'NOTE E DICITURE' not in cat.upper() and 'DICITURE' not in cat.upper()
         ]
         
         # Rimuovi duplicati mantenendo l'ordine
@@ -2184,57 +2190,46 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 categorie_temp.append(cat)
         categorie_disponibili = categorie_temp
         
-        # ⭐ AGGIUNGI "Da Classificare" come prima opzione (per celle non ancora categorizzate)
-        # NON ordinare! carica_categorie_da_db() restituisce già l'ordine corretto:
-        # 1. NOTE E DICITURE
-        # 2. Spese generali (NO FOOD, MANUTENZIONE, ecc.)
-        # 3. Prodotti alfabetici
-        categorie_disponibili = ['Da Classificare'] + categorie_disponibili
+        # ✅ ORDINE ALFABETICO: Prima F&B, poi Spese Generali
+        # Separa categorie F&B da spese generali
+        CATEGORIE_SPESE_GENERALI = ["MANUTENZIONE E ATTREZZATURE", "SERVIZI E CONSULENZE", "UTENZE E LOCALI"]
         
-        # ✅ "Da Classificare" è ora un'opzione valida - le celle non categorizzate la mostrano chiaramente
+        categorie_fb = [cat for cat in categorie_disponibili if cat not in CATEGORIE_SPESE_GENERALI]
+        categorie_spese = [cat for cat in categorie_disponibili if cat in CATEGORIE_SPESE_GENERALI]
         
-        # � FIX CELLE BIANCHE ULTRA-AGGRESSIVO (Streamlit bug workaround)
+        # Ordina alfabeticamente entrambe le liste
+        categorie_fb.sort()
+        categorie_spese.sort()
+        
+        # Combina: prima F&B, poi spese generali
+        categorie_disponibili = categorie_fb + categorie_spese
+        
+        logger.info(f"📋 Categorie disponibili: {len(categorie_disponibili)} ({len(categorie_fb)} F&B + {len(categorie_spese)} spese)")
+        
+        # ✅ "Da Classificare" NON è un'opzione selezionabile - verrà convertito automaticamente
+        
+        # 🔧 FIX CELLE BIANCHE ULTRA-AGGRESSIVO (Streamlit bug workaround)
         # Se una cella ha un valore NON nelle opzioni, Streamlit la mostra VUOTA
         # FORZA che ogni categoria nel DataFrame sia nelle opzioni disponibili
         categorie_valide_set = set(categorie_disponibili)
         
         def valida_categoria(cat):
-            """Assicura che categoria sia nelle opzioni disponibili"""
-            if pd.isna(cat) or cat is None or str(cat).strip() == '':
-                return 'Da Classificare'
+            """Assicura che categoria sia nelle opzioni disponibili o None se vuota"""
+            if pd.isna(cat) or cat is None or str(cat).strip() == '' or str(cat).strip() == 'Da Classificare':
+                return None  # Lascia vuoto se non categorizzato
             cat_str = str(cat).strip()
             if cat_str not in categorie_valide_set:
-                logger.warning(f"⚠️ Categoria '{cat_str}' non nelle opzioni! → 'Da Classificare'")
-                return 'Da Classificare'
+                logger.warning(f"⚠️ Categoria '{cat_str}' non nelle opzioni! → None (vuoto)")
+                return None  # Lascia vuoto se categoria non valida
             return cat_str
         
         # Applica validazione a TUTTE le categorie
         df_editor['Categoria'] = df_editor['Categoria'].apply(valida_categoria)
         
         # Log finale per debug
-        invalid_count = (df_editor['Categoria'] == 'Da Classificare').sum()
-        logger.info(f"📋 VALIDAZIONE: {invalid_count} celle con 'Da Classificare' (valide: {len(df_editor) - invalid_count})")
-        print(f"📋 DEBUG: {invalid_count} 'Da Classificare', {len(df_editor) - invalid_count} categorizzate")
-        
-        # �🔒 FILTRA "NOTE E DICITURE" per utenti NON admin
-        # Solo admin e impersonificati possono usare questa categoria
-        is_admin_or_impersonating = (
-            st.session_state.get('user_is_admin', False) or 
-            st.session_state.get('impersonating', False)
-        )
-        
-        if not is_admin_or_impersonating:
-            # Rimuovi "NOTE E DICITURE" dalla lista disponibile per clienti
-            categorie_disponibili = [
-                cat for cat in categorie_disponibili 
-                if 'NOTE E DICITURE' not in cat.upper() and 'DICITURE' not in cat.upper()
-            ]
-            logger.info("🔒 Categoria 'NOTE E DICITURE' nascosta per utente non-admin")
-        
-        # ⚡ ASSICURA che "Da Classificare" sia SEMPRE presente (anche dopo filtri)
-        if 'Da Classificare' not in categorie_disponibili:
-            categorie_disponibili = ['Da Classificare'] + categorie_disponibili
-            logger.info("⚡ 'Da Classificare' ri-aggiunto dopo filtri")
+        vuote_count = df_editor['Categoria'].isna().sum()
+        logger.info(f"📋 VALIDAZIONE: {vuote_count} celle vuote (non categorizzate), {len(df_editor) - vuote_count} categorizzate")
+        print(f"📋 DEBUG: {vuote_count} vuote, {len(df_editor) - vuote_count} categorizzate")
         
         # ✅ Le categorie vengono normalizzate automaticamente al caricamento
         # Migrazione vecchi nomi → nuovi nomi avviene in carica_e_prepara_dataframe()
