@@ -2191,9 +2191,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         categorie_disponibili = categorie_temp
         
         # ✅ ORDINE ALFABETICO: Prima F&B, poi Spese Generali
-        # Separa categorie F&B da spese generali
-        CATEGORIE_SPESE_GENERALI = ["MANUTENZIONE E ATTREZZATURE", "SERVIZI E CONSULENZE", "UTENZE E LOCALI"]
-        
+        # Separa categorie F&B da spese generali (usa la costante importata)
         categorie_fb = [cat for cat in categorie_disponibili if cat not in CATEGORIE_SPESE_GENERALI]
         categorie_spese = [cat for cat in categorie_disponibili if cat in CATEGORIE_SPESE_GENERALI]
         
