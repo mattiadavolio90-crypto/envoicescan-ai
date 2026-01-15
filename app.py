@@ -1,4 +1,5 @@
-﻿import extra_streamlit_components as stx
+﻿# Fix: Force re-deployment to resolve IndentationError on cloud
+import extra_streamlit_components as stx
 import tempfile
 import shutil
 import streamlit as st
