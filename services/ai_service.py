@@ -499,35 +499,10 @@ def classifica_con_ai(
             for d in lista_descrizioni
         ]
 
-    prompt = f"""
-Sei un esperto controller per ristoranti. Classifica questi articoli usando RAGIONAMENTO INTELLIGENTE.
-
-CATEGORIE DISPONIBILI:
-{', '.join(TUTTE_LE_CATEGORIE)}
-
-REGOLE CLASSIFICAZIONE:
-1. **DICITURE**: Se descrizione è riferimento documento (DDT, TRASPORTO, BOLLA, RIF), imballo, spedizione → "NOTE E DICITURE"
-2. **MATERIALI NO FOOD**: Pellicole, rotoloni, tovaglioli, carta, detersivi, sacchetti, contenitori, bicchieri, coperchi → "NO FOOD"
-3. **BEVANDE**: Distingui:
-   - Alcolici specifici (VINI, BIRRE, AMARI/LIQUORI, DISTILLATI)
-   - Generici → "BEVANDE"
-   - Acqua → "ACQUA"
-   - Caffè → "CAFFÈ"
-4. **SPESE OPERATIVE**: Manutenzione, consulenze, affitto, utenze → categorie SPESE
-5. **PRODOTTI ALIMENTARI**: Usa SEMPRE categorie specifiche (CARNE, PESCE, VERDURE, FRUTTA, PASTA→SECCO, ecc.)
-
-IMPORTANTE:
-- NON usare MAI la categoria "FOOD" - usa sempre categorie specifiche!
-- Usa categoria specifica (es. "CARNE" non "SECCO" per pollo)
-- Se incerto tra 2 categorie, scegli più probabile per ristorante
-- "Da Classificare" SOLO se impossibile determinare
-
-FORMATO RISPOSTA (JSON):
-{{"categorie": ["CATEGORIA1", "CATEGORIA2", ...]}}
-
-ARTICOLI DA CLASSIFICARE:
-{json.dumps(da_chiedere_gpt, ensure_ascii=False)}
-"""
+    # Importa il prompt potenziato con esempi
+    from config.prompt_ai_potenziato import get_prompt_classificazione
+    
+    prompt = get_prompt_classificazione(json.dumps(da_chiedere_gpt, ensure_ascii=False))
 
     try:
         response = openai_client.chat.completions.create(
