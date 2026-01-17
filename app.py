@@ -1476,33 +1476,95 @@ def mostra_statistiche(df_completo):
                 logger.info(f"🔍 Descrizioni da classificare: {descrizioni_da_classificare[:10]}")
                 
                 if descrizioni_da_classificare:
-                    with st.spinner(f"🧠 Classificazione AI in corso... ({len(descrizioni_da_classificare)} prodotti)"):
-                        mappa_categorie = {}
-                        chunk_size = 50
-                        for i in range(0, len(descrizioni_da_classificare), chunk_size):
-                            chunk = descrizioni_da_classificare[i:i+chunk_size]
-                            cats = classifica_con_ai(chunk, fornitori_da_classificare)
-                            for desc, cat in zip(chunk, cats):
-                                mappa_categorie[desc] = cat
-                                aggiorna_memoria_ai(desc, cat)
+                    # 🧠 Placeholder UNICO per circular progress animato
+                    progress_placeholder = st.empty()
+                    
+                    # CSS per animazione pulsazione cervelletto - CENTRATO
+                    st.markdown("""
+                    <style>
+                    @keyframes pulse_brain {
+                        0% { transform: scale(1); opacity: 1; }
+                        50% { transform: scale(1.15); opacity: 0.9; }
+                        100% { transform: scale(1); opacity: 1; }
+                    }
+                    
+                    .brain-pulse {
+                        font-size: 100px;
+                        animation: pulse_brain 1.5s ease-in-out infinite;
+                        text-align: center;
+                        margin: 30px 0 10px 0;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        height: 120px;
+                    }
+                    
+                    .progress-circle {
+                        text-align: center;
+                        font-family: monospace;
+                        font-size: 28px;
+                        font-weight: bold;
+                        color: #FF69B4;
+                        margin: 15px 0;
+                    }
+                    
+                    .progress-text {
+                        text-align: center;
+                        color: #555;
+                        font-size: 16px;
+                        margin: 15px 0 30px 0;
+                        font-weight: 500;
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
+                    
+                    mappa_categorie = {}
+                    chunk_size = 50
+                    prodotti_elaborati = 0
+                    
+                    for i in range(0, len(descrizioni_da_classificare), chunk_size):
+                        chunk = descrizioni_da_classificare[i:i+chunk_size]
+                        cats = classifica_con_ai(chunk, fornitori_da_classificare)
+                        for desc, cat in zip(chunk, cats):
+                            mappa_categorie[desc] = cat
+                            aggiorna_memoria_ai(desc, cat)
+                            prodotti_elaborati += 1
+                            
+                            # 🧠 Aggiorna circular progress CENTRATO in tempo reale (REPLACE, non append)
+                            percentuale = (prodotti_elaborati / len(descrizioni_da_classificare)) * 100
+                            progress_placeholder.markdown(f"""
+                            <div style="text-align: center; padding: 40px 20px; border: 2px solid #FFB6E1; border-radius: 10px; background-color: #fff5fb;">
+                                <div class="brain-pulse">🧠</div>
+                                <div class="progress-circle">{int(percentuale)}%</div>
+                                <div class="progress-text">Categorizzando: {prodotti_elaborati} di {len(descrizioni_da_classificare)}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # 🧠 MARCA COME CLASSIFICATO DA AI
+                            try:
+                                supabase.table('fatture').update(
+                                    {'stato': '🧠 AI'}
+                                ).eq('user_id', user_id).eq('descrizione', desc).execute()
+                            except Exception as stato_err:
+                                logger.warning(f"Errore aggiornamento stato AI: {stato_err}")
+                            
+                            # Salva anche in memoria GLOBALE su Supabase
+                            try:
+                                from datetime import datetime
+                                supabase.table('prodotti_master').upsert({
+                                    'descrizione': desc,
+                                    'categoria': cat,
+                                    'volte_visto': 1,
+                                    'classificato_da': 'AI',
+                                    'updated_at': datetime.now().isoformat()
+                                }, on_conflict='descrizione').execute()
                                 
-                                # Salva anche in memoria GLOBALE su Supabase
-                                try:
-                                    from datetime import datetime
-                                    supabase.table('prodotti_master').upsert({
-                                        'descrizione': desc,
-                                        'categoria': cat,
-                                        'volte_visto': 1,
-                                        'classificato_da': 'AI',
-                                        'updated_at': datetime.now().isoformat()
-                                    }, on_conflict='descrizione').execute()
-                                    
-                                    # Invalida cache per forzare ricaricamento
-                                    invalida_cache_memoria()
-                                    
-                                    logger.info(f"💾 GLOBALE salvato: '{desc[:40]}...' → {cat}")
-                                except Exception as e:
-                                    logger.error(f"Errore salvataggio globale '{desc[:40]}...': {e}")
+                                # Invalida cache per forzare ricaricamento
+                                invalida_cache_memoria()
+                                
+                                logger.info(f"💾 GLOBALE salvato: '{desc[:40]}...' → {cat}")
+                            except Exception as e:
+                                logger.error(f"Errore salvataggio globale '{desc[:40]}...': {e}")
 
 
                     # Aggiorna categorie su Supabase
@@ -1557,14 +1619,52 @@ def mostra_statistiche(df_completo):
                             if num_aggiornate > 0:
                                 logger.info(f"🔄 '{desc[:40]}...' → {cat} ({num_aggiornate} righe)")
                         
-                        # Messaggio risultato
-                        if descrizioni_non_trovate:
-                            st.warning(f"⚠️ {len(descrizioni_non_trovate)} prodotti non trovati nel database:\n" + 
-                                      "\n".join([f"• {d[:60]}" for d in descrizioni_non_trovate[:3]]))
-                            logger.warning(f"❌ Descrizioni non trovate: {descrizioni_non_trovate}")
+                        # 🔧 FALLBACK: Applica dizionario ai prodotti rimasti "Da Classificare"
+                        try:
+                            df_check = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id).execute()
+                            if df_check.data:
+                                df_temp = pd.DataFrame(df_check.data)
+                                ancora_da_class = df_temp[(df_temp['categoria'].isna()) | (df_temp['categoria'] == 'Da Classificare')]['descrizione'].unique()
+                                
+                                if len(ancora_da_class) > 0:
+                                    logger.info(f"🔧 FALLBACK: Tentando categorizzazione con dizionario per {len(ancora_da_class)} prodotti rimasti...")
+                                    
+                                    # Importa funzione dizionario
+                                    from services.ai_service import applica_correzioni_dizionario
+                                    
+                                    for desc in ancora_da_class:
+                                        # Tenta match con dizionario
+                                        cat_dizionario = applica_correzioni_dizionario(desc)
+                                        
+                                        if cat_dizionario and cat_dizionario != 'Da Classificare':
+                                            # Aggiorna con categoria da dizionario
+                                            try:
+                                                righe_updated = supabase.table('fatture').update(
+                                                    {'categoria': cat_dizionario, 'stato': '📖 Dizionario'}
+                                                ).eq('user_id', user_id).ilike('descrizione', f'%{desc.strip()}%').execute()
+                                                righe_aggiornate_totali += len(righe_updated.data) if righe_updated.data else 0
+                                                logger.info(f"✅ Fallback dizionario: '{desc[:40]}...' → {cat_dizionario}")
+                                            except Exception as fb_err:
+                                                logger.warning(f"Errore fallback: {fb_err}")
+                                        else:
+                                            # ULTIMO FALLBACK: Assegna a "ALTRO" per garantire categorizzazione 100%
+                                            try:
+                                                righe_updated_fallback = supabase.table('fatture').update(
+                                                    {'categoria': 'ALTRO', 'stato': '⚠️ Fallback'}
+                                                ).eq('user_id', user_id).ilike('descrizione', f'%{desc.strip()}%').execute()
+                                                righe_aggiornate_totali += len(righe_updated_fallback.data) if righe_updated_fallback.data else 0
+                                                logger.warning(f"⚠️ Fallback ALTRO: '{desc[:40]}...' assegnato a ALTRO")
+                                            except Exception as fb_fallback_err:
+                                                logger.error(f"Errore fallback ALTRO: {fb_fallback_err}")
+                        except Exception as fb_err:
+                            logger.warning(f"Errore fallback categorizzazione: {fb_err}")
                         
-                        st.toast(f"✅ Categorizzati {len(descrizioni_da_classificare)} prodotti ({righe_aggiornate_totali} righe) su Supabase!")
-                        logger.info(f"🔄 CATEGORIZZAZIONE AI: Aggiornate {len(descrizioni_da_classificare)} descrizioni uniche, {righe_aggiornate_totali} righe totali")
+                        # ✅ Pulisci placeholder progress
+                        progress_placeholder.empty()
+                        
+                        # 📊 Messaggio SEMPLICE - solo conteggio finale
+                        st.success(f"✅ {righe_aggiornate_totali} prodotti categorizzati")
+                        logger.info(f"🎉 CATEGORIZZAZIONE COMPLETATA: {righe_aggiornate_totali} righe totali")
                         
                         # Pulisci cache PRIMA del delay per garantire ricaricamento
                         st.cache_data.clear()
@@ -1572,18 +1672,6 @@ def mostra_statistiche(df_completo):
                         
                         # Delay per garantire propagazione modifiche su Supabase
                         time.sleep(2)
-                        
-                        # Verifica se rimangono prodotti da categorizzare
-                        try:
-                            df_check = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id).execute()
-                            if df_check.data:
-                                df_temp = pd.DataFrame(df_check.data)
-                                ancora_da_class = df_temp[(df_temp['categoria'].isna()) | (df_temp['categoria'] == 'Da Classificare')]['descrizione'].unique()
-                                if len(ancora_da_class) > 0:
-                                    st.info(f"ℹ️ Rimangono {len(ancora_da_class)} prodotti da categorizzare. Prova a categorizzarli manualmente dalla tabella.")
-                                    logger.warning(f"⚠️ Rimangono {len(ancora_da_class)} prodotti da categorizzare: {ancora_da_class.tolist()[:5]}")
-                        except Exception as log_err:
-                            logger.error(f"Errore verifica post-categorizzazione: {log_err}")
                         
                         # Rerun per ricaricare dati freschi
                         st.rerun()
@@ -2305,26 +2393,59 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             df_editor_paginato = df_editor_paginato.drop(columns=['Listino'])
         elif 'LISTINO' in df_editor_paginato.columns:
             df_editor_paginato = df_editor_paginato.drop(columns=['LISTINO'])
+        
+        # 🧠 CHECKBOX per mostrare/nascondere colonna Stato AI
+        col_checkbox, _ = st.columns([2, 8])
+        with col_checkbox:
+            mostra_stato = st.checkbox(
+                "🧠 Mostra tracciamento AI",
+                value=st.session_state.get('mostra_colonna_stato', False),
+                help="Visualizza quali righe sono state classificate dall'AI (icona 🧠)",
+                key="checkbox_stato_ai"
+            )
+        
+        # Aggiorna session state e trigger rerun
+        if mostra_stato != st.session_state.get('mostra_colonna_stato', False):
+            st.session_state.mostra_colonna_stato = mostra_stato
+            st.rerun()
+        else:
+            st.session_state.mostra_colonna_stato = mostra_stato
+        
+        # Se checkbox disattivato, nascondi colonna Stato
+        if not mostra_stato and 'Stato' in df_editor_paginato.columns:
+            df_editor_paginato = df_editor_paginato.drop(columns=['Stato'])
 
+        # Configurazione colonne
+        column_config_dict = {
+            "DataDocumento": st.column_config.TextColumn("Data", disabled=True),
+            "Categoria": st.column_config.SelectboxColumn(
+                "Categoria",
+                help="Seleziona la categoria corretta (le celle 'Da Classificare' devono essere categorizzate)",
+                width="medium",
+                options=categorie_disponibili,
+                required=True
+            ),
+            "TotaleRiga": st.column_config.NumberColumn("Totale (€)", format="€ %.2f", disabled=True),
+            "PrezzoUnitario": st.column_config.NumberColumn("Prezzo Unit.", format="€ %.2f", disabled=True),
+            "Descrizione": st.column_config.TextColumn("Descrizione", disabled=True),
+            "Fornitore": st.column_config.TextColumn("Fornitore", disabled=True),
+            "FileOrigine": st.column_config.TextColumn("File", disabled=True),
+            "Quantita": st.column_config.NumberColumn("Q.tà", disabled=True),
+            "UnitaMisura": st.column_config.TextColumn("U.M.", disabled=True, width="small")
+        }
+        
+        # Aggiungi configurazione colonna Stato se visibile
+        if mostra_stato and 'Stato' in df_editor_paginato.columns:
+            column_config_dict["Stato"] = st.column_config.TextColumn(
+                "Stato",
+                help="🧠 = Classificato da AI",
+                width="small",
+                disabled=True
+            )
+        
         edited_df = st.data_editor(
             df_editor_paginato,
-            column_config={
-                "DataDocumento": st.column_config.TextColumn("Data", disabled=True),
-                "Categoria": st.column_config.SelectboxColumn(
-                    "Categoria",
-                    help="Seleziona la categoria corretta (le celle 'Da Classificare' devono essere categorizzate)",
-                    width="medium",
-                    options=categorie_disponibili,
-                    required=True
-                ),
-                "TotaleRiga": st.column_config.NumberColumn("Totale (€)", format="€ %.2f", disabled=True),
-                "PrezzoUnitario": st.column_config.NumberColumn("Prezzo Unit.", format="€ %.2f", disabled=True),
-                "Descrizione": st.column_config.TextColumn("Descrizione", disabled=True),
-                "Fornitore": st.column_config.TextColumn("Fornitore", disabled=True),
-                "FileOrigine": st.column_config.TextColumn("File", disabled=True),
-                "Quantita": st.column_config.NumberColumn("Q.tà", disabled=True),
-                "UnitaMisura": st.column_config.TextColumn("U.M.", disabled=True, width="small")
-            },
+            column_config=column_config_dict,
             hide_index=True,
             use_container_width=True,
             height=altezza_dinamica,
@@ -2350,6 +2471,13 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             [data-testid="stDownloadButton"] button:hover {
                 background-color: #218838 !important;
             }
+            
+            /* 🧠 COLORAZIONE ROSA per righe classificate da AI */
+            [data-testid="stDataFrame"] [data-testid="stDataFrameCell"] {
+                transition: background-color 0.3s ease;
+            }
+            /* Nota: Streamlit data_editor non supporta styling condizionale per riga basato su valore cella.
+               La colorazione visiva principale sarà l'icona 🧠 nella colonna Stato. */
             </style>
         """, unsafe_allow_html=True)
         
@@ -2371,7 +2499,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         
         with col_ord:
             # Selettore ordinamento affiancato al box blu
-            st.markdown('<p style="margin-top: 8px; font-size: 14px; font-weight: 500;">Ordina per:</p>', unsafe_allow_html=True)
+            st.markdown('<p style="margin-top: 8px; font-size: 14px; font-weight: 500;">Seleziona ordinamento per export</p>', unsafe_allow_html=True)
             ordina_per = st.selectbox(
                 "ord",
                 options=["DataDocumento", "Categoria", "Fornitore", "Descrizione", "TotaleRiga"],
@@ -3865,6 +3993,21 @@ else:
         label_visibility="collapsed",
         key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"  # Chiave dinamica per reset
     )
+    
+    # 🧠 RESET STATO AI al nuovo caricamento
+    if uploaded_files and len(uploaded_files) > 0:
+        current_upload_ids = [f.name for f in uploaded_files]
+        ultimo_upload = st.session_state.get('ultimo_upload_ids', [])
+        
+        # Rilevamento nuovo caricamento (file diversi)
+        if current_upload_ids != ultimo_upload:
+            try:
+                user_id = st.session_state.user_data["id"]
+                supabase.table('fatture').update({'stato': ''}).eq('user_id', user_id).execute()
+                logger.info("🧹 Reset stati AI - nuovo caricamento rilevato")
+            except Exception as reset_err:
+                logger.warning(f"Errore reset stati AI: {reset_err}")
+            st.session_state.ultimo_upload_ids = current_upload_ids
 
     # ============================================================
     # INIZIALIZZAZIONE SET ERRORI (prevenzione loop)
@@ -4034,14 +4177,8 @@ if uploaded_files:
             st.warning(f"⚠️ **{len(duplicati_interni)} duplicati** nell'upload (ignorati)")
     
     # ============================================================
-    # MESSAGGIO PER CLIENTI: Se TUTTI duplicati E aveva fatture prima, avvisa
+    # Se TUTTI duplicati, non fare niente (nessun messaggio)
     # ============================================================
-    if not file_nuovi and (file_gia_processati or duplicati_interni):
-        # Mostra messaggio SOLO se l'utente aveva già file nel DB (non primo upload)
-        if not is_admin and len(file_gia_processati) > 0:
-            # Cliente: Messaggio semplice e chiaro
-            totale_duplicati = len(file_gia_processati) + len(duplicati_interni)
-            st.info(f"ℹ️ {totale_duplicati} fattura{'e' if totale_duplicati > 1 else ''} già caricata{' in precedenza' if totale_duplicati == 1 else 'e in precedenza'}")
     
     if file_nuovi:
         # Crea placeholder per loading AI
@@ -4275,11 +4412,21 @@ if uploaded_files:
                         location_text = "Supabase" if salvati_supabase > 0 else "JSON"
                         st.metric("💾 Storage", location_text)
                 else:
-                    # Cliente: Messaggio semplice
-                    st.success(f"✅ Fatture caricate con successo!")
+                    # Cliente: Messaggio chiaro con numero e duplicati
+                    sing_plur_fat = "fattura" if file_processati == 1 else "fatture"
+                    sing_plur_caric = "caricata" if file_processati == 1 else "caricate"
+                    st.success(f"✅ {file_processati} {sing_plur_fat} {sing_plur_caric} con successo!")
+                    
+                    # Mostra avviso duplicati se presenti
+                    num_duplicati = len(file_gia_processati) + len(duplicati_interni)
+                    if num_duplicati > 0:
+                        sing_plur_dup = "fattura" if num_duplicati == 1 else "fatture"
+                        sing_plur_pres = "presente" if num_duplicati == 1 else "presenti"
+                        sing_plur_ign = "ignorata" if num_duplicati == 1 else "ignorate"
+                        st.info(f"ℹ️ {num_duplicati} {sing_plur_dup} già {sing_plur_pres}, {sing_plur_ign}")
             
-            # Sparisce dopo 4 secondi
-            time.sleep(4)
+            # Sparisce dopo 10 secondi
+            time.sleep(10)
             success_container.empty()
             
             # ============================================================

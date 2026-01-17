@@ -101,7 +101,8 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
                         "TotaleRiga": row["totale_riga"],
                         "Categoria": row["categoria"],
                         "CodiceArticolo": row["codice_articolo"],
-                        "PrezzoStandard": row.get("prezzo_standard")
+                        "PrezzoStandard": row.get("prezzo_standard"),
+                        "Stato": row.get("stato", "")  # 🧠 Carica stato AI
                     })
                 
                 # Se questa pagina ha meno di page_size record, abbiamo finito
@@ -115,6 +116,10 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
                 logger.info(f"✅ LOAD SUCCESS: {len(dati)} righe caricate da Supabase per user_id={user_id}")
                 print(f"✅ DEBUG: Caricati {len(dati)} record da Supabase")
                 df_result = pd.DataFrame(dati)
+                
+                # 🔧 AGGIUNGI COLONNA STATO per tracciamento AI
+                if 'Stato' not in df_result.columns:
+                    df_result['Stato'] = ''  # Colonna vuota di default
                 
                 # 🔧 NORMALIZZA CATEGORIA: Converti NULL/None/vuoti in NaN per uniformità
                 if 'Categoria' in df_result.columns:
