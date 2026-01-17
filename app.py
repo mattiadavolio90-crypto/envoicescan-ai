@@ -90,6 +90,8 @@ from services.ai_service import (
     salva_correzione_in_memoria_globale,
     classifica_con_ai,
     mostra_loading_ai,
+    svuota_memoria_globale,
+    set_global_memory_enabled,
     # Legacy functions
     carica_memoria_ai,
     salva_memoria_ai,
@@ -1343,6 +1345,33 @@ def mostra_statistiche(df_completo):
             # Test query diretta Supabase
             if st.button("🔄 Ricarica da Supabase (bypass cache)", key="debug_reload"):
                 st.cache_data.clear()
+                invalida_cache_memoria()
+                st.success("Cache invalidata. Dati ricaricati al prossimo accesso.")
+
+        # ===== 🧠 MEMORIA GLOBALE AI (SOLO ADMIN) =====
+        with st.expander("🧠 Memoria Globale AI", expanded=False):
+            st.markdown("Gestione memoria condivisa per test/diagnosi.")
+
+            # Toggle sessione: disabilita uso memoria globale
+            disabilita = st.checkbox(
+                "Disabilita memoria globale (solo sessione)",
+                value=st.session_state.get("disable_global_memory", False),
+                help="Ignora 'prodotti_master' in questa sessione per testare la logica senza memorie pregresse.",
+                key="chk_disable_global_memory"
+            )
+            st.session_state["disable_global_memory"] = disabilita
+            # Applica al servizio
+            set_global_memory_enabled(not disabilita)
+
+            st.divider()
+            st.markdown("""<strong>Azione definitiva:</strong> elimina tutte le voci in memoria globale (DB).""", unsafe_allow_html=True)
+            conferma = st.checkbox("Confermo svuotamento totale della memoria globale", key="chk_confirm_clear")
+            if st.button("🗑️ Svuota Memoria Globale AI (DB)", disabled=not conferma, key="btn_clear_global"):
+                esito = svuota_memoria_globale(supabase)
+                if esito:
+                    st.success("Memoria globale svuotata con successo.")
+                else:
+                    st.error("Errore durante lo svuotamento della memoria globale.")
                 st.rerun()
     # ===== FINE DEBUG =====
     
@@ -2138,6 +2167,17 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         # Controlli paginazione
         col_prev, col_size, col_next = st.columns([1, 2, 1])
         
+        # Light CSS tweak to vertically align controls
+        st.markdown(
+            """
+            <style>
+              [data-testid="stButton"] button { min-height: 36px; }
+              .stSelectbox [data-baseweb="select"] { min-height: 36px; }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+        
         with col_prev:
             if st.button("◀ Pagina Precedente", use_container_width=True, key="btn_pagina_prev"):
                 if pagina_corrente > 0:
@@ -2147,12 +2187,22 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     st.warning("Sei già alla prima pagina")
         
         with col_size:
-            nuove_righe_pagina = st.selectbox(
-                "Righe per pagina:",
-                options=[500, 1000, 2000, 5000],
-                index=1,  # Default 1000
-                key="select_righe_pagina"
-            )
+            # Inline label + select for better alignment with nav arrows
+            sub_label, sub_select = st.columns([1, 2])
+            with sub_label:
+                st.markdown('<p style="margin-top: 8px; font-size: 14px; font-weight: 500;">Righe per pagina:</p>', unsafe_allow_html=True)
+            with sub_select:
+                options_righe = [500, 1000, 2000, 5000]
+                default_index = options_righe.index(righe_per_pagina) if righe_per_pagina in options_righe else options_righe.index(1000)
+                nuove_righe_pagina = st.selectbox(
+                    "righe",
+                    options=options_righe,
+                    index=default_index,
+                    key="select_righe_pagina",
+                    label_visibility="collapsed"
+                )
+
+            # Apply selection change
             if nuove_righe_pagina != righe_per_pagina:
                 st.session_state.righe_per_pagina_dettaglio = nuove_righe_pagina
                 st.session_state.pagina_dettaglio_articoli = 0
@@ -2189,6 +2239,17 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             if cat not in categorie_temp:
                 categorie_temp.append(cat)
         categorie_disponibili = categorie_temp
+        
+        # 🔄 MIGRAZIONE NOMI: Uniforma vecchio nome 'CONSERVE' al nuovo 'SCATOLAME E CONSERVE'
+        categorie_disponibili = [
+            ('SCATOLAME E CONSERVE' if str(cat).strip().upper() == 'CONSERVE' else cat)
+            for cat in categorie_disponibili
+        ]
+        # 🔄 MIGRAZIONE NOMI: Uniforma vecchio nome 'CAFFÈ' al nuovo 'CAFFE E THE'
+        categorie_disponibili = [
+            ('CAFFE E THE' if str(cat).strip().upper() in ['CAFFÈ', 'CAFFE'] else cat)
+            for cat in categorie_disponibili
+        ]
         
         # ✅ ORDINE ALFABETICO: Prima F&B, poi Spese Generali
         # Separa categorie F&B da spese generali (usa la costante importata)
@@ -2254,7 +2315,7 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     help="Seleziona la categoria corretta (le celle 'Da Classificare' devono essere categorizzate)",
                     width="medium",
                     options=categorie_disponibili,
-                    required=False
+                    required=True
                 ),
                 "TotaleRiga": st.column_config.NumberColumn("Totale (€)", format="€ %.2f", disabled=True),
                 "PrezzoUnitario": st.column_config.NumberColumn("Prezzo Unit.", format="€ %.2f", disabled=True),
@@ -2295,10 +2356,10 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         totale_tabella = edited_df['TotaleRiga'].sum()
         num_righe = len(edited_df)
         
-        # Box riepilogo + bottone Excel affiancati - LAYOUT SEMPLICE
-        col_left, col_right = st.columns([5, 1])
+        # Box riepilogo + selettore ordinamento + bottone Excel su una riga
+        col_box, col_ord, col_btn = st.columns([5, 2, 1])
         
-        with col_left:
+        with col_box:
             # Box blu con statistiche
             st.markdown(f"""
             <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
@@ -2308,23 +2369,20 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             </div>
             """, unsafe_allow_html=True)
         
-        with col_right:
-            # Allinea il pulsante a destra
+        with col_ord:
+            # Selettore ordinamento affiancato al box blu
+            st.markdown('<p style="margin-top: 8px; font-size: 14px; font-weight: 500;">Ordina per:</p>', unsafe_allow_html=True)
+            ordina_per = st.selectbox(
+                "ord",
+                options=["DataDocumento", "Categoria", "Fornitore", "Descrizione", "TotaleRiga"],
+                index=0,
+                key="select_ordina_export",
+                label_visibility="collapsed"
+            )
+
+        with col_btn:
+            # Allinea il pulsante a destra e stile pulito
             st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
-            
-            # Selettore ordinamento per export Excel
-            col_ord_label, col_ord_select = st.columns([1, 2])
-            with col_ord_label:
-                st.markdown('<p style="margin-top: 8px; font-size: 14px; font-weight: 500;">Ordina per:</p>', unsafe_allow_html=True)
-            with col_ord_select:
-                ordina_per = st.selectbox(
-                    "ord",
-                    options=["DataDocumento", "Categoria", "Fornitore", "Descrizione", "TotaleRiga"],
-                    index=0,
-                    key="select_ordina_export",
-                    label_visibility="collapsed"
-                )
-            
             st.markdown("""
                 <style>
                 [data-testid="stDownloadButton"] button {

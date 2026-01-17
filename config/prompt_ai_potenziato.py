@@ -25,14 +25,14 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 4. **BIRRE** - Tutte le tipologie di birra
    Esempi: "BIRRA LAGER", "BIRRA WEISS", "BIRRA STOUT", "WEIZEN"
 
-5. **CAFFÈ** - Caffè, espresso, capsule, cialde, tè, tisane, infusi
-   Esempi: "CAFFÈ ESPRESSO KG1", "CAPSULE COMPATIBILI", "CIALDE CAFFÈ", "TÈ NERO", "TISANE"
+5. **CAFFE E THE** - Caffè, espresso, decaffeinato (DECA/DECAF), capsule, cialde, tè, tisane, camomille, infusi
+    Esempi: "CAFFÈ ESPRESSO KG1", "DECAFFEINATO", "CAPSULE COMPATIBILI", "CIALDE CAFFÈ", "THE NERO", "TÈ VERDE", "TISANA", "CAMOMILLA"
 
 6. **CARNE** - Carni rosse, bianche, selvaggina, preparati
    Esempi: "PETTO POLLO GR600X4", "VITELLO S/O KG5", "BISTECCA MANZO", "SALSICCIA KG2,75"
 
-7. **CONSERVE** - Marmellate, confetture, sott'olio, sottaceti, olive, scatolame (tonno, pelati, legumi)
-   Esempi: "MARMELLATA FRAGOLA", "OLIVE TAGGIASCHE", "TONNO SCATOLA", "PELATI KG400", "FAGIOLI SCATOLA"
+7. **SCATOLAME E CONSERVE** - Marmellate, confetture, sott'olio, sottaceti, olive, scatolame (tonno, pelati, legumi)
+    Esempi: "MARMELLATA FRAGOLA", "OLIVE TAGGIASCHE", "TONNO SCATOLA", "PELATI KG400", "FAGIOLI SCATOLA"
 
 8. **DISTILLATI** - Superalcolici (vodka, gin, rum, whisky, brandy)
    Esempi: "VODKA", "GIN GORDON", "RUM BACARDI", "WHISKY JOHNNIE WALKER", "COGNAC"

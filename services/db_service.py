@@ -137,7 +137,9 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
                         'BIBITE E BEVANDE': 'BEVANDE',
                         'PANE': 'PRODOTTI DA FORNO',
                         'DOLCI': 'PASTICCERIA',
-                        'OLIO': 'OLIO E CONDIMENTI'
+                        'OLIO': 'OLIO E CONDIMENTI',
+                        'CONSERVE': 'SCATOLAME E CONSERVE',
+                        'CAFFÈ': 'CAFFE E THE'
                     }
                     
                     righe_migrate = 0

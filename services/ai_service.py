@@ -48,6 +48,19 @@ _memoria_cache = {
     'loaded': False
 }
 
+# Flag per disabilitare la memoria globale (solo sessione)
+_disable_global_memory = False
+
+def set_global_memory_enabled(enabled: bool):
+    """
+    Abilita/Disabilita l'uso della memoria globale (prodotti_master) in questa sessione.
+    Utile per testare la logica senza influenze della memoria condivisa.
+    """
+    global _disable_global_memory
+    _disable_global_memory = not enabled
+    state = "DISABILITATA" if _disable_global_memory else "ABILITATA"
+    logger.info(f"⚙️ Memoria Globale: {state}")
+
 
 # ============================================================
 # INIZIALIZZAZIONE OPENAI CLIENT
@@ -199,11 +212,12 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
                 logger.debug(f"🔵 LOCALE (cache): '{descrizione[:40]}...' → {categoria}")
                 return categoria
         
-        # 2️⃣ Check memoria GLOBALE (da cache, 0 query!)
-        if descrizione in _memoria_cache['prodotti_master']:
-            categoria = _memoria_cache['prodotti_master'][descrizione]
-            logger.debug(f"🟢 GLOBALE (cache): '{descrizione[:40]}...' → {categoria}")
-            return categoria
+        # 2️⃣ Check memoria GLOBALE (da cache, 0 query!) se abilitata
+        if not _disable_global_memory:
+            if descrizione in _memoria_cache['prodotti_master']:
+                categoria = _memoria_cache['prodotti_master'][descrizione]
+                logger.debug(f"🟢 GLOBALE (cache): '{descrizione[:40]}...' → {categoria}")
+                return categoria
         
         # 3️⃣ Fallback
         logger.debug(f"⚪ NUOVO: '{descrizione[:40]}...' → Da Classificare")
@@ -407,10 +421,11 @@ def categorizza_con_memoria(
         # Normalizza descrizione per matching intelligente
         desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
         
-        if desc_normalized in _memoria_cache['prodotti_master']:
-            categoria = _memoria_cache['prodotti_master'][desc_normalized]
-            logger.info(f"🟢 MEMORIA GLOBALE (cache): '{descrizione}' → {categoria} (norm: '{desc_normalized}')")
-            return categoria
+        if not _disable_global_memory:
+            if desc_normalized in _memoria_cache['prodotti_master']:
+                categoria = _memoria_cache['prodotti_master'][desc_normalized]
+                logger.info(f"🟢 MEMORIA GLOBALE (cache): '{descrizione}' → {categoria} (norm: '{desc_normalized}')")
+                return categoria
     
     except Exception as e:
         logger.warning(f"Errore check memoria globale (cache): {e}")
@@ -444,6 +459,59 @@ def categorizza_con_memoria(
                 logger.warning(f"Errore salvataggio memoria globale: {e}")
     
     return categoria_keyword
+
+
+# ============================================================
+# SVUOTA MEMORIA GLOBALE (DB + file legacy)
+# ============================================================
+
+def svuota_memoria_globale(supabase_client=None) -> bool:
+    """
+    Svuota la memoria globale AI:
+    - Cancella tutti i record in 'prodotti_master' su Supabase
+    - Invalida cache in-memory
+    - Cancella file legacy 'memoria_ai_correzioni.json' se presente
+    """
+    # Usa client iniettato o fallback
+    if supabase_client is None:
+        try:
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
+        except Exception as e:
+            logger.error(f"Impossibile creare client Supabase: {e}")
+            return False
+
+    try:
+        # Preleva tutti gli id per cancellazione batch
+        resp = supabase_client.table('prodotti_master').select('id').execute()
+        ids = [row['id'] for row in (resp.data or []) if 'id' in row]
+
+        deleted = 0
+        if ids:
+            # Cancella in batch (blocchi da 1000 per sicurezza)
+            batch_size = 1000
+            for i in range(0, len(ids), batch_size):
+                batch = ids[i:i+batch_size]
+                supabase_client.table('prodotti_master').delete().in_('id', batch).execute()
+                deleted += len(batch)
+        logger.info(f"🗑️ Memoria Globale DB svuotata: {deleted} record rimossi")
+
+        # Invalida cache
+        invalida_cache_memoria()
+
+        # Cancella file legacy
+        try:
+            if os.path.exists(MEMORIA_AI_FILE):
+                os.remove(MEMORIA_AI_FILE)
+                logger.info("🧹 File legacy memoria AI rimosso")
+        except Exception as fe:
+            logger.warning(f"Impossibile rimuovere file legacy: {fe}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Errore svuotamento memoria globale: {e}")
+        return False
 
 
 # ============================================================

@@ -16,7 +16,7 @@ mappature = {
     'SALù': 'SALUMI',
     'VERDURA': 'VERDURE',
     'NOFOOD': 'NO FOOD',
-    'SCATOLAME E CONSERVE': 'CONSERVE'
+    'CONSERVE': 'SCATOLAME E CONSERVE'
 }
 
 # Normalizza la colonna CORRETTA
