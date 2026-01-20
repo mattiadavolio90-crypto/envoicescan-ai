@@ -156,13 +156,17 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 📝 FORMATO RISPOSTA
 ═══════════════════════════════════════════════════════════════════
 
+🚨 IMPORTANTE: NON restituire MAI "Da Classificare" o stringhe vuote!
+   DEVI sempre classificare con la categoria più probabile.
+   Se incerto, usa la categoria più comune per ristoranti (es: BEVANDE, NO FOOD).
+
 Rispondi SOLO in JSON:
 {
   "categorie": ["CATEGORIA1", "CATEGORIA2", ...]
 }
 
 Mantieni lo STESSO ordine degli articoli forniti.
-Usa esattamente i nomi categoria sopra.
+Usa esattamente i nomi categoria sopra (26 food + NO FOOD + 3 spese = 30 categorie).
 
 ═══════════════════════════════════════════════════════════════════
 🎯 ARTICOLI DA CLASSIFICARE

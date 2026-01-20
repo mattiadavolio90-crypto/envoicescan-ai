@@ -103,14 +103,7 @@ def estrai_dati_da_xml(file_caricato):
         if isinstance(linee, dict):
             linee = [linee]
         
-        # ============================================================
-        # DIAGNOSTICA: Log numero righe trovate
-        # ============================================================
-        logger.info(f"📄 {file_caricato.name}: trovate {len(linee)} righe DettaglioLinee")
-        
-        # ============================================================
-        # STEP 2: LIMITA A 25 RIGHE (evita timeout OpenAI)
-        # ============================================================
+        # Limita a 25 righe per evitare timeout OpenAI
         righe_originali_count = len(linee)
         if righe_originali_count > 25:
             logger.warning(f"{file_caricato.name}: {righe_originali_count} righe totali, limitate a 25")
@@ -135,16 +128,13 @@ def estrai_dati_da_xml(file_caricato):
                 
                 # SKIP: Prezzo zero o mancante
                 if not prezzo_base or prezzo_base == 0:
-                    logger.debug(f"{file_caricato.name} - Skip riga {idx}: prezzo 0 o mancante")
                     continue
                 
                 # QUANTITÀ: Default = 1 per servizi (se manca ma c'è PrezzoTotale)
                 if quantita_raw is None or float(quantita_raw or 0) == 0:
                     if totale_riga and totale_riga > 0:
                         quantita = 1.0
-                        logger.debug(f"{file_caricato.name} - Riga {idx}: Quantità mancante, default = 1 (servizi)")
                     else:
-                        logger.debug(f"{file_caricato.name} - Skip riga {idx}: quantità e prezzo totale = 0")
                         continue
                 else:
                     quantita = float(quantita_raw)
@@ -165,17 +155,14 @@ def estrai_dati_da_xml(file_caricato):
                 
                 # SKIP solo se completamente vuota
                 if not descrizione or len(descrizione.strip()) == 0:
-                    logger.debug(f"{file_caricato.name} - Skip riga {idx}: descrizione completamente vuota")
                     continue
                 
                 if descrizione.strip().upper() in ['DDT', 'DT', 'N/A']:
-                    logger.debug(f"{file_caricato.name} - Skip riga {idx}: descrizione invalida ({descrizione})")
                     continue
                 
                 # TRIM: Descrizioni lunghe (max 100 caratteri)
                 if len(descrizione) > 100:
                     descrizione = descrizione[:100] + "..."
-                    logger.debug(f"{file_caricato.name} - Riga {idx}: descrizione troncata a 100 caratteri")
                 
                 # Codice articolo
                 codice_articolo = ""
@@ -198,11 +185,7 @@ def estrai_dati_da_xml(file_caricato):
                 
                 prezzo_unitario = round(prezzo_unitario, 4)
                 
-                # Log sconti
-                if abs(prezzo_unitario - prezzo_base) > 0.01:
-                    sconto_percentuale = ((prezzo_base - prezzo_unitario) / prezzo_base) * 100
-                    logger.info(f"ðŸŽ SCONTO: {descrizione[:40]} | Base: â‚¬{prezzo_base:.2f} â†’ Effettivo: â‚¬{prezzo_unitario:.2f} ({sconto_percentuale:.1f}%)")
-                
+
                 # Auto-categorizzazione
                 categoria_finale = categorizza_con_memoria(
                     descrizione=descrizione,
@@ -211,34 +194,17 @@ def estrai_dati_da_xml(file_caricato):
                     user_id=current_user_id
                 )
                 
-                # ============================================================
-                # STRATEGIA IBRIDA: Salva tutto, marca per review se necessario
-                # ============================================================
+                # Strategia ibrida: salva tutto, marca per review se necessario
                 needs_review = False
                 
-                # CASO 1: Prezzo €0 con categoria DICITURA o DA CLASSIFICARE
                 if prezzo_unitario == 0 or totale_riga == 0:
                     if categoria_finale == "📝 NOTE E DICITURE":
                         needs_review = True
-                        logger.info(f"🔍 Dicitura €0 → review: {descrizione[:50]}")
                     elif categoria_finale == "Da Classificare":
                         needs_review = True
-                        logger.info(f"⚠️ €0 non classificato → review: {descrizione[:50]}")
-                    else:
-                        # Prodotto omaggio già categorizzato correttamente → OK
-                        needs_review = False
-                        logger.info(f"🎁 Omaggio categorizzato: {descrizione[:50]} → {categoria_finale}")
-                
-                # CASO 2: NOTE E DICITURE con prezzo > 0 (anomalia!)
                 elif categoria_finale == "📝 NOTE E DICITURE" and prezzo_unitario > 0:
                     needs_review = True
-                    logger.warning(f"⚠️ NOTE con €{prezzo_unitario:.2f} → review obbligatorio: {descrizione[:50]}")
-                
-                # CASO 3: Tutto il resto → salva normalmente
-                else:
-                    needs_review = False
-                
-                # ❌ RIMOSSO: continue → ora salviamo SEMPRE
+                    logger.warning(f"⚠️ NOTE con €{prezzo_unitario:.2f} → review: {descrizione[:50]}")
                 
                 # Calcolo prezzo standard
                 prezzo_std = calcola_prezzo_standard_intelligente(
@@ -267,13 +233,7 @@ def estrai_dati_da_xml(file_caricato):
                 logger.warning(f"{file_caricato.name} - Riga {idx} skippata: {str(e)[:100]}")
                 continue
         
-        # ============================================================
-        # DIAGNOSTICA: Log risultato finale
-        # ============================================================
-        logger.info(f"✅ {file_caricato.name}: {len(righe_prodotti)} righe valide estratte da {len(linee)} totali")
-        
-        if len(righe_prodotti) == 0:
-            logger.warning(f"⚠️ {file_caricato.name}: NESSUNA RIGA VALIDA - Tutte skippate dai filtri")
+        logger.info(f"✅ {file_caricato.name}: {len(righe_prodotti)} righe estratte")
         
         return righe_prodotti
         
@@ -398,7 +358,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
             dati = json.loads(testo)
         except json.JSONDecodeError:
             st.error(f"âŒ Risposta Vision non valida per {file_caricato.name}")
-            st.code(testo[:500])
+
             return []
         
         fornitore = normalizza_stringa(dati.get('fornitore', 'Fornitore Sconosciuto'))
@@ -469,11 +429,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 'Prezzo_Standard': prezzo_std
             })
         
-        if righe_prodotti:
-            st.success(f"âœ… Estratte {len(righe_prodotti)} righe da {file_caricato.name}")
-        else:
-            st.warning(f"âš ï¸ Nessuna riga trovata in {file_caricato.name}")
-        
+
         return righe_prodotti
         
     except Exception as e:
@@ -523,9 +479,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             if not dati_prodotti:
                 return {"success": False, "error": "no_data", "righe": 0, "location": None}
             
-            logger.info(f"ðŸ”¥ Inizio elaborazione: {nome_file}")
-            logger.info(f"ðŸ“„ {nome_file}: {len(dati_prodotti)} righe estratte")
-            
+
             # Prepara records
             records = []
             for prod in dati_prodotti:
@@ -554,13 +508,12 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     "needs_review": prod.get("needs_review", False)
                 })
             
-            logger.info(f"ðŸ’¾ {nome_file}: invio {len(records)} record a Supabase")
-            
+
             # Inserimento
             response = supabase_client.table("fatture").insert(records).execute()
             
             righe_confermate = len(response.data) if response.data else len(records)
-            logger.info(f"âœ… {nome_file}: {righe_confermate} righe confermate su DB")
+
             
             # Verifica integritÃ 
             verifica = verifica_integrita_fattura(nome_file, dati_prodotti, user_id, supabase_client)

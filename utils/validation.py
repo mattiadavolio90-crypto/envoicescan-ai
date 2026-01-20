@@ -159,17 +159,6 @@ def verifica_integrita_fattura(
         # Conta righe nel DataFrame parsed
         righe_parsed = len(dati_prodotti)
         
-        # 🔴 DEBUG: Controlla come è salvato il file_origine in DB
-        # Prima query: cerca il file per debug
-        response_debug = supabase_client.table("fatture") \
-            .select("file_origine, id") \
-            .eq("user_id", user_id) \
-            .limit(50) \
-            .execute()
-        
-        file_origini_in_db = list(set([r.get("file_origine", "?") for r in response_debug.data])) if response_debug.data else []
-        logger.debug(f"🔍 VERIFICA DEBUG: cerco '{nome_file}' tra: {file_origini_in_db}")
-        
         # Query specifica per il file_origine (doppio filtro user_id + file_origine)
         response = supabase_client.table("fatture") \
             .select("id", count="exact") \
@@ -177,7 +166,6 @@ def verifica_integrita_fattura(
             .eq("file_origine", nome_file) \
             .execute()
         
-        logger.debug(f"🔍 VERIFICA QUERY: user_id={user_id}, file_origine='{nome_file}' → count={response.count}, data_len={len(response.data) if response.data else 0}")
         
         # Usa count esatto dalle metadata della query (più affidabile)
         righe_db = response.count if response.count is not None else len(response.data) if response.data else 0

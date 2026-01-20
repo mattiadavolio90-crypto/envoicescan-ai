@@ -209,18 +209,15 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
             locale_dict = _memoria_cache['prodotti_utente'][user_id]
             if descrizione in locale_dict:
                 categoria = locale_dict[descrizione]
-                logger.debug(f"🔵 LOCALE (cache): '{descrizione[:40]}...' → {categoria}")
                 return categoria
         
         # 2️⃣ Check memoria GLOBALE (da cache, 0 query!) se abilitata
         if not _disable_global_memory:
             if descrizione in _memoria_cache['prodotti_master']:
                 categoria = _memoria_cache['prodotti_master'][descrizione]
-                logger.debug(f"🟢 GLOBALE (cache): '{descrizione[:40]}...' → {categoria}")
                 return categoria
         
         # 3️⃣ Fallback
-        logger.debug(f"⚪ NUOVO: '{descrizione[:40]}...' → Da Classificare")
         return "Da Classificare"
         
     except Exception as e:
@@ -607,7 +604,7 @@ def classifica_con_ai(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=1500,
-            temperature=0,
+            temperature=0.1,
             response_format={"type": "json_object"}
         )
         

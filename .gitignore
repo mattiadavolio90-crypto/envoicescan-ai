@@ -17,6 +17,68 @@ memoria_ai_correzioni.json
 *.log
 debug.log*
 
+# ============================================
+# FILE OBSOLETI DA IGNORARE
+# ============================================
+# Script di test
+test_*.py
+*_test.py
+
+# Script di debug
+debug_*.py
+
+# Script di analisi/fix one-off
+analizza_*.py
+fix_*.py
+verifica_*.py
+riclassifica_*.py
+normalizza_*.py
+aggiungi_*.py
+popola_*.py
+check_*.py
+reset_*.py
+cancella_*.py
+leggi_*.py
+add_*.py
+hash_*.py
+create_admin*.py
+
+# Documentazione obsoleta
+*FIX*.md
+*IMPLEMENTAZIONE*.md
+*IMPLEMENTAZIONE*.txt
+*DIAGNOSI*.md
+*AUDIT*.md
+*CLEANUP*.md
+*REFACTORING*.md
+*RECAP*.txt
+*RIEPILOGO*.txt
+*RIEPILOGO*.md
+*VERIFICA*.txt
+*SISTEMA*.md
+*TAB2*.md
+*WORKFLOW*.md
+*DIAGRAMMA*.txt
+*QUICK_START*.txt
+START_HERE.txt
+TEST_FIX*.md
+
+# File SQL di setup/test
+*_schema*.sql
+*_setup*.sql
+*_queries*.sql
+setup_*.sql
+
+# File temporanei Excel
+dettaglio_*.xlsx
+
+# Backup
+*.backup
+*.bak
+
+# Archivi test
+__test_archive__/
+
 # Ambiente virtuale
 .venv/
 venv/

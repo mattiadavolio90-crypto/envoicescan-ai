@@ -873,7 +873,7 @@ def fix_automatico_tutti_problemi(dettagli):
 
 if tab1:
     st.markdown("### 📊 Gestione Clienti e Statistiche")
-    st.caption("Visualizza statistiche clienti e accedi come utente per debug/supporto")
+    st.caption("Visualizza statistiche clienti e accedi come utente impersonando account")
     
     # ============================================================
     # CREA NUOVO CLIENTE (solo admin)
@@ -1136,6 +1136,9 @@ if tab1:
                                 'attivo': row['attivo']
                             }
                             st.session_state.user_data = cliente_data
+                            
+                            # Disabilita flag admin per cliente impersonato
+                            st.session_state.user_is_admin = False
                             
                             # Log
                             logger.info(f"🔀 IMPERSONAZIONE: admin={st.session_state.admin_original_user['email']} → cliente={row['email']}")

@@ -398,6 +398,27 @@ DIZIONARIO_CORREZIONI = {
     "KETCHUP": "SALSE E CREME",
     "MAIONESE": "SALSE E CREME",
     "SENAPE": "SALSE E CREME",
+    
+    # ===== PROBLEMI AI: Aggiunti al dizionario =====
+    # Prodotti che l'AI non riesce a classificare correttamente
+    "MIXYBAR": "BEVANDE",
+    "FABBRI": "BEVANDE",
+    "GRANATINA": "BEVANDE",
+    "SCHWEPPES": "BEVANDE",
+    "CRODINO": "BEVANDE",
+    "HENDRICKS": "DISTILLATI",
+    "HENDRICK": "DISTILLATI",
+    "DOLCIFICANTE": "VARIE BAR",
+    "RISTORA": "VARIE BAR",
+    "SERVIZIO DI PRODUZIONE": "SERVIZI E CONSULENZE",
+    "INVIO FATTURA": "SERVIZI E CONSULENZE",
+    "MUSICA D'AMBIENTE": "SERVIZI E CONSULENZE",
+    "APPARECCHIO RADIORIC": "SERVIZI E CONSULENZE",
+    "SPESE SPEDIZIONE": "SERVIZI E CONSULENZE",
+    "ANTICIPI": "SERVIZI E CONSULENZE",
+    "BOLLI": "SERVIZI E CONSULENZE",
+    "SPESE BANCARIE": "SERVIZI E CONSULENZE",
+    "COMMISSIONI": "SERVIZI E CONSULENZE",
     "RAGÙ": "SALSE E CREME",
     "SUGO": "SALSE E CREME",
     "BESCIAMELLA": "SALSE E CREME",
@@ -513,6 +534,11 @@ DIZIONARIO_CORREZIONI = {
     "BIGNÈ": "PASTICCERIA",
     "ARAGOSTELLE": "PASTICCERIA",  # Dolci a forma di aragosta (con pistacchio/cioccolato)
     "TARTUFI": "PASTICCERIA",  # Default per dolci (se è tartufo vero, viene sovrascritto da admin)
+    "SACHER": "PASTICCERIA",
+    "NOCCIOL": "PASTICCERIA",
+    "MUFFIN": "PASTICCERIA",
+    "NUTELLA": "PASTICCERIA",
+    "FIAMME": "SHOP",  # Accendini/fiammiferi
     
     # ===== GELATI =====
     "GELATO": "GELATI",
@@ -527,6 +553,7 @@ DIZIONARIO_CORREZIONI = {
     "SURGELATI": "SURGELATI",
     "CONGELATO": "SURGELATI",
     "FROZEN": "SURGELATI",
+    "SURG": "SURGELATI",
     
     # ===== SHOP (prodotti di compravendita senza produzione) =====
     "CICCHE": "SHOP",

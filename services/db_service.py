@@ -47,7 +47,6 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
         import streamlit as st
         if hasattr(st, 'session_state') and st.session_state.get('force_empty_until_upload', False):
             logger.info(f"🚫 FORCE EMPTY attivo: ritorno DataFrame vuoto per user_id={user_id}")
-            print(f"🚫 DEBUG: force_empty_until_upload=True, ritorno DataFrame vuoto")
             return pd.DataFrame()
     except Exception as e:
         logger.warning(f"⚠️ Impossibile controllare force_empty flag: {e}")
@@ -62,27 +61,27 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
             return pd.DataFrame()
     
     logger.info(f"📊 LOAD START: user_id={user_id}, force_refresh={force_refresh}")
-    print(f"🔍 DEBUG: INIZIO carica_e_prepara_dataframe(user_id={user_id}, force_refresh={force_refresh})")
     
     dati = []
     
-    # 🔥 CARICA DA SUPABASE CON PAGINAZIONE
+    # Carica da Supabase con paginazione
     if supabase_client is not None:
-        print("🔍 DEBUG: Tentativo caricamento da Supabase...")
         try:
-            # Prima query per ottenere il count totale
-            response_count = supabase_client.table("fatture").select("*", count="exact").eq("user_id", user_id).limit(1).execute()
+            # Prima query per ottenere il count totale (usa head per performance)
+            response_count = supabase_client.table("fatture").select("id", count="exact", head=True).eq("user_id", user_id).execute()
             total_rows = response_count.count if response_count.count else 0
-            print(f"🔍 DEBUG: Supabase total count = {total_rows}")
             logger.info(f"📊 CARICAMENTO: user_id={user_id} ha {total_rows} righe su Supabase")
             
             # Paginazione per caricare tutte le righe
             page_size = 1000
             page = 0
             
+            # 🚀 OTTIMIZZAZIONE: Select solo colonne necessarie (non "*")
+            columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard"
+            
             while True:
                 offset = page * page_size
-                response = supabase_client.table("fatture").select("*").eq("user_id", user_id).range(offset, offset + page_size - 1).execute()
+                response = supabase_client.table("fatture").select(columns).eq("user_id", user_id).range(offset, offset + page_size - 1).execute()
                 
                 if not response.data:
                     break
@@ -101,8 +100,7 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
                         "TotaleRiga": row["totale_riga"],
                         "Categoria": row["categoria"],
                         "CodiceArticolo": row["codice_articolo"],
-                        "PrezzoStandard": row.get("prezzo_standard"),
-                        "Stato": row.get("stato", "")  # 🧠 Carica stato AI
+                        "PrezzoStandard": row.get("prezzo_standard")
                     })
                 
                 # Se questa pagina ha meno di page_size record, abbiamo finito
@@ -110,25 +108,13 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
                     break
                     
                 page += 1
-                print(f"🔍 DEBUG: Caricata pagina {page}, totale righe finora: {len(dati)}")
             
             if len(dati) > 0:
                 logger.info(f"✅ LOAD SUCCESS: {len(dati)} righe caricate da Supabase per user_id={user_id}")
-                print(f"✅ DEBUG: Caricati {len(dati)} record da Supabase")
                 df_result = pd.DataFrame(dati)
-                
-                # 🔧 AGGIUNGI COLONNA STATO per tracciamento AI
-                if 'Stato' not in df_result.columns:
-                    df_result['Stato'] = ''  # Colonna vuota di default
                 
                 # 🔧 NORMALIZZA CATEGORIA: Converti NULL/None/vuoti in NaN per uniformità
                 if 'Categoria' in df_result.columns:
-                    # Log PRIMA della normalizzazione
-                    null_count_before = df_result['Categoria'].isna().sum()
-                    none_count_before = (df_result['Categoria'] == None).sum()
-                    empty_count_before = (df_result['Categoria'] == '').sum()
-                    logger.info(f"🔍 PRE-NORMALIZZAZIONE: NA={null_count_before}, None={none_count_before}, vuoti={empty_count_before}")
-                    
                     df_result['Categoria'] = df_result['Categoria'].replace(
                         to_replace=[None, '', 'None', 'null', 'NULL', ' '], 
                         value=pd.NA
@@ -153,47 +139,46 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
                         if mask.any():
                             df_result.loc[mask, 'Categoria'] = nuovo
                             righe_migrate += mask.sum()
-                            logger.info(f"🔄 MIGRAZIONE AUTO: '{vecchio}' → '{nuovo}' ({mask.sum()} righe)")
                     
                     if righe_migrate > 0:
-                        logger.info(f"✅ MIGRAZIONE COMPLETATA: {righe_migrate} righe aggiornate")
-                    
-                    # Log DOPO la normalizzazione
-                    null_count_after = df_result['Categoria'].isna().sum()
-                    empty_count = (df_result['Categoria'].astype(str).str.strip() == '').sum()
-                    logger.info(f"🔧 POST-NORMALIZZAZIONE: {null_count_after} NULL + {empty_count} vuote")
-                    print(f"🔧 DEBUG: Categorie - {null_count_after} NULL + {empty_count} vuote")
+                        logger.info(f"✅ MIGRAZIONE: {righe_migrate} righe aggiornate")
                     
                     # 🎯 FIX CELLE BIANCHE DEFINITIVO: Riempie NA E vuoti con "Da Classificare"
+                    # Log diagnostico PRIMA della normalizzazione
+                    null_count_before = df_result['Categoria'].isna().sum()
+                    logger.debug(f"🔍 PRE-NORMALIZZAZIONE: {null_count_before} valori NA")
+                    
                     # Step 1: fillna per NULL/pd.NA
                     df_result['Categoria'] = df_result['Categoria'].fillna("Da Classificare")
                     
-                    # Step 2: converti stringhe vuote/None in "Da Classificare"
-                    df_result['Categoria'] = df_result['Categoria'].apply(
-                        lambda x: "Da Classificare" if x is None or str(x).strip() == '' else x
+                    # Step 2: ⭐ FIX SPAZI BIANCHI - Gestisci ANCHE stringhe con spazi multipli
+                    df_result['Categoria'] = df_result['Categoria'].replace(
+                        to_replace=[None, '', 'None', 'null', 'NULL', ' ', '  ', '   ', '    '],
+                        value='Da Classificare'
                     )
+                    
+                    # Step 3: Converti spazi bianchi (anche multipli) in "Da Classificare"
+                    mask_empty = df_result['Categoria'].astype(str).str.strip() == ''
+                    if mask_empty.any():
+                        df_result.loc[mask_empty, 'Categoria'] = 'Da Classificare'
+                        logger.debug(f"🔧 Convertiti {mask_empty.sum()} valori con solo spazi in Da Classificare")
                     
                     # Verifica finale
                     da_class_count = (df_result['Categoria'] == 'Da Classificare').sum()
                     logger.info(f"✅ CELLE BIANCHE RISOLTE: {da_class_count} celle mostrano 'Da Classificare'")
-                    print(f"✅ DEBUG: {da_class_count} celle con 'Da Classificare' (pronte per AI)")
                 
-                print(f"✅ DEBUG: DataFrame shape={df_result.shape}, files={df_result['FileOrigine'].nunique() if not df_result.empty else 0}")
                 return df_result
             else:
                 logger.info(f"ℹ️ LOAD EMPTY: Nessuna fattura per user_id={user_id}")
-                print("ℹ️ DEBUG: Supabase vuoto (nessuna fattura per questo utente)")
                 return pd.DataFrame()
                 
         except Exception as e:
             logger.error(f"❌ LOAD ERROR: Errore Supabase per user_id={user_id}: {e}")
-            print(f"❌ DEBUG: Errore Supabase: {e}")
             logger.exception("Errore query Supabase")
             return pd.DataFrame()
     
     # Supabase non configurato (impossibile in produzione)
     logger.critical("❌ CRITICAL: Supabase client non inizializzato!")
-    print("❌ DEBUG: Supabase non configurato")
     return pd.DataFrame()
 
 

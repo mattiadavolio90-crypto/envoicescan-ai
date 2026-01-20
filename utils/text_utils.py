@@ -157,11 +157,13 @@ def test_normalizzazione() -> None:
         "COCA COLA LATTINA"
     ]
     
-    print("\n=== TEST NORMALIZZAZIONE ===")
-    for test in test_cases:
-        normalized = normalizza_descrizione(test)
-        print(f"{test:<40} → {normalized}")
-    print("=" * 70)
+    # Test normalizzazione (solo se eseguito come script)
+    if __name__ == "__main__":
+        print("\n=== TEST NORMALIZZAZIONE ===")
+        for test in test_cases:
+            normalized = normalizza_descrizione(test)
+            print(f"{test:<40} → {normalized}")
+        print("=" * 70)
 
 
 # ============================================================
@@ -241,7 +243,6 @@ def estrai_fornitore_xml(fattura: dict) -> str:
         denominazione = safe_get(anagrafica, ['Denominazione'], default=None, keep_list=False)
         if denominazione and isinstance(denominazione, str) and denominazione.strip():
             fornitore = normalizza_stringa(denominazione)
-            logger.debug(f"🏢 Fornitore estratto da Denominazione: {fornitore}")
             return fornitore
         
         # Priorità 2: Nome + Cognome (persona fisica)
@@ -253,15 +254,12 @@ def estrai_fornitore_xml(fattura: dict) -> str:
         
         if nome_str and cognome_str:
             fornitore = f"{nome_str} {cognome_str}".upper()
-            logger.debug(f"👤 Fornitore estratto da Nome+Cognome: {fornitore}")
             return fornitore
         elif cognome_str:  # Solo cognome
             fornitore = cognome_str.upper()
-            logger.debug(f"👤 Fornitore estratto da Cognome: {fornitore}")
             return fornitore
         elif nome_str:  # Solo nome
             fornitore = nome_str.upper()
-            logger.debug(f"👤 Fornitore estratto da Nome: {fornitore}")
             return fornitore
         
         # Fallback finale

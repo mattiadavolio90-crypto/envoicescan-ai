@@ -143,8 +143,6 @@ if st.secrets.get("environment", {}).get("mode", "production") != "production":
     for module_name in services_modules:
         if module_name in sys.modules:
             importlib.reload(sys.modules[module_name])
-            if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-                st.write(f"🔄 Reloaded: {module_name}")  # Debug, rimuovere dopo test
 
 
 # ============================================================
@@ -516,7 +514,6 @@ try:
             logger.exception('Errore pulizia cookie esistenti')
     
     # NON ripristinare MAI da cookie - sessione persa al refresh
-    logger.debug("Cookie disabilitati - sessione solo in memory")
 except Exception:
     # Non fatale: se qualcosa va storto non blocchiamo l'app
     logger.exception('Errore controllo cookie sessione')
@@ -581,6 +578,27 @@ def verifica_codice_reset(email, code, new_password):
     except Exception as e:
         logger.exception("Errore reset password")
         return None, str(e)
+
+
+# ============================================================
+# LISTA ADMIN (deve coincidere con quella in pages/admin.py)
+# ============================================================
+ADMIN_EMAILS = ["mattiadavolio90@gmail.com"]
+
+
+# ============================================================
+# HELPER FUNCTIONS
+# ============================================================
+
+def is_admin_or_impersonating() -> bool:
+    """
+    Helper per verificare se l'utente corrente è admin o in impersonificazione.
+    Riduce codice duplicato in tutta l'app.
+    
+    Returns:
+        bool: True se admin o impersonating, False altrimenti
+    """
+    return st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False)
 
 
 def mostra_pagina_login():
@@ -691,7 +709,13 @@ def mostra_pagina_login():
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
                             
-                            logger.info(f"✅ Login effettuato per: {user.get('email')}")
+                            # Verifica se è admin e imposta flag
+                            if user.get('email') in ADMIN_EMAILS:
+                                st.session_state.user_is_admin = True
+                                logger.info(f"✅ Login ADMIN: {user.get('email')}")
+                            else:
+                                st.session_state.user_is_admin = False
+                                logger.info(f"✅ Login cliente: {user.get('email')}")
                             
                             st.success("✅ Accesso effettuato!")
                             time.sleep(1)
@@ -763,10 +787,6 @@ if not st.session_state.get('logged_in', False):
 # Se arrivi qui, sei loggato! Vai DIRETTO ALL'APP
 user = st.session_state.user_data
 
-# DEBUG: Log per verificare contenuto user_data
-logger.info(f"🔍 USER_DATA: {user}")
-logger.info(f"🔍 USER EMAIL: {user.get('email') if user else 'USER IS NONE'}")
-
 # ULTIMA VERIFICA: se user_data è None, FORZA logout
 if not user or not user.get('email'):
     logger.critical("⛔ user_data invalido - forzando logout")
@@ -808,6 +828,9 @@ if st.session_state.get('impersonating', False):
                 del st.session_state.admin_original_user
                 st.session_state.impersonating = False
                 
+                # Ripristina flag admin
+                st.session_state.user_is_admin = True
+                
                 # Log uscita impersonazione
                 logger.info(f"FINE IMPERSONAZIONE: Ritorno a admin {st.session_state.user_data.get('email')}")
                 
@@ -824,10 +847,6 @@ if st.session_state.get('impersonating', False):
 # ============================================
 # HEADER CON LOGOUT, LINK ADMIN E CAMBIO PASSWORD
 # ============================================
-
-
-# Lista admin (deve coincidere con quella in pages/admin.py)
-ADMIN_EMAILS = ["mattiadavolio90@gmail.com"]
 
 
 # Struttura colonne: se admin mostra 4 colonne, altrimenti 3
@@ -1019,8 +1038,7 @@ def elimina_tutte_fatture(user_id):
         num_righe = count_response.count if count_response.count else 0
         num_fatture = len(set([r['file_origine'] for r in count_response.data])) if count_response.data else 0
         
-        print(f"🔍 PRIMA DELETE: user_id={user_id} ha {num_fatture} fatture ({num_righe} righe)")
-        logger.info(f"🔍 PRIMA DELETE: user_id={user_id} ha {num_fatture} fatture ({num_righe} righe)")
+        logger.info(f"DELETE: user_id={user_id}, {num_fatture} fatture ({num_righe} righe)")
         
         if num_righe == 0:
             return {"success": False, "error": "no_data", "righe_eliminate": 0, "fatture_eliminate": 0}
@@ -1322,7 +1340,7 @@ def mostra_statistiche(df_completo):
     """Mostra grafici, filtri e tabella dati"""
     
     # ===== 🔍 DEBUG CATEGORIZZAZIONE (SOLO ADMIN/IMPERSONIFICATO) =====
-    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+    if is_admin_or_impersonating():
         with st.expander("🔍 DEBUG: Verifica Categorie", expanded=False):
             st.markdown("**Statistiche DataFrame Completo:**")
             col1, col2, col3 = st.columns(3)
@@ -1424,15 +1442,27 @@ def mostra_statistiche(df_completo):
     # CATEGORIZZAZIONE AI
     # ============================================
     
-    # Conta righe da classificare PRIMA del bottone
-    # Include: NULL, 'Da Classificare', e stringhe vuote/whitespace
+    # Conta righe da classificare con QUERY DIRETTA al database (non df_completo che può essere filtrato)
+    # user_id già recuperato sopra
+    
+    # Query 1: Conta righe con 'Da Classificare'
+    count_da_class = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).eq("categoria", "Da Classificare").execute()
+    righe_da_class = count_da_class.count if count_da_class.count else 0
+    
+    # Query 2: Conta righe con categoria NULL
+    count_null = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).is_("categoria", "null").execute()
+    righe_null = count_null.count if count_null.count else 0
+    
+    # TOTALE righe senza categoria valida nel database
+    righe_da_classificare = righe_da_class + righe_null
+    
+    # Calcola maschera locale per sapere quali descrizioni processare (dal df_completo locale)
     maschera_ai = (
         df_completo['Categoria'].isna()
         | (df_completo['Categoria'] == 'Da Classificare')
         | (df_completo['Categoria'].astype(str).str.strip() == '')
         | (df_completo['Categoria'] == '')
     )
-    righe_da_classificare = maschera_ai.sum()
     
     # Debug: cerca specificamente COPPETTA SANGO
     if 'COPPETTA' in ' '.join(df_completo['Descrizione'].astype(str).str.upper().tolist()):
@@ -1444,7 +1474,7 @@ def mostra_statistiche(df_completo):
                 in_maschera = maschera_ai.loc[idx] if idx in maschera_ai.index else False
                 logger.info(f"   - '{row['Descrizione']}' cat='{cat}' in_maschera={in_maschera}")
         else:
-            logger.warning(f"⚠️ DEBUG: COPPETTA non trovata in df_completo")
+            pass
     
     # ============================================================
     # LAYOUT: BOTTONE + TESTO INFORMATIVO
@@ -1460,6 +1490,8 @@ def mostra_statistiche(df_completo):
             key="btn_ai_categorizza",
             disabled=(righe_da_classificare == 0)
         ):
+            # Sopprimi i messaggi dell'uploader nel rerun successivo
+            st.session_state.suppress_upload_messages_once = True
             # ============================================================
             # VERIFICA FINALE (sicurezza)
             # ============================================================
@@ -1471,15 +1503,12 @@ def mostra_statistiche(df_completo):
                 # ============================================================
                 descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
                 fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
-
-                # Debug: log descrizioni da classificare
-                logger.info(f"🔍 Descrizioni da classificare: {descrizioni_da_classificare[:10]}")
                 
                 if descrizioni_da_classificare:
-                    # 🧠 Placeholder UNICO per circular progress animato
+                    # 🧠 Placeholder per banner orizzontale
                     progress_placeholder = st.empty()
                     
-                    # CSS per animazione pulsazione cervelletto - CENTRATO
+                    # CSS per banner orizzontale con pulsazione cervelletto
                     st.markdown("""
                     <style>
                     @keyframes pulse_brain {
@@ -1488,65 +1517,79 @@ def mostra_statistiche(df_completo):
                         100% { transform: scale(1); opacity: 1; }
                     }
                     
-                    .brain-pulse {
-                        font-size: 100px;
-                        animation: pulse_brain 1.5s ease-in-out infinite;
-                        text-align: center;
-                        margin: 30px 0 10px 0;
+                    .ai-banner {
                         display: flex;
-                        justify-content: center;
                         align-items: center;
-                        height: 120px;
+                        justify-content: center;
+                        gap: 25px;
+                        padding: 20px;
+                        background: linear-gradient(135deg, #FFE5F4 0%, #FFF0F8 100%);
+                        border: 2px solid #FFB6E1;
+                        border-radius: 12px;
+                        box-shadow: 0 4px 8px rgba(255, 182, 225, 0.3);
                     }
                     
-                    .progress-circle {
-                        text-align: center;
+                    .brain-pulse-banner {
+                        font-size: 60px;
+                        animation: pulse_brain 1.5s ease-in-out infinite;
+                        line-height: 1;
+                    }
+                    
+                    .progress-percentage {
                         font-family: monospace;
-                        font-size: 28px;
+                        font-size: 32px;
                         font-weight: bold;
                         color: #FF69B4;
-                        margin: 15px 0;
+                        min-width: 80px;
                     }
                     
-                    .progress-text {
-                        text-align: center;
+                    .progress-status {
                         color: #555;
-                        font-size: 16px;
-                        margin: 15px 0 30px 0;
+                        font-size: 18px;
+                        font-weight: 500;
+                    }
                         font-weight: 500;
                     }
                     </style>
                     """, unsafe_allow_html=True)
                     
-                    mappa_categorie = {}
-                    chunk_size = 50
-                    prodotti_elaborati = 0
+                    # 📖 STEP 1: Prima prova con DIZIONARIO (più veloce, più preciso)
+                    from services.ai_service import applica_correzioni_dizionario
                     
-                    for i in range(0, len(descrizioni_da_classificare), chunk_size):
-                        chunk = descrizioni_da_classificare[i:i+chunk_size]
-                        cats = classifica_con_ai(chunk, fornitori_da_classificare)
-                        for desc, cat in zip(chunk, cats):
-                            mappa_categorie[desc] = cat
-                            aggiorna_memoria_ai(desc, cat)
-                            prodotti_elaborati += 1
+                    mappa_categorie = {}  # desc -> categoria
+                    descrizioni_per_ai = []  # Solo quelle che dizionario non risolve
+                    
+                    for desc in descrizioni_da_classificare:
+                        cat_dizionario = applica_correzioni_dizionario(desc, "Da Classificare")
+                        if cat_dizionario and cat_dizionario != 'Da Classificare':
+                            mappa_categorie[desc] = cat_dizionario
+                            logger.info(f"📖 DIZIONARIO: '{desc[:40]}' → {cat_dizionario}")
+                        else:
+                            descrizioni_per_ai.append(desc)
+                    
+                    # 🧠 STEP 2: Invia all'AI solo quelli che dizionario non ha risolto
+                    chunk_size = 50
+                    prodotti_elaborati = len(mappa_categorie)  # Già fatto dal dizionario
+                    totale_da_classificare = len(descrizioni_da_classificare)
+                    
+                    if descrizioni_per_ai:
+                        for i in range(0, len(descrizioni_per_ai), chunk_size):
+                            chunk = descrizioni_per_ai[i:i+chunk_size]
+                            cats = classifica_con_ai(chunk, fornitori_da_classificare)
+                            for desc, cat in zip(chunk, cats):
+                                mappa_categorie[desc] = cat
+                                aggiorna_memoria_ai(desc, cat)
+                                prodotti_elaborati += 1
                             
-                            # 🧠 Aggiorna circular progress CENTRATO in tempo reale (REPLACE, non append)
-                            percentuale = (prodotti_elaborati / len(descrizioni_da_classificare)) * 100
-                            progress_placeholder.markdown(f"""
-                            <div style="text-align: center; padding: 40px 20px; border: 2px solid #FFB6E1; border-radius: 10px; background-color: #fff5fb;">
-                                <div class="brain-pulse">🧠</div>
-                                <div class="progress-circle">{int(percentuale)}%</div>
-                                <div class="progress-text">Categorizzando: {prodotti_elaborati} di {len(descrizioni_da_classificare)}</div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            # 🧠 MARCA COME CLASSIFICATO DA AI
-                            try:
-                                supabase.table('fatture').update(
-                                    {'stato': '🧠 AI'}
-                                ).eq('user_id', user_id).eq('descrizione', desc).execute()
-                            except Exception as stato_err:
-                                logger.warning(f"Errore aggiornamento stato AI: {stato_err}")
+                                # 🧠 Aggiorna banner orizzontale in tempo reale (REPLACE)
+                                percentuale = (prodotti_elaborati / totale_da_classificare) * 100
+                                progress_placeholder.markdown(f"""
+                                <div class="ai-banner">
+                                    <div class="brain-pulse-banner">🧠</div>
+                                    <div class="progress-percentage">{int(percentuale)}%</div>
+                                    <div class="progress-status">Categorizzando: {prodotti_elaborati} di {totale_da_classificare}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
                             
                             # Salva anche in memoria GLOBALE su Supabase
                             try:
@@ -1573,51 +1616,120 @@ def mostra_statistiche(df_completo):
                         
                         righe_aggiornate_totali = 0
                         descrizioni_non_trovate = []
+                        descrizioni_aggiornate = []  # Per icone AI: solo quelle realmente aggiornate
+                        
+                        # Import normalizzazione
+                        from utils.text_utils import normalizza_stringa
+                        
+                        logger.info(f"🔄 INIZIO UPDATE: {len(mappa_categorie)} descrizioni da aggiornare")
+                        
+                        # DEBUG: Log prime 5 categorie dall'AI per verificare che non siano vuote
+                        print("\n" + "="*80)
+                        print("🧠 CATEGORIE RESTITUITE DALL'AI (prime 10)")
+                        print("="*80)
+                        for i, (desc, cat) in enumerate(list(mappa_categorie.items())[:10]):
+                            cat_display = f"'{cat}'" if cat else "VUOTA/NULL"
+                            print(f"   [{i+1}] '{desc[:40]}' → {cat_display}")
+                        print("="*80 + "\n")
                         
                         for desc, cat in mappa_categorie.items():
-                            # Debug specifico per COPPETTA SANGO
-                            if "COPPETTA" in desc.upper() or "SANGO" in desc.upper():
-                                logger.info(f"🔍 DEBUG COPPETTA: desc='{desc}' cat='{cat}'")
+                            # Normalizza descrizione per matching consistente
+                            desc_normalized = normalizza_stringa(desc)
                             
-                            # TENTATIVO 1: Match esatto
+                            logger.info(f"🔍 Tentando update: '{desc[:50]}' → {cat}")
+                            
+                            # VALIDAZIONE: Assicurati che cat non sia vuota o None (MA ACCETTA "Da Classificare")
+                            if not cat or cat.strip() == '':
+                                logger.warning(f"⚠️ Categoria vuota/NULL per '{desc[:40]}', skip update")
+                                continue
+                            
+                            # TENTATIVO 1: Match con descrizione normalizzata
                             result = supabase.table("fatture").update(
                                 {"categoria": cat}
-                            ).eq("user_id", user_id).eq("descrizione", desc).execute()
+                            ).eq("user_id", user_id).eq("descrizione", desc_normalized).execute()
                             
                             num_aggiornate = len(result.data) if result.data else 0
+                            if num_aggiornate > 0:
+                                logger.info(f"✅ Match normalizzato: '{desc[:40]}...' ({num_aggiornate} righe)")
                             
-                            # TENTATIVO 2: Se non ha trovato nulla, prova con trim degli spazi
+                            # ⭐ RETRY se UPDATE non ha modificato nulla (possibile timeout/race condition)
                             if num_aggiornate == 0:
-                                desc_trimmed = desc.strip()
+                                logger.warning(f"⚠️ UPDATE 0 righe per '{desc[:50]}...', retry...")
+                                time.sleep(0.5)
+                                result = supabase.table("fatture").update(
+                                    {"categoria": cat}
+                                ).eq("user_id", user_id).eq("descrizione", desc_normalized).execute()
+                                num_aggiornate = len(result.data) if result.data else 0
+                                if num_aggiornate > 0:
+                                    logger.info(f"✅ Retry riuscito: {num_aggiornate} righe aggiornate")
+                            
+                            # TENTATIVO 2: Se non trovato, prova con descrizione originale
+                            if num_aggiornate == 0:
                                 result2 = supabase.table("fatture").update(
                                     {"categoria": cat}
-                                ).eq("user_id", user_id).eq("descrizione", desc_trimmed).execute()
+                                ).eq("user_id", user_id).eq("descrizione", desc).execute()
                                 
                                 num_aggiornate = len(result2.data) if result2.data else 0
                                 
                                 if num_aggiornate > 0:
-                                    logger.info(f"✅ Match trovato con trim: '{desc_trimmed[:40]}...'")
+                                    logger.info(f"✅ Match con desc originale: '{desc[:40]}...' ({num_aggiornate} righe)")
                             
-                            # TENTATIVO 3: Cerca descrizioni simili (con ILIKE)
+                            # TENTATIVO 3: Prova con trim
                             if num_aggiornate == 0:
-                                # Cerca con pattern ILIKE per gestire variazioni
-                                result3 = supabase.table("fatture").update(
-                                    {"categoria": cat}
-                                ).eq("user_id", user_id).ilike("descrizione", f"%{desc.strip()}%").execute()
-                                
-                                num_aggiornate_ilike = len(result3.data) if result3.data else 0
-                                
-                                if num_aggiornate_ilike > 0:
-                                    logger.info(f"✅ Match trovato con ILIKE: '{desc[:40]}...' → {num_aggiornate_ilike} righe")
-                                    num_aggiornate = num_aggiornate_ilike
-                                else:
-                                    descrizioni_non_trovate.append(desc)
-                                    logger.warning(f"⚠️ Nessun match trovato per: '{desc}'")
+                                desc_trimmed = desc.strip()
+                                if desc_trimmed != desc:
+                                    result3 = supabase.table("fatture").update(
+                                        {"categoria": cat}
+                                    ).eq("user_id", user_id).eq("descrizione", desc_trimmed).execute()
+                                    
+                                    num_aggiornate = len(result3.data) if result3.data else 0
+                                    
+                                    if num_aggiornate > 0:
+                                        logger.info(f"✅ Match con trim: '{desc_trimmed[:40]}...' ({num_aggiornate} righe)")
+                            
+                            # TENTATIVO 4: Match case-insensitive parziale (ILIKE) controllato
+                            if num_aggiornate == 0 and len(desc.strip()) >= 3:
+                                try:
+                                    # Prova prima con desc originale via ILIKE esatto
+                                    result4 = supabase.table("fatture").update(
+                                        {"categoria": cat}
+                                    ).eq("user_id", user_id).ilike("descrizione", desc.strip()).execute()
+                                    num_aggiornate = len(result4.data) if result4.data else 0
+                                    if num_aggiornate > 0:
+                                        logger.info(f"✅ Match ILIKE esatto: '{desc[:40]}...' ({num_aggiornate} righe)")
+                                    
+                                    # Se ancora zero, prova con pattern parziale
+                                    if num_aggiornate == 0 and len(desc.strip()) >= 5:
+                                        result5 = supabase.table("fatture").update(
+                                            {"categoria": cat}
+                                        ).eq("user_id", user_id).ilike("descrizione", f"%{desc.strip()[:30]}%").execute()
+                                        num_aggiornate = len(result5.data) if result5.data else 0
+                                        if num_aggiornate > 0:
+                                            logger.info(f"✅ Match ILIKE parziale: '{desc[:40]}...' ({num_aggiornate} righe)")
+                                except Exception as ilike_err:
+                                    logger.warning(f"Errore ILIKE update '{desc[:30]}...': {ilike_err}")
+                            
+                            # Se ancora non trovato, logga DETTAGLIATO
+                            if num_aggiornate == 0:
+                                descrizioni_non_trovate.append(desc)
+                                logger.error(f"❌ NESSUN MATCH per: '{desc}' (cat: {cat})")
+                                # Query diagnostica: cerca descrizioni simili
+                                try:
+                                    check = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id).ilike("descrizione", f"%{desc[:20]}%").limit(10).execute()
+                                    if check.data:
+                                        logger.error(f"   Descrizioni simili trovate nel DB:")
+                                        for row in check.data[:5]:
+                                            logger.error(f"     - '{row['descrizione']}' (cat: {row.get('categoria', 'N/A')})")
+                                    else:
+                                        logger.error(f"   Nessuna descrizione simile trovata per '{desc[:30]}...'")
+                                except Exception as diag_err:
+                                    logger.error(f"   Errore query diagnostica: {diag_err}")
                             
                             righe_aggiornate_totali += num_aggiornate
                             
                             if num_aggiornate > 0:
-                                logger.info(f"🔄 '{desc[:40]}...' → {cat} ({num_aggiornate} righe)")
+                                descrizioni_aggiornate.append(desc)
+                                logger.info(f"✅ AGGIORNATO '{desc[:40]}...' → {cat} ({num_aggiornate} righe)")
                         
                         # 🔧 FALLBACK: Applica dizionario ai prodotti rimasti "Da Classificare"
                         try:
@@ -1634,46 +1746,79 @@ def mostra_statistiche(df_completo):
                                     
                                     for desc in ancora_da_class:
                                         # Tenta match con dizionario
-                                        cat_dizionario = applica_correzioni_dizionario(desc)
+                                        cat_dizionario = applica_correzioni_dizionario(desc, "Da Classificare")
                                         
                                         if cat_dizionario and cat_dizionario != 'Da Classificare':
                                             # Aggiorna con categoria da dizionario
                                             try:
                                                 righe_updated = supabase.table('fatture').update(
-                                                    {'categoria': cat_dizionario, 'stato': '📖 Dizionario'}
+                                                    {'categoria': cat_dizionario}
                                                 ).eq('user_id', user_id).ilike('descrizione', f'%{desc.strip()}%').execute()
                                                 righe_aggiornate_totali += len(righe_updated.data) if righe_updated.data else 0
                                                 logger.info(f"✅ Fallback dizionario: '{desc[:40]}...' → {cat_dizionario}")
                                             except Exception as fb_err:
                                                 logger.warning(f"Errore fallback: {fb_err}")
                                         else:
-                                            # ULTIMO FALLBACK: Assegna a "ALTRO" per garantire categorizzazione 100%
-                                            try:
-                                                righe_updated_fallback = supabase.table('fatture').update(
-                                                    {'categoria': 'ALTRO', 'stato': '⚠️ Fallback'}
-                                                ).eq('user_id', user_id).ilike('descrizione', f'%{desc.strip()}%').execute()
-                                                righe_aggiornate_totali += len(righe_updated_fallback.data) if righe_updated_fallback.data else 0
-                                                logger.warning(f"⚠️ Fallback ALTRO: '{desc[:40]}...' assegnato a ALTRO")
-                                            except Exception as fb_fallback_err:
-                                                logger.error(f"Errore fallback ALTRO: {fb_fallback_err}")
+                                            # NON categorizzare - rimane "Da Classificare" per intervento manuale
+                                            logger.warning(f"⚠️ '{desc[:40]}...' rimane Da Classificare - richiede intervento manuale")
                         except Exception as fb_err:
                             logger.warning(f"Errore fallback categorizzazione: {fb_err}")
                         
                         # ✅ Pulisci placeholder progress
                         progress_placeholder.empty()
                         
-                        # 📊 Messaggio SEMPLICE - solo conteggio finale
-                        st.success(f"✅ {righe_aggiornate_totali} prodotti categorizzati")
-                        logger.info(f"🎉 CATEGORIZZAZIONE COMPLETATA: {righe_aggiornate_totali} righe totali")
+                        # 🧠 SALVA in session state le descrizioni categorizzate (AI + dizionario)
+                        # Usa mappa_categorie che contiene TUTTE le descrizioni categorizzate
+                        # Salva SOLO le descrizioni che hanno comportato un update
+                        descrizioni_categorizzate = descrizioni_aggiornate if descrizioni_aggiornate else list(mappa_categorie.keys())
+                        st.session_state.righe_ai_appena_categorizzate = descrizioni_categorizzate
+                        
+                        # DEBUG: Log per admin
+                        logger.info(f"🧠 Salvate {len(descrizioni_categorizzate)} descrizioni in session_state")
+                        logger.info(f"📊 RISULTATO FINALE: {righe_aggiornate_totali} righe aggiornate, {len(descrizioni_non_trovate)} non trovate")
+                        
+                        # 📊 Messaggio SEMPLICE - conteggio righe aggiornate vs descrizioni processate
+                        num_descrizioni = len(mappa_categorie)
+                        
+                        if righe_aggiornate_totali > 0:
+                            st.success(f"✅ {righe_aggiornate_totali} righe aggiornate ({num_descrizioni} prodotti distinti)")
+                        else:
+                            st.error(f"❌ Nessuna riga aggiornata! Controlla i log del terminale per i dettagli.")
+                        
+                        # Avviso se ci sono descrizioni non trovate
+                        if descrizioni_non_trovate:
+                            st.warning(f"⚠️ {len(descrizioni_non_trovate)} descrizioni non trovate nel database")
+                        
+                        logger.info(f"🎉 CATEGORIZZAZIONE: {righe_aggiornate_totali} righe, {num_descrizioni} descrizioni")
+                        
+                        # 🔍 VERIFICA POST-UPDATE: Conferma che DB è stato aggiornato correttamente
+                        try:
+                            verifica_response = supabase.table('fatture').select('categoria').eq('user_id', user_id).execute()
+                            if verifica_response.data:
+                                null_count = sum(1 for row in verifica_response.data if not row.get('categoria') or row['categoria'] == 'Da Classificare')
+                                logger.info(f"🔍 POST-UPDATE VERIFICA: {null_count} righe ancora NULL/Da Classificare su {len(verifica_response.data)} totali")
+                                
+                                if null_count > 0:
+                                    logger.warning(f"⚠️ ATTENZIONE: {null_count} righe non categorizzate dopo AI")
+                                else:
+                                    logger.info(f"✅ VERIFICA OK: Tutte le righe categorizzate correttamente nel DB")
+                        except Exception as e:
+                            logger.error(f"❌ Errore verifica post-update: {e}")
                         
                         # Pulisci cache PRIMA del delay per garantire ricaricamento
                         st.cache_data.clear()
                         invalida_cache_memoria()
                         
-                        # Delay per garantire propagazione modifiche su Supabase
-                        time.sleep(2)
+                        # ⭐ FIX CRITICO: Imposta flag per forzare reload completo al prossimo caricamento
+                        st.session_state.force_reload = True
+                        st.session_state.force_empty_until_upload = False  # Assicura che i dati vengano caricati
+                        logger.info("🔄 Flag force_reload impostato su True")
                         
-                        # Rerun per ricaricare dati freschi
+                        # ⭐ FIX RACE CONDITION: Delay aumentato per garantire propagazione modifiche su Supabase CDN globale
+                        with st.spinner("⏳ Sincronizzazione database in corso..."):
+                            time.sleep(4)
+                        
+                        # Rerun per ricaricare dati freschi dal database
                         st.rerun()
                         
                     except Exception as e:
@@ -1705,6 +1850,7 @@ def mostra_statistiche(df_completo):
             </div>
             """, unsafe_allow_html=True)
         else:
+            # Mostra SOLO i prodotti distinti (quello che vede nella tabella)
             st.markdown(f"""
             <div style="
                 background-color: #fff3cd;
@@ -1716,7 +1862,7 @@ def mostra_statistiche(df_completo):
                 align-items: center;
                 margin-top: 0px;
             ">
-                <span style="color: #856404; font-weight: 600; font-size: 14px;">⚠️ CI SONO {righe_da_classificare} prodotti da categorizzare</span>
+                <span style="color: #856404; font-weight: 600; font-size: 14px;">⚠️ CI SONO {righe_da_classificare} righe da categorizzare</span>
             </div>
             """, unsafe_allow_html=True)
     
@@ -1998,6 +2144,9 @@ def mostra_statistiche(df_completo):
             if st.session_state.sezione_attiva != "dettaglio":
                 st.session_state.sezione_attiva = "dettaglio"
                 st.session_state.is_loading = True
+                # Cambio schermata: pulisci riepilogo upload persistente
+                if 'last_upload_summary' in st.session_state:
+                    del st.session_state.last_upload_summary
                 st.rerun()
     
     with col2:
@@ -2006,6 +2155,8 @@ def mostra_statistiche(df_completo):
             if st.session_state.sezione_attiva != "alert":
                 st.session_state.sezione_attiva = "alert"
                 st.session_state.is_loading = True
+                if 'last_upload_summary' in st.session_state:
+                    del st.session_state.last_upload_summary
                 st.rerun()
     
     with col3:
@@ -2014,6 +2165,8 @@ def mostra_statistiche(df_completo):
             if st.session_state.sezione_attiva != "categorie":
                 st.session_state.sezione_attiva = "categorie"
                 st.session_state.is_loading = True
+                if 'last_upload_summary' in st.session_state:
+                    del st.session_state.last_upload_summary
                 st.rerun()
     
     with col4:
@@ -2022,6 +2175,8 @@ def mostra_statistiche(df_completo):
             if st.session_state.sezione_attiva != "fornitori":
                 st.session_state.sezione_attiva = "fornitori"
                 st.session_state.is_loading = True
+                if 'last_upload_summary' in st.session_state:
+                    del st.session_state.last_upload_summary
                 st.rerun()
     
     with col5:
@@ -2030,6 +2185,8 @@ def mostra_statistiche(df_completo):
             if st.session_state.sezione_attiva != "spese":
                 st.session_state.sezione_attiva = "spese"
                 st.session_state.is_loading = True
+                if 'last_upload_summary' in st.session_state:
+                    del st.session_state.last_upload_summary
                 st.rerun()
     
     # CSS per bottoni colorati personalizzati
@@ -2147,7 +2304,8 @@ def mostra_statistiche(df_completo):
         
         df_editor = df_base[cols_base].copy()
         
-        # 🔧 CONVERTI pd.NA/vuoti in "Da Classificare" (placeholder visibile per celle non categorizzate)
+        # 🔧 CONVERTI pd.NA/vuoti in "Da Classificare" PRIMA di aggiungere icona AI
+        # (Così la condizione per l'icona può trovare categorie valide)
         # SelectboxColumn ora include "Da Classificare" come opzione valida
         # L'AI li categorizza correttamente quando si usa "AVVIA AI PER CATEGORIZZARE"
         if 'Categoria' in df_editor.columns:
@@ -2164,7 +2322,28 @@ def mostra_statistiche(df_completo):
             
             if vuote_prima > 0 or da_class_dopo > 0:
                 logger.info(f"📋 CATEGORIA: {vuote_prima} vuote → {da_class_dopo} 'Da Classificare'")
-                print(f"📋 DEBUG CATEGORIA: {vuote_prima} vuote → {da_class_dopo} 'Da Classificare'")
+        
+        # 🧠 AGGIUNGI ICONA AI alle righe appena categorizzate (solo sessione corrente)
+        # TEMPORANEO: Icone AI 🧠 disabilitate - causavano mismatch dropdown
+        # PROBLEMA: Aggiungere emoji trasforma "NO FOOD" in "NO FOOD 🧠"
+        # Il dropdown ha opzioni ["NO FOOD", "PESCE", ...] senza emoji
+        # Streamlit bug: se valore non è nelle options → cella bianca/vuota
+        # LOG EVIDENZA: "⚠️ Categoria 'NO FOOD 🧠' non nelle opzioni! → 'Da Classificare'"
+        # RISULTATO: 26/26 celle bianche dopo categorizzazione AI
+        #
+        # # ORA che le celle vuote sono state convertite in "Da Classificare", possiamo aggiungere l'icona
+        # righe_ai = st.session_state.get('righe_ai_appena_categorizzate', [])
+        # 
+        # if righe_ai and 'Categoria' in df_editor.columns and 'Descrizione' in df_editor.columns:
+        #     # Converti lista in set per lookup O(1)
+        #     righe_ai_set = set(righe_ai)
+        #     for idx, row in df_editor.iterrows():
+        #         desc = str(row['Descrizione']).strip()
+        #         cat = str(row['Categoria']).strip()
+        #         # Aggiungi icona solo se: descrizione è in righe_ai E categoria è valida (non vuota e non "Da Classificare")
+        #         if desc in righe_ai_set and cat and cat != 'Da Classificare':
+        #             df_editor.at[idx, 'Categoria'] = f"{cat} 🧠"
+        #             logger.debug(f"🧠 Icona aggiunta a: {desc[:30]}... → {cat} 🧠")
         
         # Inizializza colonna prezzo_standard se non esiste
         if 'PrezzoStandard' not in df_editor.columns:
@@ -2213,98 +2392,23 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
 ✏️ Se il calcolo non è disponibile, puoi modificarlo manualmente nella colonna Listino.
         """)
 
-
         num_righe = len(df_editor)
         
         # ============================================================
-        # PAGINAZIONE AUTOMATICA - Supporto per 100k+ righe
+        # NESSUNA PAGINAZIONE - Mostra tutte le righe
         # ============================================================
-        # Inizializza session state per paginazione
-        if 'pagina_dettaglio_articoli' not in st.session_state:
-            st.session_state.pagina_dettaglio_articoli = 0
-        if 'righe_per_pagina_dettaglio' not in st.session_state:
-            st.session_state.righe_per_pagina_dettaglio = 1000  # Default 1000 righe per pagina
+        df_editor_paginato = df_editor.copy()
         
-        # Calcola paginazione
-        righe_per_pagina = st.session_state.righe_per_pagina_dettaglio
-        pagina_corrente = st.session_state.pagina_dettaglio_articoli
-        num_pagine_totali = (num_righe + righe_per_pagina - 1) // righe_per_pagina  # Ceiling division
-        
-        # Valida pagina (caso: utente ritorna con meno dati)
-        if pagina_corrente >= num_pagine_totali and num_pagine_totali > 0:
-            pagina_corrente = num_pagine_totali - 1
-            st.session_state.pagina_dettaglio_articoli = pagina_corrente
-        
-        # Calcola indici per slice
-        idx_inizio = pagina_corrente * righe_per_pagina
-        idx_fine = min(idx_inizio + righe_per_pagina, num_righe)
-        
-        # Slice dataframe per pagina corrente
-        df_editor_paginato = df_editor.iloc[idx_inizio:idx_fine].copy()
-        
-        # Mostra info paginazione
         st.markdown(f"""
         <div style="background-color: #E8F5E9; padding: 12px 15px; border-radius: 8px; border-left: 4px solid #4CAF50; margin-bottom: 15px;">
             <p style="margin: 0; font-size: 14px; color: #2E7D32; font-weight: 500;">
-                📄 <strong>Pagina {pagina_corrente + 1} di {max(1, num_pagine_totali)}</strong> | 
-                Righe {idx_inizio + 1:,} - {idx_fine:,} di {num_righe:,} totali
+                📄 <strong>Totale: {num_righe:,} righe</strong>
             </p>
         </div>
         """, unsafe_allow_html=True)
         
-        # Controlli paginazione
-        col_prev, col_size, col_next = st.columns([1, 2, 1])
-        
-        # Light CSS tweak to vertically align controls
-        st.markdown(
-            """
-            <style>
-              [data-testid="stButton"] button { min-height: 36px; }
-              .stSelectbox [data-baseweb="select"] { min-height: 36px; }
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-        
-        with col_prev:
-            if st.button("◀ Pagina Precedente", use_container_width=True, key="btn_pagina_prev"):
-                if pagina_corrente > 0:
-                    st.session_state.pagina_dettaglio_articoli -= 1
-                    st.rerun()
-                else:
-                    st.warning("Sei già alla prima pagina")
-        
-        with col_size:
-            # Inline label + select for better alignment with nav arrows
-            sub_label, sub_select = st.columns([1, 2])
-            with sub_label:
-                st.markdown('<p style="margin-top: 8px; font-size: 14px; font-weight: 500;">Righe per pagina:</p>', unsafe_allow_html=True)
-            with sub_select:
-                options_righe = [500, 1000, 2000, 5000]
-                default_index = options_righe.index(righe_per_pagina) if righe_per_pagina in options_righe else options_righe.index(1000)
-                nuove_righe_pagina = st.selectbox(
-                    "righe",
-                    options=options_righe,
-                    index=default_index,
-                    key="select_righe_pagina",
-                    label_visibility="collapsed"
-                )
-
-            # Apply selection change
-            if nuove_righe_pagina != righe_per_pagina:
-                st.session_state.righe_per_pagina_dettaglio = nuove_righe_pagina
-                st.session_state.pagina_dettaglio_articoli = 0
-                st.rerun()
-        
-        with col_next:
-            if st.button("Pagina Successiva ▶", use_container_width=True, key="btn_pagina_next"):
-                if pagina_corrente < num_pagine_totali - 1:
-                    st.session_state.pagina_dettaglio_articoli += 1
-                    st.rerun()
-                else:
-                    st.warning("Sei già all'ultima pagina")
-        
-        altezza_dinamica = min(max(len(df_editor_paginato) * 35 + 50, 200), 500)
+        # Altezza dinamica per tabella (massimo 800px con scroll)
+        altezza_dinamica = min(max(len(df_editor_paginato) * 35 + 50, 400), 800)
 
         # ===== CARICA CATEGORIE DINAMICHE =====
         categorie_disponibili = carica_categorie_da_db(supabase_client=supabase)
@@ -2355,8 +2459,6 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         categorie_disponibili = ["Da Classificare"] + categorie_disponibili
         
         logger.info(f"📋 Categorie disponibili: {len(categorie_disponibili)} (1 placeholder + {len(categorie_fb)} F&B + {len(categorie_spese)} spese)")
-        logger.debug(f"📋 Lista categorie F&B: {categorie_fb}")
-        logger.debug(f"📋 Lista categorie Spese: {categorie_spese}")
         
         # 🔧 FIX CELLE BIANCHE ULTRA-AGGRESSIVO (Streamlit bug workaround)
         # Se una cella ha un valore NON nelle opzioni, Streamlit la mostra VUOTA
@@ -2378,10 +2480,10 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         # Applica validazione a TUTTE le categorie
         df_editor['Categoria'] = df_editor['Categoria'].apply(valida_categoria)
         
-        # Log finale per debug
+        # Log finale validazione
         vuote_count = df_editor['Categoria'].isna().sum()
-        logger.info(f"📋 VALIDAZIONE: {vuote_count} celle vuote (non categorizzate), {len(df_editor) - vuote_count} categorizzate")
-        print(f"📋 DEBUG: {vuote_count} vuote, {len(df_editor) - vuote_count} categorizzate")
+        if vuote_count > 0:
+            logger.warning(f"⚠️ VALIDAZIONE: {vuote_count} celle vuote (non categorizzate)")
         
         # ✅ Le categorie vengono normalizzate automaticamente al caricamento
         # Migrazione vecchi nomi → nuovi nomi avviene in carica_e_prepara_dataframe()
@@ -2393,27 +2495,6 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             df_editor_paginato = df_editor_paginato.drop(columns=['Listino'])
         elif 'LISTINO' in df_editor_paginato.columns:
             df_editor_paginato = df_editor_paginato.drop(columns=['LISTINO'])
-        
-        # 🧠 CHECKBOX per mostrare/nascondere colonna Stato AI
-        col_checkbox, _ = st.columns([2, 8])
-        with col_checkbox:
-            mostra_stato = st.checkbox(
-                "🧠 Mostra tracciamento AI",
-                value=st.session_state.get('mostra_colonna_stato', False),
-                help="Visualizza quali righe sono state classificate dall'AI (icona 🧠)",
-                key="checkbox_stato_ai"
-            )
-        
-        # Aggiorna session state e trigger rerun
-        if mostra_stato != st.session_state.get('mostra_colonna_stato', False):
-            st.session_state.mostra_colonna_stato = mostra_stato
-            st.rerun()
-        else:
-            st.session_state.mostra_colonna_stato = mostra_stato
-        
-        # Se checkbox disattivato, nascondi colonna Stato
-        if not mostra_stato and 'Stato' in df_editor_paginato.columns:
-            df_editor_paginato = df_editor_paginato.drop(columns=['Stato'])
 
         # Configurazione colonne
         column_config_dict = {
@@ -2433,15 +2514,6 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             "Quantita": st.column_config.NumberColumn("Q.tà", disabled=True),
             "UnitaMisura": st.column_config.TextColumn("U.M.", disabled=True, width="small")
         }
-        
-        # Aggiungi configurazione colonna Stato se visibile
-        if mostra_stato and 'Stato' in df_editor_paginato.columns:
-            column_config_dict["Stato"] = st.column_config.TextColumn(
-                "Stato",
-                help="🧠 = Classificato da AI",
-                width="small",
-                disabled=True
-            )
         
         edited_df = st.data_editor(
             df_editor_paginato,
@@ -2483,6 +2555,22 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         
         totale_tabella = edited_df['TotaleRiga'].sum()
         num_righe = len(edited_df)
+        
+        # 🔍 CHECK VALIDAZIONE: Verifica che NON ci siano celle bianche nella colonna Categoria
+        if 'Categoria' in edited_df.columns:
+            celle_bianche = edited_df['Categoria'].apply(
+                lambda x: x is None or pd.isna(x) or str(x).strip() == '' or str(x).strip().lower() == 'nan'
+            ).sum()
+            
+            if celle_bianche > 0:
+                logger.warning(f"⚠️ CHECK FALLITO: {celle_bianche} celle bianche trovate nella colonna Categoria!")
+                # Forza conversione a "Da Classificare" se ancora bianche
+                edited_df['Categoria'] = edited_df['Categoria'].apply(
+                    lambda x: 'Da Classificare' if (x is None or pd.isna(x) or str(x).strip() == '' or str(x).strip().lower() == 'nan') else x
+                )
+                st.warning(f"⚠️ {celle_bianche} celle vuote convertite a 'Da Classificare'")
+            else:
+                logger.info("✅ CHECK OK: Nessuna cella bianca nella colonna Categoria")
         
         # Box riepilogo + selettore ordinamento + bottone Excel su una riga
         col_box, col_ord, col_btn = st.columns([5, 2, 1])
@@ -2625,6 +2713,13 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                                     update_data["prezzo_standard"] = float(prezzo_std)
                                 except (ValueError, TypeError) as e:
                                     logger.warning(f"Errore conversione prezzo_standard: {e}")
+                            
+                            # ✋ TRACCIAMENTO MODIFICA MANUALE
+                            # Se categoria cambiata dall'utente → salva in memoria
+                            categoria_modificata = (vecchia_cat and vecchia_cat != nuova_cat) or \
+                                                 (not vecchia_cat and nuova_cat != 'Da Classificare')
+                            if categoria_modificata:
+                                logger.info(f"✋ MANUALE: '{descrizione[:40]}' modificato da '{vecchia_cat or "vuoto"}' → {nuova_cat}")
                             
                             # 🔄 MODIFICA BATCH: Se categoria è cambiata, aggiorna TUTTE le righe con stessa descrizione
                             if vecchia_cat and vecchia_cat != nuova_cat:
@@ -3053,12 +3148,6 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                             
                             if debug_response.data:
                                 df_debug = pd.DataFrame(debug_response.data)
-                                st.write(f"📄 Righe totali caricate: {len(df_debug)}")
-                                st.write(f"💸 Righe con prezzo <0: {len(df_debug[df_debug['prezzo_unitario'] < 0])}")
-                                st.write(f"🎁 Righe con prezzo =0: {len(df_debug[df_debug['prezzo_unitario'] == 0])}")
-                                
-                                # Mostra categorie presenti
-                                st.write("🏷️ Categorie presenti:", sorted(df_debug['categoria'].unique().tolist()))
                                 
                                 # Mostra sample prezzi negativi
                                 if len(df_debug[df_debug['prezzo_unitario'] < 0]) > 0:
@@ -3994,20 +4083,21 @@ else:
         key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"  # Chiave dinamica per reset
     )
     
-    # 🧠 RESET STATO AI al nuovo caricamento
+    # 🧠 RESET ICONE AI al nuovo caricamento (solo session_state, niente DB)
     if uploaded_files and len(uploaded_files) > 0:
         current_upload_ids = [f.name for f in uploaded_files]
         ultimo_upload = st.session_state.get('ultimo_upload_ids', [])
         
         # Rilevamento nuovo caricamento (file diversi)
         if current_upload_ids != ultimo_upload:
-            try:
-                user_id = st.session_state.user_data["id"]
-                supabase.table('fatture').update({'stato': ''}).eq('user_id', user_id).execute()
-                logger.info("🧹 Reset stati AI - nuovo caricamento rilevato")
-            except Exception as reset_err:
-                logger.warning(f"Errore reset stati AI: {reset_err}")
+            # Reset solo session_state (no query DB costosa)
+            if 'righe_ai_appena_categorizzate' in st.session_state:
+                st.session_state.righe_ai_appena_categorizzate = []
+            logger.info("🧹 Reset icone AI - nuovo caricamento rilevato")
             st.session_state.ultimo_upload_ids = current_upload_ids
+            # Pulisce riepilogo ultimo upload all'inizio di un nuovo caricamento
+            if 'last_upload_summary' in st.session_state:
+                del st.session_state.last_upload_summary
 
     # ============================================================
     # INIZIALIZZAZIONE SET ERRORI (prevenzione loop)
@@ -4032,7 +4122,7 @@ if 'files_processati_sessione' not in st.session_state:
     st.session_state.files_processati_sessione = set()
 
 if 'files_con_errori' not in st.session_state:
-    st.session_state.files_con_errori = {}
+    st.session_state.files_con_errori = set()
 
 if 'files_errori_report' not in st.session_state:
     st.session_state.files_errori_report = {}  # Dizionario persistente per mostrare report anche dopo rerun
@@ -4068,10 +4158,6 @@ if uploaded_files:
             # Prova a chiamare funzione RPC che restituisce file_origine DISTINCT
             response_rpc = supabase.rpc('get_distinct_files', {'p_user_id': user_id}).execute()
             file_su_supabase = {row["file_origine"] for row in response_rpc.data if row.get("file_origine") and row["file_origine"].strip()}
-            
-            # DEBUG (solo admin)
-            if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-                st.write(f"🔍 DEBUG: File su Supabase (RPC): {len(file_su_supabase)}")
                 
         except Exception as rpc_error:
             # Fallback: Query normale ma ottimizzata CON PAGINAZIONE
@@ -4106,12 +4192,6 @@ if uploaded_files:
                     break
                     
                 page += 1
-            
-            logger.debug(f"🔍 QUERY FALLBACK PAGINATA: Pagine scansionate: {page + 1}, File estratti: {len(file_su_supabase)}, Total DB count: {response.count}")
-        
-        # DEBUG TEMPORANEO - rimuovi dopo test (solo admin)
-        if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-            st.write(f"🔍 DEBUG: File su Supabase per questo utente: {len(file_su_supabase)}")
         
         # 🔍 VERIFICA COERENZA: Se DB è vuoto ma session ha file, è un errore -> reset
         if len(file_su_supabase) == 0 and len(st.session_state.files_processati_sessione) > 0:
@@ -4125,22 +4205,20 @@ if uploaded_files:
         file_su_supabase = set()
 
 
-    # DEBUG TEMPORANEO (solo admin)
-    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-        st.write(f"🔍 DEBUG: File in sessione corrente: {len(st.session_state.files_processati_sessione)}")
-    
     tutti_file_processati = st.session_state.files_processati_sessione | file_su_supabase
     
-    file_unici = []
-    duplicati_interni = []
+    # Calcola nomi caricati e duplicati in modo robusto
+    uploaded_names = [f.name for f in uploaded_files]
+    uploaded_unique = set(uploaded_names)
+    duplicate_count = max(0, len(uploaded_names) - len(uploaded_unique))
+
+    # Ricostruisci liste coerenti con i nomi unici
     visti = set()
-    
+    file_unici = []
     for file in uploaded_files:
         if file.name not in visti:
             file_unici.append(file)
             visti.add(file.name)
-        else:
-            duplicati_interni.append(file.name)
     
     # ============================================================
     # FIX: DEDUPLICAZIONE CORRETTA (solo contro DB reale)
@@ -4148,38 +4226,84 @@ if uploaded_files:
     file_nuovi = []
     file_gia_processati = []
     
+    # � OTTIMIZZAZIONE: Skip file appena caricati usando session_state
+    just_uploaded = st.session_state.get('just_uploaded_files', set())
+    
     for file in file_unici:
         filename = file.name
         
-        # Controlla SOLO se già nel DB (ignora session_state)
-        if filename in file_su_supabase:
+        # Conta come già presente se appena caricato o già nel DB
+        if filename in just_uploaded or filename in file_su_supabase:
             file_gia_processati.append(filename)
-        # ============================================================
-        # PROTEZIONE: Salta file che hanno già dato errore in questa sessione
-        # ============================================================
+        # Protezione: Salta file che hanno già dato errore in questa sessione
         elif filename in st.session_state.get('files_con_errori', set()):
-            logger.info(f"⏭️ File {filename} già fallito in questa sessione, salto")
-            # Non aggiungere a file_nuovi né a file_gia_processati
-            # Semplicemente ignora silenziosamente
+            continue
         else:
             file_nuovi.append(file)
     
     # Messaggio SOLO per ADMIN (interfaccia pulita per clienti)
     is_admin = st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False)
     
+    # ============================================================
+    # 🔥 FIX: Conserva info file appena caricati per messaggi corretti
+    # ============================================================
+    # Salva riferimento a just_uploaded PRIMA di pulirlo
+    erano_just_uploaded = just_uploaded.copy() if just_uploaded else set()
+    
+    # NON pulire il flag subito - mantienilo per il ciclo di controllo messaggi
+    # Verrà azzerato DOPO che abbiamo verificato i messaggi
+    
     if is_admin:
         if file_nuovi:
             st.info(f"✅ **{len(file_nuovi)} nuove fatture** da elaborare")
-        if file_gia_processati:
-            st.info(f"📋 **{len(file_gia_processati)} fatture** già presenti nel database (ignorate)")
-            
-        if duplicati_interni:
-            st.warning(f"⚠️ **{len(duplicati_interni)} duplicati** nell'upload (ignorati)")
     
     # ============================================================
-    # Se TUTTI duplicati, non fare niente (nessun messaggio)
+    # GESTIONE MESSAGGI: Mostra TUTTI i messaggi rilevanti
+    # (anche se ci sono file_nuovi, mostra comunque duplicati/già presenti)
+    # Sopprimi se arriviamo da AVVIA AI (flag one-shot)
+    # ============================================================
+    if st.session_state.get('suppress_upload_messages_once', False):
+        # Pulisci il flag per usare solo una volta
+        st.session_state.suppress_upload_messages_once = False
+    else:
+        # Se NESSUN file nuovo E erano just_uploaded → silenzio (post-rerun di file già elaborati)
+        if not file_nuovi and len(erano_just_uploaded) > 0:
+            logger.info(f"⏭️ Skip messaggi: {len(erano_just_uploaded)} file erano just_uploaded")
+        # Se ci sono file_gia_processati (indipendentemente da file_nuovi)
+        # 🔇 RIMOSSO: Non mostrare messaggio "X fatture già presenti nel database"
+        elif file_gia_processati and duplicate_count == 0:
+            # Tutte le fatture (non elaborate) erano già nel database
+            # (messaggio rimosso su richiesta utente - assolutamente non desiderato)
+            pass
+        # Se ci sono solo duplicati nell'upload stesso
+        elif duplicate_count and not file_gia_processati:
+            num = duplicate_count
+            sing_plur = "fattura duplicata" if num == 1 else "fatture duplicate"
+            st.warning(f"⚠️ {num} {sing_plur} nell'upload - carica file diversi")
+        # Se ci sono ENTRAMBI duplicati e già presenti
+        elif file_gia_processati and duplicate_count:
+            # RIMOSSO: Non mostrare mai il messaggio "X fatture già presenti o duplicate"
+            # (messaggio rimosso su richiesta utente - non lo vuole vedere MAI)
+            pass
+    
+    # ✅ Pulizia flag just_uploaded dopo aver mostrato/non mostrato i messaggi
+    if erano_just_uploaded:
+        st.session_state.just_uploaded_files = set()
+    
+    # ============================================================
+    # ELABORAZIONE FILE NUOVI (solo se ci sono)
     # ============================================================
     
+    # Riepilogo base per questa selezione (aggiornato dopo l'elaborazione)
+    upload_summary = {
+        'totale_selezionati': len(uploaded_names),
+        'gia_presenti': len({n for n in uploaded_unique if (n in file_su_supabase or n in erano_just_uploaded)}),
+        'duplicati_upload': duplicate_count,
+        'nuovi_da_elaborare': len(file_nuovi),
+        'caricate_successo': 0,
+        'errori': 0
+    }
+
     if file_nuovi:
         # Crea placeholder per loading AI
         upload_placeholder = st.empty()
@@ -4211,26 +4335,16 @@ if uploaded_files:
                 batch_end = min(batch_start + BATCH_SIZE, total_files)
                 batch_corrente = file_nuovi[batch_start:batch_end]
                 
-                # DEBUG batch solo admin
-                if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-                    batch_num = (batch_start // BATCH_SIZE) + 1
-                    total_batch = (total_files + BATCH_SIZE - 1) // BATCH_SIZE
-                    st.write(f"🔍 DEBUG Batch {batch_num}/{total_batch}: File {batch_start+1}-{batch_end}")
-                
                 # Elabora file nel batch corrente
                 for idx_in_batch, file in enumerate(batch_corrente):
                     idx_globale = batch_start + idx_in_batch + 1
                     nome_file = file.name.lower()
                     
-                    # ============================================================
-                    # PROTEZIONE LOOP: Salta file già elaborati o con errori
-                    # ============================================================
+                    # Protezione loop: salta file già elaborati o con errori
                     if file.name in st.session_state.files_processati_sessione:
-                        logger.warning(f"⚠️ File {file.name} già in session_state, salto elaborazione")
                         continue
                     
                     if file.name in st.session_state.get('files_con_errori', set()):
-                        logger.warning(f"⚠️ File {file.name} già fallito in precedenza, salto elaborazione")
                         file_errore[file.name] = "File già fallito in questa sessione"
                         continue
                     
@@ -4241,12 +4355,6 @@ if uploaded_files:
                     
                     # Routing automatico per tipo file con TRY/EXCEPT ROBUSTO
                     try:
-                        # 🔍 DEBUG: Log dettagli file (solo admin)
-                        if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-                            file_size_kb = len(file.getvalue()) / 1024
-                            file_type = "XML" if nome_file.endswith('.xml') else "PDF/IMG"
-                            logger.info(f"🔍 DEBUG: File={file.name}, Tipo={file_type}, Dimensione={file_size_kb:.1f}KB")
-                        
                         if nome_file.endswith('.xml'):
                             items = estrai_dati_da_xml(file)
                         elif nome_file.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
@@ -4260,10 +4368,6 @@ if uploaded_files:
                         if len(items) == 0:
                             raise ValueError("Nessuna riga estratta - DataFrame vuoto")
                         
-                        # 🔍 DEBUG: Log risultato parsing (solo admin)
-                        if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-                            logger.info(f"🔍 DEBUG: {file.name} → {len(items)} righe estratte")
-                        
                         # Salva in memoria se trovati dati (SILENZIOSO)
                         result = salva_fattura_processata(file.name, items, silent=True)
                         
@@ -4275,10 +4379,9 @@ if uploaded_files:
                             elif result["location"] == "json":
                                 salvati_json += 1
                             
-                            # 🔥 RIMUOVI FLAG FORCE EMPTY: Ci sono nuovi dati, riabilita caricamento normale
+                            # Rimuovi flag force empty: ci sono nuovi dati
                             if 'force_empty_until_upload' in st.session_state:
                                 del st.session_state.force_empty_until_upload
-                                logger.info("✅ Flag force_empty rimosso: nuovi dati caricati")
                             
                             # Traccia successo
                             file_ok.append(file.name)
@@ -4380,84 +4483,85 @@ if uploaded_files:
                 # Istruzioni per il cliente
                 st.info("💡 **Clicca su 'Scarica Log e Azzera' e poi invia il file all'assistenza per risolvere il problema**")
                 
-                # Un solo bottone: Scarica Log (che azzera automaticamente al rerun)
-                error_log = "\n".join([f"{nome}: {err}" for nome, err in st.session_state.files_errori_report.items()])
-                st.download_button(
-                    label="📥 Scarica Log e Azzera",
-                    data=error_log,
-                    file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
-                    mime="text/plain",
-                    use_container_width=True,
-                    type="primary"
-                )
+                # Due bottoni: Scarica Log + Azzera Errori
+                col_download, col_clear = st.columns([2, 1])
+                
+                with col_download:
+                    error_log = "\n".join([f"{nome}: {err}" for nome, err in st.session_state.files_errori_report.items()])
+                    st.download_button(
+                        label="📥 Scarica Log",
+                        data=error_log,
+                        file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
+                        mime="text/plain",
+                        use_container_width=True,
+                        type="primary"
+                    )
+                
+                with col_clear:
+                    if st.button("✖️ Azzera", use_container_width=True, type="secondary"):
+                        st.session_state.files_errori_report = {}
+                        logger.info("✅ Report errori azzerato manualmente")
+                        st.rerun()
             
             # Separatore visivo prima del resto della pagina
             st.markdown("---")
         
         else:
             # TUTTO OK - Messaggio pulito per clienti, dettagliato per admin
-            success_container = st.empty()
+            if is_admin:
+                # Admin: Report dettagliato (in aggiunta al successo mostrato sopra)
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("📄 File", file_processati)
+                with col2:
+                    st.metric("📊 Righe Totali", righe_totali)
+                with col3:
+                    location_text = "Supabase" if salvati_supabase > 0 else "JSON"
+                    st.metric("💾 Storage", location_text)
+            else:
+                # Cliente: Messaggio già mostrato sopra prima del rerun
+                # Mostra avviso per duplicati NELL'UPLOAD STESSO se ci sono
+                if duplicate_count > 0:
+                    sing_plur_dup = "fattura" if duplicate_count == 1 else "fatture"
+                    sing_plur_ign = "ignorata" if duplicate_count == 1 else "ignorate"
+                    st.warning(f"⚠️ {duplicate_count} {sing_plur_dup} duplicata nell'upload, {sing_plur_ign}")
             
-            with success_container.container():
-                if is_admin:
-                    # Admin: Report dettagliato
-                    st.success(f"🎉 {file_processati}/{total_files} file elaborati con successo!")
-                    
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("📄 File", file_processati)
-                    with col2:
-                        st.metric("📊 Righe Totali", righe_totali)
-                    with col3:
-                        location_text = "Supabase" if salvati_supabase > 0 else "JSON"
-                        st.metric("💾 Storage", location_text)
-                else:
-                    # Cliente: Messaggio chiaro con numero e duplicati
-                    sing_plur_fat = "fattura" if file_processati == 1 else "fatture"
-                    sing_plur_caric = "caricata" if file_processati == 1 else "caricate"
-                    st.success(f"✅ {file_processati} {sing_plur_fat} {sing_plur_caric} con successo!")
-                    
-                    # Mostra avviso duplicati se presenti
-                    num_duplicati = len(file_gia_processati) + len(duplicati_interni)
-                    if num_duplicati > 0:
-                        sing_plur_dup = "fattura" if num_duplicati == 1 else "fatture"
-                        sing_plur_pres = "presente" if num_duplicati == 1 else "presenti"
-                        sing_plur_ign = "ignorata" if num_duplicati == 1 else "ignorate"
-                        st.info(f"ℹ️ {num_duplicati} {sing_plur_dup} già {sing_plur_pres}, {sing_plur_ign}")
-            
-            # Sparisce dopo 10 secondi
-            time.sleep(10)
-            success_container.empty()
-            
-            # ============================================================
-            # FIX: INVALIDAZIONE CACHE FORZATA + AUDIT
-            # ============================================================
+            # Invalidazione cache e reset stati
             if file_processati > 0:
-                # INVALIDAZIONE CACHE FORZATA post-upload
-                try:
-                    st.cache_data.clear()
-                    try:
-                        st.cache_resource.clear()
-                    except Exception as cache_error:
-                        logger.warning(f"⚠️ Errore clear cache_resource: {cache_error}")
-                    logger.info("✅ Cache invalidata dopo upload")
-                except Exception as e:
-                    logger.warning(f"⚠️ Errore invalidazione cache: {e}")
+                # ✅ MOSTRA SUCCESSO PRIMA DEL RERUN per evitare che venga perso
+                if file_processati == 1:
+                    st.success(f"✅ 1 fattura caricata con successo!")
+                else:
+                    st.success(f"✅ {file_processati} fatture caricate con successo!")
+                st.cache_data.clear()
                 
-                # Piccola pausa per sincronizzazione DB
+                # Reset icone AI: nuove fatture = nuova sessione
+                if 'righe_ai_appena_categorizzate' in st.session_state:
+                    st.session_state.righe_ai_appena_categorizzate = []
+                
+                # Marca file come appena caricati per evitare falsi "già presenti" nel prossimo rerun
+                st.session_state.just_uploaded_files = set([f.name for f in file_nuovi])
+
+                # Aggiorna riepilogo e persistilo per la sessione
+                upload_summary['caricate_successo'] = file_processati
+                upload_summary['errori'] = len(st.session_state.files_errori_report)
+                st.session_state.last_upload_summary = upload_summary
+                
+                # Breve pausa per mostrare il messaggio
+                import time
                 time.sleep(0.5)
                 
-                # Verifica audit coerenza
-                user_id = st.session_state.user_data.get("id")
-                audit_result = audit_data_consistency(user_id, context="post-upload")
-                if not audit_result["consistent"]:
-                    logger.warning(f"⚠️ AUDIT: DB ha {audit_result['db_count']} righe ma cache {audit_result['cache_count']}")
-                    st.warning(f"⚠️ Audit: DB ha {audit_result['db_count']} righe ma cache ne mostra {audit_result['cache_count']}")
-                    # Ri-invalida cache e forza refresh
-                    st.cache_data.clear()
-            
-            # Ricarica pagina con dati freschi
-            st.rerun()
+                # Ricarica pagina con dati freschi
+                st.rerun()
+            else:
+                # Nessuna fattura caricata con successo: salva comunque riepilogo
+                upload_summary['caricate_successo'] = 0
+                upload_summary['errori'] = len(st.session_state.files_errori_report)
+                st.session_state.last_upload_summary = upload_summary
+
+    else:
+        # Nessun file nuovo: persistiamo comunque un riepilogo accurato
+        st.session_state.last_upload_summary = upload_summary
 
 
 # 🔥 CARICA E MOSTRA STATISTICHE SEMPRE (da Supabase)
@@ -4480,12 +4584,6 @@ try:
         logger.info("🔄 FORCE RELOAD attivato dopo categorizzazione AI")
     df_completo = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh)
     
-    # Logging shape e verifica dati
-    logger.debug(f"DataFrame shape = {df_completo.shape}")
-    if not df_completo.empty:
-        logger.info(f"📊 Caricato: {df_completo['FileOrigine'].nunique()} fatture, {len(df_completo)} righe")
-    
-    # Rimuovi loading SEMPRE prima di mostrare contenuto
     loading_placeholder.empty()
     
     # Mostra dashboard direttamente senza messaggi
@@ -4496,7 +4594,6 @@ try:
 
 
 except Exception as e:
-    # CRITICO: rimuovi loading anche in caso di errore
     loading_placeholder.empty()
     st.error(f"❌ Errore durante il caricamento: {e}")
     logger.exception("Errore caricamento dashboard")
