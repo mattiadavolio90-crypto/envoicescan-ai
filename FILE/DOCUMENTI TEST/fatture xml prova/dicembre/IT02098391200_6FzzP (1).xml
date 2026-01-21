@@ -1,0 +1,377 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="fatturaordinaria_v1.2.1.xsl"?><ns2:FatturaElettronica xmlns:ns2="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">
+  
+ <FatturaElettronicaHeader>
+    
+  <DatiTrasmissione>
+      
+   <IdTrasmittente>
+        
+    <IdPaese>IT</IdPaese>
+    <IdCodice>02098391200</IdCodice>
+   
+      </IdTrasmittente>
+   <ProgressivoInvio>6FzzP</ProgressivoInvio>
+   <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+   <CodiceDestinatario>KRRH6B9</CodiceDestinatario>
+  
+    </DatiTrasmissione>
+  <CedentePrestatore>
+      
+   <DatiAnagrafici>
+        
+    <IdFiscaleIVA>
+          
+     <IdPaese>IT</IdPaese>
+     <IdCodice>04174630964</IdCodice>
+    
+        </IdFiscaleIVA>
+    <CodiceFiscale>04174630964</CodiceFiscale>
+    <Anagrafica>
+          
+     <Denominazione>G.R.A. S.a.S.</Denominazione>
+    
+        </Anagrafica>
+    <RegimeFiscale>RF01</RegimeFiscale>
+   
+      </DatiAnagrafici>
+   <Sede>
+        
+    <Indirizzo>Via Cadore, 34</Indirizzo>
+    <CAP>20135</CAP>
+    <Comune>MILANO</Comune>
+    <Provincia>MI</Provincia>
+    <Nazione>IT</Nazione>
+   
+      </Sede>
+   <IscrizioneREA>
+        
+    <Ufficio>MI</Ufficio>
+    <NumeroREA>MI-1731144</NumeroREA>
+    <StatoLiquidazione>LN</StatoLiquidazione>
+   
+      </IscrizioneREA>
+   <Contatti>
+        
+    <Telefono>0289511845</Telefono>
+    <Email>gianfranco.lazzarini@legalmail.it</Email>
+   
+      </Contatti>
+  
+    </CedentePrestatore>
+  <CessionarioCommittente>
+      
+   <DatiAnagrafici>
+        
+    <IdFiscaleIVA>
+          
+     <IdPaese>IT</IdPaese>
+     <IdCodice>11432080965</IdCodice>
+    
+        </IdFiscaleIVA>
+    <Anagrafica>
+          
+     <Denominazione>TIME CAFE' di FRAU FRANCESCO</Denominazione>
+    
+        </Anagrafica>
+   
+      </DatiAnagrafici>
+   <Sede>
+        
+    <Indirizzo>CORSO di PORTA ROMANA, 2</Indirizzo>
+    <CAP>20122</CAP>
+    <Comune>- MILANO -</Comune>
+    <Provincia>MI</Provincia>
+    <Nazione>IT</Nazione>
+   
+      </Sede>
+  
+    </CessionarioCommittente>
+ <TerzoIntermediarioOSoggettoEmittente><DatiAnagrafici>
+        <IdFiscaleIVA>
+          <IdPaese>IT</IdPaese><IdCodice>02098391200</IdCodice>
+        </IdFiscaleIVA><Anagrafica><Denominazione>UNIMATICA S.P.A.</Denominazione></Anagrafica>
+      </DatiAnagrafici></TerzoIntermediarioOSoggettoEmittente><SoggettoEmittente>TZ</SoggettoEmittente>
+  </FatturaElettronicaHeader>
+ <FatturaElettronicaBody>
+    
+  <DatiGenerali>
+      
+   <DatiGeneraliDocumento>
+        
+    <TipoDocumento>TD01</TipoDocumento>
+    <Divisa>EUR</Divisa>
+    <Data>2025-12-31</Data>
+    <Numero>250953</Numero>
+    <ImportoTotaleDocumento>523.01</ImportoTotaleDocumento>
+   
+      </DatiGeneraliDocumento>
+   <DatiDDT>
+        
+    <NumeroDDT>3145</NumeroDDT>
+    <DataDDT>2025-12-02</DataDDT>
+   
+      </DatiDDT>
+   <DatiDDT>
+        
+    <NumeroDDT>3255</NumeroDDT>
+    <DataDDT>2025-12-14</DataDDT>
+   
+      </DatiDDT>
+  
+    </DatiGenerali>
+  <DatiBeniServizi>
+      
+   <DettaglioLinee>
+        
+    <NumeroLinea>1</NumeroLinea>
+    <Descrizione>DDT n. 3145 del 02-12-2025</Descrizione>
+    <PrezzoUnitario>0.00</PrezzoUnitario>
+    <PrezzoTotale>0.00</PrezzoTotale>
+    <AliquotaIVA>22.00</AliquotaIVA>
+    <RiferimentoAmministrazione>Riga descrittiva</RiferimentoAmministrazione>
+   
+      </DettaglioLinee>
+   <DettaglioLinee>
+        
+    <NumeroLinea>2</NumeroLinea>
+    <CodiceArticolo>
+          
+     <CodiceTipo>Codice Art. Fornitore</CodiceTipo>
+     <CodiceValore>251</CodiceValore>
+    
+        </CodiceArticolo>
+    <Descrizione>A.M. S.BENEDETTO FRIZZANTE nov.2026 CL.50 X 24 PET</Descrizione>
+    <Quantita>15.00</Quantita>
+    <UnitaMisura>CT</UnitaMisura>
+    <PrezzoUnitario>3.84</PrezzoUnitario>
+    <PrezzoTotale>57.60</PrezzoTotale>
+    <AliquotaIVA>22.00</AliquotaIVA>
+    <AltriDatiGestionali>
+          
+     <TipoDato>COMMENTO</TipoDato>
+     <RiferimentoTesto>Contributo ambientale CONAI assolto</RiferimentoTesto>
+    
+        </AltriDatiGestionali>
+   
+      </DettaglioLinee>
+   <DettaglioLinee>
+        
+    <NumeroLinea>3</NumeroLinea>
+    <CodiceArticolo>
+          
+     <CodiceTipo>Codice Art. Fornitore</CodiceTipo>
+     <CodiceValore>253</CodiceValore>
+    
+        </CodiceArticolo>
+    <Descrizione>A.M. S.BENEDETTO ECO-GREEN NAT mag.2027 CL.50 X 24 PET</Descrizione>
+    <Quantita>30.00</Quantita>
+    <UnitaMisura>CT</UnitaMisura>
+    <PrezzoUnitario>3.84</PrezzoUnitario>
+    <PrezzoTotale>115.20</PrezzoTotale>
+    <AliquotaIVA>22.00</AliquotaIVA>
+    <AltriDatiGestionali>
+          
+     <TipoDato>COMMENTO</TipoDato>
+     <RiferimentoTesto>Contributo ambientale CONAI assolto</RiferimentoTesto>
+    
+        </AltriDatiGestionali>
+   
+      </DettaglioLinee>
+   <DettaglioLinee>
+        
+    <NumeroLinea>4</NumeroLinea>
+    <Descrizione>CASSA 750/LITRO x12</Descrizione>
+    <Quantita>3.00</Quantita>
+    <PrezzoUnitario>0.00</PrezzoUnitario>
+    <PrezzoTotale>0.00</PrezzoTotale>
+    <AliquotaIVA>0.00</AliquotaIVA>
+    <Natura>N1</Natura>
+   
+      </DettaglioLinee>
+   <DettaglioLinee>
+        
+    <NumeroLinea>5</NumeroLinea>
+    <Descrizione>DDT n. 3255 del 14-12-2025</Descrizione>
+    <PrezzoUnitario>0.00</PrezzoUnitario>
+    <PrezzoTotale>0.00</PrezzoTotale>
+    <AliquotaIVA>22.00</AliquotaIVA>
+    <RiferimentoAmministrazione>Riga descrittiva</RiferimentoAmministrazione>
+   
+      </DettaglioLinee>
+   <DettaglioLinee>
+        
+    <NumeroLinea>6</NumeroLinea>
+    <CodiceArticolo>
+          
+     <CodiceTipo>Codice Art. Fornitore</CodiceTipo>
+     <CodiceValore>123</CodiceValore>
+    
+        </CodiceArticolo>
+    <Descrizione>A.M. S.BENEDETTO frizzante PRESTIGE  CL.75 X 12 VR</Descrizione>
+    <Quantita>10.00</Quantita>
+    <UnitaMisura>CS</UnitaMisura>
+    <PrezzoUnitario>6.90</PrezzoUnitario>
+    <ScontoMaggiorazione>
+          
+     <Tipo>SC</Tipo>
+     <Percentuale>10.00</Percentuale>
+    
+        </ScontoMaggiorazione>
+    <PrezzoTotale>62.10</PrezzoTotale>
+    <AliquotaIVA>22.00</AliquotaIVA>
+    <AltriDatiGestionali>
+          
+     <TipoDato>COMMENTO</TipoDato>
+     <RiferimentoTesto>Contributo ambientale CONAI assolto</RiferimentoTesto>
+    
+        </AltriDatiGestionali>
+   
+      </DettaglioLinee>
+   <DettaglioLinee>
+        
+    <NumeroLinea>7</NumeroLinea>
+    <CodiceArticolo>
+          
+     <CodiceTipo>Codice Art. Fornitore</CodiceTipo>
+     <CodiceValore>124</CodiceValore>
+    
+        </CodiceArticolo>
+    <Descrizione>A.M. S.BENEDETTO naturale PRESTIGE  CL.75 X 12 VR</Descrizione>
+    <Quantita>10.00</Quantita>
+    <UnitaMisura>CS</UnitaMisura>
+    <PrezzoUnitario>6.90</PrezzoUnitario>
+    <ScontoMaggiorazione>
+          
+     <Tipo>SC</Tipo>
+     <Percentuale>10.00</Percentuale>
+    
+        </ScontoMaggiorazione>
+    <PrezzoTotale>62.10</PrezzoTotale>
+    <AliquotaIVA>22.00</AliquotaIVA>
+    <AltriDatiGestionali>
+          
+     <TipoDato>COMMENTO</TipoDato>
+     <RiferimentoTesto>Contributo ambientale CONAI assolto</RiferimentoTesto>
+    
+        </AltriDatiGestionali>
+   
+      </DettaglioLinee>
+   <DettaglioLinee>
+        
+    <NumeroLinea>8</NumeroLinea>
+    <CodiceArticolo>
+          
+     <CodiceTipo>Codice Art. Fornitore</CodiceTipo>
+     <CodiceValore>237</CodiceValore>
+    
+        </CodiceArticolo>
+    <Descrizione>A.M. VERA NATURALE    nov.2026          LT 1,5 X 6 PET</Descrizione>
+    <Quantita>5.00</Quantita>
+    <UnitaMisura>CT</UnitaMisura>
+    <PrezzoUnitario>3.30</PrezzoUnitario>
+    <PrezzoTotale>16.50</PrezzoTotale>
+    <AliquotaIVA>22.00</AliquotaIVA>
+    <AltriDatiGestionali>
+          
+     <TipoDato>COMMENTO</TipoDato>
+     <RiferimentoTesto>Contributo ambientale CONAI assolto</RiferimentoTesto>
+    
+        </AltriDatiGestionali>
+   
+      </DettaglioLinee>
+   <DettaglioLinee>
+        
+    <NumeroLinea>9</NumeroLinea>
+    <CodiceArticolo>
+          
+     <CodiceTipo>Codice Art. Fornitore</CodiceTipo>
+     <CodiceValore>251</CodiceValore>
+    
+        </CodiceArticolo>
+    <Descrizione>A.M. S.BENEDETTO FRIZZANTE nov.2026 CL.50 X 24 PET</Descrizione>
+    <Quantita>5.00</Quantita>
+    <UnitaMisura>CT</UnitaMisura>
+    <PrezzoUnitario>3.84</PrezzoUnitario>
+    <PrezzoTotale>19.20</PrezzoTotale>
+    <AliquotaIVA>22.00</AliquotaIVA>
+    <AltriDatiGestionali>
+          
+     <TipoDato>COMMENTO</TipoDato>
+     <RiferimentoTesto>Contributo ambientale CONAI assolto</RiferimentoTesto>
+    
+        </AltriDatiGestionali>
+   
+      </DettaglioLinee>
+   <DettaglioLinee>
+        
+    <NumeroLinea>10</NumeroLinea>
+    <CodiceArticolo>
+          
+     <CodiceTipo>Codice Art. Fornitore</CodiceTipo>
+     <CodiceValore>253</CodiceValore>
+    
+        </CodiceArticolo>
+    <Descrizione>A.M. S.BENEDETTO ECO-GREEN NAT mag.2027 CL.50 X 24 PET</Descrizione>
+    <Quantita>25.00</Quantita>
+    <UnitaMisura>CT</UnitaMisura>
+    <PrezzoUnitario>3.84</PrezzoUnitario>
+    <PrezzoTotale>96.00</PrezzoTotale>
+    <AliquotaIVA>22.00</AliquotaIVA>
+    <AltriDatiGestionali>
+          
+     <TipoDato>COMMENTO</TipoDato>
+     <RiferimentoTesto>Contributo ambientale CONAI assolto</RiferimentoTesto>
+    
+        </AltriDatiGestionali>
+   
+      </DettaglioLinee>
+   <DettaglioLinee>
+        
+    <NumeroLinea>11</NumeroLinea>
+    <Descrizione>CASSA 750/LITRO x12</Descrizione>
+    <Quantita>20.00</Quantita>
+    <PrezzoUnitario>0.00</PrezzoUnitario>
+    <PrezzoTotale>0.00</PrezzoTotale>
+    <AliquotaIVA>0.00</AliquotaIVA>
+    <Natura>N1</Natura>
+   
+      </DettaglioLinee>
+   <DatiRiepilogo>
+        
+    <AliquotaIVA>22.00</AliquotaIVA>
+    <ImponibileImporto>428.70</ImponibileImporto>
+    <Imposta>94.31</Imposta>
+    <EsigibilitaIVA>I</EsigibilitaIVA>
+   
+      </DatiRiepilogo>
+   <DatiRiepilogo>
+        
+    <AliquotaIVA>0.00</AliquotaIVA>
+    <Natura>N1</Natura>
+    <ImponibileImporto>0.00</ImponibileImporto>
+    <Imposta>0.00</Imposta>
+    <EsigibilitaIVA>I</EsigibilitaIVA>
+    <RiferimentoNormativo>0.00</RiferimentoNormativo>
+   
+      </DatiRiepilogo>
+  
+    </DatiBeniServizi>
+  <DatiPagamento>
+      
+   <CondizioniPagamento>TP02</CondizioniPagamento>
+   <DettaglioPagamento>
+        
+    <Beneficiario>G.R.A. S.a.S.</Beneficiario>
+    <ModalitaPagamento>MP05</ModalitaPagamento>
+    <DataScadenzaPagamento>2025-12-31</DataScadenzaPagamento>
+    <ImportoPagamento>523.01</ImportoPagamento>
+    <IBAN>IT80Q0200801673000100270493</IBAN>
+   
+      </DettaglioPagamento>
+  
+    </DatiPagamento>
+ 
+  </FatturaElettronicaBody>
+
+</ns2:FatturaElettronica>

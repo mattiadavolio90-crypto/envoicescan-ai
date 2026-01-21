@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--Fattura elettronica generata da AziWin - www.apsystem.it-->
+<p:FatturaElettronica xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" versione="FPR12" xsi:schemaLocation="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2 http://www.fatturapa.gov.it/export/fatturazione/sdi/fatturapa/v1.2/Schema_del_file_xml_FatturaPA_versione_1.2.xsd">
+  <FatturaElettronicaHeader xmlns="">
+    <DatiTrasmissione>
+      <IdTrasmittente>
+        <IdPaese>IT</IdPaese>
+        <IdCodice>03515850729</IdCodice>
+      </IdTrasmittente>
+      <ProgressivoInvio>AW2501HX1</ProgressivoInvio>
+      <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+      <CodiceDestinatario>KRRH6B9</CodiceDestinatario>
+    </DatiTrasmissione>
+    <CedentePrestatore>
+      <DatiAnagrafici>
+        <IdFiscaleIVA>
+          <IdPaese>IT</IdPaese>
+          <IdCodice>11716900151</IdCodice>
+        </IdFiscaleIVA>
+        <CodiceFiscale>11716900151</CodiceFiscale>
+        <Anagrafica>
+          <Denominazione>MARIMI CENTRO S.R.L.  </Denominazione>
+        </Anagrafica>
+        <RegimeFiscale>RF01</RegimeFiscale>
+      </DatiAnagrafici>
+      <Sede>
+        <Indirizzo>VIA TOMMASO GULLI, 17</Indirizzo>
+        <CAP>20147</CAP>
+        <Comune>Milano</Comune>
+        <Provincia>MI</Provincia>
+        <Nazione>IT</Nazione>
+      </Sede>
+      <Contatti>
+        <Email>ascensori@marimicentro.it</Email>
+      </Contatti>
+    </CedentePrestatore>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA>
+          <IdPaese>IT</IdPaese>
+          <IdCodice>11432080965</IdCodice>
+        </IdFiscaleIVA>
+        <Anagrafica>
+          <Denominazione>TIME CAFE' DI FRANCESCO FRAU</Denominazione>
+        </Anagrafica>
+      </DatiAnagrafici>
+      <Sede>
+        <Indirizzo>CORSO DI PORTA ROMANA 2</Indirizzo>
+        <CAP>20122</CAP>
+        <Comune>MILANO</Comune>
+        <Provincia>MI</Provincia>
+        <Nazione>IT</Nazione>
+      </Sede>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody xmlns="">
+    <DatiGenerali>
+      <DatiGeneraliDocumento>
+        <TipoDocumento>TD01</TipoDocumento>
+        <Divisa>EUR</Divisa>
+        <Data>2025-12-31</Data>
+        <Numero>1451</Numero>
+        <ImportoTotaleDocumento>380.00</ImportoTotaleDocumento>
+      </DatiGeneraliDocumento>
+    </DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee>
+        <NumeroLinea>1</NumeroLinea>
+        <Descrizione>Nostro intervento tecnico effettuato il 21/10/25 su Vs. impianto n. L0000025 sito in CORSO PORTA ROMANA 2 (Microlift)   Loc. MILANO Matr.  Numero chiamata 1324  Motivato da:</Descrizione>
+        <PrezzoUnitario>0.00000000</PrezzoUnitario>
+        <PrezzoTotale>0.00</PrezzoTotale>
+        <AliquotaIVA>0.00</AliquotaIVA>
+        <Natura>N6.7</Natura>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>2</NumeroLinea>
+        <Descrizione>intervento per la sostituzione di bue teleruttori di corsa, completi di ausiliari, da 48V e 25 A</Descrizione>
+        <PrezzoUnitario>0.00000000</PrezzoUnitario>
+        <PrezzoTotale>0.00</PrezzoTotale>
+        <AliquotaIVA>0.00</AliquotaIVA>
+        <Natura>N6.7</Natura>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>3</NumeroLinea>
+        <Descrizione>.</Descrizione>
+        <Quantita>1.00</Quantita>
+        <PrezzoUnitario>380.00000000</PrezzoUnitario>
+        <PrezzoTotale>380.00</PrezzoTotale>
+        <AliquotaIVA>0.00</AliquotaIVA>
+        <Natura>N6.7</Natura>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>4</NumeroLinea>
+        <Descrizione>  Operazione senza addebito di imposta ai sensi art. 17 comma 6 lettera a ter) DPR 633/72 e succ. mod. (Reverse Charge).</Descrizione>
+        <PrezzoUnitario>0.00000000</PrezzoUnitario>
+        <PrezzoTotale>0.00</PrezzoTotale>
+        <AliquotaIVA>0.00</AliquotaIVA>
+        <Natura>N6.7</Natura>
+      </DettaglioLinee>
+      <DatiRiepilogo>
+        <AliquotaIVA>0.00</AliquotaIVA>
+        <Natura>N6.7</Natura>
+        <ImponibileImporto>380.00</ImponibileImporto>
+        <Imposta>0.00</Imposta>
+        <EsigibilitaIVA>I</EsigibilitaIVA>
+        <RiferimentoNormativo>INVERSIONE CONTABILE - Operazione senza addebito di imposta ai sensi art. 17 comma 6 lettera a ter) </RiferimentoNormativo>
+      </DatiRiepilogo>
+    </DatiBeniServizi>
+    <DatiPagamento>
+      <CondizioniPagamento>TP02</CondizioniPagamento>
+      <DettaglioPagamento>
+        <ModalitaPagamento>MP05</ModalitaPagamento>
+        <DataScadenzaPagamento>2025-12-31</DataScadenzaPagamento>
+        <ImportoPagamento>380.00</ImportoPagamento>
+        <IstitutoFinanziario>CRE'DIT AGRICOLE ITALIA S.P.A.  MILANO</IstitutoFinanziario>
+        <IBAN>IT41M0623001622000040528152</IBAN>
+        <CodicePagamento>BONIFICO BANCARIO A VISTA</CodicePagamento>
+      </DettaglioPagamento>
+    </DatiPagamento>
+  </FatturaElettronicaBody>
+</p:FatturaElettronica>

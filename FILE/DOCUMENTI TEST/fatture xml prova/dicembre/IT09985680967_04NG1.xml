@@ -1,0 +1,281 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><?xml-stylesheet type='text/xsl' href='fatturapa_v1.2.xsl'?><p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" versione="FPR12">
+	<FatturaElettronicaHeader>
+		<DatiTrasmissione>
+			<IdTrasmittente><IdPaese>IT</IdPaese><IdCodice>05006900962</IdCodice></IdTrasmittente>
+			<ProgressivoInvio>amwmceuxnj</ProgressivoInvio>
+			<FormatoTrasmissione>FPR12</FormatoTrasmissione>
+			<CodiceDestinatario>KRRH6B9</CodiceDestinatario>
+			
+		</DatiTrasmissione>
+		<CedentePrestatore>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>09985680967</IdCodice>
+				</IdFiscaleIVA>
+				<CodiceFiscale>09985680967</CodiceFiscale>
+				<Anagrafica>
+					<Denominazione>SHUNTDR SRL</Denominazione>
+				</Anagrafica>
+				<RegimeFiscale>RF01</RegimeFiscale>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>VIA POLVERIERA</Indirizzo>
+				<NumeroCivico>15 17 19</NumeroCivico>
+				<CAP>20026</CAP>
+				<Comune>NOVATE MILANESE</Comune>
+				<Provincia>MI</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+			<Contatti>
+			</Contatti>
+		</CedentePrestatore>
+		<CessionarioCommittente>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>11432080965</IdCodice>
+				</IdFiscaleIVA>
+				<CodiceFiscale>FRAFNC96C06I577U</CodiceFiscale>
+				<Anagrafica>
+					<Denominazione>FAMILY BAR DI FRAU FRANCESCO_RIV.166</Denominazione>
+				</Anagrafica>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>CORSO DI PORTA ROMANA</Indirizzo>
+				<NumeroCivico>2</NumeroCivico>
+				<CAP>20122</CAP>
+				<Comune>MILANO</Comune>
+				<Provincia>MI</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+		</CessionarioCommittente>
+	</FatturaElettronicaHeader>
+	<FatturaElettronicaBody>
+		<DatiGenerali>
+			<DatiGeneraliDocumento>
+				<TipoDocumento>TD01</TipoDocumento>
+				<Divisa>EUR</Divisa>
+				<Data>2025-12-11</Data>
+				<Numero>30231</Numero>
+				<ImportoTotaleDocumento>354.69</ImportoTotaleDocumento>
+				<Causale>Fattura di vendita</Causale>
+			</DatiGeneraliDocumento>
+			<DatiDDT>
+				<NumeroDDT>31711/V</NumeroDDT>
+				<DataDDT>2025-12-11</DataDDT>
+			</DatiDDT>
+			<DatiTrasporto>
+				<DataInizioTrasporto>2025-12-11</DataInizioTrasporto>
+				<IndirizzoResa>
+					<Indirizzo>CORSO DI PORTA ROMANA</Indirizzo>
+					<CAP>20122</CAP>
+					<Comune>MILANO</Comune>
+					<Provincia>MI</Provincia>
+					<Nazione>IT</Nazione>
+				</IndirizzoResa>
+			</DatiTrasporto>
+		</DatiGenerali>
+		<DatiBeniServizi>
+			<DettaglioLinee>
+				<NumeroLinea>10</NumeroLinea>
+				<Descrizione>Nostro Rif.
+Causale: V030 - Documento di trasporto
+Protocollo N.: 31711 /V - Del 11-12-2025</Descrizione>
+				<PrezzoUnitario>0.00000000</PrezzoUnitario>
+				<PrezzoTotale>0.00000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>20</NumeroLinea>
+				<Descrizione>SCHWEPPES TONICA LATTINA 330ML - SCHWEPPES ????</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>12.72000000</PrezzoUnitario>
+				<PrezzoTotale>12.72000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>30</NumeroLinea>
+				<Descrizione>LEMONSODA LATTINA 330ML - ???? ??</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>9.84000000</PrezzoUnitario>
+				<PrezzoTotale>9.84000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>40</NumeroLinea>
+				<Descrizione>SAN PELLEGRINO CHINOTTO LATTINA 330ml - ?? ?? ?</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>9.84000000</PrezzoUnitario>
+				<PrezzoTotale>9.84000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>50</NumeroLinea>
+				<Descrizione>COCACOLA ITALIA LATTINA 330ML - ?? ?????</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>11.76000000</PrezzoUnitario>
+				<PrezzoTotale>11.76000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>60</NumeroLinea>
+				<Descrizione>COCACOLA ZERO ITALIA LATTINA 330ML - ?? ???????</Descrizione>
+				<Quantita>2.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>11.76000000</PrezzoUnitario>
+				<PrezzoTotale>23.52000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>70</NumeroLinea>
+				<Descrizione>ESTATHE LATTINA LIMONE 330ml - ?????</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>16.32000000</PrezzoUnitario>
+				<PrezzoTotale>16.32000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>80</NumeroLinea>
+				<Descrizione>SCHWEPPES GINGERALE VAP 180ml - ??????? VERDE SCURO</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>14.64000000</PrezzoUnitario>
+				<PrezzoTotale>14.64000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>90</NumeroLinea>
+				<Descrizione>DACASTELLO CAJO BRUT DE BRUT MILLESIMATO 750ML - SPUMANTE MILLESIMATO BRUT ??? 11.5% ***SCATOLA AZZURRA ????***</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>15.60000000</PrezzoUnitario>
+				<PrezzoTotale>15.60000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>100</NumeroLinea>
+				<Descrizione>CERES BIRRA VAP 330ML - CERES??</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>30.00000000</PrezzoUnitario>
+				<PrezzoTotale>30.00000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>110</NumeroLinea>
+				<Descrizione>DERBY SUCCO PESCA 200ML - DERBY ???</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>11.76000000</PrezzoUnitario>
+				<PrezzoTotale>11.76000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>120</NumeroLinea>
+				<Descrizione>DERBY SUCCO ACE  200ML - DERBY ???</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>11.76000000</PrezzoUnitario>
+				<PrezzoTotale>11.76000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>130</NumeroLinea>
+				<Descrizione>DERBY SUCCO ANANAS 100% 200ML - DERBY 100% ???</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>14.16000000</PrezzoUnitario>
+				<PrezzoTotale>14.16000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>140</NumeroLinea>
+				<Descrizione>KEGLEVICH VODKA CLASSICA 1L - KEGLEVICH ??????</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>PZ</UnitaMisura>
+				<PrezzoUnitario>7.75000000</PrezzoUnitario>
+				<PrezzoTotale>7.75000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>150</NumeroLinea>
+				<Descrizione>MOLINARI SAMBUCA 1.5L - ?????????? 1.5L</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>PZ</UnitaMisura>
+				<PrezzoUnitario>24.50000000</PrezzoUnitario>
+				<PrezzoTotale>24.50000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>160</NumeroLinea>
+				<Descrizione>FERNET BRANCA AMARO 39% VOL 1L - ????????? (CA-A1)**??GIALLO**</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>PZ</UnitaMisura>
+				<PrezzoUnitario>16.60000000</PrezzoUnitario>
+				<PrezzoTotale>16.60000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>170</NumeroLinea>
+				<Descrizione>BAILEYS CREMA DI WHISKY 1Lx6 - ?????? (BB-A1)</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>PZ</UnitaMisura>
+				<PrezzoUnitario>13.90000000</PrezzoUnitario>
+				<PrezzoTotale>13.90000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>180</NumeroLinea>
+				<Descrizione>NARDINI GRAPPA BIANCA 1L - ???? ???? ??</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>PZ</UnitaMisura>
+				<PrezzoUnitario>17.50000000</PrezzoUnitario>
+				<PrezzoTotale>17.50000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>190</NumeroLinea>
+				<Descrizione>TENNENT'S SUPER BIRRA VAP 330ML - TENNENT'S ??</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>28.56000000</PrezzoUnitario>
+				<PrezzoTotale>28.56000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>200</NumeroLinea>
+				<Descrizione>GUALDO DEL RE ELISEO ROSSO 750ML - ?? ????? // OMAGGIO NATALIZIO</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>PZ</UnitaMisura>
+				<PrezzoUnitario>0.00000000</PrezzoUnitario>
+				<PrezzoTotale>0.00000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DatiRiepilogo>
+				<AliquotaIVA>22.00</AliquotaIVA>
+				<ImponibileImporto>290.73</ImponibileImporto>
+				<Imposta>63.96</Imposta>
+				<EsigibilitaIVA>I</EsigibilitaIVA>
+			</DatiRiepilogo>
+		</DatiBeniServizi>
+		<DatiPagamento>
+			<CondizioniPagamento>TP02</CondizioniPagamento>
+			<DettaglioPagamento>
+				<ModalitaPagamento>MP01</ModalitaPagamento>
+				<DataRiferimentoTerminiPagamento>2025-12-11</DataRiferimentoTerminiPagamento>
+				<DataScadenzaPagamento>2025-12-11</DataScadenzaPagamento>
+				<ImportoPagamento>354.69</ImportoPagamento>
+				<IBAN>IT74Z0503432391000000000461</IBAN>
+				<ABI>05034</ABI>
+				<CAB>32391</CAB>
+				<BIC>BAPPIT22</BIC>
+			</DettaglioPagamento>
+		</DatiPagamento>
+	</FatturaElettronicaBody>
+</p:FatturaElettronica>

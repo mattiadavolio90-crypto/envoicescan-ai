@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns3:FatturaElettronica xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>01961900246</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>fIbNC</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>0000000</CodiceDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>08539010010</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>93026890017</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>VODAFONE ITALIA S.p.A.</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>Via Jervis</Indirizzo>
+                <NumeroCivico>13</NumeroCivico>
+                <CAP>10015</CAP>
+                <Comune>Ivrea</Comune>
+                <Provincia>TO</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <IscrizioneREA>
+                <Ufficio>TO</Ufficio>
+                <NumeroREA>974956</NumeroREA>
+                <CapitaleSociale>2305099887.30</CapitaleSociale>
+                <SocioUnico>SU</SocioUnico>
+                <StatoLiquidazione>LN</StatoLiquidazione>
+            </IscrizioneREA>
+            <Contatti>
+                <Telefono>+3901256230</Telefono>
+                <Fax>+3901256247</Fax>
+            </Contatti>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>11432080965</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>Francesco frau DITTA</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA COSTANTINO BARONI</Indirizzo>
+                <NumeroCivico>18/B</NumeroCivico>
+                <CAP>20142</CAP>
+                <Comune>MILANO</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2025-12-30</Data>
+                <Numero>AR04118462</Numero>
+                <ImportoTotaleDocumento>54.29</ImportoTotaleDocumento>
+                <Causale>Periodo fatturazione: 23 ottobre 2025 - 22 dicembre 2025</Causale>
+            </DatiGeneraliDocumento>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <Descrizione>Altri Importi, Riaccrediti, Corrispettivi</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>20.00</PrezzoUnitario>
+                <PrezzoTotale>20.00</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>2</NumeroLinea>
+                <Descrizione>Altri Importi, Riaccrediti, Corrispettivi</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>-10.00</PrezzoUnitario>
+                <PrezzoTotale>-10.00</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>3</NumeroLinea>
+                <Descrizione>Spese spedizione, anticipi e bolli</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>2.50</PrezzoUnitario>
+                <PrezzoTotale>2.50</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>4</NumeroLinea>
+                <Descrizione>Ricariche</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>52.00</PrezzoUnitario>
+                <PrezzoTotale>52.00</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>5</NumeroLinea>
+                <TipoCessionePrestazione>SC</TipoCessionePrestazione>
+                <Descrizione>Sconti</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>-20.00</PrezzoUnitario>
+                <PrezzoTotale>-20.00</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>12.50</ImponibileImporto>
+                <Imposta>2.75</Imposta>
+                <EsigibilitaIVA>I</EsigibilitaIVA>
+                <RiferimentoNormativo>Aliquota ord. art.16 DPR633/72(Telefonia Mobile: Traffico, Attivazioni e Canoni, Servizi Opzionali)</RiferimentoNormativo>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>32.00</ImponibileImporto>
+                <Imposta>7.04</Imposta>
+                <EsigibilitaIVA>I</EsigibilitaIVA>
+                <RiferimentoNormativo>IVA ass. Art74 c1 letD DPR 633/72 da Vodafone Italia SpA PI 08539010010 fat. DM n.366/2000 art4 c1</RiferimentoNormativo>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+        <DatiPagamento>
+            <CondizioniPagamento>TP02</CondizioniPagamento>
+            <DettaglioPagamento>
+                <ModalitaPagamento>MP16</ModalitaPagamento>
+                <DataScadenzaPagamento>2026-01-19</DataScadenzaPagamento>
+                <ImportoPagamento>54.29</ImportoPagamento>
+                <IstitutoFinanziario>INTESA SANPAOLO SPA, MILANO - VIA RIPAMONTI 166</IstitutoFinanziario>
+            </DettaglioPagamento>
+        </DatiPagamento>
+    </FatturaElettronicaBody>
+</ns3:FatturaElettronica>

@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="fatturapa_v1.2.xsl"?>
+<p:FatturaElettronica versione="FPR12"
+xmlns:ds="http://www.w3.org/2000/09/xmldsig#"
+xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2"
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <FatturaElettronicaHeader>
+    <DatiTrasmissione>
+      <IdTrasmittente>
+        <IdPaese>IT</IdPaese>
+        <IdCodice>06488870152</IdCodice>
+      </IdTrasmittente>
+      <ProgressivoInvio>AF00O</ProgressivoInvio>
+      <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+      <CodiceDestinatario>0000000</CodiceDestinatario>
+      <PECDestinatario>francesco.frau.it@pec.it</PECDestinatario>
+    </DatiTrasmissione>
+    <CedentePrestatore>
+      <DatiAnagrafici>
+        <IdFiscaleIVA>
+          <IdPaese>IT</IdPaese>
+          <IdCodice>06488870152</IdCodice>
+        </IdFiscaleIVA>
+        <CodiceFiscale>06488870152</CodiceFiscale>
+        <Anagrafica>
+          <Denominazione>S.I.P.A. S.p.A.</Denominazione>
+        </Anagrafica>
+        <RegimeFiscale>RF01</RegimeFiscale>
+      </DatiAnagrafici>
+      <Sede>
+        <Indirizzo>Via della Liberazione, 1</Indirizzo>
+        <CAP>20098</CAP>
+        <Comune>San Giuliano Milanese</Comune>
+        <Provincia>MI</Provincia>
+        <Nazione>IT</Nazione>
+      </Sede>
+      <IscrizioneREA>
+        <Ufficio>MI</Ufficio>
+        <NumeroREA>1100434</NumeroREA>
+        <StatoLiquidazione>LN</StatoLiquidazione>
+      </IscrizioneREA>
+    </CedentePrestatore>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA>
+          <IdPaese>IT</IdPaese>
+          <IdCodice>11432080965</IdCodice>
+        </IdFiscaleIVA>
+        <CodiceFiscale>FRAFNC96C06I577U</CodiceFiscale>
+        <Anagrafica>
+          <Denominazione>FRAU FRANCESCO</Denominazione>
+        </Anagrafica>
+      </DatiAnagrafici>
+      <Sede>
+        <Indirizzo>VIA DEI MISSAGLIA 57/A</Indirizzo>
+        <CAP>20100</CAP>
+        <Comune>MILANO</Comune>
+        <Provincia>MI</Provincia>
+        <Nazione>IT</Nazione>
+      </Sede>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+ <FatturaElettronicaBody>
+  <DatiGenerali>
+   <DatiGeneraliDocumento>
+    <TipoDocumento>TD24</TipoDocumento>
+    <Divisa>EUR</Divisa>
+    <Data>2025-12-30</Data>
+    <Numero>C225076956</Numero>
+    <ImportoTotaleDocumento>188.41</ImportoTotaleDocumento>
+   </DatiGeneraliDocumento>
+   <DatiDDT>
+    <NumeroDDT>H003011236</NumeroDDT>
+    <DataDDT>2025-12-30</DataDDT>
+    <RiferimentoNumeroLinea>1</RiferimentoNumeroLinea>
+    <RiferimentoNumeroLinea>2</RiferimentoNumeroLinea>
+    <RiferimentoNumeroLinea>3</RiferimentoNumeroLinea>
+   </DatiDDT>
+   <DatiTrasporto>
+    <IndirizzoResa>
+        <Indirizzo>FRAU FRANCESCO CORSO DI PORTA ROMANA  2</Indirizzo>
+        <CAP>20100</CAP>
+        <Comune>MILANO</Comune>
+        <Provincia>MI</Provincia>
+        <Nazione>IT</Nazione>
+    </IndirizzoResa>
+   </DatiTrasporto>
+  </DatiGenerali>
+  <DatiBeniServizi>
+   <DettaglioLinee>
+    <NumeroLinea>1</NumeroLinea>
+<CodiceArticolo><CodiceTipo>Codice articolo fornitore</CodiceTipo><CodiceValore>0600</CodiceValore></CodiceArticolo>
+    <Descrizione>MINI CROISSANT BURRO 150P</Descrizione>
+    <Quantita>1.00000000</Quantita>
+    <UnitaMisura>NR</UnitaMisura>
+    <PrezzoUnitario>43.00000000</PrezzoUnitario>
+    <PrezzoTotale>43.00000000</PrezzoTotale>
+    <AliquotaIVA>10.00</AliquotaIVA>
+   </DettaglioLinee>
+   <DettaglioLinee>
+    <NumeroLinea>2</NumeroLinea>
+<CodiceArticolo><CodiceTipo>Codice articolo fornitore</CodiceTipo><CodiceValore>1116</CodiceValore></CodiceArticolo>
+    <Descrizione>GRAN CROISSANT AL CIOCCOLATO 50P</Descrizione>
+    <Quantita>1.00000000</Quantita>
+    <UnitaMisura>NR</UnitaMisura>
+    <PrezzoUnitario>20.28000000</PrezzoUnitario>
+    <PrezzoTotale>20.28000000</PrezzoTotale>
+    <AliquotaIVA>10.00</AliquotaIVA>
+   </DettaglioLinee>
+   <DettaglioLinee>
+    <NumeroLinea>3</NumeroLinea>
+<CodiceArticolo><CodiceTipo>Codice articolo fornitore</CodiceTipo><CodiceValore>1222</CodiceValore></CodiceArticolo>
+    <Descrizione>CROISSANT VUOTO BURRO 50P</Descrizione>
+    <Quantita>5.00000000</Quantita>
+    <UnitaMisura>NR</UnitaMisura>
+    <PrezzoUnitario>21.60080000</PrezzoUnitario>
+    <PrezzoTotale>108.00000000</PrezzoTotale>
+    <AliquotaIVA>10.00</AliquotaIVA>
+   </DettaglioLinee>
+   <DatiRiepilogo>
+    <AliquotaIVA>10.00</AliquotaIVA>
+    <ImponibileImporto>171.28</ImponibileImporto>
+    <Imposta>17.13</Imposta>
+    <EsigibilitaIVA>I</EsigibilitaIVA>
+    <RiferimentoNormativo>10%</RiferimentoNormativo>
+   </DatiRiepilogo>
+  </DatiBeniServizi>
+   <DatiPagamento>
+      <CondizioniPagamento>TP02</CondizioniPagamento>
+      <DettaglioPagamento>
+        <ModalitaPagamento>MP01</ModalitaPagamento>
+        <DataScadenzaPagamento>2025-12-30</DataScadenzaPagamento>
+        <ImportoPagamento>188.41</ImportoPagamento>
+        <IBAN>IT26Y0306984561100000014347</IBAN>
+        <CodicePagamento>CONSEGNA MERCE</CodicePagamento>
+      </DettaglioPagamento>
+    </DatiPagamento>
+  </FatturaElettronicaBody>
+</p:FatturaElettronica>

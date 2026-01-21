@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" versione="FPR12">
+	<FatturaElettronicaHeader>
+		<DatiTrasmissione>
+			<IdTrasmittente>
+				<IdPaese>IT</IdPaese>
+				<IdCodice>03237470236</IdCodice>
+			</IdTrasmittente>
+			<ProgressivoInvio>dQDUf</ProgressivoInvio>
+			<FormatoTrasmissione>FPR12</FormatoTrasmissione>
+			<CodiceDestinatario>KRRH6B9</CodiceDestinatario>
+		</DatiTrasmissione>
+		<CedentePrestatore>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>00233470236</IdCodice>
+				</IdFiscaleIVA>
+				<CodiceFiscale>00233470236</CodiceFiscale>
+				<Anagrafica>
+					<Denominazione>A.I.A. S.P.A. UNIPERSONALE</Denominazione>
+				</Anagrafica>
+				<RegimeFiscale>RF01</RegimeFiscale>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>P.LE APOLLINARE VERONESI 1</Indirizzo>
+				<CAP>37036</CAP>
+				<Comune>SAN MARTINO B.A.</Comune>
+				<Provincia>VR</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+			<IscrizioneREA>
+				<Ufficio>VR</Ufficio>
+				<NumeroREA>110039</NumeroREA>
+				<CapitaleSociale>5000000.00</CapitaleSociale>
+				<StatoLiquidazione>LN</StatoLiquidazione>
+			</IscrizioneREA>
+		</CedentePrestatore>
+		<CessionarioCommittente>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>11432080965</IdCodice>
+				</IdFiscaleIVA>
+				<CodiceFiscale>FRAFNC96C06I577U</CodiceFiscale>
+				<Anagrafica>
+					<Denominazione>FRAU FRANCESCO</Denominazione>
+				</Anagrafica>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>CORSO DI PORTA ROMANA 2 DI</Indirizzo>
+				<CAP>20122</CAP>
+				<Comune>MILANO</Comune>
+				<Provincia>MI</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+		</CessionarioCommittente>
+		<TerzoIntermediarioOSoggettoEmittente>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>03237470236</IdCodice>
+				</IdFiscaleIVA>
+				<Anagrafica>
+					<Denominazione>ARCHIVA SRL</Denominazione>
+				</Anagrafica>
+			</DatiAnagrafici>
+		</TerzoIntermediarioOSoggettoEmittente>
+		<SoggettoEmittente>TZ</SoggettoEmittente>
+	</FatturaElettronicaHeader>
+	<FatturaElettronicaBody>
+		<DatiGenerali>
+			<DatiGeneraliDocumento>
+				<TipoDocumento>TD01</TipoDocumento>
+				<Divisa>EUR</Divisa>
+				<Data>2025-12-10</Data>
+				<Numero>369717/M1</Numero>
+				<ImportoTotaleDocumento>488.73</ImportoTotaleDocumento>
+				<Causale>DESTINAZIONE MERCE: NFRAUFR06 - TIME CAFE - CORSO DI PORTA ROMANA 2 - 20122 - MILANO - MI</Causale>
+				<Causale>*************</Causale>
+				<Causale>Assolve agli obblighi di cui al D.Lgs. 198/2021 e ss.mm.ii.</Causale>
+				<Causale>Legenda:</Causale>
+				<Causale>tutti i prodotti descritti sono da intendersi "alimentari deteriorabili" salvo quelli</Causale>
+				<Causale>evidenziati con "N" classificati come "alimentari non deteriorabili o agricoli" o quelli</Causale>
+				<Causale>che, nella loro esplicita descrizione, possono essere chiaramente identificati o meno in</Causale>
+				<Causale>una delle categorie succitate.</Causale>
+				<Causale>Contratti Ns. Protocollo: A 101036/2025</Causale>
+				<Causale>Trattamento dati personali: Con riferimento agli adempimenti previsti in materia di</Causale>
+				<Causale>Protezione dei Dati Personali di cui al Reg.Ue 2016/679 (GDPR) vedasi l'informativa</Causale>
+				<Causale>privacy pubblicata sul sito www.gruppoveronesi.it</Causale>
+				<Causale>Contributo ambientale CONAI assolto</Causale>
+			</DatiGeneraliDocumento>
+			<DatiOrdineAcquisto>
+				<RiferimentoNumeroLinea>1</RiferimentoNumeroLinea>
+				<IdDocumento>SYN3960882</IdDocumento>
+			</DatiOrdineAcquisto>
+			<DatiOrdineAcquisto>
+				<RiferimentoNumeroLinea>2</RiferimentoNumeroLinea>
+				<IdDocumento>SYN3960882</IdDocumento>
+			</DatiOrdineAcquisto>
+			<DatiOrdineAcquisto>
+				<RiferimentoNumeroLinea>3</RiferimentoNumeroLinea>
+				<IdDocumento>SYN3960882</IdDocumento>
+			</DatiOrdineAcquisto>
+			<DatiOrdineAcquisto>
+				<RiferimentoNumeroLinea>4</RiferimentoNumeroLinea>
+				<IdDocumento>SYN3960882</IdDocumento>
+			</DatiOrdineAcquisto>
+			<DatiOrdineAcquisto>
+				<RiferimentoNumeroLinea>5</RiferimentoNumeroLinea>
+				<IdDocumento>SYN3960882</IdDocumento>
+			</DatiOrdineAcquisto>
+			<DatiOrdineAcquisto>
+				<RiferimentoNumeroLinea>6</RiferimentoNumeroLinea>
+				<IdDocumento>SYN3960882</IdDocumento>
+			</DatiOrdineAcquisto>
+			<DatiDDT>
+				<NumeroDDT>369717/M1</NumeroDDT>
+				<DataDDT>2025-12-10</DataDDT>
+				<RiferimentoNumeroLinea>1</RiferimentoNumeroLinea>
+			</DatiDDT>
+			<DatiDDT>
+				<NumeroDDT>369717/M1</NumeroDDT>
+				<DataDDT>2025-12-10</DataDDT>
+				<RiferimentoNumeroLinea>2</RiferimentoNumeroLinea>
+			</DatiDDT>
+			<DatiDDT>
+				<NumeroDDT>369717/M1</NumeroDDT>
+				<DataDDT>2025-12-10</DataDDT>
+				<RiferimentoNumeroLinea>3</RiferimentoNumeroLinea>
+			</DatiDDT>
+			<DatiDDT>
+				<NumeroDDT>369717/M1</NumeroDDT>
+				<DataDDT>2025-12-10</DataDDT>
+				<RiferimentoNumeroLinea>4</RiferimentoNumeroLinea>
+			</DatiDDT>
+			<DatiDDT>
+				<NumeroDDT>369717/M1</NumeroDDT>
+				<DataDDT>2025-12-10</DataDDT>
+				<RiferimentoNumeroLinea>5</RiferimentoNumeroLinea>
+			</DatiDDT>
+			<DatiDDT>
+				<NumeroDDT>369717/M1</NumeroDDT>
+				<DataDDT>2025-12-10</DataDDT>
+				<RiferimentoNumeroLinea>6</RiferimentoNumeroLinea>
+			</DatiDDT>
+		</DatiGenerali>
+		<DatiBeniServizi>
+			<DettaglioLinee>
+				<NumeroLinea>1</NumeroLinea>
+				<CodiceArticolo>
+					<CodiceTipo>LIN_SA</CodiceTipo>
+					<CodiceValore>G4329</CodiceValore>
+				</CodiceArticolo>
+				<Descrizione>PARMA S/O KG 7/8 ADD. CTX1 NGR</Descrizione>
+				<Quantita>8.2300000</Quantita>
+				<UnitaMisura>KG</UnitaMisura>
+				<PrezzoUnitario>14.8100000</PrezzoUnitario>
+				<PrezzoTotale>121.88</PrezzoTotale>
+				<AliquotaIVA>10.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>2</NumeroLinea>
+				<CodiceArticolo>
+					<CodiceTipo>LIN_SA</CodiceTipo>
+					<CodiceValore>G4390</CodiceValore>
+				</CodiceArticolo>
+				<Descrizione>BRESAOLA IGP PUNTA ANCA SV KG3,3X1 NGR</Descrizione>
+				<Quantita>2.7600000</Quantita>
+				<UnitaMisura>KG</UnitaMisura>
+				<PrezzoUnitario>23.8950000</PrezzoUnitario>
+				<PrezzoTotale>65.95</PrezzoTotale>
+				<AliquotaIVA>10.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>3</NumeroLinea>
+				<CodiceArticolo>
+					<CodiceTipo>LIN_SA</CodiceTipo>
+					<CodiceValore>G6114</CodiceValore>
+				</CodiceArticolo>
+				<Descrizione>P.COTTO PAGANINI S/P K9,5/10,5 CTX2 ENGR</Descrizione>
+				<Quantita>20.2100000</Quantita>
+				<UnitaMisura>KG</UnitaMisura>
+				<PrezzoUnitario>6.2900000</PrezzoUnitario>
+				<PrezzoTotale>127.12</PrezzoTotale>
+				<AliquotaIVA>10.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>4</NumeroLinea>
+				<CodiceArticolo>
+					<CodiceTipo>LIN_SA</CodiceTipo>
+					<CodiceValore>G8202</CodiceValore>
+				</CodiceArticolo>
+				<Descrizione>GUANCIALE NAZIONALE SV 1,5 KG X 2 NGR</Descrizione>
+				<Quantita>3.8000000</Quantita>
+				<UnitaMisura>KG</UnitaMisura>
+				<PrezzoUnitario>10.1500000</PrezzoUnitario>
+				<PrezzoTotale>38.57</PrezzoTotale>
+				<AliquotaIVA>10.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>5</NumeroLinea>
+				<CodiceArticolo>
+					<CodiceTipo>LIN_SA</CodiceTipo>
+					<CodiceValore>26702</CodiceValore>
+				</CodiceArticolo>
+				<Descrizione>PANCETTA ARROTOLATA S/C 3,7 KG X1</Descrizione>
+				<Quantita>3.9800000</Quantita>
+				<UnitaMisura>KG</UnitaMisura>
+				<PrezzoUnitario>10.9860000</PrezzoUnitario>
+				<PrezzoTotale>43.72</PrezzoTotale>
+				<AliquotaIVA>10.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>6</NumeroLinea>
+				<CodiceArticolo>
+					<CodiceTipo>LIN_SA</CodiceTipo>
+					<CodiceValore>76590</CodiceValore>
+				</CodiceArticolo>
+				<Descrizione>SPECK MEZZO SV CRT X 2 PZ CAT</Descrizione>
+				<Quantita>4.7300000</Quantita>
+				<UnitaMisura>KG</UnitaMisura>
+				<PrezzoUnitario>9.9490000</PrezzoUnitario>
+				<PrezzoTotale>47.06</PrezzoTotale>
+				<AliquotaIVA>10.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DatiRiepilogo>
+				<AliquotaIVA>10.00</AliquotaIVA>
+				<ImponibileImporto>444.30</ImponibileImporto>
+				<Imposta>44.43</Imposta>
+				<EsigibilitaIVA>I</EsigibilitaIVA>
+			</DatiRiepilogo>
+		</DatiBeniServizi>
+		<DatiPagamento>
+			<CondizioniPagamento>TP02</CondizioniPagamento>
+			<DettaglioPagamento>
+				<ModalitaPagamento>MP01</ModalitaPagamento>
+				<DataScadenzaPagamento>2025-12-10</DataScadenzaPagamento>
+				<ImportoPagamento>488.73</ImportoPagamento>
+				<IBAN>IT22V0306918468100000002423</IBAN>
+				<ScontoPagamentoAnticipato>0.00</ScontoPagamentoAnticipato>
+				<CodicePagamento>CONTRASSEGNO CONTANTI SCARICO</CodicePagamento>
+			</DettaglioPagamento>
+		</DatiPagamento>
+	</FatturaElettronicaBody>
+</p:FatturaElettronica>

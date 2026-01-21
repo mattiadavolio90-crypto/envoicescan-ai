@@ -7,7 +7,7 @@
 -- USO: SELECT * FROM get_distinct_files('user-id-qui')
 -- ============================================================
 
-CREATE OR REPLACE FUNCTION get_distinct_files(p_user_id TEXT)
+CREATE OR REPLACE FUNCTION get_distinct_files(p_user_id UUID)
 RETURNS TABLE (file_origine TEXT) 
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -24,8 +24,8 @@ END;
 $$;
 
 -- Grant permessi per utenti autenticati
-GRANT EXECUTE ON FUNCTION get_distinct_files(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION get_distinct_files(UUID) TO authenticated;
 
 -- Commento funzione
-COMMENT ON FUNCTION get_distinct_files(TEXT) IS 
+COMMENT ON FUNCTION get_distinct_files(UUID) IS 
 'Restituisce lista file_origine distinti per un user_id. Ottimizzata per deduplicazione upload.';

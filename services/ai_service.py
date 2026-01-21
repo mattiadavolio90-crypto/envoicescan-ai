@@ -280,6 +280,15 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     for keyword, categoria in sorted_alimenti:
         pattern = r'(^|[\s\W])' + re.escape(keyword) + r'([\s\W]|$)'
         if re.search(pattern, ' ' + desc_upper + ' '):
+            # ⭐ NUOVO: Traccia che questa descrizione è stata categorizzata da keyword
+            try:
+                import streamlit as st
+                if 'righe_keyword_appena_categorizzate' not in st.session_state:
+                    st.session_state.righe_keyword_appena_categorizzate = []
+                if descrizione not in st.session_state.righe_keyword_appena_categorizzate:
+                    st.session_state.righe_keyword_appena_categorizzate.append(descrizione)
+            except Exception:
+                pass  # Se chiamato fuori da Streamlit context, ignora
             return categoria
     
     # STEP 2: Cerca CONTENITORI (priorità bassa) - solo se nessun alimento trovato
@@ -287,6 +296,15 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     for keyword, categoria in sorted_contenitori:
         pattern = r'(^|[\s\W])' + re.escape(keyword) + r'([\s\W]|$)'
         if re.search(pattern, ' ' + desc_upper + ' '):
+            # ⭐ NUOVO: Traccia anche contenitori
+            try:
+                import streamlit as st
+                if 'righe_keyword_appena_categorizzate' not in st.session_state:
+                    st.session_state.righe_keyword_appena_categorizzate = []
+                if descrizione not in st.session_state.righe_keyword_appena_categorizzate:
+                    st.session_state.righe_keyword_appena_categorizzate.append(descrizione)
+            except Exception:
+                pass  # Se chiamato fuori da Streamlit context, ignora
             return categoria
     
     return categoria_ai

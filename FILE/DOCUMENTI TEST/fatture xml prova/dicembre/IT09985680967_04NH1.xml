@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><?xml-stylesheet type='text/xsl' href='fatturapa_v1.2.xsl'?><p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" versione="FPR12">
+	<FatturaElettronicaHeader>
+		<DatiTrasmissione>
+			<IdTrasmittente><IdPaese>IT</IdPaese><IdCodice>05006900962</IdCodice></IdTrasmittente>
+			<ProgressivoInvio>amwmcvngkg</ProgressivoInvio>
+			<FormatoTrasmissione>FPR12</FormatoTrasmissione>
+			<CodiceDestinatario>KRRH6B9</CodiceDestinatario>
+			
+		</DatiTrasmissione>
+		<CedentePrestatore>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>09985680967</IdCodice>
+				</IdFiscaleIVA>
+				<CodiceFiscale>09985680967</CodiceFiscale>
+				<Anagrafica>
+					<Denominazione>SHUNTDR SRL</Denominazione>
+				</Anagrafica>
+				<RegimeFiscale>RF01</RegimeFiscale>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>VIA POLVERIERA</Indirizzo>
+				<NumeroCivico>15 17 19</NumeroCivico>
+				<CAP>20026</CAP>
+				<Comune>NOVATE MILANESE</Comune>
+				<Provincia>MI</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+			<Contatti>
+			</Contatti>
+		</CedentePrestatore>
+		<CessionarioCommittente>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>11432080965</IdCodice>
+				</IdFiscaleIVA>
+				<CodiceFiscale>FRAFNC96C06I577U</CodiceFiscale>
+				<Anagrafica>
+					<Denominazione>FAMILY BAR DI FRAU FRANCESCO_RIV.166</Denominazione>
+				</Anagrafica>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>CORSO DI PORTA ROMANA</Indirizzo>
+				<NumeroCivico>2</NumeroCivico>
+				<CAP>20122</CAP>
+				<Comune>MILANO</Comune>
+				<Provincia>MI</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+		</CessionarioCommittente>
+	</FatturaElettronicaHeader>
+	<FatturaElettronicaBody>
+		<DatiGenerali>
+			<DatiGeneraliDocumento>
+				<TipoDocumento>TD01</TipoDocumento>
+				<Divisa>EUR</Divisa>
+				<Data>2025-12-13</Data>
+				<Numero>30399</Numero>
+				<ImportoTotaleDocumento>534.91</ImportoTotaleDocumento>
+				<Causale>Fattura di vendita</Causale>
+			</DatiGeneraliDocumento>
+			<DatiDDT>
+				<NumeroDDT>31890/V</NumeroDDT>
+				<DataDDT>2025-12-12</DataDDT>
+			</DatiDDT>
+			<DatiTrasporto>
+				<DataInizioTrasporto>2025-12-13</DataInizioTrasporto>
+				<IndirizzoResa>
+					<Indirizzo>CORSO DI PORTA ROMANA</Indirizzo>
+					<CAP>20122</CAP>
+					<Comune>MILANO</Comune>
+					<Provincia>MI</Provincia>
+					<Nazione>IT</Nazione>
+				</IndirizzoResa>
+			</DatiTrasporto>
+		</DatiGenerali>
+		<DatiBeniServizi>
+			<DettaglioLinee>
+				<NumeroLinea>10</NumeroLinea>
+				<Descrizione>Nostro Rif.
+Causale: V030 - Documento di trasporto
+Protocollo N.: 31890 /V - Del 12-12-2025</Descrizione>
+				<PrezzoUnitario>0.00000000</PrezzoUnitario>
+				<PrezzoTotale>0.00000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>20</NumeroLinea>
+				<Descrizione>DACASTELLO CAJO BRUT DE BRUT MILLESIMATO 750ML - SPUMANTE MILLESIMATO BRUT ??? 11.5% ***SCATOLA AZZURRA ????***</Descrizione>
+				<Quantita>10.00000000</Quantita>
+				<UnitaMisura>CT</UnitaMisura>
+				<PrezzoUnitario>15.60000000</PrezzoUnitario>
+				<PrezzoTotale>156.00000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>30</NumeroLinea>
+				<Descrizione>SMOKING FILTRI ULTRA SLIM SIZE 22MMx5.7MM 30x120pz - ?? ???? 8414775019068 30CF x 120filtri</Descrizione>
+				<Quantita>4.00000000</Quantita>
+				<UnitaMisura>CF</UnitaMisura>
+				<PrezzoUnitario>29.70000000</PrezzoUnitario>
+				<PrezzoTotale>118.80000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>40</NumeroLinea>
+				<Descrizione>SMOKING FILTRI SLIM SIZE LUNGHI 22MMx6MM 30x120unt - ?? ???? 8414775015572 30CF x 120filtri</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CF</UnitaMisura>
+				<PrezzoUnitario>31.90000000</PrezzoUnitario>
+				<PrezzoTotale>31.90000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>50</NumeroLinea>
+				<Descrizione>ACCENDINO BIC J 25 MINI 50PZ - BIC??? ??3086125002805</Descrizione>
+				<Quantita>3.00000000</Quantita>
+				<UnitaMisura>CF</UnitaMisura>
+				<PrezzoUnitario>27.00000000</PrezzoUnitario>
+				<PrezzoTotale>81.00000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>60</NumeroLinea>
+				<Descrizione>ACCENDINO BIC J 26 MAXI 50PZ - BIC??? ?? 3086125002843</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CF</UnitaMisura>
+				<PrezzoUnitario>32.00000000</PrezzoUnitario>
+				<PrezzoTotale>32.00000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>70</NumeroLinea>
+				<Descrizione>OCB CARTINA NERA CORTA DOPPIA 25librettix100fogli - OCB??? ?? ?3057067096252 25libretti x 100fogli</Descrizione>
+				<Quantita>1.00000000</Quantita>
+				<UnitaMisura>CF</UnitaMisura>
+				<PrezzoUnitario>18.75000000</PrezzoUnitario>
+				<PrezzoTotale>18.75000000</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+			</DettaglioLinee>
+			<DatiRiepilogo>
+				<AliquotaIVA>22.00</AliquotaIVA>
+				<ImponibileImporto>438.45</ImponibileImporto>
+				<Imposta>96.46</Imposta>
+				<EsigibilitaIVA>I</EsigibilitaIVA>
+			</DatiRiepilogo>
+		</DatiBeniServizi>
+		<DatiPagamento>
+			<CondizioniPagamento>TP02</CondizioniPagamento>
+			<DettaglioPagamento>
+				<ModalitaPagamento>MP01</ModalitaPagamento>
+				<DataRiferimentoTerminiPagamento>2025-12-13</DataRiferimentoTerminiPagamento>
+				<DataScadenzaPagamento>2025-12-13</DataScadenzaPagamento>
+				<ImportoPagamento>534.91</ImportoPagamento>
+				<IBAN>IT74Z0503432391000000000461</IBAN>
+				<ABI>05034</ABI>
+				<CAB>32391</CAB>
+				<BIC>BAPPIT22</BIC>
+			</DettaglioPagamento>
+		</DatiPagamento>
+	</FatturaElettronicaBody>
+</p:FatturaElettronica>

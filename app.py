@@ -1563,6 +1563,11 @@ def mostra_statistiche(df_completo):
                         cat_dizionario = applica_correzioni_dizionario(desc, "Da Classificare")
                         if cat_dizionario and cat_dizionario != 'Da Classificare':
                             mappa_categorie[desc] = cat_dizionario
+                            # ⭐ NUOVO: Traccia righe keyword per colonna Fonte
+                            if 'righe_keyword_appena_categorizzate' not in st.session_state:
+                                st.session_state.righe_keyword_appena_categorizzate = []
+                            if desc not in st.session_state.righe_keyword_appena_categorizzate:
+                                st.session_state.righe_keyword_appena_categorizzate.append(desc)
                             logger.info(f"📖 DIZIONARIO: '{desc[:40]}' → {cat_dizionario}")
                         else:
                             descrizioni_per_ai.append(desc)
@@ -1593,13 +1598,11 @@ def mostra_statistiche(df_completo):
                             
                             # Salva anche in memoria GLOBALE su Supabase
                             try:
-                                from datetime import datetime
                                 supabase.table('prodotti_master').upsert({
                                     'descrizione': desc,
                                     'categoria': cat,
                                     'volte_visto': 1,
-                                    'classificato_da': 'AI',
-                                    'updated_at': datetime.now().isoformat()
+                                    'classificato_da': 'AI'
                                 }, on_conflict='descrizione').execute()
                                 
                                 # Invalida cache per forzare ricaricamento
@@ -2304,6 +2307,36 @@ def mostra_statistiche(df_completo):
         
         df_editor = df_base[cols_base].copy()
         
+        # ⭐ NUOVO: COLONNA FONTE - Origine categorizzazione (UI-only, NON salvata in DB)
+        if 'Descrizione' in df_editor.columns:
+            # DIZIONARIO (📚)
+            righe_diz = st.session_state.get('righe_keyword_appena_categorizzate', [])
+            diz_set = set(str(d).strip() for d in righe_diz)
+            
+            # AI BATCH (🤖)
+            righe_ai = st.session_state.get('righe_ai_appena_categorizzate', [])
+            ai_set = set(str(d).strip() for d in righe_ai)
+            
+            # MANUALE (✋)
+            righe_man = st.session_state.get('righe_modificate_manualmente', [])
+            man_set = set(str(d).strip() for d in righe_man)
+            
+            df_editor['Fonte'] = df_editor['Descrizione'].apply(
+                lambda d: '✋' if str(d).strip() in man_set else
+                          '🤖' if str(d).strip() in ai_set else
+                          '📚' if str(d).strip() in diz_set else ''
+            )
+            logger.info(f"✅ Colonna Fonte: {len(man_set)} manuali, {len(ai_set)} AI, {len(diz_set)} dizionario")
+        
+        # 🧪 TEST AGGREGAZIONE (diagnostico - zero impatto UI)
+        if 'Descrizione' in df_editor.columns:
+            df_test_agg = df_editor.groupby('Descrizione').agg({
+                'Categoria': 'first',
+                'Quantita': 'sum',
+                'TotaleRiga': 'sum'
+            })
+            logger.info(f"📊 TEST Aggregazione: {len(df_editor)} righe → {len(df_test_agg)} prodotti unici")
+        
         # 🔧 CONVERTI pd.NA/vuoti in "Da Classificare" PRIMA di aggiungere icona AI
         # (Così la condizione per l'icona può trovare categorie valide)
         # SelectboxColumn ora include "Da Classificare" come opzione valida
@@ -2395,14 +2428,76 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
         num_righe = len(df_editor)
         
         # ============================================================
-        # NESSUNA PAGINAZIONE - Mostra tutte le righe
+        # 📦 CHECKBOX RAGGRUPPAMENTO PRODOTTI
         # ============================================================
-        df_editor_paginato = df_editor.copy()
+        vista_aggregata = st.checkbox(
+            "📦 Raggruppa prodotti unici", 
+            value=False,  # ← DEFAULT OFF per rollout sicuro
+            help="Mostra 1 riga per prodotto con totali sommati (Q.tà, €, Prezzo medio)",
+            key="checkbox_raggruppa_prodotti"
+        )
+
+        if vista_aggregata:
+            # Prepara dizionario aggregazione (colonne sempre presenti)
+            agg_dict = {
+                'Categoria': 'first',
+                'Fornitore': lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[0],
+                'Quantita': 'sum',
+                'TotaleRiga': 'sum',
+                'PrezzoUnitario': 'mean',
+                'DataDocumento': 'max',
+                'FileOrigine': 'nunique',
+                'UnitaMisura': 'first',
+                'IVAPercentuale': 'first'
+            }
+            
+            # ✅ Aggiungi colonne opzionali solo se presenti
+            if 'Fonte' in df_editor.columns:
+                agg_dict['Fonte'] = 'first'
+            if 'PrezzoStandard' in df_editor.columns:
+                agg_dict['PrezzoStandard'] = 'mean'
+            
+            # Esegui aggregazione con conteggio righe
+            df_editor_agg = df_editor.groupby('Descrizione', as_index=False).agg(agg_dict)
+            
+            # Aggiungi colonna N.Righe (numero righe aggregate per ogni prodotto)
+            num_righe_per_prodotto = df_editor.groupby('Descrizione').size()
+            df_editor_agg['NumRighe'] = df_editor_agg['Descrizione'].map(num_righe_per_prodotto)
+            
+            # Rinomina FileOrigine → NumFatture
+            if 'FileOrigine' in df_editor_agg.columns:
+                df_editor_agg.rename(columns={'FileOrigine': 'NumFatture'}, inplace=True)
+            
+            # Riordina colonne: NumFatture, NumRighe, DataDocumento in posizione 1, 2, 3
+            cols = df_editor_agg.columns.tolist()
+            # Rimuovi le 3 colonne da riposizionare
+            cols_reordered = [c for c in cols if c not in ['NumFatture', 'NumRighe', 'DataDocumento']]
+            # Aggiungi le 3 colonne all'inizio nell'ordine: N.Fatt, N.Righe, Data
+            cols_to_prepend = []
+            if 'NumFatture' in cols:
+                cols_to_prepend.append('NumFatture')
+            if 'NumRighe' in cols:
+                cols_to_prepend.append('NumRighe')
+            if 'DataDocumento' in cols:
+                cols_to_prepend.append('DataDocumento')
+            cols_reordered = cols_to_prepend + cols_reordered
+            df_editor_agg = df_editor_agg[cols_reordered]
+            
+            # Usa vista aggregata
+            df_editor_paginato = df_editor_agg
+            
+            # Info utente
+            st.info(f"📊 **{len(df_editor_agg)} prodotti unici** (da {len(df_editor)} righe)")
+        else:
+            df_editor_paginato = df_editor.copy()
+        
+        # Calcola prodotti unici (descrizioni distinte)
+        num_prodotti_unici = df_editor['Descrizione'].nunique()
         
         st.markdown(f"""
         <div style="background-color: #E8F5E9; padding: 12px 15px; border-radius: 8px; border-left: 4px solid #4CAF50; margin-bottom: 15px;">
             <p style="margin: 0; font-size: 14px; color: #2E7D32; font-weight: 500;">
-                📄 <strong>Totale: {num_righe:,} righe</strong>
+                📄 <strong>Totale: {num_righe:,} righe</strong> • 🏷️ <strong>{num_prodotti_unici:,} prodotti unici</strong>
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -2506,6 +2601,13 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 options=categorie_disponibili,
                 required=True
             ),
+            # ⭐ NUOVO: Colonna Fonte (dopo Categoria)
+            "Fonte": st.column_config.TextColumn(
+                "Fonte",
+                help="📚=dizionario | 🤖=AI batch | ✋=modifica manuale | (vuoto)=storica",
+                disabled=True,
+                width="small"
+            ),
             "TotaleRiga": st.column_config.NumberColumn("Totale (€)", format="€ %.2f", disabled=True),
             "PrezzoUnitario": st.column_config.NumberColumn("Prezzo Unit.", format="€ %.2f", disabled=True),
             "Descrizione": st.column_config.TextColumn("Descrizione", disabled=True),
@@ -2514,6 +2616,47 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             "Quantita": st.column_config.NumberColumn("Q.tà", disabled=True),
             "UnitaMisura": st.column_config.TextColumn("U.M.", disabled=True, width="small")
         }
+        
+        # ============================================================
+        # CONFIGURAZIONE COLONNE PER VISTA AGGREGATA
+        # ============================================================
+        if vista_aggregata:
+            # Colonna NumFatture (solo in aggregata)
+            if 'NumFatture' in df_editor_paginato.columns:
+                column_config_dict["NumFatture"] = st.column_config.NumberColumn(
+                    "N.Fatt", 
+                    help="Numero fatture con questo prodotto",
+                    disabled=True,
+                    width="small"
+                )
+            
+            # Colonna NumRighe (solo in aggregata)
+            if 'NumRighe' in df_editor_paginato.columns:
+                column_config_dict["NumRighe"] = st.column_config.NumberColumn(
+                    "N.Righe", 
+                    help="Numero righe fattura aggregate per questo prodotto",
+                    disabled=True,
+                    width="small"
+                )
+            
+            # Adatta etichette colonne esistenti
+            column_config_dict["Quantita"] = st.column_config.NumberColumn(
+                "Q.tà TOT",  # ← Sottolinea che è somma
+                help="Quantità totale da tutte le fatture",
+                disabled=True
+            )
+            
+            column_config_dict["PrezzoUnitario"] = st.column_config.NumberColumn(
+                "Prezzo MEDIO",  # ← Chiarisce che è media
+                format="€ %.2f",
+                disabled=True
+            )
+            
+            column_config_dict["TotaleRiga"] = st.column_config.NumberColumn(
+                "€ TOTALE",  # ← Enfatizza somma
+                format="€ %.2f",
+                disabled=True
+            )
         
         edited_df = st.data_editor(
             df_editor_paginato,
@@ -2611,16 +2754,27 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
             
             # Prepara Excel - USA TUTTI I DATI con ordinamento selezionato
             try:
-                # ✅ ESPORTA TUTTI I DATI (df_editor completo, non solo pagina corrente)
-                # Ma applica le modifiche fatte dall'utente in edited_df
-                df_export = df_editor.copy()
-                
-                # Applica modifiche categorie fatte dall'utente nella pagina corrente
-                if not edited_df.empty and 'Categoria' in edited_df.columns:
-                    # Trova gli indici della pagina corrente in df_editor
-                    for idx in edited_df.index:
-                        if idx in df_export.index:
-                            df_export.at[idx, 'Categoria'] = edited_df.at[idx, 'Categoria']
+                # ✅ ESPORTA DATI IN BASE ALLA VISUALIZZAZIONE
+                # Vista aggregata: esporta righe aggregate (quelle visualizzate)
+                # Vista normale: esporta tutte righe con modifiche applicate
+                if vista_aggregata:
+                    # Esporta vista aggregata (già contiene somme/medie corrette)
+                    df_export = df_editor_paginato.copy()
+                    
+                    # Applica modifiche categorie fatte dall'utente
+                    if not edited_df.empty and 'Categoria' in edited_df.columns:
+                        for idx in edited_df.index:
+                            if idx in df_export.index:
+                                df_export.at[idx, 'Categoria'] = edited_df.at[idx, 'Categoria']
+                else:
+                    # Vista normale: esporta tutti i dati originali
+                    df_export = df_editor.copy()
+                    
+                    # Applica modifiche categorie fatte dall'utente nella pagina corrente
+                    if not edited_df.empty and 'Categoria' in edited_df.columns:
+                        for idx in edited_df.index:
+                            if idx in df_export.index:
+                                df_export.at[idx, 'Categoria'] = edited_df.at[idx, 'Categoria']
                 
                 # ✅ APPLICA ORDINAMENTO SELEZIONATO
                 if ordina_per and ordina_per in df_export.columns:
@@ -2670,8 +2824,8 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 # ========================================
                 colonne_df = edited_df.columns.tolist()
                 
-                # Check flessibile per Editor Fatture (supporta nomi alternativi)
-                ha_file = any(col in colonne_df for col in ['File', 'FileOrigine'])
+                # Check flessibile per Editor Fatture (supporta nomi alternativi + vista aggregata)
+                ha_file = any(col in colonne_df for col in ['File', 'FileOrigine', 'NumFatture'])  # ← NumFatture per vista aggregata
                 ha_numero_riga = any(col in colonne_df for col in ['NumeroRiga', 'Numero Riga', 'Riga', '#'])
                 ha_fornitore = 'Fornitore' in colonne_df
                 ha_descrizione = 'Descrizione' in colonne_df
@@ -2680,6 +2834,10 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                 # Se ha colonne tipiche editor fatture (almeno File + Categoria + Descrizione)
                 if (ha_file or ha_numero_riga) and ha_categoria and ha_descrizione and ha_fornitore:
                     logger.info("🔄 Rilevato: EDITOR FATTURE CLIENTE - Salvataggio modifiche...")
+                    
+                    # 📦 AVVISO MODALITÀ AGGREGATA
+                    if vista_aggregata:
+                        st.warning("📦 **Modalità Raggruppata Attiva:** Le modifiche alle categorie verranno applicate a TUTTE le righe con la stessa descrizione nel database.")
                     
                     for index, row in edited_df.iterrows():
                         try:
@@ -2720,10 +2878,32 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                                                  (not vecchia_cat and nuova_cat != 'Da Classificare')
                             if categoria_modificata:
                                 logger.info(f"✋ MANUALE: '{descrizione[:40]}' modificato da '{vecchia_cat or "vuoto"}' → {nuova_cat}")
+                                
+                                # ⭐ NUOVO: Traccia modifica manuale per colonna Fonte
+                                if 'righe_modificate_manualmente' not in st.session_state:
+                                    st.session_state.righe_modificate_manualmente = []
+                                if descrizione not in st.session_state.righe_modificate_manualmente:
+                                    st.session_state.righe_modificate_manualmente.append(descrizione)
                             
                             # 🔄 MODIFICA BATCH: Se categoria è cambiata, aggiorna TUTTE le righe con stessa descrizione
-                            if vecchia_cat and vecchia_cat != nuova_cat:
-                                logger.info(f"🔄 BATCH UPDATE: '{descrizione}' {vecchia_cat} → {nuova_cat}")
+                            # In vista aggregata: SEMPRE batch update (1 riga vista = N righe DB)
+                            # In vista normale: batch update solo se categoria diversa dalla precedente
+                            esegui_batch_update = vista_aggregata or (vecchia_cat and vecchia_cat != nuova_cat)
+                            
+                            if esegui_batch_update:
+                                if vista_aggregata:
+                                    logger.info(f"📦 AGGREGATA - BATCH UPDATE: '{descrizione}' → {nuova_cat}")
+                                else:
+                                    logger.info(f"🔄 BATCH UPDATE: '{descrizione}' {vecchia_cat} → {nuova_cat}")
+                                
+                                # 🔍 DIAGNOSI: Log dettagliato descrizione per debug
+                                from utils.text_utils import normalizza_stringa
+                                desc_normalized = normalizza_stringa(descrizione)
+                                logger.info(f"🔍 DEBUG UPDATE:")
+                                logger.info(f"   📝 Descrizione raw (edited_df): '{descrizione}'")
+                                logger.info(f"   🔧 Descrizione normalizzata: '{desc_normalized}'")
+                                logger.info(f"   🏷️  Categoria nuova: '{nuova_cat}'")
+                                logger.info(f"   📊 User ID: {user_id}")
                                 
                                 # Aggiorna tutte le righe con stessa descrizione (normalizzata)
                                 result = supabase.table("fatture").update(update_data).eq(
@@ -2734,6 +2914,37 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                                 
                                 righe_aggiornate = len(result.data) if result.data else 0
                                 logger.info(f"✅ BATCH: {righe_aggiornate} righe aggiornate per '{descrizione[:40]}'")
+                                
+                                # 🔍 DIAGNOSI: Se UPDATE fallisce (0 righe), cerca descrizioni simili nel DB
+                                if righe_aggiornate == 0:
+                                    logger.error(f"❌ UPDATE FALLITO: 0 righe aggiornate per '{descrizione}'")
+                                    logger.info(f"🔍 Cerco descrizioni simili nel database...")
+                                    
+                                    try:
+                                        # Query diagnostica: cerca per pattern parziale
+                                        parole = descrizione.split()[:3]  # Prime 3 parole
+                                        if parole:
+                                            pattern_search = "%".join(parole)
+                                            check = supabase.table("fatture").select("descrizione, categoria").eq(
+                                                "user_id", user_id
+                                            ).ilike("descrizione", f"%{pattern_search}%").limit(5).execute()
+                                            
+                                            if check.data:
+                                                logger.info(f"📋 Trovate {len(check.data)} descrizioni simili nel DB:")
+                                                for i, row in enumerate(check.data, 1):
+                                                    db_desc = row.get('descrizione', 'N/A')
+                                                    db_cat = row.get('categoria', 'N/A')
+                                                    logger.info(f"   [{i}] DB: '{db_desc}' → cat: '{db_cat}'")
+                                                    
+                                                    # Confronto carattere per carattere
+                                                    if db_desc != descrizione:
+                                                        logger.info(f"   ⚠️ DIFFERENZA TROVATA:")
+                                                        logger.info(f"      edited_df: '{descrizione}' (len={len(descrizione)})")
+                                                        logger.info(f"      database:  '{db_desc}' (len={len(db_desc)})")
+                                            else:
+                                                logger.info(f"   ❌ Nessuna descrizione simile trovata per pattern '{pattern_search}'")
+                                    except Exception as diag_err:
+                                        logger.error(f"   ❌ Errore query diagnostica: {diag_err}")
                                 
                                 # Aggiorna memoria AI
                                 aggiorna_memoria_ai(descrizione, nuova_cat)
@@ -2795,6 +3006,13 @@ L'app estrae automaticamente dalla descrizione e calcola il prezzo di Listino.
                     st.cache_data.clear()
                     invalida_cache_memoria()
                     st.session_state.force_reload = True  # ← Forza ricaricamento completo
+                    
+                    # ⭐ NUOVO: Reset tracking fonte categorizzazione dopo salvataggio
+                    st.session_state.pop('righe_ai_appena_categorizzate', None)
+                    st.session_state.pop('righe_keyword_appena_categorizzate', None)
+                    st.session_state.pop('righe_modificate_manualmente', None)
+                    logger.info("🔄 Reset tracking fonte categorizzazione dopo salvataggio")
+                    
                     st.rerun()
                 elif (ha_file or ha_numero_riga) and ha_categoria and ha_descrizione:
                     # Solo se era davvero l'editor fatture

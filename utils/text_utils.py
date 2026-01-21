@@ -175,16 +175,20 @@ def estrai_nome_categoria(categoria_con_icona: str) -> str:
     Estrae solo il nome dalla categoria con icona.
     
     Args:
-        categoria_con_icona: "🍖 CARNE" o "CARNE"
+        categoria_con_icona: "🍖 CARNE" o "CARNE" o "NO FOOD"
     
     Returns:
-        str: "CARNE" (solo nome, senza emoji)
+        str: "CARNE" o "NO FOOD" (solo nome, senza emoji)
     
     Esempi:
         >>> estrai_nome_categoria("🍖 CARNE")
         'CARNE'
         >>> estrai_nome_categoria("CARNE")
         'CARNE'
+        >>> estrai_nome_categoria("📦 NO FOOD")
+        'NO FOOD'
+        >>> estrai_nome_categoria("NO FOOD")
+        'NO FOOD'
         >>> estrai_nome_categoria("")
         'Da Classificare'
         >>> estrai_nome_categoria(None)
@@ -193,12 +197,15 @@ def estrai_nome_categoria(categoria_con_icona: str) -> str:
     if not categoria_con_icona:
         return "Da Classificare"
     
-    # Se contiene spazio, prendi parte dopo primo spazio
-    if ' ' in categoria_con_icona:
-        return categoria_con_icona.split(' ', 1)[1].strip()
+    categoria_clean = categoria_con_icona.strip()
     
-    # Altrimenti ritorna come è (già senza emoji)
-    return categoria_con_icona.strip()
+    # ✅ FIX: Rimuovi solo emoji iniziali (caratteri non-ASCII all'inizio)
+    # NON splittare su spazi interni (es: "NO FOOD" deve restare intatto)
+    import re
+    # Pattern: rimuove emoji/simboli non-ASCII all'inizio + eventuali spazi dopo
+    categoria_clean = re.sub(r'^[^\w\s]+\s*', '', categoria_clean)
+    
+    return categoria_clean
 
 
 def estrai_fornitore_xml(fattura: dict) -> str:

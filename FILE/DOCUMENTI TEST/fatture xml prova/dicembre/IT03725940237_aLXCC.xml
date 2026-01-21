@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="UTF-8"?>
+	<p:FatturaElettronica versione="FPR12" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2 fatturaordinaria_v1.2.xsd ">
+	<FatturaElettronicaHeader>
+		<DatiTrasmissione>
+			<IdTrasmittente>
+				<IdPaese>IT</IdPaese>
+				<IdCodice>01836980365</IdCodice>
+			</IdTrasmittente>
+		<ProgressivoInvio>LCVRD</ProgressivoInvio>
+		<FormatoTrasmissione>FPR12</FormatoTrasmissione>
+		<CodiceDestinatario>KRRH6B9</CodiceDestinatario>
+		<ContattiTrasmittente>
+			<Telefono>0541746111</Telefono>
+		</ContattiTrasmittente>
+		</DatiTrasmissione>
+		<CedentePrestatore>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>02686290400</IdCodice>
+				</IdFiscaleIVA>
+					<CodiceFiscale>01836980365</CodiceFiscale>
+				<Anagrafica>
+					<Denominazione>MARR SPA</Denominazione>
+				</Anagrafica>
+				<RegimeFiscale>RF01</RegimeFiscale>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>VIA SPAGNA N. 20</Indirizzo>
+				<CAP>47921</CAP>
+				<Comune>RIMINI</Comune>
+				<Provincia>RN</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+			<StabileOrganizzazione>
+				<Indirizzo>VIA SPAGNA N. 20</Indirizzo>
+				<CAP>47921</CAP>
+				<Comune>RIMINI</Comune>
+				<Provincia>RN</Provincia>
+				<Nazione>IT</Nazione>
+			</StabileOrganizzazione>
+		</CedentePrestatore>
+		<CessionarioCommittente>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>11432080965</IdCodice>
+				</IdFiscaleIVA>
+				<CodiceFiscale>FRAFNC96C06I577U</CodiceFiscale>
+				<Anagrafica>
+					<Denominazione>TIME CAFE&apos; DI FRAU FRANCESCO</Denominazione>
+				</Anagrafica>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>CORSO DI PORTA ROMANA, 2</Indirizzo>
+				<CAP>20122</CAP>
+				<Comune>MILANO</Comune>
+				<Nazione>IT</Nazione>
+			</Sede>
+		</CessionarioCommittente>
+		<SoggettoEmittente>TZ</SoggettoEmittente>
+	</FatturaElettronicaHeader>
+	<FatturaElettronicaBody>  
+		<DatiGenerali>
+			<DatiGeneraliDocumento>
+				<TipoDocumento>TD24</TipoDocumento>
+				<Divisa>EUR</Divisa>
+				<Data>2025-12-10</Data>
+				<Numero>BY265757</Numero>
+				<ImportoTotaleDocumento>327.61</ImportoTotaleDocumento>
+						<Causale>Pagamento: BONIFICO BANC. 15 GG DATA FATTURA</Causale>
+						<Causale>Vendita</Causale>
+			</DatiGeneraliDocumento>
+				<DatiOrdineAcquisto>
+					<IdDocumento>00483203091225135113</IdDocumento>
+					<Data>2025-12-09</Data>
+				</DatiOrdineAcquisto>
+				<DatiDDT>
+					<NumeroDDT>BY265757</NumeroDDT>
+					<DataDDT>2025-12-10</DataDDT>
+			</DatiDDT>
+			<DatiTrasporto>
+				<DatiAnagraficiVettore>
+					<IdFiscaleIVA>
+						<IdPaese>IT</IdPaese>
+						<IdCodice>09511860968</IdCodice>
+					</IdFiscaleIVA>
+					<Anagrafica>
+
+							<Denominazione>ITALFOUR SRL</Denominazione>
+					</Anagrafica>
+				</DatiAnagraficiVettore>
+			</DatiTrasporto>
+		</DatiGenerali>
+		<DatiBeniServizi>
+				<DettaglioLinee>
+						<NumeroLinea>1</NumeroLinea>
+						<CodiceArticolo>
+							<CodiceTipo>COD</CodiceTipo>
+							<CodiceValore>050397</CodiceValore>
+						</CodiceArticolo>
+						<Descrizione>CUORI FIL.MERL.ALASK100gMSCIQF</Descrizione>
+							<Quantita>5.00</Quantita>
+							<UnitaMisura>KG</UnitaMisura>
+						<PrezzoUnitario>8.49</PrezzoUnitario>
+						<PrezzoTotale>42.45000000</PrezzoTotale>
+						<AliquotaIVA>10.00</AliquotaIVA>
+				</DettaglioLinee>
+				<DettaglioLinee>
+						<NumeroLinea>2</NumeroLinea>
+						<CodiceArticolo>
+							<CodiceTipo>COD</CodiceTipo>
+							<CodiceValore>034288</CodiceValore>
+						</CodiceArticolo>
+						<Descrizione>CAPPELLO PRETE B.A. S/V      C</Descrizione>
+							<Quantita>9.64</Quantita>
+							<UnitaMisura>KG</UnitaMisura>
+						<PrezzoUnitario>12.80</PrezzoUnitario>
+						<PrezzoTotale>123.39200000</PrezzoTotale>
+						<AliquotaIVA>10.00</AliquotaIVA>
+				</DettaglioLinee>
+				<DettaglioLinee>
+						<NumeroLinea>3</NumeroLinea>
+						<CodiceArticolo>
+							<CodiceTipo>COD</CodiceTipo>
+							<CodiceValore>083170</CodiceValore>
+						</CodiceArticolo>
+						<Descrizione>FILONE PESCE SPADA DEC.S/V</Descrizione>
+							<Quantita>5.33</Quantita>
+							<UnitaMisura>KG</UnitaMisura>
+						<PrezzoUnitario>13.20</PrezzoUnitario>
+						<PrezzoTotale>70.35600000</PrezzoTotale>
+						<AliquotaIVA>10.00</AliquotaIVA>
+				</DettaglioLinee>
+				<DettaglioLinee>
+						<NumeroLinea>4</NumeroLinea>
+						<CodiceArticolo>
+							<CodiceTipo>COD</CodiceTipo>
+							<CodiceValore>088735</CodiceValore>
+						</CodiceArticolo>
+						<Descrizione>FIL.TONNO P.G.DEC.GARZ.S/V</Descrizione>
+							<Quantita>4.25</Quantita>
+							<UnitaMisura>KG</UnitaMisura>
+						<PrezzoUnitario>14.50</PrezzoUnitario>
+						<PrezzoTotale>61.62500000</PrezzoTotale>
+						<AliquotaIVA>10.00</AliquotaIVA>
+				</DettaglioLinee>
+				<DatiRiepilogo>
+						<AliquotaIVA>10.00</AliquotaIVA>
+						<ImponibileImporto>297.83</ImponibileImporto>
+						<Imposta>29.78</Imposta>
+							<EsigibilitaIVA>I</EsigibilitaIVA>
+				</DatiRiepilogo>
+		</DatiBeniServizi>
+			<DatiPagamento>
+				<CondizioniPagamento>TP02</CondizioniPagamento>
+					<DettaglioPagamento>
+						<ModalitaPagamento>MP05</ModalitaPagamento>
+						<GiorniTerminiPagamento>15</GiorniTerminiPagamento>
+						<DataScadenzaPagamento>2025-12-25</DataScadenzaPagamento>
+						<ImportoPagamento>327.61</ImportoPagamento>
+						<IBAN>IT56E0306923304100000006525</IBAN>
+					</DettaglioPagamento>
+				</DatiPagamento>
+		<Allegati>
+			<NomeAttachment>Condizioni di vendita</NomeAttachment>
+			<FormatoAttachment>PDF</FormatoAttachment>
+			<Attachment>JVBERi0xLjEKMSAwIG9iago8PAovQ3JlYXRpb25EYXRlIChEOjIwMjAxMDE0MTUwODI0KQovUHJv
+ZHVjZXIgKHRleHQycGRmIHYxLjEgKFwyNTEgUGhpbCBTbWl0aCwgMTk5NikpCi9UaXRsZSAoQ29u
+ZGl6aW9uaSBkaSBWZW5kaXRhLnR4dCkKPj4KZW5kb2JqCjIgMCBvYmoKPDwKL1R5cGUgL0NhdGFs
+b2cKL1BhZ2VzIDMgMCBSCj4+CmVuZG9iago0IDAgb2JqCjw8Ci9UeXBlIC9Gb250Ci9TdWJ0eXBl
+IC9UeXBlMQovTmFtZSAvRjEKL0Jhc2VGb250IC9Db3VyaWVyCj4+CmVuZG9iago1IDAgb2JqCjw8
+CiAgL0ZvbnQgPDwgL0YxIDQgMCBSID4+CiAgL1Byb2NTZXQgWyAvUERGIC9UZXh0IF0KPj4KZW5k
+b2JqCjYgMCBvYmoKPDwKL1R5cGUgL1BhZ2UKL1BhcmVudCAzIDAgUgovUmVzb3VyY2VzIDUgMCBS
+Ci9Db250ZW50cyA3IDAgUgo+PgplbmRvYmoKNyAwIG9iago8PAovTGVuZ3RoIDggMCBSCj4+CnN0
+cmVhbQpCVAovRjEgMTAgVGYKMSAwIDAgMSA1MCA4MDIgVG0KMTIgVEwKKCAgICAgICAgICAgICAg
+ICAgICAgICAgICBDT05ESVpJT05JIEdFTkVSQUxJIERJIFZFTkRJVEEpJwooKScKKCknCihJTiBB
+UFBMSUNBWklPTkUgREVMTCdBUlQuMjYgRC5QLlIuIDI2LzEwLzcyIE4uNjMzLiBOT04gU0kgUklD
+T05PU0NPTk8gU0NPTlRJIEVEICknCihBUlJPVE9OREFNRU5USSBTRSBOT04gQ09OVEVHR0lBVEkg
+SU4gRkFUVFVSQS4pJwooKScKKENBTEkgLSBJIGNhbGkgbmF0dXJhbGkgY2hlIGxhIG1lcmNlIGRv
+dmVzc2Ugc3ViaXJlIGR1cmFudGUgaWwgdHJhc3BvcnRvIHNvbm8gYSAgKScKKGNhcmljbyBkZWwg
+Q29tcHJhdG9yZTogc2kgaW50ZW5kZSBwZXIgJ25hdHVyYWxpJyBpIGNhbGkgcmlzY29udHJhdGkg
+bmVsbGEgbWlzdXJhKScKKCBwYXJpIG9kIGluZmVyaW9yZSBhbGwnMSUgZGVsIHBlc28gZ2xvYmFs
+ZSBkZWxsYSBtZXJjZSBmb3JuaXRhLiknCigpJwooVFJBQ0NJQUJJTElUQScgLSBBaSBzZW5zaSBk
+ZWxsJ2FydGljb2xvIDM1IGRlbCBSZWcuVUUgMTM3OS8yMDEzIGxlIGluZm9ybWF6aW9uaSApJwoo
+ZGkgdHJhY2NpYWJpbGl0YScgZGVpIHByb2RvdHRpIGRlbGxhIHBlc2NhIHNvbm8gcmlwb3J0YXRl
+IGluIGV0aWNoZXR0YS4pJwooKScKKFJlZ29sYW1lbnRvIFJFQUNIIC0gTGUgc2NoZWRlIGRhdGkg
+ZGkgc2ljdXJlenphIGFpIHNlbnNpIGRlbGwnYXJ0LiAzMSBkZWwgUmVnLiAgKScKKENFIDE5MDcv
+MjAwNiBzb25vIGRpc3BvbmliaWxpIHN1bCBzaXRvIHd3dy5tYXJyLml0IG9wcHVyZSBwb3Nzb25v
+IGVzc2VyZSByaWNoaWVzKScKKHRlIGFsIG51bWVybyAwNTQxLzc0NjYxNCknCigpJwooUkVDTEFN
+SSAtIElsIGNvbXByYXRvcmUgZScgdGVudXRvIGEgdmVyaWZpY2FyZSBsYSBtZXJjZSBhbCBtb21l
+bnRvIGRlbCByaXRpcm8sICApJwoocHJlc2VudGFuZG8gaW1tZWRpYXRhbWVudGUgcmVjbGFtbyBh
+bCAgVmV0dG9yZSAgaW4gY2FzbyBkaSBhdmFyaWEgbyBkaWZmZXJlbnplLCApJwooc2Fsdm8gY2hl
+IHF1ZXN0ZSB1bHRpbWUgbm9uIHNpYW5vIGRvdnV0ZSBhaSBjYWxpIG5hdHVyYWxpIGRpIGN1aSBh
+bCBwdW50byBwcmVjZWQpJwooZW50ZSknCigpJwooUEFHQU1FTlRJIC0gSWwgcGFnYW1lbnRvIGRl
+bGxhIHByZXNlbnRlIGZhdHR1cmEsIGV2ZW50dWFsbWVudGUgYW5jaGUgYXR0cmF2ZXJzbyApJwoo
+YWdlbnRlLCBkb3ZyYScgZXNzZXJlIGVmZmV0dHVhdG8sIHBlciBhdmVyZSBlZmZldHRvIGxpYmVy
+YXRvcmlvLCBhIG1lenpvIGFzc2Vnbm8pJwooICBiYW5jYXJpby9jaXJjb2xhcmUgICBtdW5pdG8g
+IGRlbGxhICBjbGF1c29sYSAgIE5PTiBUUkFTRkVSSUJJTEUsICBpbnRlc3RhdG8gYSApJwooTUFS
+UiBTLnAuQS4gbyBhbGwnZXZlbnR1YWxlIGNlc3Npb25hcmlvIGRlbCBjcmVkaXRvLiknCigpJwoo
+Rk9STyBHSVVESVpJQVJJTyAtIFBlciAgcXVhbHVucXVlICBjb250cm92ZXJzaWEgc2FyYScgY29t
+cGV0ZW50ZSBlc2NsdXNpdmFtZW50ZSApJwoobCdhdXRvcml0YScgZ2l1ZGl6aWFyaWEgZGVsIEZv
+cm8gb3ZlIGhhIHNlZGUgaWwgdmVuZGl0b3JlLiBJbiBjYXNvIGRpIG1hbmNhdG8gICApJwoocGFn
+YW1lbnRvICBkZWxsYSBwcmVzZW50ZSBmYXR0dXJhIGxhIE1BUlIgUy5wLkEuIGFwcGxpY2hlcmEn
+ICBnbGkgIGludGVyZXNzaSAgZGkpJwooIG1vcmEgYWkgc2Vuc2kgZGVsbCdhcnQuNSBkZWwgRGVj
+cmV0byBMZWdpc2xhdGl2byBuLjIzMSBkZWwgOS4xMC4wMi4pJwooKScKKCknCihQZXIgaSBwcm9k
+b3R0aSBhZ3JpY29saSBlZCBhZ3JvYWxpbWVudGFyaSwgYXNzb2x2ZSBnbGkgb2JibGlnaGkgZGkg
+Y3VpIGFsbCdhcnQuNiknCigyLCBjb21tYSAxIGRlbCBELkwgbi4xIGRlbCAyNC8wMS8yMDEyLCBj
+b252ZXJ0aXRvIGNvbiBtb2RpZmljYXppb25pIGRhbGxhIEwuIG4uMiknCig3IGRlbCAyNC8wMy8y
+MDEyLiknCigpJwooQ29udHJpYnV0byBhbWJpZW50YWxlIENvbmFpIGFzc29sdG8gZSwgb3ZlIHBy
+ZXZpc3RvLCBjb3JyaXNwZXR0aXZvICBjb21wcmVuc2l2byApJwooZGVsIENvbnRyaWJ1dG8gYW1i
+aWVudGFsZSBDb25haSBnaWEnIGFzc29sdG8uKScKKCknCigpJwooKScKKENPTkRJWklPTkkgR0VO
+RVJBTEkgREkgVkVORElUQSBBQ0NFVFRBVEUgQ09NRSBEQSBSRUxBVElWTyBET0NVTUVOVE8gREkg
+VFJBU1BPUlRPKScKKCknCigpJwooKScKRVQKZW5kc3RyZWFtCmVuZG9iago4IDAgb2JqCjIxODgK
+ZW5kb2JqCjMgMCBvYmoKPDwKL1R5cGUgL1BhZ2VzCi9Db3VudCAxCi9NZWRpYUJveCBbIDAgMCA1
+OTUgODQyIF0KL0tpZHMgWyA2IDAgUiBdCj4+CmVuZG9iagp4cmVmCjAgOQowMDAwMDAwMDAwIDY1
+NTM1IGYgDTAwMDAwMDAwMDkgMDAwMDAgbiANMDAwMDAwMDE0OCAwMDAwMCBuIA0wMDAwMDAyNjg2
+IDAwMDAwIG4gDTAwMDAwMDAxOTcgMDAwMDAgbiANMDAwMDAwMDI3NSAwMDAwMCBuIA0wMDAwMDAw
+MzQ2IDAwMDAwIG4gDTAwMDAwMDA0MjYgMDAwMDAgbiANMDAwMDAwMjY2NiAwMDAwMCBuIA10cmFp
+bGVyCjw8Ci9TaXplIDkKL1Jvb3QgMiAwIFIKL0luZm8gMSAwIFIKPj4Kc3RhcnR4cmVmCjI3NzEK
+JSVFT0Y=
+			</Attachment>
+		</Allegati>
+	</FatturaElettronicaBody>
+</p:FatturaElettronica>
