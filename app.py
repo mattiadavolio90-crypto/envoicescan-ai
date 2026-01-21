@@ -1498,8 +1498,26 @@ def mostra_statistiche(df_completo):
                 # ============================================================
                 # CHIAMATA AI (SOLO DESCRIZIONI DA CLASSIFICARE)
                 # ============================================================
-                descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
-                fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
+                # 🔧 FIX: Query DIRETTA al DB per evitare problema filtri locali su df_completo
+                try:
+                    # Query tutte le descrizioni che hanno categoria NULL o "Da Classificare"
+                    resp_null = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).is_("categoria", "null").execute()
+                    resp_da_class = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "Da Classificare").execute()
+                    
+                    # Combina e rimuovi duplicati
+                    dati_null = resp_null.data if resp_null.data else []
+                    dati_da_class = resp_da_class.data if resp_da_class.data else []
+                    tutti_dati = dati_null + dati_da_class
+                    
+                    descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
+                    fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
+                    
+                    logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare")
+                except Exception as e:
+                    logger.error(f"Errore query diretta descrizioni: {e}")
+                    # Fallback su df_completo se query fallisce
+                    descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
+                    fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
                 
                 if descrizioni_da_classificare:
                     # 🧠 Placeholder per banner orizzontale
@@ -1592,22 +1610,22 @@ def mostra_statistiche(df_completo):
                                     <div class="progress-status">Categorizzando: {prodotti_elaborati} di {totale_da_classificare}</div>
                                 </div>
                                 """, unsafe_allow_html=True)
+                                
+                                # Salva anche in memoria GLOBALE su Supabase
+                                try:
+                                    supabase.table('prodotti_master').upsert({
+                                        'descrizione': desc,
+                                        'categoria': cat,
+                                        'volte_visto': 1,
+                                        'classificato_da': 'AI'
+                                    }, on_conflict='descrizione').execute()
+                                    
+                                    logger.info(f"💾 GLOBALE salvato: '{desc[:40]}...' → {cat}")
+                                except Exception as e:
+                                    logger.error(f"Errore salvataggio globale '{desc[:40]}...': {e}")
                             
-                            # Salva anche in memoria GLOBALE su Supabase
-                            try:
-                                supabase.table('prodotti_master').upsert({
-                                    'descrizione': desc,
-                                    'categoria': cat,
-                                    'volte_visto': 1,
-                                    'classificato_da': 'AI'
-                                }, on_conflict='descrizione').execute()
-                                
-                                # Invalida cache per forzare ricaricamento
-                                invalida_cache_memoria()
-                                
-                                logger.info(f"💾 GLOBALE salvato: '{desc[:40]}...' → {cat}")
-                            except Exception as e:
-                                logger.error(f"Errore salvataggio globale '{desc[:40]}...': {e}")
+                            # Invalida cache per forzare ricaricamento dopo ogni chunk
+                            invalida_cache_memoria()
 
 
                     # Aggiorna categorie su Supabase
