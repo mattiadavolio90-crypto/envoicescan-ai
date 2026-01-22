@@ -151,8 +151,11 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ❌ NON mettere SALAME DI CIOCCOLATO in SALUMI - è PASTICCERIA
 ❌ NON mettere PASSATA POMODORO in FRUTTA - è SALSE E CREME
 ❌ NON mettere TAZZE/BICCHIERI in VARIE BAR - sono NO FOOD
-✅ TAZZE/BICCHIERI/PIATTI sempre → NO FOOD
-✅ DOLCI/PASTICCERIA sempre → PASTICCERIA
+❌ NON mettere CORNETTI in NO FOOD - sono PASTICCERIA!
+❌ NON mettere BRIOCHES in NO FOOD - sono PASTICCERIA!
+✅ CORNETTI/CROISSANT/BRIOCHES/CROSTATINE sempre → PASTICCERIA
+✅ TAZZE/BICCHIERI/PIATTI/SALVIETTE sempre → NO FOOD
+✅ DOLCI/BISCOTTI/CANNOLI sempre → PASTICCERIA
 ✅ BEVANDE ALCOLICHE SPECIFICHE → categoria alcol
 
 ═══════════════════════════════════════════════════════════════════
@@ -161,7 +164,11 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 
 🚨 IMPORTANTE: NON restituire MAI "Da Classificare" o stringhe vuote!
    DEVI sempre classificare con la categoria più probabile.
-   Se incerto, usa la categoria più comune per ristoranti (es: BEVANDE, NO FOOD).
+   
+   ⚠️ ATTENZIONE: CORNETTI, BRIOCHES, CROISSANT, CROSTATINE sono SEMPRE PASTICCERIA, mai NO FOOD!
+   ⚠️ SOLO pellicole, piatti, bicchieri, salviette, tovaglioli, coperchi → NO FOOD
+   
+   Se incerto tra food/no-food, leggi attentamente: è commestibile? → categoria food appropriata
 
 Rispondi SOLO in JSON:
 {
