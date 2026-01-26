@@ -1518,6 +1518,16 @@ def mostra_statistiche(df_completo):
                     # 🧠 Placeholder per banner orizzontale
                     progress_placeholder = st.empty()
                     
+                    # Mostra banner immediatamente con 0%
+                    totale_da_classificare = len(descrizioni_da_classificare)
+                    progress_placeholder.markdown(f"""
+                    <div class="ai-banner">
+                        <div class="brain-pulse-banner">🧠</div>
+                        <div class="progress-percentage">0%</div>
+                        <div class="progress-status">Avvio categorizzazione: 0 di {totale_da_classificare}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
                     # CSS per banner orizzontale con pulsazione cervelletto
                     st.markdown("""
                     <style>
@@ -1568,11 +1578,24 @@ def mostra_statistiche(df_completo):
                     
                     mappa_categorie = {}  # desc -> categoria
                     descrizioni_per_ai = []  # Solo quelle che dizionario non risolve
+                    prodotti_elaborati = 0  # Contatore per banner
                     
                     for desc in descrizioni_da_classificare:
                         cat_dizionario = applica_correzioni_dizionario(desc, "Da Classificare")
                         if cat_dizionario and cat_dizionario != 'Da Classificare':
                             mappa_categorie[desc] = cat_dizionario
+                            prodotti_elaborati += 1
+                            
+                            # Aggiorna banner in tempo reale durante dizionario
+                            percentuale = (prodotti_elaborati / totale_da_classificare) * 100
+                            progress_placeholder.markdown(f"""
+                            <div class="ai-banner">
+                                <div class="brain-pulse-banner">🧠</div>
+                                <div class="progress-percentage">{int(percentuale)}%</div>
+                                <div class="progress-status">Categorizzando: {prodotti_elaborati} di {totale_da_classificare}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
                             # ⭐ NUOVO: Traccia righe keyword per colonna Fonte
                             if 'righe_keyword_appena_categorizzate' not in st.session_state:
                                 st.session_state.righe_keyword_appena_categorizzate = []
@@ -1584,8 +1607,7 @@ def mostra_statistiche(df_completo):
                     
                     # 🧠 STEP 2: Invia all'AI solo quelli che dizionario non ha risolto
                     chunk_size = 50
-                    prodotti_elaborati = len(mappa_categorie)  # Già fatto dal dizionario
-                    totale_da_classificare = len(descrizioni_da_classificare)
+                    # prodotti_elaborati già inizializzato sopra e aggiornato durante STEP 1
                     
                     if descrizioni_per_ai:
                         for i in range(0, len(descrizioni_per_ai), chunk_size):
