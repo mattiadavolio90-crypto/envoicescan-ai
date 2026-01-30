@@ -3413,232 +3413,332 @@ def mostra_statistiche(df_completo):
     # SEZIONE 3: CATEGORIE
     # ========================================================
     if st.session_state.sezione_attiva == "categorie":
-        pivot_cat = crea_pivot_mensile(df_food, "Categoria")
-        
-        if not pivot_cat.empty:
-            num_righe_cat = len(pivot_cat)
-            altezza_cat = max(num_righe_cat * 35 + 50, 200)
+        if df_food.empty:
+            st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
+        else:
+            # Prepara dati per pivot mensile
+            df_cat_prep = df_food.copy()
+            df_cat_prep['Data_DT'] = pd.to_datetime(df_cat_prep['DataDocumento'], errors='coerce')
             
-            st.dataframe(
-                pivot_cat,
-                hide_index=True,
-                use_container_width=True,
-                height=altezza_cat,
-                column_config={
-                    "TOTALE ANNO": st.column_config.NumberColumn(format="€ %.2f")
-                }
+            mesi_ita = {
+                1: 'GENNAIO', 2: 'FEBBRAIO', 3: 'MARZO', 4: 'APRILE',
+                5: 'MAGGIO', 6: 'GIUGNO', 7: 'LUGLIO', 8: 'AGOSTO',
+                9: 'SETTEMBRE', 10: 'OTTOBRE', 11: 'NOVEMBRE', 12: 'DICEMBRE'
+            }
+            
+            # Crea formato mese per visualizzazione (GENNAIO 2025)
+            df_cat_prep['Mese'] = df_cat_prep['Data_DT'].apply(
+                lambda x: f"{mesi_ita[x.month]} {x.year}" if pd.notna(x) else ''
+            )
+            # Colonna per ordinamento cronologico
+            df_cat_prep['Mese_Ordine'] = df_cat_prep['Data_DT'].apply(
+                lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
             )
             
-            totale_cat = pivot_cat['TOTALE ANNO'].sum()
-            col_left, col_right = st.columns([5, 1])
+            # Crea pivot manualmente
+            pivot_cat = df_cat_prep.pivot_table(
+                index='Categoria',
+                columns='Mese',
+                values='TotaleRiga',
+                aggfunc='sum',
+                fill_value=0
+            )
             
-            with col_left:
-                st.markdown(f"""
-                <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                    <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                        📋 N. Righe: {num_righe_cat:,} | 💰 Totale: € {totale_cat:.2f}
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
+            # Ordina colonne cronologicamente usando Mese_Ordine
+            mese_ordine_map = df_cat_prep[['Mese', 'Mese_Ordine']].drop_duplicates()
+            mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
+            mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
+            cols_sorted = sorted(list(pivot_cat.columns), key=lambda x: mese_ordine_map.get(x, x))
+            pivot_cat = pivot_cat[cols_sorted]
             
-            with col_right:
-                st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+            # Aggiungi colonna TOTALE
+            pivot_cat['TOTALE'] = pivot_cat.sum(axis=1)
+            
+            # Ordina per totale decrescente
+            pivot_cat = pivot_cat.sort_values('TOTALE', ascending=False)
+            
+            # Formatta come €
+            pivot_cat_display = pivot_cat.copy()
+            for col in pivot_cat_display.columns:
+                if col != 'TOTALE':
+                    pivot_cat_display[col] = pivot_cat_display[col].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "")
+            pivot_cat_display['TOTALE'] = pivot_cat_display['TOTALE'].apply(lambda x: f"€ {x:,.2f}")
+            
+            # Reset index per avere Categoria come colonna
+            pivot_cat_display = pivot_cat_display.reset_index()
+        
+            if not pivot_cat_display.empty:
+                num_righe_cat = len(pivot_cat_display)
+                altezza_cat = max(num_righe_cat * 35 + 50, 200)
                 
-                st.markdown("""
-                    <style>
-                    [data-testid="stDownloadButton"] button {
-                        background-color: #28a745 !important;
-                        color: white !important;
-                        font-weight: 600 !important;
-                        border-radius: 6px !important;
-                        border: none !important;
-                        outline: none !important;
-                        box-shadow: none !important;
-                    }
-                    [data-testid="stDownloadButton"] button:hover {
-                        background-color: #218838 !important;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-                
-                excel_buffer_cat = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer_cat, engine='openpyxl') as writer:
-                    pivot_cat.to_excel(writer, index=False, sheet_name='Categorie')
-                
-                st.download_button(
-                    label="📊 EXCEL",
-                    data=excel_buffer_cat.getvalue(),
-                    file_name=f"categorie_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="download_excel_categorie",
-                    type="primary",
-                    use_container_width=False
+                st.dataframe(
+                    pivot_cat_display,
+                    hide_index=True,
+                    use_container_width=True,
+                    height=altezza_cat
                 )
                 
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            # GRAFICO SPESA PER CATEGORIA
-            st.markdown("---")
-            st.subheader("📊 Spesa per Categoria")
-            spesa_cat = (
-                df_food.groupby("Categoria")["TotaleRiga"]
-                  .sum()
-                  .reset_index()
-                  .sort_values("TotaleRiga", ascending=False)
-            )
+                # Calcola totale dalla somma dei valori numerici
+                totale_cat = pivot_cat['TOTALE'].sum()
+                col_left, col_right = st.columns([5, 1])
+                
+                with col_left:
+                    st.markdown(f"""
+                    <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
+                        <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+                            📋 N. Righe: {num_righe_cat:,} | 💰 Totale: € {totale_cat:.2f}
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col_right:
+                    st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+                    
+                    st.markdown("""
+                        <style>
+                        [data-testid="stDownloadButton"] button {
+                            background-color: #28a745 !important;
+                            color: white !important;
+                            font-weight: 600 !important;
+                            border-radius: 6px !important;
+                            border: none !important;
+                            outline: none !important;
+                            box-shadow: none !important;
+                        }
+                        [data-testid="stDownloadButton"] button:hover {
+                            background-color: #218838 !important;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+                    
+                    excel_buffer_cat = io.BytesIO()
+                    with pd.ExcelWriter(excel_buffer_cat, engine='openpyxl') as writer:
+                        pivot_cat_display.to_excel(writer, index=False, sheet_name='Categorie')
+                    
+                    st.download_button(
+                        label="📊 EXCEL",
+                        data=excel_buffer_cat.getvalue(),
+                        file_name=f"categorie_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_excel_categorie",
+                        type="primary",
+                        use_container_width=False
+                    )
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # GRAFICO SPESA PER CATEGORIA
+                st.markdown("---")
+                st.subheader("📊 Spesa per Categoria")
+                spesa_cat = (
+                    df_food.groupby("Categoria")["TotaleRiga"]
+                      .sum()
+                      .reset_index()
+                      .sort_values("TotaleRiga", ascending=False)
+                )
 
-            fig1 = px.bar(
-                spesa_cat,
-                x="Categoria",
-                y="TotaleRiga",
-                text="TotaleRiga",
-                color="Categoria",
-                color_discrete_sequence=COLORI_PLOTLY,
-            )
+                fig1 = px.bar(
+                    spesa_cat,
+                    x="Categoria",
+                    y="TotaleRiga",
+                    text="TotaleRiga",
+                    color="Categoria",
+                    color_discrete_sequence=COLORI_PLOTLY,
+                )
 
-            fig1.update_traces(
-                texttemplate="€ %{text:.2f}",
-                textposition="outside",
-                textfont_size=18,
-                hovertemplate="<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>",
-            )
+                fig1.update_traces(
+                    texttemplate="€ %{text:.2f}",
+                    textposition="outside",
+                    textfont_size=18,
+                    hovertemplate="<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>",
+                )
 
-            fig1.update_layout(
-                font=dict(size=20),
-                xaxis_title="Categoria",
-                yaxis_title="Spesa (€)",
-                yaxis_title_font=dict(size=24, color="#333"),
-                xaxis=dict(tickfont=dict(size=1), showticklabels=False),
-                yaxis=dict(tickfont=dict(size=18)),
-                showlegend=False,
-                height=600,
-                hoverlabel=dict(bgcolor="white", font_size=16, font_family="Arial"),
-            )
+                fig1.update_layout(
+                    font=dict(size=20),
+                    xaxis_title="Categoria",
+                    yaxis_title="Spesa (€)",
+                    yaxis_title_font=dict(size=24, color="#333"),
+                    xaxis=dict(tickfont=dict(size=1), showticklabels=False),
+                    yaxis=dict(tickfont=dict(size=18)),
+                    showlegend=False,
+                    height=600,
+                    hoverlabel=dict(bgcolor="white", font_size=16, font_family="Arial"),
+                )
 
-            st.plotly_chart(
-                fig1,
-                use_container_width=True,
-                key="grafico_categorie_tab",
-                config={"displayModeBar": False},
-            )
-        else:
-            st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
+                st.plotly_chart(
+                    fig1,
+                    use_container_width=True,
+                    key="grafico_categorie_tab",
+                    config={"displayModeBar": False},
+                )
+            else:
+                st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
 
     # ======================================================
     # ========================================================
     # SEZIONE 4: FORNITORI
     # ========================================================
     if st.session_state.sezione_attiva == "fornitori":
-        pivot_forn = crea_pivot_mensile(df_food, "Fornitore")
-        
-        if not pivot_forn.empty:
-            num_righe_forn = len(pivot_forn)
-            altezza_forn = max(num_righe_forn * 35 + 50, 200)
+        if df_food.empty:
+            st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
+        else:
+            # Prepara dati per pivot mensile
+            df_forn_prep = df_food.copy()
+            df_forn_prep['Data_DT'] = pd.to_datetime(df_forn_prep['DataDocumento'], errors='coerce')
             
-            st.dataframe(
-                pivot_forn,
-                hide_index=True,
-                use_container_width=True,
-                height=altezza_forn,
-                column_config={
-                    "TOTALE ANNO": st.column_config.NumberColumn(format="€ %.2f")
-                }
+            mesi_ita = {
+                1: 'GENNAIO', 2: 'FEBBRAIO', 3: 'MARZO', 4: 'APRILE',
+                5: 'MAGGIO', 6: 'GIUGNO', 7: 'LUGLIO', 8: 'AGOSTO',
+                9: 'SETTEMBRE', 10: 'OTTOBRE', 11: 'NOVEMBRE', 12: 'DICEMBRE'
+            }
+            
+            # Crea formato mese per visualizzazione (GENNAIO 2025)
+            df_forn_prep['Mese'] = df_forn_prep['Data_DT'].apply(
+                lambda x: f"{mesi_ita[x.month]} {x.year}" if pd.notna(x) else ''
+            )
+            # Colonna per ordinamento cronologico
+            df_forn_prep['Mese_Ordine'] = df_forn_prep['Data_DT'].apply(
+                lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
             )
             
-            totale_forn = pivot_forn['TOTALE ANNO'].sum()
-            col_left, col_right = st.columns([5, 1])
+            # Crea pivot manualmente
+            pivot_forn = df_forn_prep.pivot_table(
+                index='Fornitore',
+                columns='Mese',
+                values='TotaleRiga',
+                aggfunc='sum',
+                fill_value=0
+            )
             
-            with col_left:
-                st.markdown(f"""
-                <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                    <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                        📋 N. Righe: {num_righe_forn:,} | 💰 Totale: € {totale_forn:.2f}
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
+            # Ordina colonne cronologicamente usando Mese_Ordine
+            mese_ordine_map = df_forn_prep[['Mese', 'Mese_Ordine']].drop_duplicates()
+            mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
+            mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
+            cols_sorted = sorted(list(pivot_forn.columns), key=lambda x: mese_ordine_map.get(x, x))
+            pivot_forn = pivot_forn[cols_sorted]
             
-            with col_right:
-                st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+            # Aggiungi colonna TOTALE
+            pivot_forn['TOTALE'] = pivot_forn.sum(axis=1)
+            
+            # Ordina per totale decrescente
+            pivot_forn = pivot_forn.sort_values('TOTALE', ascending=False)
+            
+            # Formatta come €
+            pivot_forn_display = pivot_forn.copy()
+            for col in pivot_forn_display.columns:
+                if col != 'TOTALE':
+                    pivot_forn_display[col] = pivot_forn_display[col].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "")
+            pivot_forn_display['TOTALE'] = pivot_forn_display['TOTALE'].apply(lambda x: f"€ {x:,.2f}")
+            
+            # Reset index per avere Fornitore come colonna
+            pivot_forn_display = pivot_forn_display.reset_index()
+        
+            if not pivot_forn_display.empty:
+                num_righe_forn = len(pivot_forn_display)
+                altezza_forn = max(num_righe_forn * 35 + 50, 200)
                 
-                st.markdown("""
-                    <style>
-                    [data-testid="stDownloadButton"] button {
-                        background-color: #28a745 !important;
-                        color: white !important;
-                        font-weight: 600 !important;
-                        border-radius: 6px !important;
-                        border: none !important;
-                        outline: none !important;
-                        box-shadow: none !important;
-                    }
-                    [data-testid="stDownloadButton"] button:hover {
-                        background-color: #218838 !important;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-                
-                excel_buffer_forn = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer_forn, engine='openpyxl') as writer:
-                    pivot_forn.to_excel(writer, index=False, sheet_name='Fornitori')
-                
-                st.download_button(
-                    label="📊 EXCEL",
-                    data=excel_buffer_forn.getvalue(),
-                    file_name=f"fornitori_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="download_excel_fornitori",
-                    type="primary",
-                    use_container_width=False
+                st.dataframe(
+                    pivot_forn_display,
+                    hide_index=True,
+                    use_container_width=True,
+                    height=altezza_forn
                 )
                 
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            # GRAFICO SPESA PER FORNITORE
-            st.markdown("---")
-            st.subheader("🏪 Spesa per Fornitore")
-            spesa_forn = (
-                df_food.groupby("Fornitore")["TotaleRiga"]
-                  .sum()
-                  .reset_index()
-                  .sort_values("TotaleRiga", ascending=False)
-            )
+                # Calcola totale dalla somma dei valori numerici
+                totale_forn = pivot_forn['TOTALE'].sum()
+                col_left, col_right = st.columns([5, 1])
+                
+                with col_left:
+                    st.markdown(f"""
+                    <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
+                        <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+                            📋 N. Righe: {num_righe_forn:,} | 💰 Totale: € {totale_forn:.2f}
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col_right:
+                    st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+                    
+                    st.markdown("""
+                        <style>
+                        [data-testid="stDownloadButton"] button {
+                            background-color: #28a745 !important;
+                            color: white !important;
+                            font-weight: 600 !important;
+                            border-radius: 6px !important;
+                            border: none !important;
+                            outline: none !important;
+                            box-shadow: none !important;
+                        }
+                        [data-testid="stDownloadButton"] button:hover {
+                            background-color: #218838 !important;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+                    
+                    excel_buffer_forn = io.BytesIO()
+                    with pd.ExcelWriter(excel_buffer_forn, engine='openpyxl') as writer:
+                        pivot_forn_display.to_excel(writer, index=False, sheet_name='Fornitori')
+                    
+                    st.download_button(
+                        label="📊 EXCEL",
+                        data=excel_buffer_forn.getvalue(),
+                        file_name=f"fornitori_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_excel_fornitori",
+                        type="primary",
+                        use_container_width=False
+                    )
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+                # GRAFICO SPESA PER FORNITORE
+                st.markdown("---")
+                st.subheader("🏪 Spesa per Fornitore")
+                spesa_forn = (
+                    df_food.groupby("Fornitore")["TotaleRiga"]
+                      .sum()
+                      .reset_index()
+                      .sort_values("TotaleRiga", ascending=False)
+                )
 
-            fig2 = px.bar(
-                spesa_forn,
-                x="Fornitore",
-                y="TotaleRiga",
-                text="TotaleRiga",
-                color="Fornitore",
-                color_discrete_sequence=COLORI_PLOTLY,
-            )
+                fig2 = px.bar(
+                    spesa_forn,
+                    x="Fornitore",
+                    y="TotaleRiga",
+                    text="TotaleRiga",
+                    color="Fornitore",
+                    color_discrete_sequence=COLORI_PLOTLY,
+                )
 
-            fig2.update_traces(
-                texttemplate="€ %{text:.2f}",
-                textposition="outside",
-                textfont_size=18,
-                hovertemplate="<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>",
-            )
+                fig2.update_traces(
+                    texttemplate="€ %{text:.2f}",
+                    textposition="outside",
+                    textfont_size=18,
+                    hovertemplate="<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>",
+                )
 
-            fig2.update_layout(
-                font=dict(size=20),
-                xaxis_title="Fornitore",
-                yaxis_title="Spesa (€)",
-                yaxis_title_font=dict(size=24, color="#333"),
-                xaxis=dict(tickfont=dict(size=1), showticklabels=False),
-                yaxis=dict(tickfont=dict(size=18)),
-                showlegend=False,
-                height=600,
-                hoverlabel=dict(bgcolor="white", font_size=16, font_family="Arial"),
-            )
+                fig2.update_layout(
+                    font=dict(size=20),
+                    xaxis_title="Fornitore",
+                    yaxis_title="Spesa (€)",
+                    yaxis_title_font=dict(size=24, color="#333"),
+                    xaxis=dict(tickfont=dict(size=1), showticklabels=False),
+                    yaxis=dict(tickfont=dict(size=18)),
+                    showlegend=False,
+                    height=600,
+                    hoverlabel=dict(bgcolor="white", font_size=16, font_family="Arial"),
+                )
 
-            st.plotly_chart(
-                fig2,
-                use_container_width=True,
-                key="grafico_fornitori_tab",
-                config={"displayModeBar": False},
-            )
-        else:
-            st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
+                st.plotly_chart(
+                    fig2,
+                    use_container_width=True,
+                    key="grafico_fornitori_tab",
+                    config={"displayModeBar": False},
+                )
+            else:
+                st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
 
 
     # ========================================================
