@@ -5,11 +5,14 @@ Permette ai clienti di cambiare la propria password in autonomia
 """
 
 import streamlit as st
-from supabase import create_client, Client
 from argon2 import PasswordHasher
 import logging
 import time
 import hashlib
+
+# Import singleton Supabase e logger
+from services import get_supabase_client
+from config.logger_setup import setup_logger
 
 # ============================================================
 # CONFIGURAZIONE
@@ -21,22 +24,15 @@ st.set_page_config(
     layout="centered"
 )
 
-# Logger
-logger = logging.getLogger('fci_cambio_pwd')
-if not logger.handlers:
-    handler = logging.FileHandler('app.log', encoding='utf-8')
-    formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    logger.setLevel(logging.INFO)
+# Logger (usa configurazione centralizzata)
+logger = setup_logger(__name__)
 
-# Inizializza Supabase
+# Supabase client (singleton condiviso - evita multiple connessioni)
 try:
-    supabase_url = st.secrets["supabase"]["url"]
-    supabase_key = st.secrets["supabase"]["key"]
-    supabase: Client = create_client(supabase_url, supabase_key)
+    supabase = get_supabase_client()
 except Exception as e:
     st.error(f"⛔ Errore connessione database: {e}")
+    logger.exception("Errore connessione Supabase")
     st.stop()
 
 # Hasher password
@@ -124,12 +120,22 @@ with st.form("form_cambio_password"):
                     # Crea nuovo hash con Argon2 (formato moderno)
                     nuovo_hash = ph.hash(nuova_password)
                     
-                    # Aggiorna nel database
-                    supabase.table('users').update({
-                        'password_hash': nuovo_hash
-                    }).eq('id', user['id']).execute()
+                    # Aggiorna nel database con gestione errori
+                    try:
+                        response = supabase.table('users').update({
+                            'password_hash': nuovo_hash
+                        }).eq('id', user['id']).execute()
+                        
+                        if not response.data:
+                            st.error("❌ Errore aggiornamento database: nessun record modificato")
+                            logger.error(f"Update fallito per user_id={user['id']}")
+                            st.stop()
+                    except Exception as db_error:
+                        st.error(f"❌ Errore database: {str(db_error)}")
+                        logger.exception(f"Errore update password per {user.get('email')}")
+                        st.stop()
                     
-                    logger.info(f"Password cambiata per: {user.get('email')}")
+                    logger.info(f"✅ Password cambiata per: {user.get('email')}")
                     
                     # Mostra successo
                     st.success("✅ **Password cambiata con successo!**")

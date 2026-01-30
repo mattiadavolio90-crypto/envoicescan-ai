@@ -77,8 +77,8 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
                         if 'files_con_errori' not in st.session_state:
                             st.session_state.files_con_errori = {}
                         st.session_state.files_con_errori[nome_file] = errore
-                    except:
-                        pass
+                    except Exception:
+                        pass  # Streamlit non disponibile o errore session_state
                     
                     pdf_document.close()
                     return None
@@ -139,8 +139,8 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
             if 'files_con_errori' not in st.session_state:
                 st.session_state.files_con_errori = {}
             st.session_state.files_con_errori[nome_file] = errore
-        except:
-            pass
+        except Exception:
+            pass  # Streamlit non disponibile
         
         return None
 

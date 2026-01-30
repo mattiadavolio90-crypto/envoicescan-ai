@@ -908,3 +908,11 @@ DIZIONARIO_CORREZIONI = {
     "STRUDEL": "PASTICCERIA",
 
 }
+
+# ============================================================
+# AMMINISTRATORI DI SISTEMA
+# ============================================================
+
+# Lista email degli amministratori (fonte unica di verità)
+ADMIN_EMAILS = ["mattiadavolio90@gmail.com"]
+

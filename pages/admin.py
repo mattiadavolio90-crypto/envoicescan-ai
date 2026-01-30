@@ -32,8 +32,12 @@ from config.constants import CATEGORIE_SPESE_GENERALI
 # SETUP
 # ============================================================
 
-# Setup logging
-logger = logging.getLogger('fci.admin')
+# Import singleton Supabase e utilities
+from services import get_supabase_client
+from config.logger_setup import setup_logger
+
+# Setup logging (usa configurazione centralizzata)
+logger = setup_logger(__name__)
 
 # Setup pagina
 st.set_page_config(
@@ -43,21 +47,11 @@ st.set_page_config(
 )
 
 # ============================================================
-# CONNESSIONE SUPABASE CON CONNECTION POOLING
+# CONNESSIONE SUPABASE (usa singleton condiviso)
 # ============================================================
-from supabase import create_client, Client
 
-# Leggi credenziali Supabase
-SUPABASE_URL = st.secrets["supabase"]["url"]
-SUPABASE_KEY = st.secrets["supabase"]["key"]
-
-# Connection pooling: client riutilizzato tra richieste
-@st.cache_resource
-def get_supabase_client():
-    """Singleton Supabase client con connection pooling."""
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
-
-supabase: Client = get_supabase_client()
+# Ottieni client Supabase singleton
+supabase = get_supabase_client()
 
 # ============================================================
 # RIPRISTINO SESSIONE DA COOKIE (come in app.py)
@@ -94,7 +88,6 @@ if not st.session_state.get('logged_in', False):
     st.stop()
 
 user = st.session_state.get('user_data', {})
-ADMIN_EMAILS = ["mattiadavolio90@gmail.com"]
 
 if user.get('email') not in ADMIN_EMAILS:
     st.error("⛔ Accesso riservato agli amministratori")
@@ -1192,7 +1185,7 @@ if tab1:
                                 if pd.isna(data_dt):
                                     debug_info['escluse_date_invalide'] += 1
                                     continue
-                            except:
+                            except (ValueError, TypeError):
                                 debug_info['escluse_date_invalide'] += 1
                                 continue
                             
@@ -2162,7 +2155,6 @@ def tab_memoria_globale_unificata():
     # ============================================================
     # IDENTIFICA RUOLO
     # ============================================================
-    ADMIN_EMAILS = ['mattiadavolio90@gmail.com']
     user = st.session_state.get('user_data', {})
     user_email = user.get('email', '')
     is_admin = user_email in ADMIN_EMAILS

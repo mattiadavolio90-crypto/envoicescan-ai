@@ -51,7 +51,9 @@ from config.constants import (
     CATEGORIE_FOOD,
     CATEGORIE_SPESE_GENERALI,
     # Dizionario correzioni
-    DIZIONARIO_CORREZIONI
+    DIZIONARIO_CORREZIONI,
+    # Admin
+    ADMIN_EMAILS
 )
 
 # Import utilities da moduli separati
@@ -542,9 +544,9 @@ except Exception:
 # Se c'è il parametro logout=1, forza logout completo (funziona anche su Streamlit Cloud)
 if st.query_params.get("logout") == "1":
     logger.warning("🚨 LOGOUT FORZATO via query params - pulizia totale sessione")
-    # Imposta flag di logout prima di cancellare tutto
-    st.session_state.clear()  # Usa clear() invece di loop
-    st.session_state.logged_in = False
+    # Pulizia sessione e reimpostazione flag (ORDINE CORRETTO)
+    st.session_state.clear()  # Cancella tutto
+    st.session_state.logged_in = False  # Reimposta dopo clear
     st.session_state.force_logout = True  # Flag che persiste
     # Rimuovi parametro logout dall'URL
     st.query_params.clear()
@@ -727,12 +729,6 @@ def verifica_codice_reset(email, code, new_password):
     except Exception as e:
         logger.exception("Errore reset password")
         return None, str(e)
-
-
-# ============================================================
-# LISTA ADMIN (deve coincidere con quella in pages/admin.py)
-# ============================================================
-ADMIN_EMAILS = ["mattiadavolio90@gmail.com"]
 
 
 # ============================================================
@@ -946,8 +942,8 @@ user = st.session_state.user_data
 # ULTIMA VERIFICA: se user_data è None, FORZA logout
 if not user or not user.get('email'):
     logger.critical("⛔ user_data invalido - forzando logout")
-    st.session_state.clear()
-    st.session_state.logged_in = False
+    st.session_state.clear()  # Cancella tutto
+    st.session_state.logged_in = False  # Reimposta dopo clear
     st.rerun()
 
 
