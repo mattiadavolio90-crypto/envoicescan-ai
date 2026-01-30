@@ -1248,15 +1248,12 @@ client = OpenAI(api_key=api_key)
 # TEST & AUDIT UTILITIES
 # ============================================================
 
-        return {"num_uniche": 0, "num_righe": 0, "success": False}
-
 
 # ============================================================
 # CACHING DATAFRAME OTTIMIZZATO
 # ============================================================
 
 
-@st.cache_data(ttl=600, max_entries=50)  # ✅ TTL 10 minuti: dati sempre freschi senza logout
 # ============================================================
 # CONVERSIONE FILE IN BASE64 PER VISION
 # ============================================================
@@ -1271,7 +1268,6 @@ client = OpenAI(api_key=api_key)
 # ============================================================
 
 
-@st.cache_data(ttl=600, show_spinner=False, max_entries=50)  # ✅ TTL 10 minuti
 # ============================================================
 # FUNZIONE RENDERING STATISTICHE
 # ============================================================

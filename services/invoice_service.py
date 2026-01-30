@@ -43,6 +43,82 @@ from config.logger_setup import get_logger
 logger = get_logger('invoice')
 
 
+def normalizza_unita_misura(um: str) -> str:
+    """
+    Normalizza unità di misura in forma abbreviata standard.
+    
+    Args:
+        um: Unità di misura da normalizzare
+    
+    Returns:
+        str: Unità normalizzata (es: "KG", "PZ", "LT")
+    
+    Examples:
+        "kilogrammi" → "KG"
+        "pezzi" → "PZ"
+        "litri" → "LT"
+        "grammi" → "GR"
+    """
+    if not um or not isinstance(um, str):
+        return ""
+    
+    um_upper = um.upper().strip()
+    
+    # Mappa normalizzazione completa
+    mappa_normalizzazione = {
+        # Peso
+        "KILOGRAMMI": "KG",
+        "CHILOGRAMMI": "KG",
+        "KILOGRAMMO": "KG",
+        "CHILOGRAMMO": "KG",
+        "KILO": "KG",
+        "CHILO": "KG",
+        "GRAMMI": "GR",
+        "GRAMMO": "GR",
+        "GRM": "GR",
+        
+        # Volume
+        "LITRI": "LT",
+        "LITRO": "LT",
+        "MILLILITRI": "ML",
+        "MILLILITRO": "ML",
+        "CENTILITRI": "CL",
+        "CENTILITRO": "CL",
+        
+        # Quantità
+        "PEZZI": "PZ",
+        "PEZZO": "PZ",
+        "NUMERO": "NR",
+        "UNITA": "PZ",
+        "UNITÀ": "PZ",
+        
+        # Confezioni
+        "CONFEZIONE": "CF",
+        "CONFEZIONI": "CF",
+        "CONF": "CF",
+        "SCATOLA": "SC",
+        "SCATOLE": "SC",
+        "CARTONE": "CT",
+        "CARTONI": "CT",
+        "BUSTA": "BS",
+        "BUSTE": "BS",
+        "VASETTO": "VS",
+        "VASETTI": "VS",
+        "BARATTOLO": "BR",
+        "BARATTOLI": "BR",
+        "BOTTIGLIA": "BT",
+        "BOTTIGLIE": "BT"
+    }
+    
+    # Verifica se già abbreviato correttamente
+    abbreviazioni_valide = ["KG", "GR", "LT", "ML", "CL", "PZ", "NR", "CF", "SC", "CT", "BS", "VS", "BR", "BT"]
+    if um_upper in abbreviazioni_valide:
+        return um_upper
+    
+    # Normalizza usando mappa
+    return mappa_normalizzazione.get(um_upper, um_upper)
+
+
 def estrai_dati_da_xml(file_caricato):
     """
     Estrae dati da fatture XML elettroniche italiane.
@@ -181,7 +257,10 @@ def estrai_dati_da_xml(file_caricato):
                 elif isinstance(codice_articolo_raw, dict):
                     codice_articolo = codice_articolo_raw.get('CodiceValore', '')
                 
-                unita_misura = riga.get('UnitaMisura', '')
+                # Estrai e normalizza unità di misura
+                unita_misura_raw = riga.get('UnitaMisura', '')
+                unita_misura = normalizza_unita_misura(unita_misura_raw)
+                
                 aliquota_iva = float(riga.get('AliquotaIVA', 0))
                 
                 # Calcola prezzo effettivo (include sconti)
@@ -451,7 +530,9 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
             except (ValueError, TypeError):
                 prezzo_unitario = 0
             
-            unita_misura = riga.get('unita_misura', 'PZ')
+            # Estrai e normalizza unità di misura
+            unita_misura_raw = riga.get('unita_misura', 'PZ')
+            unita_misura = normalizza_unita_misura(unita_misura_raw)
             
             try:
                 totale_riga = float(riga.get('totale', 0))
