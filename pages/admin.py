@@ -1014,13 +1014,14 @@ if tab1:
                                 </ul>
                                 
                                 <p style="margin-top: 30px; color: #666; font-size: 14px;">
-                                    Hai domande? Rispondi a questa email, siamo qui per aiutarti!
+                                    <strong>Hai domande?</strong> Rispondi direttamente a questa email, ti risponderemo al più presto!
                                 </p>
                                 
                                 <p style="color: #666; font-size: 14px;">
                                     ---<br>
                                     <strong>ANALISI FATTURE AI Team</strong><br>
-                                    <a href="https://envoicescan-ai.streamlit.app">envoicescan-ai.streamlit.app</a>
+                                    <a href="https://envoicescan-ai.streamlit.app">envoicescan-ai.streamlit.app</a><br>
+                                    📧 Support: mattiadavolio90@gmail.com
                                 </p>
                             </div>
                             """
@@ -1028,6 +1029,7 @@ if tab1:
                             payload = {
                                 "sender": {"email": sender_email, "name": "ANALISI FATTURE AI"},
                                 "to": [{"email": new_email, "name": new_name}],
+                                "replyTo": {"email": "mattiadavolio90@gmail.com", "name": "Mattia Davolio - Support"},
                                 "bcc": [{"email": "mattiadavolio90@gmail.com"}],
                                 "subject": f"🆕 Benvenuto {new_name} - Imposta la tua Password",
                                 "htmlContent": email_html
