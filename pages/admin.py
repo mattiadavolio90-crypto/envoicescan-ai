@@ -25,8 +25,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from utils.formatters import carica_categorie_da_db
 from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria
 
-# Importa costanti per filtri
-from config.constants import CATEGORIE_SPESE_GENERALI
+# Importa costanti per filtri e admin
+from config.constants import CATEGORIE_SPESE_GENERALI, ADMIN_EMAILS
 
 # ============================================================
 # SETUP
