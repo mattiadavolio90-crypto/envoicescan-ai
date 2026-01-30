@@ -580,3 +580,97 @@ def log_upload_event(
     except Exception as e:
         # Non solleva eccezione per non bloccare l'upload
         logger.error(f"❌ Errore logging upload event: {e}")
+
+
+def formatta_euro(valore: float) -> str:
+    """
+    Formatta un valore numerico come stringa euro con formato italiano.
+    
+    Args:
+        valore: Numero da formattare
+    
+    Returns:
+        str: "€ 1.234,56" (formato italiano con migliaia separate da punti)
+    """
+    try:
+        return f"€ {valore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except:
+        return "€ 0,00"
+
+
+def crea_pivot_mensile(df, index_col: str):
+    """
+    Crea tabella pivot mensile per analisi temporale.
+    
+    Args:
+        df: DataFrame con colonne Mese, index_col, Totale
+        index_col: Nome colonna da usare come indice (es. 'Categoria', 'Fornitore')
+    
+    Returns:
+        DataFrame pivot con mesi come colonne e index_col come righe
+    """
+    import pandas as pd
+    
+    if df.empty or index_col not in df.columns:
+        return pd.DataFrame()
+    
+    try:
+        # Crea pivot con mesi ordinati cronologicamente
+        pivot = df.pivot_table(
+            index=index_col,
+            columns='Mese',
+            values='Totale',
+            aggfunc='sum',
+            fill_value=0
+        )
+        
+        # Ordina colonne cronologicamente (YYYY-MM)
+        pivot = pivot.reindex(sorted(pivot.columns), axis=1)
+        
+        # Aggiungi colonna Totale
+        pivot['Totale'] = pivot.sum(axis=1)
+        
+        # Ordina per Totale decrescente
+        pivot = pivot.sort_values('Totale', ascending=False)
+        
+        # Formatta valori in euro
+        for col in pivot.columns:
+            if col != 'Totale':
+                pivot[col] = pivot[col].apply(lambda x: formatta_euro(x) if x > 0 else "")
+        pivot['Totale'] = pivot['Totale'].apply(formatta_euro)
+        
+        return pivot
+    except Exception as e:
+        logger.error(f"Errore creazione pivot mensile: {e}")
+        return pd.DataFrame()
+
+
+def genera_box_recap(num_righe: int, totale: float) -> str:
+    """
+    Genera HTML per box riepilogativo con stile Material Design.
+    
+    Args:
+        num_righe: Numero righe/prodotti
+        totale: Importo totale in euro
+    
+    Returns:
+        str: HTML con box colorato e formattato
+    """
+    html = f"""
+    <div style='
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        color: white;
+        text-align: center;
+    '>
+        <div style='font-size: 48px; font-weight: bold; margin-bottom: 10px;'>
+            {formatta_euro(totale)}
+        </div>
+        <div style='font-size: 18px; opacity: 0.9;'>
+            {num_righe:,} prodotti analizzati
+        </div>
+    </div>
+    """
+    return html

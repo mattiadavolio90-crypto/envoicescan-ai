@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 echo.
 echo ========================================
-echo   AVVIO CHECK FORNITORI AI
+echo   AVVIO ANALISI FATTURE AI
 echo ========================================
 echo.
 echo Attendere l'avvio dell'applicazione...

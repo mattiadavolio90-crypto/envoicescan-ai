@@ -19,7 +19,7 @@ from config.logger_setup import get_logger
 # ============================================================
 
 st.set_page_config(
-    page_title="Cambio Password - Check Fornitori AI",
+    page_title="Cambio Password - Analisi Fatture AI",
     page_icon="🔐",
     layout="centered"
 )

@@ -1,5 +1,5 @@
 """
-🔧 PANNELLO AMMINISTRAZIONE - CHECK FORNITORI AI
+🔧 PANNELLO AMMINISTRAZIONE - ANALISI FATTURE AI
 ===============================================
 Pannello admin con 3 TAB:
 - Gestione Clienti (con impersonazione)
@@ -1690,6 +1690,155 @@ if tab1:
         logger.exception("Errore gestione clienti")
         import traceback
         st.code(traceback.format_exc())
+    
+    # ════════════════════════════════════════════════════════════════════════════
+    # SEZIONE: GESTIONE MULTI-RISTORANTE (STEP 2)
+    # ════════════════════════════════════════════════════════════════════════════
+    st.markdown("---")
+    st.markdown("### 🏢 Gestione Multi-Ristorante")
+    st.caption("Aggiungi o rimuovi ristoranti per cliente (ciascuno con P.IVA unica)")
+    
+    try:
+        # Carica clienti
+        query_users_mr = supabase.table('users')\
+            .select('id, email, nome_ristorante')\
+            .order('email')\
+            .execute()
+        
+        if query_users_mr.data:
+            # Dropdown selezione cliente
+            cliente_emails = [u['email'] for u in query_users_mr.data]
+            cliente_selezionato = st.selectbox(
+                "👤 Seleziona Cliente",
+                options=cliente_emails,
+                key="select_cliente_multi_rist"
+            )
+            
+            if cliente_selezionato:
+                # Trova user selezionato
+                user_sel = next((u for u in query_users_mr.data if u['email'] == cliente_selezionato), None)
+                
+                if user_sel:
+                    # Carica ristoranti di questo utente
+                    ristoranti_query = supabase.table('ristoranti')\
+                        .select('*')\
+                        .eq('user_id', user_sel['id'])\
+                        .execute()
+                    
+                    ristoranti_list = ristoranti_query.data if ristoranti_query.data else []
+                    num_ristoranti = len(ristoranti_list)
+                    
+                    col_info, col_azioni = st.columns([2, 3])
+                    
+                    with col_info:
+                        st.metric("🏪 Ristoranti configurati", num_ristoranti)
+                        st.caption(f"📧 {cliente_selezionato}")
+                        
+                        # Lista ristoranti attuali
+                        if num_ristoranti > 0:
+                            st.markdown("**Ristoranti attivi:**")
+                            for idx, r in enumerate(ristoranti_list, 1):
+                                status_icon = "✅" if r.get('attivo') else "🔴"
+                                st.write(f"{idx}. {status_icon} **{r['nome_ristorante']}**")
+                                st.caption(f"   📋 P.IVA: `{r['partita_iva']}` | {r.get('ragione_sociale', 'N/A')}")
+                    
+                    with col_azioni:
+                        # AZIONE: Aggiungi Ristorante
+                        with st.expander("➕ Aggiungi Nuovo Ristorante", expanded=False):
+                            with st.form(f"form_nuovo_ristorante_{user_sel['id']}"):
+                                st.markdown("**Nuovo Ristorante**")
+                                
+                                new_nome = st.text_input("Nome Ristorante *", placeholder="Es: Trattoria Mario 2")
+                                new_piva_mr = st.text_input("P.IVA * (11 cifre)", placeholder="12345678901", max_chars=11)
+                                new_ragione_mr = st.text_input("Ragione Sociale", placeholder="Opzionale")
+                                
+                                # Validazione real-time P.IVA
+                                if new_piva_mr:
+                                    from utils.piva_validator import valida_formato_piva, normalizza_piva
+                                    piva_norm_mr = normalizza_piva(new_piva_mr)
+                                    if len(piva_norm_mr) == 11:
+                                        valida_mr, msg_mr = valida_formato_piva(piva_norm_mr)
+                                        if valida_mr:
+                                            st.success(f"✅ P.IVA valida: {piva_norm_mr}")
+                                        else:
+                                            st.error(msg_mr)
+                                
+                                if st.form_submit_button("✅ Crea Ristorante", type="primary", use_container_width=True):
+                                    if not new_nome or not new_piva_mr:
+                                        st.error("❌ Nome e P.IVA obbligatori")
+                                    else:
+                                        from utils.piva_validator import valida_formato_piva, normalizza_piva
+                                        piva_norm_mr = normalizza_piva(new_piva_mr)
+                                        valida_mr, msg_mr = valida_formato_piva(piva_norm_mr)
+                                        
+                                        if not valida_mr:
+                                            st.error(msg_mr)
+                                        else:
+                                            try:
+                                                # Verifica P.IVA non duplicata
+                                                check_piva = supabase.table('ristoranti')\
+                                                    .select('id')\
+                                                    .eq('partita_iva', piva_norm_mr)\
+                                                    .execute()
+                                                
+                                                if check_piva.data:
+                                                    st.error(f"❌ P.IVA {piva_norm_mr} già registrata")
+                                                else:
+                                                    # Inserisci nuovo ristorante
+                                                    supabase.table('ristoranti').insert({
+                                                        'user_id': user_sel['id'],
+                                                        'nome_ristorante': new_nome,
+                                                        'partita_iva': piva_norm_mr,
+                                                        'ragione_sociale': new_ragione_mr if new_ragione_mr else None,
+                                                        'attivo': True
+                                                    }).execute()
+                                                    
+                                                    logger.info(f"✅ Ristorante creato: {new_nome} (P.IVA: {piva_norm_mr}) per {cliente_selezionato}")
+                                                    st.success(f"✅ Ristorante **{new_nome}** creato!")
+                                                    time.sleep(1)
+                                                    st.rerun()
+                                            except Exception as e:
+                                                st.error(f"❌ Errore creazione: {e}")
+                                                logger.exception(f"Errore creazione ristorante per {cliente_selezionato}")
+                        
+                        # AZIONE: Elimina Ristorante
+                        if num_ristoranti > 0:
+                            with st.expander("🗑️ Elimina Ristorante", expanded=False):
+                                st.warning("⚠️ Eliminazione permanente")
+                                
+                                rist_da_eliminare = st.selectbox(
+                                    "Ristorante da eliminare",
+                                    options=ristoranti_list,
+                                    format_func=lambda r: f"{r['nome_ristorante']} (P.IVA: {r['partita_iva']})",
+                                    key=f"select_elimina_rist_{user_sel['id']}"
+                                )
+                                
+                                if rist_da_eliminare:
+                                    st.caption(f"⚠️ Verranno eliminate anche tutte le fatture associate")
+                                    
+                                    if st.button(f"🗑️ Elimina {rist_da_eliminare['nome_ristorante']}", 
+                                                type="secondary", 
+                                                key=f"btn_elimina_{rist_da_eliminare['id']}"):
+                                        try:
+                                            # Elimina ristorante (cascade elimina anche fatture via FK)
+                                            supabase.table('ristoranti')\
+                                                .delete()\
+                                                .eq('id', rist_da_eliminare['id'])\
+                                                .execute()
+                                            
+                                            logger.warning(f"🗑️ Ristorante eliminato: {rist_da_eliminare['nome_ristorante']} di {cliente_selezionato}")
+                                            st.success("✅ Ristorante eliminato!")
+                                            time.sleep(1)
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"❌ Errore eliminazione: {e}")
+                                            logger.exception(f"Errore eliminazione ristorante {rist_da_eliminare['id']}")
+        else:
+            st.info("📭 Nessun cliente registrato")
+    
+    except Exception as e:
+        st.error(f"❌ Errore gestione multi-ristorante: {e}")
+        logger.exception("Errore sezione multi-ristorante")
 
 # ============================================================
 # TAB 2: REVIEW RIGHE €0 CON SISTEMA CONFERMA

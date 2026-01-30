@@ -348,7 +348,7 @@ Per contribuire alla documentazione:
 
 ---
 
-**© 2025 Check Fornitori AI - Indice Documentazione Pannello Admin**
+**© 2025 Analisi Fatture AI - Indice Documentazione Pannello Admin**
 
 **Versione:** 1.0  
 **Data:** 18 Dicembre 2025  

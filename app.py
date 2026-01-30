@@ -82,8 +82,12 @@ from utils.formatters import (
     safe_get,
     calcola_prezzo_standard_intelligente,
     carica_categorie_da_db,
-    log_upload_event
+    log_upload_event,
+    crea_pivot_mensile,
+    genera_box_recap
 )
+
+from utils.ristorante_helper import add_ristorante_filter, get_current_ristorante_id
 
 # Import services
 from services.ai_service import (
@@ -122,6 +126,10 @@ from services.db_service import (
     ricalcola_prezzi_con_sconti,
     calcola_alert,
     carica_sconti_e_omaggi,
+    elimina_fattura_completa,
+    elimina_tutte_fatture,
+    audit_data_consistency,
+    get_fatture_stats
 )
 
 
@@ -939,12 +947,54 @@ if not st.session_state.get('logged_in', False):
 # Se arrivi qui, sei loggato! Vai DIRETTO ALL'APP
 user = st.session_state.user_data
 
-# ULTIMA VERIFICA: se user_data è None, FORZA logout
+# ULTIMA VERIFICA: se user_data è None o invalido, FORZA logout immediato
+if not user or not user.get('email'):
+    logger.critical("❌ user_data è None o mancante email - FORZA LOGOUT")
+    st.session_state.logged_in = False
+    st.session_state.user_data = None
+    st.error("⚠️ Sessione invalida. Effettua nuovamente il login.")
+    st.rerun()
+
 if not user or not user.get('email'):
     logger.critical("⛔ user_data invalido - forzando logout")
     st.session_state.clear()  # Cancella tutto
     st.session_state.logged_in = False  # Reimposta dopo clear
     st.rerun()
+
+
+# ============================================
+# CARICAMENTO RISTORANTI (MULTI-RISTORANTE STEP 2)
+# ============================================
+# Carica ristoranti dell'utente (anche se admin sta impersonando)
+if not st.session_state.get('user_is_admin', False):
+    if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_state:
+        try:
+            ristoranti = supabase.table('ristoranti')\
+                .select('id, nome_ristorante, partita_iva, ragione_sociale')\
+                .eq('user_id', user.get('id'))\
+                .eq('attivo', True)\
+                .execute()
+            
+            st.session_state.ristoranti = ristoranti.data if ristoranti.data else []
+            
+            logger.info(f"🔍 DEBUG: Caricati {len(st.session_state.ristoranti)} ristoranti per user_id={user.get('id')}")
+            
+            # Se ha ristoranti, imposta il primo come default
+            if st.session_state.ristoranti:
+                # Se non c'è un ristorante selezionato, usa il primo
+                if 'ristorante_id' not in st.session_state:
+                    st.session_state.ristorante_id = st.session_state.ristoranti[0]['id']
+                    st.session_state.partita_iva = st.session_state.ristoranti[0]['partita_iva']
+                    st.session_state.nome_ristorante = st.session_state.ristoranti[0]['nome_ristorante']
+                    logger.info(f"🏢 Ristorante caricato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
+            else:
+                logger.warning(f"⚠️ Nessun ristorante trovato per user_id={user.get('id')} in tabella 'ristoranti'")
+        except Exception as e:
+            logger.exception(f"Errore caricamento ristoranti: {e}")
+            # Fallback: usa dati utente
+            st.session_state.ristoranti = []
+            st.session_state.partita_iva = user.get('partita_iva')
+            st.session_state.nome_ristorante = user.get('nome_ristorante')
 
 
 # ============================================
@@ -1071,9 +1121,73 @@ else:
 
 st.markdown("---")
 
-# ============================================================
-# PROSEGUE CODICE NORMALE APP
-# ============================================================
+# ============================================
+# DROPDOWN MULTI-RISTORANTE
+# ============================================
+# Mostra dropdown per clienti NON admin con più ristoranti
+if user.get('email') not in ADMIN_EMAILS:
+    ristoranti = st.session_state.get('ristoranti', [])
+    
+    if len(ristoranti) > 1:
+        st.markdown("### 🏢 Seleziona Ristorante da Gestire")
+        
+        # Trova indice ristorante corrente
+        current_id = st.session_state.get('ristorante_id')
+        current_idx = 0
+        for idx, r in enumerate(ristoranti):
+            if r['id'] == current_id:
+                current_idx = idx
+                break
+        
+        # Dropdown full-width
+        ristorante_idx = st.selectbox(
+            "🏪 Scegli quale ristorante vuoi gestire:",
+            range(len(ristoranti)),
+            index=current_idx,
+            format_func=lambda i: f"{ristoranti[i]['nome_ristorante']} - P.IVA: {ristoranti[i]['partita_iva']}",
+            key="dropdown_ristorante_main",
+            help="Seleziona il ristorante per cui vuoi caricare e analizzare fatture"
+        )
+        
+        # Aggiorna sessione se cambiato
+        selected_ristorante = ristoranti[ristorante_idx]
+        if st.session_state.get('ristorante_id') != selected_ristorante['id']:
+            st.session_state.ristorante_id = selected_ristorante['id']
+            st.session_state.partita_iva = selected_ristorante['partita_iva']
+            st.session_state.nome_ristorante = selected_ristorante['nome_ristorante']
+            
+            # 🧹 Pulizia cache contesto ristorante precedente
+            if 'files_processati_sessione' in st.session_state:
+                st.session_state.files_processati_sessione = set()
+            if 'files_con_errori' in st.session_state:
+                st.session_state.files_con_errori = set()
+            
+            logger.info(f"🔄 Ristorante cambiato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
+            st.rerun()
+        
+        # Info ristorante attivo - disposizione ORIZZONTALE con box azzurro standard
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.info(f"**✅ Ristorante Attivo**  \nSì")
+        
+        with col2:
+            st.info(f"**📋 Nome**  \n{selected_ristorante['nome_ristorante']}")
+        
+        with col3:
+            st.info(f"**🏢 P.IVA**  \n`{selected_ristorante['partita_iva']}`")
+        
+        with col4:
+            st.info(f"**📄 Ragione Sociale**  \n{selected_ristorante.get('ragione_sociale', 'N/A')}")
+        
+        st.warning("⚠️ **IMPORTANTE:** Le fatture caricate devono corrispondere alla P.IVA del ristorante selezionato sopra! **Altrimenti verranno scartate**")
+        st.markdown("---")
+    
+    elif len(ristoranti) == 1:
+        # Singolo ristorante: mostra solo info compatta
+        st.success(f"🏪 **Ristorante:** {ristoranti[0]['nome_ristorante']} | 📋 **P.IVA:** `{ristoranti[0]['partita_iva']}`")
+        st.markdown("---")
+
 # ============================================================
 # FILE DI MEMORIA
 # ============================================================
@@ -1130,264 +1244,10 @@ client = OpenAI(api_key=api_key)
 # ============================================================
 
 
-def elimina_fattura_completa(file_origine, user_id):
-    """
-    Elimina una fattura completa (tutti i prodotti) dal database.
-    
-    Args:
-        file_origine: Nome del file XML della fattura
-        user_id: ID utente (per controllo sicurezza)
-    
-    Returns:
-        dict: {"success": bool, "error": str, "righe_eliminate": int}
-    """
-    try:
-        # Verifica che l'utente sia autenticato
-        if not user_id:
-            return {"success": False, "error": "not_authenticated", "righe_eliminate": 0}
-        
-        # Prima conta quante righe verranno eliminate
-        count_response = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).eq("file_origine", file_origine).execute()
-        num_righe = len(count_response.data) if count_response.data else 0
-        
-        if num_righe == 0:
-            return {"success": False, "error": "not_found", "righe_eliminate": 0}
-        
-        # Elimina dal database (con controllo user_id per sicurezza)
-        response = supabase.table("fatture").delete().eq("user_id", user_id).eq("file_origine", file_origine).execute()
-        
-        # Log operazione
-        logger.info(f"❌ Fattura eliminata: {file_origine} ({num_righe} righe) da user {user_id}")
-        
-        # Invalida cache per ricaricare dati
-        st.cache_data.clear()
-        invalida_cache_memoria()
-        
-        return {"success": True, "error": None, "righe_eliminate": num_righe}
-        
-    except Exception as e:
-        logger.exception(f"Errore eliminazione fattura {file_origine} per user {user_id}")
-        return {"success": False, "error": str(e), "righe_eliminate": 0}
-
-
-def elimina_tutte_fatture(user_id):
-    """
-    Elimina TUTTE le fatture dell'utente dal database.
-    
-    Args:
-        user_id: ID utente (per controllo sicurezza)
-    
-    Returns:
-        dict: {"success": bool, "error": str, "righe_eliminate": int, "fatture_eliminate": int}
-    """
-    try:
-        # Verifica che l'utente sia autenticato
-        if not user_id:
-            return {"success": False, "error": "not_authenticated", "righe_eliminate": 0, "fatture_eliminate": 0}
-        
-        # Prima conta quante righe e fatture verranno eliminate
-        count_response = supabase.table("fatture").select("id, file_origine", count="exact").eq("user_id", user_id).execute()
-        num_righe = count_response.count if count_response.count else 0
-        num_fatture = len(set([r['file_origine'] for r in count_response.data])) if count_response.data else 0
-        
-        logger.info(f"DELETE: user_id={user_id}, {num_fatture} fatture ({num_righe} righe)")
-        
-        if num_righe == 0:
-            return {"success": False, "error": "no_data", "righe_eliminate": 0, "fatture_eliminate": 0}
-        
-        # 🔥 ELIMINA TUTTO per questo user_id
-        logger.info(f"🗑️ Esecuzione DELETE per user_id={user_id}...")
-        
-        try:
-            # Esegui DELETE
-            response = supabase.table("fatture").delete().eq("user_id", user_id).execute()
-            logger.info(f"📊 DELETE executed for user_id={user_id}")
-        except Exception as delete_error:
-            logger.error(f"❌ ERRORE DELETE: {delete_error}")
-            raise
-        
-        # ✅ VERIFICA POST-DELETE ATOMICA (conferma eliminazione)
-        verify_response = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).execute()
-        num_rimaste = verify_response.count if verify_response.count else 0
-        
-        logger.info(f"✅ Verifica post-delete: {num_rimaste} righe rimaste")
-        
-        if num_rimaste > 0:
-            logger.error(f"❌ DELETE FALLITA: {num_rimaste} righe ancora presenti per user {user_id}")
-            
-            # 🔄 TENTATIVO 2: Re-DELETE per righe rimaste
-            try:
-                logger.info(f"🔄 TENTATIVO 2: Ri-esecuzione DELETE per {num_rimaste} righe rimaste...")
-                response2 = supabase.table("fatture").delete().eq("user_id", user_id).execute()
-                
-                # Verifica finale dopo retry
-                verify_final = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).execute()
-                num_finali = verify_final.count if verify_final.count else 0
-                
-                if num_finali > 0:
-                    logger.critical(f"🚨 DELETE FALLITA ANCHE DOPO RETRY: {num_finali} righe ancora presenti")
-                    return {
-                        "success": False, 
-                        "error": f"Eliminazione parziale: {num_finali} righe non eliminate", 
-                        "righe_eliminate": num_righe - num_finali, 
-                        "fatture_eliminate": num_fatture
-                    }
-                else:
-                    logger.info(f"✅ DELETE completata al secondo tentativo")
-            except Exception as retry_error:
-                logger.critical(f"❌ ERRORE nel retry DELETE: {retry_error}")
-                return {
-                    "success": False, 
-                    "error": f"Delete fallita: {str(retry_error)}", 
-                    "righe_eliminate": 0, 
-                    "fatture_eliminate": 0
-                }
-        
-        # Success solo se 0 righe rimaste
-        logger.warning(f"⚠️ ELIMINAZIONE MASSIVA SUCCESSO: {num_fatture} fatture ({num_righe} righe) da user {user_id}")
-        
-        # 🔥 PULIZIA CACHE COMPLETA: Multiple invalidazioni per garantire reset
-        st.cache_data.clear()
-        invalida_cache_memoria()
-        try:
-            st.cache_resource.clear()
-        except Exception as e:
-            logger.warning(f"⚠️ Errore clear cache_resource: {e}")
-        
-        # 🔥 RESET SESSION STATE: Reinizializza set vuoti per i file
-        st.session_state.files_processati_sessione = set()
-        st.session_state.files_con_errori = set()
-        
-        # 🔥 CACHE BUSTER: Timestamp per forzare reload dopo eliminazione
-        st.session_state.last_delete_timestamp = time.time()
-        
-        return {"success": True, "error": None, "righe_eliminate": num_righe, "fatture_eliminate": num_fatture}
-        
-    except Exception as e:
-        logger.exception(f"Errore eliminazione massiva per user {user_id}")
-        return {"success": False, "error": str(e), "righe_eliminate": 0, "fatture_eliminate": 0}
-
 # ============================================================
 # TEST & AUDIT UTILITIES
 # ============================================================
 
-
-def audit_data_consistency(user_id: str, context: str = "unknown") -> dict:
-    """
-    🔍 Verifica coerenza dati tra DB, Cache e UI
-    
-    Args:
-        user_id: ID utente da verificare
-        context: Contesto della chiamata (es. "post-delete", "post-upload")
-    
-    Returns:
-        dict con dettagli verifica:
-        - db_count: righe su Supabase
-        - db_files: file unici su Supabase
-        - cache_count: righe in cache
-        - cache_files: file unici in cache
-        - consistent: bool (True se DB = Cache)
-    """
-    result = {
-        "context": context,
-        "user_id": user_id,
-        "db_count": 0,
-        "db_files": 0,
-        "cache_count": 0,
-        "cache_files": 0,
-        "consistent": False,
-        "error": None
-    }
-    
-    try:
-        # 1. Query diretta DB (bypass cache)
-        db_response = supabase.table("fatture").select("file_origine", count="exact").eq("user_id", user_id).execute()
-        result["db_count"] = db_response.count if db_response.count else 0
-        result["db_files"] = len(set([r['file_origine'] for r in db_response.data])) if db_response.data else 0
-        
-        # 2. Query cache (potrebbe essere stale)
-        df_cached = carica_e_prepara_dataframe(user_id)
-        result["cache_count"] = len(df_cached)
-        result["cache_files"] = df_cached['FileOrigine'].nunique() if not df_cached.empty else 0
-        
-        # 3. Verifica coerenza
-        result["consistent"] = (result["db_count"] == result["cache_count"])
-        
-        # 4. Log audit
-        if result["consistent"]:
-            logger.info(f"✅ AUDIT OK [{context}]: DB={result['db_count']} Cache={result['cache_count']} (user={user_id})")
-        else:
-            logger.warning(f"⚠️ AUDIT FAIL [{context}]: DB={result['db_count']} ≠ Cache={result['cache_count']} (user={user_id})")
-        
-        return result
-        
-    except Exception as e:
-        logger.exception(f"Errore audit per user {user_id}")
-        result["error"] = str(e)
-        return result
-
-
-def get_fatture_stats(user_id: str) -> dict:
-    """
-    📊 Ottiene statistiche fatture SOLO da Supabase.
-    Fonte unica di verità per tutti i conteggi UI.
-    
-    Args:
-        user_id: ID utente per filtro multi-tenancy
-    
-    Returns:
-        dict con:
-        - num_uniche: Numero fatture uniche (FileOrigine distinti)
-        - num_righe: Numero totale righe/prodotti
-        - success: bool (True se query riuscita)
-    
-    GARANZIE:
-    - Legge SOLO da Supabase (nessun cache/sessione)
-    - Coerente con Gestione Fatture
-    - Usato per tutti i conteggi pubblici
-    """
-    try:
-        # ⚠️ CRITICO: Contare file unici richiede paginazione o query ottimizzata
-        # Soluzione: Pagina TUTTE le righe per ottenere file_origine completi
-        
-        file_unici_set = set()
-        total_rows = 0
-        page = 0
-        page_size = 1000
-        
-        while True:
-            offset = page * page_size
-            response = supabase.table("fatture") \
-                .select("file_origine", count='exact') \
-                .eq("user_id", user_id) \
-                .range(offset, offset + page_size - 1) \
-                .execute()
-            
-            if not response.data:
-                break
-            
-            # Aggiungi file_origine di questa pagina al set
-            for r in response.data:
-                if r.get("file_origine"):
-                    file_unici_set.add(r["file_origine"])
-            
-            # Salva il count totale (uguale per tutte le pagine)
-            if page == 0:
-                total_rows = response.count if response.count else 0
-            
-            # Se questa pagina ha meno di page_size record, abbiamo finito
-            if len(response.data) < page_size:
-                break
-                
-            page += 1
-        
-        return {
-            "num_uniche": len(file_unici_set),
-            "num_righe": total_rows,
-            "success": True
-        }
-    except Exception as e:
-        logger.error(f"Errore get_fatture_stats per user {user_id}: {e}")
         return {"num_uniche": 0, "num_righe": 0, "success": False}
 
 
@@ -1412,81 +1272,9 @@ def get_fatture_stats(user_id: str) -> dict:
 
 
 @st.cache_data(ttl=600, show_spinner=False, max_entries=50)  # ✅ TTL 10 minuti
-def crea_pivot_mensile(df, index_col):
-    if df.empty:
-        return pd.DataFrame()
-    
-    df_temp = df.copy()
-    df_temp['Data_DT'] = pd.to_datetime(df_temp['DataDocumento'], errors='coerce')
-
-
-    # Controlla date invalide
-    date_invalide = df_temp['Data_DT'].isna().sum()
-    if date_invalide > 0:
-        st.warning(
-            f"⚠️ ATTENZIONE: {date_invalide} fatture hanno date non valide e non appariranno nei grafici temporali."
-        )
-        
-        fatture_problema = df_temp[df_temp['Data_DT'].isna()][['Fornitore', 'Numero_Fattura', 'Data_Documento']].head(5)
-        if not fatture_problema.empty:
-            with st.expander("📋 Mostra fatture con date problematiche"):
-                st.dataframe(fatture_problema)
-
-
-    # Mesi in italiano maiuscolo
-    mesi_ita = {
-        1: 'GENNAIO', 2: 'FEBBRAIO', 3: 'MARZO', 4: 'APRILE',
-        5: 'MAGGIO', 6: 'GIUGNO', 7: 'LUGLIO', 8: 'AGOSTO',
-        9: 'SETTEMBRE', 10: 'OTTOBRE', 11: 'NOVEMBRE', 12: 'DICEMBRE'
-    }
-    df_temp['Mese'] = df_temp['Data_DT'].apply(
-        lambda x: f"{mesi_ita[x.month]} {x.year}" if pd.notna(x) else ''
-    )
-    
-    # Aggiungi colonna per ordinamento cronologico (AAAA-MM)
-    df_temp['Mese_Ordine'] = df_temp['Data_DT'].apply(
-        lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
-    )
-
-
-    pivot = df_temp.pivot_table(
-        index=index_col,
-        columns='Mese',
-        values='TotaleRiga',
-        aggfunc='sum',
-        fill_value=0
-    )
-
-    # Crea mapping mese → anno-mese per ordinamento
-    mese_ordine_map = df_temp[['Mese', 'Mese_Ordine']].drop_duplicates()
-    mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
-    mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
-    
-    # Ordina colonne cronologicamente
-    cols_sorted = sorted(list(pivot.columns), key=lambda x: mese_ordine_map.get(x, x))
-    pivot = pivot[cols_sorted]
-    pivot['TOTALE ANNO'] = pivot.sum(axis=1)
-    pivot = pivot.reset_index()
-    pivot = pivot.sort_values('TOTALE ANNO', ascending=False)
-
-
-    return pivot
-
-
-def genera_box_recap(num_righe, totale):
-    return f"""
-    <div style="background-color: #E3F2FD; padding: 17px 20px; border-radius: 8px; border: 2px solid #2196F3;">
-        <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; line-height: 1.4; word-wrap: break-word;">
-            📋 N. Righe: {num_righe:,}<br>💰 Totale: € {totale:.2f}
-        </p>
-    </div>
-    """
-
 # ============================================================
 # FUNZIONE RENDERING STATISTICHE
 # ============================================================
-
-
 
 def mostra_statistiche(df_completo):
     """Mostra grafici, filtri e tabella dati"""
@@ -1574,7 +1362,17 @@ def mostra_statistiche(df_completo):
     # ===== FINE FILTRO DICITURE E REVIEW =====
     
     # Recupera user_id da session_state (necessario per get_fatture_stats)
-    user_id = st.session_state.user_data["id"]
+    try:
+        user_id = st.session_state.user_data["id"]
+    except (KeyError, TypeError):
+        st.error("❌ Sessione invalida. Effettua il login.")
+        st.stop()
+    
+    # 🔒 VERIFICA ristorante_id presente (CRITICO per multi-tenancy)
+    if not st.session_state.get('ristorante_id'):
+        st.error("❌ Ristorante non selezionato. Contatta l'assistenza.")
+        logger.critical(f"ristorante_id mancante per user_id={user_id}")
+        st.stop()
     
     # Separa F&B da Spese Generali solo per categoria (NON escludere fornitori)
     mask_spese = df_completo['Categoria'].isin(CATEGORIE_SPESE_GENERALI)
@@ -1595,11 +1393,18 @@ def mostra_statistiche(df_completo):
     # user_id già recuperato sopra
     
     # Query 1: Conta righe con 'Da Classificare'
-    count_da_class = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).eq("categoria", "Da Classificare").execute()
+    ristorante_id = st.session_state.get('ristorante_id')
+    query_da_class = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).eq("categoria", "Da Classificare")
+    if ristorante_id:
+        query_da_class = query_da_class.eq("ristorante_id", ristorante_id)
+    count_da_class = query_da_class.execute()
     righe_da_class = count_da_class.count if count_da_class.count else 0
     
     # Query 2: Conta righe con categoria NULL
-    count_null = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).is_("categoria", "null").execute()
+    query_null = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).is_("categoria", "null")
+    if ristorante_id:
+        query_null = query_null.eq("ristorante_id", ristorante_id)
+    count_null = query_null.execute()
     righe_null = count_null.count if count_null.count else 0
     
     # TOTALE righe senza categoria valida nel database
@@ -1653,8 +1458,14 @@ def mostra_statistiche(df_completo):
                 # 🔧 FIX: Query DIRETTA al DB per evitare problema filtri locali su df_completo
                 try:
                     # Query tutte le descrizioni che hanno categoria NULL o "Da Classificare"
-                    resp_null = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).is_("categoria", "null").execute()
-                    resp_da_class = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "Da Classificare").execute()
+                    ristorante_id = st.session_state.get('ristorante_id')
+                    query_null = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).is_("categoria", "null")
+                    query_da_class = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "Da Classificare")
+                    if ristorante_id:
+                        query_null = query_null.eq("ristorante_id", ristorante_id)
+                        query_da_class = query_da_class.eq("ristorante_id", ristorante_id)
+                    resp_null = query_null.execute()
+                    resp_da_class = query_da_class.execute()
                     
                     # Combina e rimuovi duplicati
                     dati_null = resp_null.data if resp_null.data else []
@@ -1837,9 +1648,11 @@ def mostra_statistiche(df_completo):
                                 continue
                             
                             # TENTATIVO 1: Match con descrizione normalizzata
-                            result = supabase.table("fatture").update(
+                            query_update1 = supabase.table("fatture").update(
                                 {"categoria": cat}
-                            ).eq("user_id", user_id).eq("descrizione", desc_normalized).execute()
+                            ).eq("user_id", user_id).eq("descrizione", desc_normalized)
+                            query_update1 = add_ristorante_filter(query_update1)
+                            result = query_update1.execute()
                             
                             num_aggiornate = len(result.data) if result.data else 0
                             if num_aggiornate > 0:
@@ -1849,18 +1662,22 @@ def mostra_statistiche(df_completo):
                             if num_aggiornate == 0:
                                 logger.warning(f"⚠️ UPDATE 0 righe per '{desc[:50]}...', retry...")
                                 time.sleep(0.5)
-                                result = supabase.table("fatture").update(
+                                query_retry = supabase.table("fatture").update(
                                     {"categoria": cat}
-                                ).eq("user_id", user_id).eq("descrizione", desc_normalized).execute()
+                                ).eq("user_id", user_id).eq("descrizione", desc_normalized)
+                                query_retry = add_ristorante_filter(query_retry)
+                                result = query_retry.execute()
                                 num_aggiornate = len(result.data) if result.data else 0
                                 if num_aggiornate > 0:
                                     logger.info(f"✅ Retry riuscito: {num_aggiornate} righe aggiornate")
                             
                             # TENTATIVO 2: Se non trovato, prova con descrizione originale
                             if num_aggiornate == 0:
-                                result2 = supabase.table("fatture").update(
+                                query_update2 = supabase.table("fatture").update(
                                     {"categoria": cat}
-                                ).eq("user_id", user_id).eq("descrizione", desc).execute()
+                                ).eq("user_id", user_id).eq("descrizione", desc)
+                                query_update2 = add_ristorante_filter(query_update2)
+                                result2 = query_update2.execute()
                                 
                                 num_aggiornate = len(result2.data) if result2.data else 0
                                 
@@ -1871,9 +1688,11 @@ def mostra_statistiche(df_completo):
                             if num_aggiornate == 0:
                                 desc_trimmed = desc.strip()
                                 if desc_trimmed != desc:
-                                    result3 = supabase.table("fatture").update(
+                                    query_update3 = supabase.table("fatture").update(
                                         {"categoria": cat}
-                                    ).eq("user_id", user_id).eq("descrizione", desc_trimmed).execute()
+                                    ).eq("user_id", user_id).eq("descrizione", desc_trimmed)
+                                    query_update3 = add_ristorante_filter(query_update3)
+                                    result3 = query_update3.execute()
                                     
                                     num_aggiornate = len(result3.data) if result3.data else 0
                                     
@@ -1884,18 +1703,22 @@ def mostra_statistiche(df_completo):
                             if num_aggiornate == 0 and len(desc.strip()) >= 3:
                                 try:
                                     # Prova prima con desc originale via ILIKE esatto
-                                    result4 = supabase.table("fatture").update(
+                                    query_update4 = supabase.table("fatture").update(
                                         {"categoria": cat}
-                                    ).eq("user_id", user_id).ilike("descrizione", desc.strip()).execute()
+                                    ).eq("user_id", user_id).ilike("descrizione", desc.strip())
+                                    query_update4 = add_ristorante_filter(query_update4)
+                                    result4 = query_update4.execute()
                                     num_aggiornate = len(result4.data) if result4.data else 0
                                     if num_aggiornate > 0:
                                         logger.info(f"✅ Match ILIKE esatto: '{desc[:40]}...' ({num_aggiornate} righe)")
                                     
                                     # Se ancora zero, prova con pattern parziale
                                     if num_aggiornate == 0 and len(desc.strip()) >= 5:
-                                        result5 = supabase.table("fatture").update(
+                                        query_update5 = supabase.table("fatture").update(
                                             {"categoria": cat}
-                                        ).eq("user_id", user_id).ilike("descrizione", f"%{desc.strip()[:30]}%").execute()
+                                        ).eq("user_id", user_id).ilike("descrizione", f"%{desc.strip()[:30]}%")
+                                        query_update5 = add_ristorante_filter(query_update5)
+                                        result5 = query_update5.execute()
                                         num_aggiornate = len(result5.data) if result5.data else 0
                                         if num_aggiornate > 0:
                                             logger.info(f"✅ Match ILIKE parziale: '{desc[:40]}...' ({num_aggiornate} righe)")
@@ -1908,7 +1731,9 @@ def mostra_statistiche(df_completo):
                                 logger.error(f"❌ NESSUN MATCH per: '{desc}' (cat: {cat})")
                                 # Query diagnostica: cerca descrizioni simili
                                 try:
-                                    check = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id).ilike("descrizione", f"%{desc[:20]}%").limit(10).execute()
+                                    check_query = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id).ilike("descrizione", f"%{desc[:20]}%").limit(10)
+                                    check_query = add_ristorante_filter(check_query)
+                                    check = check_query.execute()
                                     if check.data:
                                         logger.error(f"   Descrizioni simili trovate nel DB:")
                                         for row in check.data[:5]:
@@ -1926,7 +1751,9 @@ def mostra_statistiche(df_completo):
                         
                         # 🔧 FALLBACK: Applica dizionario ai prodotti rimasti "Da Classificare"
                         try:
-                            df_check = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id).execute()
+                            query_check = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id)
+                            query_check = add_ristorante_filter(query_check)
+                            df_check = query_check.execute()
                             if df_check.data:
                                 df_temp = pd.DataFrame(df_check.data)
                                 ancora_da_class = df_temp[(df_temp['categoria'].isna()) | (df_temp['categoria'] == 'Da Classificare')]['descrizione'].unique()
@@ -1944,9 +1771,13 @@ def mostra_statistiche(df_completo):
                                         if cat_dizionario and cat_dizionario != 'Da Classificare':
                                             # Aggiorna con categoria da dizionario
                                             try:
-                                                righe_updated = supabase.table('fatture').update(
+                                                ristorante_id = st.session_state.get('ristorante_id')
+                                                query_fallback = supabase.table('fatture').update(
                                                     {'categoria': cat_dizionario}
-                                                ).eq('user_id', user_id).ilike('descrizione', f'%{desc.strip()}%').execute()
+                                                ).eq('user_id', user_id).ilike('descrizione', f'%{desc.strip()}%')
+                                                if ristorante_id:
+                                                    query_fallback = query_fallback.eq('ristorante_id', ristorante_id)
+                                                righe_updated = query_fallback.execute()
                                                 righe_aggiornate_totali += len(righe_updated.data) if righe_updated.data else 0
                                                 logger.info(f"✅ Fallback dizionario: '{desc[:40]}...' → {cat_dizionario}")
                                             except Exception as fb_err:
@@ -1986,7 +1817,11 @@ def mostra_statistiche(df_completo):
                         
                         # 🔍 VERIFICA POST-UPDATE: Conferma che DB è stato aggiornato correttamente
                         try:
-                            verifica_response = supabase.table('fatture').select('categoria').eq('user_id', user_id).execute()
+                            ristorante_id = st.session_state.get('ristorante_id')
+                            query_verifica = supabase.table('fatture').select('categoria').eq('user_id', user_id)
+                            if ristorante_id:
+                                query_verifica = query_verifica.eq('ristorante_id', ristorante_id)
+                            verifica_response = query_verifica.execute()
                             if verifica_response.data:
                                 null_count = sum(1 for row in verifica_response.data if not row.get('categoria') or row['categoria'] == 'Da Classificare')
                                 logger.info(f"🔍 POST-UPDATE VERIFICA: {null_count} righe ancora NULL/Da Classificare su {len(verifica_response.data)} totali")
@@ -3097,11 +2932,15 @@ def mostra_statistiche(df_completo):
                                 logger.info(f"   📊 User ID: {user_id}")
                                 
                                 # Aggiorna tutte le righe con stessa descrizione (normalizzata)
-                                result = supabase.table("fatture").update(update_data).eq(
+                                ristorante_id = st.session_state.get('ristorante_id')
+                                query_update_batch = supabase.table("fatture").update(update_data).eq(
                                     "user_id", user_id
                                 ).eq(
                                     "descrizione", descrizione
-                                ).execute()
+                                )
+                                if ristorante_id:
+                                    query_update_batch = query_update_batch.eq("ristorante_id", ristorante_id)
+                                result = query_update_batch.execute()
                                 
                                 righe_aggiornate = len(result.data) if result.data else 0
                                 logger.info(f"✅ BATCH: {righe_aggiornate} righe aggiornate per '{descrizione[:40]}'")
@@ -3116,9 +2955,11 @@ def mostra_statistiche(df_completo):
                                         parole = descrizione.split()[:3]  # Prime 3 parole
                                         if parole:
                                             pattern_search = "%".join(parole)
-                                            check = supabase.table("fatture").select("descrizione, categoria").eq(
+                                            check_query = supabase.table("fatture").select("descrizione, categoria").eq(
                                                 "user_id", user_id
-                                            ).ilike("descrizione", f"%{pattern_search}%").limit(5).execute()
+                                            ).ilike("descrizione", f"%{pattern_search}%").limit(5)
+                                            check_query = add_ristorante_filter(check_query)
+                                            check = check_query.execute()
                                             
                                             if check.data:
                                                 logger.info(f"📋 Trovate {len(check.data)} descrizioni simili nel DB:")
@@ -3149,7 +2990,8 @@ def mostra_statistiche(df_completo):
                                 
                             else:
                                 # Aggiorna solo questa riga specifica (nessun cambio categoria)
-                                result = supabase.table("fatture").update(update_data).eq(
+                                ristorante_id = st.session_state.get('ristorante_id')
+                                query_update_single = supabase.table("fatture").update(update_data).eq(
                                     "user_id", user_id
                                 ).eq(
                                     "file_origine", f_name
@@ -3157,7 +2999,10 @@ def mostra_statistiche(df_completo):
                                     "numero_riga", riga_idx
                                 ).eq(
                                     "descrizione", descrizione
-                                ).execute()
+                                )
+                                if ristorante_id:
+                                    query_update_single = query_update_single.eq("ristorante_id", ristorante_id)
+                                result = query_update_single.execute()
                                 
                                 if result.data:
                                     modifiche_effettuate += 1
@@ -4233,7 +4078,13 @@ if 'timestamp_ultimo_caricamento' not in st.session_state:
 
 
 # 🔒 IMPORTANTE: user_id per cache isolata (multi-tenancy)
-user_id = st.session_state.user_data["id"]
+try:
+    user_id = st.session_state.user_data["id"]
+except (KeyError, TypeError, AttributeError):
+    logger.critical("❌ user_data corrotto o mancante campo 'id' - FORZA LOGOUT")
+    st.session_state.logged_in = False
+    st.error("⚠️ Sessione invalida. Effettua nuovamente il login.")
+    st.rerun()
 
 
 with st.spinner("⏳ Caricamento dati..."):
@@ -4247,7 +4098,12 @@ if not df_cache.empty:
         # ========================================
         # BOX STATISTICHE
         # ========================================
-        stats_db = get_fatture_stats(user_id)
+        try:
+            stats_db = get_fatture_stats(user_id)
+        except Exception as e:
+            logger.error(f"Errore get_fatture_stats: {e}")
+            st.error("❌ Errore caricamento statistiche")
+            stats_db = {'num_uniche': 0, 'num_righe': 0, 'success': False}
         st.markdown(f"""
 <div style="
     background: linear-gradient(135deg, rgba(255, 140, 0, 0.15) 0%, rgba(255, 165, 0, 0.20) 100%);
@@ -4365,7 +4221,9 @@ if not df_cache.empty:
                             
                             # LOG AUDIT: Verifica immediata post-delete
                             try:
-                                verify = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).execute()
+                                verify_query = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id)
+                                verify_query = add_ristorante_filter(verify_query)
+                                verify = verify_query.execute()
                                 num_residue = len(verify.data) if verify.data else 0
                                 if num_residue == 0:
                                     logger.info(f"✅ DELETE VERIFIED: 0 righe rimaste per user_id={user_id}")
@@ -4466,10 +4324,19 @@ else:
     BATCH_FILE_SIZE = 20         # Max 20 file per batch
     
     # Recupera user_id da session state (già definito sopra ma riusato qui per chiarezza)
-    user_id = st.session_state.user_data["id"]
+    try:
+        user_id = st.session_state.user_data["id"]
+    except (KeyError, TypeError):
+        st.error("❌ Sessione non valida. Effettua il login.")
+        logger.critical("user_data mancante in sezione upload")
+        st.stop()
     
-    stats_db = get_fatture_stats(user_id)
-    righe_totali = stats_db['num_righe']
+    try:
+        stats_db = get_fatture_stats(user_id)
+        righe_totali = stats_db['num_righe']
+    except Exception as e:
+        logger.error(f"Errore stats durante controllo limite: {e}")
+        righe_totali = 0
     
     # Controllo prima elaborazione
     if righe_totali >= MAX_RIGHE_GLOBALE:
@@ -4537,10 +4404,10 @@ if 'files_errori_report' not in st.session_state:
 
 # ============================================================
 # AUTO-PULIZIA: Se non ci sono file caricati ma ci sono errori nel report,
-# significa che l'utente ha scaricato il log → pulisci automaticamente
+# significa che l'utente ha rimosso i file → pulisci automaticamente
 # ============================================================
 if not uploaded_files and len(st.session_state.files_errori_report) > 0:
-    logger.info("🧹 Auto-pulizia errori dopo download log")
+    logger.info("🧹 Auto-pulizia errori dopo rimozione file")
     st.session_state.files_con_errori = set()
     st.session_state.files_errori_report = {}
     st.rerun()  # Forza refresh per mostrare pagina pulita
@@ -4559,11 +4426,15 @@ if uploaded_files:
     # 🚀 OTTIMIZZAZIONE: Usa RPC function per ottenere solo file unici (evita 6000+ righe)
     try:
         # ✅ Usa user_id globale definito alla linea 3373 (no ridefinizione)
+        ristorante_id = st.session_state.get('ristorante_id')
         
         # Tentativo 1: Usa RPC function se disponibile (query aggregata SQL lato server)
         try:
             # Prova a chiamare funzione RPC che restituisce file_origine DISTINCT
-            response_rpc = supabase.rpc('get_distinct_files', {'p_user_id': user_id}).execute()
+            rpc_params = {'p_user_id': user_id}
+            if ristorante_id:
+                rpc_params['p_ristorante_id'] = ristorante_id
+            response_rpc = supabase.rpc('get_distinct_files', rpc_params).execute()
             file_su_supabase = {row["file_origine"] for row in response_rpc.data if row.get("file_origine") and row["file_origine"].strip()}
                 
         except Exception as rpc_error:
@@ -4578,13 +4449,15 @@ if uploaded_files:
             
             while True:
                 offset = page * page_size
-                response = (
+                ristorante_id = st.session_state.get('ristorante_id')
+                query_files = (
                     supabase.table("fatture")
                     .select("file_origine", count="exact")
                     .eq("user_id", user_id)
-                    .range(offset, offset + page_size - 1)
-                    .execute()
                 )
+                if ristorante_id:
+                    query_files = query_files.eq("ristorante_id", ristorante_id)
+                response = query_files.range(offset, offset + page_size - 1).execute()
                 
                 if not response.data:
                     break
@@ -4751,8 +4624,9 @@ if uploaded_files:
                     if file.name in st.session_state.files_processati_sessione:
                         continue
                     
+                    # 🔥 FIX BUG #3: Se file è in errori, skippa senza aggiungere a file_errore
+                    # (errore già presente in files_errori_report, evita duplicati)
                     if file.name in st.session_state.get('files_con_errori', set()):
-                        file_errore[file.name] = "File già fallito in questa sessione"
                         continue
                     
                     # Aggiorna progress GLOBALE
@@ -4767,7 +4641,9 @@ if uploaded_files:
                             
                             # ============================================================
                             # VALIDAZIONE P.IVA CESSIONARIO (Anti-abuso)
-                            # ============================================================
+                            # ═══════════════════════════════════════════════════════════════
+                            # VALIDAZIONE P.IVA MULTI-RISTORANTE (STEP 2)
+                            # ═══════════════════════════════════════════════════════════════
                             # ⚠️ SKIP per admin e impersonazione (possono caricare qualsiasi fattura)
                             is_admin = st.session_state.get('user_is_admin', False)
                             is_impersonating = st.session_state.get('impersonating', False)
@@ -4780,47 +4656,64 @@ if uploaded_files:
                                 elif isinstance(items, dict):
                                     piva_cessionario = items.get('piva_cessionario')
                                 
-                                user_piva = st.session_state.get('partita_iva')
+                                # P.IVA ristorante ATTUALMENTE SELEZIONATO (multi-ristorante aware)
+                                piva_attiva = st.session_state.get('partita_iva')
+                                nome_ristorante_attivo = st.session_state.get('nome_ristorante', 'N/A')
                                 
-                                logger.info(f"🔍 Validazione P.IVA - User: {user_piva}, Fattura: {piva_cessionario}")
+                                logger.info(f"🔍 Validazione P.IVA Multi-Ristorante - Attiva: {piva_attiva}, Fattura: {piva_cessionario}")
                                 
-                                # 🚫 CASO 1: Cliente senza P.IVA → BLOCCO TOTALE
-                                if not user_piva:
+                                # 🚫 CASO 1: Nessun ristorante/P.IVA configurato → BLOCCO TOTALE
+                                if not piva_attiva:
                                     logger.warning(
                                         f"⚠️ UPLOAD BLOCCATO - User {st.session_state.get('user_data', {}).get('email')} "
-                                        f"non ha P.IVA registrata"
+                                        f"non ha ristorante/P.IVA attivo"
                                     )
                                     raise ValueError(
-                                        f"🚫 P.IVA MANCANTE\n\n"
-                                        f"Il tuo account non ha una P.IVA registrata.\n"
+                                        f"🚫 NESSUN RISTORANTE ATTIVO\n\n"
+                                        f"Il tuo account non ha ristoranti configurati o nessuna P.IVA registrata.\n"
                                         f"Contatta l'assistenza per completare la registrazione.\n\n"
                                         f"📧 supporto@envoicescan-ai.com"
                                     )
                                 
-                                # CASO 2: Utente ha P.IVA E fattura ha P.IVA → VALIDAZIONE STRICT
-                                elif user_piva and piva_cessionario:
+                                # ✅ CASO 2: P.IVA presente → VALIDAZIONE STRICT MULTI-RISTORANTE
+                                elif piva_attiva and piva_cessionario:
                                     piva_cessionario_norm = normalizza_piva(piva_cessionario)
-                                    user_piva_norm = normalizza_piva(user_piva)
+                                    piva_attiva_norm = normalizza_piva(piva_attiva)
                                     
-                                    if piva_cessionario_norm != user_piva_norm:
-                                        # 🚫 BLOCCO TOTALE
+                                    if piva_cessionario_norm != piva_attiva_norm:
+                                        # 🚫 BLOCCO: P.IVA non corrisponde al ristorante selezionato
+                                        
+                                        # Conta ristoranti disponibili
+                                        num_ristoranti = len(st.session_state.get('ristoranti', []))
+                                        
+                                        msg_help = ""
+                                        if num_ristoranti > 1:
+                                            msg_help = f"\n\n💡 **Hai {num_ristoranti} ristoranti configurati.**\n   Seleziona il ristorante corretto dal menu laterale."
+                                        else:
+                                            msg_help = "\n\n📞 Hai più locali? Contatta supporto@envoicescan-ai.com"
+                                        
                                         logger.warning(
                                             f"⚠️ UPLOAD BLOCCATO - User {st.session_state.get('user_data', {}).get('email')} "
-                                            f"ha tentato upload con P.IVA {piva_cessionario} (sua: {user_piva})"
+                                            f"ha tentato upload con P.IVA {piva_cessionario} (ristorante attivo: {piva_attiva})"
                                         )
                                         raise ValueError(
                                             f"🚫 FATTURA NON VALIDA\n\n"
-                                            f"Questa fattura è intestata a P.IVA: {piva_cessionario}\n"
-                                            f"Il tuo account è registrato con P.IVA: {user_piva}\n\n"
-                                            f"Hai più locali? Contatta supporto@envoicescan-ai.com"
+                                            f"**Fattura P.IVA:** `{piva_cessionario}`\n"
+                                            f"**Ristorante attivo:** {nome_ristorante_attivo}\n"
+                                            f"**P.IVA attiva:** `{piva_attiva}`\n"
+                                            f"{msg_help}"
                                         )
+                                    else:
+                                        # ✅ P.IVA match: log successo
+                                        logger.info(f"✅ Validazione OK: P.IVA {piva_attiva_norm} match per {nome_ristorante_attivo}")
                             
                             else:
-                                # Admin/Impersonazione: log per debug
+                                # Admin/Impersonazione: log per debug (bypass validazione)
                                 piva_cessionario = None
                                 if isinstance(items, list) and len(items) > 0:
                                     piva_cessionario = items[0].get('piva_cessionario')
-                                logger.debug(f"Admin upload - P.IVA fattura: {piva_cessionario}")
+                                logger.debug(f"👨‍💼 Admin upload - P.IVA fattura: {piva_cessionario} (validazione bypassata)")
+                            
                             
                         elif nome_file.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
                             items = estrai_dati_da_scontrino_vision(file)
@@ -4851,6 +4744,9 @@ if uploaded_files:
                             # Traccia successo
                             file_ok.append(file.name)
                             st.session_state.files_processati_sessione.add(file.name)
+                            
+                            # 🔥 FIX BUG #1: Rimuovi da files_con_errori se presente (file ora ha successo)
+                            st.session_state.files_con_errori.discard(file.name)
                         else:
                             raise ValueError(f"Errore salvataggio: {result.get('error', 'Sconosciuto')}")
                     
@@ -4864,9 +4760,10 @@ if uploaded_files:
                         # NON mostrare errore qui (evita duplicati) - verrà mostrato nel report finale
                         
                         # ============================================================
-                        # PROTEZIONE DOPPIA: Traccia sia processati che errori
+                        # 🔥 FIX BUG #2: NON aggiungere a files_processati_sessione
+                        # altrimenti il file viene skippato per sempre e non può riprovare
                         # ============================================================
-                        st.session_state.files_processati_sessione.add(file.name)
+                        # st.session_state.files_processati_sessione.add(file.name)  # ❌ RIMOSSO
                         
                         # Inizializza set errori se non esiste
                         if 'files_con_errori' not in st.session_state:
@@ -4965,6 +4862,7 @@ if uploaded_files:
                 with col_clear:
                     if st.button("✖️ Azzera", use_container_width=True, type="secondary"):
                         st.session_state.files_errori_report = {}
+                        st.session_state.files_con_errori = set()  # 🔥 FIX: Pulisci ANCHE il set errori
                         logger.info("✅ Report errori azzerato manualmente")
                         st.rerun()
             

@@ -561,4 +561,4 @@ python -c "import streamlit as st; print('✅ Secrets OK')" 2>&1
 
 ---
 
-**© 2025 Check Fornitori AI - Comandi Utili**
+**© 2025 Analisi Fatture AI - Comandi Utili**

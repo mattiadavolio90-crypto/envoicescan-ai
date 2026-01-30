@@ -1,4 +1,4 @@
-# 🍝 CHECK FORNITORI AI - Sistema Admin Panel
+# 🍝 ANALISI FATTURE AI - Sistema Admin Panel
 
 ## 📋 Overview
 
@@ -79,7 +79,7 @@ key = "eyJhbGc..."
 [brevo]
 api_key = "xkeysib-..."
 sender_email = "contact@updates.brevo.com"
-sender_name = "Check Fornitori AI"
+sender_name = "Analisi Fatture AI"
 
 # App URL
 [app]
@@ -398,13 +398,13 @@ Per contribuire al progetto:
 
 ## 📄 Licenza
 
-Tutti i diritti riservati - Check Fornitori AI © 2025
+Tutti i diritti riservati - Analisi Fatture AI © 2025
 
 ---
 
 ## 🙏 Credits
 
-- **Sviluppo App:** Check Fornitori AI Team
+- **Sviluppo App:** Analisi Fatture AI Team
 - **Pannello Admin:** GitHub Copilot (Claude Sonnet 4.5)
 - **Data:** 18 Dicembre 2025
 
@@ -487,7 +487,7 @@ Tutti i diritti riservati - Check Fornitori AI © 2025
 
 ---
 
-**© 2025 Check Fornitori AI - Sistema Admin Panel v1.0**
+**© 2025 Analisi Fatture AI - Sistema Admin Panel v1.0**
 
 **Status:** ✅ Produzione  
 **Qualità:** ⭐⭐⭐⭐⭐ (98/100)  

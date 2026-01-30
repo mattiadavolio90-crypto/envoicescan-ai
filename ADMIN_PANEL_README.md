@@ -1,4 +1,4 @@
-# 🔧 Pannello Amministrazione - Check Fornitori AI
+# 🔧 Pannello Amministrazione - Analisi Fatture AI
 
 ## 📋 Panoramica
 
@@ -105,7 +105,7 @@ File `.streamlit/secrets.toml`:
 [brevo]
 api_key = "xkeysib-..."
 sender_email = "contact@updates.brevo.com"
-sender_name = "Check Fornitori AI"
+sender_name = "Analisi Fatture AI"
 
 # Supabase (Database)
 [supabase]
@@ -212,4 +212,4 @@ Per problemi o domande:
 
 ---
 
-**© 2025 Check Fornitori AI - Pannello Amministrazione**
+**© 2025 Analisi Fatture AI - Pannello Amministrazione**

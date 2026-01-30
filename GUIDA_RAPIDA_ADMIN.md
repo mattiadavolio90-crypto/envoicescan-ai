@@ -67,7 +67,7 @@
 Quando crei un cliente, riceve questa email:
 
 ```
-🍝 CHECK FORNITORI AI
+🍝 ANALISI FATTURE AI
 Sistema Intelligente di Analisi Fatture
 
 Benvenuto, Trattoria Da Mario! 👋
@@ -100,7 +100,7 @@ url = "https://tuaapp.streamlit.app"  # ⚠️ IMPORTANTE: Sostituisci con URL r
 [brevo]
 api_key = "xkeysib-bb074fc7..."
 sender_email = "contact@updates.brevo.com"
-sender_name = "Check Fornitori AI"
+sender_name = "Analisi Fatture AI"
 
 [supabase]
 url = "https://xxx.supabase.co"
@@ -308,4 +308,4 @@ ADMIN_EMAILS = [
 
 **🎯 Sistema pronto all'uso! Buon lavoro! 🚀**
 
-© 2025 Check Fornitori AI
+© 2025 Analisi Fatture AI
