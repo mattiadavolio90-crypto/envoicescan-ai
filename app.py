@@ -3413,10 +3413,6 @@ def mostra_statistiche(df_completo):
     # SEZIONE 3: CATEGORIE
     # ========================================================
     if st.session_state.sezione_attiva == "categorie":
-        # Placeholder se dataset mancanti/vuoti
-        if ('df_food' not in locals()) or df_food.empty:
-            st.info("📊 Nessun dato disponibile per i fornitori.")
-        
         pivot_cat = crea_pivot_mensile(df_food, "Categoria")
         
         if not pivot_cat.empty:
@@ -3533,10 +3529,6 @@ def mostra_statistiche(df_completo):
     # SEZIONE 4: FORNITORI
     # ========================================================
     if st.session_state.sezione_attiva == "fornitori":
-        # Placeholder se dataset mancanti/vuoti
-        if ('df_food' not in locals()) or df_food.empty:
-            st.info("📊 Nessun dato disponibile per i fornitori.")
-        
         pivot_forn = crea_pivot_mensile(df_food, "Fornitore")
         
         if not pivot_forn.empty:
