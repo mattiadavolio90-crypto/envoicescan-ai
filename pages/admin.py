@@ -34,10 +34,10 @@ from config.constants import CATEGORIE_SPESE_GENERALI
 
 # Import singleton Supabase e utilities
 from services import get_supabase_client
-from config.logger_setup import setup_logger
+from config.logger_setup import get_logger
 
 # Setup logging (usa configurazione centralizzata)
-logger = setup_logger(__name__)
+logger = get_logger('admin')
 
 # Setup pagina
 st.set_page_config(

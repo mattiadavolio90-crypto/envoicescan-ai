@@ -12,7 +12,7 @@ import hashlib
 
 # Import singleton Supabase e logger
 from services import get_supabase_client
-from config.logger_setup import setup_logger
+from config.logger_setup import get_logger
 
 # ============================================================
 # CONFIGURAZIONE
@@ -25,7 +25,7 @@ st.set_page_config(
 )
 
 # Logger (usa configurazione centralizzata)
-logger = setup_logger(__name__)
+logger = get_logger('cambio_password')
 
 # Supabase client (singleton condiviso - evita multiple connessioni)
 try:

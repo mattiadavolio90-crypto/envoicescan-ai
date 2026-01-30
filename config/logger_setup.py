@@ -25,3 +25,7 @@ def get_logger(name: str) -> logging.Logger:
     """
     logger_name = f'fci_app.{name}'
     return logging.getLogger(logger_name)
+
+
+# Alias per compatibilità
+setup_logger = get_logger
