@@ -4880,26 +4880,11 @@ if uploaded_files:
                                     if piva_cessionario_norm != piva_attiva_norm:
                                         # 🚫 BLOCCO: P.IVA non corrisponde al ristorante selezionato
                                         
-                                        # Conta ristoranti disponibili
-                                        num_ristoranti = len(st.session_state.get('ristoranti', []))
-                                        
-                                        msg_help = ""
-                                        if num_ristoranti > 1:
-                                            msg_help = f"\n\n💡 **Hai {num_ristoranti} ristoranti configurati.**\n   Seleziona il ristorante corretto dal menu laterale."
-                                        else:
-                                            msg_help = "\n\n📞 Hai più locali? Contatta supporto@envoicescan-ai.com"
-                                        
                                         logger.warning(
                                             f"⚠️ UPLOAD BLOCCATO - User {st.session_state.get('user_data', {}).get('email')} "
                                             f"ha tentato upload con P.IVA {piva_cessionario} (ristorante attivo: {piva_attiva})"
                                         )
-                                        raise ValueError(
-                                            f"🚫 FATTURA NON VALIDA\n\n"
-                                            f"**Fattura P.IVA:** `{piva_cessionario}`\n"
-                                            f"**Ristorante attivo:** {nome_ristorante_attivo}\n"
-                                            f"**P.IVA attiva:** `{piva_attiva}`\n"
-                                            f"{msg_help}"
-                                        )
+                                        raise ValueError("🚫 FATTURA NON VALIDA - P.IVA FATTURA DIVERSA DA P.IVA AZIENDA")
                                     else:
                                         # ✅ P.IVA match: log successo
                                         logger.info(f"✅ Validazione OK: P.IVA {piva_attiva_norm} match per {nome_ristorante_attivo}")
