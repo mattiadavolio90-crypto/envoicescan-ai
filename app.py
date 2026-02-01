@@ -1437,6 +1437,26 @@ def mostra_statistiche(df_completo):
     # TOTALE righe senza categoria valida nel database
     righe_da_classificare = righe_da_class + righe_null
     
+    # Query 3: Conta PRODOTTI UNICI da categorizzare (descrizioni distinte)
+    query_prodotti_da_class = supabase.table("fatture").select("descrizione").eq("user_id", user_id).eq("categoria", "Da Classificare")
+    if ristorante_id:
+        query_prodotti_da_class = query_prodotti_da_class.eq("ristorante_id", ristorante_id)
+    result_prodotti_da_class = query_prodotti_da_class.execute()
+    
+    query_prodotti_null = supabase.table("fatture").select("descrizione").eq("user_id", user_id).is_("categoria", "null")
+    if ristorante_id:
+        query_prodotti_null = query_prodotti_null.eq("ristorante_id", ristorante_id)
+    result_prodotti_null = query_prodotti_null.execute()
+    
+    # Combina e conta prodotti unici
+    descrizioni_da_classificare = set()
+    if result_prodotti_da_class.data:
+        descrizioni_da_classificare.update([row['descrizione'] for row in result_prodotti_da_class.data if row.get('descrizione')])
+    if result_prodotti_null.data:
+        descrizioni_da_classificare.update([row['descrizione'] for row in result_prodotti_null.data if row.get('descrizione')])
+    
+    prodotti_unici_da_classificare = len(descrizioni_da_classificare)
+    
     # Calcola maschera locale per sapere quali descrizioni processare (dal df_completo locale)
     maschera_ai = (
         df_completo['Categoria'].isna()
@@ -1917,7 +1937,7 @@ def mostra_statistiche(df_completo):
                 align-items: center;
                 margin-top: 0px;
             ">
-                <span style="color: #856404; font-weight: 600; font-size: 14px;">⚠️ CI SONO {righe_da_classificare} righe da categorizzare</span>
+                <span style="color: #856404; font-weight: 600; font-size: 14px;">⚠️ CI SONO {righe_da_classificare} righe da categorizzare ({prodotti_unici_da_classificare} prodotti unici)</span>
             </div>
             """, unsafe_allow_html=True)
     
