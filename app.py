@@ -4747,21 +4747,27 @@ if uploaded_files:
         if not file_nuovi and len(erano_just_uploaded) > 0:
             logger.info(f"⏭️ Skip messaggi: {len(erano_just_uploaded)} file erano just_uploaded")
         # Se ci sono file_gia_processati (indipendentemente da file_nuovi)
-        # 🔇 RIMOSSO: Non mostrare messaggio "X fatture già presenti nel database"
         elif file_gia_processati and duplicate_count == 0:
             # Tutte le fatture (non elaborate) erano già nel database
-            # (messaggio rimosso su richiesta utente - assolutamente non desiderato)
-            pass
+            num = len(file_gia_processati)
+            if num == 1:
+                st.warning("⚠️ La fattura è stata scartata perché è già stata inserita")
+            else:
+                st.warning(f"⚠️ {num} fatture sono state scartate perché sono già state inserite")
         # Se ci sono solo duplicati nell'upload stesso
         elif duplicate_count and not file_gia_processati:
             num = duplicate_count
-            sing_plur = "fattura duplicata" if num == 1 else "fatture duplicate"
-            st.warning(f"⚠️ {num} {sing_plur} nell'upload - carica file diversi")
+            if num == 1:
+                st.warning("⚠️ La fattura è stata scartata perché è già stata inserita")
+            else:
+                st.warning(f"⚠️ {num} fatture sono state scartate perché sono già state inserite")
         # Se ci sono ENTRAMBI duplicati e già presenti
         elif file_gia_processati and duplicate_count:
-            # RIMOSSO: Non mostrare mai il messaggio "X fatture già presenti o duplicate"
-            # (messaggio rimosso su richiesta utente - non lo vuole vedere MAI)
-            pass
+            totale = len(file_gia_processati) + duplicate_count
+            if totale == 1:
+                st.warning("⚠️ La fattura è stata scartata perché è già stata inserita")
+            else:
+                st.warning(f"⚠️ {totale} fatture sono state scartate perché sono già state inserite")
     
     # ✅ Pulizia flag just_uploaded dopo aver mostrato/non mostrato i messaggi
     if erano_just_uploaded:
@@ -4835,68 +4841,6 @@ if uploaded_files:
                     try:
                         if nome_file.endswith('.xml'):
                             items = estrai_dati_da_xml(file)
-                            
-                            # ============================================================
-                            # VALIDAZIONE P.IVA CESSIONARIO (Anti-abuso)
-                            # ═══════════════════════════════════════════════════════════════
-                            # VALIDAZIONE P.IVA MULTI-RISTORANTE (STEP 2)
-                            # ═══════════════════════════════════════════════════════════════
-                            # ⚠️ SKIP per admin e impersonazione (possono caricare qualsiasi fattura)
-                            is_admin = st.session_state.get('user_is_admin', False)
-                            is_impersonating = st.session_state.get('impersonating', False)
-                            
-                            if not is_admin and not is_impersonating:
-                                # Estrai P.IVA dal cessionario (dalla prima riga - items è lista di dict)
-                                piva_cessionario = None
-                                if isinstance(items, list) and len(items) > 0:
-                                    piva_cessionario = items[0].get('piva_cessionario')
-                                elif isinstance(items, dict):
-                                    piva_cessionario = items.get('piva_cessionario')
-                                
-                                # P.IVA ristorante ATTUALMENTE SELEZIONATO (multi-ristorante aware)
-                                piva_attiva = st.session_state.get('partita_iva')
-                                nome_ristorante_attivo = st.session_state.get('nome_ristorante', 'N/A')
-                                
-                                logger.info(f"🔍 Validazione P.IVA Multi-Ristorante - Attiva: {piva_attiva}, Fattura: {piva_cessionario}")
-                                
-                                # 🚫 CASO 1: Nessun ristorante/P.IVA configurato → BLOCCO TOTALE
-                                if not piva_attiva:
-                                    logger.warning(
-                                        f"⚠️ UPLOAD BLOCCATO - User {st.session_state.get('user_data', {}).get('email')} "
-                                        f"non ha ristorante/P.IVA attivo"
-                                    )
-                                    raise ValueError(
-                                        f"🚫 NESSUN RISTORANTE ATTIVO\n\n"
-                                        f"Il tuo account non ha ristoranti configurati o nessuna P.IVA registrata.\n"
-                                        f"Contatta l'assistenza per completare la registrazione.\n\n"
-                                        f"📧 supporto@envoicescan-ai.com"
-                                    )
-                                
-                                # ✅ CASO 2: P.IVA presente → VALIDAZIONE STRICT MULTI-RISTORANTE
-                                elif piva_attiva and piva_cessionario:
-                                    piva_cessionario_norm = normalizza_piva(piva_cessionario)
-                                    piva_attiva_norm = normalizza_piva(piva_attiva)
-                                    
-                                    if piva_cessionario_norm != piva_attiva_norm:
-                                        # 🚫 BLOCCO: P.IVA non corrisponde al ristorante selezionato
-                                        
-                                        logger.warning(
-                                            f"⚠️ UPLOAD BLOCCATO - User {st.session_state.get('user_data', {}).get('email')} "
-                                            f"ha tentato upload con P.IVA {piva_cessionario} (ristorante attivo: {piva_attiva})"
-                                        )
-                                        raise ValueError("🚫 FATTURA NON VALIDA - P.IVA FATTURA DIVERSA DA P.IVA AZIENDA")
-                                    else:
-                                        # ✅ P.IVA match: log successo
-                                        logger.info(f"✅ Validazione OK: P.IVA {piva_attiva_norm} match per {nome_ristorante_attivo}")
-                            
-                            else:
-                                # Admin/Impersonazione: log per debug (bypass validazione)
-                                piva_cessionario = None
-                                if isinstance(items, list) and len(items) > 0:
-                                    piva_cessionario = items[0].get('piva_cessionario')
-                                logger.debug(f"👨‍💼 Admin upload - P.IVA fattura: {piva_cessionario} (validazione bypassata)")
-                            
-                            
                         elif nome_file.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
                             items = estrai_dati_da_scontrino_vision(file)
                         else:
@@ -4907,6 +4851,70 @@ if uploaded_files:
                             raise ValueError("Parsing ritornato None")
                         if len(items) == 0:
                             raise ValueError("Nessuna riga estratta - DataFrame vuoto")
+                        
+                        # ============================================================
+                        # VALIDAZIONE P.IVA CESSIONARIO (Anti-abuso)
+                        # ═══════════════════════════════════════════════════════════════
+                        # VALIDAZIONE P.IVA MULTI-RISTORANTE
+                        # Applicata solo a XML e PDF (NON a immagini)
+                        # ═══════════════════════════════════════════════════════════════
+                        # ⚠️ SKIP per admin e impersonazione (possono caricare qualsiasi fattura)
+                        is_admin = st.session_state.get('user_is_admin', False)
+                        is_impersonating = st.session_state.get('impersonating', False)
+                        
+                        # ⚠️ SKIP anche per immagini JPG/PNG (solo XML e PDF)
+                        is_image = nome_file.endswith(('.jpg', '.jpeg', '.png'))
+                        
+                        if not is_admin and not is_impersonating and not is_image:
+                            # Estrai P.IVA dal cessionario (dalla prima riga - items è lista di dict)
+                            piva_cessionario = None
+                            if isinstance(items, list) and len(items) > 0:
+                                piva_cessionario = items[0].get('piva_cessionario')
+                            elif isinstance(items, dict):
+                                piva_cessionario = items.get('piva_cessionario')
+                            
+                            # P.IVA ristorante ATTUALMENTE SELEZIONATO (multi-ristorante aware)
+                            piva_attiva = st.session_state.get('partita_iva')
+                            nome_ristorante_attivo = st.session_state.get('nome_ristorante', 'N/A')
+                            
+                            logger.info(f"🔍 Validazione P.IVA {file.name} - Attiva: {piva_attiva}, Fattura: {piva_cessionario}")
+                            
+                            # 🚫 CASO 1: Nessun ristorante/P.IVA configurato → BLOCCO TOTALE
+                            if not piva_attiva:
+                                logger.warning(
+                                    f"⚠️ UPLOAD BLOCCATO - User {st.session_state.get('user_data', {}).get('email')} "
+                                    f"non ha ristorante/P.IVA attivo"
+                                )
+                                raise ValueError(
+                                    f"🚫 NESSUN RISTORANTE ATTIVO\n\n"
+                                    f"Il tuo account non ha ristoranti configurati o nessuna P.IVA registrata.\n"
+                                    f"Contatta l'assistenza per completare la registrazione.\n\n"
+                                    f"📧 supporto@envoicescan-ai.com"
+                                )
+                            
+                            # ✅ CASO 2: P.IVA presente → VALIDAZIONE STRICT MULTI-RISTORANTE
+                            elif piva_attiva and piva_cessionario:
+                                piva_cessionario_norm = normalizza_piva(piva_cessionario)
+                                piva_attiva_norm = normalizza_piva(piva_attiva)
+                                
+                                if piva_cessionario_norm != piva_attiva_norm:
+                                    # 🚫 BLOCCO: P.IVA non corrisponde al ristorante selezionato
+                                    
+                                    logger.warning(
+                                        f"⚠️ UPLOAD BLOCCATO {file.name} - User {st.session_state.get('user_data', {}).get('email')} "
+                                        f"ha tentato upload con P.IVA {piva_cessionario} (ristorante attivo: {piva_attiva})"
+                                    )
+                                    raise ValueError("🚫 FATTURA NON VALIDA - P.IVA FATTURA DIVERSA DA P.IVA AZIENDA")
+                                else:
+                                    # ✅ P.IVA match: log successo
+                                    logger.info(f"✅ Validazione OK: P.IVA {piva_attiva_norm} match per {nome_ristorante_attivo}")
+                        
+                        else:
+                            # Admin/Impersonazione: log per debug (bypass validazione)
+                            piva_cessionario = None
+                            if isinstance(items, list) and len(items) > 0:
+                                piva_cessionario = items[0].get('piva_cessionario')
+                            logger.debug(f"👨‍💼 Admin upload {file.name} - P.IVA fattura: {piva_cessionario} (validazione bypassata)")
                         
                         # Salva in memoria se trovati dati (SILENZIOSO)
                         result = salva_fattura_processata(file.name, items, silent=True)
@@ -5086,13 +5094,16 @@ if uploaded_files:
                 if 'righe_ai_appena_categorizzate' in st.session_state:
                     st.session_state.righe_ai_appena_categorizzate = []
                 
-                # Marca file come appena caricati per evitare falsi "già presenti" nel prossimo rerun
-                # Salva sia nomi completi che nomi base normalizzati
+                # 🔄 RESET AUTOMATICO UPLOADER: incrementa key per svuotarlo
+                if 'uploader_key' not in st.session_state:
+                    st.session_state.uploader_key = 0
+                st.session_state.uploader_key += 1
+                
+                # 🧹 PULIZIA COMPLETA STATI UPLOAD per reset totale
                 st.session_state.just_uploaded_files = set()
-                for f in file_nuovi:
-                    st.session_state.just_uploaded_files.add(f.name)
-                    st.session_state.just_uploaded_files.add(get_nome_base_file(f.name))
-
+                st.session_state.files_processati_sessione = set()
+                st.session_state.ultimo_upload_ids = []
+                
                 # Aggiorna riepilogo e persistilo per la sessione
                 upload_summary['caricate_successo'] = file_processati
                 upload_summary['errori'] = len(st.session_state.files_errori_report)

@@ -467,16 +467,11 @@ FORMATO RISPOSTA (SOLO JSON):
 }
 
 IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
-        with st.spinner(f"ðŸ” Analizzo {file_caricato.name} con AI..."):
+
+        with st.spinner(f" Analizzo {file_caricato.name} con AI..."):
             response = openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "high"}}
-                    ]
-                }],
                 max_tokens=4000,  # Aumentato da 1500 per supportare fatture con molti prodotti
                 temperature=0
             )
