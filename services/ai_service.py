@@ -651,6 +651,39 @@ def classifica_con_ai(
             response_format={"type": "json_object"}
         )
         
+        # 💰 TRACKING COSTI AI - Categorizzazione
+        try:
+            usage = response.usage
+            if usage:
+                prompt_tokens = usage.prompt_tokens
+                completion_tokens = usage.completion_tokens
+                
+                # Calcolo costi GPT-4o-mini (Gennaio 2026)
+                # Input: $0.15 per 1M token
+                # Output: $0.60 per 1M token
+                cost_input = (prompt_tokens / 1_000_000) * 0.15
+                cost_output = (completion_tokens / 1_000_000) * 0.60
+                total_cost = cost_input + cost_output
+                
+                # Salva in DB se abbiamo ristorante_id
+                if 'ristorante_id' in st.session_state and st.session_state.ristorante_id:
+                    try:
+                        from services import get_supabase_client
+                        supabase = get_supabase_client()
+                        
+                        supabase.rpc('increment_ai_cost', {
+                            'p_ristorante_id': st.session_state.ristorante_id,
+                            'p_cost': float(total_cost),
+                            'p_tokens': prompt_tokens + completion_tokens,
+                            'p_operation_type': 'categorization'
+                        }).execute()
+                        
+                        logger.info(f"💰 Costo AI Categorizzazione tracciato: ${total_cost:.6f} (in={prompt_tokens}, out={completion_tokens})")
+                    except Exception as track_err:
+                        logger.warning(f"⚠️ Errore tracking costo categorizzazione: {track_err}")
+        except Exception as cost_err:
+            logger.warning(f"⚠️ Errore calcolo costo categorizzazione: {cost_err}")
+        
         testo = response.choices[0].message.content.strip()
         dati = json.loads(testo)
         categorie_gpt = dati.get("categorie", [])

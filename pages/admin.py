@@ -1,4 +1,4 @@
-"""
+﻿"""
 🔧 PANNELLO AMMINISTRAZIONE - ANALISI FATTURE AI
 ===============================================
 Pannello admin con 3 TAB:
@@ -661,7 +661,7 @@ if 'categorie_cached' not in st.session_state:
     logger.info(f"✅ Categorie caricate in cache: {len(st.session_state.categorie_cached)} categorie")
 
 # Usa radio buttons nascosti per mantenere tab attivo
-tab_names = ["📊 Gestione Clienti", "� Review Righe €0", "🧠 Memoria Globale AI", "📊 Upload Events"]
+tab_names = ["📊 Gestione Clienti", "💰 Review Righe €0", "🧠 Memoria Globale AI", "📊 Upload Events", "💳 Costi AI"]
 selected_tab = st.radio(
     "Seleziona Tab",
     range(len(tab_names)),
@@ -682,6 +682,7 @@ tab1 = (st.session_state.active_tab == 0)
 tab2 = (st.session_state.active_tab == 1)
 tab3 = (st.session_state.active_tab == 2)
 tab4 = (st.session_state.active_tab == 3)
+tab5 = (st.session_state.active_tab == 4)
 
 # ============================================================
 # FUNZIONI DIAGNOSTICA TECNICA (legacy removed)
@@ -3039,3 +3040,166 @@ if tab4:
                 with st.expander("🔍 Dettagli Tecnici"):
                     import traceback
                     st.code(traceback.format_exc())
+
+
+# ============================================================
+# TAB 5: COSTI AI PER CLIENTE
+# ============================================================
+
+if tab5:
+    st.markdown("## 💳 Costi AI per Cliente")
+    st.caption("Monitoraggio utilizzo e costi OpenAI per estrazione PDF e categorizzazione prodotti")
+    
+    try:
+        # Carica dati costi AI usando funzione RPC
+        response = supabase.rpc('get_ai_costs_summary').execute()
+        
+        if not response.data or len(response.data) == 0:
+            st.info("📊 Nessun utilizzo AI registrato. I costi verranno tracciati automaticamente quando i clienti caricano PDF o immagini.")
+        else:
+            df_costs = pd.DataFrame(response.data)
+            
+            # ⚠️ BACKWARDS COMPATIBILITY: Aggiungi colonna se non esiste (pre-migrazione)
+            if 'ai_categorization_count' not in df_costs.columns:
+                st.warning("⚠️ **Migrazione database necessaria!** Esegui `migrations/014_add_ai_cost_tracking.sql` per abilitare tracking categorizzazioni.")
+                df_costs['ai_categorization_count'] = 0
+                df_costs['ai_avg_cost_per_operation'] = df_costs.get('ai_avg_cost_per_pdf', 0)
+            
+            # ============================================================
+            # STATISTICHE GENERALI
+            # ============================================================
+            st.markdown("### 📊 Riepilogo Globale")
+            
+            col1, col2, col3, col4, col5 = st.columns(5)
+            
+            with col1:
+                totale_costi = df_costs['ai_cost_total'].sum()
+                st.metric(
+                    "💰 Totale Costi",
+                    f"${totale_costi:.2f}",
+                    help="Costo totale cumulativo di tutte le chiamate AI"
+                )
+            
+            with col2:
+                totale_pdf = df_costs['ai_pdf_count'].sum()
+                st.metric(
+                    "📄 PDF Processati",
+                    f"{int(totale_pdf):,}",
+                    help="Numero totale di PDF/immagini elaborati con Vision API"
+                )
+            
+            with col3:
+                totale_categorization = df_costs['ai_categorization_count'].sum()
+                st.metric(
+                    "🧠 Categorizzazioni",
+                    f"{int(totale_categorization):,}",
+                    help="Numero totale di categorizzazioni AI effettuate"
+                )
+            
+            with col4:
+                totale_operazioni = totale_pdf + totale_categorization
+                costo_medio = totale_costi / totale_operazioni if totale_operazioni > 0 else 0
+                st.metric(
+                    "📊 Costo Medio",
+                    f"${costo_medio:.4f}",
+                    help="Costo medio per singola operazione AI"
+                )
+            
+            with col5:
+                clienti_attivi = len(df_costs[(df_costs['ai_pdf_count'] > 0) | (df_costs['ai_categorization_count'] > 0)])
+                st.metric(
+                    "👥 Clienti Attivi",
+                    clienti_attivi,
+                    help="Numero di clienti che hanno usato funzioni AI"
+                )
+            
+            st.markdown("---")
+            
+            # ============================================================
+            # TABELLA DETTAGLIO PER CLIENTE
+            # ============================================================
+            st.markdown("### 📋 Dettaglio per Cliente")
+            
+            # Prepara DataFrame per visualizzazione
+            df_display = df_costs[(df_costs['ai_pdf_count'] > 0) | (df_costs['ai_categorization_count'] > 0)].copy()
+            
+            if len(df_display) > 0:
+                df_display['Cliente'] = df_display['nome_ristorante']
+                df_display['Ragione Sociale'] = df_display['ragione_sociale'].fillna('-')
+                df_display['PDF'] = df_display['ai_pdf_count'].astype(int)
+                df_display['Categorizzazioni'] = df_display['ai_categorization_count'].astype(int)
+                df_display['Tot Operazioni'] = (df_display['ai_pdf_count'] + df_display['ai_categorization_count']).astype(int)
+                df_display['Costo Totale'] = df_display['ai_cost_total'].apply(lambda x: f"${x:.4f}")
+                df_display['Costo/Op'] = df_display['ai_avg_cost_per_operation'].apply(lambda x: f"${x:.4f}")
+                df_display['Ultimo Uso'] = pd.to_datetime(df_display['ai_last_usage']).dt.strftime('%Y-%m-%d %H:%M')
+                
+                # Mostra tabella
+                st.dataframe(
+                    df_display[['Cliente', 'Ragione Sociale', 'PDF', 'Categorizzazioni', 'Tot Operazioni', 'Costo Totale', 'Costo/Op', 'Ultimo Uso']],
+                    use_container_width=True,
+                    hide_index=True
+                )
+                
+                # ============================================================
+                # EXPORT CSV
+                # ============================================================
+                st.markdown("---")
+                col_export, col_spacer = st.columns([2, 8])
+                
+                with col_export:
+                    csv_data = df_display[['Cliente', 'Ragione Sociale', 'PDF', 'Categorizzazioni', 'Tot Operazioni', 'Costo Totale', 'Costo/Op', 'Ultimo Uso']].to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Esporta CSV",
+                        data=csv_data,
+                        file_name=f"costi_ai_{datetime.now().strftime('%Y%m%d')}.csv",
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                
+                # ============================================================
+                # GRAFICO TOP CLIENTI
+                # ============================================================
+                st.markdown("---")
+                st.markdown("### 📈 Top 10 Clienti per Costo")
+                
+                df_top = df_display.nlargest(10, 'ai_cost_total')
+                
+                fig = px.bar(
+                    df_top,
+                    x='Cliente',
+                    y='ai_cost_total',
+                    title='Costi AI per Cliente (Top 10)',
+                    labels={'ai_cost_total': 'Costo ($)', 'Cliente': ''},
+                    color='ai_cost_total',
+                    color_continuous_scale='Blues'
+                )
+                
+                fig.update_layout(
+                    showlegend=False,
+                    xaxis_tickangle=-45,
+                    height=400
+                )
+                
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # ============================================================
+                # INFO E NOTE
+                # ============================================================
+                st.markdown("---")
+                st.info("""
+                **ℹ️ Note:**
+                - I costi sono calcolati in base al modello **GPT-4o-mini** (sia Vision che Text)
+                - **PDF Vision**: ~$0.02-0.04 per documento (dipende da complessità e numero prodotti)
+                - **Categorizzazione**: ~$0.001-0.005 per batch (molto economico)
+                - I file **XML sono gratuiti** (parsing locale, nessun costo AI)
+                - Per ridurre i costi, incoraggia i clienti a usare XML quando possibile
+                - La categorizzazione AI viene usata solo per prodotti "Da Classificare"
+                """)
+            else:
+                st.warning("Nessun cliente ha ancora utilizzato funzioni AI")
+    
+    except Exception as e:
+        st.error(f"❌ Errore caricamento dati: {str(e)}")
+        logger.exception("Errore nel tab Costi AI")
+        with st.expander("🔍 Dettagli Errore"):
+            st.code(str(e))

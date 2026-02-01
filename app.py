@@ -963,35 +963,66 @@ if not user or not user.get('email'):
 
 
 # ============================================
+# VERIFICA E RIPRISTINO FLAG ADMIN
+# ============================================
+# Ripristina flag admin se l'utente è in ADMIN_EMAILS
+# (necessario perché session_state viene perso al refresh della pagina)
+if user.get('email') in ADMIN_EMAILS:
+    if not st.session_state.get('user_is_admin', False):
+        st.session_state.user_is_admin = True
+        logger.info(f"✅ Flag admin ripristinato per: {user.get('email')}")
+else:
+    # Assicura che non-admin non abbiano il flag
+    if st.session_state.get('user_is_admin', False):
+        st.session_state.user_is_admin = False
+        logger.warning(f"⚠️ Flag admin rimosso per utente non-admin: {user.get('email')}")
+
+
+# ============================================
 # CARICAMENTO RISTORANTI (MULTI-RISTORANTE STEP 2)
 # ============================================
-# Carica ristoranti dell'utente (anche se admin sta impersonando)
-if not st.session_state.get('user_is_admin', False):
-    if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_state:
-        try:
+# Carica ristoranti dell'utente (oppure TUTTI i ristoranti se admin)
+if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_state:
+    try:
+        # Admin: carica TUTTI i ristoranti dal sistema
+        if st.session_state.get('user_is_admin', False):
+            ristoranti = supabase.table('ristoranti')\
+                .select('id, nome_ristorante, partita_iva, ragione_sociale, user_id')\
+                .eq('attivo', True)\
+                .order('nome_ristorante')\
+                .execute()
+            
+            logger.info(f"👨‍💼 ADMIN: Caricati {len(ristoranti.data) if ristoranti.data else 0} ristoranti (tutti i clienti)")
+        else:
+            # Utente normale: carica solo i propri ristoranti
             ristoranti = supabase.table('ristoranti')\
                 .select('id, nome_ristorante, partita_iva, ragione_sociale')\
                 .eq('user_id', user.get('id'))\
                 .eq('attivo', True)\
                 .execute()
             
-            st.session_state.ristoranti = ristoranti.data if ristoranti.data else []
-            
-            logger.info(f"🔍 DEBUG: Caricati {len(st.session_state.ristoranti)} ristoranti per user_id={user.get('id')}")
-            
-            # Se ha ristoranti, imposta il primo come default
-            if st.session_state.ristoranti:
-                # Se non c'è un ristorante selezionato, usa il primo
-                if 'ristorante_id' not in st.session_state:
-                    st.session_state.ristorante_id = st.session_state.ristoranti[0]['id']
-                    st.session_state.partita_iva = st.session_state.ristoranti[0]['partita_iva']
-                    st.session_state.nome_ristorante = st.session_state.ristoranti[0]['nome_ristorante']
-                    logger.info(f"🏢 Ristorante caricato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
+            logger.info(f"🔍 DEBUG: Caricati {len(ristoranti.data) if ristoranti.data else 0} ristoranti per user_id={user.get('id')}")
+        
+        st.session_state.ristoranti = ristoranti.data if ristoranti.data else []
+        
+        # Se ha ristoranti, imposta il primo come default
+        if st.session_state.ristoranti:
+            # Se non c'è un ristorante selezionato, usa il primo
+            if 'ristorante_id' not in st.session_state:
+                st.session_state.ristorante_id = st.session_state.ristoranti[0]['id']
+                st.session_state.partita_iva = st.session_state.ristoranti[0]['partita_iva']
+                st.session_state.nome_ristorante = st.session_state.ristoranti[0]['nome_ristorante']
+                logger.info(f"🏢 Ristorante caricato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
+        else:
+            # Se è admin senza ristoranti, crea messaggio specifico
+            if st.session_state.get('user_is_admin', False):
+                logger.warning(f"⚠️ Admin senza ristoranti nel sistema")
             else:
                 logger.warning(f"⚠️ Nessun ristorante trovato per user_id={user.get('id')} in tabella 'ristoranti'")
-        except Exception as e:
-            logger.exception(f"Errore caricamento ristoranti: {e}")
-            # Fallback: usa dati utente
+    except Exception as e:
+        logger.exception(f"Errore caricamento ristoranti: {e}")
+        # Fallback: usa dati utente (solo per non-admin)
+        if not st.session_state.get('user_is_admin', False):
             st.session_state.ristoranti = []
             st.session_state.partita_iva = user.get('partita_iva')
             st.session_state.nome_ristorante = user.get('nome_ristorante')
@@ -4437,6 +4468,47 @@ else:
         percentuale = (righe_totali / MAX_RIGHE_GLOBALE * 100)
         st.warning(f"⚠️ Database quasi pieno: {righe_totali:,}/{MAX_RIGHE_GLOBALE:,} righe ({percentuale:.0f}%)")
     
+    # ============================================================
+    # SELETTORE RISTORANTE PER ADMIN
+    # ============================================================
+    # Gli admin possono selezionare qualsiasi ristorante per le fatture di test
+    if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
+        st.markdown("### 👨‍💼 Modalità Admin - Seleziona Ristorante")
+        
+        if st.session_state.get('ristoranti') and len(st.session_state.ristoranti) > 0:
+            # Crea lista ristoranti per selectbox
+            ristoranti_admin = st.session_state.ristoranti
+            
+            # Trova indice ristorante attualmente selezionato
+            current_rist_id = st.session_state.get('ristorante_id')
+            try:
+                current_idx = next(i for i, r in enumerate(ristoranti_admin) if r['id'] == current_rist_id)
+            except StopIteration:
+                current_idx = 0
+            
+            selected_idx = st.selectbox(
+                "Seleziona ristorante per caricare fatture:",
+                range(len(ristoranti_admin)),
+                format_func=lambda i: f"🏪 {ristoranti_admin[i]['nome_ristorante']} - P.IVA: {ristoranti_admin[i]['partita_iva']}",
+                index=current_idx,
+                key="admin_ristorante_selector"
+            )
+            
+            # Aggiorna ristorante selezionato
+            selected_ristorante = ristoranti_admin[selected_idx]
+            if selected_ristorante['id'] != st.session_state.get('ristorante_id'):
+                st.session_state.ristorante_id = selected_ristorante['id']
+                st.session_state.partita_iva = selected_ristorante['partita_iva']
+                st.session_state.nome_ristorante = selected_ristorante['nome_ristorante']
+                logger.info(f"👨‍💼 Admin: ristorante cambiato a {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
+                st.rerun()
+            
+            st.info(f"📌 Le fatture saranno caricate per: **{st.session_state.nome_ristorante}** (P.IVA: {st.session_state.partita_iva})")
+            st.markdown("---")
+        else:
+            st.error("⚠️ Nessun ristorante disponibile nel sistema. Crea almeno un cliente prima di caricare fatture.")
+            st.stop()
+    
     uploaded_files = st.file_uploader(
         "Carica file XML, PDF o Immagini",
         accept_multiple_files=True,
@@ -4478,6 +4550,36 @@ else:
                 del st.session_state.force_empty_until_upload
             st.success("✅ Cache pulita! Puoi ricaricare i file.")
             st.rerun()
+
+
+# ============================================================
+# HELPER FUNCTION: Normalizzazione nome file per deduplicazione
+# ============================================================
+def get_nome_base_file(filename: str) -> str:
+    """
+    Estrae il nome base del file senza estensione per deduplicazione.
+    
+    Questa funzione permette di rilevare duplicati anche quando lo stesso
+    documento è caricato in formati diversi (es. XML + PDF della stessa fattura).
+    
+    Esempi:
+        '0_IT04157540966_h8390.xml' → '0_it04157540966_h8390'
+        '0_IT04157540966_h8390.pdf' → '0_it04157540966_h8390'
+        'Fattura_123.PDF' → 'fattura_123'
+        
+    Comportamento:
+        - Rimuove l'estensione (.xml, .pdf, .jpg, etc.)
+        - Converte in lowercase per confronto case-insensitive
+        - Permette di riconoscere '0_IT04157540966_h8390.xml' e 
+          '0_IT04157540966_h8390.pdf' come lo stesso documento
+    
+    Returns:
+        Nome file senza estensione, lowercased per confronto case-insensitive
+    """
+    import os
+    # Rimuovi estensione e converti in lowercase per confronto case-insensitive
+    nome_base = os.path.splitext(filename)[0].lower()
+    return nome_base
 
 
 if 'files_processati_sessione' not in st.session_state:
@@ -4523,7 +4625,10 @@ if uploaded_files:
             if ristorante_id:
                 rpc_params['p_ristorante_id'] = ristorante_id
             response_rpc = supabase.rpc('get_distinct_files', rpc_params).execute()
-            file_su_supabase = {row["file_origine"] for row in response_rpc.data if row.get("file_origine") and row["file_origine"].strip()}
+            # Normalizza nomi file dal DB per confronto (rimuovi estensione)
+            file_su_supabase = {get_nome_base_file(row["file_origine"]) 
+                               for row in response_rpc.data 
+                               if row.get("file_origine") and row["file_origine"].strip()}
                 
         except Exception as rpc_error:
             # Fallback: Query normale ma ottimizzata CON PAGINAZIONE
@@ -4550,10 +4655,11 @@ if uploaded_files:
                 if not response.data:
                     break
                     
-                # Estrai file_origine da questa pagina
+                # Estrai file_origine da questa pagina (normalizzato)
                 for row in response.data:
                     if row.get("file_origine") and row["file_origine"].strip():
-                        file_su_supabase.add(row["file_origine"])
+                        # Normalizza rimuovendo estensione per confronto
+                        file_su_supabase.add(get_nome_base_file(row["file_origine"]))
                 
                 # Se questa pagina ha meno di page_size record, abbiamo finito
                 if len(response.data) < page_size:
@@ -4599,10 +4705,13 @@ if uploaded_files:
     
     for file in file_unici:
         filename = file.name
+        nome_base = get_nome_base_file(filename)  # Normalizza per confronto
         
-        # Conta come già presente se appena caricato o già nel DB
-        if filename in just_uploaded or filename in file_su_supabase:
+        # Conta come già presente se appena caricato o già nel DB (confronto nome base)
+        if nome_base in just_uploaded or nome_base in file_su_supabase:
             file_gia_processati.append(filename)
+            # Log per debug: indica se è duplicato per estensione diversa
+            logger.debug(f"📋 File '{filename}' rilevato come duplicato (nome base: '{nome_base}')")
         # Protezione: Salta file che hanno già dato errore in questa sessione
         elif filename in st.session_state.get('files_con_errori', set()):
             continue
@@ -4829,9 +4938,11 @@ if uploaded_files:
                             if 'force_empty_until_upload' in st.session_state:
                                 del st.session_state.force_empty_until_upload
                             
-                            # Traccia successo
+                            # Traccia successo (aggiungi sia nome completo che base normalizzato)
                             file_ok.append(file.name)
                             st.session_state.files_processati_sessione.add(file.name)
+                            # Aggiungi anche nome base per prevenire duplicati con estensione diversa
+                            st.session_state.files_processati_sessione.add(get_nome_base_file(file.name))
                             
                             # 🔥 FIX BUG #1: Rimuovi da files_con_errori se presente (file ora ha successo)
                             st.session_state.files_con_errori.discard(file.name)
@@ -4991,7 +5102,11 @@ if uploaded_files:
                     st.session_state.righe_ai_appena_categorizzate = []
                 
                 # Marca file come appena caricati per evitare falsi "già presenti" nel prossimo rerun
-                st.session_state.just_uploaded_files = set([f.name for f in file_nuovi])
+                # Salva sia nomi completi che nomi base normalizzati
+                st.session_state.just_uploaded_files = set()
+                for f in file_nuovi:
+                    st.session_state.just_uploaded_files.add(f.name)
+                    st.session_state.just_uploaded_files.add(get_nome_base_file(f.name))
 
                 # Aggiorna riepilogo e persistilo per la sessione
                 upload_summary['caricate_successo'] = file_processati

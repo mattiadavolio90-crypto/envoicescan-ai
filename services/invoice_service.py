@@ -470,10 +470,10 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                     "role": "user",
                     "content": [
                         {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "low"}}
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}", "detail": "high"}}
                     ]
                 }],
-                max_tokens=1500,
+                max_tokens=4000,  # Aumentato da 1500 per supportare fatture con molti prodotti
                 temperature=0
             )
         
@@ -573,8 +573,41 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 'File_Origine': file_caricato.name,
                 'Prezzo_Standard': prezzo_std
             })
-        
-
+                # ============================================================
+        # TRACKING COSTI AI
+        # ============================================================
+        # Traccia utilizzo e costo AI per il ristorante
+        try:
+            from services import get_supabase_client
+            
+            # Calcola costo basato su token usage
+            tokens_usati = response.usage.total_tokens
+            prompt_tokens = response.usage.prompt_tokens
+            completion_tokens = response.usage.completion_tokens
+            
+            # Pricing GPT-4o-mini (Gen 2026):
+            # Input: $0.15 per 1M token
+            # Output: $0.60 per 1M token
+            # Vision detail=high: ~$0.01-0.03 per immagine
+            costo_input = (prompt_tokens / 1_000_000) * 0.15
+            costo_output = (completion_tokens / 1_000_000) * 0.60
+            costo_totale = round(costo_input + costo_output, 4)
+            
+            # Incrementa contatore per il ristorante
+            ristorante_id = st.session_state.get('ristorante_id')
+            if ristorante_id:
+                supabase_client = get_supabase_client()
+                supabase_client.rpc('increment_ai_cost', {
+                    'p_ristorante_id': ristorante_id,
+                    'p_cost': costo_totale,
+                    'p_tokens': tokens_usati
+                }).execute()
+                
+                logger.info(f"💰 AI Cost tracked: ${costo_totale:.4f} ({tokens_usati} tokens) - Ristorante: {ristorante_id}")
+        except Exception as track_error:
+            # Non bloccare l'elaborazione se il tracking fallisce
+            logger.warning(f"⚠️ Errore tracking costo AI: {track_error}")
+        # ============================================================
         return righe_prodotti
         
     except Exception as e:
