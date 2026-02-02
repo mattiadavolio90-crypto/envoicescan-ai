@@ -4741,28 +4741,66 @@ if uploaded_files:
                     logger.info(f"🔧 Tentativo creazione ristorante - P.IVA: {piva}, Nome: {nome}")
                     
                     if piva and nome:
-                        nuovo_ristorante = {
-                            'user_id': user.get('id'),
-                            'nome_ristorante': nome,
-                            'partita_iva': piva,
-                            'ragione_sociale': user.get('ragione_sociale'),
-                            'attivo': True
-                        }
-                        
-                        logger.info(f"📝 Inserimento ristorante in DB...")
-                        rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
-                        
-                        if rist_result.data:
-                            st.session_state.ristorante_id = rist_result.data[0]['id']
-                            st.session_state.partita_iva = piva
-                            st.session_state.nome_ristorante = nome
-                            logger.info(f"✅ Ristorante creato con ID: {st.session_state.ristorante_id}")
-                            st.success("✅ Configurazione ristorante completata!")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            diagnostica_msg.append("❌ Inserimento ristorante fallito: nessun dato restituito")
-                            logger.error("Inserimento ristorante fallito: rist_result.data è vuoto")
+                        # ⚠️ WORKAROUND RLS: Usa direttamente SQL invece di .insert()
+                        # Le policy RLS potrebbero bloccare insert via client normale
+                        try:
+                            # Tentativo 1: Insert normale
+                            nuovo_ristorante = {
+                                'user_id': user.get('id'),
+                                'nome_ristorante': nome,
+                                'partita_iva': piva,
+                                'ragione_sociale': user.get('ragione_sociale'),
+                                'attivo': True
+                            }
+                            
+                            logger.info(f"📝 Inserimento ristorante in DB...")
+                            rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
+                            
+                            if rist_result.data:
+                                st.session_state.ristorante_id = rist_result.data[0]['id']
+                                st.session_state.partita_iva = piva
+                                st.session_state.nome_ristorante = nome
+                                logger.info(f"✅ Ristorante creato con ID: {st.session_state.ristorante_id}")
+                                st.success("✅ Configurazione ristorante completata!")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                diagnostica_msg.append("❌ Inserimento ristorante fallito: nessun dato restituito")
+                                logger.error("Inserimento ristorante fallito: rist_result.data è vuoto")
+                                
+                        except Exception as insert_error:
+                            # Se fallisce per RLS, prova con RPC function
+                            error_str = str(insert_error)
+                            if '42501' in error_str or 'row-level security' in error_str.lower():
+                                diagnostica_msg.append("⚠️ Policy RLS impedisce inserimento diretto")
+                                diagnostica_msg.append("🔧 SOLUZIONE: Esegui migrazione SQL 016_fix_ristoranti_rls_insert.sql")
+                                logger.error(f"RLS Policy blocca insert: {error_str}")
+                                
+                                # Tentativo 2: Usa RPC function se disponibile
+                                try:
+                                    logger.info("🔄 Tentativo creazione via RPC...")
+                                    rpc_result = supabase.rpc('create_ristorante_for_user', {
+                                        'p_user_id': user.get('id'),
+                                        'p_nome': nome,
+                                        'p_piva': piva,
+                                        'p_ragione_sociale': user.get('ragione_sociale')
+                                    }).execute()
+                                    
+                                    if rpc_result.data:
+                                        rist_id = rpc_result.data.get('id') if isinstance(rpc_result.data, dict) else rpc_result.data[0]['id']
+                                        st.session_state.ristorante_id = rist_id
+                                        st.session_state.partita_iva = piva
+                                        st.session_state.nome_ristorante = nome
+                                        logger.info(f"✅ Ristorante creato via RPC: {rist_id}")
+                                        st.success("✅ Ristorante creato!")
+                                        time.sleep(1)
+                                        st.rerun()
+                                except Exception as rpc_error:
+                                    diagnostica_msg.append(f"❌ Anche RPC fallito: {str(rpc_error)[:100]}")
+                                    logger.error(f"RPC create_ristorante_for_user fallito: {rpc_error}")
+                            else:
+                                diagnostica_msg.append(f"❌ Errore inserimento: {error_str[:100]}")
+                                raise
                     else:
                         diagnostica_msg.append(f"❌ Impossibile creare ristorante: P.IVA={piva}, Nome={nome}")
                         logger.warning(f"Dati insufficienti per creare ristorante - P.IVA: {piva}, Nome: {nome}")
