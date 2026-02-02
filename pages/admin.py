@@ -1469,7 +1469,7 @@ if tab1:
                                     from services.email_service import invia_email
                                     
                                     # Costruisci URL reset
-                                    base_url = st.secrets.get("app", {}).get("base_url", "http://localhost:8501")
+                                    base_url = st.secrets.get("app", {}).get("url", "https://envoicescan-ai.streamlit.app")
                                     reset_url = f"{base_url}/?reset_token={reset_token}"
                                     
                                     email_inviata = invia_email(
