@@ -4778,11 +4778,11 @@ if uploaded_files:
                 if ristorante_id:
                     rpc_params['p_ristorante_id'] = ristorante_id
                 response_rpc = supabase.rpc('get_distinct_files', rpc_params).execute()
-            # Normalizza nomi file dal DB per confronto (rimuovi estensione)
-            file_su_supabase = {get_nome_base_file(row["file_origine"]) 
-                               for row in response_rpc.data 
-                               if row.get("file_origine") and row["file_origine"].strip()}
-                
+                # Normalizza nomi file dal DB per confronto (rimuovi estensione)
+                file_su_supabase = {get_nome_base_file(row["file_origine"]) 
+                                   for row in response_rpc.data 
+                                   if row.get("file_origine") and row["file_origine"].strip()}
+                    
             except Exception as rpc_error:
                 # Fallback: Query normale ma ottimizzata CON PAGINAZIONE
                 logger.warning(f"RPC function non disponibile, uso query normale con paginazione: {rpc_error}")
