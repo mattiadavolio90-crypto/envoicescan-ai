@@ -1019,6 +1019,9 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                 piva = user.get('partita_iva')
                 nome = user.get('nome_ristorante')
                 
+                # 🔍 DEBUG: Mostra info all'utente
+                st.info(f"🔧 Configurazione account in corso... P.IVA: {piva}, Nome: {nome}")
+                
                 # Se utente ha P.IVA ma non ha record ristorante, crealo
                 if piva and nome:
                     try:
@@ -1047,6 +1050,8 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                         except Exception as insert_error:
                             # Se INSERT fallisce (es. RLS), prova con RPC function
                             logger.warning(f"INSERT fallito, tentativo con RPC: {insert_error}")
+                            st.warning(f"⚠️ INSERT fallito (RLS): {str(insert_error)[:100]}")
+                            st.info("🔄 Tentativo creazione via RPC function...")
                             try:
                                 rpc_result = supabase.rpc('create_ristorante_for_user', {
                                     'p_user_id': user.get('id'),
@@ -1062,12 +1067,17 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                                     st.session_state.nome_ristorante = nome
                                     st.session_state.ristoranti = [{'id': rist_id, 'nome_ristorante': nome, 'partita_iva': piva}]
                                     logger.info(f"✅ Ristorante creato via RPC al login: {nome}")
+                                    st.success(f"✅ Ristorante creato via RPC! ID: {rist_id}")
+                                    time.sleep(2)
+                                    st.rerun()
                                 else:
                                     logger.error(f"❌ RPC fallito - dati mancanti")
+                                    st.error("❌ RPC non ha restituito dati")
                                     st.session_state.partita_iva = piva
                                     st.session_state.nome_ristorante = nome
                             except Exception as rpc_error:
                                 logger.error(f"❌ Anche RPC fallito al login: {rpc_error}")
+                                st.error(f"❌ RPC fallito: {str(rpc_error)[:200]}")
                                 st.session_state.partita_iva = piva
                                 st.session_state.nome_ristorante = nome
                     except Exception as e:
