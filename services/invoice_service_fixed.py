@@ -646,13 +646,8 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
         return {"success": False, "error": "not_authenticated", "righe": 0, "location": None}
     
     user_id = st.session_state.user_data["id"]
-    ristorante_id = st.session_state.get('ristorante_id')
+    ristorante_id = st.session_state.get('ristorante_id')  # Può essere None per utenti legacy
     num_righe = len(dati_prodotti)
-    
-    # Verifica ristorante_id presente (obbligatorio per multi-ristorante)
-    if not ristorante_id:
-        logger.error("❌ ristorante_id mancante in session_state durante salvataggio fattura")
-        return {"success": False, "error": "missing_ristorante_id", "righe": 0, "location": None}
     
     # Ottieni client singleton se non fornito
     if supabase_client is None:
