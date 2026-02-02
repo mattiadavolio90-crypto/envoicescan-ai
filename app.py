@@ -1032,22 +1032,46 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                             'attivo': True
                         }
                         
-                        rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
-                        
-                        if rist_result.data:
-                            st.session_state.ristoranti = rist_result.data
-                            st.session_state.ristorante_id = rist_result.data[0]['id']
-                            st.session_state.partita_iva = piva
-                            st.session_state.nome_ristorante = nome
-                            logger.info(f"✅ Ristorante creato automaticamente: {nome}")
-                        else:
-                            logger.error(f"❌ Fallita creazione automatica ristorante per {user.get('email')}")
-                            # Usa dati utente come fallback
-                            st.session_state.partita_iva = piva
-                            st.session_state.nome_ristorante = nome
+                        try:
+                            rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
+                            
+                            if rist_result.data:
+                                st.session_state.ristoranti = rist_result.data
+                                st.session_state.ristorante_id = rist_result.data[0]['id']
+                                st.session_state.partita_iva = piva
+                                st.session_state.nome_ristorante = nome
+                                logger.info(f"✅ Ristorante creato automaticamente: {nome}")
+                            else:
+                                logger.error(f"❌ Fallita creazione automatica ristorante per {user.get('email')}")
+                                raise Exception("Insert returned no data")
+                        except Exception as insert_error:
+                            # Se INSERT fallisce (es. RLS), prova con RPC function
+                            logger.warning(f"INSERT fallito, tentativo con RPC: {insert_error}")
+                            try:
+                                rpc_result = supabase.rpc('create_ristorante_for_user', {
+                                    'p_user_id': user.get('id'),
+                                    'p_nome': nome,
+                                    'p_piva': piva,
+                                    'p_ragione_sociale': user.get('ragione_sociale')
+                                }).execute()
+                                
+                                if rpc_result.data:
+                                    rist_id = rpc_result.data[0]['id'] if isinstance(rpc_result.data, list) else rpc_result.data.get('id')
+                                    st.session_state.ristorante_id = rist_id
+                                    st.session_state.partita_iva = piva
+                                    st.session_state.nome_ristorante = nome
+                                    st.session_state.ristoranti = [{'id': rist_id, 'nome_ristorante': nome, 'partita_iva': piva}]
+                                    logger.info(f"✅ Ristorante creato via RPC al login: {nome}")
+                                else:
+                                    logger.error(f"❌ RPC fallito - dati mancanti")
+                                    st.session_state.partita_iva = piva
+                                    st.session_state.nome_ristorante = nome
+                            except Exception as rpc_error:
+                                logger.error(f"❌ Anche RPC fallito al login: {rpc_error}")
+                                st.session_state.partita_iva = piva
+                                st.session_state.nome_ristorante = nome
                     except Exception as e:
                         logger.exception(f"Errore creazione automatica ristorante: {e}")
-                        # Usa dati utente come fallback
                         st.session_state.partita_iva = piva
                         st.session_state.nome_ristorante = nome
                 else:
@@ -1081,12 +1105,33 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                         'attivo': True
                     }
                     
-                    rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
-                    
-                    if rist_result.data:
-                        st.session_state.ristoranti = rist_result.data
-                        st.session_state.ristorante_id = rist_result.data[0]['id']
-                        logger.info(f"✅ Ristorante creato da exception handler: {nome}")
+                    try:
+                        rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
+                        
+                        if rist_result.data:
+                            st.session_state.ristoranti = rist_result.data
+                            st.session_state.ristorante_id = rist_result.data[0]['id']
+                            logger.info(f"✅ Ristorante creato da exception handler: {nome}")
+                        else:
+                            raise Exception("Insert returned no data")
+                    except Exception as insert_error:
+                        # Tentativo con RPC
+                        logger.warning(f"INSERT fallito in exception handler, provo RPC: {insert_error}")
+                        try:
+                            rpc_result = supabase.rpc('create_ristorante_for_user', {
+                                'p_user_id': user.get('id'),
+                                'p_nome': nome,
+                                'p_piva': piva,
+                                'p_ragione_sociale': user.get('ragione_sociale')
+                            }).execute()
+                            
+                            if rpc_result.data:
+                                rist_id = rpc_result.data[0]['id'] if isinstance(rpc_result.data, list) else rpc_result.data.get('id')
+                                st.session_state.ristorante_id = rist_id
+                                st.session_state.ristoranti = [{'id': rist_id, 'nome_ristorante': nome, 'partita_iva': piva}]
+                                logger.info(f"✅ Ristorante creato via RPC da exception handler: {nome}")
+                        except Exception as rpc_error:
+                            logger.error(f"❌ Anche RPC fallito in exception handler: {rpc_error}")
                 except Exception as inner_e:
                     logger.error(f"❌ Fallita creazione ristorante da exception: {inner_e}")
 
@@ -4688,17 +4733,20 @@ if not uploaded_files and len(st.session_state.files_errori_report) > 0:
 
 # 🔥 GESTIONE FILE CARICATI
 if uploaded_files:
-    # � FEEDBACK IMMEDIATO: Mostra subito che stiamo lavorando
-    with st.spinner(f"🔍 Verifica {len(uploaded_files)} file caricati..."):
-        # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
-        if st.session_state.get('force_empty_until_upload', False):
-            st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Reset upload' prima di caricare nuovi file.")
-            st.info("💡 Usa il pulsante '🔄 Reset upload' sopra per sbloccare il caricamento.")
-            st.stop()  # Blocca esecuzione per evitare ricaricamento automatico
-        
-        # ============================================================
-        # VERIFICA RISTORANTE_ID OBBLIGATORIO (multi-ristorante)
-        # ============================================================
+    # 🚀 FEEDBACK IMMEDIATO: Mostra subito un placeholder che stiamo lavorando
+    status_placeholder = st.empty()
+    status_placeholder.info(f"🔍 Verifica in corso per {len(uploaded_files)} file...")
+    
+    # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
+    if st.session_state.get('force_empty_until_upload', False):
+        status_placeholder.empty()  # Rimuovi il messaggio di verifica
+        st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Reset upload' prima di caricare nuovi file.")
+        st.info("💡 Usa il pulsante '🔄 Reset upload' sopra per sbloccare il caricamento.")
+        st.stop()  # Blocca esecuzione per evitare ricaricamento automatico
+    
+    # ============================================================
+    # VERIFICA RISTORANTE_ID OBBLIGATORIO (multi-ristorante)
+    # ============================================================
     if 'ristorante_id' not in st.session_state or not st.session_state.get('ristorante_id'):
         # Tentativo di recupero/creazione ristorante_id
         user = st.session_state.get('user_data')
