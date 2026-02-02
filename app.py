@@ -1014,18 +1014,81 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                 st.session_state.nome_ristorante = st.session_state.ristoranti[0]['nome_ristorante']
                 logger.info(f"🏢 Ristorante caricato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
         else:
-            # Se è admin senza ristoranti, crea messaggio specifico
-            if st.session_state.get('user_is_admin', False):
-                logger.warning(f"⚠️ Admin senza ristoranti nel sistema")
+            # FALLBACK: utente normale senza ristoranti → crealo automaticamente
+            if not st.session_state.get('user_is_admin', False):
+                piva = user.get('partita_iva')
+                nome = user.get('nome_ristorante')
+                
+                # Se utente ha P.IVA ma non ha record ristorante, crealo
+                if piva and nome:
+                    try:
+                        logger.warning(f"⚠️ Utente {user.get('email')} senza ristoranti - creazione automatica")
+                        
+                        nuovo_ristorante = {
+                            'user_id': user.get('id'),
+                            'nome_ristorante': nome,
+                            'partita_iva': piva,
+                            'ragione_sociale': user.get('ragione_sociale'),
+                            'attivo': True
+                        }
+                        
+                        rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
+                        
+                        if rist_result.data:
+                            st.session_state.ristoranti = rist_result.data
+                            st.session_state.ristorante_id = rist_result.data[0]['id']
+                            st.session_state.partita_iva = piva
+                            st.session_state.nome_ristorante = nome
+                            logger.info(f"✅ Ristorante creato automaticamente: {nome}")
+                        else:
+                            logger.error(f"❌ Fallita creazione automatica ristorante per {user.get('email')}")
+                            # Usa dati utente come fallback
+                            st.session_state.partita_iva = piva
+                            st.session_state.nome_ristorante = nome
+                    except Exception as e:
+                        logger.exception(f"Errore creazione automatica ristorante: {e}")
+                        # Usa dati utente come fallback
+                        st.session_state.partita_iva = piva
+                        st.session_state.nome_ristorante = nome
+                else:
+                    logger.warning(f"⚠️ Utente {user.get('email')} senza P.IVA o nome ristorante")
+                    st.session_state.partita_iva = user.get('partita_iva')
+                    st.session_state.nome_ristorante = user.get('nome_ristorante')
             else:
-                logger.warning(f"⚠️ Nessun ristorante trovato per user_id={user.get('id')} in tabella 'ristoranti'")
+                # Admin senza ristoranti nel sistema
+                logger.warning(f"⚠️ Admin senza ristoranti nel sistema")
     except Exception as e:
         logger.exception(f"Errore caricamento ristoranti: {e}")
-        # Fallback: usa dati utente (solo per non-admin)
+        # Fallback: crea dati utente (solo per non-admin)
         if not st.session_state.get('user_is_admin', False):
+            piva = user.get('partita_iva')
+            nome = user.get('nome_ristorante')
+            
             st.session_state.ristoranti = []
-            st.session_state.partita_iva = user.get('partita_iva')
-            st.session_state.nome_ristorante = user.get('nome_ristorante')
+            st.session_state.partita_iva = piva
+            st.session_state.nome_ristorante = nome
+            
+            # Tenta creazione ristorante se ha P.IVA
+            if piva and nome:
+                try:
+                    logger.info(f"🔄 Tentativo creazione ristorante da exception handler per {user.get('email')}")
+                    
+                    nuovo_ristorante = {
+                        'user_id': user.get('id'),
+                        'nome_ristorante': nome,
+                        'partita_iva': piva,
+                        'ragione_sociale': user.get('ragione_sociale'),
+                        'attivo': True
+                    }
+                    
+                    rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
+                    
+                    if rist_result.data:
+                        st.session_state.ristoranti = rist_result.data
+                        st.session_state.ristorante_id = rist_result.data[0]['id']
+                        logger.info(f"✅ Ristorante creato da exception handler: {nome}")
+                except Exception as inner_e:
+                    logger.error(f"❌ Fallita creazione ristorante da exception: {inner_e}")
 
 
 # ============================================

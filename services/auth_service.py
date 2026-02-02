@@ -272,6 +272,28 @@ def crea_cliente_con_token(
         if not result.data:
             return False, "❌ Errore database durante creazione", ""
         
+        user_id = result.data[0]['id']
+        
+        # Crea record ristorante associato (tabella multi-ristorante)
+        try:
+            nuovo_ristorante = {
+                'user_id': user_id,
+                'nome_ristorante': nome_ristorante.strip(),
+                'partita_iva': piva_norm,
+                'ragione_sociale': ragione_sociale.strip() if ragione_sociale else None,
+                'attivo': True
+            }
+            
+            rist_result = supabase_client.table('ristoranti').insert(nuovo_ristorante).execute()
+            
+            if rist_result.data:
+                logger.info(f"✅ Ristorante creato per cliente: {nome_ristorante} (P.IVA: {piva_norm})")
+            else:
+                logger.warning(f"⚠️ Cliente creato ma ristorante non inserito: {email}")
+        except Exception as rist_err:
+            logger.warning(f"⚠️ Errore creazione ristorante per {email}: {rist_err}")
+            # Non fallire la creazione cliente se il ristorante fallisce
+        
         logger.info(f"✅ Cliente creato: {email} (P.IVA: {piva_norm})")
         
         return True, f"✅ Cliente {email} creato con successo!", token
