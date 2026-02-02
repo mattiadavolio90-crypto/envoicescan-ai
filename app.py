@@ -1403,12 +1403,6 @@ def mostra_statistiche(df_completo):
         st.error("❌ Sessione invalida. Effettua il login.")
         st.stop()
     
-    # 🔒 VERIFICA ristorante_id presente (CRITICO per multi-tenancy)
-    if not st.session_state.get('ristorante_id'):
-        st.error("❌ Ristorante non selezionato. Contatta l'assistenza.")
-        logger.critical(f"ristorante_id mancante per user_id={user_id}")
-        st.stop()
-    
     # Separa F&B da Spese Generali solo per categoria (NON escludere fornitori)
     mask_spese = df_completo['Categoria'].isin(CATEGORIE_SPESE_GENERALI)
     df_spese_generali_completo = df_completo[mask_spese].copy()
@@ -4935,21 +4929,8 @@ if uploaded_files:
                             
                             logger.info(f"🔍 Validazione P.IVA {file.name} - Attiva: {piva_attiva}, Fattura: {piva_cessionario}")
                             
-                            # 🚫 CASO 1: Nessun ristorante/P.IVA configurato → BLOCCO TOTALE
-                            if not piva_attiva:
-                                logger.warning(
-                                    f"⚠️ UPLOAD BLOCCATO - User {st.session_state.get('user_data', {}).get('email')} "
-                                    f"non ha ristorante/P.IVA attivo"
-                                )
-                                raise ValueError(
-                                    f"🚫 NESSUN RISTORANTE ATTIVO\n\n"
-                                    f"Il tuo account non ha ristoranti configurati o nessuna P.IVA registrata.\n"
-                                    f"Contatta l'assistenza per completare la registrazione.\n\n"
-                                    f"📧 supporto@envoicescan-ai.com"
-                                )
-                            
                             # ✅ CASO 2: P.IVA presente → VALIDAZIONE STRICT MULTI-RISTORANTE
-                            elif piva_attiva and piva_cessionario:
+                            if piva_attiva and piva_cessionario:
                                 piva_cessionario_norm = normalizza_piva(piva_cessionario)
                                 piva_attiva_norm = normalizza_piva(piva_attiva)
                                 
