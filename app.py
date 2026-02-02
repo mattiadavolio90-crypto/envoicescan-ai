@@ -1019,67 +1019,82 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                 piva = user.get('partita_iva')
                 nome = user.get('nome_ristorante')
                 
-                # 🔍 DEBUG: Mostra info all'utente
-                st.info(f"🔧 Configurazione account in corso... P.IVA: {piva}, Nome: {nome}")
-                
-                # Se utente ha P.IVA ma non ha record ristorante, crealo
+                # Se utente ha P.IVA ma non ha record ristorante, cerca prima se esiste
                 if piva and nome:
                     try:
-                        logger.warning(f"⚠️ Utente {user.get('email')} senza ristoranti - creazione automatica")
+                        logger.warning(f"⚠️ Utente {user.get('email')} senza ristoranti - verifica esistenza")
                         
-                        nuovo_ristorante = {
-                            'user_id': user.get('id'),
-                            'nome_ristorante': nome,
-                            'partita_iva': piva,
-                            'ragione_sociale': user.get('ragione_sociale'),
-                            'attivo': True
-                        }
+                        # PRIMA: Cerca se esiste già un ristorante con questa P.IVA
+                        existing = supabase.table('ristoranti')\
+                            .select('id, user_id, nome_ristorante, partita_iva, attivo')\
+                            .eq('partita_iva', piva)\
+                            .execute()
                         
-                        try:
-                            rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
+                        if existing.data and len(existing.data) > 0:
+                            rist = existing.data[0]
                             
-                            if rist_result.data:
-                                st.session_state.ristoranti = rist_result.data
-                                st.session_state.ristorante_id = rist_result.data[0]['id']
-                                st.session_state.partita_iva = piva
-                                st.session_state.nome_ristorante = nome
-                                logger.info(f"✅ Ristorante creato automaticamente: {nome}")
+                            # Verifica se appartiene a questo utente
+                            if rist['user_id'] == user.get('id'):
+                                # È suo, associalo
+                                st.session_state.ristorante_id = rist['id']
+                                st.session_state.partita_iva = rist['partita_iva']
+                                st.session_state.nome_ristorante = rist['nome_ristorante']
+                                st.session_state.ristoranti = [rist]
+                                logger.info(f"✅ Ristorante esistente associato: {rist['nome_ristorante']}")
+                                st.rerun()
                             else:
-                                logger.error(f"❌ Fallita creazione automatica ristorante per {user.get('email')}")
-                                raise Exception("Insert returned no data")
-                        except Exception as insert_error:
-                            # Se INSERT fallisce (es. RLS), prova con RPC function
-                            logger.warning(f"INSERT fallito, tentativo con RPC: {insert_error}")
-                            st.warning(f"⚠️ INSERT fallito (RLS): {str(insert_error)[:100]}")
-                            st.info("🔄 Tentativo creazione via RPC function...")
+                                # Appartiene a un altro utente - ERRORE
+                                logger.error(f"❌ P.IVA {piva} già associata a user_id {rist['user_id']}")
+                                st.error(f"❌ La P.IVA {piva} è già registrata per un altro account.")
+                                st.stop()
+                        else:
+                            # Non esiste, crealo
+                            nuovo_ristorante = {
+                                'user_id': user.get('id'),
+                                'nome_ristorante': nome,
+                                'partita_iva': piva,
+                                'ragione_sociale': user.get('ragione_sociale'),
+                                'attivo': True
+                            }
+                            
                             try:
-                                rpc_result = supabase.rpc('create_ristorante_for_user', {
-                                    'p_user_id': user.get('id'),
-                                    'p_nome': nome,
-                                    'p_piva': piva,
-                                    'p_ragione_sociale': user.get('ragione_sociale')
-                                }).execute()
+                                rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
                                 
-                                if rpc_result.data:
-                                    rist_id = rpc_result.data[0]['id'] if isinstance(rpc_result.data, list) else rpc_result.data.get('id')
-                                    st.session_state.ristorante_id = rist_id
+                                if rist_result.data:
+                                    st.session_state.ristoranti = rist_result.data
+                                    st.session_state.ristorante_id = rist_result.data[0]['id']
                                     st.session_state.partita_iva = piva
                                     st.session_state.nome_ristorante = nome
-                                    st.session_state.ristoranti = [{'id': rist_id, 'nome_ristorante': nome, 'partita_iva': piva}]
-                                    logger.info(f"✅ Ristorante creato via RPC al login: {nome}")
-                                    st.success(f"✅ Ristorante creato via RPC! ID: {rist_id}")
-                                    time.sleep(2)
+                                    logger.info(f"✅ Ristorante creato: {nome}")
                                     st.rerun()
                                 else:
-                                    logger.error(f"❌ RPC fallito - dati mancanti")
-                                    st.error("❌ RPC non ha restituito dati")
-                                    st.session_state.partita_iva = piva
-                                    st.session_state.nome_ristorante = nome
-                            except Exception as rpc_error:
-                                logger.error(f"❌ Anche RPC fallito al login: {rpc_error}")
-                                st.error(f"❌ RPC fallito: {str(rpc_error)[:200]}")
-                                st.session_state.partita_iva = piva
-                                st.session_state.nome_ristorante = nome
+                                    raise Exception("Insert returned no data")
+                            except Exception as insert_error:
+                                # Se INSERT fallisce per RLS, usa RPC
+                                error_str = str(insert_error)
+                                if '42501' in error_str or 'row-level security' in error_str.lower():
+                                    try:
+                                        rpc_result = supabase.rpc('create_ristorante_for_user', {
+                                            'p_user_id': user.get('id'),
+                                            'p_nome': nome,
+                                            'p_piva': piva,
+                                            'p_ragione_sociale': user.get('ragione_sociale')
+                                        }).execute()
+                                        
+                                        if rpc_result.data:
+                                            rist_id = rpc_result.data[0]['id'] if isinstance(rpc_result.data, list) else rpc_result.data.get('id')
+                                            st.session_state.ristorante_id = rist_id
+                                            st.session_state.partita_iva = piva
+                                            st.session_state.nome_ristorante = nome
+                                            st.session_state.ristoranti = [{'id': rist_id, 'nome_ristorante': nome, 'partita_iva': piva}]
+                                            logger.info(f"✅ Ristorante creato via RPC: {nome}")
+                                            st.rerun()
+                                    except Exception as rpc_error:
+                                        logger.error(f"❌ RPC fallito: {rpc_error}")
+                                        st.error(f"❌ Impossibile configurare account. Contatta assistenza.")
+                                        st.stop()
+                                else:
+                                    raise
                     except Exception as e:
                         logger.exception(f"Errore creazione automatica ristorante: {e}")
                         st.session_state.partita_iva = piva
@@ -1105,28 +1120,24 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
             # Tenta creazione ristorante se ha P.IVA
             if piva and nome:
                 try:
-                    logger.info(f"🔄 Tentativo creazione ristorante da exception handler per {user.get('email')}")
+                    logger.info(f"🔄 Tentativo da exception handler per {user.get('email')}")
                     
-                    nuovo_ristorante = {
-                        'user_id': user.get('id'),
-                        'nome_ristorante': nome,
-                        'partita_iva': piva,
-                        'ragione_sociale': user.get('ragione_sociale'),
-                        'attivo': True
-                    }
+                    # Cerca prima se esiste già
+                    existing = supabase.table('ristoranti')\
+                        .select('id, user_id, nome_ristorante, partita_iva')\
+                        .eq('partita_iva', piva)\
+                        .execute()
                     
-                    try:
-                        rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
-                        
-                        if rist_result.data:
-                            st.session_state.ristoranti = rist_result.data
-                            st.session_state.ristorante_id = rist_result.data[0]['id']
-                            logger.info(f"✅ Ristorante creato da exception handler: {nome}")
-                        else:
-                            raise Exception("Insert returned no data")
-                    except Exception as insert_error:
-                        # Tentativo con RPC
-                        logger.warning(f"INSERT fallito in exception handler, provo RPC: {insert_error}")
+                    if existing.data and len(existing.data) > 0:
+                        rist = existing.data[0]
+                        if rist['user_id'] == user.get('id'):
+                            st.session_state.ristorante_id = rist['id']
+                            st.session_state.ristoranti = [rist]
+                            logger.info(f"✅ Ristorante trovato in exception handler")
+                            # Non fare return, continua l'esecuzione
+                    
+                    # Se non esiste, prova con RPC direttamente
+                    if not st.session_state.get('ristorante_id'):
                         try:
                             rpc_result = supabase.rpc('create_ristorante_for_user', {
                                 'p_user_id': user.get('id'),
@@ -1139,11 +1150,11 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                                 rist_id = rpc_result.data[0]['id'] if isinstance(rpc_result.data, list) else rpc_result.data.get('id')
                                 st.session_state.ristorante_id = rist_id
                                 st.session_state.ristoranti = [{'id': rist_id, 'nome_ristorante': nome, 'partita_iva': piva}]
-                                logger.info(f"✅ Ristorante creato via RPC da exception handler: {nome}")
+                                logger.info(f"✅ Ristorante creato via RPC in exception handler")
                         except Exception as rpc_error:
-                            logger.error(f"❌ Anche RPC fallito in exception handler: {rpc_error}")
+                            logger.error(f"❌ RPC fallito in exception handler: {rpc_error}")
                 except Exception as inner_e:
-                    logger.error(f"❌ Fallita creazione ristorante da exception: {inner_e}")
+                    logger.error(f"❌ Fallita gestione ristorante da exception: {inner_e}")
 
 
 # ============================================
