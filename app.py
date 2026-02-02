@@ -4699,15 +4699,30 @@ if uploaded_files:
     # ============================================================
     if 'ristorante_id' not in st.session_state or not st.session_state.get('ristorante_id'):
         # Tentativo di recupero/creazione ristorante_id
+        user = st.session_state.get('user_data')
+        
+        # Diagnostica dettagliata
+        diagnostica_msg = []
+        
+        if not user:
+            diagnostica_msg.append("❌ Dati utente non trovati in session_state")
+        else:
+            diagnostica_msg.append(f"✅ User ID: {user.get('id', 'MANCANTE')}")
+            diagnostica_msg.append(f"📧 Email: {user.get('email', 'MANCANTE')}")
+            diagnostica_msg.append(f"🏢 Nome: {user.get('nome_ristorante', 'MANCANTE')}")
+            diagnostica_msg.append(f"🔢 P.IVA: {user.get('partita_iva', 'MANCANTE')}")
+        
         try:
-            user = st.session_state.get('user_data')
             if user and user.get('id'):
                 # Prova a caricare ristoranti per questo utente
+                logger.info(f"🔍 Cerco ristoranti per user_id: {user.get('id')}")
                 ristoranti = supabase.table('ristoranti')\
                     .select('id, nome_ristorante, partita_iva')\
                     .eq('user_id', user.get('id'))\
                     .eq('attivo', True)\
                     .execute()
+                
+                logger.info(f"📊 Ristoranti trovati: {len(ristoranti.data) if ristoranti.data else 0}")
                 
                 if ristoranti.data:
                     # Imposta il primo ristorante trovato
@@ -4715,11 +4730,15 @@ if uploaded_files:
                     st.session_state.partita_iva = ristoranti.data[0]['partita_iva']
                     st.session_state.nome_ristorante = ristoranti.data[0]['nome_ristorante']
                     logger.info(f"✅ Ristorante_id recuperato: {st.session_state.ristorante_id}")
+                    st.success("✅ Ristorante recuperato!")
+                    time.sleep(0.5)
                     st.rerun()  # Ricarica con ristorante_id impostato
                 else:
                     # Crea ristorante se ha P.IVA
                     piva = user.get('partita_iva')
                     nome = user.get('nome_ristorante')
+                    
+                    logger.info(f"🔧 Tentativo creazione ristorante - P.IVA: {piva}, Nome: {nome}")
                     
                     if piva and nome:
                         nuovo_ristorante = {
@@ -4730,32 +4749,50 @@ if uploaded_files:
                             'attivo': True
                         }
                         
+                        logger.info(f"📝 Inserimento ristorante in DB...")
                         rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
                         
                         if rist_result.data:
                             st.session_state.ristorante_id = rist_result.data[0]['id']
                             st.session_state.partita_iva = piva
                             st.session_state.nome_ristorante = nome
-                            logger.info(f"✅ Ristorante creato: {nome}")
+                            logger.info(f"✅ Ristorante creato con ID: {st.session_state.ristorante_id}")
                             st.success("✅ Configurazione ristorante completata!")
+                            time.sleep(1)
                             st.rerun()
+                        else:
+                            diagnostica_msg.append("❌ Inserimento ristorante fallito: nessun dato restituito")
+                            logger.error("Inserimento ristorante fallito: rist_result.data è vuoto")
+                    else:
+                        diagnostica_msg.append(f"❌ Impossibile creare ristorante: P.IVA={piva}, Nome={nome}")
+                        logger.warning(f"Dati insufficienti per creare ristorante - P.IVA: {piva}, Nome: {nome}")
+                        
         except Exception as e:
+            diagnostica_msg.append(f"❌ Errore: {str(e)[:100]}")
             logger.exception("Errore recupero/creazione ristorante_id")
         
-        # Se ancora non c'è ristorante_id, blocca upload
+        # Se ancora non c'è ristorante_id, blocca upload e mostra diagnostica
         if 'ristorante_id' not in st.session_state or not st.session_state.get('ristorante_id'):
             st.error("❌ **Errore configurazione account**")
-            st.warning("""
-            Il tuo account non ha un ristorante configurato. Questo può succedere se:
-            - Il tuo account è stato creato prima dell'aggiornamento multi-ristorante
-            - Manca la P.IVA nel profilo
             
-            **Soluzione:**
-            1. Fai logout e login di nuovo
-            2. Se il problema persiste, contatta il supporto
+            with st.expander("🔍 Informazioni Diagnostica", expanded=True):
+                for msg in diagnostica_msg:
+                    st.text(msg)
+            
+            st.warning("""
+            **Soluzione rapida:**
+            
+            1. **Fai logout e login di nuovo** - questo forzerà il sistema a ricaricare i tuoi dati
+            2. Se il problema persiste, significa che manca la P.IVA nel tuo profilo
+            3. Contatta l'amministratore per completare la configurazione
             
             📧 supporto@envoicescan-ai.com
             """)
+            
+            if st.button("🚪 Logout", type="primary"):
+                st.session_state.clear()
+                st.rerun()
+            
             st.stop()
     
     # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
