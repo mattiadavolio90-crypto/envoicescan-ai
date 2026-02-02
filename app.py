@@ -1014,151 +1014,26 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                 st.session_state.nome_ristorante = st.session_state.ristoranti[0]['nome_ristorante']
                 logger.info(f"🏢 Ristorante caricato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
         else:
-            # FALLBACK: utente normale senza ristoranti → crealo automaticamente
+            # FALLBACK: utente normale senza ristoranti → usa dati dalla tabella users
             if not st.session_state.get('user_is_admin', False):
                 piva = user.get('partita_iva')
                 nome = user.get('nome_ristorante')
                 
-                # Se utente ha P.IVA ma non ha record ristorante, cerca prima se esiste
-                if piva and nome:
-                    try:
-                        logger.warning(f"⚠️ Utente {user.get('email')} senza ristoranti - verifica esistenza")
-                        
-                        # PRIMA: Cerca se esiste già un ristorante con questa P.IVA
-                        existing = supabase.table('ristoranti')\
-                            .select('id, user_id, nome_ristorante, partita_iva, attivo')\
-                            .eq('partita_iva', piva)\
-                            .execute()
-                        
-                        if existing.data and len(existing.data) > 0:
-                            rist = existing.data[0]
-                            
-                            # Verifica se appartiene a questo utente
-                            if rist['user_id'] == user.get('id'):
-                                # È suo, associalo
-                                st.session_state.ristorante_id = rist['id']
-                                st.session_state.partita_iva = rist['partita_iva']
-                                st.session_state.nome_ristorante = rist['nome_ristorante']
-                                st.session_state.ristoranti = [rist]
-                                logger.info(f"✅ Ristorante esistente associato: {rist['nome_ristorante']}")
-                                st.rerun()
-                            else:
-                                # Appartiene a un altro utente - ERRORE
-                                logger.error(f"❌ P.IVA {piva} già associata a user_id {rist['user_id']}")
-                                st.error(f"❌ La P.IVA {piva} è già registrata per un altro account.")
-                                # NON bloccare - lascia proseguire
-                                st.session_state.partita_iva = piva
-                                st.session_state.nome_ristorante = nome
-                        else:
-                            # Non esiste, crealo
-                            nuovo_ristorante = {
-                                'user_id': user.get('id'),
-                                'nome_ristorante': nome,
-                                'partita_iva': piva,
-                                'ragione_sociale': user.get('ragione_sociale'),
-                                'attivo': True
-                            }
-                            
-                            try:
-                                rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
-                                
-                                if rist_result.data:
-                                    st.session_state.ristoranti = rist_result.data
-                                    st.session_state.ristorante_id = rist_result.data[0]['id']
-                                    st.session_state.partita_iva = piva
-                                    st.session_state.nome_ristorante = nome
-                                    logger.info(f"✅ Ristorante creato: {nome}")
-                                    st.rerun()
-                                else:
-                                    raise Exception("Insert returned no data")
-                            except Exception as insert_error:
-                                # Se INSERT fallisce per RLS, usa RPC
-                                error_str = str(insert_error)
-                                if '42501' in error_str or 'row-level security' in error_str.lower():
-                                    try:
-                                        rpc_result = supabase.rpc('create_ristorante_for_user', {
-                                            'p_user_id': user.get('id'),
-                                            'p_nome': nome,
-                                            'p_piva': piva,
-                                            'p_ragione_sociale': user.get('ragione_sociale')
-                                        }).execute()
-                                        
-                                        if rpc_result.data:
-                                            rist_id = rpc_result.data[0]['id'] if isinstance(rpc_result.data, list) else rpc_result.data.get('id')
-                                            st.session_state.ristorante_id = rist_id
-                                            st.session_state.partita_iva = piva
-                                            st.session_state.nome_ristorante = nome
-                                            st.session_state.ristoranti = [{'id': rist_id, 'nome_ristorante': nome, 'partita_iva': piva}]
-                                            logger.info(f"✅ Ristorante creato via RPC: {nome}")
-                                            st.rerun()
-                                    except Exception as rpc_error:
-                                        logger.error(f"❌ RPC fallito: {rpc_error}")
-                                        # NON bloccare - continua con dati parziali
-                                        st.session_state.partita_iva = piva
-                                        st.session_state.nome_ristorante = nome
-                                else:
-                                    raise
-                    except Exception as e:
-                        logger.exception(f"Errore creazione automatica ristorante: {e}")
-                        # NON bloccare l'app - lascia proseguire con dati utente
-                        st.session_state.partita_iva = piva
-                        st.session_state.nome_ristorante = nome
-                else:
-                    logger.warning(f"⚠️ Utente {user.get('email')} senza P.IVA o nome ristorante")
-                    st.session_state.partita_iva = user.get('partita_iva')
-                    st.session_state.nome_ristorante = user.get('nome_ristorante')
+                logger.warning(f"⚠️ Utente {user.get('email')} senza ristoranti in tabella")
+                
+                # Imposta dati di fallback dalla tabella users
+                st.session_state.partita_iva = piva
+                st.session_state.nome_ristorante = nome
             else:
                 # Admin senza ristoranti nel sistema
                 logger.warning(f"⚠️ Admin senza ristoranti nel sistema")
     except Exception as e:
         logger.exception(f"Errore caricamento ristoranti: {e}")
-        # Fallback: crea dati utente (solo per non-admin)
+        # Fallback: usa dati utente (solo per non-admin)
         if not st.session_state.get('user_is_admin', False):
-            piva = user.get('partita_iva')
-            nome = user.get('nome_ristorante')
-            
             st.session_state.ristoranti = []
-            st.session_state.partita_iva = piva
-            st.session_state.nome_ristorante = nome
-            
-            # Tenta creazione ristorante se ha P.IVA
-            if piva and nome:
-                try:
-                    logger.info(f"🔄 Tentativo da exception handler per {user.get('email')}")
-                    
-                    # Cerca prima se esiste già
-                    existing = supabase.table('ristoranti')\
-                        .select('id, user_id, nome_ristorante, partita_iva')\
-                        .eq('partita_iva', piva)\
-                        .execute()
-                    
-                    if existing.data and len(existing.data) > 0:
-                        rist = existing.data[0]
-                        if rist['user_id'] == user.get('id'):
-                            st.session_state.ristorante_id = rist['id']
-                            st.session_state.ristoranti = [rist]
-                            logger.info(f"✅ Ristorante trovato in exception handler")
-                            # Non fare return, continua l'esecuzione
-                    
-                    # Se non esiste, prova con RPC direttamente
-                    if not st.session_state.get('ristorante_id'):
-                        try:
-                            rpc_result = supabase.rpc('create_ristorante_for_user', {
-                                'p_user_id': user.get('id'),
-                                'p_nome': nome,
-                                'p_piva': piva,
-                                'p_ragione_sociale': user.get('ragione_sociale')
-                            }).execute()
-                            
-                            if rpc_result.data:
-                                rist_id = rpc_result.data[0]['id'] if isinstance(rpc_result.data, list) else rpc_result.data.get('id')
-                                st.session_state.ristorante_id = rist_id
-                                st.session_state.ristoranti = [{'id': rist_id, 'nome_ristorante': nome, 'partita_iva': piva}]
-                                logger.info(f"✅ Ristorante creato via RPC in exception handler")
-                        except Exception as rpc_error:
-                            logger.error(f"❌ RPC fallito in exception handler: {rpc_error}")
-                except Exception as inner_e:
-                    logger.error(f"❌ Fallita gestione ristorante da exception: {inner_e}")
+            st.session_state.partita_iva = user.get('partita_iva')
+            st.session_state.nome_ristorante = user.get('nome_ristorante')
 
 
 # ============================================
@@ -4768,145 +4643,6 @@ if uploaded_files:
         st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Reset upload' prima di caricare nuovi file.")
         st.info("💡 Usa il pulsante '🔄 Reset upload' sopra per sbloccare il caricamento.")
         st.stop()  # Blocca esecuzione per evitare ricaricamento automatico
-    
-    # ============================================================
-    # VERIFICA RISTORANTE_ID OBBLIGATORIO (multi-ristorante)
-    # ============================================================
-    if 'ristorante_id' not in st.session_state or not st.session_state.get('ristorante_id'):
-        # Tentativo di recupero/creazione ristorante_id
-        user = st.session_state.get('user_data')
-        
-        # Diagnostica dettagliata
-        diagnostica_msg = []
-        
-        if not user:
-            diagnostica_msg.append("❌ Dati utente non trovati in session_state")
-        else:
-            diagnostica_msg.append(f"✅ User ID: {user.get('id', 'MANCANTE')}")
-            diagnostica_msg.append(f"📧 Email: {user.get('email', 'MANCANTE')}")
-            diagnostica_msg.append(f"🏢 Nome: {user.get('nome_ristorante', 'MANCANTE')}")
-            diagnostica_msg.append(f"🔢 P.IVA: {user.get('partita_iva', 'MANCANTE')}")
-        
-        try:
-            if user and user.get('id'):
-                # Prova a caricare ristoranti per questo utente
-                logger.info(f"🔍 Cerco ristoranti per user_id: {user.get('id')}")
-                ristoranti = supabase.table('ristoranti')\
-                    .select('id, nome_ristorante, partita_iva')\
-                    .eq('user_id', user.get('id'))\
-                    .eq('attivo', True)\
-                    .execute()
-                
-                logger.info(f"📊 Ristoranti trovati: {len(ristoranti.data) if ristoranti.data else 0}")
-                
-                if ristoranti.data:
-                    # Imposta il primo ristorante trovato
-                    st.session_state.ristorante_id = ristoranti.data[0]['id']
-                    st.session_state.partita_iva = ristoranti.data[0]['partita_iva']
-                    st.session_state.nome_ristorante = ristoranti.data[0]['nome_ristorante']
-                    logger.info(f"✅ Ristorante_id recuperato: {st.session_state.ristorante_id}")
-                    st.success("✅ Ristorante recuperato!")
-                    time.sleep(0.5)
-                    st.rerun()  # Ricarica con ristorante_id impostato
-                else:
-                    # Crea ristorante se ha P.IVA
-                    piva = user.get('partita_iva')
-                    nome = user.get('nome_ristorante')
-                    
-                    logger.info(f"🔧 Tentativo creazione ristorante - P.IVA: {piva}, Nome: {nome}")
-                    
-                    if piva and nome:
-                        # ⚠️ WORKAROUND RLS: Usa direttamente SQL invece di .insert()
-                        # Le policy RLS potrebbero bloccare insert via client normale
-                        try:
-                            # Tentativo 1: Insert normale
-                            nuovo_ristorante = {
-                                'user_id': user.get('id'),
-                                'nome_ristorante': nome,
-                                'partita_iva': piva,
-                                'ragione_sociale': user.get('ragione_sociale'),
-                                'attivo': True
-                            }
-                            
-                            logger.info(f"📝 Inserimento ristorante in DB...")
-                            rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
-                            
-                            if rist_result.data:
-                                st.session_state.ristorante_id = rist_result.data[0]['id']
-                                st.session_state.partita_iva = piva
-                                st.session_state.nome_ristorante = nome
-                                logger.info(f"✅ Ristorante creato con ID: {st.session_state.ristorante_id}")
-                                st.success("✅ Configurazione ristorante completata!")
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                diagnostica_msg.append("❌ Inserimento ristorante fallito: nessun dato restituito")
-                                logger.error("Inserimento ristorante fallito: rist_result.data è vuoto")
-                                
-                        except Exception as insert_error:
-                            # Se fallisce per RLS, prova con RPC function
-                            error_str = str(insert_error)
-                            if '42501' in error_str or 'row-level security' in error_str.lower():
-                                diagnostica_msg.append("⚠️ Policy RLS impedisce inserimento diretto")
-                                diagnostica_msg.append("🔧 SOLUZIONE: Esegui migrazione SQL 016_fix_ristoranti_rls_insert.sql")
-                                logger.error(f"RLS Policy blocca insert: {error_str}")
-                                
-                                # Tentativo 2: Usa RPC function se disponibile
-                                try:
-                                    logger.info("🔄 Tentativo creazione via RPC...")
-                                    rpc_result = supabase.rpc('create_ristorante_for_user', {
-                                        'p_user_id': user.get('id'),
-                                        'p_nome': nome,
-                                        'p_piva': piva,
-                                        'p_ragione_sociale': user.get('ragione_sociale')
-                                    }).execute()
-                                    
-                                    if rpc_result.data:
-                                        rist_id = rpc_result.data.get('id') if isinstance(rpc_result.data, dict) else rpc_result.data[0]['id']
-                                        st.session_state.ristorante_id = rist_id
-                                        st.session_state.partita_iva = piva
-                                        st.session_state.nome_ristorante = nome
-                                        logger.info(f"✅ Ristorante creato via RPC: {rist_id}")
-                                        st.success("✅ Ristorante creato!")
-                                        time.sleep(1)
-                                        st.rerun()
-                                except Exception as rpc_error:
-                                    diagnostica_msg.append(f"❌ Anche RPC fallito: {str(rpc_error)[:100]}")
-                                    logger.error(f"RPC create_ristorante_for_user fallito: {rpc_error}")
-                            else:
-                                diagnostica_msg.append(f"❌ Errore inserimento: {error_str[:100]}")
-                                raise
-                    else:
-                        diagnostica_msg.append(f"❌ Impossibile creare ristorante: P.IVA={piva}, Nome={nome}")
-                        logger.warning(f"Dati insufficienti per creare ristorante - P.IVA: {piva}, Nome: {nome}")
-                        
-        except Exception as e:
-            diagnostica_msg.append(f"❌ Errore: {str(e)[:100]}")
-            logger.exception("Errore recupero/creazione ristorante_id")
-        
-        # Se ancora non c'è ristorante_id, blocca upload e mostra diagnostica
-        if 'ristorante_id' not in st.session_state or not st.session_state.get('ristorante_id'):
-            st.error("❌ **Errore configurazione account**")
-            
-            with st.expander("🔍 Informazioni Diagnostica", expanded=True):
-                for msg in diagnostica_msg:
-                    st.text(msg)
-            
-            st.warning("""
-            **Soluzione rapida:**
-            
-            1. **Fai logout e login di nuovo** - questo forzerà il sistema a ricaricare i tuoi dati
-            2. Se il problema persiste, significa che manca la P.IVA nel tuo profilo
-            3. Contatta l'amministratore per completare la configurazione
-            
-            📧 supporto@envoicescan-ai.com
-            """)
-            
-            if st.button("🚪 Logout", type="primary"):
-                st.session_state.clear()
-                st.rerun()
-            
-            st.stop()
     
     # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
     # ⚠️ IMPORTANTE: Query fresca senza cache per evitare dati stale dopo eliminazione
