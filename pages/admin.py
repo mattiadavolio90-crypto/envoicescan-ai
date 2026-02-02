@@ -1459,8 +1459,8 @@ if tab1:
                                     # Salva token nel database
                                     supabase.table('users')\
                                         .update({
-                                            'reset_token': reset_token,
-                                            'reset_token_expires_at': expires_at.isoformat()
+                                            'reset_code': reset_token,
+                                            'reset_expires': expires_at.isoformat()
                                         })\
                                         .eq('id', row['user_id'])\
                                         .execute()
@@ -1496,9 +1496,9 @@ if tab1:
                                     time.sleep(1.5)
                                     st.rerun()
                                 except Exception as e:
-                                    # Fallback se colonne reset_token non esistono
+                                    # Fallback se colonne reset_code non esistono
                                     if '42703' in str(e) or 'does not exist' in str(e):
-                                        st.error("⚠️ Esegui migrazione 009 per abilitare reset password via email")
+                                        st.error("⚠️ Esegui migrazione 001 per abilitare reset password via email")
                                     else:
                                         st.error(f"Errore: {e}")
                                         logger.exception(f"Errore invio email reset: {e}")
