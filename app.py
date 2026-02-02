@@ -4694,61 +4694,136 @@ if uploaded_files:
         st.info("💡 Usa il pulsante '🔄 Reset upload' sopra per sbloccare il caricamento.")
         st.stop()  # Blocca esecuzione per evitare ricaricamento automatico
     
+    # ============================================================
+    # VERIFICA RISTORANTE_ID OBBLIGATORIO (multi-ristorante)
+    # ============================================================
+    if 'ristorante_id' not in st.session_state or not st.session_state.get('ristorante_id'):
+        # Tentativo di recupero/creazione ristorante_id
+        try:
+            user = st.session_state.get('user_data')
+            if user and user.get('id'):
+                # Prova a caricare ristoranti per questo utente
+                ristoranti = supabase.table('ristoranti')\
+                    .select('id, nome_ristorante, partita_iva')\
+                    .eq('user_id', user.get('id'))\
+                    .eq('attivo', True)\
+                    .execute()
+                
+                if ristoranti.data:
+                    # Imposta il primo ristorante trovato
+                    st.session_state.ristorante_id = ristoranti.data[0]['id']
+                    st.session_state.partita_iva = ristoranti.data[0]['partita_iva']
+                    st.session_state.nome_ristorante = ristoranti.data[0]['nome_ristorante']
+                    logger.info(f"✅ Ristorante_id recuperato: {st.session_state.ristorante_id}")
+                    st.rerun()  # Ricarica con ristorante_id impostato
+                else:
+                    # Crea ristorante se ha P.IVA
+                    piva = user.get('partita_iva')
+                    nome = user.get('nome_ristorante')
+                    
+                    if piva and nome:
+                        nuovo_ristorante = {
+                            'user_id': user.get('id'),
+                            'nome_ristorante': nome,
+                            'partita_iva': piva,
+                            'ragione_sociale': user.get('ragione_sociale'),
+                            'attivo': True
+                        }
+                        
+                        rist_result = supabase.table('ristoranti').insert(nuovo_ristorante).execute()
+                        
+                        if rist_result.data:
+                            st.session_state.ristorante_id = rist_result.data[0]['id']
+                            st.session_state.partita_iva = piva
+                            st.session_state.nome_ristorante = nome
+                            logger.info(f"✅ Ristorante creato: {nome}")
+                            st.success("✅ Configurazione ristorante completata!")
+                            st.rerun()
+        except Exception as e:
+            logger.exception("Errore recupero/creazione ristorante_id")
+        
+        # Se ancora non c'è ristorante_id, blocca upload
+        if 'ristorante_id' not in st.session_state or not st.session_state.get('ristorante_id'):
+            st.error("❌ **Errore configurazione account**")
+            st.warning("""
+            Il tuo account non ha un ristorante configurato. Questo può succedere se:
+            - Il tuo account è stato creato prima dell'aggiornamento multi-ristorante
+            - Manca la P.IVA nel profilo
+            
+            **Soluzione:**
+            1. Fai logout e login di nuovo
+            2. Se il problema persiste, contatta il supporto
+            
+            📧 supporto@envoicescan-ai.com
+            """)
+            st.stop()
+    
     # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
     # ⚠️ IMPORTANTE: Query fresca senza cache per evitare dati stale dopo eliminazione
     # 🚀 OTTIMIZZAZIONE: Usa RPC function per ottenere solo file unici (evita 6000+ righe)
     try:
-        # ✅ Usa user_id globale definito alla linea 3373 (no ridefinizione)
-        ristorante_id = st.session_state.get('ristorante_id')
-        
-        # Tentativo 1: Usa RPC function se disponibile (query aggregata SQL lato server)
-        try:
-            # Prova a chiamare funzione RPC che restituisce file_origine DISTINCT
-            rpc_params = {'p_user_id': user_id}
-            if ristorante_id:
-                rpc_params['p_ristorante_id'] = ristorante_id
-            response_rpc = supabase.rpc('get_distinct_files', rpc_params).execute()
+        # Verifica user_id disponibile
+        user_data = st.session_state.get('user_data', {})
+        user_id = user_data.get('id')
+        if not user_id:
+            logger.error("❌ user_id mancante in session_state durante query file")
+            file_su_supabase = set()
+        else:
+            ristorante_id = st.session_state.get('ristorante_id')
+            
+            # Tentativo 1: Usa RPC function se disponibile (query aggregata SQL lato server)
+            try:
+                # Prova a chiamare funzione RPC che restituisce file_origine DISTINCT
+                rpc_params = {'p_user_id': user_id}
+                if ristorante_id:
+                    rpc_params['p_ristorante_id'] = ristorante_id
+                response_rpc = supabase.rpc('get_distinct_files', rpc_params).execute()
             # Normalizza nomi file dal DB per confronto (rimuovi estensione)
             file_su_supabase = {get_nome_base_file(row["file_origine"]) 
                                for row in response_rpc.data 
                                if row.get("file_origine") and row["file_origine"].strip()}
                 
-        except Exception as rpc_error:
-            # Fallback: Query normale ma ottimizzata CON PAGINAZIONE
-            logger.warning(f"RPC function non disponibile, uso query normale con paginazione: {rpc_error}")
-            
-            # ⚠️ CRITICO: Supabase restituisce di default solo 1000 righe!
-            # Dobbiamo paginare per ottenere TUTTI i file
-            file_su_supabase = set()
-            page = 0
-            page_size = 1000
-            
-            while True:
-                offset = page * page_size
-                ristorante_id = st.session_state.get('ristorante_id')
-                query_files = (
-                    supabase.table("fatture")
-                    .select("file_origine", count="exact")
-                    .eq("user_id", user_id)
-                )
-                if ristorante_id:
-                    query_files = query_files.eq("ristorante_id", ristorante_id)
-                response = query_files.range(offset, offset + page_size - 1).execute()
+            except Exception as rpc_error:
+                # Fallback: Query normale ma ottimizzata CON PAGINAZIONE
+                logger.warning(f"RPC function non disponibile, uso query normale con paginazione: {rpc_error}")
                 
-                if not response.data:
-                    break
-                    
-                # Estrai file_origine da questa pagina (normalizzato)
-                for row in response.data:
-                    if row.get("file_origine") and row["file_origine"].strip():
-                        # Normalizza rimuovendo estensione per confronto
-                        file_su_supabase.add(get_nome_base_file(row["file_origine"]))
+                # ⚠️ CRITICO: Supabase restituisce di default solo 1000 righe!
+                # Dobbiamo paginare per ottenere TUTTI i file
+                file_su_supabase = set()
+                page = 0
+                page_size = 1000
                 
-                # Se questa pagina ha meno di page_size record, abbiamo finito
-                if len(response.data) < page_size:
-                    break
-                    
-                page += 1
+                while True:
+                    try:
+                        offset = page * page_size
+                        # ✅ Usa ristorante_id dalla riga precedente (no ridefinizione)
+                        query_files = (
+                            supabase.table("fatture")
+                            .select("file_origine", count="exact")
+                            .eq("user_id", user_id)
+                        )
+                        if ristorante_id:
+                            query_files = query_files.eq("ristorante_id", ristorante_id)
+                        response = query_files.range(offset, offset + page_size - 1).execute()
+                        
+                        if not response.data:
+                            break
+                            
+                        # Estrai file_origine da questa pagina (normalizzato)
+                        for row in response.data:
+                            if row.get("file_origine") and row["file_origine"].strip():
+                                # Normalizza rimuovendo estensione per confronto
+                                file_su_supabase.add(get_nome_base_file(row["file_origine"]))
+                        
+                        # Se questa pagina ha meno di page_size record, abbiamo finito
+                        if len(response.data) < page_size:
+                            break
+                            
+                        page += 1
+                        
+                    except Exception as page_error:
+                        logger.error(f"Errore paginazione pagina {page}: {page_error}")
+                        break  # Esci dal loop per evitare loop infinito
         
         # 🔍 VERIFICA COERENZA: Se DB è vuoto ma session ha file, è un errore -> reset
         if len(file_su_supabase) == 0 and len(st.session_state.files_processati_sessione) > 0:
