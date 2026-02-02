@@ -1046,7 +1046,9 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                                 # Appartiene a un altro utente - ERRORE
                                 logger.error(f"❌ P.IVA {piva} già associata a user_id {rist['user_id']}")
                                 st.error(f"❌ La P.IVA {piva} è già registrata per un altro account.")
-                                st.stop()
+                                # NON bloccare - lascia proseguire
+                                st.session_state.partita_iva = piva
+                                st.session_state.nome_ristorante = nome
                         else:
                             # Non esiste, crealo
                             nuovo_ristorante = {
@@ -1091,12 +1093,14 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                                             st.rerun()
                                     except Exception as rpc_error:
                                         logger.error(f"❌ RPC fallito: {rpc_error}")
-                                        st.error(f"❌ Impossibile configurare account. Contatta assistenza.")
-                                        st.stop()
+                                        # NON bloccare - continua con dati parziali
+                                        st.session_state.partita_iva = piva
+                                        st.session_state.nome_ristorante = nome
                                 else:
                                     raise
                     except Exception as e:
                         logger.exception(f"Errore creazione automatica ristorante: {e}")
+                        # NON bloccare l'app - lascia proseguire con dati utente
                         st.session_state.partita_iva = piva
                         st.session_state.nome_ristorante = nome
                 else:
