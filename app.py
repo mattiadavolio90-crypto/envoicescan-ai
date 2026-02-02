@@ -4688,15 +4688,17 @@ if not uploaded_files and len(st.session_state.files_errori_report) > 0:
 
 # 🔥 GESTIONE FILE CARICATI
 if uploaded_files:
-    # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
-    if st.session_state.get('force_empty_until_upload', False):
-        st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Reset upload' prima di caricare nuovi file.")
-        st.info("💡 Usa il pulsante '🔄 Reset upload' sopra per sbloccare il caricamento.")
-        st.stop()  # Blocca esecuzione per evitare ricaricamento automatico
-    
-    # ============================================================
-    # VERIFICA RISTORANTE_ID OBBLIGATORIO (multi-ristorante)
-    # ============================================================
+    # � FEEDBACK IMMEDIATO: Mostra subito che stiamo lavorando
+    with st.spinner(f"🔍 Verifica {len(uploaded_files)} file caricati..."):
+        # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
+        if st.session_state.get('force_empty_until_upload', False):
+            st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Reset upload' prima di caricare nuovi file.")
+            st.info("💡 Usa il pulsante '🔄 Reset upload' sopra per sbloccare il caricamento.")
+            st.stop()  # Blocca esecuzione per evitare ricaricamento automatico
+        
+        # ============================================================
+        # VERIFICA RISTORANTE_ID OBBLIGATORIO (multi-ristorante)
+        # ============================================================
     if 'ristorante_id' not in st.session_state or not st.session_state.get('ristorante_id'):
         # Tentativo di recupero/creazione ristorante_id
         user = st.session_state.get('user_data')
@@ -4836,6 +4838,11 @@ if uploaded_files:
     # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
     # ⚠️ IMPORTANTE: Query fresca senza cache per evitare dati stale dopo eliminazione
     # 🚀 OTTIMIZZAZIONE: Usa RPC function per ottenere solo file unici (evita 6000+ righe)
+    
+    # Aggiorna stato: stiamo verificando i duplicati
+    if 'status_placeholder' in locals():
+        status_placeholder.info(f"🔍 Verifica duplicati tra {len(uploaded_files)} file caricati...")
+    
     try:
         # Verifica user_id disponibile
         user_data = st.session_state.get('user_data', {})
@@ -5020,11 +5027,18 @@ if uploaded_files:
         'errori': 0
     }
 
+    # Rimuovi il placeholder di verifica iniziale se esiste
+    if 'status_placeholder' in locals():
+        status_placeholder.empty()
+    
     if file_nuovi:
-        # Crea placeholder per loading AI
+        # 🚀 FEEDBACK IMMEDIATO: Mostra subito la progress bar
         upload_placeholder = st.empty()
         progress_bar = st.progress(0)
         status_text = st.empty()
+        
+        # Mostra immediatamente che stiamo lavorando
+        status_text.text(f"🔍 Preparazione elaborazione {len(file_nuovi)} fatture...")
         
         try:
             # Mostra animazione AI
