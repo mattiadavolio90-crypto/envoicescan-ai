@@ -159,16 +159,7 @@ if st.secrets.get("environment", {}).get("mode", "production") != "production":
 
 
 # ============================================================
-# 🔍 ANALISI FATTURE AI - VERSIONE 3.2 FINAL COMPLETA
-# ============================================================
-# CHANGELOG V3.2 FINAL:
-# ✅ BUGFIX CRITICO: safe_get con keep_list per DettaglioLinee
-# ✅ Ripristinato (F&B) nelle etichette Tab
-# ✅ Rimossi KPI ridondanti Tab Spese Generali
-# ✅ Grafici identici originale (no etichette sotto)
-# ✅ Ottimizzazioni Gemini complete
-# ✅ CODICE COMPLETO 1800+ RIGHE
-# ✅ PDF con PyMuPDF (no Poppler richiesto)
+# 🔍 ANALISI FATTURE AI - VERSIONE 3.2 FINAL
 # ============================================================
 
 
@@ -189,63 +180,55 @@ st.set_page_config(
     }
 )
 
-# ============================================
-# NASCONDI FOOTER BRANDING STREAMLIT
-# ============================================
+# ============================================================
+# CSS UNIFICATO - NASCONDI BRANDING STREAMLIT
+# ============================================================
 st.markdown("""
 <style>
-    /* Nascondi footer Streamlit - TUTTI I SELETTORI */
-    footer,
-    .stApp footer,
-    div[role="contentinfo"],
-    [data-testid="stFooter"] {
+    /* === FOOTER E BRANDING === */
+    footer, .stApp footer, div[role="contentinfo"], [data-testid="stFooter"],
+    [data-testid="stStatusWidget"], .stStatusWidget,
+    div[data-testid="stDecoration"], .stDecoration,
+    footer::after, footer::before {
         visibility: hidden !important;
         display: none !important;
         height: 0 !important;
         overflow: hidden !important;
-        position: absolute !important;
-        bottom: -9999px !important;
     }
     
-    /* Nascondi "Created by" e "Hosted with" */
-    [data-testid="stStatusWidget"],
-    .stStatusWidget {
+    /* === HEADER, TOOLBAR, MENU === */
+    header[data-testid="stHeader"], .stApp > header,
+    [data-testid="stToolbar"], div[data-testid="stToolbar"],
+    #MainMenu, header[role="banner"], .stDeployButton,
+    [data-testid="manage-app-button"], button[kind="header"],
+    button[aria-label*="Manage"], button[title*="Manage"] {
+        display: none !important;
+        visibility: hidden !important;
+    }
+    
+    /* === SIDEBAR (disabilitata) === */
+    [data-testid="stSidebar"], section[data-testid="stSidebar"],
+    [data-testid="collapsedControl"] {
         display: none !important;
     }
     
-    /* Nascondi link profilo e branding */
-    div[data-testid="stDecoration"],
-    [data-testid="stToolbar"],
-    .stDecoration {
-        display: none !important;
-    }
-    
-    /* Target specifico per footer icons */
-    footer::after,
-    footer::before {
-        display: none !important;
-    }
-    
-    /* Nascondi toolbar e header */
-    header[data-testid="stHeader"],
-    .stApp > header,
-    div[data-testid="stToolbar"] {
-        display: none !important;
-    }
-    
-    /* Nascondi ViewerBadge (Made with Streamlit) */
-    .viewerBadge_container__1QSob,
-    .viewerBadge_link__1S137,
-    .styles_viewerBadge__1yB5_,
-    [class*="viewerBadge"],
-    a[href*="streamlit.io"],
-    a[target="_blank"][rel*="noopener"] {
+    /* === VIEWERBADGE (Made with Streamlit) === */
+    .viewerBadge_container__1QSob, .viewerBadge_link__1S137,
+    .styles_viewerBadge__1yB5_, [class*="viewerBadge"],
+    a[href*="streamlit.io"], a[target="_blank"][rel*="noopener"] {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
     }
     
-    /* OVERLAY BIANCO per coprire footer se reinserito */
+    /* === DEPLOY/SHARE/CONDIVIDI BUTTONS === */
+    button[title*="Deploy" i], a[title*="Deploy" i], [aria-label*="Deploy" i], [data-testid*="deploy" i],
+    button[title*="Share" i], a[title*="Share" i], [aria-label*="Share" i], [data-testid*="share" i],
+    button[title*="Condividi" i], a[title*="Condividi" i], [aria-label*="Condividi" i] {
+        display: none !important;
+    }
+    
+    /* === OVERLAY BIANCO COPERTURA FOOTER === */
     body::after {
         content: "";
         position: fixed;
@@ -258,24 +241,11 @@ st.markdown("""
         pointer-events: none;
     }
     
-    /* ✂️ RIDUCI SPAZIO SUPERIORE APP (valori aumentati per evitare tagli) */
-    .main > div {
-        padding-top: 2rem !important;
-    }
-    .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 6rem !important;
-    }
-    
-    /* ✅ ASSICURA VISIBILITÀ COMPLETA CONTENUTO */
-    [data-testid="stVerticalBlock"] {
-        overflow: visible !important;
-    }
-    [data-testid="column"] {
-        overflow: visible !important;
-        min-height: 120px !important;
-        margin-bottom: 30px !important;
-    }
+    /* === LAYOUT OTTIMIZZATO === */
+    .main > div { padding-top: 2rem !important; }
+    .block-container { padding-top: 2rem !important; padding-bottom: 6rem !important; }
+    [data-testid="stVerticalBlock"] { overflow: visible !important; }
+    [data-testid="column"] { overflow: visible !important; min-height: 120px !important; margin-bottom: 30px !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -346,72 +316,6 @@ st.markdown("""
 </script>
 """, unsafe_allow_html=True)
 
-# Nascondi bottone "Manage app"
-st.markdown("""
-<style>
-    /* Nascondi Manage App con tutti i selettori possibili */
-    [data-testid="manage-app-button"],
-    [data-testid="stDecoration"],
-    button[kind="header"],
-    button[aria-label*="Manage"],
-    button[title*="Manage"],
-    .stApp > header,
-    header[data-testid="stHeader"],
-    div[data-testid="stToolbar"],
-    .stDeployButton,
-    footer,
-    #MainMenu {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        height: 0 !important;
-        width: 0 !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-
-# Elimina completamente sidebar in tutta l'app
-st.markdown("""
-    <style>
-    [data-testid="stSidebar"] {
-        display: none !important;
-    }
-    section[data-testid="stSidebar"] {
-        display: none !important;
-    }
-    [data-testid="collapsedControl"] {
-        display: none !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
-
-
-# Nasconde il menu principale (tre puntini) e l'header per utenti finali
-st.markdown(
-    """
-    <style>
-      #MainMenu { visibility: hidden !important; }
-      header[role="banner"] { display: none !important; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-
-# CSS addizionale per nascondere bottoni/elementi con attributi che contengono Deploy/Share
-st.markdown(
-        """
-        <style>
-            button[title*="Deploy" i], a[title*="Deploy" i], [aria-label*="Deploy" i], [data-testid*="deploy" i] { display: none !important; }
-            button[title*="Share" i], a[title*="Share" i], [aria-label*="Share" i], [data-testid*="share" i] { display: none !important; }
-            /* italiano */
-            button[title*="Condividi" i], a[title*="Condividi" i], [aria-label*="Condividi" i] { display: none !important; }
-        </style>
-        """,
-        unsafe_allow_html=True,
-)
-
 
 # Rimuove dinamicamente eventuale bottone "Deploy"/"Share" in ambienti Streamlit Cloud
 st.markdown(
@@ -460,14 +364,9 @@ st.markdown(
 # ============================================================
 # 🔒 SISTEMA AUTENTICAZIONE CON RECUPERO PASSWORD
 # ============================================================
-
-# Import mantenuti per compatibilità con altre parti del codice
-import hashlib
 from supabase import create_client, Client
 from datetime import datetime, timedelta
 import logging
-import sys
-
 
 # Logger con fallback cloud-compatible
 logger = logging.getLogger('fci_app')
@@ -693,14 +592,11 @@ if st.query_params.get("reset_token"):
     st.stop()  # Non mostrare resto app
 
 
-# ============================================================
-# FUNZIONI AUTENTICAZIONE (SPOSTATA IN services/auth_service.py)
-# ============================================================
-
-
-
 def verifica_codice_reset(email, code, new_password):
     """Verifica codice e aggiorna password"""
+    from argon2 import PasswordHasher
+    ph = PasswordHasher()
+    
     try:
         resp = supabase.table('users').select('*').eq('email', email).limit(1).execute()
         user = resp.data[0] if resp.data else None
@@ -950,13 +846,6 @@ user = st.session_state.user_data
 # ULTIMA VERIFICA: se user_data è None o invalido, FORZA logout immediato
 if not user or not user.get('email'):
     logger.critical("❌ user_data è None o mancante email - FORZA LOGOUT")
-    st.session_state.logged_in = False
-    st.session_state.user_data = None
-    st.error("⚠️ Sessione invalida. Effettua nuovamente il login.")
-    st.rerun()
-
-if not user or not user.get('email'):
-    logger.critical("⛔ user_data invalido - forzando logout")
     st.session_state.clear()  # Cancella tutto
     st.session_state.logged_in = False  # Reimposta dopo clear
     st.rerun()
@@ -1342,63 +1231,7 @@ client = OpenAI(api_key=api_key)
 
 
 # ============================================================
-# CARICAMENTO CATEGORIE DINAMICHE DA DATABASE
-# ============================================================
-
-# ============================================================
-# FUNZIONI MEMORIA AI (SPOSTATA IN services/ai_service.py)
-# ============================================================
-
-
-# ============================================================
-# FUNZIONI DATABASE (SPOSTATE IN services/db_service.py)
-# ============================================================
-
-# ============================================================
-# FUNZIONI MEMORIA PRINCIPALE
-# ============================================================
-
-
-
-# Funzioni carica_memoria() e salva_memoria() RIMOSSE
-# Usa solo Supabase come unica fonte dati
-
-
-# ============================================================
-# FUNZIONI GESTIONE FATTURE (SPOSTATA IN services/invoice_service.py)
-# ============================================================
-
-# ============================================================
-# ELIMINAZIONE FATTURE
-# ============================================================
-
-
-# ============================================================
-# TEST & AUDIT UTILITIES
-# ============================================================
-
-
-# ============================================================
-# CACHING DATAFRAME OTTIMIZZATO
-# ============================================================
-
-
-# ============================================================
-# CONVERSIONE FILE IN BASE64 PER VISION
-# ============================================================
-
-
-# ============================================================
-# FUNZIONI CALCOLO ALERT PREZZI (SPOSTATE IN services/db_service.py)
-# ============================================================
-
-# ============================================================
-# FUNZIONE PIVOT MENSILE
-# ============================================================
-
-
-# ============================================================
-# FUNZIONE RENDERING STATISTICHE
+# STATISTICHE E GRAFICI
 # ============================================================
 
 def mostra_statistiche(df_completo):
@@ -1566,8 +1399,6 @@ def mostra_statistiche(df_completo):
                 cat = row['Categoria']
                 in_maschera = maschera_ai.loc[idx] if idx in maschera_ai.index else False
                 logger.info(f"   - '{row['Descrizione']}' cat='{cat}' in_maschera={in_maschera}")
-        else:
-            pass
     
     # ============================================================
     # LAYOUT: BOTTONE + TESTO INFORMATIVO
@@ -1673,8 +1504,6 @@ def mostra_statistiche(df_completo):
                     .progress-status {
                         color: #555;
                         font-size: 18px;
-                        font-weight: 500;
-                    }
                         font-weight: 500;
                     }
                     </style>
@@ -2527,27 +2356,7 @@ def mostra_statistiche(df_completo):
             if vuote_prima > 0 or da_class_dopo > 0:
                 logger.info(f"📋 CATEGORIA: {vuote_prima} vuote → {da_class_dopo} 'Da Classificare'")
         
-        # 🧠 AGGIUNGI ICONA AI alle righe appena categorizzate (solo sessione corrente)
-        # TEMPORANEO: Icone AI 🧠 disabilitate - causavano mismatch dropdown
-        # PROBLEMA: Aggiungere emoji trasforma "MATERIALE DI CONSUMO" in "MATERIALE DI CONSUMO 🧠"
-        # Il dropdown ha opzioni ["MATERIALE DI CONSUMO", "PESCE", ...] senza emoji
-        # Streamlit bug: se valore non è nelle options → cella bianca/vuota
-        # LOG EVIDENZA: "⚠️ Categoria 'MATERIALE DI CONSUMO 🧠' non nelle opzioni! → 'Da Classificare'"
-        # RISULTATO: 26/26 celle bianche dopo categorizzazione AI
-        #
-        # # ORA che le celle vuote sono state convertite in "Da Classificare", possiamo aggiungere l'icona
-        # righe_ai = st.session_state.get('righe_ai_appena_categorizzate', [])
-        # 
-        # if righe_ai and 'Categoria' in df_editor.columns and 'Descrizione' in df_editor.columns:
-        #     # Converti lista in set per lookup O(1)
-        #     righe_ai_set = set(righe_ai)
-        #     for idx, row in df_editor.iterrows():
-        #         desc = str(row['Descrizione']).strip()
-        #         cat = str(row['Categoria']).strip()
-        #         # Aggiungi icona solo se: descrizione è in righe_ai E categoria è valida (non vuota e non "Da Classificare")
-        #         if desc in righe_ai_set and cat and cat != 'Da Classificare':
-        #             df_editor.at[idx, 'Categoria'] = f"{cat} 🧠"
-        #             logger.debug(f"🧠 Icona aggiunta a: {desc[:30]}... → {cat} 🧠")
+        # NOTE: Icone AI 🧠 disabilitate (causavano mismatch dropdown Streamlit)
         
         # Inizializza colonna prezzo_standard se non esiste
         if 'PrezzoStandard' not in df_editor.columns:
@@ -3533,7 +3342,7 @@ def mostra_statistiche(df_completo):
                             debug_response = supabase.table('fatture')\
                                 .select('id, descrizione, categoria, prezzo_unitario')\
                                 .eq('user_id', user_id)\
-                                .gte('data_documento', data_limite)\
+                                .gte('data_documento', data_inizio_str)\
                                 .execute()
                             
                             if debug_response.data:
