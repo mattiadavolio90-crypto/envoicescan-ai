@@ -693,7 +693,7 @@ if 'categorie_cached' not in st.session_state:
     logger.info(f"✅ Categorie caricate in cache: {len(st.session_state.categorie_cached)} categorie")
 
 # Usa radio buttons nascosti per mantenere tab attivo
-tab_names = ["📊 Gestione Clienti", "💰 Review Righe €0", "🧠 Memoria Globale AI", "📊 Upload Events", "💳 Costi AI"]
+tab_names = ["📊 Gestione Clienti", "💰 Review Righe €0", "🧠 Memoria Globale AI", "� Integrità Database", "💳 Costi AI"]
 selected_tab = st.radio(
     "Seleziona Tab",
     range(len(tab_names)),
@@ -2451,6 +2451,78 @@ def tab_memoria_globale_unificata():
             non_verificati = (~df_memoria['verified']).sum()
             st.metric("⚠️ Da Verificare", non_verificati)
     
+    # ============================================================
+    # AZIONI ADMIN CRITICHE
+    # ============================================================
+    if is_admin:
+        st.markdown("---")
+        st.markdown("### ⚠️ Azioni Amministratore")
+        
+        col_btn1, col_btn2, col_spacer = st.columns([2, 2, 6])
+        
+        with col_btn1:
+            if st.button("🗑️ Svuota Memoria Globale", type="secondary", use_container_width=True):
+                st.session_state.show_confirm_delete_memoria = True
+        
+        with col_btn2:
+            if st.button("🔄 Invalida Cache", type="secondary", use_container_width=True):
+                st.cache_data.clear()
+                st.success("✅ Cache invalidata!")
+                st.rerun()
+        
+        # Mostra conferma solo se bottone premuto
+        if st.session_state.get('show_confirm_delete_memoria', False):
+            st.warning("""
+            ### ⚠️ ATTENZIONE - OPERAZIONE IRREVERSIBILE
+            
+            Stai per **cancellare TUTTA la memoria globale AI**:
+            - ❌ Tutti i prodotti appresi verranno eliminati
+            - ❌ Tutti gli utenti dovranno ri-categorizzare da zero
+            - ❌ Operazione NON può essere annullata
+            
+            **Conferma digitando:** `ELIMINA MEMORIA`
+            """)
+            
+            col_input, col_confirm, col_cancel = st.columns([3, 1, 1])
+            
+            with col_input:
+                conferma_text = st.text_input(
+                    "Conferma operazione",
+                    placeholder="Digita: ELIMINA MEMORIA",
+                    key="conferma_elimina_memoria"
+                )
+            
+            with col_confirm:
+                if st.button("✅ CONFERMA", type="primary"):
+                    if conferma_text == "ELIMINA MEMORIA":
+                        try:
+                            # Svuota tabella prodotti_master
+                            supabase.table('prodotti_master').delete().neq('id', '00000000-0000-0000-0000-000000000000').execute()
+                            
+                            # Verifica
+                            check = supabase.table('prodotti_master').select('id', count='exact').execute()
+                            count_after = check.count if check.count else 0
+                            
+                            if count_after == 0:
+                                st.success("✅ Memoria globale svuotata con successo!")
+                                logger.warning(f"🗑️ Memoria globale svuotata da admin: {user_email}")
+                                st.cache_data.clear()
+                                st.session_state.show_confirm_delete_memoria = False
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(f"⚠️ Operazione parziale: rimasti {count_after} record")
+                        except Exception as e:
+                            st.error(f"❌ Errore: {str(e)}")
+                            logger.error(f"Errore svuotamento memoria: {e}")
+                    else:
+                        st.error("❌ Testo conferma errato. Operazione annullata.")
+            
+            with col_cancel:
+                if st.button("❌ ANNULLA"):
+                    st.session_state.show_confirm_delete_memoria = False
+                    st.rerun()
+    
     st.markdown("---")
     
     # ============================================================
@@ -2881,12 +2953,12 @@ if tab3:
     tab_memoria_globale_unificata()
 
 # ============================================================
-# TAB 4: UPLOAD EVENTS - VERIFICA DATABASE
+# TAB 4: VERIFICA INTEGRITÀ DATABASE
 # ============================================================
 
 if tab4:
-    st.markdown("## � Verifica Database - Problemi Tecnici")
-    st.caption("Mostra solo eventi che richiedono assistenza (FAILED, SAVED_PARTIAL). I duplicati sono comportamento normale e non vengono loggati.")
+    st.markdown("## 🔍 Verifica Integrità Database")
+    st.caption("Controlla anomalie nei dati delle fatture: date invalide, prezzi anomali, quantità strane, descrizioni vuote, duplicati, ecc.")
     
     # ============================================================
     # FILTRI
@@ -2940,159 +3012,222 @@ if tab4:
         # Filtro periodo
         filtro_periodo = st.selectbox(
             "Periodo",
-            ["Ultimi 7 giorni", "Ultimi 30 giorni", "Ultimi 90 giorni", "Ultimi 180 giorni", "Tutto"],
-            key="filtro_periodo_upload_events"
+            ["Ultimi 30 giorni", "Ultimi 90 giorni", "Ultimi 180 giorni", "Tutto"],
+            key="filtro_periodo_integrity"
         )
-    
-    # Opzione mostra verificati
-    mostra_verificati = st.checkbox(
-        "Mostra anche eventi già verificati",
-        value=False,
-        key="mostra_verificati_upload_events"
-    )
     
     st.markdown("---")
     
     # ============================================================
-    # QUERY EVENTI
+    # VERIFICA INTEGRITÀ
     # ============================================================
     
-    if st.button("🔍 Verifica Database", key="btn_verifica_db", type="primary"):
-        with st.spinner("Caricamento eventi..."):
+    if st.button("🔍 Verifica Integrità Dati", key="btn_verifica_integrity", type="primary"):
+        with st.spinner("Analisi dati in corso..."):
             try:
                 # Costruisci query base
-                query = supabase.table('upload_events').select('*')
+                query = supabase.table('fatture').select('*')
                 
-                # Filtro email (exact match se selezionato un cliente)
+                # Filtro per ristorante (basato su email utente)
                 if filtro_email:
-                    query = query.eq('user_email', filtro_email)
+                    # Trova ristorante_id da email utente
+                    user_resp = supabase.table('users').select('id').eq('email', filtro_email).execute()
+                    if user_resp.data:
+                        user_id = user_resp.data[0]['id']
+                        rist_resp = supabase.table('ristoranti').select('id').eq('user_id', user_id).execute()
+                        if rist_resp.data:
+                            ristorante_id = rist_resp.data[0]['id']
+                            query = query.eq('ristorante_id', ristorante_id)
                 
                 # Filtro periodo
-                if filtro_periodo == "Ultimi 7 giorni":
-                    data_limite = (datetime.now() - timedelta(days=7)).isoformat()
-                    query = query.gte('created_at', data_limite)
-                elif filtro_periodo == "Ultimi 30 giorni":
-                    data_limite = (datetime.now() - timedelta(days=30)).isoformat()
-                    query = query.gte('created_at', data_limite)
+                if filtro_periodo == "Ultimi 30 giorni":
+                    data_limite = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+                    query = query.gte('data', data_limite)
                 elif filtro_periodo == "Ultimi 90 giorni":
-                    data_limite = (datetime.now() - timedelta(days=90)).isoformat()
-                    query = query.gte('created_at', data_limite)
+                    data_limite = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+                    query = query.gte('data', data_limite)
                 elif filtro_periodo == "Ultimi 180 giorni":
-                    data_limite = (datetime.now() - timedelta(days=180)).isoformat()
-                    query = query.gte('created_at', data_limite)
-                
-                # Filtro ACK (mostra solo non verificati se opzione disattivata)
-                if not mostra_verificati:
-                    query = query.eq('ack', False)
-                
-                # Filtro status (solo problemi tecnici che richiedono assistenza)
-                query = query.in_('status', ['FAILED', 'SAVED_PARTIAL'])
-                
-                # Ordina per data (più recenti prima)
-                query = query.order('created_at', desc=True)
+                    data_limite = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+                    query = query.gte('data', data_limite)
                 
                 # Esegui query
                 response = query.execute()
                 
                 if not response.data:
-                    st.success("✅ Nessun problema rilevato nel periodo selezionato")
-                    st.info("Il sistema sta funzionando correttamente. Tutti gli upload sono andati a buon fine.")
+                    st.info("📭 Nessuna fattura trovata per il periodo selezionato")
                 else:
-                    df_events = pd.DataFrame(response.data)
+                    df = pd.DataFrame(response.data)
                     
                     # ============================================================
-                    # STATISTICHE
+                    # ANALISI PROBLEMI
                     # ============================================================
-                    st.markdown("---")
-                    st.markdown("### 📊 Statistiche")
                     
-                    col1, col2, col3 = st.columns(3)
+                    problemi = {
+                        'date_invalide': [],
+                        'prezzi_anomali': [],
+                        'quantita_anomale': [],
+                        'descrizioni_vuote': [],
+                        'totali_errati': [],
+                        'duplicati': []
+                    }
                     
-                    with col1:
-                        eventi_failed = df_events[df_events['status'] == 'FAILED'].shape[0]
-                        st.metric("❌ FAILED", eventi_failed)
+                    # 1. Date invalide (future o non parsabili)
+                    oggi = datetime.now().date()
+                    for idx, row in df.iterrows():
+                        try:
+                            data_fattura = pd.to_datetime(row['data']).date()
+                            if data_fattura > oggi:
+                                problemi['date_invalide'].append({
+                                    'fornitore': row.get('fornitore', 'N/A'),
+                                    'data': row['data'],
+                                    'descrizione': row.get('descrizione', 'N/A')[:50],
+                                    'problema': f"Data futura: {data_fattura}"
+                                })
+                        except:
+                            problemi['date_invalide'].append({
+                                'fornitore': row.get('fornitore', 'N/A'),
+                                'data': row['data'],
+                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'problema': "Data non valida"
+                            })
                     
-                    with col2:
-                        eventi_partial = df_events[df_events['status'] == 'SAVED_PARTIAL'].shape[0]
-                        st.metric("⚠️ SAVED_PARTIAL", eventi_partial)
+                    # 2. Prezzi anomali (negativi o troppo alti)
+                    for idx, row in df.iterrows():
+                        prezzo = row.get('prezzo_unitario', 0)
+                        if prezzo < 0:
+                            problemi['prezzi_anomali'].append({
+                                'fornitore': row.get('fornitore', 'N/A'),
+                                'data': row.get('data', 'N/A'),
+                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'valore': f"€ {prezzo:.2f}",
+                                'problema': "Prezzo negativo"
+                            })
+                        elif prezzo > 10000:
+                            problemi['prezzi_anomali'].append({
+                                'fornitore': row.get('fornitore', 'N/A'),
+                                'data': row.get('data', 'N/A'),
+                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'valore': f"€ {prezzo:.2f}",
+                                'problema': "Prezzo molto alto (> €10.000)"
+                            })
                     
-                    with col3:
-                        if not mostra_verificati:
-                            eventi_non_ack = df_events[df_events['ack'] == False].shape[0]
-                            st.metric("🔔 Da Verificare", eventi_non_ack)
-                        else:
-                            st.metric("📋 Totale Mostrati", len(df_events))
+                    # 3. Quantità anomale
+                    for idx, row in df.iterrows():
+                        quantita = row.get('quantita', 0)
+                        if quantita < 0:
+                            problemi['quantita_anomale'].append({
+                                'fornitore': row.get('fornitore', 'N/A'),
+                                'data': row.get('data', 'N/A'),
+                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'valore': quantita,
+                                'problema': "Quantità negativa"
+                            })
+                        elif quantita > 10000:
+                            problemi['quantita_anomale'].append({
+                                'fornitore': row.get('fornitore', 'N/A'),
+                                'data': row.get('data', 'N/A'),
+                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'valore': quantita,
+                                'problema': "Quantità molto alta (> 10.000)"
+                            })
                     
-                    st.markdown("---")
+                    # 4. Descrizioni vuote o troppo corte
+                    for idx, row in df.iterrows():
+                        desc = str(row.get('descrizione', '')).strip()
+                        if len(desc) < 3:
+                            problemi['descrizioni_vuote'].append({
+                                'fornitore': row.get('fornitore', 'N/A'),
+                                'data': row.get('data', 'N/A'),
+                                'descrizione': desc if desc else '(vuota)',
+                                'problema': "Descrizione mancante o troppo corta"
+                            })
                     
-                    # ============================================================
-                    # TABELLA EVENTI
-                    # ============================================================
-                    st.markdown("### 📋 Lista Eventi")
-                    
-                    # Prepara DataFrame per visualizzazione
-                    df_display = df_events[[
-                        'created_at', 'user_email', 'file_name', 'status',
-                        'rows_parsed', 'rows_saved', 'error_stage', 'error_message', 'ack'
-                    ]].copy()
-                    
-                    # Formatta data
-                    df_display['created_at'] = pd.to_datetime(df_display['created_at']).dt.strftime('%Y-%m-%d %H:%M')
-                    
-                    # Tronca messaggio errore
-                    if 'error_message' in df_display.columns:
-                        df_display['error_message'] = df_display['error_message'].apply(
-                            lambda x: (str(x)[:100] + "...") if x and len(str(x)) > 100 else x
-                        )
-                    
-                    # Rinomina colonne per visualizzazione
-                    df_display.columns = [
-                        '📅 Data', '👤 Cliente', '📄 File', '🔖 Status',
-                        '📊 Parse', '💾 Salvate', '⚠️ Fase', '💬 Messaggio', '✅ Verificato'
-                    ]
-                    
-                    # Mostra tabella
-                    st.dataframe(
-                        df_display,
-                        hide_index=True,
-                        use_container_width=True,
-                        height=400
-                    )
-                    
-                    # ============================================================
-                    # AZIONE: SEGNA COME VERIFICATI
-                    # ============================================================
-                    eventi_da_ack = df_events[df_events['ack'] == False]
-                    
-                    if not eventi_da_ack.empty:
-                        st.markdown("---")
-                        st.info(f"🔔 **{len(eventi_da_ack)} eventi** richiedono verifica")
+                    # 5. Totali non corrispondenti (prezzo × quantità ≠ totale)
+                    for idx, row in df.iterrows():
+                        prezzo = row.get('prezzo_unitario', 0)
+                        quantita = row.get('quantita', 0)
+                        totale = row.get('totale', 0)
+                        calcolato = prezzo * quantita
                         
-                        if st.button(
-                            "✅ Segna Tutti Come Verificati",
-                            type="secondary",
-                            use_container_width=True,
-                            key="ack_all_events"
-                        ):
-                            try:
-                                admin_email = user.get('email', 'admin')
-                                event_ids = eventi_da_ack['id'].tolist()
-                                
-                                # Update batch su Supabase
-                                for event_id in event_ids:
-                                    supabase.table('upload_events').update({
-                                        'ack': True,
-                                        'ack_at': datetime.now().isoformat(),
-                                        'ack_by': admin_email
-                                    }).eq('id', event_id).execute()
-                                
-                                st.success(f"✅ {len(event_ids)} eventi marcati come verificati!")
-                                st.balloons()
-                                time.sleep(1)
-                                st.rerun()
-                                
-                            except Exception as e:
-                                st.error(f"❌ Errore: {e}")
+                        # Tollera differenze di arrotondamento (< 0.02€)
+                        if abs(calcolato - totale) > 0.02:
+                            problemi['totali_errati'].append({
+                                'fornitore': row.get('fornitore', 'N/A'),
+                                'data': row.get('data', 'N/A'),
+                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'calcolato': f"€ {calcolato:.2f}",
+                                'salvato': f"€ {totale:.2f}",
+                                'problema': f"Differenza: € {abs(calcolato - totale):.2f}"
+                            })
+                    
+                    # 6. Duplicati (stesso fornitore, descrizione, data, quantità, prezzo)
+                    duplicati_check = df.groupby(['fornitore', 'descrizione', 'data', 'quantita', 'prezzo_unitario']).size()
+                    duplicati_trovati = duplicati_check[duplicati_check > 1]
+                    
+                    for (fornitore, descrizione, data, quantita, prezzo), count in duplicati_trovati.items():
+                        problemi['duplicati'].append({
+                            'fornitore': fornitore,
+                            'data': data,
+                            'descrizione': descrizione[:50],
+                            'quantita': quantita,
+                            'prezzo': f"€ {prezzo:.2f}",
+                            'problema': f"{count} righe identiche"
+                        })
+                    
+                    # ============================================================
+                    # RISULTATI
+                    # ============================================================
+                    
+                    totale_problemi = sum(len(v) for v in problemi.values())
+                    
+                    if totale_problemi == 0:
+                        st.success("✅ Nessun problema di integrità rilevato!")
+                        st.info(f"Analizzate **{len(df):,} righe** di fatture. Tutti i dati sono corretti.")
+                    else:
+                        st.warning(f"⚠️ Trovati **{totale_problemi} problemi** su {len(df):,} righe analizzate")
+                        
+                        # Mostra statistiche
+                        st.markdown("### 📊 Riepilogo Problemi")
+                        col1, col2, col3 = st.columns(3)
+                        
+                        with col1:
+                            st.metric("📅 Date Invalide", len(problemi['date_invalide']))
+                            st.metric("💰 Prezzi Anomali", len(problemi['prezzi_anomali']))
+                        
+                        with col2:
+                            st.metric("📦 Quantità Anomale", len(problemi['quantita_anomale']))
+                            st.metric("📝 Descrizioni Vuote", len(problemi['descrizioni_vuote']))
+                        
+                        with col3:
+                            st.metric("🧮 Totali Errati", len(problemi['totali_errati']))
+                            st.metric("🔄 Duplicati", len(problemi['duplicati']))
+                        
+                        st.markdown("---")
+                        
+                        # Mostra dettagli per ogni categoria
+                        if len(problemi['date_invalide']) > 0:
+                            with st.expander(f"📅 Date Invalide ({len(problemi['date_invalide'])})", expanded=True):
+                                st.dataframe(pd.DataFrame(problemi['date_invalide']), use_container_width=True, hide_index=True)
+                        
+                        if len(problemi['prezzi_anomali']) > 0:
+                            with st.expander(f"💰 Prezzi Anomali ({len(problemi['prezzi_anomali'])})", expanded=True):
+                                st.dataframe(pd.DataFrame(problemi['prezzi_anomali']), use_container_width=True, hide_index=True)
+                        
+                        if len(problemi['quantita_anomale']) > 0:
+                            with st.expander(f"📦 Quantità Anomale ({len(problemi['quantita_anomale'])})", expanded=True):
+                                st.dataframe(pd.DataFrame(problemi['quantita_anomale']), use_container_width=True, hide_index=True)
+                        
+                        if len(problemi['descrizioni_vuote']) > 0:
+                            with st.expander(f"📝 Descrizioni Vuote ({len(problemi['descrizioni_vuote'])})", expanded=True):
+                                st.dataframe(pd.DataFrame(problemi['descrizioni_vuote']), use_container_width=True, hide_index=True)
+                        
+                        if len(problemi['totali_errati']) > 0:
+                            with st.expander(f"🧮 Totali Errati ({len(problemi['totali_errati'])})", expanded=True):
+                                st.dataframe(pd.DataFrame(problemi['totali_errati']), use_container_width=True, hide_index=True)
+                        
+                        if len(problemi['duplicati']) > 0:
+                            with st.expander(f"🔄 Duplicati ({len(problemi['duplicati'])})", expanded=True):
+                                st.dataframe(pd.DataFrame(problemi['duplicati']), use_container_width=True, hide_index=True)
             
             except Exception as e:
                 st.error(f"❌ Errore durante la verifica: {str(e)}")
