@@ -982,6 +982,12 @@ else:
 # CARICAMENTO RISTORANTI (MULTI-RISTORANTE STEP 2)
 # ============================================
 # Carica ristoranti dell'utente (oppure TUTTI i ristoranti se admin)
+# ⚠️ SAFETY CHECK: Verifica che user sia definito (dovrebbe essere già controllato sopra)
+if not user or not user.get('id'):
+    logger.error("❌ ERRORE CRITICO: user non definito in caricamento ristoranti")
+    st.session_state.logged_in = False
+    st.rerun()
+
 if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_state:
     try:
         # Admin: carica TUTTI i ristoranti dal sistema
@@ -1040,13 +1046,16 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                             logger.info(f"✅ Ristorante creato automaticamente: {new_rist.data[0]['id']}")
                         else:
                             logger.error(f"❌ Creazione ristorante fallita per utente {user_id}")
+                            # Non bloccare l'app, permetti accesso limitato
+                            st.warning("⚠️ Configurazione account incompleta. Alcune funzionalità potrebbero non essere disponibili.")
                     except Exception as create_err:
                         logger.error(f"❌ Errore creazione ristorante automatico: {create_err}")
-                        st.error("⚠️ Errore configurazione account. Contatta l'assistenza.")
-                        st.stop()
+                        # Non bloccare con st.stop(), permetti accesso all'app
+                        st.warning("⚠️ Problemi di configurazione rilevati. Contatta l'assistenza se riscontri problemi.")
                 else:
-                    # Nessuna P.IVA o dati mancanti
-                    logger.error(f"❌ Utente {user_id} senza ristoranti e dati incompleti")
+                    # Nessuna P.IVA o dati mancanti - permetti comunque l'accesso
+                    logger.warning(f"⚠️ Utente {user_id} senza ristoranti e dati incompleti - accesso limitato")
+                    st.warning("⚠️ Configurazione account incompleta. Contatta l'assistenza per configurare il tuo ristorante.")
             
             # FALLBACK vecchio codice per compatibilità
             if not st.session_state.get('user_is_admin', False):
