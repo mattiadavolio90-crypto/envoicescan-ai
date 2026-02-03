@@ -1913,7 +1913,7 @@ def mostra_statistiche(df_completo):
     
     # Default: Mese in Corso
     if 'periodo_dropdown' not in st.session_state:
-        st.session_state.periodo_dropdown = " Mese in Corso"
+        st.session_state.periodo_dropdown = "📅 Mese in Corso"
     
     # Selectbox
     periodo_selezionato = st.selectbox(
@@ -1930,19 +1930,19 @@ def mostra_statistiche(df_completo):
     data_inizio_filtro = None
     data_fine_filtro = oggi_date
     
-    if periodo_selezionato == " Mese in Corso":
+    if periodo_selezionato == "📅 Mese in Corso":
         data_inizio_filtro = inizio_mese
         label_periodo = f"Mese in corso ({inizio_mese.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
     
-    elif periodo_selezionato == " Trimestre in Corso":
+    elif periodo_selezionato == "📊 Trimestre in Corso":
         data_inizio_filtro = inizio_trimestre
         label_periodo = f"Trimestre in corso ({inizio_trimestre.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
     
-    elif periodo_selezionato == " Semestre in Corso":
+    elif periodo_selezionato == "📈 Semestre in Corso":
         data_inizio_filtro = inizio_semestre
         label_periodo = f"Semestre in corso ({inizio_semestre.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
     
-    elif periodo_selezionato == " Anno in Corso":
+    elif periodo_selezionato == "🗓️ Anno in Corso":
         data_inizio_filtro = inizio_anno
         label_periodo = f"Anno in corso ({inizio_anno.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
     
