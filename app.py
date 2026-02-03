@@ -1028,30 +1028,55 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                 
                 # Tenta creazione automatica ristorante se ha P.IVA
                 if piva and nome and user_id:
-                    logger.warning(f"⚠️ Utente legacy {user_id} senza ristoranti - creazione automatica")
+                    logger.warning(f"⚠️ Utente legacy {user_id} senza ristoranti - tentativo creazione automatica")
+                    logger.warning(f"   Dati: nome='{nome}', piva='{piva}'")
                     try:
-                        new_rist = supabase.table('ristoranti').insert({
-                            'user_id': user_id,
-                            'nome_ristorante': nome,
-                            'partita_iva': piva,
-                            'ragione_sociale': user.get('ragione_sociale', ''),
-                            'attivo': True
-                        }).execute()
+                        # Prima verifica se esiste già un ristorante con questa P.IVA
+                        check_existing = supabase.table('ristoranti')\
+                            .select('id, user_id, nome_ristorante')\
+                            .eq('partita_iva', piva)\
+                            .execute()
                         
-                        if new_rist.data:
-                            st.session_state.ristoranti = new_rist.data
-                            st.session_state.ristorante_id = new_rist.data[0]['id']
-                            st.session_state.partita_iva = piva
-                            st.session_state.nome_ristorante = nome
-                            logger.info(f"✅ Ristorante creato automaticamente: {new_rist.data[0]['id']}")
+                        if check_existing.data and len(check_existing.data) > 0:
+                            # Ristorante già esistente con questa P.IVA
+                            existing = check_existing.data[0]
+                            if existing['user_id'] == user_id:
+                                # È il suo ristorante, usalo
+                                st.session_state.ristoranti = [existing]
+                                st.session_state.ristorante_id = existing['id']
+                                st.session_state.partita_iva = piva
+                                st.session_state.nome_ristorante = existing['nome_ristorante']
+                                logger.info(f"✅ Ristorante esistente trovato e collegato: {existing['id']}")
+                            else:
+                                # P.IVA già usata da altro utente - errore grave
+                                logger.error(f"❌ P.IVA {piva} già associata ad altro utente: {existing['user_id']}")
+                                st.error("⚠️ La tua P.IVA risulta già registrata. Contatta l'assistenza.")
                         else:
-                            logger.error(f"❌ Creazione ristorante fallita per utente {user_id}")
-                            # Non bloccare l'app, permetti accesso limitato
-                            st.warning("⚠️ Configurazione account incompleta. Alcune funzionalità potrebbero non essere disponibili.")
+                            # Non esiste, crea nuovo
+                            new_rist = supabase.table('ristoranti').insert({
+                                'user_id': user_id,
+                                'nome_ristorante': nome,
+                                'partita_iva': piva,
+                                'ragione_sociale': user.get('ragione_sociale', ''),
+                                'attivo': True
+                            }).execute()
+                            
+                            if new_rist.data:
+                                st.session_state.ristoranti = new_rist.data
+                                st.session_state.ristorante_id = new_rist.data[0]['id']
+                                st.session_state.partita_iva = piva
+                                st.session_state.nome_ristorante = nome
+                                logger.info(f"✅ Ristorante creato automaticamente: {new_rist.data[0]['id']}")
+                                st.success("✅ Account configurato correttamente!")
+                                st.rerun()  # Ricarica per applicare i cambiamenti
+                            else:
+                                logger.error(f"❌ Creazione ristorante fallita per utente {user_id} - response vuota")
+                                st.warning("⚠️ Configurazione account incompleta. Alcune funzionalità potrebbero non essere disponibili.")
                     except Exception as create_err:
-                        logger.error(f"❌ Errore creazione ristorante automatico: {create_err}")
+                        logger.error(f"❌ ERRORE DETTAGLIATO creazione ristorante: {str(create_err)}")
+                        logger.error(f"   Tipo errore: {type(create_err).__name__}")
                         # Non bloccare con st.stop(), permetti accesso all'app
-                        st.warning("⚠️ Problemi di configurazione rilevati. Contatta l'assistenza se riscontri problemi.")
+                        st.warning(f"⚠️ Problemi di configurazione rilevati: {str(create_err)[:100]}")
                 else:
                     # Nessuna P.IVA o dati mancanti - permetti comunque l'accesso
                     logger.warning(f"⚠️ Utente {user_id} senza ristoranti e dati incompleti - accesso limitato")

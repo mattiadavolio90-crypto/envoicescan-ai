@@ -42,11 +42,15 @@ ALTER COLUMN ristorante_id SET NOT NULL;
 -- ────────────────────────────────────────────────────────────────────────────────
 -- 4. AGGIORNA RLS POLICIES
 -- ────────────────────────────────────────────────────────────────────────────────
--- Drop vecchie policies
+-- Drop TUTTE le policies esistenti (vecchie e nuove)
 DROP POLICY IF EXISTS "Users can view own fatture" ON fatture;
 DROP POLICY IF EXISTS "Users can insert own fatture" ON fatture;
 DROP POLICY IF EXISTS "Users can update own fatture" ON fatture;
 DROP POLICY IF EXISTS "Users can delete own fatture" ON fatture;
+DROP POLICY IF EXISTS "Users can view own fatture per ristorante" ON fatture;
+DROP POLICY IF EXISTS "Users can insert own fatture per ristorante" ON fatture;
+DROP POLICY IF EXISTS "Users can update own fatture per ristorante" ON fatture;
+DROP POLICY IF EXISTS "Users can delete own fatture per ristorante" ON fatture;
 
 -- Nuove policies che includono ristorante_id
 CREATE POLICY "Users can view own fatture per ristorante" ON fatture
