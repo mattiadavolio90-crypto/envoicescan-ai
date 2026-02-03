@@ -2496,7 +2496,7 @@ def tab_memoria_globale_unificata():
                 if st.button("✅ CONFERMA", type="primary", use_container_width=True):
                     try:
                         # Svuota tabella prodotti_master (elimina tutti i record)
-                        result = supabase.table('prodotti_master').delete().gt('id', '00000000-0000-0000-0000-000000000000').execute()
+                        result = supabase.table('prodotti_master').delete().gte('id', 0).execute()
                         
                         # Verifica
                         check = supabase.table('prodotti_master').select('id', count='exact').execute()
