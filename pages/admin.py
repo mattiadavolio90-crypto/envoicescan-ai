@@ -2488,47 +2488,35 @@ def tab_memoria_globale_unificata():
             - ❌ Tutti i prodotti appresi verranno eliminati
             - ❌ Tutti gli utenti dovranno ri-categorizzare da zero
             - ❌ Operazione NON può essere annullata
-            
-            **Conferma digitando:** `ELIMINA MEMORIA`
             """)
             
-            col_input, col_confirm, col_cancel = st.columns([3, 1, 1])
-            
-            with col_input:
-                conferma_text = st.text_input(
-                    "Conferma operazione",
-                    placeholder="Digita: ELIMINA MEMORIA",
-                    key="conferma_elimina_memoria"
-                )
+            col_confirm, col_cancel, col_spacer = st.columns([1, 1, 4])
             
             with col_confirm:
-                if st.button("✅ CONFERMA", type="primary"):
-                    if conferma_text == "ELIMINA MEMORIA":
-                        try:
-                            # Svuota tabella prodotti_master
-                            supabase.table('prodotti_master').delete().neq('id', '00000000-0000-0000-0000-000000000000').execute()
-                            
-                            # Verifica
-                            check = supabase.table('prodotti_master').select('id', count='exact').execute()
-                            count_after = check.count if check.count else 0
-                            
-                            if count_after == 0:
-                                st.success("✅ Memoria globale svuotata con successo!")
-                                logger.warning(f"🗑️ Memoria globale svuotata da admin: {user_email}")
-                                st.cache_data.clear()
-                                st.session_state.show_confirm_delete_memoria = False
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.error(f"⚠️ Operazione parziale: rimasti {count_after} record")
-                        except Exception as e:
-                            st.error(f"❌ Errore: {str(e)}")
-                            logger.error(f"Errore svuotamento memoria: {e}")
-                    else:
-                        st.error("❌ Testo conferma errato. Operazione annullata.")
+                if st.button("✅ CONFERMA", type="primary", use_container_width=True):
+                    try:
+                        # Svuota tabella prodotti_master (elimina tutti i record)
+                        result = supabase.table('prodotti_master').delete().gt('id', '00000000-0000-0000-0000-000000000000').execute()
+                        
+                        # Verifica
+                        check = supabase.table('prodotti_master').select('id', count='exact').execute()
+                        count_after = check.count if check.count else 0
+                        
+                        if count_after == 0:
+                            st.success("✅ Memoria globale svuotata con successo!")
+                            logger.warning(f"🗑️ Memoria globale svuotata da admin: {user_email}")
+                            st.cache_data.clear()
+                            st.session_state.show_confirm_delete_memoria = False
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error(f"⚠️ Operazione parziale: rimasti {count_after} record")
+                    except Exception as e:
+                        st.error(f"❌ Errore: {str(e)}")
+                        logger.error(f"Errore svuotamento memoria: {e}")
             
             with col_cancel:
-                if st.button("❌ ANNULLA"):
+                if st.button("❌ ANNULLA", use_container_width=True):
                     st.session_state.show_confirm_delete_memoria = False
                     st.rerun()
     
