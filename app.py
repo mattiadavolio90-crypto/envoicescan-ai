@@ -1086,15 +1086,41 @@ with col1:
 </h1>
 """, unsafe_allow_html=True)
     
-    # Recupera email e nome ristorante
+    # Recupera email e nome ristorante intelligente
     user_email = (user.get('email') or user.get('Email') or user.get('user_email') or 
                   st.session_state.user_data.get('email') if st.session_state.user_data else None or 
                   'Email non disponibile')
     
-    nome_ristorante = (user.get('nome_ristorante') or user.get('restaurant_name') or 
-                       user.get('nome') or user.get('name') or 'Ristorante')
+    # 🎯 LOGICA INTELLIGENTE: Single vs Multi-Ristorante
+    try:
+        user_id = user.get('id')
+        if user_id:
+            # Conta ristoranti attivi per questo utente
+            ristoranti_count = supabase.table('ristoranti')\
+                .select('nome_ristorante', count='exact')\
+                .eq('user_id', user_id)\
+                .eq('attivo', True)\
+                .execute()
+            
+            num_ristoranti = len(ristoranti_count.data) if ristoranti_count.data else 0
+            
+            if num_ristoranti == 0:
+                nome_ristorante = "Nessun Ristorante"
+            elif num_ristoranti == 1:
+                # Single ristorante: mostra il nome
+                nome_ristorante = ristoranti_count.data[0]['nome_ristorante']
+            else:
+                # Multi-ristorante: mostra etichetta generica 
+                nome_ristorante = "Multi-Ristorante"
+        else:
+            # Fallback se non trova user_id
+            nome_ristorante = user.get('nome_ristorante') or 'Ristorante'
+    except Exception as e:
+        # Fallback sicuro in caso di errore query
+        logger.warning(f"Errore conteggio ristoranti per intestazione: {e}")
+        nome_ristorante = user.get('nome_ristorante') or 'Ristorante'
     
-    # Mostra nome ristorante ed email
+    # Mostra nome ristorante intelligente ed email
     st.markdown(f"<p style='font-size: 14px; color: #666; margin-top: -10px;'>🏪 {nome_ristorante} | 📧 {user_email}</p>", 
                 unsafe_allow_html=True)
 
