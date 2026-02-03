@@ -602,14 +602,23 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
             # Incrementa contatore per il ristorante
             ristorante_id = st.session_state.get('ristorante_id')
             if ristorante_id:
-                supabase_client = get_supabase_client()
-                supabase_client.rpc('increment_ai_cost', {
-                    'p_ristorante_id': ristorante_id,
-                    'p_cost': costo_totale,
-                    'p_tokens': tokens_usati
-                }).execute()
-                
-                logger.info(f"💰 AI Cost tracked: ${costo_totale:.4f} ({tokens_usati} tokens) - Ristorante: {ristorante_id}")
+                try:
+                    supabase_client = get_supabase_client()
+                    result = supabase_client.rpc('increment_ai_cost', {
+                        'p_ristorante_id': ristorante_id,
+                        'p_cost': costo_totale,
+                        'p_tokens': tokens_usati
+                    }).execute()
+                    
+                    logger.info(f"💰 AI Cost tracked: ${costo_totale:.4f} ({tokens_usati} tokens) - Ristorante: {ristorante_id}")
+                except Exception as rpc_err:
+                    # RPC potrebbe non esistere, avere firma diversa o permessi insufficienti
+                    logger.error(f"❌ Errore RPC increment_ai_cost: {rpc_err}")
+                    logger.warning(f"⚠️ Costo AI NON salvato su DB: ${costo_totale:.4f} ({tokens_usati} tokens)")
+                    # Non bloccare l'elaborazione anche se tracking fallisce
+            else:
+                # ⚠️ Utente senza ristorante_id (legacy o errore configurazione)
+                logger.warning(f"⚠️ AI Cost NON tracked: ristorante_id mancante. Costo: ${costo_totale:.4f} ({tokens_usati} tokens)")
         except Exception as track_error:
             # Non bloccare l'elaborazione se il tracking fallisce
             logger.warning(f"⚠️ Errore tracking costo AI: {track_error}")
@@ -652,6 +661,16 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
     
     user_id = st.session_state.user_data["id"]
     ristorante_id = st.session_state.get('ristorante_id')  # Può essere None per utenti legacy
+    
+    # ⚠️ VALIDAZIONE: Utenti senza ristorante_id non possono salvare fatture
+    if not ristorante_id:
+        logger.error(f"❌ ERRORE CRITICO: ristorante_id mancante per user_id={user_id}")
+        logger.error(f"   File: {nome_file}, Righe: {len(dati_prodotti)}")
+        if not silent:
+            st.error("⚠️ Configurazione account incompleta. Impossibile salvare fatture.")
+            st.info("💡 Contatta l'assistenza per completare la configurazione del tuo account.")
+        return {"success": False, "error": "missing_ristorante_id", "righe": 0, "location": None}
+    
     num_righe = len(dati_prodotti)
     
     # Ottieni client singleton se non fornito

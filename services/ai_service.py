@@ -666,6 +666,8 @@ def classifica_con_ai(
                 total_cost = cost_input + cost_output
                 
                 # Salva in DB se abbiamo ristorante_id
+                # NOTA: prodotti_master è GLOBALE (condiviso tra tutti i ristoranti)
+                # Non viene filtrato per ristorante_id per design (memoria condivisa)
                 if 'ristorante_id' in st.session_state and st.session_state.ristorante_id:
                     try:
                         from services import get_supabase_client

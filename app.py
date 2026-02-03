@@ -1014,7 +1014,41 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                 st.session_state.nome_ristorante = st.session_state.ristoranti[0]['nome_ristorante']
                 logger.info(f"🏢 Ristorante caricato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
         else:
-            # FALLBACK: utente normale senza ristoranti → usa dati dalla tabella users
+            # ⚠️ UTENTE LEGACY: Nessun ristorante trovato
+            if not st.session_state.get('user_is_admin', False):
+                piva = user.get('partita_iva')
+                nome = user.get('nome_ristorante')
+                user_id = user.get('id')
+                
+                # Tenta creazione automatica ristorante se ha P.IVA
+                if piva and nome and user_id:
+                    logger.warning(f"⚠️ Utente legacy {user_id} senza ristoranti - creazione automatica")
+                    try:
+                        new_rist = supabase.table('ristoranti').insert({
+                            'user_id': user_id,
+                            'nome_ristorante': nome,
+                            'partita_iva': piva,
+                            'ragione_sociale': user.get('ragione_sociale', ''),
+                            'attivo': True
+                        }).execute()
+                        
+                        if new_rist.data:
+                            st.session_state.ristoranti = new_rist.data
+                            st.session_state.ristorante_id = new_rist.data[0]['id']
+                            st.session_state.partita_iva = piva
+                            st.session_state.nome_ristorante = nome
+                            logger.info(f"✅ Ristorante creato automaticamente: {new_rist.data[0]['id']}")
+                        else:
+                            logger.error(f"❌ Creazione ristorante fallita per utente {user_id}")
+                    except Exception as create_err:
+                        logger.error(f"❌ Errore creazione ristorante automatico: {create_err}")
+                        st.error("⚠️ Errore configurazione account. Contatta l'assistenza.")
+                        st.stop()
+                else:
+                    # Nessuna P.IVA o dati mancanti
+                    logger.error(f"❌ Utente {user_id} senza ristoranti e dati incompleti")
+            
+            # FALLBACK vecchio codice per compatibilità
             if not st.session_state.get('user_is_admin', False):
                 piva = user.get('partita_iva')
                 nome = user.get('nome_ristorante')
@@ -1071,6 +1105,28 @@ if st.session_state.get('impersonating', False):
                 
                 # Ripristina flag admin
                 st.session_state.user_is_admin = True
+                
+                # 🏢 RIPRISTINA RISTORANTI ADMIN (tutti i ristoranti del sistema)
+                try:
+                    ristoranti_admin = supabase.table('ristoranti')\
+                        .select('id, nome_ristorante, partita_iva, ragione_sociale, user_id')\
+                        .eq('attivo', True)\
+                        .order('nome_ristorante')\
+                        .execute()
+                    
+                    st.session_state.ristoranti = ristoranti_admin.data if ristoranti_admin.data else []
+                    
+                    # Rimuovi ristorante_id specifico (admin vede tutti i ristoranti)
+                    if st.session_state.get('ristorante_id'):
+                        del st.session_state.ristorante_id
+                    if 'partita_iva' in st.session_state:
+                        del st.session_state.partita_iva
+                    if 'nome_ristorante' in st.session_state:
+                        del st.session_state.nome_ristorante
+                    
+                    logger.info(f"🔙 ADMIN: Ripristinati {len(st.session_state.ristoranti)} ristoranti del sistema")
+                except Exception as e:
+                    logger.error(f"Errore ripristino ristoranti admin: {e}")
                 
                 # Log uscita impersonazione
                 logger.info(f"FINE IMPERSONAZIONE: Ritorno a admin {st.session_state.user_data.get('email')}")
@@ -4658,10 +4714,12 @@ if uploaded_files:
             
             # Tentativo 1: Usa RPC function se disponibile (query aggregata SQL lato server)
             try:
-                # Prova a chiamare funzione RPC che restituisce file_origine DISTINCT
+                # 🔧 RPC con filtro multi-ristorante
+                # NOTA: La stored procedure deve supportare il parametro opzionale p_ristorante_id
                 rpc_params = {'p_user_id': user_id}
                 if ristorante_id:
                     rpc_params['p_ristorante_id'] = ristorante_id
+                    logger.debug(f"🔍 Query file con ristorante_id: {ristorante_id}")
                 response_rpc = supabase.rpc('get_distinct_files', rpc_params).execute()
                 # Normalizza nomi file dal DB per confronto (rimuovi estensione)
                 file_su_supabase = {get_nome_base_file(row["file_origine"]) 

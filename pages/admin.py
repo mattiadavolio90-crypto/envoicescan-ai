@@ -94,6 +94,22 @@ if user.get('email') not in ADMIN_EMAILS:
     st.stop()
 
 # ============================================================
+# INIZIALIZZAZIONE RISTORANTI (come in app.py)
+# ============================================================
+# Gli admin vedono TUTTI i ristoranti, quindi non impostiamo ristorante_id specifico
+# Se necessario caricare ristoranti per operazioni specifiche:
+if 'ristoranti' not in st.session_state:
+    try:
+        user_id = st.session_state.user_data.get('id')
+        if user_id:
+            ristoranti_response = supabase.table('ristoranti').select('*').eq('user_id', user_id).execute()
+            if ristoranti_response.data:
+                st.session_state.ristoranti = ristoranti_response.data
+                logger.info(f"✅ {len(ristoranti_response.data)} ristoranti caricati per admin")
+    except Exception as e:
+        logger.error(f"Errore caricamento ristoranti admin: {e}")
+
+# ============================================================
 # HELPER FUNCTIONS
 # ============================================================
 
@@ -278,18 +294,26 @@ def applica_bulk_categoria(lista_descrizioni, nuova_categoria, is_admin=True):
 # FUNZIONI DIAGNOSTICA DATABASE
 # ============================================================
 
-def analizza_integrita_database():
+def analizza_integrita_database(ristorante_id=None):
     """
     Analizza integrità database e rileva anomalie.
+    
+    Args:
+        ristorante_id: Optional - filtra per ristorante specifico, None = tutti
     
     Returns:
         tuple: (problemi dict, dettagli dict con DataFrame)
     """
     try:
         # Query dati completi
-        response = supabase.table('fatture')\
-            .select('*')\
-            .execute()
+        query = supabase.table('fatture').select('*')
+        
+        # 🔍 FILTRO RISTORANTE (opzionale per admin drill-down)
+        if ristorante_id:
+            query = query.eq('ristorante_id', ristorante_id)
+            logger.info(f"🔍 Analisi integrità filtrata per ristorante: {ristorante_id}")
+        
+        response = query.execute()
         
         if not response.data:
             return {}, {}
@@ -426,17 +450,25 @@ def analizza_integrita_database():
         return {}, {}
 
 
-def trova_fornitori_duplicati():
+def trova_fornitori_duplicati(ristorante_id=None):
     """
     Trova fornitori con nomi simili (probabili duplicati).
+    
+    Args:
+        ristorante_id: Optional - filtra per ristorante specifico, None = tutti
     
     Returns:
         list: Gruppi di fornitori simili
     """
     try:
-        response = supabase.table('fatture')\
-            .select('fornitore')\
-            .execute()
+        query = supabase.table('fatture').select('fornitore')
+        
+        # 🔍 FILTRO RISTORANTE (opzionale per admin drill-down)
+        if ristorante_id:
+            query = query.eq('ristorante_id', ristorante_id)
+            logger.info(f"🔍 Ricerca duplicati filtrata per ristorante: {ristorante_id}")
+        
+        response = query.execute()
         
         if not response.data:
             return []
@@ -1365,6 +1397,33 @@ if tab1:
                                 'attivo': row['attivo']
                             }
                             st.session_state.user_data = cliente_data
+                            
+                            # 🏢 CARICA RISTORANTI DELL'UTENTE IMPERSONATO
+                            try:
+                                ristoranti_cliente = supabase.table('ristoranti')\
+                                    .select('id, nome_ristorante, partita_iva, ragione_sociale')\
+                                    .eq('user_id', row['user_id'])\
+                                    .eq('attivo', True)\
+                                    .execute()
+                                
+                                if ristoranti_cliente.data and len(ristoranti_cliente.data) > 0:
+                                    st.session_state.ristoranti = ristoranti_cliente.data
+                                    # Imposta primo ristorante come default
+                                    st.session_state.ristorante_id = ristoranti_cliente.data[0]['id']
+                                    st.session_state.partita_iva = ristoranti_cliente.data[0]['partita_iva']
+                                    st.session_state.nome_ristorante = ristoranti_cliente.data[0]['nome_ristorante']
+                                    logger.info(f"🏢 Impersonazione: Caricato ristorante {ristoranti_cliente.data[0]['nome_ristorante']} (ID: {ristoranti_cliente.data[0]['id']})")
+                                else:
+                                    # Fallback: usa dati dalla tabella users (utenti legacy senza ristoranti)
+                                    st.session_state.ristoranti = []
+                                    st.session_state.ristorante_id = None
+                                    st.session_state.partita_iva = row.get('partita_iva')
+                                    st.session_state.nome_ristorante = row['ristorante']
+                                    logger.warning(f"⚠️ Utente {row['email']} non ha ristoranti nella tabella ristoranti")
+                            except Exception as e:
+                                logger.error(f"Errore caricamento ristoranti durante impersonazione: {e}")
+                                st.session_state.ristoranti = []
+                                st.session_state.ristorante_id = None
                             
                             # Disabilita flag admin per cliente impersonato
                             st.session_state.user_is_admin = False

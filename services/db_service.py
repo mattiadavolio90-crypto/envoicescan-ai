@@ -83,7 +83,7 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
             page = 0
             
             # 🚀 OTTIMIZZAZIONE: Select solo colonne necessarie (non "*")
-            columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard"
+            columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id"
             
             while True:
                 offset = page * page_size
@@ -216,8 +216,8 @@ def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
     
     try:
         # Leggi tutte le fatture dell'utente
-        from utils.ristorante_helper import get_ristorante_id
-        ristorante_id = get_ristorante_id()
+        from utils.ristorante_helper import get_current_ristorante_id
+        ristorante_id = get_current_ristorante_id()
         query = supabase_client.table("fatture") \
             .select("id, descrizione, quantita, prezzo_unitario, totale_riga") \
             .eq("user_id", user_id)

@@ -22,16 +22,26 @@ def add_ristorante_filter(query, ristorante_id=None):
         query = add_ristorante_filter(query)
         result = query.execute()
     """
-    # Se ristorante_id non fornito, prendi da session_state
-    if ristorante_id is None:
-        ristorante_id = st.session_state.get('ristorante_id')
-    
-    # Aggiungi filtro solo se ristorante_id presente (multi-ristorante attivo)
-    if ristorante_id:
-        query = query.eq("ristorante_id", ristorante_id)
-        logger.debug(f"🔍 Filtro ristorante_id aggiunto: {ristorante_id}")
-    
-    return query
+    try:
+        # Se ristorante_id non fornito, prendi da session_state
+        if ristorante_id is None:
+            # Verifica che session_state sia disponibile
+            if hasattr(st, 'session_state'):
+                ristorante_id = st.session_state.get('ristorante_id')
+            else:
+                logger.warning("⚠️ Streamlit session_state non disponibile, skip filtro ristorante")
+                return query
+        
+        # Aggiungi filtro solo se ristorante_id presente (multi-ristorante attivo)
+        if ristorante_id:
+            query = query.eq("ristorante_id", ristorante_id)
+            logger.debug(f"🔍 Filtro ristorante_id aggiunto: {ristorante_id}")
+        
+        return query
+    except Exception as e:
+        logger.error(f"❌ Errore in add_ristorante_filter: {e}")
+        # In caso di errore, ritorna query inalterata per non bloccare l'app
+        return query
 
 
 def get_current_ristorante_id():
@@ -41,7 +51,15 @@ def get_current_ristorante_id():
     Returns:
         str: UUID del ristorante o None
     """
-    return st.session_state.get('ristorante_id')
+    try:
+        if hasattr(st, 'session_state'):
+            return st.session_state.get('ristorante_id')
+        else:
+            logger.warning("⚠️ Streamlit session_state non disponibile")
+            return None
+    except Exception as e:
+        logger.error(f"❌ Errore recupero ristorante_id: {e}")
+        return None
 
 
 def is_multi_ristorante_active():
