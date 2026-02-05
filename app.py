@@ -708,7 +708,18 @@ def mostra_pagina_login():
     background-clip: text;">Analisi Fatture AI</span>
 </h1>
 """, unsafe_allow_html=True)
-    st.markdown("### Accedi al Sistema")
+    
+    # Header con link Privacy
+    col_login1, col_login2 = st.columns([3, 1])
+    with col_login1:
+        st.markdown("### Accedi al Sistema")
+    with col_login2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("📋 Privacy", use_container_width=True, key="privacy_login_btn"):
+            st.switch_page("pages/privacy_policy.py")
+    
+    # Box informativo sulla conservazione sostitutiva
+    st.info("📄 **Nota Legale:** Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.")
     
     tab1, tab2 = st.tabs(["🔑 Login", "🔄 Recupera Password"])
     
@@ -1069,11 +1080,11 @@ if st.session_state.get('impersonating', False):
 # ============================================
 
 
-# Struttura colonne: se admin mostra 4 colonne, altrimenti 3
+# Struttura colonne: se admin mostra 5 colonne, altrimenti 4
 if user.get('email') in ADMIN_EMAILS:
-    col1, col2, col3, col4 = st.columns([6, 1.5, 1.5, 1])
+    col1, col2, col3, col4, col5 = st.columns([5, 1.5, 1.5, 1.3, 1])
 else:
-    col1, col2, col3 = st.columns([7, 2, 1])
+    col1, col2, col3, col4 = st.columns([5.5, 1.8, 1.3, 1])
 
 
 with col1:
@@ -1123,6 +1134,11 @@ with col1:
     # Mostra nome ristorante intelligente ed email
     st.markdown(f"<p style='font-size: 14px; color: #666; margin-top: -10px;'>🏪 {nome_ristorante} | 📧 {user_email}</p>", 
                 unsafe_allow_html=True)
+    st.markdown("""
+<div style='background-color: #e7f3ff; padding: 12px; border-radius: 5px; border-left: 4px solid #2196F3;'>
+<p style='margin: 0; color: #014361; font-size: 14px;'>📄 <strong>Nota Legale:</strong> Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.</p>
+</div>
+""", unsafe_allow_html=True)
 
 
 # Pulsanti diversi per admin e clienti
@@ -1134,10 +1150,15 @@ if user.get('email') in ADMIN_EMAILS:
     
     with col3:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔓 Password", use_container_width=True, key="change_pwd_btn"):
-            st.switch_page("pages/cambio_password.py")
+        if st.button("⚙️ Gestione Account", use_container_width=True, key="gestione_account_btn"):
+            st.switch_page("pages/gestione_account.py")
     
     with col4:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("📋 Privacy", use_container_width=True, key="privacy_btn_admin"):
+            st.switch_page("pages/privacy_policy.py")
+    
+    with col5:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
             # Reset completo session_state
@@ -1149,10 +1170,15 @@ if user.get('email') in ADMIN_EMAILS:
 else:
     with col2:
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔓 Cambio Password", use_container_width=True, key="change_pwd_btn"):
-            st.switch_page("pages/cambio_password.py")
+        if st.button("⚙️ Gestione Account", use_container_width=True, key="gestione_account_btn_client"):
+            st.switch_page("pages/gestione_account.py")
     
     with col3:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("📋 Privacy", use_container_width=True, key="privacy_btn_main"):
+            st.switch_page("pages/privacy_policy.py")
+    
+    with col4:
         st.markdown("<br>", unsafe_allow_html=True)
         if st.button("Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
             # Reset completo session_state
