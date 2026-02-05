@@ -20,7 +20,7 @@ st.markdown("""
 ### Titolare del Trattamento
 **Mattia D'Avolio**  
 P.IVA: IT09599210961  
-Email: [SOSTITUISCI CON TUA EMAIL]
+Email: mattiadavolio90@gmail.com
 
 ---
 
