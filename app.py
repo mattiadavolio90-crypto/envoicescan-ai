@@ -1131,9 +1131,7 @@ with col1:
         logger.warning(f"Errore conteggio ristoranti per intestazione: {e}")
         nome_ristorante = user.get('nome_ristorante') or 'Ristorante'
     
-    # Mostra nome ristorante intelligente ed email
-    st.markdown(f"<p style='font-size: 14px; color: #666; margin-top: -10px;'>🏪 {nome_ristorante} | 📧 {user_email}</p>", 
-                unsafe_allow_html=True)
+    # Box informativo conservazione sostitutiva
     st.markdown("""
 <div style='background-color: #e7f3ff; padding: 12px; border-radius: 5px; border-left: 4px solid #2196F3;'>
 <p style='margin: 0; color: #014361; font-size: 14px;'>📄 <strong>Nota Legale:</strong> Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.</p>

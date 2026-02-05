@@ -41,7 +41,7 @@ st.title("⚙️ Gestione Account")
 st.info(f"**Account:** {user.get('email')}")
 
 # ===== TAB: Cambio Password + Elimina Account =====
-tab1, tab2 = st.tabs(["🔑 Cambio Password", "🗑️ Elimina Account"])
+tab1, tab2, tab3 = st.tabs(["🔑 Cambio Password", "📥 Scarica Dati", "🗑️ Elimina Account"])
 
 # ----- TAB 1: CAMBIO PASSWORD -----
 with tab1:
@@ -117,8 +117,123 @@ with tab1:
                     logger.exception(f"Errore cambio password per {user.get('email')}")
                     st.error(f"❌ Errore: {str(e)}")
 
-# ----- TAB 2: ELIMINA ACCOUNT -----
+# ----- TAB 2: EXPORT DATI -----
 with tab2:
+    st.subheader("📥 Esporta i Tuoi Dati")
+    
+    st.info("""
+    **Diritto di Accesso (Art. 15 GDPR)**
+    
+    Puoi scaricare una copia di tutti i tuoi dati in formato JSON, inclusi:
+    - Dati anagrafici account
+    - Elenco fatture caricate (metadati)
+    - Ristoranti/sedi configurati
+    - Classificazioni personalizzate
+    """)
+    
+    if st.button("📥 Genera e Scarica Dati", use_container_width=True, type="primary", key="btn_export_dati"):
+        with st.spinner("Preparazione dati in corso..."):
+            try:
+                import json
+                from datetime import datetime
+                
+                user_id = user.get('id')
+                user_email = user.get('email')
+                
+                # Prepara dizionario dati
+                export_data = {
+                    "data_export": datetime.now().isoformat(),
+                    "account": {
+                        "email": user.get('email'),
+                        "nome_ristorante": user.get('nome_ristorante'),
+                        "partita_iva": user.get('partita_iva'),
+                        "ragione_sociale": user.get('ragione_sociale'),
+                        "created_at": user.get('created_at')
+                    },
+                    "ristoranti": [],
+                    "fatture": [],
+                    "classificazioni_manuali": []
+                }
+                
+                # Query ristoranti
+                try:
+                    ristoranti_query = supabase.table('ristoranti').select('*').eq('user_id', user_id).execute()
+                    if ristoranti_query.data:
+                        export_data["ristoranti"] = [
+                            {
+                                "nome": r.get('nome_ristorante'),
+                                "piva": r.get('partita_iva'),
+                                "ragione_sociale": r.get('ragione_sociale'),
+                                "attivo": r.get('attivo')
+                            }
+                            for r in ristoranti_query.data
+                        ]
+                except Exception as e:
+                    logger.warning(f"Errore query ristoranti export: {e}")
+                
+                # Query fatture (solo metadati, NO file completi)
+                try:
+                    fatture_query = supabase.table('fatture').select(
+                        'file, fornitore, data_fattura, numero_fattura, totale, categoria'
+                    ).eq('user_id', user_id).execute()
+                    
+                    if fatture_query.data:
+                        export_data["fatture"] = [
+                            {
+                                "file": f.get('file'),
+                                "fornitore": f.get('fornitore'),
+                                "data": f.get('data_fattura'),
+                                "numero": f.get('numero_fattura'),
+                                "totale": f.get('totale'),
+                                "categoria": f.get('categoria')
+                            }
+                            for f in fatture_query.data
+                        ]
+                except Exception as e:
+                    logger.warning(f"Errore query fatture export: {e}")
+                
+                # Query classificazioni manuali
+                try:
+                    class_query = supabase.table('classificazioni_manuali').select('*').eq('user_id', user_id).execute()
+                    if class_query.data:
+                        export_data["classificazioni_manuali"] = class_query.data
+                except Exception as e:
+                    logger.warning(f"Errore query classificazioni export: {e}")
+                
+                # Converti in JSON
+                json_data = json.dumps(export_data, indent=2, ensure_ascii=False)
+                
+                # Calcola dimensione file
+                file_size_bytes = len(json_data.encode('utf-8'))
+                file_size_kb = file_size_bytes / 1024
+                
+                # Genera nome file
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"dati_account_{timestamp}.json"
+                
+                # Bottone download
+                st.success(f"✅ Dati pronti! ({len(export_data['fatture'])} fatture, {len(export_data['ristoranti'])} ristoranti) - {file_size_kb:.1f} KB")
+                
+                st.download_button(
+                    label="💾 Scarica File JSON",
+                    data=json_data,
+                    file_name=filename,
+                    mime="application/json",
+                    use_container_width=True,
+                    type="primary"
+                )
+                
+                logger.info(f"EXPORT DATI - Generato per {user_email} ({file_size_kb:.1f} KB)")
+                
+            except Exception as e:
+                logger.exception(f"Errore export dati: {e}")
+                st.error(f"❌ Errore durante la generazione: {str(e)}")
+    
+    st.markdown("---")
+    st.caption("🔒 I dati esportati sono in formato JSON leggibile. Non contengono informazioni sensibili come password (che sono sempre cifrate).")
+
+# ----- TAB 3: ELIMINA ACCOUNT -----
+with tab3:
     st.subheader("Eliminazione Account")
     
     # Gli admin NON possono auto-eliminarsi
