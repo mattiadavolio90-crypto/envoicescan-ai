@@ -5,11 +5,16 @@ from argon2 import PasswordHasher
 from services.db_service import elimina_tutte_fatture
 from services import get_supabase_client
 from config.logger_setup import get_logger
+from utils.sidebar_helper import render_sidebar
 
 # Logger
 logger = get_logger('gestione_account')
 
-st.set_page_config(page_title="Gestione Account", page_icon="⚙️")
+st.set_page_config(
+    page_title="Gestione Account", 
+    page_icon="⚙️",
+    initial_sidebar_state="expanded"
+)
 
 # Verifica autenticazione
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
@@ -30,12 +35,10 @@ except Exception as e:
 # Hasher password
 ph = PasswordHasher()
 
-# Nascondi sidebar
-st.markdown("""
-<style>
-[data-testid="stSidebar"] {display: none;}
-</style>
-""", unsafe_allow_html=True)
+# ============================================================
+# SIDEBAR CONDIVISA
+# ============================================================
+render_sidebar(user)
 
 st.title("⚙️ Gestione Account")
 st.info(f"**Account:** {user.get('email')}")
@@ -309,5 +312,5 @@ with tab3:
 st.markdown("---")
 col1, col2, col3 = st.columns([1, 1, 1])
 with col2:
-    if st.button("← Torna all'App", use_container_width=True):
+    if st.button("← Torna all'App", type="primary", use_container_width=True):
         st.switch_page("app.py")

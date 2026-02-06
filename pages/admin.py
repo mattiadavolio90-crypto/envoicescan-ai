@@ -27,6 +27,7 @@ from utils.formatters import carica_categorie_da_db
 from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria
 from utils.piva_validator import valida_formato_piva, normalizza_piva
 from services.auth_service import crea_cliente_con_token
+from utils.sidebar_helper import render_sidebar
 
 # Importa costanti per filtri e admin
 from config.constants import CATEGORIE_SPESE_GENERALI, ADMIN_EMAILS
@@ -46,7 +47,7 @@ logger = get_logger('admin')
 st.set_page_config(
     page_title="Pannello Admin", 
     layout="wide", 
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # ============================================================
@@ -95,6 +96,11 @@ user = st.session_state.get('user_data', {})
 if user.get('email') not in ADMIN_EMAILS:
     st.error("⛔ Accesso riservato agli amministratori")
     st.stop()
+
+# ============================================================
+# SIDEBAR CONDIVISA
+# ============================================================
+render_sidebar(user)
 
 # ============================================================
 # INIZIALIZZAZIONE RISTORANTI (come in app.py)

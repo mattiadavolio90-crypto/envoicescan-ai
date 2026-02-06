@@ -13,6 +13,7 @@ import hashlib
 # Import singleton Supabase e logger
 from services import get_supabase_client
 from config.logger_setup import get_logger
+from utils.sidebar_helper import render_sidebar
 
 # ============================================================
 # CONFIGURAZIONE
@@ -21,7 +22,8 @@ from config.logger_setup import get_logger
 st.set_page_config(
     page_title="Cambio Password - Analisi Fatture AI",
     page_icon="🔐",
-    layout="centered"
+    layout="centered",
+    initial_sidebar_state="expanded"
 )
 
 # Logger (usa configurazione centralizzata)
@@ -49,6 +51,11 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.stop()
 
 user = st.session_state.user_data
+
+# ============================================================
+# SIDEBAR CONDIVISA
+# ============================================================
+render_sidebar(user)
 
 # ============================================================
 # INTERFACCIA

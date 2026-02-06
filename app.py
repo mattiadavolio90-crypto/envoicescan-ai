@@ -88,6 +88,7 @@ from utils.formatters import (
 )
 
 from utils.ristorante_helper import add_ristorante_filter, get_current_ristorante_id
+from utils.sidebar_helper import render_sidebar
 
 # Import services
 from services.ai_service import (
@@ -172,7 +173,7 @@ st.set_page_config(
     page_title="Analisi Fatture AI",
     page_icon="🧠",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
     menu_items={
         'Get Help': None,
         'Report a bug': None,
@@ -206,12 +207,6 @@ st.markdown("""
         visibility: hidden !important;
     }
     
-    /* === SIDEBAR (disabilitata) === */
-    [data-testid="stSidebar"], section[data-testid="stSidebar"],
-    [data-testid="collapsedControl"] {
-        display: none !important;
-    }
-    
     /* === VIEWERBADGE (Made with Streamlit) === */
     .viewerBadge_container__1QSob, .viewerBadge_link__1S137,
     .styles_viewerBadge__1yB5_, [class*="viewerBadge"],
@@ -226,19 +221,6 @@ st.markdown("""
     button[title*="Share" i], a[title*="Share" i], [aria-label*="Share" i], [data-testid*="share" i],
     button[title*="Condividi" i], a[title*="Condividi" i], [aria-label*="Condividi" i] {
         display: none !important;
-    }
-    
-    /* === OVERLAY BIANCO COPERTURA FOOTER === */
-    body::after {
-        content: "";
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        height: 100px;
-        background: white;
-        z-index: 999999;
-        pointer-events: none;
     }
     
     /* === LAYOUT OTTIMIZZATO === */
@@ -1076,15 +1058,21 @@ if st.session_state.get('impersonating', False):
 
 
 # ============================================
+# SIDEBAR CON NAVIGAZIONE E INFO
+# ============================================
+render_sidebar(user)
+
+
+# ============================================
 # HEADER CON LOGOUT, LINK ADMIN E CAMBIO PASSWORD
 # ============================================
 
 
-# Struttura colonne: se admin mostra 5 colonne, altrimenti 4
+# Struttura colonne header: se admin mostra 2 colonne, altrimenti 2
 if user.get('email') in ADMIN_EMAILS:
-    col1, col2, col3, col4, col5 = st.columns([5, 1.5, 1.5, 1.3, 1])
+    col1, col2 = st.columns([8, 1])
 else:
-    col1, col2, col3, col4 = st.columns([5.5, 1.8, 1.3, 1])
+    col1, col2 = st.columns([8, 1])
 
 
 with col1:
@@ -1139,52 +1127,32 @@ with col1:
 """, unsafe_allow_html=True)
 
 
-# Pulsanti diversi per admin e clienti
-if user.get('email') in ADMIN_EMAILS:
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔧 Pannello Admin", use_container_width=True, key="admin_panel_btn"):
-            st.switch_page("pages/admin.py")
-    
-    with col3:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("⚙️ Gestione Account", use_container_width=True, key="gestione_account_btn"):
-            st.switch_page("pages/gestione_account.py")
-    
-    with col4:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("📋 Privacy", use_container_width=True, key="privacy_btn_admin"):
-            st.switch_page("pages/privacy_policy.py")
-    
-    with col5:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
-            # Reset completo session_state
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            
-            # Rerun per applicare
-            st.rerun()
-else:
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("⚙️ Gestione Account", use_container_width=True, key="gestione_account_btn_client"):
-            st.switch_page("pages/gestione_account.py")
-    
-    with col3:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("📋 Privacy", use_container_width=True, key="privacy_btn_main"):
-            st.switch_page("pages/privacy_policy.py")
-    
-    with col4:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("Logout", type="primary", use_container_width=True, key="logout_btn_alt"):
-            # Reset completo session_state
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            
-            # Rerun per applicare
-            st.rerun()
+# CSS personalizzato per bottone Logout
+st.markdown("""
+<style>
+/* Stile logout button */
+div[data-testid="column"]:last-child button[kind="primary"] {
+    background-color: #ef4444 !important;
+    color: white !important;
+    border: 1px solid #ef4444 !important;
+}
+div[data-testid="column"]:last-child button[kind="primary"]:hover {
+    background-color: #dc2626 !important;
+    border: 1px solid #dc2626 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Pulsante Logout
+with col2:
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
+        # Reset completo session_state
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        
+        # Rerun per applicare
+        st.rerun()
 
 
 st.markdown("---")

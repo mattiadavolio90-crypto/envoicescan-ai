@@ -1,18 +1,18 @@
 import streamlit as st
+from utils.sidebar_helper import render_sidebar
 
-st.set_page_config(page_title="Privacy Policy", page_icon="📋")
+st.set_page_config(
+    page_title="Privacy Policy", 
+    page_icon="📋",
+    initial_sidebar_state="expanded"
+)
 
 # La pagina è pubblica, mostra avviso se non loggati
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.info("ℹ️ Questa pagina è consultabile pubblicamente. Torna al Login per accedere al servizio.")
-
-# Nascondi sidebar
-st.markdown("""
-<style>
-[data-testid="stSidebar"] {display: none;}
-[data-testid="collapsedControl"] {display: none;}
-</style>
-""", unsafe_allow_html=True)
+else:
+    # Mostra sidebar solo per utenti loggati
+    render_sidebar(st.session_state.user_data)
 
 st.title("📋 Privacy Policy & Informativa Cookie")
 
