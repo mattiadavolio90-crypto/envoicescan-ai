@@ -150,6 +150,9 @@ def estrai_dati_da_xml(file_caricato):
             logger.info("✅ Cache memoria precaricata per elaborazione XML")
         
         contenuto = file_caricato.read()
+        # Decodifica esplicita UTF-8 per gestire caratteri speciali (cinesi, ecc.)
+        if isinstance(contenuto, bytes):
+            contenuto = contenuto.decode('utf-8')
         doc = xmltodict.parse(contenuto)
         
         root_key = list(doc.keys())[0]
