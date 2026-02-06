@@ -11,7 +11,7 @@ Funzioni per:
 
 import re
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 from config.constants import (
     REGEX_UNITA_MISURA,
@@ -201,7 +201,6 @@ def estrai_nome_categoria(categoria_con_icona: str) -> str:
     
     # ✅ FIX: Rimuovi solo emoji iniziali (caratteri non-ASCII all'inizio)
     # NON splittare su spazi interni (es: "MATERIALE DI CONSUMO" deve restare intatto)
-    import re
     # Pattern: rimuove emoji/simboli non-ASCII all'inizio + eventuali spazi dopo
     categoria_clean = re.sub(r'^[^\w\s]+\s*', '', categoria_clean)
     

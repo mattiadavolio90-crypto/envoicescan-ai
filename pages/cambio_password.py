@@ -65,7 +65,7 @@ st.title("🔐 Cambio Password")
 st.markdown(f"**Utente:** {user.get('email')}")
 st.markdown("---")
 
-st.info("💡 **Consiglio:** Usa una password forte con almeno 8 caratteri, maiuscole, minuscole e numeri.")
+st.info("💡 **Consiglio:** Usa una password forte con almeno 10 caratteri, maiuscole, minuscole e numeri.")
 
 with st.form("form_cambio_password"):
     vecchia_password = st.text_input(
@@ -79,7 +79,7 @@ with st.form("form_cambio_password"):
     nuova_password = st.text_input(
         "🆕 Nuova Password",
         type="password",
-        help="Minimo 8 caratteri"
+        help="Minimo 10 caratteri"
     )
     
     conferma_password = st.text_input(
@@ -98,8 +98,8 @@ with st.form("form_cambio_password"):
                 st.error("⚠️ Compila tutti i campi!")
             elif nuova_password != conferma_password:
                 st.error("❌ Le nuove password non coincidono!")
-            elif len(nuova_password) < 8:
-                st.error("❌ La nuova password deve essere di almeno 8 caratteri!")
+            elif len(nuova_password) < 10:
+                st.error("❌ La nuova password deve essere di almeno 10 caratteri!")
             elif vecchia_password == nuova_password:
                 st.warning("⚠️ La nuova password deve essere diversa da quella attuale!")
             else:

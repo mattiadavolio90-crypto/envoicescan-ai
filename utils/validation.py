@@ -7,7 +7,6 @@ Funzioni per:
 - Validazione prezzi
 """
 
-import re
 import logging
 from typing import Optional, Dict
 

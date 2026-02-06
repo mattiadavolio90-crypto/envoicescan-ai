@@ -1,90 +1,33 @@
 ﻿# Fix: Force re-deployment to resolve IndentationError on cloud
 import extra_streamlit_components as stx
-import tempfile
-import shutil
 import streamlit as st
 import pandas as pd
-import xmltodict
 import os
-import json
 from openai import OpenAI
 import plotly.express as px
-import plotly.graph_objects as go
 import io
 import time
 import re
-import base64
-import fitz  # PyMuPDF - conversione PDF senza dipendenze esterne
-from PIL import Image
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
-from openai import RateLimitError, APIError, APITimeoutError, APIConnectionError
 
-# Import costanti e regex da modulo separato
+# Import costanti da modulo separato
 from config.constants import (
-    # Regex precompilate
-    REGEX_UNITA_MISURA,
-    REGEX_NUMERI_UNITA,
-    REGEX_SOSTITUZIONI,
-    REGEX_PUNTEGGIATURA,
-    REGEX_ARTICOLI,
-    REGEX_LETTERE_MINIME,
-    REGEX_PATTERN_BOLLA,
-    REGEX_KG_NUMERO,
-    REGEX_GR_NUMERO,
-    REGEX_ML_NUMERO,
-    REGEX_CL_NUMERO,
-    REGEX_LT_NUMERO,
-    REGEX_PZ_NUMERO,
-    REGEX_X_NUMERO,
-    REGEX_PARENTESI_NUMERO,
-    REGEX_NUMERO_KG,
-    REGEX_NUMERO_LT,
-    REGEX_NUMERO_GR,
-    REGEX_PUNTEGGIATURA_FINALE,
-    # Colori
     COLORI_PLOTLY,
-    # Categorie
-    CATEGORIE_FOOD_BEVERAGE,
-    CATEGORIE_MATERIALI,
-    CATEGORIE_SPESE_OPERATIVE,
-    TUTTE_LE_CATEGORIE,
-    CATEGORIE_FOOD,
     CATEGORIE_SPESE_GENERALI,
-    # Dizionario correzioni
-    DIZIONARIO_CORREZIONI,
-    # Admin
     ADMIN_EMAILS
 )
 
 # Import utilities da moduli separati
 from utils.text_utils import (
-    normalizza_descrizione,
-    get_descrizione_normalizzata_e_originale,
     normalizza_stringa,
-    estrai_nome_categoria,
-    estrai_fornitore_xml,
-    aggiungi_icona_categoria
+    estrai_nome_categoria
 )
 
-from utils.validation import (
-    is_dicitura_sicura,
-    verifica_integrita_fattura,
-    is_prezzo_valido
-)
-
-from utils.piva_validator import (
-    valida_formato_piva,
-    normalizza_piva
-)
+from utils.piva_validator import normalizza_piva
 
 from utils.formatters import (
-    converti_in_base64,
-    safe_get,
     calcola_prezzo_standard_intelligente,
     carica_categorie_da_db,
-    log_upload_event,
-    crea_pivot_mensile,
-    genera_box_recap
+    log_upload_event
 )
 
 from utils.ristorante_helper import add_ristorante_filter, get_current_ristorante_id
@@ -94,18 +37,12 @@ from utils.sidebar_helper import render_sidebar
 from services.ai_service import (
     carica_memoria_completa,
     invalida_cache_memoria,
-    ottieni_categoria_prodotto,
-    categorizza_con_memoria,
     applica_correzioni_dizionario,
     salva_correzione_in_memoria_globale,
     classifica_con_ai,
     mostra_loading_ai,
     svuota_memoria_globale,
-    set_global_memory_enabled,
-    # Legacy functions
-    carica_memoria_ai,
-    salva_memoria_ai,
-    aggiorna_memoria_ai
+    set_global_memory_enabled
 )
 
 from services.auth_service import (
@@ -231,116 +168,29 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# JavaScript SUPER aggressivo per rimuovere elementi branding
+# JavaScript per rimuovere branding Streamlit (singolo, efficiente)
 st.markdown("""
 <script>
 (function() {
-    function hideStreamlitBranding() {
-        // Rimuovi TUTTI i footer
-        document.querySelectorAll('footer').forEach(el => {
-            el.style.display = 'none';
-            el.style.visibility = 'hidden';
-            el.style.height = '0';
-            el.style.overflow = 'hidden';
-            el.remove();
-        });
-        document.querySelectorAll('[role="contentinfo"]').forEach(el => el.remove());
-        document.querySelectorAll('[data-testid="stFooter"]').forEach(el => el.remove());
-        
-        // Rimuovi decorazioni
-        document.querySelectorAll('[data-testid="stDecoration"]').forEach(el => el.remove());
-        document.querySelectorAll('[data-testid="stToolbar"]').forEach(el => el.remove());
-        
-        // Rimuovi header
-        document.querySelectorAll('header[data-testid="stHeader"]').forEach(el => el.remove());
-        
-        // Rimuovi ViewerBadge (Made with Streamlit)
-        document.querySelectorAll('[class*="viewerBadge"]').forEach(el => {
-            el.style.display = 'none';
-            el.remove();
-        });
-        document.querySelectorAll('a[href*="streamlit.io"]').forEach(el => {
-            if (el.textContent.includes('Streamlit') || el.textContent.includes('Made with')) {
-                el.remove();
-            }
-        });
-        
-        // Cerca e rimuovi qualsiasi elemento che contiene "Made with" o "Hosted"
-        document.querySelectorAll('*').forEach(el => {
-            const text = el.textContent || '';
-            if (text.includes('Made with') || text.includes('Hosted with') || text.includes('Streamlit')) {
-                if (el.tagName === 'A' || el.tagName === 'DIV' || el.tagName === 'SPAN') {
-                    el.style.display = 'none';
-                    el.remove();
-                }
-            }
-        });
+    const keywords = ['deploy','share','condividi','pubblica'];
+    function cleanBranding() {
+        try {
+            document.querySelectorAll('footer, [role="contentinfo"], [data-testid="stFooter"], [data-testid="stDecoration"], [data-testid="stToolbar"], header[data-testid="stHeader"], [class*="viewerBadge"]').forEach(el => el.remove());
+            document.querySelectorAll('a[href*="streamlit.io"]').forEach(el => {
+                if ((el.textContent||'').match(/Made with|Streamlit/)) el.remove();
+            });
+            document.querySelectorAll('button, a, span').forEach(el => {
+                const combined = [(el.innerText||'').toLowerCase(), (el.title||'').toLowerCase(), (el.getAttribute('aria-label')||'').toLowerCase()].join(' ');
+                for (const k of keywords) { if (combined.includes(k)) { el.style.display='none'; break; } }
+            });
+        } catch(e) {}
     }
-    
-    // Esegui subito
-    hideStreamlitBranding();
-    
-    // Ripeti ogni 100ms (ancora più frequente)
-    setInterval(hideStreamlitBranding, 100);
-    
-    // Observer per nuovi elementi
-    const observer = new MutationObserver(hideStreamlitBranding);
-    observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['class', 'data-testid']
-    });
-    
-    // Esegui anche su DOMContentLoaded
-    document.addEventListener('DOMContentLoaded', hideStreamlitBranding);
+    cleanBranding();
+    const observer = new MutationObserver(cleanBranding);
+    observer.observe(document.body, {childList:true, subtree:true});
 })();
 </script>
 """, unsafe_allow_html=True)
-
-
-# Rimuove dinamicamente eventuale bottone "Deploy"/"Share" in ambienti Streamlit Cloud
-st.markdown(
-        """
-        <script>
-            (function(){
-                const keywords = ['deploy','share','deploy app','share app','condividi','pubblica'];
-                function hideCandidates(){
-                    try{
-                        // scan common elements
-                        const candidates = Array.from(document.querySelectorAll('button, a, div, span'));
-                        candidates.forEach(el=>{
-                            try{
-                                const text = (el.innerText || el.textContent || '').trim().toLowerCase();
-                                const title = (el.title || '').toLowerCase();
-                                const aria = (el.getAttribute && (el.getAttribute('aria-label') || el.getAttribute('data-testid') || '')) || '';
-                                const attrs = (aria || '').toLowerCase();
-                                const combined = [text, title, attrs].join(' ');
-                                for(const k of keywords){
-                                    if(k && combined.indexOf(k) !== -1){
-                                        el.style.display = 'none';
-                                        // also try to hide parent nodes to remove wrappers
-                                        if(el.parentElement) el.parentElement.style.display = 'none';
-                                        break;
-                                    }
-                                }
-                            }catch(e){}
-                        });
-                    }catch(e){}
-                }
-                // initial run + repeated attempts (Streamlit may inject later)
-                hideCandidates();
-                const interval = setInterval(hideCandidates, 800);
-                // observe DOM mutations as well
-                const obs = new MutationObserver(hideCandidates);
-                obs.observe(document.body, {childList:true, subtree:true});
-                // stop interval after some time to avoid perf issues
-                setTimeout(()=>{ clearInterval(interval); }, 20000);
-            })();
-        </script>
-        """,
-        unsafe_allow_html=True,
-)
 
 
 # ============================================================
@@ -400,31 +250,9 @@ except Exception as e:
     st.stop()
 
 
-# DISABILITO RIPRISTINO SESSIONE DA COOKIE E CANCELLO COOKIE ESISTENTI
-# I cookie causavano problemi con il logout - ora usiamo solo session_state
-try:
-    # Inizializza logged_in se non esiste
-    if 'logged_in' not in st.session_state:
-        st.session_state.logged_in = False
-    
-    # Cancella eventuali cookie esistenti dal browser
-    if 'cookies_cleared' not in st.session_state:
-        try:
-            from datetime import datetime, timedelta
-            cookie_manager = stx.CookieManager(key="cookie_manager_cleanup")
-            past_time = datetime.now() - timedelta(days=365)
-            # Cancella cookie "user_email" se esiste
-            cookie_manager.set("user_email", "", expires_at=past_time)
-            cookie_manager.delete("user_email")
-            st.session_state.cookies_cleared = True
-            logger.info("Cookie esistenti cancellati al primo caricamento")
-        except Exception:
-            logger.exception('Errore pulizia cookie esistenti')
-    
-    # NON ripristinare MAI da cookie - sessione persa al refresh
-except Exception:
-    # Non fatale: se qualcosa va storto non blocchiamo l'app
-    logger.exception('Errore controllo cookie sessione')
+# Inizializza logged_in se non esiste
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
 
 
 # ============================================
@@ -560,7 +388,6 @@ if st.query_params.get("reset_token"):
                             st.balloons()
                             
                             # Pulisci token da URL
-                            import time
                             time.sleep(2)
                             st.query_params.clear()
                             st.rerun()
@@ -1068,11 +895,7 @@ render_sidebar(user)
 # ============================================
 
 
-# Struttura colonne header: se admin mostra 2 colonne, altrimenti 2
-if user.get('email') in ADMIN_EMAILS:
-    col1, col2 = st.columns([8, 1])
-else:
-    col1, col2 = st.columns([8, 1])
+col1, col2 = st.columns([8, 1])
 
 
 with col1:
@@ -1225,10 +1048,8 @@ if user.get('email') not in ADMIN_EMAILS:
         st.markdown("---")
 
 # ============================================================
-# FILE DI MEMORIA
+# API KEY OPENAI
 # ============================================================
-# MEMORIA_FILE rimosso - usa solo Supabase
-MEMORIA_AI_FILE = "memoria_ai_correzioni.json"
 try:
     api_key = st.secrets["OPENAI_API_KEY"]
 except Exception:
@@ -1237,20 +1058,16 @@ except Exception:
     st.stop()
 
 
-
-client = OpenAI(api_key=api_key)
-
-
-# ============================================
-# 🔥 USA STESSA CONNESSIONE SUPABASE GIÀ INIZIALIZZATA
-# ============================================
-# Non serve ricreare la connessione, usiamo quella già creata sopra!
-# La variabile 'supabase' è già disponibile globalmente
-
-
 # ============================================================
 # STATISTICHE E GRAFICI
 # ============================================================
+
+# Dizionario mesi italiani (usato in pivot mensili)
+MESI_ITA = {
+    1: 'GENNAIO', 2: 'FEBBRAIO', 3: 'MARZO', 4: 'APRILE',
+    5: 'MAGGIO', 6: 'GIUGNO', 7: 'LUGLIO', 8: 'AGOSTO',
+    9: 'SETTEMBRE', 10: 'OTTOBRE', 11: 'NOVEMBRE', 12: 'DICEMBRE'
+}
 
 def mostra_statistiche(df_completo):
     """Mostra grafici, filtri e tabella dati"""
@@ -2032,49 +1849,6 @@ def mostra_statistiche(df_completo):
         st.stop()
     
     st.markdown("---")
-
-    # CSS per stilizzare le metrics con colori diversi per ogni card
-    st.markdown("""
-    <style>
-        [data-testid="stMetricValue"] {
-            font-size: 36px;
-            font-weight: bold;
-            color: white !important;
-        }
-        [data-testid="stMetricLabel"] {
-            font-size: 15px;
-            font-weight: 600;
-            color: rgba(255,255,255,0.9) !important;
-        }
-        div[data-testid="metric-container"] {
-            padding: 25px;
-            border-radius: 15px;
-            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
-            color: white;
-            min-height: 120px;
-        }
-        /* Colori diversi per ogni colonna */
-        div[data-testid="column"]:nth-child(1) div[data-testid="metric-container"] {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }
-        div[data-testid="column"]:nth-child(2) div[data-testid="metric-container"] {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        }
-        div[data-testid="column"]:nth-child(3) div[data-testid="metric-container"] {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        }
-        div[data-testid="column"]:nth-child(4) div[data-testid="metric-container"] {
-            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
-        }
-        div[data-testid="column"]:nth-child(5) div[data-testid="metric-container"] {
-            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
-        }
-        /* Nascondi il delta sotto variazione */
-        div[data-testid="column"]:nth-child(5) [data-testid="stMetricDelta"] {
-            display: none;
-        }
-    </style>
-""", unsafe_allow_html=True)
 
     # Calcola variabili per i KPI
     spesa_fb = df_food['TotaleRiga'].sum()
@@ -3390,15 +3164,9 @@ def mostra_statistiche(df_completo):
             df_cat_prep = df_food.copy()
             df_cat_prep['Data_DT'] = pd.to_datetime(df_cat_prep['DataDocumento'], errors='coerce')
             
-            mesi_ita = {
-                1: 'GENNAIO', 2: 'FEBBRAIO', 3: 'MARZO', 4: 'APRILE',
-                5: 'MAGGIO', 6: 'GIUGNO', 7: 'LUGLIO', 8: 'AGOSTO',
-                9: 'SETTEMBRE', 10: 'OTTOBRE', 11: 'NOVEMBRE', 12: 'DICEMBRE'
-            }
-            
             # Crea formato mese per visualizzazione (GENNAIO 2025)
             df_cat_prep['Mese'] = df_cat_prep['Data_DT'].apply(
-                lambda x: f"{mesi_ita[x.month]} {x.year}" if pd.notna(x) else ''
+                lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
             )
             # Colonna per ordinamento cronologico
             df_cat_prep['Mese_Ordine'] = df_cat_prep['Data_DT'].apply(
@@ -3556,15 +3324,9 @@ def mostra_statistiche(df_completo):
             df_forn_prep = df_food.copy()
             df_forn_prep['Data_DT'] = pd.to_datetime(df_forn_prep['DataDocumento'], errors='coerce')
             
-            mesi_ita = {
-                1: 'GENNAIO', 2: 'FEBBRAIO', 3: 'MARZO', 4: 'APRILE',
-                5: 'MAGGIO', 6: 'GIUGNO', 7: 'LUGLIO', 8: 'AGOSTO',
-                9: 'SETTEMBRE', 10: 'OTTOBRE', 11: 'NOVEMBRE', 12: 'DICEMBRE'
-            }
-            
             # Crea formato mese per visualizzazione (GENNAIO 2025)
             df_forn_prep['Mese'] = df_forn_prep['Data_DT'].apply(
-                lambda x: f"{mesi_ita[x.month]} {x.year}" if pd.notna(x) else ''
+                lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
             )
             # Colonna per ordinamento cronologico
             df_forn_prep['Mese_Ordine'] = df_forn_prep['Data_DT'].apply(
@@ -3728,14 +3490,8 @@ def mostra_statistiche(df_completo):
             df_spese_con_mese = df_spese_generali.copy()
             df_spese_con_mese['Data_DT'] = pd.to_datetime(df_spese_con_mese['DataDocumento'], errors='coerce')
             
-            mesi_ita = {
-                1: 'GENNAIO', 2: 'FEBBRAIO', 3: 'MARZO', 4: 'APRILE',
-                5: 'MAGGIO', 6: 'GIUGNO', 7: 'LUGLIO', 8: 'AGOSTO',
-                9: 'SETTEMBRE', 10: 'OTTOBRE', 11: 'NOVEMBRE', 12: 'DICEMBRE'
-            }
-            
             df_spese_con_mese['Mese'] = df_spese_con_mese['Data_DT'].apply(
-                lambda x: f"{mesi_ita[x.month]} {x.year}" if pd.notna(x) else ''
+                lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
             )
             
             df_spese_con_mese['Mese_Ordine'] = df_spese_con_mese['Data_DT'].apply(
@@ -4230,7 +3986,6 @@ if not df_cache.empty:
                         
                         # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
                         invalida_cache_memoria()  # Reset memoria AI
-                        st.cache_data.clear()  # Reset cache Streamlit (prima chiamata)
                         
                         # 🔥 RESET SESSION: Reinizializza set vuoti (non solo clear)
                         st.session_state.files_processati_sessione = set()
@@ -5066,7 +4821,6 @@ if uploaded_files:
                 st.session_state.last_upload_summary = upload_summary
                 
                 # Breve pausa per mostrare il messaggio
-                import time
                 time.sleep(0.5)
                 
                 # Ricarica pagina con dati freschi

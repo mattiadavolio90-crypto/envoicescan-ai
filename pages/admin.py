@@ -11,16 +11,10 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timezone, timedelta
 import time
-import logging
 import traceback
 import extra_streamlit_components as stx
 import plotly.express as px
 import requests
-
-# Importa funzioni categorie dinamiche da utils
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 # Import corretto da utils (non da app.py per evitare esecuzione interfaccia)
 from utils.formatters import carica_categorie_da_db

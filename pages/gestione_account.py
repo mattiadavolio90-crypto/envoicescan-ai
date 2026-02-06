@@ -177,17 +177,16 @@ with tab2:
                 # Query fatture (solo metadati, NO file completi)
                 try:
                     fatture_query = supabase.table('fatture').select(
-                        'file, fornitore, data_fattura, numero_fattura, totale, categoria'
+                        'file_origine, fornitore, data_documento, totale_riga, categoria'
                     ).eq('user_id', user_id).execute()
                     
                     if fatture_query.data:
                         export_data["fatture"] = [
                             {
-                                "file": f.get('file'),
+                                "file": f.get('file_origine'),
                                 "fornitore": f.get('fornitore'),
-                                "data": f.get('data_fattura'),
-                                "numero": f.get('numero_fattura'),
-                                "totale": f.get('totale'),
+                                "data": f.get('data_documento'),
+                                "totale": f.get('totale_riga'),
                                 "categoria": f.get('categoria')
                             }
                             for f in fatture_query.data

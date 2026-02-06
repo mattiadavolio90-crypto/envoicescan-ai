@@ -12,7 +12,6 @@ Funzioni per:
 import re
 import base64
 import fitz  # PyMuPDF
-import os
 import logging
 from typing import Optional, List, Dict, Any
 
@@ -438,73 +437,6 @@ def carica_categorie_da_db(supabase_client=None) -> list:
     
     logger.info(f"✅ Categorie standardizzate: {len(categorie_finali)} ({len(categorie_fb_sorted)} F&B + {len(categorie_spese_sorted)} spese)")
     return categorie_finali
-
-
-def _get_categorie_fallback() -> list:
-    """
-    Categorie hardcoded di fallback se DB non disponibile.
-    
-    Ordine:
-    1. NOTE E DICITURE (prima - per righe €0)
-    2. Spese generali (MANUTENZIONE, SERVIZI, UTENZE)
-    3. F&B alfabetico (incluso MATERIALE DI CONSUMO)
-    
-    Returns:
-        list: Lista 28 categorie ordinate
-    """
-    # ============================================================
-    # 1. CATEGORIA PRIORITARIA (per righe €0 e problemi)
-    # ============================================================
-    categorie_prioritarie = [
-        "NOTE E DICITURE"
-    ]
-    
-    # ============================================================
-    # 2. CATEGORIE SPESE GENERALI
-    # ============================================================
-    categorie_spese = [
-        "MANUTENZIONE E ATTREZZATURE",
-        "SERVIZI E CONSULENZE",
-        "UTENZE E LOCALI"
-    ]
-    
-    # ============================================================
-    # 3. CATEGORIE F&B (ordine alfabetico, include MATERIALE DI CONSUMO)
-    # ============================================================
-    categorie_prodotti = [
-        "ACQUA",
-        "AMARI",
-        "BEVANDE",
-        "BIRRE",
-        "CAFFE E THE",
-        "CARNE",
-        "SCATOLAME E CONSERVE",
-        "DISTILLATI",
-        "FRUTTA",
-        "GELATI",
-        "LATTICINI",
-        "MATERIALE DI CONSUMO",  # Materiali cucina (pellicole, rotoloni) - parte di F&B
-        "OLIO E CONDIMENTI",
-        "PASTICCERIA",
-        "PESCE",
-        "PRODOTTI DA FORNO",
-        "SALSE E CREME",
-        "SALUMI",
-        "SECCO",
-        "SHOP",
-        "SPEZIE E AROMI",
-        "SURGELATI",
-        "UOVA",
-        "VARIE BAR",
-        "VERDURE",
-        "VINI"
-    ]
-    
-    # Ordina alfabeticamente solo prodotti F&B
-    categorie_prodotti.sort()
-    
-    # Combina nell'ordine corretto: prioritarie → spese → F&B
-    return categorie_prioritarie + categorie_spese + categorie_prodotti
 
 
 # ============================================================

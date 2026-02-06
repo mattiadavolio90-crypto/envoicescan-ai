@@ -25,12 +25,7 @@ def add_ristorante_filter(query, ristorante_id=None):
     try:
         # Se ristorante_id non fornito, prendi da session_state
         if ristorante_id is None:
-            # Verifica che session_state sia disponibile
-            if hasattr(st, 'session_state'):
-                ristorante_id = st.session_state.get('ristorante_id')
-            else:
-                logger.warning("⚠️ Streamlit session_state non disponibile, skip filtro ristorante")
-                return query
+            ristorante_id = st.session_state.get('ristorante_id')
         
         # Aggiungi filtro solo se ristorante_id presente (multi-ristorante attivo)
         if ristorante_id:
@@ -52,11 +47,7 @@ def get_current_ristorante_id():
         str: UUID del ristorante o None
     """
     try:
-        if hasattr(st, 'session_state'):
-            return st.session_state.get('ristorante_id')
-        else:
-            logger.warning("⚠️ Streamlit session_state non disponibile")
-            return None
+        return st.session_state.get('ristorante_id')
     except Exception as e:
         logger.error(f"❌ Errore recupero ristorante_id: {e}")
         return None

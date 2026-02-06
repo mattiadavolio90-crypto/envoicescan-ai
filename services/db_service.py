@@ -11,7 +11,7 @@ Pattern: Dependency Injection per Supabase client
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Dict, Any
 import pandas as pd
 import streamlit as st
 

@@ -26,7 +26,6 @@ from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizz
 from utils.validation import is_dicitura_sicura
 
 # Logger centralizzato
-import logging
 from config.logger_setup import get_logger
 logger = get_logger('ai')
 
