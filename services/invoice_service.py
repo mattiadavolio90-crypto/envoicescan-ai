@@ -32,7 +32,8 @@ from utils.formatters import (
 )
 from utils.text_utils import (
     normalizza_stringa,
-    estrai_fornitore_xml
+    estrai_fornitore_xml,
+    pulisci_caratteri_corrotti
 )
 from utils.validation import (
     verifica_integrita_fattura
@@ -150,10 +151,23 @@ def estrai_dati_da_xml(file_caricato):
             logger.info("✅ Cache memoria precaricata per elaborazione XML")
         
         contenuto = file_caricato.read()
-        # Decodifica esplicita UTF-8 per gestire caratteri speciali (cinesi, ecc.)
+        
+        # Gestione encoding robusta per caratteri speciali (cinesi, ecc.)
         if isinstance(contenuto, bytes):
-            contenuto = contenuto.decode('utf-8')
-        doc = xmltodict.parse(contenuto)
+            # Prova encoding multipli per gestire file XML con encoding misto
+            for encoding in ['utf-8', 'gb2312', 'gbk', 'big5', 'latin-1']:
+                try:
+                    contenuto = contenuto.decode(encoding)
+                    logger.info(f"✅ File XML decodificato con encoding: {encoding}")
+                    break
+                except (UnicodeDecodeError, LookupError):
+                    continue
+            else:
+                # Fallback: ignora caratteri non decodificabili
+                contenuto = contenuto.decode('utf-8', errors='replace')
+                logger.warning("⚠️ Utilizzato encoding UTF-8 con sostituzione errori")
+        
+        doc = xmltodict.parse(contenuto, encoding='utf-8')
         
         root_key = list(doc.keys())[0]
         fattura = doc[root_key]
@@ -210,6 +224,11 @@ def estrai_dati_da_xml(file_caricato):
                 # ============================================================
                 # Estrai valori base per validazione
                 descrizione_raw = riga.get('Descrizione', '')
+                
+                # Pulisci caratteri corrotti (encoding errato, caratteri cinesi mal encodati)
+                if descrizione_raw:
+                    descrizione_raw = pulisci_caratteri_corrotti(descrizione_raw)
+                
                 quantita_raw = riga.get('Quantita')
                 prezzo_base = float(riga.get('PrezzoUnitario', 0) or 0)
                 totale_riga = float(riga.get('PrezzoTotale', 0) or 0)
@@ -282,7 +301,9 @@ def estrai_dati_da_xml(file_caricato):
                     descrizione=descrizione,
                     prezzo=prezzo_unitario,
                     quantita=quantita,
-                    user_id=current_user_id
+                    user_id=current_user_id,
+                    fornitore=fornitore,
+                    unita_misura=unita_misura
                 )
                 
                 # Strategia ibrida: salva tutto, marca per review se necessario

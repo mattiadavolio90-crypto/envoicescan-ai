@@ -80,10 +80,21 @@ except Exception as e:
 # CHECK AUTENTICAZIONE
 # ============================================================
 
+# Nascondi sidebar immediatamente se non loggato
 if not st.session_state.get('logged_in', False):
-    st.error("⛔ Accesso negato. Effettua il login.")
-    st.info("👉 Torna alla [pagina principale](/) per effettuare il login")
-    st.stop()
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"],
+        section[data-testid="stSidebar"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+if not st.session_state.get('logged_in', False):
+    st.switch_page("app.py")
 
 user = st.session_state.get('user_data', {})
 

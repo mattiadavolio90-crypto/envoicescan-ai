@@ -13,9 +13,10 @@ Pattern: Dependency Injection per testabilità
 
 import json
 import os
+import re
 import shutil
 from datetime import datetime
-from typing import Optional, Dict, List, Any
+from typing import Optional, Dict, List, Any, Tuple
 import streamlit as st
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError, APIError
@@ -250,6 +251,36 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
 # FUNZIONI CORREZIONE E CATEGORIZZAZIONE
 # ============================================================
 
+# ── PRE-COMPUTED KEYWORD MATCHING (compilato una volta all'import) ──────────
+# Keywords contenitori/packaging → BASSA PRIORITÀ
+# Se non c'è nessun alimento, questi matchano e danno MATERIALE DI CONSUMO
+_KEYWORDS_CONTENITORI = frozenset({
+    "VASCHETTA", "VASCHETTE", "VASCHETTINA", "VASC",
+    "CONFEZIONE", "CONF", "BUSTA", "SCATOLA", "CARTONE",
+    "PACCO", "BARATTOLO", "BOTTIGLIA", "LATTINA",
+})
+
+def _build_compiled_patterns() -> Tuple[list, list]:
+    """
+    Costruisce le liste di (pattern_compilato, categoria) ordinate per lunghezza keyword decrescente.
+    Chiamata UNA VOLTA all'import del modulo. Ritorna (patterns_alimenti, patterns_contenitori).
+    """
+    patterns_alimenti = []
+    patterns_contenitori = []
+    
+    for keyword, categoria in sorted(DIZIONARIO_CORREZIONI.items(), key=lambda x: len(x[0]), reverse=True):
+        pattern = re.compile(r'(?:^|[\s\W])' + re.escape(keyword) + r'(?:[\s\W]|$)')
+        if keyword in _KEYWORDS_CONTENITORI:
+            patterns_contenitori.append((pattern, categoria))
+        else:
+            patterns_alimenti.append((pattern, categoria))
+    
+    return patterns_alimenti, patterns_contenitori
+
+# Compilati una volta all'avvio (0 overhead nelle chiamate successive)
+_PATTERNS_ALIMENTI, _PATTERNS_CONTENITORI = _build_compiled_patterns()
+
+
 def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     """
     Applica correzioni basate su keyword nel dizionario con PRIORITÀ INTELLIGENTE.
@@ -259,7 +290,7 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     - Se trova SOLO un CONTENITORE (VASC, CONF, BUSTA, etc.), classifica MATERIALE DI CONSUMO
     - Ignora i contenitori se c'è un alimento presente
     
-    Ordina keyword per lunghezza decrescente dentro ogni categoria di priorità.
+    Usa pattern regex pre-compilati e pre-ordinati per lunghezza decrescente (ottimizzazione).
     
     Args:
         descrizione: testo descrizione prodotto
@@ -271,61 +302,17 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     if not descrizione or not isinstance(descrizione, str):
         return categoria_ai
     
-    desc_upper = descrizione.upper()
-    
-    # 🔥 KEYWORDS CONTENITORI/PACKAGING (BASSA PRIORITÀ)
-    # Se non c'è nessun alimento, questi matchano e danno MATERIALE DI CONSUMO
-    keywords_contenitori = {
-        "VASCHETTA": "MATERIALE DI CONSUMO",
-        "VASCHETTE": "MATERIALE DI CONSUMO",
-        "VASCHETTINA": "MATERIALE DI CONSUMO",
-        "VASC": "MATERIALE DI CONSUMO",
-        "CONFEZIONE": "MATERIALE DI CONSUMO",
-        "CONF": "MATERIALE DI CONSUMO",
-        "BUSTA": "MATERIALE DI CONSUMO",
-        "SCATOLA": "MATERIALE DI CONSUMO",
-        "CARTONE": "MATERIALE DI CONSUMO",
-        "PACCO": "MATERIALE DI CONSUMO",
-        "BARATTOLO": "MATERIALE DI CONSUMO",
-        "BOTTIGLIA": "MATERIALE DI CONSUMO",
-        "LATTINA": "MATERIALE DI CONSUMO",
-    }
-    
-    # 🍽️ TUTTI GLI ALTRI KEYWORDS (ALTA PRIORITÀ = ALIMENTI)
-    keywords_alimenti = {k: v for k, v in DIZIONARIO_CORREZIONI.items() if k not in keywords_contenitori}
-    
-    import re
+    # Padding per garantire match ai bordi (i pattern usano boundary [\s\W])
+    desc_padded = ' ' + descrizione.upper() + ' '
     
     # STEP 1: Cerca ALIMENTI (priorità alta) - se trovi uno, ritorna subito
-    sorted_alimenti = sorted(keywords_alimenti.items(), key=lambda x: len(x[0]), reverse=True)
-    for keyword, categoria in sorted_alimenti:
-        pattern = r'(^|[\s\W])' + re.escape(keyword) + r'([\s\W]|$)'
-        if re.search(pattern, ' ' + desc_upper + ' '):
-            # ⭐ NUOVO: Traccia che questa descrizione è stata categorizzata da keyword
-            try:
-                import streamlit as st
-                if 'righe_keyword_appena_categorizzate' not in st.session_state:
-                    st.session_state.righe_keyword_appena_categorizzate = []
-                if descrizione not in st.session_state.righe_keyword_appena_categorizzate:
-                    st.session_state.righe_keyword_appena_categorizzate.append(descrizione)
-            except Exception:
-                pass  # Se chiamato fuori da Streamlit context, ignora
+    for pattern, categoria in _PATTERNS_ALIMENTI:
+        if pattern.search(desc_padded):
             return categoria
     
     # STEP 2: Cerca CONTENITORI (priorità bassa) - solo se nessun alimento trovato
-    sorted_contenitori = sorted(keywords_contenitori.items(), key=lambda x: len(x[0]), reverse=True)
-    for keyword, categoria in sorted_contenitori:
-        pattern = r'(^|[\s\W])' + re.escape(keyword) + r'([\s\W]|$)'
-        if re.search(pattern, ' ' + desc_upper + ' '):
-            # ⭐ NUOVO: Traccia anche contenitori
-            try:
-                import streamlit as st
-                if 'righe_keyword_appena_categorizzate' not in st.session_state:
-                    st.session_state.righe_keyword_appena_categorizzate = []
-                if descrizione not in st.session_state.righe_keyword_appena_categorizzate:
-                    st.session_state.righe_keyword_appena_categorizzate.append(descrizione)
-            except Exception:
-                pass  # Se chiamato fuori da Streamlit context, ignora
+    for pattern, categoria in _PATTERNS_CONTENITORI:
+        if pattern.search(desc_padded):
             return categoria
     
     return categoria_ai
@@ -420,7 +407,9 @@ def categorizza_con_memoria(
     prezzo: float,
     quantita: float,
     user_id: Optional[str] = None,
-    supabase_client=None
+    supabase_client=None,
+    fornitore: Optional[str] = None,
+    unita_misura: Optional[str] = None
 ) -> str:
     """
     Categorizza usando memoria GLOBALE multi-livello con CACHE IN-MEMORY.
@@ -431,7 +420,9 @@ def categorizza_con_memoria(
     2. Memoria LOCALE utente (prodotti_utente) - personalizzazioni cliente
     3. Memoria GLOBALE prodotti (prodotti_master) - condivisa tra tutti
     4. Check dicitura (se prezzo = 0)
-    5. Dizionario keyword - FALLBACK FINALE
+    5. Regola FORNITORE specifico - categorizzazione automatica
+    6. Regola UNITÀ MISURA - categorizzazione automatica
+    7. Dizionario keyword - FALLBACK FINALE
     
     Args:
         descrizione: testo descrizione
@@ -439,6 +430,8 @@ def categorizza_con_memoria(
         quantita: quantità
         user_id: ID utente (per log)
         supabase_client: Client Supabase (opzionale)
+        fornitore: Nome fornitore (opzionale)
+        unita_misura: Unità di misura normalizzata (opzionale)
     
     Returns:
         str: categoria finale
@@ -502,7 +495,25 @@ def categorizza_con_memoria(
     if prezzo == 0 and is_dicitura_sicura(descrizione, prezzo, quantita):
         return "📝 NOTE E DICITURE"
     
-    # LIVELLO 5: Dizionario keyword (fallback)
+    # LIVELLO 5: Regola FORNITORE specifico (priorità ALTA)
+    if fornitore:
+        from config.constants import CATEGORIA_PER_FORNITORE
+        fornitore_upper = fornitore.strip().upper()
+        for fornitore_key, categoria in CATEGORIA_PER_FORNITORE.items():
+            if fornitore_key.upper() in fornitore_upper or fornitore_upper in fornitore_key.upper():
+                logger.info(f"🏭 FORNITORE: '{descrizione}' → {categoria} (fornitore: {fornitore})")
+                return categoria
+    
+    # LIVELLO 6: Regola UNITÀ MISURA (priorità ALTA)
+    if unita_misura:
+        from config.constants import UNITA_MISURA_CATEGORIA
+        unita_upper = unita_misura.strip().upper()
+        if unita_upper in UNITA_MISURA_CATEGORIA:
+            categoria = UNITA_MISURA_CATEGORIA[unita_upper]
+            logger.info(f"📏 UNITÀ MISURA: '{descrizione}' → {categoria} (U.M.: {unita_misura})")
+            return categoria
+    
+    # LIVELLO 7: Dizionario keyword (fallback)
     categoria_keyword = applica_correzioni_dizionario(descrizione, "Da Classificare")
     
     # Se la categoria è diversa da "Da Classificare", salva in memoria globale per futuri clienti

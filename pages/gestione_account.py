@@ -16,10 +16,22 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Nascondi sidebar immediatamente se non loggato
+if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"],
+        section[data-testid="stSidebar"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
 # Verifica autenticazione
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.error("❌ Accesso negato. Effettua il login.")
-    st.stop()
+    st.switch_page("app.py")
 
 user = st.session_state.user_data
 is_admin = st.session_state.get('user_is_admin', False)
@@ -307,9 +319,4 @@ with tab3:
                     st.error(f"❌ Errore durante l'eliminazione: {str(e)}")
                     st.warning("Se il problema persiste, contatta il supporto.")
 
-# ----- BOTTONE TORNA INDIETRO -----
-st.markdown("---")
-col1, col2, col3 = st.columns([1, 1, 1])
-with col2:
-    if st.button("← Torna all'App", type="primary", use_container_width=True):
-        st.switch_page("app.py")
+

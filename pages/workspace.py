@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import json
 import io
+import time
 from datetime import datetime
 from supabase import create_client, Client
 from config.logger_setup import get_logger
@@ -45,12 +46,24 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Nascondi sidebar immediatamente se non loggato
+if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"],
+        section[data-testid="stSidebar"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
 # ============================================
 # AUTENTICAZIONE RICHIESTA
 # ============================================
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.error("❌ Accesso negato. Effettua il login.")
-    st.stop()
+    st.switch_page("app.py")
 
 user = st.session_state.user_data
 user_id = user["id"]
@@ -302,22 +315,22 @@ def get_ricette_come_ingredienti(_user_id: str, _ristorante_id: str, exclude_id:
 
 def get_ingredienti_dropdown(user_id: str, ristorante_id: str, exclude_ricetta_id: str = None) -> tuple:
     """
-    Merge articoli da fatture + ricette in lista unica per dropdown.
+    Merge articoli da fatture + ingredienti workspace + ricette in lista unica per dropdown.
     Ritorna (lista_ingredienti, debug_messages)
     """
     ingredienti_options = []
     debug_messages = []
     
-    # Articoli da fatture
+    # 1. Articoli da fatture (prodotti reali)
     articoli, debug_msgs = get_articoli_da_fatture(user_id)
     debug_messages.extend(debug_msgs)
     
     for art in articoli:
         # Mostra grammatura rilevata nel label se presente
         if art.get('grammatura_str'):
-            label = f"{art['nome']} (€{art['prezzo_unitario']:.2f}/{art['um']} - Conf: {art['grammatura_str']})"
+            label = f"🟢 {art['nome']} (€{art['prezzo_unitario']:.2f}/{art['um']} - Conf: {art['grammatura_str']})"
         else:
-            label = f"{art['nome']} (€{art['prezzo_unitario']:.2f}/{art['um']})"
+            label = f"🟢 {art['nome']} (€{art['prezzo_unitario']:.2f}/{art['um']})"
         
         ingredienti_options.append({
             'label': label,
@@ -325,7 +338,34 @@ def get_ingredienti_dropdown(user_id: str, ristorante_id: str, exclude_ricetta_i
             'data': art
         })
     
-    # Ricette salvate (solo SEMILAVORATI)
+    # 2. Ingredienti workspace (manuali/test)
+    try:
+        workspace_response = supabase.table('ingredienti_workspace')\
+            .select('*')\
+            .eq('userid', user_id)\
+            .eq('ristorante_id', ristorante_id)\
+            .order('nome')\
+            .execute()
+        
+        for ing in workspace_response.data:
+            label = f"📝 {ing['nome']} (€{ing['prezzo_per_um']:.2f}/{ing['um']} - manuale)"
+            ingredienti_options.append({
+                'label': label,
+                'tipo': 'workspace',
+                'data': {
+                    'nome': ing['nome'],
+                    'prezzo_unitario': float(ing['prezzo_per_um']),
+                    'um': ing['um'],
+                    'id': ing['id']
+                }
+            })
+        
+        debug_messages.append(f"✅ Ingredienti workspace caricati: {len(workspace_response.data)}")
+    except Exception as e:
+        debug_messages.append(f"⚠️ Errore caricamento ingredienti workspace: {str(e)}")
+        logger.warning(f"Errore ingredienti workspace: {e}")
+    
+    # 3. Ricette salvate (solo SEMILAVORATI)
     ricette = get_ricette_come_ingredienti(user_id, ristorante_id, exclude_ricetta_id)
     for ric in ricette:
         label = f"🥘 {ric['nome']} (€{ric['foodcost']:.2f} - ricetta)"
@@ -344,7 +384,7 @@ def get_ingredienti_dropdown(user_id: str, ristorante_id: str, exclude_ricetta_i
 def calcola_foodcost_riga(ingrediente_data: dict, quantita: float, um: str, grammatura_override: float = None) -> float:
     """
     Calcola prezzo di una riga ingrediente.
-    Gestisce sia articoli che ricette come ingredienti.
+    Gestisce: articoli da fatture, ricette come ingredienti, ingredienti workspace.
     Usa la grammatura della confezione per calcolare il prezzo reale.
     
     Args:
@@ -357,6 +397,11 @@ def calcola_foodcost_riga(ingrediente_data: dict, quantita: float, um: str, gram
         # Ricetta: foodcost è già normalizzato
         foodcost_base = ingrediente_data['data']['foodcost']
         return converti_unita_misura(quantita, um, foodcost_base)
+    
+    elif ingrediente_data['tipo'] == 'workspace':
+        # Ingrediente manuale: prezzo diretto per unità base
+        prezzo_base = ingrediente_data['data']['prezzo_unitario']
+        return converti_unita_misura(quantita, um, prezzo_base)
     
     else:  # articolo
         prezzo_confezione = ingrediente_data['data']['prezzo_unitario']
@@ -439,12 +484,10 @@ st.markdown("""
 </h1>
 """, unsafe_allow_html=True)
 
-st.markdown("---")
-
 # ============================================
 # TAB NAVIGATION
 # ============================================
-tab1, tab2, tab_export = st.tabs(["📋 Ricette Salvate", "➕ Nuova Ricetta", "📊 Export Excel"])
+tab1, tab2, tab_export, tab_diario = st.tabs(["📋 Ricette Salvate", "➕ Nuova Ricetta", "📊 Export Excel", "📓 Diario"])
 
 # ============================================
 # TAB 1: RICETTE SALVATE
@@ -501,7 +544,6 @@ with tab1:
                 ricette_filtrate = [r for r in ricette_filtrate if filtro_nome.lower() in r['nome'].lower()]
             
             st.markdown(f"**{len(ricette_filtrate)}** ricette trovate")
-            st.markdown("---")
             
             # Header tabella con styling personalizzato
             st.markdown("""
@@ -513,7 +555,7 @@ with tab1:
                 border-radius: 8px;
                 font-weight: 700;
                 font-size: 14px;
-                margin-bottom: 10px;
+                margin-bottom: 0px;
                 box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             }
             </style>
@@ -527,157 +569,207 @@ with tab1:
             </div>
             """, unsafe_allow_html=True)
             
-            st.markdown("")  # Spaziatura
-            
             # Tabella ricette
             for idx, ricetta in enumerate(ricette_filtrate):
-                # Prepara dati per visualizzazione tabella
-                ingredienti = json.loads(ricetta['ingredienti']) if isinstance(ricetta['ingredienti'], str) else ricetta['ingredienti']
-                num_ingredienti = len(ingredienti)
-                
-                categoria_emoji = {
-                    'ANTIPASTI': '🥗',
-                    'PRIMI': '🍝',
-                    'SECONDI': '🥩',
-                    'PIZZE': '🍕',
-                    'DOLCI': '🍰',
-                    'SEMILAVORATI': '🥘'
-                }
-                emoji = categoria_emoji.get(ricetta['categoria'], '📋')
-                
-                # Riga tabella con colonne
-                col_ord, col_nome, col_cat, col_fc, col_ing, col_azioni = st.columns([0.5, 3, 1.5, 1, 1, 2])
-                
-                with col_ord:
-                    st.markdown(f"**#{ricetta['ordine_visualizzazione']}**")
-                
-                with col_nome:
-                    st.markdown(f"**{emoji} {ricetta['nome']}**")
-                
-                with col_cat:
-                    st.caption(ricetta['categoria'])
-                
-                with col_fc:
-                    st.markdown(f"**€{ricetta['foodcost_totale']:.2f}**")
-                
-                with col_ing:
-                    st.caption(f"{num_ingredienti} ing.")
-                
-                with col_azioni:
-                    col_up, col_down, col_edit, col_del = st.columns(4)
+                # Container con bordo per ogni ricetta
+                with st.container(border=True):
                     
-                    # Bottone SU
-                    with col_up:
-                        if idx > 0:
-                            if st.button("⬆️", key=f"up_{ricetta['id']}", help="Sposta su"):
+                    # Prepara dati per visualizzazione tabella
+                    ingredienti = json.loads(ricetta['ingredienti']) if isinstance(ricetta['ingredienti'], str) else ricetta['ingredienti']
+                    num_ingredienti = len(ingredienti)
+                    
+                    categoria_emoji = {
+                        'ANTIPASTI': '🥗',
+                        'PRIMI': '🍝',
+                        'SECONDI': '🥩',
+                        'PIZZE': '🍕',
+                        'DOLCI': '🍰',
+                        'SEMILAVORATI': '🥘'
+                    }
+                    emoji = categoria_emoji.get(ricetta['categoria'], '📋')
+                    
+                    # Riga tabella con colonne
+                    col_ord, col_nome, col_cat, col_fc, col_ing, col_azioni = st.columns([0.5, 3, 1.5, 1, 1, 2])
+                    
+                    with col_ord:
+                        st.markdown(f"**#{ricetta['ordine_visualizzazione']}**")
+                    
+                    with col_nome:
+                        st.markdown(f"**{emoji} {ricetta['nome']}**")
+                    
+                    with col_cat:
+                        st.caption(ricetta['categoria'])
+                    
+                    with col_fc:
+                        st.markdown(f"**€{ricetta['foodcost_totale']:.2f}**")
+                    
+                    with col_ing:
+                        st.caption(f"{num_ingredienti} ing.")
+                    
+                    with col_azioni:
+                        col_up, col_down, col_edit, col_del = st.columns(4)
+                        
+                        # Bottone SU
+                        with col_up:
+                            if idx > 0:
+                                if st.button("⬆️", key=f"up_{ricetta['id']}", help="Sposta su"):
+                                    try:
+                                        prev_ricetta = ricette_filtrate[idx - 1]
+                                        supabase.rpc('swap_ricette_order', {
+                                            'ricetta_id_1': ricetta['id'],
+                                            'ricetta_id_2': prev_ricetta['id']
+                                        }).execute()
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Errore: {e}")
+                        
+                        # Bottone GIÙ
+                        with col_down:
+                            if idx < len(ricette_filtrate) - 1:
+                                if st.button("⬇️", key=f"down_{ricetta['id']}", help="Sposta giù"):
+                                    try:
+                                        next_ricetta = ricette_filtrate[idx + 1]
+                                        supabase.rpc('swap_ricette_order', {
+                                            'ricetta_id_1': ricetta['id'],
+                                            'ricetta_id_2': next_ricetta['id']
+                                        }).execute()
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Errore: {e}")
+                        
+                        # Bottone MODIFICA
+                        with col_edit:
+                            if st.button("✏️", key=f"edit_{ricetta['id']}", help="Modifica ricetta"):
                                 try:
-                                    prev_ricetta = ricette_filtrate[idx - 1]
-                                    supabase.rpc('swap_ricette_order', {
-                                        'ricetta_id_1': ricetta['id'],
-                                        'ricetta_id_2': prev_ricetta['id']
-                                    }).execute()
+                                    st.session_state.ricetta_edit_mode = True
+                                    st.session_state.ricetta_edit_data = ricetta
+                                    
+                                    # Imposta nome ricetta nel session state per il text_input
+                                    st.session_state['nome_ricetta'] = ricetta['nome']
+                                    st.session_state['categoria_ricetta'] = ricetta['categoria']
+                                    
+                                    # Carica ingredienti salvati
+                                    ingredienti_raw = json.loads(ricetta['ingredienti']) if isinstance(ricetta['ingredienti'], str) else ricetta['ingredienti']
+                                    
+                                    # Ricarica dropdown per ottenere riferimenti
+                                    ingredienti_disp_reload, _ = get_ingredienti_dropdown(user_id, current_ristorante, ricetta['id'])
+                                    
+                                    # Converti formato salvato → formato temp
+                                    ingredienti_temp = []
+                                    for ing_salvato in ingredienti_raw:
+                                        ing_match = next((x for x in ingredienti_disp_reload if x['data']['nome'] == ing_salvato['nome']), None)
+                                        
+                                        # Determina tipo riga basato su is_ricetta
+                                        tipo_riga = 'semilavorato' if ing_salvato.get('is_ricetta', False) else 'normale'
+                                        
+                                        ingredienti_temp.append({
+                                            'nome': ing_salvato['nome'],
+                                            'quantita': ing_salvato['quantita'],
+                                            'um': ing_salvato['um'],
+                                            'prezzo_unitario': ing_salvato.get('prezzo_unitario', 0),
+                                            'is_ricetta': ing_salvato.get('is_ricetta', False),
+                                            'ricetta_id': ing_salvato.get('ricetta_id'),
+                                            'ingrediente_ref': ing_match['label'] if ing_match else None,
+                                            'grammatura_confezione': None,
+                                            'prezzo_override': None,
+                                            'tipo_riga': tipo_riga
+                                        })
+                                    
+                                    st.session_state.ingredienti_temp = ingredienti_temp
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Errore caricamento modifica: {e}")
+                                    logger.exception("Errore modifica ricetta")
+                        
+                        # Bottone ELIMINA
+                        with col_del:
+                            if st.button("🗑️", key=f"del_{ricetta['id']}", help="Elimina ricetta"):
+                                st.session_state[f'confirm_delete_{ricetta["id"]}'] = True
+                    
+                    # Conferma eliminazione
+                    if st.session_state.get(f'confirm_delete_{ricetta["id"]}', False):
+                        st.warning(f"⚠️ Confermi eliminazione di **{ricetta['nome']}**?")
+                        col_conf1, col_conf2 = st.columns(2)
+                        with col_conf1:
+                            if st.button("✅ Sì, elimina", key=f"confirm_yes_{ricetta['id']}"):
+                                try:
+                                    supabase.table('ricette').delete().eq('id', ricetta['id']).execute()
+                                    st.success(f"Ricetta eliminata")
                                     st.cache_data.clear()
+                                    del st.session_state[f'confirm_delete_{ricetta["id"]}']
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Errore: {e}")
-                    
-                    # Bottone GIÙ
-                    with col_down:
-                        if idx < len(ricette_filtrate) - 1:
-                            if st.button("⬇️", key=f"down_{ricetta['id']}", help="Sposta giù"):
-                                try:
-                                    next_ricetta = ricette_filtrate[idx + 1]
-                                    supabase.rpc('swap_ricette_order', {
-                                        'ricetta_id_1': ricetta['id'],
-                                        'ricetta_id_2': next_ricetta['id']
-                                    }).execute()
-                                    st.cache_data.clear()
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Errore: {e}")
-                    
-                    # Bottone MODIFICA
-                    with col_edit:
-                        if st.button("✏️", key=f"edit_{ricetta['id']}", help="Modifica ricetta"):
-                            try:
-                                st.session_state.ricetta_edit_mode = True
-                                st.session_state.ricetta_edit_data = ricetta
-                                
-                                # Imposta nome ricetta nel session state per il text_input
-                                st.session_state['nome_ricetta'] = ricetta['nome']
-                                st.session_state['categoria_ricetta'] = ricetta['categoria']
-                                
-                                # Carica ingredienti salvati
-                                ingredienti_raw = json.loads(ricetta['ingredienti']) if isinstance(ricetta['ingredienti'], str) else ricetta['ingredienti']
-                                
-                                # Ricarica dropdown per ottenere riferimenti
-                                ingredienti_disp_reload, _ = get_ingredienti_dropdown(user_id, current_ristorante, ricetta['id'])
-                                
-                                # Converti formato salvato → formato temp
-                                ingredienti_temp = []
-                                for ing_salvato in ingredienti_raw:
-                                    ing_match = next((x for x in ingredienti_disp_reload if x['data']['nome'] == ing_salvato['nome']), None)
-                                    
-                                    # Determina tipo riga basato su is_ricetta
-                                    tipo_riga = 'semilavorato' if ing_salvato.get('is_ricetta', False) else 'normale'
-                                    
-                                    ingredienti_temp.append({
-                                        'nome': ing_salvato['nome'],
-                                        'quantita': ing_salvato['quantita'],
-                                        'um': ing_salvato['um'],
-                                        'prezzo_unitario': ing_salvato.get('prezzo_unitario', 0),
-                                        'is_ricetta': ing_salvato.get('is_ricetta', False),
-                                        'ricetta_id': ing_salvato.get('ricetta_id'),
-                                        'ingrediente_ref': ing_match['label'] if ing_match else None,
-                                        'grammatura_confezione': None,
-                                        'prezzo_override': None,
-                                        'tipo_riga': tipo_riga
-                                    })
-                                
-                                st.session_state.ingredienti_temp = ingredienti_temp
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Errore caricamento modifica: {e}")
-                                logger.exception("Errore modifica ricetta")
-                    
-                    # Bottone ELIMINA
-                    with col_del:
-                        if st.button("🗑️", key=f"del_{ricetta['id']}", help="Elimina ricetta"):
-                            st.session_state[f'confirm_delete_{ricetta["id"]}'] = True
-                
-                # Conferma eliminazione
-                if st.session_state.get(f'confirm_delete_{ricetta["id"]}', False):
-                    st.warning(f"⚠️ Confermi eliminazione di **{ricetta['nome']}**?")
-                    col_conf1, col_conf2 = st.columns(2)
-                    with col_conf1:
-                        if st.button("✅ Sì, elimina", key=f"confirm_yes_{ricetta['id']}"):
-                            try:
-                                supabase.table('ricette').delete().eq('id', ricetta['id']).execute()
-                                st.success(f"Ricetta eliminata")
-                                st.cache_data.clear()
+                        with col_conf2:
+                            if st.button("❌ Annulla", key=f"confirm_no_{ricetta['id']}"):
                                 del st.session_state[f'confirm_delete_{ricetta["id"]}']
                                 st.rerun()
-                            except Exception as e:
-                                st.error(f"Errore: {e}")
-                    with col_conf2:
-                        if st.button("❌ Annulla", key=f"confirm_no_{ricetta['id']}"):
-                            del st.session_state[f'confirm_delete_{ricetta["id"]}']
-                            st.rerun()
-                
-                # Expander ingredienti
-                with st.expander("📝 Dettagli ingredienti"):
-                    if ingredienti:
-                        df_ing = pd.DataFrame(ingredienti)
-                        df_ing['prezzo_totale'] = df_ing['quantita'] * df_ing['prezzo_unitario']
-                        st.dataframe(
-                            df_ing[['nome', 'quantita', 'um', 'prezzo_unitario', 'prezzo_totale']],
-                            use_container_width=True,
-                            hide_index=True
+                    
+                    # Expander ingredienti
+                    with st.expander("📝 Dettagli ingredienti"):
+                        if ingredienti:
+                            df_ing = pd.DataFrame(ingredienti)
+                            df_ing['prezzo_totale'] = df_ing['quantita'] * df_ing['prezzo_unitario']
+                            st.dataframe(
+                                df_ing[['nome', 'quantita', 'um', 'prezzo_unitario', 'prezzo_totale']],
+                                use_container_width=True,
+                                hide_index=True
+                            )
+                        else:
+                            st.caption("Nessun ingrediente")
+                    
+                    # Expander note
+                    with st.expander("📌 Aggiungi nota"):
+                        nota_attuale = ricetta.get('note', '') or ''
+                        nota_key = f"nota_{ricetta['id']}"
+                        
+                        # Inizializza session state per questa nota se non esiste
+                        if nota_key not in st.session_state:
+                            st.session_state[nota_key] = nota_attuale
+                        
+                        # Text area per la nota
+                        nota_nuova = st.text_area(
+                            "Scrivi qui le tue annotazioni",
+                            value=st.session_state[nota_key],
+                            placeholder="Es: Ricetta della nonna, aumentare sale, ottima per eventi...",
+                            height=100,
+                            key=f"textarea_{ricetta['id']}"
                         )
-                    else:
-                        st.caption("Nessun ingrediente")
-                
-                st.markdown("---")
+                        
+                        # Aggiorna session state
+                        st.session_state[nota_key] = nota_nuova
+                        
+                        # Bottone salva nota
+                        col_save, col_clear = st.columns([1, 1])
+                        with col_save:
+                            if st.button("💾 Salva nota", key=f"save_nota_{ricetta['id']}", use_container_width=True):
+                                try:
+                                    supabase.table('ricette').update({
+                                        'note': nota_nuova if nota_nuova.strip() else None
+                                    }).eq('id', ricetta['id']).execute()
+                                    st.success("✅ Nota salvata!")
+                                    st.cache_data.clear()
+                                    time.sleep(0.5)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Errore salvataggio: {e}")
+                        
+                        with col_clear:
+                            if st.button("🗑️ Cancella nota", key=f"clear_nota_{ricetta['id']}", use_container_width=True):
+                                try:
+                                    supabase.table('ricette').update({
+                                        'note': None
+                                    }).eq('id', ricetta['id']).execute()
+                                    st.session_state[nota_key] = ''
+                                    st.success("✅ Nota cancellata!")
+                                    st.cache_data.clear()
+                                    time.sleep(0.5)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Errore cancellazione: {e}")
+
     
     except Exception as e:
         st.error(f"❌ Errore caricamento ricette: {e}")
@@ -697,7 +789,15 @@ with tab2:
         if st.button("❌ Annulla Modifica"):
             clear_edit_mode()
             st.rerun()
-        st.markdown("---")
+    
+    # Info box guida
+    st.info("""
+    💡 **Come creare una ricetta:**
+    
+    1️⃣ Seleziona la **categoria** e inserisci il **nome** della ricetta  
+    2️⃣ Aggiungi gli **ingredienti** cercandoli nel menu o creandoli manualmente  
+    3️⃣ Puoi creare **semilavorati** (es: Besciamella, Ragù) impostando la categoria **SEMILAVORATI** per riutilizzarli in altre ricette  
+    """)
     
     # Form header
     col_cat, col_nome = st.columns([1, 2])
@@ -759,7 +859,9 @@ with tab2:
             key="nome_ricetta"
         )
     
-    st.markdown("---")
+    # Spazio tra form ricetta e sezione ingredienti
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    
     st.markdown("### 🥄 Ingredienti")
     
     # Info semilavorati
@@ -772,8 +874,8 @@ with tab2:
     
     # Verifica ingredienti disponibili
     if not ingredienti_disponibili:
-        st.error("❌ **Nessun articolo trovato nelle fatture!**")
-        st.warning("💡 Assicurati di aver caricato almeno una fattura con articoli nella sezione principale dell'app.")
+        st.warning("⚠️ **Nessun ingrediente disponibile**")
+        st.info("💡 **Soluzioni**:\n- Carica fatture nella sezione principale per usare prodotti reali\n- Oppure crea **Ingredienti Manuali** qui sotto per iniziare a testare le ricette")
         
         # Bottone refresh cache
         if st.button("🔄 Forza Refresh Cache"):
@@ -788,61 +890,216 @@ with tab2:
         if len(st.session_state.ingredienti_temp) >= MAX_INGREDIENTI:
             st.error(f"⚠️ Limite massimo di {MAX_INGREDIENTI} ingredienti raggiunto")
         
-        # Bottoni aggiungi riga PRIMA della tabella
-        col_btn1, col_btn2 = st.columns(2)
-        with col_btn1:
-            if st.button("➕ Aggiungi Ingrediente", disabled=len(st.session_state.ingredienti_temp) >= MAX_INGREDIENTI, use_container_width=True):
-                st.session_state.ingredienti_temp.append({
-                    'nome': '',
-                    'quantita': 1.0,
-                    'um': 'g',
-                    'prezzo_unitario': 0.0,
-                    'is_ricetta': False,
-                    'ricetta_id': None,
-                    'ingrediente_ref': None,
-                    'grammatura_confezione': None,  # Grammatura personalizzata
-                    'prezzo_override': None,  # Prezzo manuale
-                    'tipo_riga': 'normale'  # normale o semilavorato
-                })
-                st.rerun()
+        # Expander per creare ingredienti manuali (sopra al pulsante)
+        with st.expander("📝 Crea Ingrediente Manuale", expanded=False):
+            st.caption("💡 **Per ristoranti non ancora aperti o per test**: crea ingredienti personalizzati con prezzi stimati. Questi ingredienti rimangono isolati in questa sezione.")
+            
+            col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+            
+            with col1:
+                nuovo_ing_nome = st.text_input(
+                    "Nome ingrediente",
+                    placeholder="Es: Mozzarella, Pomodoro, Farina...",
+                    key="nuovo_ing_nome",
+                    help="Nome dell'ingrediente che vuoi creare"
+                )
+            
+            with col2:
+                nuovo_ing_prezzo = st.number_input(
+                    "Prezzo €/unità",
+                    min_value=0.0,
+                    max_value=9999.99,
+                    value=0.0,
+                    step=0.5,
+                    format="%.2f",
+                    key="nuovo_ing_prezzo",
+                    help="Prezzo stimato per unità di misura"
+                )
+            
+            with col3:
+                nuovo_ing_um = st.selectbox(
+                    "Unità Misura",
+                    options=["KG", "LT", "PZ", "G", "ML"],
+                    index=0,
+                    key="nuovo_ing_um",
+                    help="Unità di misura del prezzo"
+                )
+            
+            with col4:
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                if st.button("💾 Salva", key="btn_salva_ing_workspace", use_container_width=True):
+                    if not nuovo_ing_nome or not nuovo_ing_nome.strip():
+                        st.error("⚠️ Inserisci un nome ingrediente")
+                    elif nuovo_ing_prezzo <= 0:
+                        st.error("⚠️ Inserisci un prezzo valido")
+                    else:
+                        try:
+                            # Inserisci in DB
+                            result = supabase.table('ingredienti_workspace').insert({
+                                'userid': user_id,
+                                'ristorante_id': current_ristorante,
+                                'nome': nuovo_ing_nome.strip(),
+                                'prezzo_per_um': nuovo_ing_prezzo,
+                                'um': nuovo_ing_um
+                            }).execute()
+                            
+                            st.success(f"✅ Ingrediente '{nuovo_ing_nome}' creato!")
+                            
+                            # Clear cache e rerun
+                            st.cache_data.clear()
+                            st.rerun()
+                            
+                        except Exception as e:
+                            if 'duplicate' in str(e).lower() or 'unique' in str(e).lower():
+                                st.error(f"⚠️ Ingrediente '{nuovo_ing_nome}' già esistente")
+                            else:
+                                st.error(f"❌ Errore: {str(e)}")
+                                logger.exception("Errore creazione ingrediente workspace")
+            
+            # Lista ingredienti workspace esistenti
+            try:
+                workspace_ings = supabase.table('ingredienti_workspace')\
+                    .select('*')\
+                    .eq('userid', user_id)\
+                    .eq('ristorante_id', current_ristorante)\
+                    .order('nome')\
+                    .execute()
+                
+                if workspace_ings.data:
+                    st.markdown("**📦 Ingredienti manuali esistenti:**")
+                    
+                    cols_ing = st.columns([3, 2, 1.5, 0.8, 0.8])
+                    cols_ing[0].markdown("**Nome**")
+                    cols_ing[1].markdown("**Prezzo**")
+                    cols_ing[2].markdown("**UM**")
+                    cols_ing[3].markdown("**Modifica**")
+                    cols_ing[4].markdown("**Elimina**")
+                    
+                    for ing in workspace_ings.data:
+                        # Controlla se questo ingrediente è in modalità modifica
+                        is_editing = st.session_state.get(f"edit_ing_{ing['id']}", False)
+                        
+                        if is_editing:
+                            # Modalità modifica: mostra campi editabili
+                            cols = st.columns([3, 2, 1.5, 0.8, 0.8])
+                            
+                            with cols[0]:
+                                edit_nome = st.text_input(
+                                    "Nome",
+                                    value=ing['nome'],
+                                    key=f"edit_nome_{ing['id']}",
+                                    label_visibility="collapsed"
+                                )
+                            
+                            with cols[1]:
+                                edit_prezzo = st.number_input(
+                                    "Prezzo",
+                                    min_value=0.0,
+                                    value=float(ing['prezzo_per_um']),
+                                    step=0.1,
+                                    format="%.2f",
+                                    key=f"edit_prezzo_{ing['id']}",
+                                    label_visibility="collapsed"
+                                )
+                            
+                            with cols[2]:
+                                edit_um = st.selectbox(
+                                    "UM",
+                                    options=["KG", "LT", "PZ", "G", "ML"],
+                                    index=["KG", "LT", "PZ", "G", "ML"].index(ing['um']) if ing['um'] in ["KG", "LT", "PZ", "G", "ML"] else 0,
+                                    key=f"edit_um_{ing['id']}",
+                                    label_visibility="collapsed"
+                                )
+                            
+                            with cols[3]:
+                                # Bottone salva modifiche
+                                if st.button("💾", key=f"save_ing_{ing['id']}", help="Salva modifiche"):
+                                    if not edit_nome or not edit_nome.strip():
+                                        st.error("⚠️ Nome obbligatorio")
+                                    elif edit_prezzo <= 0:
+                                        st.error("⚠️ Prezzo non valido")
+                                    else:
+                                        try:
+                                            supabase.table('ingredienti_workspace')\
+                                                .update({
+                                                    'nome': edit_nome.strip(),
+                                                    'prezzo_per_um': edit_prezzo,
+                                                    'um': edit_um
+                                                })\
+                                                .eq('id', ing['id'])\
+                                                .execute()
+                                            
+                                            st.success("✅ Modifiche salvate")
+                                            st.session_state[f"edit_ing_{ing['id']}"] = False
+                                            st.cache_data.clear()
+                                            st.rerun()
+                                        except Exception as e:
+                                            if 'duplicate' in str(e).lower() or 'unique' in str(e).lower():
+                                                st.error(f"⚠️ Nome '{edit_nome}' già esistente")
+                                            else:
+                                                st.error(f"❌ Errore: {str(e)}")
+                            
+                            with cols[4]:
+                                # Bottone annulla
+                                if st.button("❌", key=f"cancel_ing_{ing['id']}", help="Annulla"):
+                                    st.session_state[f"edit_ing_{ing['id']}"] = False
+                                    st.rerun()
+                        
+                        else:
+                            # Modalità visualizzazione normale
+                            cols = st.columns([3, 2, 1.5, 0.8, 0.8])
+                            cols[0].text(ing['nome'])
+                            cols[1].text(f"€{ing['prezzo_per_um']:.2f}")
+                            cols[2].text(ing['um'])
+                            
+                            with cols[3]:
+                                if st.button("✏️", key=f"edit_btn_ing_{ing['id']}", help="Modifica ingrediente"):
+                                    st.session_state[f"edit_ing_{ing['id']}"] = True
+                                    st.rerun()
+                            
+                            with cols[4]:
+                                if st.button("🗑️", key=f"del_ing_{ing['id']}", help="Elimina ingrediente"):
+                                    try:
+                                        supabase.table('ingredienti_workspace').delete().eq('id', ing['id']).execute()
+                                        st.success("✅ Ingrediente eliminato")
+                                        st.cache_data.clear()
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"❌ Errore eliminazione: {str(e)}")
+            except Exception as e:
+                st.warning(f"⚠️ Impossibile caricare ingredienti workspace: {str(e)}")
         
-        with col_btn2:
-            if st.button("🥘 Aggiungi Semilavorato", disabled=len(st.session_state.ingredienti_temp) >= MAX_INGREDIENTI, use_container_width=True, help="Aggiungi una ricetta salvata come ingrediente"):
-                st.session_state.ingredienti_temp.append({
-                    'nome': '',
-                    'quantita': 1.0,
-                    'um': 'g',
-                    'prezzo_unitario': 0.0,
-                    'is_ricetta': False,
-                    'ricetta_id': None,
-                    'ingrediente_ref': None,
-                    'grammatura_confezione': None,
-                    'prezzo_override': None,
-                    'tipo_riga': 'semilavorato'  # Solo semilavorati
-                })
-                st.rerun()
+        # Spazio tra expander e bottone
+        st.markdown("<br>", unsafe_allow_html=True)
         
-        # Campo ricerca ingredienti per filtro preciso
-        if 'search_ingredienti' not in st.session_state:
-            st.session_state.search_ingredienti = ""
+        # CSS per allineare il testo del bottone a sinistra
+        st.markdown("""
+        <style>
+        div[data-testid="stButton"] > button[kind="secondary"] {
+            text-align: left !important;
+            justify-content: flex-start !important;
+            padding-left: 16px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
         
-        col_search1, col_search2 = st.columns([4, 1])
-        with col_search1:
-            search_term = st.text_input(
-                "🔍 Cerca ingredienti",
-                value=st.session_state.search_ingredienti,
-                placeholder="Es: riso (troverà anche 'risotto', 'riso venere', ecc.)",
-                key="search_ingredienti_input"
-            )
-            st.session_state.search_ingredienti = search_term
-        
-        with col_search2:
-            st.markdown("<div style='margin-top: 32px;'></div>", unsafe_allow_html=True)
-            if st.button("🗑️ Cancella", key="clear_search", use_container_width=True):
-                st.session_state.search_ingredienti = ""
-                st.rerun()
-        
-        st.markdown("---")
+        # Bottone unico per aggiungere ingredienti (larghezza piena, testo a sinistra)
+        if st.button("➕ Aggiungi Ingrediente/Semilavorato", 
+                     disabled=len(st.session_state.ingredienti_temp) >= MAX_INGREDIENTI,
+                     use_container_width=True):
+            st.session_state.ingredienti_temp.append({
+                'nome': '',
+                'quantita': 1.0,
+                'um': 'g',
+                'prezzo_unitario': 0.0,
+                'is_ricetta': False,
+                'ricetta_id': None,
+                'ingrediente_ref': None,
+                'grammatura_confezione': None,
+                'prezzo_override': None,
+                'tipo_riga': 'normale'
+            })
+            st.rerun()
         
         # Tabella dinamica ingredienti
         if len(st.session_state.ingredienti_temp) > 0:
@@ -856,6 +1113,7 @@ with tab2:
             """, unsafe_allow_html=True)
             
             st.caption("💡 **Gram. Conf.** = grammatura a cui si riferisce il prezzo (es: 5000 per latta 5KG). Lascia **0** se prezzo è già al KG/LT")
+            st.caption("🔍 **Cerca ingredienti**: Clicca sul dropdown 'Ingrediente' e digita per cercare (es: 'gamb' trova 'gamberi', 'gamberoni', ecc.)")
             
             ingredienti_da_rimuovere = []
             
@@ -863,27 +1121,8 @@ with tab2:
                 col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 1.2, 1, 0.6, 1, 1.2, 0.5])
                 
                 with col1:
-                    # Filtra ingredienti in base al tipo riga e al campo ricerca
-                    tipo_riga = ing.get('tipo_riga', 'normale')
-                    
-                    if tipo_riga == 'semilavorato':
-                        # Mostra solo ricette/semilavorati
-                        ingredienti_filtrati = [x for x in ingredienti_disponibili if x['tipo'] == 'ricetta']
-                    else:
-                        # Mostra tutti
-                        ingredienti_filtrati = ingredienti_disponibili
-                    
-                    # Applica filtro ricerca semplice (substring match)
-                    if st.session_state.search_ingredienti.strip():
-                        search_term = st.session_state.search_ingredienti.strip().lower()
-                        ingredienti_filtrati = [
-                            x for x in ingredienti_filtrati 
-                            if search_term in x['label'].lower()
-                        ]
-                    
-                    if not ingredienti_filtrati:
-                        st.warning(f"⚠️ Nessun {'semilavorato' if tipo_riga == 'semilavorato' else 'ingrediente'} trovato con il termine '{st.session_state.search_ingredienti}'")
-                        ingredienti_filtrati = ingredienti_disponibili  # Fallback
+                    # Mostra tutti gli ingredienti disponibili (articoli, workspace, ricette/semilavorati)
+                    ingredienti_filtrati = ingredienti_disponibili
                     
                     # Trova indice default se modifica
                     default_idx = 0
@@ -913,8 +1152,8 @@ with tab2:
                             ing['ricetta_id'] = None
                 
                 with col2:
-                    # Prezzo base articolo (MODIFICABILE per override manuale)
-                    if ing_data and ing_data['tipo'] == 'articolo':
+                    # Prezzo base articolo/workspace (MODIFICABILE per override manuale)
+                    if ing_data and ing_data['tipo'] in ['articolo', 'workspace']:
                         prezzo_base = ing_data['data']['prezzo_unitario']
                         um_base = ing_data['data']['um']
                         
@@ -925,6 +1164,11 @@ with tab2:
                         # Key unica per ogni riga per evitare conflitti
                         prezzo_key = f"ing_prezzo_base_{idx}_{hash(ing_sel) % 10000}"
                         
+                        # Indica se è manuale con icona
+                        help_text = f"Prezzo per {um_base}. Originale: €{prezzo_base:.2f}"
+                        if ing_data['tipo'] == 'workspace':
+                            help_text = f"Prezzo per {um_base} (ingrediente manuale)"
+                        
                         prezzo_modificato = st.number_input(
                             "Prezzo",
                             min_value=0.0,
@@ -933,7 +1177,7 @@ with tab2:
                             format="%.2f",
                             key=prezzo_key,
                             label_visibility="collapsed",
-                            help=f"Prezzo per {um_base}. Originale: €{prezzo_base:.2f}"
+                            help=help_text
                         )
                         
                         # Salva override se diverso dal prezzo base
@@ -945,7 +1189,7 @@ with tab2:
                         st.text_input("", value="-", disabled=True, key=f"ing_prezzo_base_{idx}", label_visibility="collapsed")
                 
                 with col3:
-                    # Campo grammatura confezione (editabile)
+                    # Campo grammatura confezione (solo per articoli da fatture)
                     if ing_data and ing_data['tipo'] == 'articolo':
                         grammatura_auto = ing_data['data'].get('grammatura_confezione')
                         grammatura_attuale = ing.get('grammatura_confezione', grammatura_auto)
@@ -961,6 +1205,11 @@ with tab2:
                         )
                         
                         ing['grammatura_confezione'] = grammatura_input if grammatura_input > 0 else None
+                    elif ing_data and ing_data['tipo'] == 'workspace':
+                        # Ingredienti workspace: prezzo già normalizzato, grammatura non necessaria
+                        st.text_input("", value="N/A", disabled=True, key=f"ing_gramm_{idx}", 
+                                     label_visibility="collapsed", help="Ingrediente manuale: prezzo già normalizzato")
+                        ing['grammatura_confezione'] = None
                     else:
                         st.text_input("", value="-", disabled=True, key=f"ing_gramm_{idx}", label_visibility="collapsed")
                         ing['grammatura_confezione'] = None
@@ -1010,7 +1259,7 @@ with tab2:
                         prezzo_override = ing.get('prezzo_override')
                         
                         # Se c'è un override, crea una copia di ing_data con il prezzo modificato
-                        if prezzo_override is not None and ing_data['tipo'] == 'articolo':
+                        if prezzo_override is not None and ing_data['tipo'] in ['articolo', 'workspace']:
                             ing_data_modified = ing_data.copy()
                             ing_data_modified['data'] = ing_data['data'].copy()
                             ing_data_modified['data']['prezzo_unitario'] = prezzo_override
@@ -1028,9 +1277,22 @@ with tab2:
                                     "border-radius: 6px; text-align: center; border: 1px solid #e2e8f0;'>€0.00</div>", unsafe_allow_html=True)
                 
                 with col7:
-                    # Conferma eliminazione per righe costose
-                    grammatura_per_calcolo = ing.get('grammatura_confezione')
-                    prezzo_riga_calc = calcola_foodcost_riga(ing_data, ing['quantita'], ing['um'], grammatura_per_calcolo) if ing_data else 0
+                    # Conferma eliminazione per righe costose (considera prezzo override)
+                    if ing_data:
+                        grammatura_per_calcolo = ing.get('grammatura_confezione')
+                        prezzo_override = ing.get('prezzo_override')
+                        
+                        # Calcola con override se presente
+                        if prezzo_override is not None and ing_data['tipo'] in ['articolo', 'workspace']:
+                            ing_data_temp = ing_data.copy()
+                            ing_data_temp['data'] = ing_data['data'].copy()
+                            ing_data_temp['data']['prezzo_unitario'] = prezzo_override
+                            prezzo_riga_calc = calcola_foodcost_riga(ing_data_temp, ing['quantita'], ing['um'], grammatura_per_calcolo)
+                        else:
+                            prezzo_riga_calc = calcola_foodcost_riga(ing_data, ing['quantita'], ing['um'], grammatura_per_calcolo)
+                    else:
+                        prezzo_riga_calc = 0
+                    
                     if prezzo_riga_calc > 5:
                         if st.button("🗑️", key=f"del_ing_{idx}", help="Elimina ingrediente"):
                             st.session_state[f'confirm_del_ing_{idx}'] = True
@@ -1095,136 +1357,129 @@ with tab2:
                 </div>
                 """, unsafe_allow_html=True)
         
-        st.markdown("---")
-        
-        # BOTTONE SALVA
-        col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
-        st.markdown("---")
-        
-        # BOTTONE SALVA
-        col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
-        with col_save2:
-            if st.button("💾 SALVA RICETTA", use_container_width=True, type="secondary"):
-                # Validazioni
-                errori = []
-                
-                if not nome_ricetta or nome_ricetta.strip() == "":
-                    errori.append("⚠️ Il nome della ricetta è obbligatorio")
-                
-                if not categoria_sel:
-                    errori.append("⚠️ Seleziona una categoria")
-                
-                if len(st.session_state.ingredienti_temp) == 0:
-                    errori.append("⚠️ Aggiungi almeno 1 ingrediente con il bottone '➕ Aggiungi Ingrediente'")
-                
-                # Verifica ingredienti completi
-                for idx, ing in enumerate(st.session_state.ingredienti_temp):
-                    if not ing.get('ingrediente_ref') or ing.get('quantita', 0) <= 0:
-                        errori.append(f"⚠️ Ingrediente #{idx+1}: dati incompleti")
-                
-                if errori:
-                    st.error("❌ **Impossibile salvare la ricetta:**")
-                    for err in errori:
-                        st.error(err)
-                else:
-                    with st.spinner("💾 Salvataggio in corso..."):
-                        try:
-                            # Calcola food cost totale
-                            foodcost_totale = 0
-                            ingredienti_json = []
-                            
-                            for ing in st.session_state.ingredienti_temp:
-                                ing_data = next((x for x in ingredienti_disponibili if x['label'] == ing['ingrediente_ref']), None)
-                                if ing_data:
-                                    grammatura_per_calcolo = ing.get('grammatura_confezione')
-                                    prezzo_override = ing.get('prezzo_override')
-                                    
-                                    # Usa prezzo override se presente
-                                    if prezzo_override is not None and ing_data['tipo'] == 'articolo':
-                                        ing_data_modified = ing_data.copy()
-                                        ing_data_modified['data'] = ing_data['data'].copy()
-                                        ing_data_modified['data']['prezzo_unitario'] = prezzo_override
-                                        prezzo_riga = calcola_foodcost_riga(ing_data_modified, ing['quantita'], ing['um'], grammatura_per_calcolo)
-                                    else:
-                                        prezzo_riga = calcola_foodcost_riga(ing_data, ing['quantita'], ing['um'], grammatura_per_calcolo)
-                                    
-                                    foodcost_totale += prezzo_riga
-                                    
-                                    ingredienti_json.append({
-                                        'nome': ing['nome'],
-                                        'quantita': ing['quantita'],
-                                        'um': ing['um'],
-                                        'prezzo_unitario': prezzo_riga / ing['quantita'],  # Normalizzato
-                                        'is_ricetta': ing['is_ricetta'],
-                                        'ricetta_id': ing.get('ricetta_id')
-                                    })
-                            
-                            # Prepara dati per insert/update
-                            ricetta_data = {
-                                'userid': user_id,
-                                'nome': nome_ricetta.strip(),
-                                'categoria': categoria_sel,
-                                'ingredienti': json.dumps(ingredienti_json),
-                                'foodcost_totale': round(foodcost_totale, 2)
-                            }
-                            
-                            # Aggiungi ristorante_id solo se disponibile
-                            if current_ristorante:
-                                ricetta_data['ristorante_id'] = current_ristorante
-                            
-                            if st.session_state.ricetta_edit_mode:
-                                # UPDATE
-                                ricetta_id = st.session_state.ricetta_edit_data['id']
-                                response = supabase.table('ricette')\
-                                    .update(ricetta_data)\
-                                    .eq('id', ricetta_id)\
-                                    .execute()
-                                
-                                st.success(f"✅ Ricetta **{nome_ricetta}** aggiornata! Food cost: €{foodcost_totale:.2f}")
-                            
-                            else:
-                                # INSERT
-                                # Ottieni prossimo ordine disponibile
-                                try:
-                                    response_max = supabase.rpc('get_next_ordine_ricetta', {
-                                        'p_userid': user_id,
-                                        'p_ristorante_id': current_ristorante
-                                    }).execute()
-                                    next_ordine = response_max.data if response_max.data else 1
-                                except Exception as e:
-                                    logger.warning(f"Errore chiamata RPC get_next_ordine_ricetta: {e}")
-                                    # Fallback: calcola max ordine manualmente
-                                    try:
-                                        q = supabase.table('ricette').select('ordine_visualizzazione').eq('userid', user_id)
-                                        if current_ristorante:
-                                            q = q.eq('ristorante_id', current_ristorante)
-                                        resp = q.order('ordine_visualizzazione', desc=True).limit(1).execute()
-                                        next_ordine = (resp.data[0]['ordine_visualizzazione'] + 1) if resp.data else 1
-                                    except:
-                                        next_ordine = 1
-                                
-                                ricetta_data['ordine_visualizzazione'] = next_ordine
-                                
-                                response = supabase.table('ricette')\
-                                    .insert(ricetta_data)\
-                                    .execute()
-                                
-                                st.success(f"✅ Ricetta **{nome_ricetta}** salvata! Food cost: €{foodcost_totale:.2f}")
-                            
-                            # Clear form e cache
-                            clear_edit_mode()
-                            st.cache_data.clear()
-                            
-                            # Redirect a tab 1
-                            import time
-                            time.sleep(1.5)
-                            st.session_state.active_tab = 0
-                            st.rerun()
+                # BOTTONE SALVA (visibile solo quando ci sono ingredienti)
+                col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
+                with col_save2:
+                    if st.button("💾 SALVA RICETTA", use_container_width=True, type="secondary"):
+                        # Validazioni
+                        errori = []
                         
-                        except Exception as e:
-                            st.error(f"❌ **Errore durante il salvataggio:**")
-                            st.error(f"Dettagli: {str(e)}")
-                            logger.exception("Errore salvataggio ricetta")
+                        if not nome_ricetta or nome_ricetta.strip() == "":
+                            errori.append("⚠️ Il nome della ricetta è obbligatorio")
+                        
+                        if not categoria_sel:
+                            errori.append("⚠️ Seleziona una categoria")
+                        
+                        if len(st.session_state.ingredienti_temp) == 0:
+                            errori.append("⚠️ Aggiungi almeno 1 ingrediente con il bottone '➕ Aggiungi Ingrediente'")
+                        
+                        # Verifica ingredienti completi
+                        for idx, ing in enumerate(st.session_state.ingredienti_temp):
+                            if not ing.get('ingrediente_ref') or ing.get('quantita', 0) <= 0:
+                                errori.append(f"⚠️ Ingrediente #{idx+1}: dati incompleti")
+                        
+                        if errori:
+                            st.error("❌ **Impossibile salvare la ricetta:**")
+                            for err in errori:
+                                st.error(err)
+                        else:
+                            with st.spinner("💾 Salvataggio in corso..."):
+                                try:
+                                    # Calcola food cost totale
+                                    foodcost_totale = 0
+                                    ingredienti_json = []
+                                    
+                                    for ing in st.session_state.ingredienti_temp:
+                                        ing_data = next((x for x in ingredienti_disponibili if x['label'] == ing['ingrediente_ref']), None)
+                                        if ing_data:
+                                            grammatura_per_calcolo = ing.get('grammatura_confezione')
+                                            prezzo_override = ing.get('prezzo_override')
+                                            
+                                            # Usa prezzo override se presente
+                                            if prezzo_override is not None and ing_data['tipo'] == 'articolo':
+                                                ing_data_modified = ing_data.copy()
+                                                ing_data_modified['data'] = ing_data['data'].copy()
+                                                ing_data_modified['data']['prezzo_unitario'] = prezzo_override
+                                                prezzo_riga = calcola_foodcost_riga(ing_data_modified, ing['quantita'], ing['um'], grammatura_per_calcolo)
+                                            else:
+                                                prezzo_riga = calcola_foodcost_riga(ing_data, ing['quantita'], ing['um'], grammatura_per_calcolo)
+                                            
+                                            foodcost_totale += prezzo_riga
+                                            
+                                            ingredienti_json.append({
+                                                'nome': ing['nome'],
+                                                'quantita': ing['quantita'],
+                                                'um': ing['um'],
+                                                'prezzo_unitario': prezzo_riga / ing['quantita'],  # Normalizzato
+                                                'is_ricetta': ing['is_ricetta'],
+                                                'ricetta_id': ing.get('ricetta_id')
+                                            })
+                                    
+                                    # Prepara dati per insert/update
+                                    ricetta_data = {
+                                        'userid': user_id,
+                                        'nome': nome_ricetta.strip(),
+                                        'categoria': categoria_sel,
+                                        'ingredienti': json.dumps(ingredienti_json),
+                                        'foodcost_totale': round(foodcost_totale, 2)
+                                    }
+                                    
+                                    # Aggiungi ristorante_id solo se disponibile
+                                    if current_ristorante:
+                                        ricetta_data['ristorante_id'] = current_ristorante
+                                    
+                                    if st.session_state.ricetta_edit_mode:
+                                        # UPDATE
+                                        ricetta_id = st.session_state.ricetta_edit_data['id']
+                                        response = supabase.table('ricette')\
+                                            .update(ricetta_data)\
+                                            .eq('id', ricetta_id)\
+                                            .execute()
+                                        
+                                        st.success(f"✅ Ricetta **{nome_ricetta}** aggiornata! Food cost: €{foodcost_totale:.2f}")
+                                    
+                                    else:
+                                        # INSERT
+                                        # Ottieni prossimo ordine disponibile
+                                        try:
+                                            response_max = supabase.rpc('get_next_ordine_ricetta', {
+                                                'p_userid': user_id,
+                                                'p_ristorante_id': current_ristorante
+                                            }).execute()
+                                            next_ordine = response_max.data if response_max.data else 1
+                                        except Exception as e:
+                                            logger.warning(f"Errore chiamata RPC get_next_ordine_ricetta: {e}")
+                                            # Fallback: calcola max ordine manualmente
+                                            try:
+                                                q = supabase.table('ricette').select('ordine_visualizzazione').eq('userid', user_id)
+                                                if current_ristorante:
+                                                    q = q.eq('ristorante_id', current_ristorante)
+                                                resp = q.order('ordine_visualizzazione', desc=True).limit(1).execute()
+                                                next_ordine = (resp.data[0]['ordine_visualizzazione'] + 1) if resp.data else 1
+                                            except:
+                                                next_ordine = 1
+                                        
+                                        ricetta_data['ordine_visualizzazione'] = next_ordine
+                                        
+                                        response = supabase.table('ricette')\
+                                            .insert(ricetta_data)\
+                                            .execute()
+                                        
+                                        st.success(f"✅ Ricetta **{nome_ricetta}** salvata! Food cost: €{foodcost_totale:.2f}")
+                                    
+                                    # Clear form e cache
+                                    clear_edit_mode()
+                                    st.cache_data.clear()
+                                    
+                                    # Redirect a tab 1
+                                    time.sleep(1.5)
+                                    st.session_state.active_tab = 0
+                                    st.rerun()
+                                
+                                except Exception as e:
+                                    st.error(f"❌ **Errore durante il salvataggio:**")
+                                    st.error(f"Dettagli: {str(e)}")
+                                    logger.exception("Errore salvataggio ricetta")
 
 
 # ============================================
@@ -1353,10 +1608,175 @@ with tab_export:
 
 
 # ============================================
-# FOOTER - BOTTONE TORNA ALL'APP
+# TAB 4: DIARIO
 # ============================================
-st.markdown("---")
-col1, col2, col3 = st.columns([1, 1, 1])
-with col2:
-    if st.button("← Torna all'App", type="primary", use_container_width=True):
-        st.switch_page("app.py")
+with tab_diario:
+    st.markdown("### 📓 Diario - Note e Appunti")
+    st.caption("💡 Tieni traccia di attività, decisioni e appunti importanti per il tuo ristorante")
+    
+    # Form per nuova nota
+    with st.expander("➕ Crea Nuova Nota", expanded=False):
+        nuova_nota_testo = st.text_area(
+            "Scrivi la tua nota",
+            placeholder="Es: Oggi ho testato una nuova ricetta per la pizza...",
+            height=150,
+            key="nuova_nota_testo"
+        )
+        
+        col_btn1, col_btn2, col_btn3 = st.columns([1, 1, 1])
+        with col_btn2:
+            if st.button("💾 Salva Nota", use_container_width=True, type="primary"):
+                if not nuova_nota_testo or not nuova_nota_testo.strip():
+                    st.error("⚠️ Inserisci del testo per la nota")
+                else:
+                    try:
+                        supabase.table('note_diario').insert({
+                            'userid': user_id,
+                            'ristorante_id': current_ristorante,
+                            'testo': nuova_nota_testo.strip()
+                        }).execute()
+                        
+                        st.success("✅ Nota salvata!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"❌ Errore salvataggio: {str(e)}")
+                        logger.exception("Errore salvataggio nota diario")
+    
+    # Carica note esistenti in ordine cronologico
+    try:
+        note_response = supabase.table('note_diario')\
+            .select('*')\
+            .eq('userid', user_id)\
+            .eq('ristorante_id', current_ristorante)\
+            .order('created_at', desc=True)\
+            .execute()
+        
+        if note_response.data:
+            st.markdown(f"**📝 {len(note_response.data)} note salvate**")
+            st.markdown("---")
+            
+            # Colori post-it (rotazione)
+            colori_postit = [
+                ('#fef3c7', '#78350f'),  # Giallo
+                ('#d1fae5', '#064e3b'),  # Verde
+                ('#dbeafe', '#1e3a8a'),  # Azzurro
+                ('#fce7f3', '#831843'),  # Rosa
+                ('#e0e7ff', '#3730a3'),  # Indaco
+            ]
+            
+            # Layout a griglia: 3 post-it per riga
+            note_list = note_response.data
+            num_cols = 3
+            
+            for i in range(0, len(note_list), num_cols):
+                cols = st.columns(num_cols)
+                
+                for j, col in enumerate(cols):
+                    if i + j < len(note_list):
+                        nota = note_list[i + j]
+                        colore_bg, colore_text = colori_postit[(i + j) % len(colori_postit)]
+                        
+                        with col:
+                            # Controlla se in modalità modifica
+                            is_editing = st.session_state.get(f"edit_nota_{nota['id']}", False)
+                            
+                            # Data formattata
+                            data_creazione = datetime.fromisoformat(nota['created_at'].replace('Z', '+00:00'))
+                            data_modifica = datetime.fromisoformat(nota['updated_at'].replace('Z', '+00:00'))
+                            data_str = data_creazione.strftime("%d/%m/%y %H:%M")
+                            modificata = data_creazione != data_modifica
+                            
+                            if is_editing:
+                                # Modalità modifica - full size
+                                st.markdown(f"""
+                                <div style='background: {colore_bg}; 
+                                            padding: 15px; 
+                                            border-radius: 8px; 
+                                            box-shadow: 3px 3px 8px rgba(0,0,0,0.15);
+                                            min-height: 250px;
+                                            margin-bottom: 15px;
+                                            border: 1px solid {colore_text}20;'>
+                                    <div style='color: {colore_text}; opacity: 0.7; font-size: 11px; margin-bottom: 10px;'>
+                                        📅 {data_str}
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                edit_testo = st.text_area(
+                                    "Modifica",
+                                    value=nota['testo'],
+                                    height=150,
+                                    key=f"edit_testo_{nota['id']}",
+                                    label_visibility="collapsed"
+                                )
+                                
+                                col_save, col_cancel = st.columns(2)
+                                with col_save:
+                                    if st.button("💾", key=f"save_{nota['id']}", use_container_width=True, help="Salva"):
+                                        if edit_testo and edit_testo.strip():
+                                            try:
+                                                supabase.table('note_diario')\
+                                                    .update({'testo': edit_testo.strip()})\
+                                                    .eq('id', nota['id'])\
+                                                    .execute()
+                                                st.session_state[f"edit_nota_{nota['id']}"] = False
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"❌ {str(e)}")
+                                
+                                with col_cancel:
+                                    if st.button("❌", key=f"cancel_{nota['id']}", use_container_width=True, help="Annulla"):
+                                        st.session_state[f"edit_nota_{nota['id']}"] = False
+                                        st.rerun()
+                            else:
+                                # Modalità visualizzazione - post-it compatto
+                                testo_troncato = nota['testo'][:120] + "..." if len(nota['testo']) > 120 else nota['testo']
+                                
+                                st.markdown(f"""
+                                <div style='background: {colore_bg}; 
+                                            padding: 15px; 
+                                            border-radius: 8px; 
+                                            box-shadow: 3px 3px 8px rgba(0,0,0,0.15);
+                                            min-height: 200px;
+                                            margin-bottom: 15px;
+                                            position: relative;
+                                            border: 1px solid {colore_text}20;
+                                            cursor: pointer;'>
+                                    <div style='color: {colore_text}; opacity: 0.7; font-size: 11px; margin-bottom: 10px;'>
+                                        📅 {data_str} {'✏️' if modificata else ''}
+                                    </div>
+                                    <div style='color: {colore_text}; 
+                                                font-size: 14px; 
+                                                line-height: 1.5;
+                                                white-space: pre-wrap;
+                                                word-wrap: break-word;
+                                                max-height: 140px;
+                                                overflow: hidden;'>
+                                        {testo_troncato}
+                                    </div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                                
+                                # Pulsanti azione piccoli
+                                col_edit, col_del = st.columns(2)
+                                with col_edit:
+                                    if st.button("✏️", key=f"edit_{nota['id']}", use_container_width=True, help="Modifica"):
+                                        st.session_state[f"edit_nota_{nota['id']}"] = True
+                                        st.rerun()
+                                
+                                with col_del:
+                                    if st.button("🗑️", key=f"del_{nota['id']}", use_container_width=True, help="Elimina"):
+                                        try:
+                                            supabase.table('note_diario').delete().eq('id', nota['id']).execute()
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"❌ {str(e)}")
+                
+                # Spaziatura tra righe
+                st.markdown("<br>", unsafe_allow_html=True)
+        else:
+            st.info("📝 Non hai ancora creato nessuna nota. Clicca su 'Crea Nuova Nota' per iniziare!")
+    
+    except Exception as e:
+        st.error(f"❌ Errore caricamento note: {str(e)}")
+        logger.exception("Errore caricamento note diario")

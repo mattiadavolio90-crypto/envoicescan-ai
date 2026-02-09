@@ -26,6 +26,82 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
+# PULIZIA CARATTERI CORROTTI
+# ============================================================
+
+def pulisci_caratteri_corrotti(testo: str) -> str:
+    """
+    Rimuove caratteri corrotti (encoding errato) dalle descrizioni.
+    
+    Rimuove:
+    - Caratteri non ASCII stampabili
+    - Caratteri Unicode corrotti (�, replacement character)
+    - Caratteri cinesi, giapponesi, coreani mal encodati
+    - Sequenze di caratteri strani tipici di encoding errato
+    
+    Mantiene:
+    - Lettere latine A-Z (maiuscole/minuscole)
+    - Lettere italiane accentate (à, è, é, ì, ò, ù, ä, ö, ü, ñ)
+    - Numeri 0-9
+    - Spazi e punteggiatura comune
+    
+    Args:
+        testo: Stringa da pulire
+    
+    Returns:
+        str: Stringa pulita con solo caratteri leggibili
+    
+    Esempi:
+        >>> pulisci_caratteri_corrotti("SAKE PER CUCINA °×º×³øÓÃÇå¾Æ1*18LT")
+        'SAKE PER CUCINA 1*18LT'
+        >>> pulisci_caratteri_corrotti("RISO THAI ½ðÁ«»¨Ì©¹úÏãÃ×18KG")
+        'RISO THAI 18KG'
+    """
+    if not testo:
+        return ""
+    
+    # Step 1: Rimuove caratteri replacement Unicode
+    testo = testo.replace('�', ' ')
+    testo = testo.replace('\ufffd', ' ')
+    
+    # Step 2: Approccio drastico - mantiene SOLO caratteri ASCII estesi (Latin-1)
+    # e rimuove tutto il resto (caratteri cinesi, giapponesi, coreani, ecc.)
+    try:
+        # Encode in Latin-1 ignorando errori, poi decode
+        testo_bytes = testo.encode('latin-1', errors='ignore')
+        testo = testo_bytes.decode('latin-1')
+    except:
+        pass
+    
+    # Step 3: Rimuove TUTTI i caratteri Unicode > 255 (non-Latin-1)
+    # Questo elimina caratteri cinesi, giapponesi, coreani, simboli strani
+    testo = ''.join(char if ord(char) < 256 else ' ' for char in testo)
+    
+    # Step 4: Mantiene SOLO caratteri ASCII puri (0-127)
+    # Rimuove TUTTI i caratteri accentati per evitare residui di encoding corrotto
+    # Le descrizioni prodotti possono sopravverer senza accenti
+    pulito = re.sub(
+        r'[^A-Za-z0-9\s.,;:/()\[\]\-*+%€$\'\"!?&@#]',
+        ' ',
+        testo
+    )
+    
+    # Step 5: Rimuove sequenze multiple di spazi
+    pulito = ' '.join(pulito.split())
+    
+    # Step 6: Rimuove simboli isolati strani rimasti
+    # Es: "SAKE ° × 18LT" → "SAKE 18LT"
+    pulito = re.sub(r'\s[°×+*·§¨©ª«¬®¯]+\s', ' ', pulito)
+    pulito = re.sub(r'\s[°×+*·§¨©ª«¬®¯]+$', '', pulito)
+    pulito = re.sub(r'^[°×+*·§¨©ª«¬®¯]+\s', '', pulito)
+    
+    # Step 7: Pulizia finale spazi
+    pulito = ' '.join(pulito.split())
+    
+    return pulito.strip()
+
+
+# ============================================================
 # NORMALIZZAZIONE DESCRIZIONI (MEMORIA GLOBALE)
 # ============================================================
 

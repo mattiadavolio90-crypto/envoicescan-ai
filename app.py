@@ -110,13 +110,33 @@ st.set_page_config(
     page_title="Analisi Fatture AI",
     page_icon="🧠",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
     menu_items={
         'Get Help': None,
         'Report a bug': None,
         'About': None
     }
 )
+
+# ============================================================
+# SIDEBAR: NASCONDI SUBITO SE NON LOGGATO (anti-flash)
+# ============================================================
+if not st.session_state.get('logged_in', False):
+    st.markdown("""
+    <style>
+    [data-testid="stSidebar"],
+    section[data-testid="stSidebar"],
+    [data-testid="stSidebarNav"],
+    [data-testid="collapsedControl"] {
+        display: none !important;
+        visibility: hidden !important;
+        width: 0 !important;
+        min-width: 0 !important;
+        opacity: 0 !important;
+        transform: translateX(-100%) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
 # ============================================================
 # CSS UNIFICATO - NASCONDI BRANDING STREAMLIT
@@ -464,22 +484,21 @@ def mostra_pagina_login():
     # Elimina completamente sidebar e pulsante
     st.markdown("""
         <style>
-        [data-testid="stSidebar"] {
+        /* Nascondi sidebar immediatamente */
+        [data-testid="stSidebar"],
+        section[data-testid="stSidebar"],
+        [data-testid="stSidebarNav"],
+        .css-1d391kg {
             display: none !important;
             visibility: hidden !important;
             width: 0 !important;
             min-width: 0 !important;
-        }
-        section[data-testid="stSidebar"] {
-            display: none !important;
+            opacity: 0 !important;
         }
         [data-testid="collapsedControl"] {
             display: none !important;
         }
         button[kind="header"] {
-            display: none !important;
-        }
-        .css-1d391kg {
             display: none !important;
         }
         [data-testid="manage-app-button"] { display: none !important; }
@@ -496,16 +515,32 @@ def mostra_pagina_login():
         }
         </style>
         <script>
-        setInterval(function() {
-            var buttons = document.querySelectorAll('[data-testid="manage-app-button"]');
-            buttons.forEach(function(btn) { btn.remove(); });
+        // Nascondi sidebar immediatamente all'avvio
+        (function() {
+            function hideSidebar() {
+                var sidebars = document.querySelectorAll('[data-testid="stSidebar"], section[data-testid="stSidebar"]');
+                sidebars.forEach(function(sidebar) {
+                    sidebar.style.display = 'none';
+                    sidebar.style.visibility = 'hidden';
+                    sidebar.style.width = '0';
+                });
+                
+                var buttons = document.querySelectorAll('[data-testid="manage-app-button"]');
+                buttons.forEach(function(btn) { btn.remove(); });
+                
+                var decorations = document.querySelectorAll('[data-testid="stDecoration"]');
+                decorations.forEach(function(dec) { dec.remove(); });
+                
+                var headers = document.querySelectorAll('button[kind="header"]');
+                headers.forEach(function(h) { h.remove(); });
+            }
             
-            var decorations = document.querySelectorAll('[data-testid="stDecoration"]');
-            decorations.forEach(function(dec) { dec.remove(); });
+            // Esegui immediatamente
+            hideSidebar();
             
-            var headers = document.querySelectorAll('button[kind="header"]');
-            headers.forEach(function(h) { h.remove(); });
-        }, 200);
+            // E continua a controllare
+            setInterval(hideSidebar, 100);
+        })();
         </script>
     """, unsafe_allow_html=True)
     
@@ -891,15 +926,10 @@ render_sidebar(user)
 
 
 # ============================================
-# HEADER CON LOGOUT, LINK ADMIN E CAMBIO PASSWORD
+# HEADER
 # ============================================
 
-
-col1, col2 = st.columns([8, 1])
-
-
-with col1:
-    st.markdown("""
+st.markdown("""
 <h1 style="font-size: 52px; font-weight: 700; margin: 0; margin-top: 20px; display: inline-block;">
     🧠 <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
     -webkit-background-clip: text;
@@ -907,76 +937,47 @@ with col1:
     background-clip: text;">Analisi Fatture AI</span>
 </h1>
 """, unsafe_allow_html=True)
-    
-    # Recupera email e nome ristorante intelligente
-    user_email = (user.get('email') or user.get('Email') or user.get('user_email') or 
-                  st.session_state.user_data.get('email') if st.session_state.user_data else None or 
-                  'Email non disponibile')
-    
-    # 🎯 LOGICA INTELLIGENTE: Single vs Multi-Ristorante
-    try:
-        user_id = user.get('id')
-        if user_id:
-            # Conta ristoranti attivi per questo utente
-            ristoranti_count = supabase.table('ristoranti')\
-                .select('nome_ristorante', count='exact')\
-                .eq('user_id', user_id)\
-                .eq('attivo', True)\
-                .execute()
-            
-            num_ristoranti = len(ristoranti_count.data) if ristoranti_count.data else 0
-            
-            if num_ristoranti == 0:
-                nome_ristorante = "Nessun Ristorante"
-            elif num_ristoranti == 1:
-                # Single ristorante: mostra il nome
-                nome_ristorante = ristoranti_count.data[0]['nome_ristorante']
-            else:
-                # Multi-ristorante: mostra etichetta generica 
-                nome_ristorante = "Multi-Ristorante"
+
+# Recupera email e nome ristorante intelligente
+user_email = (user.get('email') or user.get('Email') or user.get('user_email') or 
+              st.session_state.user_data.get('email') if st.session_state.user_data else None or 
+              'Email non disponibile')
+
+# 🎯 LOGICA INTELLIGENTE: Single vs Multi-Ristorante
+try:
+    user_id = user.get('id')
+    if user_id:
+        # Conta ristoranti attivi per questo utente
+        ristoranti_count = supabase.table('ristoranti')\
+            .select('nome_ristorante', count='exact')\
+            .eq('user_id', user_id)\
+            .eq('attivo', True)\
+            .execute()
+        
+        num_ristoranti = len(ristoranti_count.data) if ristoranti_count.data else 0
+        
+        if num_ristoranti == 0:
+            nome_ristorante = "Nessun Ristorante"
+        elif num_ristoranti == 1:
+            # Single ristorante: mostra il nome
+            nome_ristorante = ristoranti_count.data[0]['nome_ristorante']
         else:
-            # Fallback se non trova user_id
-            nome_ristorante = user.get('nome_ristorante') or 'Ristorante'
-    except Exception as e:
-        # Fallback sicuro in caso di errore query
-        logger.warning(f"Errore conteggio ristoranti per intestazione: {e}")
+            # Multi-ristorante: mostra etichetta generica 
+            nome_ristorante = "Multi-Ristorante"
+    else:
+        # Fallback se non trova user_id
         nome_ristorante = user.get('nome_ristorante') or 'Ristorante'
-    
-    # Box informativo conservazione sostitutiva
-    st.markdown("""
+except Exception as e:
+    # Fallback sicuro in caso di errore query
+    logger.warning(f"Errore conteggio ristoranti per intestazione: {e}")
+    nome_ristorante = user.get('nome_ristorante') or 'Ristorante'
+
+# Box informativo conservazione sostitutiva
+st.markdown("""
 <div style='background-color: #e7f3ff; padding: 12px; border-radius: 5px; border-left: 4px solid #2196F3;'>
 <p style='margin: 0; color: #014361; font-size: 14px;'>📄 <strong>Nota Legale:</strong> Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.</p>
 </div>
 """, unsafe_allow_html=True)
-
-
-# CSS personalizzato per bottone Logout
-st.markdown("""
-<style>
-/* Stile logout button */
-div[data-testid="column"]:last-child button[kind="primary"] {
-    background-color: #ef4444 !important;
-    color: white !important;
-    border: 1px solid #ef4444 !important;
-}
-div[data-testid="column"]:last-child button[kind="primary"]:hover {
-    background-color: #dc2626 !important;
-    border: 1px solid #dc2626 !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
-# Pulsante Logout
-with col2:
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("Logout", type="primary", use_container_width=True, key="logout_btn"):
-        # Reset completo session_state
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        
-        # Rerun per applicare
-        st.rerun()
-
 
 st.markdown("---")
 
@@ -1351,6 +1352,11 @@ def mostra_statistiche(df_completo):
                     descrizioni_per_ai = []  # Solo quelle che dizionario non risolve
                     prodotti_elaborati = 0  # Contatore per banner
                     
+                    # ⭐ Inizializza tracking keyword come set (O(1) lookup)
+                    if 'righe_keyword_appena_categorizzate' not in st.session_state:
+                        st.session_state.righe_keyword_appena_categorizzate = []
+                    _tracking_keyword_set = set(st.session_state.righe_keyword_appena_categorizzate)
+                    
                     for desc in descrizioni_da_classificare:
                         cat_dizionario = applica_correzioni_dizionario(desc, "Da Classificare")
                         if cat_dizionario and cat_dizionario != 'Da Classificare':
@@ -1367,10 +1373,9 @@ def mostra_statistiche(df_completo):
                             </div>
                             """, unsafe_allow_html=True)
                             
-                            # ⭐ NUOVO: Traccia righe keyword per colonna Fonte
-                            if 'righe_keyword_appena_categorizzate' not in st.session_state:
-                                st.session_state.righe_keyword_appena_categorizzate = []
-                            if desc not in st.session_state.righe_keyword_appena_categorizzate:
+                            # Traccia righe keyword per colonna Fonte
+                            if desc not in _tracking_keyword_set:
+                                _tracking_keyword_set.add(desc)
                                 st.session_state.righe_keyword_appena_categorizzate.append(desc)
                             logger.info(f"📖 DIZIONARIO: '{desc[:40]}' → {cat_dizionario}")
                         else:

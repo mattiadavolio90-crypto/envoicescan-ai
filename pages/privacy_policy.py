@@ -7,6 +7,19 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Nascondi sidebar immediatamente se non loggato
+if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"],
+        section[data-testid="stSidebar"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
 # La pagina è pubblica, mostra avviso se non loggati
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.info("ℹ️ Questa pagina è consultabile pubblicamente. Torna al Login per accedere al servizio.")
@@ -88,10 +101,3 @@ Ci riserviamo il diritto di modificare questa informativa. Gli utenti verranno i
 
 ---
 """)
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-col1, col2, col3 = st.columns([1, 1, 1])
-with col2:
-    if st.button("← Torna all'App", type="primary", use_container_width=True):
-        st.switch_page("app.py")

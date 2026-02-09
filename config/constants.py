@@ -179,6 +179,31 @@ FORNITORI_SPESE_GENERALI_KEYWORDS = [
 
 
 # ============================================
+# REGOLE CATEGORIZZAZIONE PER FORNITORE
+# ============================================
+# Fornitore specifico → Categoria automatica (priorità ALTA)
+# Applicate PRIMA del dizionario keyword
+CATEGORIA_PER_FORNITORE = {
+    "CP S.P.A": "UTENZE E LOCALI",          # Bollette energia/gas
+    "M&M SRL": "GELATI",                    # Fornitore gelati
+}
+
+
+# ============================================
+# REGOLE CATEGORIZZAZIONE PER UNITÀ DI MISURA
+# ============================================
+# Unità misura → Categoria automatica (priorità ALTA)
+# Applicate PRIMA del dizionario keyword
+UNITA_MISURA_CATEGORIA = {
+    "KWH": "UTENZE E LOCALI",     # Kilowattora (energia elettrica)
+    "SMC": "UTENZE E LOCALI",     # Standard Metro Cubo (gas)
+    "KW": "UTENZE E LOCALI",      # Kilowatt (potenza elettrica)
+    "NREE": "UTENZE E LOCALI",    # Numero (quota fissa bollette)
+    "GGQFD": "UTENZE E LOCALI",   # Giorni quota fissa distribuzione
+}
+
+
+# ============================================
 # DIZIONARIO CORREZIONI INTELLIGENTE
 # ============================================
 # Mappa keyword â†’ categoria per classificazione rapida
@@ -230,6 +255,26 @@ DIZIONARIO_CORREZIONI = {
     "ACCIUGHE": "PESCE",
     "ALICI": "PESCE",
     "SARDINE": "PESCE",
+    "PANGASIO": "PESCE",
+    "TOTANO": "PESCE",
+    "CALAMARO": "PESCE",
+    "SEPPIA": "PESCE",
+    "GRANCHIO": "PESCE",
+    "ARAGOSTA": "PESCE",
+    "ASTICE": "PESCE",
+    "TENTACOLI": "PESCE",
+    "CHELE": "PESCE",
+    "CODE GAMBERO": "PESCE",
+    "GAMBERONE": "PESCE",
+    "GAMBERONI": "PESCE",
+    "IMITAZIONE": "PESCE",
+    "SURIMI": "PESCE",
+    "LYCHEES": "FRUTTA",
+    "LITCHI": "FRUTTA",
+    "ARBUTUS": "FRUTTA",
+    "CORBEZZOLO": "FRUTTA",
+    "SCIROPPATO": "FRUTTA",
+    "SCIROPPATA": "FRUTTA",
     
     # ===== LATTICINI =====
     "GRANA PADANO": "LATTICINI",
@@ -248,6 +293,8 @@ DIZIONARIO_CORREZIONI = {
     "MASCARPONE": "LATTICINI",
     "LATTE": "LATTICINI",
     "PANNA": "LATTICINI",
+    "MOZZARELLE PANATE": "LATTICINI",
+    "TOFU": "LATTICINI",
     "YOGURT": "LATTICINI",
     "EDAMER": "LATTICINI",
     "PIZZA JULIENNE": "LATTICINI",
@@ -261,7 +308,8 @@ DIZIONARIO_CORREZIONI = {
     "PANCETTA": "SALUMI",
     "SPECK": "SALUMI",
     "BRESAOLA": "SALUMI",
-    "COPPA": "SALUMI",
+    # NOTA: "COPPA" spostata in sezione GELATI (COPPA = gelato). Per salumi usare "COPPA DI TESTA" o simili
+    "COPPA DI TESTA": "SALUMI",
     "LARDO": "SALUMI",
     "GUANCIALE": "SALUMI",
     # âœ… Richiesta: SALSICCIA e varianti â†’ CARNE (non SALUMI)
@@ -553,6 +601,7 @@ DIZIONARIO_CORREZIONI = {
     "GELATI": "GELATI",
     "SORBETTO": "GELATI",
     "COPPA GELATO": "GELATI",
+    "COPPA": "GELATI",  # Coppa gelato (anche senza "GELATO" nel testo)
     "CONO": "GELATI",
     "SEMIFREDDO": "GELATI",
     
@@ -604,7 +653,7 @@ DIZIONARIO_CORREZIONI = {
     "VASCHETTINA": "MATERIALE DI CONSUMO",
     "COPPETTA": "MATERIALE DI CONSUMO",
     "COPPETTE": "MATERIALE DI CONSUMO",
-    "COPPA GELATO": "GELATI",  # Eccezione: se contiene GELATO Ã¨ il prodotto
+    # NOTA: COPPA GELATO già definita nella sezione GELATI principale
     "TOVAGLIOLO": "MATERIALE DI CONSUMO",
     "TOVAGLIOLI": "MATERIALE DI CONSUMO",
     "TOVAGLIOLIN": "MATERIALE DI CONSUMO",
@@ -710,7 +759,7 @@ DIZIONARIO_CORREZIONI = {
     "SOCIAL MEDIA": "SERVIZI E CONSULENZE",
     "PUBBLICITA": "SERVIZI E CONSULENZE",
     "POS": "SERVIZI E CONSULENZE",
-    "COMMISSIONI": "SERVIZI E CONSULENZE",
+    # NOTA: "COMMISSIONI" già definita sopra (sezione PROBLEMI AI)
     "COMMISSIONE BANCARIA": "SERVIZI E CONSULENZE",
     "BONIFICO": "SERVIZI E CONSULENZE",
     "ASSICURAZIONE": "SERVIZI E CONSULENZE",
@@ -780,6 +829,31 @@ DIZIONARIO_CORREZIONI = {
     "CLIMATIZZAZIONE": "UTENZE E LOCALI",
     "TOTALE IMPOSTE": "UTENZE E LOCALI",
     "ARROTONDAMENTO": "UTENZE E LOCALI",
+    # Bollette energia/gas - voci dettagliate
+    "SPREAD": "UTENZE E LOCALI",
+    "QUOTA FISSA": "UTENZE E LOCALI",
+    "QUOTA ENERGIA": "UTENZE E LOCALI",
+    "QUOTA TRASPORTO": "UTENZE E LOCALI",
+    "QUOTA POTENZA": "UTENZE E LOCALI",
+    "QUOTA VARIABILE": "UTENZE E LOCALI",
+    "CORRISPETTIVO": "UTENZE E LOCALI",
+    "COMPONENTE": "UTENZE E LOCALI",
+    "UPLIFT": "UTENZE E LOCALI",
+    "DISTRIBUZIONE": "UTENZE E LOCALI",
+    "DISPACCIAMENTO": "UTENZE E LOCALI",
+    "SBILANCIAMENTO": "UTENZE E LOCALI",
+    "ACCISA": "UTENZE E LOCALI",
+    "COMMERCIALIZZAZIONE": "UTENZE E LOCALI",
+    "ONERI": "UTENZE E LOCALI",
+    "ASOS": "UTENZE E LOCALI",
+    "ARIM": "UTENZE E LOCALI",
+    "SCAGLIONE": "UTENZE E LOCALI",
+    "CAPACITA": "UTENZE E LOCALI",
+    "CAPACITÀ": "UTENZE E LOCALI",
+    "CCR": "UTENZE E LOCALI",
+    "MANCATA PRODUZIONE": "UTENZE E LOCALI",
+    "COSTI FUNZIONAMENTO TERNA": "UTENZE E LOCALI",
+    "PERTITE ECONOMICHE": "UTENZE E LOCALI",
     
     # ===== MANUTENZIONE E ATTREZZATURE =====
     "VASSOIO VETRINA": "MANUTENZIONE E ATTREZZATURE",
@@ -827,6 +901,76 @@ DIZIONARIO_CORREZIONI = {
     "UTENSILI": "MANUTENZIONE E ATTREZZATURE",
 
     
+    # ===== GELATI E DESSERT (keywords aggiuntivi, base in sezione GELATI sopra) =====
+    # NOTA: GELATO, GELATI, CONO, COPPA GELATO già definiti nella sezione GELATI principale
+    "PIRATA": "GELATI",
+    "PRINCIPESSA": "GELATI",
+    "TARTUFO": "GELATI",
+    "SOUFFLE": "GELATI",
+    "SOUFFLÉ": "GELATI",
+    "MERINGA": "GELATI",
+    "CROCCANTE": "GELATI",
+    "FR.RI.": "GELATI",
+    "FRESCO RIPIENO": "GELATI",
+    "COCCO CF": "GELATI",
+    "SPAGNOLA CF": "GELATI",
+    
+    # ===== INGREDIENTI ASIATICI =====
+    "NORI": "SPEZIE E AROMI",
+    "ALGHE": "SPEZIE E AROMI",
+    "WAKAME": "SPEZIE E AROMI",
+    "KONBU": "SPEZIE E AROMI",
+    "PANKO": "SECCO",
+    "DASHI": "SPEZIE E AROMI",
+    "MISO": "SALSE E CREME",
+    "ZENZERO SALAMOIA": "SCATOLAME E CONSERVE",
+    "ZENZERO IN SALAMOIA": "SCATOLAME E CONSERVE",
+    "SESAMO": "SPEZIE E AROMI",
+    "SESAMO NERO": "SPEZIE E AROMI",
+    "WASABI": "SPEZIE E AROMI",
+    "TEMPURA": "SECCO",
+    "EDAMAME": "VERDURE",
+    "CIPOLLA FRITTA": "SCATOLAME E CONSERVE",
+    "BAMBU": "SCATOLAME E CONSERVE",
+    "BAMBÙ": "SCATOLAME E CONSERVE",
+    
+    # ===== SALSE ASIATICHE =====
+    "SAKE CUCINA": "SALSE E CREME",
+    "MIRIN": "SALSE E CREME",
+    "SAMBAL": "SALSE E CREME",
+    "SAMBAL OELEK": "SALSE E CREME",
+    "UNAGI": "SALSE E CREME",
+    "UNAGI SAUCE": "SALSE E CREME",
+    "TERIYAKI": "SALSE E CREME",
+    "HAKUTSURU": "SALSE E CREME",
+    "MIZKAN": "SALSE E CREME",
+    "DRESSING": "SALSE E CREME",
+    
+    # ===== BEVANDE ASIATICHE =====
+    "SPRITE": "BEVANDE",
+    "SAPPORO": "BIRRE",
+    "ASAHI": "BIRRE",
+    "KIRIN": "BIRRE",
+    "TSINGTAO": "BIRRE",
+    "BIRRA CAN": "BIRRE",
+    "SILVER CAN": "BIRRE",
+    
+    # ===== MATERIALE CONSUMO SPECIFICO =====
+    "BASTONCINO BAMBU": "MATERIALE DI CONSUMO",
+    "BACCHETTE": "MATERIALE DI CONSUMO",
+    "BOBINA": "MATERIALE DI CONSUMO",
+    "STRAPI": "MATERIALE DI CONSUMO",
+    "STRAPPO": "MATERIALE DI CONSUMO",
+    "CONTRIBUTO SPESE": "MATERIALE DI CONSUMO",
+    "SPESE CONSEGNA": "MATERIALE DI CONSUMO",
+    "SODA": "MATERIALE DI CONSUMO",
+    "BICARBONATO": "MATERIALE DI CONSUMO",
+    "TACO SHELLS": "SECCO",
+    "NUVOLE DI DRAGO": "SECCO",
+    "PASTO DI GRANO": "SECCO",
+    "WHITE PRAWN CRACKERS": "SECCO",
+    "CRACKERS": "SECCO",
+    
     # ===== FIX DIZIONARIO CONSERVATIVO - KEYWORD SPECIFICHE =====
     "BISCOTTINI": "PASTICCERIA",
     "CANDEGGINA": "MATERIALE DI CONSUMO",
@@ -863,7 +1007,7 @@ DIZIONARIO_CORREZIONI = {
     "CAPRINO VACCINO": "LATTICINI",
     "CREMA GIANDUIA": "PASTICCERIA",
     "CREMA GIANDUJA": "PASTICCERIA",
-    "EDAMAME": "VERDURE",
+    # NOTA: "EDAMAME" già definita sopra (sezione INGREDIENTI ASIATICI)
     "ESSE": "PASTICCERIA",
     "ESSE GIGANTI": "PASTICCERIA",
     "ESSENCE": "PASTICCERIA",
@@ -876,7 +1020,7 @@ DIZIONARIO_CORREZIONI = {
     "GIANDUJA": "PASTICCERIA",
     "LAVASTOV": "MATERIALE DI CONSUMO",
     "MISTER X": "MATERIALE DI CONSUMO",
-    "TAZZA": "MATERIALE DI CONSUMO",
+    # NOTA: "TAZZA" già definita sopra (sezione MATERIALI CONSUMO)
     "GREMBIULE": "MATERIALE DI CONSUMO",
     "SALE PASTIGLIE": "MATERIALE DI CONSUMO",
     "MISTO FROLLA": "PASTICCERIA",
@@ -891,7 +1035,7 @@ DIZIONARIO_CORREZIONI = {
     # "PASSATA POMODORO": duplicato rimosso (definito sopra come SALSE E CREME, ora unificato)
     "PANNA SPRAY": "VARIE BAR",
     "ZUCCHERO BUSTINE": "VARIE BAR",
-    "ZUCCHERO BAR": "VARIE BAR",
+    # NOTA: "ZUCCHERO BAR" già definita sopra (sezione VARIE BAR)
     "PAIN AU CHOCOLAT": "PRODOTTI DA FORNO",
     "EDAMINO": "LATTICINI",
     "RIBOLLA": "VINI",

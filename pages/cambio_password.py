@@ -44,11 +44,21 @@ ph = PasswordHasher()
 # CONTROLLO LOGIN
 # ============================================================
 
+# Nascondi sidebar immediatamente se non loggato
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.error("🔒 **Accesso Negato**")
-    st.warning("Devi effettuare il login per cambiare la password.")
-    st.info("👉 Torna alla [pagina principale](/) per accedere.")
-    st.stop()
+    st.markdown("""
+        <style>
+        [data-testid="stSidebar"],
+        section[data-testid="stSidebar"] {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+if 'logged_in' not in st.session_state or not st.session_state.logged_in:
+    st.switch_page("app.py")
 
 user = st.session_state.user_data
 
