@@ -890,7 +890,49 @@ with tab2:
         if len(st.session_state.ingredienti_temp) >= MAX_INGREDIENTI:
             st.error(f"⚠️ Limite massimo di {MAX_INGREDIENTI} ingredienti raggiunto")
         
-        # Expander per creare ingredienti manuali (sopra al pulsante)
+        # Guida generale a inizio pagina (con sfondo azzurro chiaro)
+        st.markdown("""
+        <style>
+        /* Colora solo il primo expander (guida) di azzurro chiaro */
+        div[data-testid="stExpander"]:first-of-type summary {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
+            border-radius: 8px !important;
+            padding: 12px 16px !important;
+            color: #1e40af !important;
+            font-weight: 600 !important;
+        }
+        div[data-testid="stExpander"]:first-of-type {
+            margin-bottom: 24px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        with st.expander("ℹ️ Guida: come usare la sezione Ricette", expanded=False):
+            st.markdown("""
+### 📝 Crea Ingrediente Manuale
+Puoi creare ingredienti manualmente con prezzi stimati.  
+Questi ingredienti rimangono isolati nel workspace e puoi modificarli/eliminarli in qualsiasi momento o sostituirli con quelli reali.
+
+### 🍽️ Compila la Ricetta
+**🔍 Ingrediente**: Cerca nel dropdown (es: scrivi "mozz" per trovare mozzarella). Vicino ad ogni ingrediente puoi trovare:
+- Ingredienti dalle fatture caricate (icona 🟢)
+- Ingredienti creati manualmente (icona 📝)
+- Semilavorati salvati come ricette (icona 🍲)
+
+- Ogni ingrediente ha il **💰 Prezzo** come indicato in fattura (modificabile se necessario)
+
+**⚙️ Gram. Conf.** (Grammatura Confezione):  
+è il Prezzo per confezione specifica → inserisci i gr/ml della confezione  
+Esempio: Latta pomodoro 5KG a €10 → inserisci 5000
+
+**📏 UM**: Unità di misura per il calcolo (g, kg, ml, lt, pz)  
+**📊 Quantità**: Quanto ne usi nella ricetta (es: 200g di pomodoro)  
+**💵 Costo**: in automatico attribuisce il costo proporzionato all'utilizzo.
+
+Se necessario contattare l'assistenza.
+            """)
+        
+        # Expander per creare ingredienti manuali
         with st.expander("📝 Crea Ingrediente Manuale", expanded=False):
             st.caption("💡 **Per ristoranti non ancora aperti o per test**: crea ingredienti personalizzati con prezzi stimati. Questi ingredienti rimangono isolati in questa sezione.")
             
@@ -971,12 +1013,44 @@ with tab2:
                 if workspace_ings.data:
                     st.markdown("**📦 Ingredienti manuali esistenti:**")
                     
+                    # Header tabella
                     cols_ing = st.columns([3, 2, 1.5, 0.8, 0.8])
                     cols_ing[0].markdown("**Nome**")
                     cols_ing[1].markdown("**Prezzo**")
                     cols_ing[2].markdown("**UM**")
                     cols_ing[3].markdown("**Modifica**")
                     cols_ing[4].markdown("**Elimina**")
+                    
+                    # Marker per identificare inizio lista scrollabile
+                    st.markdown('<div class="workspace-ingredients-list"></div>', unsafe_allow_html=True)
+                    
+                    # CSS per rendere scrollabile la lista (max 5 righe = ~350px)
+                    st.markdown("""
+                    <style>
+                    /* Scrollable container per ingredienti workspace */
+                    .workspace-ingredients-list + div {
+                        max-height: 350px;
+                        overflow-y: auto;
+                        padding-right: 8px;
+                        margin-top: 8px;
+                    }
+                    /* Scrollbar personalizzata */
+                    .workspace-ingredients-list + div::-webkit-scrollbar {
+                        width: 8px;
+                    }
+                    .workspace-ingredients-list + div::-webkit-scrollbar-track {
+                        background: #f1f5f9;
+                        border-radius: 4px;
+                    }
+                    .workspace-ingredients-list + div::-webkit-scrollbar-thumb {
+                        background: #94a3b8;
+                        border-radius: 4px;
+                    }
+                    .workspace-ingredients-list + div::-webkit-scrollbar-thumb:hover {
+                        background: #64748b;
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
                     
                     for ing in workspace_ings.data:
                         # Controlla se questo ingrediente è in modalità modifica
@@ -1072,24 +1146,62 @@ with tab2:
             except Exception as e:
                 st.warning(f"⚠️ Impossibile caricare ingredienti workspace: {str(e)}")
         
-        # Spazio tra expander e bottone
+        # Spazio tra expander e header
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # CSS per allineare il testo del bottone a sinistra
+        # Header tabella SEMPRE visibile con sfondo colorato
+        st.markdown("""
+        <div style="display: flex; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    color: white; padding: 10px 8px; border-radius: 8px; font-weight: 600; 
+                    font-size: 13px; margin-bottom: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+            <div style="flex: 2.5;">🍽️ Ingrediente</div>
+            <div style="flex: 1.2;">💰 Prezzo</div>
+            <div style="flex: 1;">⚙️ Gram.Conf.</div>
+            <div style="flex: 0.6;">📏 UM</div>
+            <div style="flex: 1;">📊 Qtà</div>
+            <div style="flex: 1.2;">💵 Costo</div>
+            <div style="flex: 0.5; text-align: center;">🗑️</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Bottone per aggiungere ingredienti con testo allineato a sinistra
         st.markdown("""
         <style>
-        div[data-testid="stButton"] > button[kind="secondary"] {
+        /* Forza testo a sinistra su TUTTI i bottoni secondary full-width */
+        button[kind="secondary"] {
+            text-align: left !important;
+            display: flex !important;
+            justify-content: flex-start !important;
+            align-items: center !important;
+        }
+        button[kind="secondary"] > div {
             text-align: left !important;
             justify-content: flex-start !important;
-            padding-left: 16px !important;
+            display: flex !important;
+            width: 100% !important;
+        }
+        button[kind="secondary"] > div > p,
+        button[kind="secondary"] p {
+            text-align: left !important;
+            width: 100% !important;
+        }
+        /* Anche BaseButton-secondary */
+        .stButton button {
+            justify-content: flex-start !important;
+        }
+        .stButton button div {
+            justify-content: flex-start !important;
+        }
+        .stButton button div p {
+            text-align: left !important;
         }
         </style>
         """, unsafe_allow_html=True)
         
-        # Bottone unico per aggiungere ingredienti (larghezza piena, testo a sinistra)
-        if st.button("➕ Aggiungi Ingrediente/Semilavorato", 
+        if st.button("➕ Aggiungi Ingrediente / Semilavorato / Creato Manualmente", 
                      disabled=len(st.session_state.ingredienti_temp) >= MAX_INGREDIENTI,
-                     use_container_width=True):
+                     use_container_width=True,
+                     key="add_ingredient_btn"):
             st.session_state.ingredienti_temp.append({
                 'nome': '',
                 'quantita': 1.0,
@@ -1106,17 +1218,6 @@ with tab2:
         
         # Tabella dinamica ingredienti
         if len(st.session_state.ingredienti_temp) > 0:
-            # Header tabella migliorato
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                        color: white; padding: 10px; border-radius: 8px; font-weight: bold; 
-                        margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
-                🍽️ Ingrediente &nbsp;|&nbsp; � Prezzo Base &nbsp;|&nbsp; ⚙️ Gram. Conf. &nbsp;|&nbsp; 📏 UM &nbsp;|&nbsp; 📊 Quantità &nbsp;|&nbsp; 💰 Costo &nbsp;|&nbsp; 🗑️
-            </div>
-            """, unsafe_allow_html=True)
-            
-            st.caption("💡 **Gram. Conf.** = grammatura a cui si riferisce il prezzo (es: 5000 per latta 5KG). Lascia **0** se prezzo è già al KG/LT")
-            st.caption("🔍 **Cerca ingredienti**: Clicca sul dropdown 'Ingrediente' e digita per cercare (es: 'gamb' trova 'gamberi', 'gamberoni', ecc.)")
             
             ingredienti_da_rimuovere = []
             
@@ -1361,9 +1462,8 @@ with tab2:
                 """, unsafe_allow_html=True)
         
                 # BOTTONE SALVA (visibile solo quando ci sono ingredienti)
-                col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
-                with col_save2:
-                    if st.button("💾 SALVA RICETTA", use_container_width=True, type="secondary"):
+                st.markdown("<br>", unsafe_allow_html=True)  # Spazio sopra
+                if st.button("💾 SALVA RICETTA", type="secondary"):
                         # Validazioni
                         errori = []
                         
