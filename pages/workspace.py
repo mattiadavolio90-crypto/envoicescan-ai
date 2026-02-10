@@ -952,6 +952,9 @@ with tab2:
                         except Exception as e:
                             if 'duplicate' in str(e).lower() or 'unique' in str(e).lower():
                                 st.error(f"⚠️ Ingrediente '{nuovo_ing_nome}' già esistente")
+                            elif 'row-level security' in str(e).lower() or '42501' in str(e):
+                                st.error("❌ Errore permessi database (RLS). Esegui la migrazione `024_fix_rls_custom_auth.sql` nel SQL Editor di Supabase.")
+                                logger.error(f"RLS error ingredienti_workspace: {e}")
                             else:
                                 st.error(f"❌ Errore: {str(e)}")
                                 logger.exception("Errore creazione ingrediente workspace")
@@ -1477,8 +1480,12 @@ with tab2:
                                     st.rerun()
                                 
                                 except Exception as e:
-                                    st.error(f"❌ **Errore durante il salvataggio:**")
-                                    st.error(f"Dettagli: {str(e)}")
+                                    if 'row-level security' in str(e).lower() or '42501' in str(e):
+                                        st.error("❌ Errore permessi database (RLS). Esegui la migrazione `024_fix_rls_custom_auth.sql` nel SQL Editor di Supabase.")
+                                        logger.error(f"RLS error ricette: {e}")
+                                    else:
+                                        st.error(f"❌ **Errore durante il salvataggio:**")
+                                        st.error(f"Dettagli: {str(e)}")
                                     logger.exception("Errore salvataggio ricetta")
 
 
