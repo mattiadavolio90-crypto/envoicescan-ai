@@ -2838,13 +2838,18 @@ def mostra_statistiche(df_completo):
             
             # BADGE CONTEGGIO
             if not df_alert.empty:
-                st.info(f"⚠️ **{len(df_alert)} Aumenti Rilevati** (soglia ≥ +{soglia_aumento}%) - Solo prodotti Food & Beverage")
+                st.info(f"⚠️ **{len(df_alert)} Variazioni Rilevate** (soglia ≥ +{soglia_aumento}%) - Solo prodotti Food & Beverage")
+                
+                # 📖 LEGENDA COLONNE
+                st.caption("📖 **Storico**: ultimi 5 prezzi precedenti | **Media**: media dello storico | **Ultimo**: prezzo ultimo acquisto | **Var. %**: variazione ultimo vs penultimo")
                 
                 # Prepara colonne display
                 df_display = df_alert.copy()
                 df_display['Data'] = pd.to_datetime(df_display['Data']).dt.strftime('%d/%m/%y')
-                df_display['Prezzo_Prec'] = df_display['Prezzo_Prec'].apply(lambda x: f"€{x:.2f}")
-                df_display['Prezzo_Nuovo'] = df_display['Prezzo_Nuovo'].apply(lambda x: f"€{x:.2f}")
+                
+                # Formatta Media e Ultimo come €
+                df_display['Media'] = df_display['Media'].apply(lambda x: f"€{x:.2f}")
+                df_display['Ultimo'] = df_display['Ultimo'].apply(lambda x: f"€{x:.2f}")
                 
                 # PALLINI COLORATI: 🔴 Aumento / 🟢 Diminuzione
                 def formatta_variazione(perc):
@@ -2857,11 +2862,12 @@ def mostra_statistiche(df_completo):
                 
                 df_display['Aumento_Perc'] = df_display['Aumento_Perc'].apply(formatta_variazione)
                 
-                # 🔧 FIX: Reset index prima di rinominare
+                # 🔧 Reset index prima di rinominare
                 df_display = df_display.reset_index(drop=True)
                 
-                # Rinomina colonne per display (NO EMOJI)
-                df_display.columns = ['Prodotto', 'Cat.', 'Fornitore', 'Data', 'Prec.', 'Nuovo', 'Variazione', 'N.Fattura']
+                # Seleziona e rinomina colonne per display
+                df_display = df_display[['Prodotto', 'Categoria', 'Fornitore', 'Storico', 'Media', 'Ultimo', 'Aumento_Perc', 'Data', 'N_Fattura']]
+                df_display.columns = ['Prodotto', 'Cat.', 'Fornitore', 'Storico (ultimi 5)', 'Media storico', 'Ultimo', 'Var. %', 'Data ultima', 'N.Fattura']
                 
                 # ============================================================
                 # ALTEZZA SCROLLABILE (min 200px, max 500px)
@@ -2926,8 +2932,8 @@ def mostra_statistiche(df_completo):
             # ============================================================
             st.markdown("### 🎁 Sconti e Omaggi Ricevuti")
             
-            # Caption dinamica con periodo (usa label_periodo già calcolato sopra)
-            st.caption(f"{label_periodo} - Solo prodotti Food & Beverage")
+            # 📖 LEGENDA
+            st.caption("📖 **Sconti**: totale sconti ricevuti | **Omaggi**: valore stimato (ultimo prezzo × quantità) | **Totale**: somma sconti + omaggi | Solo prodotti Food & Beverage")
             
             # Carica dati CON PERIODO DINAMICO
             with st.spinner("Caricamento sconti e omaggi..."):
@@ -2943,6 +2949,7 @@ def mostra_statistiche(df_completo):
             col_metric1, col_metric2, col_metric3 = st.columns(3)
             
             with col_metric1:
+                importo_sconti = df_sconti['importo_sconto'].sum() if not df_sconti.empty else 0.0
                 st.markdown("""
                 <div style="
                     background-color: #fff5f0;
@@ -2955,13 +2962,14 @@ def mostra_statistiche(df_completo):
                     justify-content: space-between;
                 ">
                     <div style="font-size: 14px; color: #666; font-weight: 500;">Sconti Applicati</div>
-                    <div style="font-size: 24px; font-weight: bold; margin: 8px 0;">{} righe</div>
-                    <div style="font-size: 16px; color: #dc3545; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">-€{:.2f}</div>
+                    <div style="font-size: 28px; font-weight: bold; margin: 8px 0; color: #dc3545;">€{:.2f}</div>
+                    <div style="font-size: 13px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{} prodotti scontati</div>
                 </div>
-                """.format(len(df_sconti), totale_risparmiato if totale_risparmiato > 0 else 0), 
+                """.format(importo_sconti, len(df_sconti)), 
                 unsafe_allow_html=True)
             
             with col_metric2:
+                valore_omaggi = totale_risparmiato - (df_sconti['importo_sconto'].sum() if not df_sconti.empty else 0.0)
                 st.markdown("""
                 <div style="
                     background-color: #f0f8ff;
@@ -2974,10 +2982,10 @@ def mostra_statistiche(df_completo):
                     justify-content: space-between;
                 ">
                     <div style="font-size: 14px; color: #666; font-weight: 500;">Omaggi Ricevuti</div>
-                    <div style="font-size: 24px; font-weight: bold; margin: 8px 0;">{} righe</div>
-                    <div style="font-size: 14px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Prodotti gratuiti</div>
+                    <div style="font-size: 28px; font-weight: bold; margin: 8px 0; color: #0d6efd;">€{:.2f}</div>
+                    <div style="font-size: 13px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{} prodotti omaggio (valore stimato)</div>
                 </div>
-                """.format(len(df_omaggi)), 
+                """.format(valore_omaggi if valore_omaggi > 0 else 0.0, len(df_omaggi)), 
                 unsafe_allow_html=True)
             
             with col_metric3:

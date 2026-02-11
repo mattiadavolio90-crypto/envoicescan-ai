@@ -318,52 +318,66 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
         # Ordina per data
         group = group.sort_values('DataDocumento')
         
+        # Filtra solo acquisti con prezzo valido
+        acquisti_validi = group[group['PrezzoUnitario'] > 0].copy()
+        
         # Serve almeno 2 acquisti per confrontare
-        if len(group) < 2:
+        if len(acquisti_validi) < 2:
             continue
         
-        # Confronta acquisti consecutivi
-        for i in range(1, len(group)):
-            prev_row = group.iloc[i-1]
-            curr_row = group.iloc[i]
+        # 🎯 ANALISI ULTIMO ACQUISTO: confronta ultimo vs penultimo
+        ultimo = acquisti_validi.iloc[-1]
+        penultimo = acquisti_validi.iloc[-2]
+        
+        prezzo_ultimo = ultimo['PrezzoUnitario']
+        prezzo_penultimo = penultimo['PrezzoUnitario']
+        
+        # 🛡️ PROTEZIONE: Ignora se troppo tempo tra ultimo e penultimo (>180 giorni)
+        try:
+            data_penultimo = pd.to_datetime(penultimo['DataDocumento'])
+            data_ultimo = pd.to_datetime(ultimo['DataDocumento'])
+            giorni_diff = (data_ultimo - data_penultimo).days
             
-            # 🎯 USA PREZZO UNITARIO EFFETTIVO (con sconti già applicati)
-            prezzo_prec = prev_row['PrezzoUnitario']
-            prezzo_nuovo = curr_row['PrezzoUnitario']
+            if giorni_diff > 180:
+                continue  # Troppo vecchio, ignora
+        except (ValueError, TypeError):
+            pass  # Se parsing date fallisce, continua comunque
+        
+        # CALCOLA VARIAZIONE ULTIMO VS PENULTIMO
+        variazione_perc = ((prezzo_ultimo - prezzo_penultimo) / prezzo_penultimo) * 100
+        
+        # Filtra per soglia minima (include anche ribassi negativi)
+        if abs(variazione_perc) >= soglia_minima:
+            # Usa nome file completo per N_Fattura
+            file_origine = str(ultimo.get('FileOrigine', ''))
             
-            # Validazione prezzi
-            if prezzo_prec <= 0 or prezzo_nuovo <= 0:
-                continue
+            # 📈 STORICO PREZZI: ultimi 5 acquisti PRECEDENTI all'ultimo (dal 2° al 6°)
+            # L'ultimo acquisto va nella colonna "Ultimo" separata
+            n_acquisti = len(acquisti_validi)
             
-            # 🛡️ PROTEZIONE: Ignora se troppo tempo tra acquisti (>180 giorni)
-            try:
-                data_prec = pd.to_datetime(prev_row['DataDocumento'])
-                data_corr = pd.to_datetime(curr_row['DataDocumento'])
-                giorni_diff = (data_corr - data_prec).days
+            if n_acquisti >= 2:
+                # Prendi dal 2° al 6° acquisto più recente (esclude l'ultimo)
+                precedenti = acquisti_validi.iloc[:-1].tail(5)
+                prezzi_storici = [f"€{p:.2f}" for p in precedenti['PrezzoUnitario'].tolist()]
+                storico_str = " → ".join(prezzi_storici)
                 
-                if giorni_diff > 180:
-                    continue  # Troppo vecchio, ignora
-            except (ValueError, TypeError):
-                pass  # Se parsing date fallisce, continua comunque
+                # Media dei prezzi nello storico
+                media_storico = precedenti['PrezzoUnitario'].mean()
+            else:
+                storico_str = "-"
+                media_storico = prezzo_penultimo
             
-            # CALCOLA SCOSTAMENTO PERCENTUALE
-            aumento_perc = ((prezzo_nuovo - prezzo_prec) / prezzo_prec) * 100
-            
-            # Filtra per soglia minima (include anche ribassi negativi)
-            if abs(aumento_perc) >= soglia_minima:
-                # Usa nome file completo per N_Fattura
-                file_origine = str(curr_row.get('FileOrigine', ''))
-                
-                alert_list.append({
-                    'Prodotto': prodotto[:50],  # limita lunghezza
-                    'Categoria': str(curr_row['Categoria'])[:15],
-                    'Fornitore': str(fornitore)[:20],
-                    'Data': curr_row['DataDocumento'],
-                    'Prezzo_Prec': prezzo_prec,
-                    'Prezzo_Nuovo': prezzo_nuovo,
-                    'Aumento_Perc': aumento_perc,
-                    'N_Fattura': file_origine
-                })
+            alert_list.append({
+                'Prodotto': prodotto[:50],
+                'Categoria': str(ultimo['Categoria'])[:15],
+                'Fornitore': str(fornitore)[:20],
+                'Storico': storico_str,
+                'Media': media_storico,
+                'Ultimo': prezzo_ultimo,
+                'Aumento_Perc': variazione_perc,
+                'Data': ultimo['DataDocumento'],
+                'N_Fattura': file_origine
+            })
     
     if not alert_list:
         return pd.DataFrame()
@@ -453,6 +467,14 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
         # MATERIALE DI CONSUMO contiene materiali di consumo ristorante (tovaglioli, piatti, pellicole, etc.)
         df_food = df[~df['categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
         
+        # 🔒 FILTRO AGGIUNTIVO: Escludi anche fornitori SEMPRE spese generali (utenze, tech)
+        # Previene leak di utenze con categoria NULL o non mappata
+        from config.constants import FORNITORI_SPESE_GENERALI_KEYWORDS
+        
+        # Crea pattern regex per escludere tutti i fornitori in una sola passata
+        pattern = '|'.join(FORNITORI_SPESE_GENERALI_KEYWORDS)
+        df_food = df_food[~df_food['fornitore'].str.contains(pattern, case=False, na=False, regex=True)].copy()
+        
         # Logging conteggi per verifica filtro
         logger.info(f"Sconti/Omaggi - Righe totali: {len(df)}")
         logger.info(f"Sconti/Omaggi - Righe FOOD filtrate: {len(df_food)}")
@@ -490,9 +512,21 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
         # ============================================================
         totale_sconti = df_sconti['importo_sconto'].sum() if not df_sconti.empty else 0.0
         
-        # Omaggi: stima valore medio categoria (se disponibile)
-        # Per semplicità usiamo 0 (difficile stimare valore omaggi)
+        # Omaggi: stima valore basandosi sull'ultimo prezzo dello stesso prodotto nel periodo
+        # Se non disponibile, usa €0
         totale_omaggi = 0.0
+        if not df_omaggi.empty:
+            for idx, row in df_omaggi.iterrows():
+                # Cerca stesso prodotto con prezzo > 0 (prendi ultimo)
+                stesso_prodotto = df[
+                    (df['descrizione'] == row['descrizione']) & 
+                    (df['prezzo_unitario'] > 0)
+                ].sort_values('data_documento')
+                
+                if not stesso_prodotto.empty:
+                    prezzo_ultimo = stesso_prodotto.iloc[-1]['prezzo_unitario']
+                    valore_stimato = prezzo_ultimo * row['quantita']
+                    totale_omaggi += abs(valore_stimato)
         
         totale_risparmiato = totale_sconti + totale_omaggi
         
