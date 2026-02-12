@@ -554,14 +554,7 @@ def mostra_pagina_login():
 </h1>
 """, unsafe_allow_html=True)
     
-    # Header con link Privacy
-    col_login1, col_login2 = st.columns([3, 1])
-    with col_login1:
-        st.markdown("### Accedi al Sistema")
-    with col_login2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("📋 Privacy", use_container_width=True, key="privacy_login_btn"):
-            st.switch_page("pages/privacy_policy.py")
+    st.markdown("### Accedi al Sistema")
     
     # Box informativo sulla conservazione sostitutiva
     st.info("📄 **Nota Legale:** Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.")
