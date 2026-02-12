@@ -277,12 +277,36 @@ def applica_bulk_categoria(lista_descrizioni, nuova_categoria, is_admin=True):
                         .execute()
                     righe_memoria += len(result_memoria.data) if result_memoria.data else 0
                     
-                    # Aggiorna TUTTE le fatture
-                    result_fatture = supabase.table('fatture')\
-                        .update({'categoria': nuova_categoria})\
-                        .eq('descrizione', descrizione)\
-                        .execute()
-                    righe_fatture += len(result_fatture.data) if result_fatture.data else 0
+                    # 🛡️ PROTEZIONE PRIORITÀ: Aggiorna fatture rispettando override locali
+                    try:
+                        override_resp = supabase.table('prodotti_utente')\
+                            .select('user_id, categoria')\
+                            .eq('descrizione', descrizione)\
+                            .execute()
+                        
+                        # Aggiorna tutte le fatture
+                        result_fatture_resp = supabase.table('fatture')\
+                            .update({'categoria': nuova_categoria})\
+                            .eq('descrizione', descrizione)\
+                            .execute()
+                        righe_fatture += len(result_fatture_resp.data) if result_fatture_resp.data else 0
+                        
+                        # Ripristina fatture per utenti con override locale
+                        if override_resp.data:
+                            for row in override_resp.data:
+                                supabase.table('fatture')\
+                                    .update({'categoria': row['categoria']})\
+                                    .eq('descrizione', descrizione)\
+                                    .eq('user_id', row['user_id'])\
+                                    .execute()
+                            logger.info(f"🛡️ Protetti {len(override_resp.data)} override locali per '{descrizione[:40]}'")
+                    except Exception as prot_err:
+                        logger.warning(f"⚠️ Fallback bulk update senza protezione: {prot_err}")
+                        result_fatture_resp = supabase.table('fatture')\
+                            .update({'categoria': nuova_categoria})\
+                            .eq('descrizione', descrizione)\
+                            .execute()
+                        righe_fatture += len(result_fatture_resp.data) if result_fatture_resp.data else 0
                 else:
                     # Modifica solo per l'utente corrente
                     user_id = st.session_state.user_data.get('id')
@@ -677,9 +701,15 @@ def clienti_con_piu_errori():
 
 
 def invalida_cache_memoria():
-    """Invalida cache memoria globale."""
+    """Invalida ENTRAMBE le cache: Streamlit cache_data + cache in-memory ai_service."""
     st.cache_data.clear()
-    logger.info("✅ Cache memoria invalidata")
+    # 🔧 FIX: Invalida anche cache in-memory di ai_service (altrimenti resta stale!)
+    try:
+        from services.ai_service import invalida_cache_memoria as invalida_cache_ai
+        invalida_cache_ai()
+    except ImportError:
+        pass
+    logger.info("✅ Cache memoria invalidata (Streamlit + in-memory)")
 
 
 # ============================================================
@@ -704,7 +734,7 @@ if 'categorie_cached' not in st.session_state:
     logger.info(f"✅ Categorie caricate in cache: {len(st.session_state.categorie_cached)} categorie")
 
 # Usa radio buttons nascosti per mantenere tab attivo
-tab_names = ["📊 Gestione Clienti", "💰 Review Righe €0", "🧠 Memoria Globale AI", "� Integrità Database", "💳 Costi AI"]
+tab_names = ["📊 Gestione Clienti", "💰 Review Righe €0", "🧠 Memoria Globale AI", "📝 Memoria Clienti", "🔍 Integrità Database", "💳 Costi AI"]
 selected_tab = st.radio(
     "Seleziona Tab",
     range(len(tab_names)),
@@ -726,6 +756,7 @@ tab2 = (st.session_state.active_tab == 1)
 tab3 = (st.session_state.active_tab == 2)
 tab4 = (st.session_state.active_tab == 3)
 tab5 = (st.session_state.active_tab == 4)
+tab6 = (st.session_state.active_tab == 5)
 
 # ============================================================
 # FUNZIONI DIAGNOSTICA TECNICA (legacy removed)
@@ -1977,17 +2008,34 @@ if tab2:
         """
         try:
             # Query singola con OR per entrambe le condizioni
-            query = supabase.table('fatture')\
-                .select('id, descrizione, categoria, fornitore, file_origine, data_documento, user_id, prezzo_unitario, needs_review, reviewed_at, reviewed_by')\
-                .or_('prezzo_unitario.eq.0,needs_review.eq.true')
+            all_data = []
+            page_size = 1000
+            offset = 0
             
-            # Applica filtro cliente se specificato
-            if cliente_id:
-                query = query.eq('user_id', cliente_id)
+            while True:
+                query = supabase.table('fatture')\
+                    .select('id, descrizione, categoria, fornitore, file_origine, data_documento, user_id, prezzo_unitario, needs_review, reviewed_at, reviewed_by')\
+                    .or_('prezzo_unitario.eq.0,needs_review.eq.true')\
+                    .order('id', desc=False)\
+                    .range(offset, offset + page_size - 1)
+                
+                # Applica filtro cliente se specificato
+                if cliente_id:
+                    query = query.eq('user_id', cliente_id)
+                
+                response = query.execute()
+                
+                if not response.data:
+                    break
+                    
+                all_data.extend(response.data)
+                
+                if len(response.data) < page_size:
+                    break
+                    
+                offset += page_size
             
-            response = query.execute()
-            
-            df = pd.DataFrame(response.data) if response.data else pd.DataFrame()
+            df = pd.DataFrame(all_data) if all_data else pd.DataFrame()
             
             # Log statistiche
             if not df.empty:
@@ -2219,7 +2267,7 @@ if tab2:
                         }).eq('descrizione', descrizione).execute()
                         
                         st.success(f"❌ {len(result.data) if result.data else occorrenze} righe ignorate")
-                        st.cache_data.clear()
+                        invalida_cache_memoria()
                         time.sleep(0.5)
                         st.rerun()
                     except Exception as e:
@@ -2325,7 +2373,7 @@ if tab2:
                     
                     # Reset modifiche
                     st.session_state.modifiche_review = {}
-                    st.cache_data.clear()
+                    invalida_cache_memoria()
                     
                     st.success(f"✅ {success_count} modifiche salvate! {total_rows} righe aggiornate.")
                     time.sleep(1.5)
@@ -2391,7 +2439,16 @@ def tab_memoria_globale_unificata():
     is_admin = user_email in ADMIN_EMAILS
     
     if is_admin:
-        st.info("🔧 **MODALITÀ ADMIN**: Modifiche applicate GLOBALMENTE")
+        st.info("""
+        🔧 **MODALITÀ ADMIN**: Modifiche applicate GLOBALMENTE
+        
+        ℹ️ **Comportamento:**
+        - ✅ Modifica si propaga a TUTTI i clienti futuri
+        - ✅ Tutte le fatture nel database vengono aggiornate
+        - ⚠️ **Le personalizzazioni locali dei clienti hanno priorità**
+        
+        💡 **Per modificare un cliente specifico:** impersonificalo e modifica dalla sua tabella
+        """)
     else:
         st.info("👤 **MODALITÀ CLIENTE**: Personalizzazioni solo tue")
     
@@ -2399,41 +2456,56 @@ def tab_memoria_globale_unificata():
     # CARICAMENTO DATI
     # ============================================================
     @st.cache_data(ttl=60, show_spinner=False)
-    def carica_memoria_completa():
+    def carica_memoria_globale():
+        """
+        Carica MEMORIA GLOBALE (prodotti_master) - disponibile per TUTTI.
+        Questo tab mostra SEMPRE prodotti_master, non prodotti_utente.
+        Usa paginazione per superare il limite Supabase di 1000 righe.
+        """
         try:
             campo_verified_exists = False
-            if is_admin:
-                # Prova prima con verified, se fallisce usa query base (retrocompatibilità)
+            all_data = []
+            page_size = 1000
+            offset = 0
+            
+            while True:
                 try:
                     response = supabase.table('prodotti_master')\
                         .select('id, descrizione, categoria, volte_visto, created_at, verified')\
-                        .order('volte_visto', desc=True)\
+                        .order('id', desc=False)\
+                        .range(offset, offset + page_size - 1)\
                         .execute()
                     campo_verified_exists = True
                 except Exception:
                     # Campo verified non esiste ancora, usa query senza
                     response = supabase.table('prodotti_master')\
                         .select('id, descrizione, categoria, volte_visto, created_at')\
-                        .order('volte_visto', desc=True)\
+                        .order('id', desc=False)\
+                        .range(offset, offset + page_size - 1)\
                         .execute()
-            else:
-                user_id = user.get('id')
-                response = supabase.table('prodotti_utente')\
-                    .select('id, descrizione, categoria, volte_visto, created_at')\
-                    .eq('user_id', user_id)\
-                    .order('volte_visto', desc=True)\
-                    .execute()
+                
+                if not response.data:
+                    break
+                    
+                all_data.extend(response.data)
+                
+                if len(response.data) < page_size:
+                    break  # Ultima pagina
+                    
+                offset += page_size
             
-            df = pd.DataFrame(response.data)
+            logger.info(f"📊 Memoria Globale caricata: {len(all_data)} prodotti (paginazione superata)")
+            
+            df = pd.DataFrame(all_data)
             # Aggiungi colonna verified se non esiste (solo per UI, non nel DB)
             if 'verified' not in df.columns:
                 df['verified'] = False  # Default: da verificare
             return df, campo_verified_exists
         except Exception as e:
-            logger.error(f"Errore caricamento memoria: {e}")
+            logger.error(f"Errore caricamento memoria globale: {e}")
             return pd.DataFrame(), False
     
-    df_memoria, campo_verified_exists = carica_memoria_completa()
+    df_memoria, campo_verified_exists = carica_memoria_globale()
     
     if df_memoria.empty:
         st.warning("📭 Memoria vuota. Inizia a caricare fatture per popolarla!")
@@ -2486,8 +2558,8 @@ def tab_memoria_globale_unificata():
         
         with col_btn2:
             if st.button("🔄 Invalida Cache", type="secondary", use_container_width=True):
-                st.cache_data.clear()
-                st.success("✅ Cache invalidata!")
+                invalida_cache_memoria()
+                st.success("✅ Cache invalidata (Streamlit + in-memory)!")
                 st.rerun()
         
         # Mostra conferma solo se bottone premuto
@@ -2530,6 +2602,29 @@ def tab_memoria_globale_unificata():
                 if st.button("❌ ANNULLA", use_container_width=True):
                     st.session_state.show_confirm_delete_memoria = False
                     st.rerun()
+    
+    st.markdown("---")
+    
+    # ============================================================
+    # DEBUG INFO (solo admin)
+    # ============================================================
+    if is_admin:
+        with st.expander("🔧 Debug Info - Ricerca Memoria", expanded=False):
+            st.markdown("### Informazioni per Debugging Ricerca")
+            st.caption("Usa questo per capire perché un articolo non viene trovato")
+            
+            col_d1, col_d2 = st.columns(2)
+            
+            with col_d1:
+                st.metric("Totale in DB", len(df_memoria))
+                st.metric("Dopo Filtri", len(df_filtrato) if 'df_filtrato' in locals() else len(df_memoria))
+            
+            with col_d2:
+                # Mostra sample di descrizioni random nel DB
+                st.markdown("**Sample descrizioni casuali nel DB:**")
+                sample_random = df_memoria['descrizione'].sample(min(5, len(df_memoria))).tolist()
+                for desc in sample_random:
+                    st.code(desc, language=None)
     
     st.markdown("---")
     
@@ -2602,9 +2697,33 @@ def tab_memoria_globale_unificata():
         st.session_state.filtri_memoria_prev = filtri_correnti
     
     if search_text:
-        df_filtrato = df_filtrato[
-            df_filtrato['descrizione'].str.contains(search_text, case=False, na=False)
-        ]
+        # Ricerca SMART: cerca ogni parola individualmente
+        # Es: "BUCCIA NERA CAMPRIANO CHIANTI DOCG 75 CL" → cerca "BUCCIA" AND "NERA" AND "CAMPRIANO" etc.
+        # Ignora numeri (che vengono rimossi dalla normalizzazione)
+        import re
+        parole = [p for p in search_text.strip().split() if len(p) >= 2 and not re.match(r'^\d+$', p)]
+        
+        if parole:
+            filtro_ricerca = pd.Series([True] * len(df_filtrato), index=df_filtrato.index)
+            for parola in parole:
+                filtro_ricerca = filtro_ricerca & df_filtrato['descrizione'].str.contains(parola, case=False, na=False, regex=False)
+            df_filtrato = df_filtrato[filtro_ricerca]
+        
+        # Logging per debug ricerca
+        logger.info(f"🔍 Ricerca Memoria Globale: '{search_text}' (parole: {parole}) → {len(df_filtrato)} risultati trovati")
+        
+        # Info visuale per l'admin
+        if is_admin and len(df_filtrato) == 0:
+            st.warning(f"""
+            ⚠️ **Nessun risultato per:** `{search_text}`
+            
+            **Possibili cause:**
+            1. L'articolo non è mai stato categorizzato automaticamente (rimasto "Da Classificare")
+            2. La descrizione nel DB è normalizzata diversamente (controlla nel Debug Info sopra)
+            3. L'articolo è solo in Memoria Clienti (tab "Memoria Clienti")
+            
+            💡 **Suggerimento:** Controlla il tab "Memoria Clienti" per vedere se l'articolo è lì con una categorizzazione manuale del cliente.
+            """)
     
     if filtro_cat != "Tutte":
         cat_clean = estrai_nome_categoria(filtro_cat)
@@ -2737,12 +2856,6 @@ def tab_memoria_globale_unificata():
         categoria_corrente = row['categoria']
         volte_visto = row['volte_visto']
         verified = row.get('verified', True)
-        
-        # Prepara colonne (con o senza checkbox)
-        if mostra_checkbox:
-            col_check, col_desc, col_cat, col_azioni = st.columns([0.5, 3.5, 2.5, 1])
-        else:
-            col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
         
         # Prepara colonne (con o senza checkbox)
         if mostra_checkbox:
@@ -2883,11 +2996,57 @@ def tab_memoria_globale_unificata():
                                         .eq('descrizione', descrizione)\
                                         .execute()
                                     
-                                    # Aggiorna anche fatture
-                                    result = supabase.table('fatture')\
-                                        .update({'categoria': info['nuova_categoria']})\
-                                        .eq('descrizione', descrizione)\
-                                        .execute()
+                                    # 🛡️ PROTEZIONE PRIORITÀ: Aggiorna fatture SOLO per utenti 
+                                    # che NON hanno personalizzazione locale (prodotti_utente)
+                                    # Se un cliente ha override locale, le sue fatture NON vengono toccate
+                                    try:
+                                        # Trova user_id con override locale per questa descrizione
+                                        override_resp = supabase.table('prodotti_utente')\
+                                            .select('user_id')\
+                                            .eq('descrizione', descrizione)\
+                                            .execute()
+                                        
+                                        user_ids_con_override = set()
+                                        if override_resp.data:
+                                            user_ids_con_override = {row['user_id'] for row in override_resp.data}
+                                        
+                                        if user_ids_con_override:
+                                            # Aggiorna fatture ESCLUDENDO utenti con override locale
+                                            # PostgREST non supporta NOT IN direttamente, quindi usiamo approccio iterativo
+                                            # Prima: aggiorna TUTTE le fatture con questa descrizione
+                                            result = supabase.table('fatture')\
+                                                .update({'categoria': info['nuova_categoria']})\
+                                                .eq('descrizione', descrizione)\
+                                                .execute()
+                                            
+                                            # Poi: RIPRISTINA le fatture degli utenti con override locale
+                                            for uid in user_ids_con_override:
+                                                cat_locale = supabase.table('prodotti_utente')\
+                                                    .select('categoria')\
+                                                    .eq('user_id', uid)\
+                                                    .eq('descrizione', descrizione)\
+                                                    .limit(1)\
+                                                    .execute()
+                                                if cat_locale.data:
+                                                    supabase.table('fatture')\
+                                                        .update({'categoria': cat_locale.data[0]['categoria']})\
+                                                        .eq('descrizione', descrizione)\
+                                                        .eq('user_id', uid)\
+                                                        .execute()
+                                            
+                                            logger.info(f"🛡️ Protetti {len(user_ids_con_override)} utenti con override locale per '{descrizione[:40]}'")
+                                        else:
+                                            # Nessun override locale: aggiorna tutte le fatture normalmente
+                                            result = supabase.table('fatture')\
+                                                .update({'categoria': info['nuova_categoria']})\
+                                                .eq('descrizione', descrizione)\
+                                                .execute()
+                                    except Exception as prot_err:
+                                        logger.warning(f"⚠️ Errore protezione override, fallback update globale: {prot_err}")
+                                        result = supabase.table('fatture')\
+                                            .update({'categoria': info['nuova_categoria']})\
+                                            .eq('descrizione', descrizione)\
+                                            .execute()
                                     
                                     num_updated = len(result.data) if result.data else info['occorrenze']
                                     success_count += 1
@@ -2915,8 +3074,8 @@ def tab_memoria_globale_unificata():
                             # Reset selezione
                             st.session_state.righe_selezionate = set()
                         
-                        # Refresh cache
-                        st.cache_data.clear()
+                        # Refresh cache (Streamlit + in-memory)
+                        invalida_cache_memoria()
                         
                         # Mostra success unificato
                         st.success("\n\n".join(success_messages))
@@ -2961,10 +3120,364 @@ if tab3:
     tab_memoria_globale_unificata()
 
 # ============================================================
-# TAB 4: VERIFICA INTEGRITÀ DATABASE
+# TAB 4: MEMORIA CLIENTI (prodotti_utente)
 # ============================================================
 
+def tab_personalizzazioni_clienti():
+    """
+    TAB Memoria Clienti - VERSIONE UNIFICATA
+    Replica del tab Memoria Globale ma con dati da prodotti_utente
+    - Interfaccia semplice (Descrizione + Categoria)
+    - Checkbox per selezione multipla
+    - Bottoni "Applica Globalmente" e "Elimina Selezionati"
+    """
+    st.markdown("## 📝 Memoria Clienti")
+    st.caption("Gestisci le modifiche manuali che ogni cliente ha fatto alle categorie")
+    
+    st.info("""
+    🔧 **Gestione Memoria Clienti**: 
+    
+    ℹ️ **Comportamento:**
+    - Queste personalizzazioni sono **locali** (solo per il cliente specifico)
+    - Hanno **priorità** sulla memoria globale per quel cliente
+    - Puoi **promuoverle** a memoria globale per condividerle con tutti 
+    - Puoi **eliminarle** per far usare la memoria globale al cliente
+    """)
+    
+    # ============================================================
+    # CARICAMENTO DATI
+    # ============================================================
+    @st.cache_data(ttl=60, show_spinner=False)
+    def carica_personalizzazioni_completa():
+        """Carica TUTTE le personalizzazioni con paginazione (supera limite 1000 Supabase)."""
+        try:
+            all_data = []
+            page_size = 1000
+            offset = 0
+            
+            while True:
+                response = supabase.table('prodotti_utente')\
+                    .select('id, descrizione, categoria, volte_visto, created_at, user_id')\
+                    .order('id', desc=False)\
+                    .range(offset, offset + page_size - 1)\
+                    .execute()
+                
+                if not response.data:
+                    break
+                    
+                all_data.extend(response.data)
+                
+                if len(response.data) < page_size:
+                    break
+                    
+                offset += page_size
+            
+            logger.info(f"📊 Memoria Clienti caricata: {len(all_data)} personalizzazioni")
+            df = pd.DataFrame(all_data)
+            return df
+        except Exception as e:
+            logger.error(f"Errore caricamento personalizzazioni: {e}")
+            return pd.DataFrame()
+    
+    df_personalizzazioni = carica_personalizzazioni_completa()
+    
+    if df_personalizzazioni.empty:
+        st.warning("📭 Nessuna personalizzazione trovata. I clienti non hanno ancora modificato categorie manualmente.")
+        return
+    
+    # ============================================================
+    # METRICHE
+    # ============================================================
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Voci in Memoria", len(df_personalizzazioni))
+    
+    with col2:
+        totale_utilizzi = int(df_personalizzazioni['volte_visto'].sum())
+        st.metric("Totale Utilizzi", totale_utilizzi)
+    
+    with col3:
+        clienti_unici = df_personalizzazioni['user_id'].nunique()
+        st.metric("Clienti Attivi", clienti_unici)
+    
+    st.markdown("---")
+    
+    # ============================================================
+    # FILTRI
+    # ============================================================
+    st.markdown("### 🔍 Filtri")
+    
+    col_search, col_cat, col_reset = st.columns([3, 2, 1])
+    
+    with col_search:
+        if 'search_personalizzazioni' not in st.session_state:
+            st.session_state.search_personalizzazioni = ""
+        
+        search_text = st.text_input(
+            "🔍 Cerca descrizione",
+            value=st.session_state.search_personalizzazioni,
+            placeholder="es: POMODORO, OLIO, PASTA",
+            key="search_personalizzazioni"
+        )
+    
+    with col_cat:
+        categorie = st.session_state.categorie_cached
+        if 'filtro_cat_pers' not in st.session_state:
+            st.session_state.filtro_cat_pers = "Tutte"
+        
+        filtro_cat = st.selectbox(
+            "Filtra categoria",
+            ["Tutte"] + categorie,
+            key="filtro_cat_pers"
+        )
+    
+    with col_reset:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Reset", key="reset_filtri_pers"):
+            st.session_state.search_personalizzazioni = ""
+            st.session_state.filtro_cat_pers = "Tutte"
+            st.rerun()
+    
+    # ============================================================
+    # APPLICA FILTRI
+    # ============================================================
+    df_filtrato = df_personalizzazioni.copy()
+    
+    # Traccia filtri precedenti per reset pagina
+    filtri_correnti = f"{search_text}_{filtro_cat}"
+    if 'filtri_pers_prev' not in st.session_state:
+        st.session_state.filtri_pers_prev = filtri_correnti
+    elif st.session_state.filtri_pers_prev != filtri_correnti:
+        st.session_state.pagina_pers = 0
+        st.session_state.filtri_pers_prev = filtri_correnti
+    
+    if search_text:
+        # Ricerca SMART: parola per parola, ignora numeri (normalizzazione li rimuove dal DB)
+        import re
+        parole = [p for p in search_text.strip().split() if len(p) >= 2 and not re.match(r'^\d+$', p)]
+        
+        if parole:
+            filtro_ricerca = pd.Series([True] * len(df_filtrato), index=df_filtrato.index)
+            for parola in parole:
+                filtro_ricerca = filtro_ricerca & df_filtrato['descrizione'].str.contains(parola, case=False, na=False, regex=False)
+            df_filtrato = df_filtrato[filtro_ricerca]
+    
+    if filtro_cat != "Tutte":
+        cat_clean = estrai_nome_categoria(filtro_cat)
+        df_filtrato = df_filtrato[df_filtrato['categoria'] == cat_clean]
+    
+    # ORDINA ALFABETICAMENTE per descrizione
+    df_filtrato = df_filtrato.sort_values('descrizione').reset_index(drop=True)
+    
+    # ============================================================
+    # INFO + PAGINAZIONE
+    # ============================================================
+    RIGHE_PER_PAGINA = 25
+    totale_righe = len(df_filtrato)
+    
+    if 'pagina_pers' not in st.session_state:
+        st.session_state.pagina_pers = 0
+    
+    num_pagine = (totale_righe + RIGHE_PER_PAGINA - 1) // RIGHE_PER_PAGINA
+    
+    col_info, col_pag = st.columns([2, 1])
+    
+    with col_info:
+        st.info(f"📊 Mostrando {totale_righe} voci")
+    
+    with col_pag:
+        if num_pagine > 1:
+            pagina = st.number_input(
+                f"Pag. (max {num_pagine})",
+                min_value=1,
+                max_value=num_pagine,
+                value=st.session_state.pagina_pers + 1,
+                step=1,
+                key="input_pagina_pers",
+                label_visibility="visible"
+            )
+            st.session_state.pagina_pers = pagina - 1
+    
+    if df_filtrato.empty:
+        st.warning("⚠️ Nessuna memoria trovata con questi filtri")
+        return
+    
+    # Applica paginazione
+    inizio = st.session_state.pagina_pers * RIGHE_PER_PAGINA
+    fine = min(inizio + RIGHE_PER_PAGINA, totale_righe)
+    df_pagina = df_filtrato.iloc[inizio:fine]
+    
+    if num_pagine > 1:
+        st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe}")
+    
+    # ============================================================
+    # INIZIALIZZA SELEZIONE
+    # ============================================================
+    if 'righe_pers_selezionate' not in st.session_state:
+        st.session_state.righe_pers_selezionate = set()
+    
+    if 'checkbox_pers_refresh_counter' not in st.session_state:
+        st.session_state.checkbox_pers_refresh_counter = 0
+    
+    st.markdown("---")
+    
+    # ============================================================
+    # TABELLA
+    # ============================================================
+    st.markdown("### 📋 Memoria Clienti")
+    
+    # Bottoni selezione massiva
+    st.markdown("#### Selezione Rapida")
+    col_sel_all, col_desel_all = st.columns(2)
+    
+    with col_sel_all:
+        righe_pagina_ids = set(df_pagina['id'].tolist())
+        if st.button(f"☑️ Seleziona Tutte ({len(righe_pagina_ids)} righe)", use_container_width=True, key="btn_select_all_pers"):
+            st.session_state.righe_pers_selezionate.update(righe_pagina_ids)
+            st.session_state.checkbox_pers_refresh_counter += 1
+            st.rerun()
+    
+    with col_desel_all:
+        if st.button("⬜ Deseleziona Tutte", use_container_width=True, key="btn_deselect_all_pers"):
+            st.session_state.righe_pers_selezionate.difference_update(righe_pagina_ids)
+            st.session_state.checkbox_pers_refresh_counter += 1
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # HEADER TABELLA
+    col_check, col_desc, col_cat = st.columns([0.5, 4, 2])
+    
+    with col_desc:
+        st.markdown("**Descrizione**")
+    
+    with col_cat:
+        st.markdown("**Categoria**")
+    
+    st.markdown("---")
+    
+    # CICLO RIGHE
+    for idx, row in df_pagina.iterrows():
+        row_id = row['id']
+        descrizione = row['descrizione']
+        categoria_corrente = row['categoria']
+        volte_visto = row['volte_visto']
+        
+        col_check, col_desc, col_cat = st.columns([0.5, 4, 2])
+        
+        # CHECKBOX
+        with col_check:
+            is_checked = row_id in st.session_state.righe_pers_selezionate
+            checked = st.checkbox(
+                "sel",
+                value=is_checked,
+                key=f"chk_pers_{row_id}_r{st.session_state.checkbox_pers_refresh_counter}",
+                label_visibility="collapsed"
+            )
+            if checked:
+                st.session_state.righe_pers_selezionate.add(row_id)
+            else:
+                st.session_state.righe_pers_selezionate.discard(row_id)
+        
+        # DESCRIZIONE
+        with col_desc:
+            desc_short = descrizione[:60] + "..." if len(descrizione) > 60 else descrizione
+            st.markdown(f"`{desc_short}` ({volte_visto}×)")
+        
+        # CATEGORIA (solo display, no editing)
+        with col_cat:
+            st.markdown(f"**{categoria_corrente}**")
+        
+        st.markdown("---")
+    
+    # ============================================================
+    # BARRA AZIONI
+    # ============================================================
+    num_selezionate = len(st.session_state.righe_pers_selezionate)
+    
+    if num_selezionate > 0:
+        st.markdown("---")
+        st.markdown("### 💾 Azioni su Selezionati")
+        
+        st.info(f"📊 {num_selezionate} voci selezionate")
+        
+        col_global, col_delete, col_cancel = st.columns([2, 2, 1])
+        
+        with col_global:
+            if st.button(f"🌍 Applica Globalmente ({num_selezionate})", type="primary", use_container_width=True, key="apply_global_batch"):
+                with st.spinner("🌍 Applicazione globale in corso..."):
+                    try:
+                        righe_ids = list(st.session_state.righe_pers_selezionate)
+                        df_selezionate = df_filtrato[df_filtrato['id'].isin(righe_ids)]
+                        
+                        success_count = 0
+                        for idx, row in df_selezionate.iterrows():
+                            try:
+                                # Upsert in prodotti_master
+                                supabase.table('prodotti_master').upsert({
+                                    'descrizione': row['descrizione'],
+                                    'categoria': row['categoria'],
+                                    'volte_visto': 1,
+                                    'verified': True,
+                                    'classificato_da': "Admin (promozione da personalizzazione)"
+                                }, on_conflict='descrizione').execute()
+                                
+                                success_count += 1
+                            except Exception as e:
+                                logger.error(f"Errore promozione '{row['descrizione']}': {e}")
+                        
+                        # Elimina da memoria clienti (ora gestite da globale)
+                        supabase.table('prodotti_utente')\
+                            .delete()\
+                            .in_('id', righe_ids)\
+                            .execute()
+                        
+                        st.session_state.righe_pers_selezionate = set()
+                        invalida_cache_memoria()
+                        st.success(f"✅ {success_count} voci applicate globalmente!")
+                        time.sleep(1.5)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        logger.error(f"Errore applicazione globale: {e}")
+                        st.error(f"❌ Errore: {e}")
+        
+        with col_delete:
+            if st.button(f"🗑️ Elimina Selezionati ({num_selezionate})", type="secondary", use_container_width=True, key="delete_batch_pers"):
+                with st.spinner("🗑️ Eliminazione in corso..."):
+                    try:
+                        righe_ids = list(st.session_state.righe_pers_selezionate)
+                        
+                        supabase.table('prodotti_utente')\
+                            .delete()\
+                            .in_('id', righe_ids)\
+                            .execute()
+                        
+                        st.session_state.righe_pers_selezionate = set()
+                        invalida_cache_memoria()
+                        st.success(f"✅ {num_selezionate} voci eliminate!")
+                        time.sleep(1)
+                        st.rerun()
+                        
+                    except Exception as e:
+                        logger.error(f"Errore eliminazione: {e}")
+                        st.error(f"❌ Errore: {e}")
+        
+        with col_cancel:
+            if st.button("❌ Annulla", use_container_width=True, key="cancel_pers"):
+                st.session_state.righe_pers_selezionate = set()
+                st.rerun()
+
+# Chiama la funzione unificata
 if tab4:
+    tab_personalizzazioni_clienti()
+
+# ============================================================
+# TAB 5: VERIFICA INTEGRITÀ DATABASE (era TAB 4)
+# ============================================================
+
+if tab5:
     st.markdown("## 🔍 Verifica Integrità Database")
     st.caption("Controlla anomalie nei dati delle fatture: date invalide, prezzi anomali, quantità strane, descrizioni vuote, duplicati, ecc.")
     
@@ -3215,27 +3728,27 @@ if tab4:
                         # Mostra dettagli per ogni categoria
                         if len(problemi['date_invalide']) > 0:
                             with st.expander(f"📅 Date Invalide ({len(problemi['date_invalide'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['date_invalide']), use_container_width=True, hide_index=True)
+                                st.dataframe(pd.DataFrame(problemi['date_invalide']), width='stretch', hide_index=True)
                         
                         if len(problemi['prezzi_anomali']) > 0:
                             with st.expander(f"💰 Prezzi Anomali ({len(problemi['prezzi_anomali'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['prezzi_anomali']), use_container_width=True, hide_index=True)
+                                st.dataframe(pd.DataFrame(problemi['prezzi_anomali']), width='stretch', hide_index=True)
                         
                         if len(problemi['quantita_anomale']) > 0:
                             with st.expander(f"📦 Quantità Anomale ({len(problemi['quantita_anomale'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['quantita_anomale']), use_container_width=True, hide_index=True)
+                                st.dataframe(pd.DataFrame(problemi['quantita_anomale']), width='stretch', hide_index=True)
                         
                         if len(problemi['descrizioni_vuote']) > 0:
                             with st.expander(f"📝 Descrizioni Vuote ({len(problemi['descrizioni_vuote'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['descrizioni_vuote']), use_container_width=True, hide_index=True)
+                                st.dataframe(pd.DataFrame(problemi['descrizioni_vuote']), width='stretch', hide_index=True)
                         
                         if len(problemi['totali_errati']) > 0:
                             with st.expander(f"🧮 Totali Errati ({len(problemi['totali_errati'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['totali_errati']), use_container_width=True, hide_index=True)
+                                st.dataframe(pd.DataFrame(problemi['totali_errati']), width='stretch', hide_index=True)
                         
                         if len(problemi['duplicati']) > 0:
                             with st.expander(f"🔄 Duplicati ({len(problemi['duplicati'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['duplicati']), use_container_width=True, hide_index=True)
+                                st.dataframe(pd.DataFrame(problemi['duplicati']), width='stretch', hide_index=True)
             
             except Exception as e:
                 st.error(f"❌ Errore durante la verifica: {str(e)}")
@@ -3244,10 +3757,10 @@ if tab4:
 
 
 # ============================================================
-# TAB 5: COSTI AI PER CLIENTE
+# TAB 6: COSTI AI PER CLIENTE (era TAB 5)
 # ============================================================
 
-if tab5:
+if tab6:
     st.markdown("## 💳 Costi AI per Cliente")
     st.caption("Monitoraggio utilizzo e costi OpenAI per estrazione PDF e categorizzazione prodotti")
     
@@ -3337,7 +3850,7 @@ if tab5:
                 # Mostra tabella
                 st.dataframe(
                     df_display[['Cliente', 'Ragione Sociale', 'PDF', 'Categorizzazioni', 'Tot Operazioni', 'Costo Totale', 'Costo/Op', 'Ultimo Uso']],
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True
                 )
                 

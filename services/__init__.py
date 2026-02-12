@@ -16,6 +16,7 @@ from .ai_service import (
     categorizza_con_memoria,
     applica_correzioni_dizionario,
     salva_correzione_in_memoria_globale,
+    salva_correzione_in_memoria_locale,
     classifica_con_ai,
     mostra_loading_ai,
     # Legacy functions (deprecate)
@@ -52,6 +53,7 @@ __all__ = [
     'categorizza_con_memoria',
     'applica_correzioni_dizionario',
     'salva_correzione_in_memoria_globale',
+    'salva_correzione_in_memoria_locale',
     'classifica_con_ai',
     'mostra_loading_ai',
     # Legacy functions

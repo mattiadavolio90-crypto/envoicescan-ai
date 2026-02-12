@@ -39,6 +39,7 @@ from services.ai_service import (
     invalida_cache_memoria,
     applica_correzioni_dizionario,
     salva_correzione_in_memoria_globale,
+    salva_correzione_in_memoria_locale,
     classifica_con_ai,
     mostra_loading_ai,
     svuota_memoria_globale,
@@ -1088,11 +1089,11 @@ def mostra_statistiche(df_completo):
             st.markdown("**Conteggio per Categoria:**")
             conteggio_cat = df_completo.groupby('Categoria', dropna=False).size().reset_index(name='Righe')
             conteggio_cat = conteggio_cat.sort_values('Righe', ascending=False)
-            st.dataframe(conteggio_cat, hide_index=True, use_container_width=True)
+            st.dataframe(conteggio_cat, hide_index=True, width='stretch')
             
             st.markdown("**Sample 15 righe (verifica categoria):**")
             sample_df = df_completo[['FileOrigine', 'Descrizione', 'Categoria', 'Fornitore', 'TotaleRiga']].head(15)
-            st.dataframe(sample_df, hide_index=True, use_container_width=True)
+            st.dataframe(sample_df, hide_index=True, width='stretch')
             
             # Test query diretta Supabase
             if st.button("🔄 Ricarica da Supabase (bypass cache)", key="debug_reload"):
@@ -1391,7 +1392,7 @@ def mostra_statistiche(df_completo):
                             cats = classifica_con_ai(chunk, fornitori_da_classificare)
                             for desc, cat in zip(chunk, cats):
                                 mappa_categorie[desc] = cat
-                                # ✅ Memoria AI ora salvata automaticamente in salva_correzione_in_memoria_globale
+                                # ✅ Categorizzazione AI → salva in memoria GLOBALE (condivisa tra tutti i clienti)
                                 prodotti_elaborati += 1
                             
                                 # 🧠 Aggiorna banner orizzontale in tempo reale (REPLACE)
@@ -1404,7 +1405,8 @@ def mostra_statistiche(df_completo):
                                 </div>
                                 """, unsafe_allow_html=True)
                                 
-                                # Salva anche in memoria GLOBALE su Supabase
+                                # 💾 Salva in memoria GLOBALE (categorizzazione automatica AI)
+                                # CORRETTO: AI/Dizionario/Keyword → memoria GLOBALE condivisa
                                 try:
                                     supabase.table('prodotti_master').upsert({
                                         'descrizione': desc,
@@ -1414,9 +1416,9 @@ def mostra_statistiche(df_completo):
                                         'classificato_da': 'AI'
                                     }, on_conflict='descrizione').execute()
                                     
-                                    logger.info(f"💾 GLOBALE salvato: '{desc[:40]}...' → {cat}")
+                                    logger.info(f"💾 MEMORIA GLOBALE (AI): '{desc[:40]}...' → {cat} - disponibile per TUTTI i clienti")
                                 except Exception as e:
-                                    logger.error(f"Errore salvataggio globale '{desc[:40]}...': {e}")
+                                    logger.error(f"Errore salvataggio memoria globale '{desc[:40]}...': {e}")
                             
                             # Invalida cache per forzare ricaricamento dopo ogni chunk
                             invalida_cache_memoria()
@@ -1731,8 +1733,9 @@ def mostra_statistiche(df_completo):
     
     # Selectbox
     periodo_selezionato = st.selectbox(
-        "",
+        "Periodo",
         options=periodo_options,
+        label_visibility="collapsed",
         index=periodo_options.index(st.session_state.periodo_dropdown) if st.session_state.periodo_dropdown in periodo_options else 0,
         key="filtro_periodo_main"
     )
@@ -2433,7 +2436,7 @@ def mostra_statistiche(df_completo):
             df_editor_paginato,
             column_config=column_config_dict,
             hide_index=True,
-            use_container_width=True,
+            width='stretch',
             height=altezza_dinamica,
             key="editor_dati"
         )
@@ -2583,6 +2586,10 @@ def mostra_statistiche(df_completo):
                 user_id = st.session_state.user_data["id"]
                 user_email = st.session_state.user_data.get("email", "unknown")
                 modifiche_effettuate = 0
+                categorie_modificate_count = 0  # Conta prodotti unici modificati (non righe DB)
+                
+                logger.info(f"💾 INIZIO SALVATAGGIO: user={user_email}, righe_edited={len(edited_df)}, vista_aggregata={vista_aggregata}")
+                st.toast("💾 Salvataggio in corso...", icon="💾")
                 
                 # ⚠️ NOTA PAGINAZIONE: Il salvataggio riguarda SOLO le righe della pagina corrente
                 righe_salvate = len(edited_df)
@@ -2627,7 +2634,12 @@ def mostra_statistiche(df_completo):
                                 continue
                             
                             # Recupera categoria originale per tracciare correzione
-                            vecchia_cat_raw = df_editor.loc[index, 'Categoria'] if index in df_editor.index else None
+                            # ⚠️ In vista aggregata, df_editor ha indici diversi da edited_df
+                            # Usa df_editor_paginato (stessi indici di edited_df) per il confronto
+                            if vista_aggregata:
+                                vecchia_cat_raw = df_editor_paginato.loc[index, 'Categoria'] if index in df_editor_paginato.index else None
+                            else:
+                                vecchia_cat_raw = df_editor.loc[index, 'Categoria'] if index in df_editor.index else None
                             vecchia_cat = estrai_nome_categoria(vecchia_cat_raw) if vecchia_cat_raw else None
                             
                             # Prepara dati da aggiornare
@@ -2647,7 +2659,9 @@ def mostra_statistiche(df_completo):
                             # Se categoria cambiata dall'utente → salva in memoria
                             categoria_modificata = (vecchia_cat and vecchia_cat != nuova_cat) or \
                                                  (not vecchia_cat and nuova_cat != 'Da Classificare')
+                            
                             if categoria_modificata:
+                                categorie_modificate_count += 1
                                 logger.info(f"✋ MANUALE: '{descrizione[:40]}' modificato da '{vecchia_cat or "vuoto"}' → {nuova_cat}")
                                 
                                 # ⭐ NUOVO: Traccia modifica manuale per colonna Fonte
@@ -2655,11 +2669,42 @@ def mostra_statistiche(df_completo):
                                     st.session_state.righe_modificate_manualmente = []
                                 if descrizione not in st.session_state.righe_modificate_manualmente:
                                     st.session_state.righe_modificate_manualmente.append(descrizione)
+                                
+                                # ✅ SALVA IN MEMORIA: LOCALE per clienti, GLOBALE solo per admin veri
+                                is_real_admin = st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False)
+                                
+                                if is_real_admin:
+                                    # Admin vero (non impersonificato) → modifica GLOBALE per tutti
+                                    salva_correzione_in_memoria_globale(
+                                        descrizione=descrizione,
+                                        vecchia_categoria=vecchia_cat,
+                                        nuova_categoria=nuova_cat,
+                                        user_email=user_email,
+                                        is_admin=True
+                                    )
+                                    logger.info(f"🔧 ADMIN: Modifica GLOBALE per tutti i clienti")
+                                else:
+                                    # Cliente (o admin impersonificato) → modifica LOCALE solo per lui
+                                    successo = salva_correzione_in_memoria_locale(
+                                        descrizione=descrizione,
+                                        nuova_categoria=nuova_cat,
+                                        user_id=user_id,
+                                        user_email=user_email
+                                    )
+                                    
+                                    if successo:
+                                        logger.info(f"✅ CLIENTE: Salvato locale '{descrizione[:40]}' → {nuova_cat}")
+                                    else:
+                                        logger.error(f"❌ CLIENTE: Errore salvataggio locale '{descrizione[:40]}'")
                             
                             # 🔄 MODIFICA BATCH: Se categoria è cambiata, aggiorna TUTTE le righe con stessa descrizione
                             # In vista aggregata: SEMPRE batch update (1 riga vista = N righe DB)
                             # In vista normale: batch update solo se categoria diversa dalla precedente
                             esegui_batch_update = vista_aggregata or (vecchia_cat and vecchia_cat != nuova_cat)
+                            
+                            # ⚡ PERFORMANCE: Se non c'è modifica, SKIP (evita query DB inutili)
+                            if not esegui_batch_update and not categoria_modificata:
+                                continue
                             
                             if esegui_batch_update:
                                 if vista_aggregata:
@@ -2723,14 +2768,6 @@ def mostra_statistiche(df_completo):
                                     except Exception as diag_err:
                                         logger.error(f"   ❌ Errore query diagnostica: {diag_err}")
                                 
-                                # ✅ Salva correzione (memoria DB + cache, no file locale)
-                                salva_correzione_in_memoria_globale(
-                                    descrizione=descrizione,
-                                    vecchia_categoria=vecchia_cat,
-                                    nuova_categoria=nuova_cat,
-                                    user_email=user_email
-                                )
-                                
                                 modifiche_effettuate += righe_aggiornate
                                 
                             else:
@@ -2776,9 +2813,9 @@ def mostra_statistiche(df_completo):
                     )].shape[0]
                     
                     if prodotti_spostati > 0:
-                        st.toast(f"✅ Salvate {modifiche_effettuate} modifiche! {prodotti_spostati} prodotti spostati in Spese Generali.")
+                        st.toast(f"✅ {categorie_modificate_count} categorie modificate ({modifiche_effettuate} righe aggiornate)! {prodotti_spostati} prodotti spostati in Spese Generali.")
                     else:
-                        st.toast(f"✅ Salvate {modifiche_effettuate} modifiche su Supabase! L'AI imparerà da questo.")
+                        st.toast(f"✅ {categorie_modificate_count} categorie modificate ({modifiche_effettuate} righe aggiornate)! L'AI imparerà da questo.")
                     
                     time.sleep(1.5)
                     st.cache_data.clear()
@@ -2878,7 +2915,7 @@ def mostra_statistiche(df_completo):
                 # Mostra tabella SCROLLABILE
                 st.dataframe(
                     df_display,
-                    use_container_width=True,
+                    width='stretch',
                     height=altezza_alert,  # MAX 500px con scroll
                     hide_index=True
                 )
@@ -3049,7 +3086,7 @@ def mostra_statistiche(df_completo):
                     st.dataframe(
                         df_sconti_view,
                         hide_index=True,
-                        use_container_width=True,
+                        width='stretch',
                         height=altezza_sconti,
                         column_config={
                             'Prodotto': st.column_config.TextColumn(
@@ -3116,7 +3153,7 @@ def mostra_statistiche(df_completo):
                     st.dataframe(
                         df_omaggi_view,
                         hide_index=True,
-                        use_container_width=True,
+                        width='stretch',
                         height=altezza_omaggi,
                         column_config={
                             'Data': st.column_config.DateColumn(
@@ -3225,7 +3262,7 @@ def mostra_statistiche(df_completo):
                 st.dataframe(
                     pivot_cat_display,
                     hide_index=True,
-                    use_container_width=True,
+                    width='stretch',
                     height=altezza_cat
                 )
                 
@@ -3385,7 +3422,7 @@ def mostra_statistiche(df_completo):
                 st.dataframe(
                     pivot_forn_display,
                     hide_index=True,
-                    use_container_width=True,
+                    width='stretch',
                     height=altezza_forn
                 )
                 
@@ -3539,7 +3576,7 @@ def mostra_statistiche(df_completo):
             
             num_righe_spese_cat = len(pivot_cat_display)
             altezza_spese_cat = max(num_righe_spese_cat * 35 + 50, 200)
-            st.dataframe(pivot_cat_display, use_container_width=True, height=altezza_spese_cat)
+            st.dataframe(pivot_cat_display, width='stretch', height=altezza_spese_cat)
             
             # Box + Excel per Categorie
             totale_cat_spese = pivot_cat['TOTALE'].sum()
@@ -3621,7 +3658,7 @@ def mostra_statistiche(df_completo):
             
             num_righe_spese_forn = len(pivot_forn_display)
             altezza_spese_forn = max(num_righe_spese_forn * 35 + 50, 200)
-            st.dataframe(pivot_forn_display, use_container_width=True, height=altezza_spese_forn)
+            st.dataframe(pivot_forn_display, width='stretch', height=altezza_spese_forn)
             
             # Box + Excel per Fornitori
             totale_forn_spese = pivot_forn['TOTALE'].sum()
