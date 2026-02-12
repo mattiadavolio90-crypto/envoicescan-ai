@@ -217,7 +217,7 @@ st.markdown("""
 # ============================================================
 # 🔒 SISTEMA AUTENTICAZIONE CON RECUPERO PASSWORD
 # ============================================================
-from supabase import create_client, Client
+from supabase import Client
 from datetime import datetime, timedelta
 import logging
 
@@ -246,21 +246,8 @@ if not logger.handlers:
 # ============================================================
 # INIZIALIZZAZIONE SUPABASE CON CONNECTION POOLING
 # ============================================================
-@st.cache_resource
-def get_supabase_client() -> Client:
-    """✅ Singleton Supabase client con connection pooling.
-    
-    Riutilizza la stessa connessione per tutti gli utenti → performance 10x migliori.
-    Cache persiste per tutta la sessione Streamlit (non viene ricreata ad ogni run).
-    """
-    try:
-        supabase_url = st.secrets["supabase"]["url"]
-        supabase_key = st.secrets["supabase"]["key"]
-        return create_client(supabase_url, supabase_key)
-    except Exception as e:
-        logger.exception("Connessione Supabase fallita")
-        st.error(f"⛔ Errore connessione Supabase: {e}")
-        st.stop()
+# Usa singleton centralizzato da services/__init__.py
+from services import get_supabase_client
 
 # Inizializza client globale (singleton)
 try:
@@ -423,12 +410,13 @@ if st.query_params.get("reset_token"):
 
 
 def verifica_codice_reset(email, code, new_password):
-    """Verifica codice e aggiorna password"""
+    """Verifica codice e aggiorna password con validazione compliance"""
     from argon2 import PasswordHasher
+    from services.auth_service import valida_password_compliance
     ph = PasswordHasher()
     
     try:
-        resp = supabase.table('users').select('*').eq('email', email).limit(1).execute()
+        resp = supabase.table('users').select('id, email, nome_ristorante, reset_code, reset_expires').eq('email', email).limit(1).execute()
         user = resp.data[0] if resp.data else None
         
         valid = False
@@ -436,6 +424,18 @@ def verifica_codice_reset(email, code, new_password):
         if user:
             stored_code = user.get('reset_code')
             if stored_code == code:
+                # Verifica scadenza
+                expires_str = user.get('reset_expires')
+                if expires_str:
+                    from datetime import datetime, timezone
+                    try:
+                        expires = datetime.fromisoformat(expires_str.replace('Z', '+00:00'))
+                        if expires.tzinfo is None:
+                            expires = expires.replace(tzinfo=timezone.utc)
+                        if datetime.now(timezone.utc) > expires:
+                            return None, "Codice scaduto. Richiedi un nuovo reset."
+                    except (ValueError, TypeError):
+                        pass
                 valid = True
         
         if not valid:
@@ -446,6 +446,15 @@ def verifica_codice_reset(email, code, new_password):
         
         if not valid:
             return None, "Codice errato o scaduto"
+        
+        # Valida password compliance
+        errori = valida_password_compliance(
+            new_password,
+            email,
+            user.get('nome_ristorante', '')
+        )
+        if errori:
+            return None, errori[0]
         
         new_hash = ph.hash(new_password)
         supabase.table('users').update({
@@ -672,10 +681,7 @@ def mostra_pagina_login():
 # ============================================================
 # CHECK LOGIN ALL'AVVIO
 # ============================================================
-
-# INIZIALIZZA logged_in se non esiste
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
+# (logged_in già inizializzato sopra — riga ~262)
 
 # VERIFICA FINALE: se force_logout è attivo, FORZA logged_in = False
 if st.session_state.get('force_logout', False):
@@ -937,34 +943,16 @@ user_email = (user.get('email') or user.get('Email') or user.get('user_email') o
               st.session_state.user_data.get('email') if st.session_state.user_data else None or 
               'Email non disponibile')
 
-# 🎯 LOGICA INTELLIGENTE: Single vs Multi-Ristorante
-try:
-    user_id = user.get('id')
-    if user_id:
-        # Conta ristoranti attivi per questo utente
-        ristoranti_count = supabase.table('ristoranti')\
-            .select('nome_ristorante', count='exact')\
-            .eq('user_id', user_id)\
-            .eq('attivo', True)\
-            .execute()
-        
-        num_ristoranti = len(ristoranti_count.data) if ristoranti_count.data else 0
-        
-        if num_ristoranti == 0:
-            nome_ristorante = "Nessun Ristorante"
-        elif num_ristoranti == 1:
-            # Single ristorante: mostra il nome
-            nome_ristorante = ristoranti_count.data[0]['nome_ristorante']
-        else:
-            # Multi-ristorante: mostra etichetta generica 
-            nome_ristorante = "Multi-Ristorante"
-    else:
-        # Fallback se non trova user_id
-        nome_ristorante = user.get('nome_ristorante') or 'Ristorante'
-except Exception as e:
-    # Fallback sicuro in caso di errore query
-    logger.warning(f"Errore conteggio ristoranti per intestazione: {e}")
-    nome_ristorante = user.get('nome_ristorante') or 'Ristorante'
+# 🎯 LOGICA INTELLIGENTE: Single vs Multi-Ristorante (usa dati già in sessione, zero query DB)
+ristoranti_session = st.session_state.get('ristoranti', [])
+num_ristoranti = len(ristoranti_session)
+
+if num_ristoranti == 0:
+    nome_ristorante = "Nessun Ristorante"
+elif num_ristoranti == 1:
+    nome_ristorante = ristoranti_session[0].get('nome_ristorante', 'Ristorante')
+else:
+    nome_ristorante = "Multi-Ristorante"
 
 # Box informativo conservazione sostitutiva
 st.markdown("""
@@ -2094,32 +2082,29 @@ def mostra_statistiche(df_completo):
         
         df_editor = df_base[cols_base].copy()
         
-        # ⭐ NUOVO: COLONNA FONTE - Origine categorizzazione (UI-only, NON salvata in DB)
+        # ⭐ COLONNA FONTE - Origine categorizzazione (UI-only, NON salvata in DB)
+        # 3 stati: 📚 Memoria Globale | 🧠 AI Batch | ✋ Modifica Manuale
         if 'Descrizione' in df_editor.columns:
-            # DIZIONARIO (📚)
+            # MEMORIA GLOBALE 📚 (dizionario + memoria prodotti già visti)
             righe_diz = st.session_state.get('righe_keyword_appena_categorizzate', [])
-            diz_set = set(str(d).strip() for d in righe_diz)
+            righe_mem = st.session_state.get('righe_memoria_appena_categorizzate', [])
+            globale_set = set(str(d).strip() for d in righe_diz) | set(str(d).strip() for d in righe_mem)
             
-            # AI BATCH (🤖)
+            # AI BATCH 🧠
             righe_ai = st.session_state.get('righe_ai_appena_categorizzate', [])
             ai_set = set(str(d).strip() for d in righe_ai)
             
-            # MANUALE (✋)
+            # MODIFICA MANUALE ✋
             righe_man = st.session_state.get('righe_modificate_manualmente', [])
             man_set = set(str(d).strip() for d in righe_man)
             
-            # MEMORIA (🧠)
-            righe_mem = st.session_state.get('righe_memoria_appena_categorizzate', [])
-            mem_set = set(str(d).strip() for d in righe_mem)
-            
-            # Priorità: ✋ > 🤖 > 📚 > 🧠 > vuoto
+            # Priorità: ✋ > 🧠 > 📚 > vuoto
             df_editor['Fonte'] = df_editor['Descrizione'].apply(
-                lambda d: '✋' if str(d).strip() in man_set else
-                          '🤖' if str(d).strip() in ai_set else
-                          '📚' if str(d).strip() in diz_set else
-                          '🧠' if str(d).strip() in mem_set else ''
+                lambda d: ' ✋ ' if str(d).strip() in man_set else
+                          ' 🧠 ' if str(d).strip() in ai_set else
+                          ' 📚 ' if str(d).strip() in globale_set else ''
             )
-            logger.info(f"✅ Colonna Fonte: {len(man_set)} manuali, {len(ai_set)} AI, {len(diz_set)} dizionario, {len(mem_set)} memoria")
+            logger.info(f"✅ Colonna Fonte: {len(man_set)} manuali, {len(ai_set)} AI, {len(globale_set)} memoria globale")
         
         # 🧪 TEST AGGREGAZIONE (diagnostico - zero impatto UI)
         if 'Descrizione' in df_editor.columns:
@@ -2378,7 +2363,7 @@ def mostra_statistiche(df_completo):
             # ⭐ NUOVO: Colonna Fonte (dopo IVA)
             "Fonte": st.column_config.TextColumn(
                 "Fonte",
-                help="📚=dizionario | 🤖=AI batch | ✋=modifica manuale | (vuoto)=storica",
+                help="📚 Memoria Globale | 🧠 AI Batch | ✋ Modifica Manuale",
                 disabled=True,
                 width="small"
             )
@@ -2460,6 +2445,23 @@ def mostra_statistiche(df_completo):
             }
             /* Nota: Streamlit data_editor non supporta styling condizionale per riga basato su valore cella.
                La colorazione visiva principale sarà l'icona 🧠 nella colonna Stato. */
+            
+            /* 🔍 EMOJI PIÙ GRANDI nella colonna Fonte (ultima colonna) */
+            /* Approccio 1: Targetta tutte le celle dell'ultima colonna */
+            div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(1),
+            div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(2):has(:only-child) {
+                font-size: 26px !important;
+                text-align: center !important;
+                line-height: 1.5 !important;
+            }
+            /* Approccio 2: Aumenta font per colonne con width="small" (Fonte e U.M.) */
+            div[data-testid="stDataFrame"] [data-baseweb="cell"]:has(span:only-child) {
+                font-size: 24px !important;
+            }
+            /* Approccio 3: Centra e ingrandisci celle contenenti solo emoji singole */
+            div[data-testid="stDataFrame"] div[role="gridcell"] > div:only-child {
+                font-size: inherit;
+            }
             </style>
         """, unsafe_allow_html=True)
         
@@ -4735,7 +4737,8 @@ if uploaded_files:
                                 rows_saved=0,
                                 error_stage=error_stage,
                                 error_message=error_msg,
-                                details={"exception_type": type(e).__name__}
+                                details={"exception_type": type(e).__name__},
+                                supabase_client=supabase
                             )
                         except Exception as log_error:
                             logger.error(f"Errore logging failed event: {log_error}")

@@ -10,7 +10,7 @@ Sei un esperto classifier per ristoranti con 20+ anni di esperienza.
 Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTESTO.
 
 ═══════════════════════════════════════════════════════════════════
-📋 CATEGORIE F&B (26 categorie alimentari e bevande)
+📋 CATEGORIE F&B (25 categorie alimentari e bevande)
 ═══════════════════════════════════════════════════════════════════
 
 1. **ACQUA** - Acque naturali, frizzanti, effervescenti
@@ -76,8 +76,8 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 21. **SPEZIE E AROMI** - Spezie, erbe aromatiche, condimenti secchi
     Esempi: "PEPE NERO", "ORIGANO SECCO", "ROSMARINO", "VANIGLIA", "CURRY"
 
-22. **SURGELATI** - Prodotti congelati (no carni/pesci singoli)
-    Esempi: "VERDURE MISTE SURGELATE", "PATATINE FRITTE", "CALAMARI SURGELATI"
+22. **SUSHI VARIE** - Ingredienti specifici e decorazione sushi
+    Esempi: "ALGHE NORI", "YAKI NORI", "PANKO", "FOGLIE BAMBU", "WASABI", "TOBIKO", "TEMPURA MIX", "MASAGO"
 
 23. **UOVA** - Uova fresche
     Esempi: "UOVA BOX 30", "UOVA BIOLOGICHE"

@@ -97,6 +97,9 @@ def render_sidebar(user_data: dict):
         # SEZIONE ACCOUNT
         # ============================================
         st.markdown("### 👤 Account")
+        if st.button("⚙️ Gestione Account", use_container_width=True, key="sidebar_gestione"):
+            st.switch_page("pages/gestione_account.py")
+        
         if st.button("🔐 Cambio Password", use_container_width=True, key="sidebar_password"):
             st.switch_page("pages/cambio_password.py")
         
@@ -111,9 +114,6 @@ def render_sidebar(user_data: dict):
             st.markdown("### 👨‍💼 Amministrazione")
             if st.button("🔑 Pannello Admin", use_container_width=True, type="primary", key="sidebar_admin"):
                 st.switch_page("pages/admin.py")
-            
-            if st.button("👥 Gestione Account", use_container_width=True, key="sidebar_gestione"):
-                st.switch_page("pages/gestione_account.py")
         
         # ============================================
         # LOGOUT (in fondo)
@@ -136,6 +136,15 @@ def render_sidebar(user_data: dict):
         """, unsafe_allow_html=True)
         
         if st.button("Logout", use_container_width=True, type="primary", key="sidebar_logout"):
+            # Registra logout nel database
+            try:
+                from services.auth_service import registra_logout_utente
+                user_email_logout = st.session_state.get('user_data', {}).get('email')
+                if user_email_logout:
+                    registra_logout_utente(user_email_logout)
+            except Exception:
+                pass
+            
             # Reset completo session_state
             for key in list(st.session_state.keys()):
                 del st.session_state[key]

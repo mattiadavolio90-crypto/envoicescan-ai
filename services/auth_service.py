@@ -22,7 +22,7 @@ import hashlib
 import logging
 import re
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict, Any, List
 
 # Logger centralizzato
@@ -245,8 +245,9 @@ def crea_cliente_con_token(
                 return False, f"⚠️ P.IVA già registrata da: {email_esistente}", ""
         
         # Genera token univoco (24h validità per primo accesso)
-        token = str(uuid.uuid4())
-        expires = datetime.utcnow() + timedelta(hours=24)
+        # secrets.token_urlsafe(32) = 192 bit entropia, URL-safe (superiore a uuid4)
+        token = secrets.token_urlsafe(32)
+        expires = datetime.now(timezone.utc) + timedelta(hours=24)
         
         # Placeholder password_hash (NON usabile per login, sarà sovrascritto)
         # Usa hash di un UUID random - impossibile da indovinare
@@ -262,7 +263,7 @@ def crea_cliente_con_token(
             'reset_code': token,
             'reset_expires': expires.isoformat(),
             'attivo': False,  # Attivo solo dopo set password
-            'created_at': datetime.utcnow().isoformat(),
+            'created_at': datetime.now(timezone.utc).isoformat(),
             'login_attempts': 0,
             'password_changed_at': None
         }
@@ -345,8 +346,10 @@ def imposta_password_da_token(
         expires_str = user.get('reset_expires')
         if expires_str:
             expires = datetime.fromisoformat(expires_str.replace('Z', '+00:00'))
-            # Rendi datetime.utcnow() timezone-aware per confronto
-            now_utc = datetime.utcnow().replace(tzinfo=expires.tzinfo) if expires.tzinfo else datetime.utcnow()
+            # Timezone-aware comparison
+            now_utc = datetime.now(timezone.utc)
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
             
             if now_utc > expires:
                 return False, "⏰ Link scaduto. Contatta il supporto per un nuovo link.", {}
@@ -369,7 +372,7 @@ def imposta_password_da_token(
             'reset_code': None,  # Invalida token
             'reset_expires': None,
             'attivo': True,  # Attiva account
-            'password_changed_at': datetime.utcnow().isoformat()
+            'password_changed_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', user['id']).execute()
         
         logger.info(f"✅ Password impostata per: {user.get('email')}")
@@ -471,7 +474,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             # Aggiorna last_login
             try:
                 supabase_client.table('users').update({
-                    'last_login': datetime.utcnow().isoformat()
+                    'last_login': datetime.now(timezone.utc).isoformat()
                 }).eq('id', user['id']).execute()
             except Exception:
                 logger.exception('Errore aggiornamento last_login')
@@ -514,9 +517,9 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         import streamlit as st
         from services import get_supabase_client
         
-        # Genera codice sicuro
-        code = secrets.token_urlsafe(8)
-        expires = (datetime.utcnow() + timedelta(hours=1)).isoformat()
+        # Genera codice sicuro (12 bytes = 96 bit entropia)
+        code = secrets.token_urlsafe(12)
+        expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         
         # Ottieni client Supabase (singleton)
         if supabase_client is None:
@@ -613,10 +616,10 @@ def registra_logout_utente(email: str) -> bool:
     Ogni volta che l'utente fa logout, aggiorniamo un campo nel DB.
     """
     try:
-        import streamlit as st
         from datetime import datetime
+        from services import get_supabase_client
         
-        supabase = st.session_state.get('supabase_client')
+        supabase = get_supabase_client()
         if not supabase:
             return False
             
@@ -638,10 +641,10 @@ def verifica_sessione_valida(email: str, session_timestamp: float) -> bool:
     Se l'utente ha fatto logout DOPO il login corrente, la sessione è invalida.
     """
     try:
-        import streamlit as st
         from datetime import datetime
+        from services import get_supabase_client
         
-        supabase = st.session_state.get('supabase_client')
+        supabase = get_supabase_client()
         if not supabase:
             return True  # Fallback: se non c'è DB, non blocchiamo
             

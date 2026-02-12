@@ -122,7 +122,7 @@ CATEGORIE_FOOD_BEVERAGE = [
     "OLIO E CONDIMENTI", "SECCO", "VERDURE", "FRUTTA", "SALSE E CREME",
     "ACQUA", "BEVANDE", "CAFFE E THE", "BIRRE", "VINI",
     "VARIE BAR", "DISTILLATI", "AMARI/LIQUORI", "PASTICCERIA",
-    "PRODOTTI DA FORNO", "SPEZIE E AROMI", "GELATI", "SURGELATI", "SHOP"
+    "PRODOTTI DA FORNO", "SPEZIE E AROMI", "GELATI", "SHOP", "SUSHI VARIE"
 ]
 
 
@@ -454,6 +454,7 @@ DIZIONARIO_CORREZIONI = {
     "KETCHUP": "SALSE E CREME",
     "MAIONESE": "SALSE E CREME",
     "SENAPE": "SALSE E CREME",
+    "SAUCE": "SALSE E CREME",
     
     # ===== PROBLEMI AI: Aggiunti al dizionario =====
     # Prodotti che l'AI non riesce a classificare correttamente
@@ -604,13 +605,6 @@ DIZIONARIO_CORREZIONI = {
     "COPPA": "GELATI",  # Coppa gelato (anche senza "GELATO" nel testo)
     "CONO": "GELATI",
     "SEMIFREDDO": "GELATI",
-    
-    # ===== SURGELATI =====
-    "SURGELATO": "SURGELATI",
-    "SURGELATI": "SURGELATI",
-    "CONGELATO": "SURGELATI",
-    "FROZEN": "SURGELATI",
-    "SURG": "SURGELATI",
     
     # ===== SHOP (prodotti di compravendita senza produzione) =====
     "CICCHE": "SHOP",
@@ -916,23 +910,36 @@ DIZIONARIO_CORREZIONI = {
     "SPAGNOLA CF": "GELATI",
     
     # ===== INGREDIENTI ASIATICI =====
-    "NORI": "SPEZIE E AROMI",
-    "ALGHE": "SPEZIE E AROMI",
-    "WAKAME": "SPEZIE E AROMI",
-    "KONBU": "SPEZIE E AROMI",
-    "PANKO": "SECCO",
+    # NOTA: Ingredienti specifici sushi/decorazione → SUSHI VARIE
+    # Salse asiatiche generiche restano in SALSE E CREME
+    "NORI": "SUSHI VARIE",
+    "YAKI NORI": "SUSHI VARIE",
+    "GIKU": "SUSHI VARIE",
+    "SUSHI NORI": "SUSHI VARIE",
+    "ALGHE": "SUSHI VARIE",
+    "ALGA": "SUSHI VARIE",
+    "WAKAME": "SUSHI VARIE",
+    "KONBU": "SUSHI VARIE",
+    "PANKO": "SUSHI VARIE",
     "DASHI": "SPEZIE E AROMI",
     "MISO": "SALSE E CREME",
     "ZENZERO SALAMOIA": "SCATOLAME E CONSERVE",
     "ZENZERO IN SALAMOIA": "SCATOLAME E CONSERVE",
     "SESAMO": "SPEZIE E AROMI",
     "SESAMO NERO": "SPEZIE E AROMI",
-    "WASABI": "SPEZIE E AROMI",
-    "TEMPURA": "SECCO",
+    "WASABI": "SUSHI VARIE",
+    "TEMPURA": "SUSHI VARIE",
     "EDAMAME": "VERDURE",
     "CIPOLLA FRITTA": "SCATOLAME E CONSERVE",
-    "BAMBU": "SCATOLAME E CONSERVE",
-    "BAMBÙ": "SCATOLAME E CONSERVE",
+    "BAMBU": "SUSHI VARIE",
+    "BAMBÙ": "SUSHI VARIE",
+    "FOGLIE BAMBU": "SUSHI VARIE",
+    "FOGLIE DI BAMBU": "SUSHI VARIE",
+    "TOBIKO": "SUSHI VARIE",
+    "EBIKO": "SUSHI VARIE",
+    "MASAGO": "SUSHI VARIE",
+    "SUSHI": "SUSHI VARIE",
+    "TOPPING SUSHI": "SUSHI VARIE",
     
     # ===== SALSE ASIATICHE =====
     "SAKE CUCINA": "SALSE E CREME",

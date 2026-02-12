@@ -343,8 +343,8 @@ def analizza_integrita_database(ristorante_id=None):
         tuple: (problemi dict, dettagli dict con DataFrame)
     """
     try:
-        # Query dati completi
-        query = supabase.table('fatture').select('*')
+        # Query dati completi (solo colonne necessarie per analisi)
+        query = supabase.table('fatture').select('id, data_documento, prezzo_unitario, quantita, descrizione, totale_riga, fornitore, file_origine, numero_fattura')
         
         # 🔍 FILTRO RISTORANTE (opzionale per admin drill-down)
         if ristorante_id:
@@ -517,6 +517,11 @@ def trova_fornitori_duplicati(ristorante_id=None):
         if len(fornitori_unici) < 2:
             return []
         
+        # Limita confronto per evitare O(n²) con troppi fornitori
+        if len(fornitori_unici) > 500:
+            logger.warning(f"⚠️ Troppe fornitori unici ({len(fornitori_unici)}), analisi limitata ai primi 500")
+            fornitori_unici = fornitori_unici[:500]
+        
         # Trova nomi simili
         from difflib import SequenceMatcher
         
@@ -555,7 +560,7 @@ def statistiche_salute_sistema():
     try:
         # Query base con gestione errori
         try:
-            righe_response = supabase.table('fatture').select('*', count='exact').execute()
+            righe_response = supabase.table('fatture').select('categoria', count='exact').execute()
             totale_righe = righe_response.count if righe_response else 0
             df_righe = pd.DataFrame(righe_response.data) if righe_response.data else pd.DataFrame()
         except Exception as e:
@@ -564,14 +569,14 @@ def statistiche_salute_sistema():
             df_righe = pd.DataFrame()
         
         try:
-            clienti_response = supabase.table('users').select('*', count='exact').execute()
+            clienti_response = supabase.table('users').select('id', count='exact').execute()
             totale_clienti = clienti_response.count if clienti_response else 0
         except Exception as e:
             logger.warning(f"Errore query users: {e}")
             totale_clienti = 0
         
         try:
-            memoria_response = supabase.table('prodotti_master').select('*', count='exact').execute()
+            memoria_response = supabase.table('prodotti_master').select('volte_visto', count='exact').execute()
             totale_memoria = memoria_response.count if memoria_response else 0
         except Exception as e:
             logger.warning(f"Errore query memoria: {e}")
@@ -3547,7 +3552,7 @@ if tab5:
         with st.spinner("Analisi dati in corso..."):
             try:
                 # Costruisci query base
-                query = supabase.table('fatture').select('*')
+                query = supabase.table('fatture').select('data_documento, prezzo_unitario, quantita, descrizione, totale_riga, fornitore')
                 
                 # Filtro per ristorante (basato su email utente)
                 if filtro_email:
@@ -3667,7 +3672,7 @@ if tab5:
                     for idx, row in df.iterrows():
                         prezzo = row.get('prezzo_unitario', 0)
                         quantita = row.get('quantita', 0)
-                        totale = row.get('totale', 0)
+                        totale = row.get('totale_riga', 0)  # FIX: colonna è totale_riga, non totale
                         calcolato = prezzo * quantita
                         
                         # Tollera differenze di arrotondamento (< 0.02€)

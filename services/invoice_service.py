@@ -205,11 +205,15 @@ def estrai_dati_da_xml(file_caricato):
         if isinstance(linee, dict):
             linee = [linee]
         
-        # Limita a 25 righe per evitare timeout OpenAI
+        # Limite sicurezza: 200 righe max per fattura XML (parsing locale, no API)
+        # Se superato, processa le prime 200 e logga warning
+        MAX_RIGHE_XML = 200
         righe_originali_count = len(linee)
-        if righe_originali_count > 25:
-            logger.warning(f"{file_caricato.name}: {righe_originali_count} righe totali, limitate a 25")
-            linee = linee[:25]
+        if righe_originali_count > MAX_RIGHE_XML:
+            logger.warning(f"{file_caricato.name}: {righe_originali_count} righe totali, limitate a {MAX_RIGHE_XML}")
+            linee = linee[:MAX_RIGHE_XML]
+            import streamlit as st
+            st.warning(f"⚠️ Fattura con {righe_originali_count} righe: elaborate le prime {MAX_RIGHE_XML}. Contatta l'assistenza se necessiti di processarle tutte.")
         
         memoria_ai = carica_memoria_ai()
         
@@ -233,9 +237,15 @@ def estrai_dati_da_xml(file_caricato):
                 prezzo_base = float(riga.get('PrezzoUnitario', 0) or 0)
                 totale_riga = float(riga.get('PrezzoTotale', 0) or 0)
                 
-                # SKIP: Prezzo zero o mancante
+                # MARK FOR REVIEW: Prezzo zero o mancante (potrebbe essere omaggio, dicitura, o servizio gratuito)
+                needs_review_flag = False
                 if not prezzo_base or prezzo_base == 0:
-                    continue
+                    # Se ha anche totale_riga == 0 e non sembra un prodotto, skip
+                    has_totale = totale_riga and totale_riga != 0
+                    has_desc = descrizione_raw and len(descrizione_raw.strip()) > 3
+                    if not has_totale and not has_desc:
+                        continue
+                    needs_review_flag = True
                 
                 # QUANTITÀ: Default = 1 per servizi (se manca ma c'è PrezzoTotale)
                 if quantita_raw is None or float(quantita_raw or 0) == 0:
@@ -307,7 +317,7 @@ def estrai_dati_da_xml(file_caricato):
                 )
                 
                 # Strategia ibrida: salva tutto, marca per review se necessario
-                needs_review = False
+                needs_review = needs_review_flag  # Inherit from prezzo==0 check above
                 
                 if prezzo_unitario == 0 or totale_riga == 0:
                     if categoria_finale == "📝 NOTE E DICITURE":

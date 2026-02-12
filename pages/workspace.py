@@ -8,29 +8,15 @@ import pandas as pd
 import json
 import io
 from datetime import datetime
-from supabase import create_client, Client
+from supabase import Client
 from config.logger_setup import get_logger
 from utils.ristorante_helper import get_current_ristorante_id
 from utils.sidebar_helper import render_sidebar
 from config.constants import CATEGORIE_SPESE_OPERATIVE
+from services import get_supabase_client
 
 # Logger
 logger = get_logger('workspace')
-
-# ============================================
-# SUPABASE CLIENT (senza import da app.py)
-# ============================================
-@st.cache_resource
-def get_supabase_client() -> Client:
-    """Client Supabase singleton per questa pagina"""
-    try:
-        supabase_url = st.secrets["supabase"]["url"]
-        supabase_key = st.secrets["supabase"]["key"]
-        return create_client(supabase_url, supabase_key)
-    except Exception as e:
-        logger.exception("Connessione Supabase fallita")
-        st.error(f"⛔ Errore connessione Supabase: {e}")
-        st.stop()
 
 def get_fresh_supabase_client() -> Client:
     """Ritorna client Supabase, ricreandolo se disconnesso"""

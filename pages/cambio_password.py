@@ -187,7 +187,7 @@ st.markdown("---")
 with st.expander("🛡️ Consigli per una password sicura"):
     st.markdown("""
     **Una password forte dovrebbe:**
-    - ✅ Essere lunga almeno 8 caratteri (meglio 12+)
+    - ✅ Essere lunga almeno 10 caratteri (meglio 12+)
     - ✅ Contenere lettere maiuscole e minuscole
     - ✅ Includere numeri
     - ✅ Avere simboli speciali (!@#$%&*)

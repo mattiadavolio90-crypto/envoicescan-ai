@@ -298,12 +298,28 @@ with tab3:
                     
                     logger.info(f"ELIMINAZIONE ACCOUNT - Fatture eliminate: {result_fatture.get('fatture_eliminate', 0)}")
                     
-                    # STEP 2: Elimina l'utente dalla tabella users
+                    # STEP 2: Elimina dati correlati (GDPR Art.17 - diritto alla cancellazione)
+                    tables_to_clean = [
+                        ('prodotti_utente', 'user_id'),
+                        ('classificazioni_manuali', 'user_id'),
+                        ('ricette', 'userid'),
+                        ('ingredienti_workspace', 'userid'),
+                        ('note_diario', 'userid'),
+                        ('ristoranti', 'user_id'),
+                    ]
+                    for table_name, id_col in tables_to_clean:
+                        try:
+                            supabase.table(table_name).delete().eq(id_col, user_id).execute()
+                            logger.info(f"ELIMINAZIONE ACCOUNT - Pulita tabella {table_name}")
+                        except Exception as table_err:
+                            logger.warning(f"Errore pulizia tabella {table_name}: {table_err}")
+                    
+                    # STEP 3: Elimina l'utente dalla tabella users
                     delete_result = supabase.table('users').delete().eq('id', user_id).execute()
                     
                     logger.info(f"ELIMINAZIONE ACCOUNT - Utente {user_email} eliminato dal database")
                     
-                    # STEP 3: Pulizia sessione e logout
+                    # STEP 4: Pulizia sessione e logout
                     st.session_state.clear()
                     st.session_state.logged_in = False
                     
