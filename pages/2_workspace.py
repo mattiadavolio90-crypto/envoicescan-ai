@@ -22,8 +22,7 @@ def get_fresh_supabase_client() -> Client:
     """Ritorna client Supabase, ricreandolo se disconnesso"""
     try:
         client = get_supabase_client()
-        # Test rapido connessione
-        client.table('note_diario').select('id').limit(1).execute()
+        # Nessun test query - fidarsi del singleton; retry su errore reale
         return client
     except Exception:
         # Client stale, ricrea
@@ -36,6 +35,7 @@ def invalidate_workspace_cache():
     """Invalida SOLO le cache specifiche del workspace, senza toccare le altre pagine."""
     get_articoli_da_fatture.clear()
     get_ricette_come_ingredienti.clear()
+    _get_ingredienti_workspace_cached.clear()
 
 
 def safe_db_execute(operation_fn, description: str = "operazione DB"):
@@ -337,6 +337,22 @@ def get_ricette_come_ingredienti(user_id: str, ristorante_id: str, exclude_id: s
         return []
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def _get_ingredienti_workspace_cached(user_id: str, ristorante_id: str) -> list:
+    """Cache ingredienti workspace per 2 minuti."""
+    try:
+        workspace_response = supabase.table('ingredienti_workspace')\
+            .select('*')\
+            .eq('userid', user_id)\
+            .eq('ristorante_id', ristorante_id)\
+            .order('nome')\
+            .execute()
+        return workspace_response.data or []
+    except Exception as e:
+        logger.warning(f"Errore ingredienti workspace: {e}")
+        return []
+
+
 def get_ingredienti_dropdown(user_id: str, ristorante_id: str, exclude_ricetta_id: str = None) -> tuple:
     """
     Merge articoli da fatture + ingredienti workspace + ricette in lista unica per dropdown.
@@ -362,32 +378,23 @@ def get_ingredienti_dropdown(user_id: str, ristorante_id: str, exclude_ricetta_i
             'data': art
         })
     
-    # 2. Ingredienti workspace (manuali/test)
-    try:
-        workspace_response = supabase.table('ingredienti_workspace')\
-            .select('*')\
-            .eq('userid', user_id)\
-            .eq('ristorante_id', ristorante_id)\
-            .order('nome')\
-            .execute()
-        
-        for ing in (workspace_response.data or []):
-            label = f"📝 {ing['nome']} (€{ing['prezzo_per_um']:.2f}/{ing['um']} - manuale)"
-            ingredienti_options.append({
-                'label': label,
-                'tipo': 'workspace',
-                'data': {
-                    'nome': ing['nome'],
-                    'prezzo_unitario': float(ing['prezzo_per_um']),
-                    'um': ing['um'],
-                    'id': ing['id']
-                }
-            })
-        
-        debug_messages.append(f"✅ Ingredienti workspace caricati: {len(workspace_response.data)}")
-    except Exception as e:
-        debug_messages.append(f"⚠️ Errore caricamento ingredienti workspace: {str(e)}")
-        logger.warning(f"Errore ingredienti workspace: {e}")
+    # 2. Ingredienti workspace (manuali/test) - cached
+    workspace_data = _get_ingredienti_workspace_cached(user_id, ristorante_id)
+    
+    for ing in workspace_data:
+        label = f"📝 {ing['nome']} (€{ing['prezzo_per_um']:.2f}/{ing['um']} - manuale)"
+        ingredienti_options.append({
+            'label': label,
+            'tipo': 'workspace',
+            'data': {
+                'nome': ing['nome'],
+                'prezzo_unitario': float(ing['prezzo_per_um']),
+                'um': ing['um'],
+                'id': ing['id']
+            }
+        })
+    
+    debug_messages.append(f"✅ Ingredienti workspace caricati: {len(workspace_data)}")
     
     # 3. Ricette salvate (solo SEMILAVORATI)
     ricette = get_ricette_come_ingredienti(user_id, ristorante_id, exclude_ricetta_id)

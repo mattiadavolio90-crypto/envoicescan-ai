@@ -233,7 +233,8 @@ def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
         if not response.data:
             return 0
         
-        righe_aggiornate = 0
+        # Calcola tutti i prezzi da aggiornare PRIMA, poi batch update
+        updates_needed = []
         
         for row in response.data:
             totale = row.get('totale_riga', 0)
@@ -246,14 +247,33 @@ def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
                 
                 # Solo se diverso (c'era uno sconto)
                 if abs(prezzo_effettivo - prezzo_attuale) > 0.01:
-                    # Aggiorna database
-                    supabase_client.table("fatture").update({
-                        'prezzo_unitario': prezzo_effettivo
-                    }).eq('id', row['id']).execute()
-                    
-                    righe_aggiornate += 1
-                    logger.info(f"🔄 Prezzo aggiornato: {row.get('descrizione', '')[:40]} | "
-                               f"€{prezzo_attuale:.2f} → €{prezzo_effettivo:.2f}")
+                    updates_needed.append({
+                        'id': row['id'],
+                        'prezzo_effettivo': prezzo_effettivo,
+                        'descrizione': row.get('descrizione', ''),
+                        'prezzo_attuale': prezzo_attuale
+                    })
+        
+        if not updates_needed:
+            return 0
+        
+        # Batch update: raggruppa per prezzo_effettivo per fare meno query
+        from collections import defaultdict
+        prezzo_groups = defaultdict(list)
+        for u in updates_needed:
+            prezzo_groups[u['prezzo_effettivo']].append(u['id'])
+        
+        righe_aggiornate = 0
+        for prezzo_effettivo, ids in prezzo_groups.items():
+            # Aggiorna batch di IDs con stesso prezzo in una sola query
+            for batch_start in range(0, len(ids), 50):  # Batch da 50
+                batch_ids = ids[batch_start:batch_start + 50]
+                supabase_client.table("fatture").update({
+                    'prezzo_unitario': prezzo_effettivo
+                }).in_('id', batch_ids).execute()
+                righe_aggiornate += len(batch_ids)
+        
+        logger.info(f"🔄 Batch update prezzi: {righe_aggiornate} righe aggiornate in {len(prezzo_groups)} gruppi")
         
         return righe_aggiornate
     
@@ -521,17 +541,18 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
         # Se non disponibile, usa €0
         totale_omaggi = 0.0
         if not df_omaggi.empty:
-            for idx, row in df_omaggi.iterrows():
-                # Cerca stesso prodotto con prezzo > 0 (prendi ultimo)
-                stesso_prodotto = df[
-                    (df['descrizione'] == row['descrizione']) & 
-                    (df['prezzo_unitario'] > 0)
-                ].sort_values('data_documento')
+            # Vectorized: trova l'ultimo prezzo > 0 per ogni prodotto in una sola passata
+            df_positive = df[df['prezzo_unitario'] > 0].copy()
+            if not df_positive.empty:
+                # Prendi l'ultimo prezzo per ogni descrizione (ultimo per data)
+                df_positive_sorted = df_positive.sort_values('data_documento')
+                ultimo_prezzo_map = df_positive_sorted.groupby('descrizione')['prezzo_unitario'].last()
                 
-                if not stesso_prodotto.empty:
-                    prezzo_ultimo = stesso_prodotto.iloc[-1]['prezzo_unitario']
-                    valore_stimato = prezzo_ultimo * row['quantita']
-                    totale_omaggi += abs(valore_stimato)
+                for idx, row in df_omaggi.iterrows():
+                    if row['descrizione'] in ultimo_prezzo_map.index:
+                        prezzo_ultimo = ultimo_prezzo_map[row['descrizione']]
+                        valore_stimato = prezzo_ultimo * row['quantita']
+                        totale_omaggi += abs(valore_stimato)
         
         totale_risparmiato = totale_sconti + totale_omaggi
         
@@ -795,19 +816,32 @@ def get_fatture_stats(user_id: str, ristorante_id: str = None) -> Dict[str, Any]
         return {"num_uniche": 0, "num_righe": 0, "success": False}
     
     try:
+        # Query 1: Conta righe totali con count='exact' senza scaricare dati
+        query_count = supabase_client.table("fatture") \
+            .select("id", count='exact') \
+            .eq("user_id", user_id) \
+            .limit(1)
+        if ristorante_id:
+            query_count = query_count.eq("ristorante_id", ristorante_id)
+        response_count = query_count.execute()
+        total_rows = response_count.count if response_count.count else 0
+        
+        if total_rows == 0:
+            return {"num_uniche": 0, "num_righe": 0, "success": True}
+        
+        # Query 2: Scarica solo file_origine distinti (molto più leggero)
         file_unici_set = set()
-        total_rows = 0
         page = 0
         page_size = 1000
         
         while True:
             offset = page * page_size
-            query_stats_page = supabase_client.table("fatture") \
-                .select("file_origine", count='exact') \
+            query_files = supabase_client.table("fatture") \
+                .select("file_origine") \
                 .eq("user_id", user_id)
             if ristorante_id:
-                query_stats_page = query_stats_page.eq("ristorante_id", ristorante_id)
-            response = query_stats_page.range(offset, offset + page_size - 1).execute()
+                query_files = query_files.eq("ristorante_id", ristorante_id)
+            response = query_files.range(offset, offset + page_size - 1).execute()
             
             if not response.data:
                 break
@@ -815,9 +849,6 @@ def get_fatture_stats(user_id: str, ristorante_id: str = None) -> Dict[str, Any]
             for r in response.data:
                 if r.get("file_origine"):
                     file_unici_set.add(r["file_origine"])
-            
-            if page == 0:
-                total_rows = response.count if response.count else 0
             
             if len(response.data) < page_size:
                 break

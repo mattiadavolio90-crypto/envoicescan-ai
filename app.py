@@ -397,7 +397,7 @@ if st.query_params.get("reset_token"):
                             st.balloons()
                             
                             # Pulisci token da URL
-                            time.sleep(2)
+                            time.sleep(0.5)
                             st.query_params.clear()
                             st.rerun()
                         else:
@@ -491,72 +491,28 @@ def is_admin_or_impersonating() -> bool:
 
 def mostra_pagina_login():
     """Form login con recupero password - ESTETICA STREAMLIT PULITA"""
-    # Elimina completamente sidebar e pulsante
+    # Elimina completamente sidebar e pulsante (CSS già applicato globalmente prima del login)
+    # Solo CSS aggiuntivo per padding login
     st.markdown("""
         <style>
-        /* Nascondi sidebar immediatamente */
-        [data-testid="stSidebar"],
-        section[data-testid="stSidebar"],
-        [data-testid="stSidebarNav"],
-        .css-1d391kg {
-            display: none !important;
-            visibility: hidden !important;
-            width: 0 !important;
-            min-width: 0 !important;
-            opacity: 0 !important;
-        }
-        [data-testid="collapsedControl"] {
-            display: none !important;
-        }
-        button[kind="header"] {
-            display: none !important;
-        }
-        [data-testid="manage-app-button"] { display: none !important; }
-        [data-testid="stDecoration"] { display: none !important; }
-        footer { visibility: hidden !important; }
-        
-        /* ✂️ RIDUCI SPAZIO SUPERIORE LOGIN (valori aumentati) */
-        .main > div {
-            padding-top: 2rem !important;
-        }
+        /* ✂️ RIDUCI SPAZIO SUPERIORE LOGIN */
         .block-container {
             padding-top: 3rem !important;
             padding-bottom: 3rem !important;
         }
         </style>
-        <script>
-        // Nascondi sidebar immediatamente all'avvio
-        (function() {
-            function hideSidebar() {
-                var sidebars = document.querySelectorAll('[data-testid="stSidebar"], section[data-testid="stSidebar"]');
-                sidebars.forEach(function(sidebar) {
-                    sidebar.style.display = 'none';
-                    sidebar.style.visibility = 'hidden';
-                    sidebar.style.width = '0';
-                });
-                
-                var buttons = document.querySelectorAll('[data-testid="manage-app-button"]');
-                buttons.forEach(function(btn) { btn.remove(); });
-                
-                var decorations = document.querySelectorAll('[data-testid="stDecoration"]');
-                decorations.forEach(function(dec) { dec.remove(); });
-                
-                var headers = document.querySelectorAll('button[kind="header"]');
-                headers.forEach(function(h) { h.remove(); });
-            }
-            
-            // Esegui immediatamente
-            hideSidebar();
-            
-            // E continua a controllare
-            setInterval(hideSidebar, 100);
-        })();
-        </script>
     """, unsafe_allow_html=True)
     
     render_oh_yeah_header()
     
-    st.markdown("### Accedi al Sistema")
+    st.markdown("""
+<h2 style="font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 700; margin: 0; margin-top: 0.5rem;">
+    🔐 <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;">Accedi al Sistema</span>
+</h2>
+""", unsafe_allow_html=True)
     
     # Box informativo sulla conservazione sostitutiva
     st.info("📄 **Nota Legale:** Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.")
@@ -618,14 +574,14 @@ def mostra_pagina_login():
                                 st.session_state.user_is_admin = True
                                 logger.info(f"✅ Login ADMIN: {user.get('email')}")
                                 st.success("✅ Accesso effettuato come ADMIN!")
-                                time.sleep(0.5)
+                                time.sleep(0.2)
                                 # Reindirizza direttamente al pannello admin
                                 st.switch_page("pages/admin.py")
                             else:
                                 st.session_state.user_is_admin = False
                                 logger.info(f"✅ Login cliente: {user.get('email')} | P.IVA: {user.get('partita_iva', 'N/A')}")
                                 st.success("✅ Accesso effettuato!")
-                                time.sleep(1)
+                                time.sleep(0.3)
                                 st.rerun()
                         else:
                             st.error(f"❌ {errore}")
@@ -665,7 +621,7 @@ def mostra_pagina_login():
                     st.session_state.logged_in = True
                     st.session_state.user_data = user
                     st.success("✅ Password aggiornata! Accesso automatico...")
-                    time.sleep(1.5)
+                    time.sleep(0.5)
                     st.rerun()
                 else:
                     st.error(f"❌ {errore}")
@@ -1131,11 +1087,15 @@ def mostra_statistiche(df_completo):
         st.stop()
     
     # Separa F&B da Spese Generali solo per categoria (NON escludere fornitori)
+    # ⚡ PERFORMANCE: Calcola Data_DT UNA VOLTA su df_completo PRIMA di splittare
+    if "Data_DT" not in df_completo.columns:
+        df_completo["Data_DT"] = pd.to_datetime(df_completo["DataDocumento"], errors='coerce').dt.date
+    
     mask_spese = df_completo['Categoria'].isin(CATEGORIE_SPESE_GENERALI)
-    df_spese_generali_completo = df_completo[mask_spese].copy()
+    df_spese_generali_completo = df_completo[mask_spese]
     
     # F&B: Escludi solo le categorie spese generali (NON i fornitori)
-    df_food_completo = df_completo[~mask_spese].copy()
+    df_food_completo = df_completo[~mask_spese]
     
     # ============================================
     # CATEGORIZZAZIONE AI
@@ -1176,25 +1136,29 @@ def mostra_statistiche(df_completo):
                 # ============================================================
                 # 🔧 FIX: Query DIRETTA al DB per evitare problema filtri locali su df_completo
                 try:
-                    # Query tutte le descrizioni che hanno categoria NULL o "Da Classificare"
+                    # Query tutte le descrizioni che hanno categoria NULL, "Da Classificare" o stringa vuota
                     ristorante_id = st.session_state.get('ristorante_id')
                     query_null = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).is_("categoria", "null")
                     query_da_class = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "Da Classificare")
+                    query_empty = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "")
                     if ristorante_id:
                         query_null = query_null.eq("ristorante_id", ristorante_id)
                         query_da_class = query_da_class.eq("ristorante_id", ristorante_id)
+                        query_empty = query_empty.eq("ristorante_id", ristorante_id)
                     resp_null = query_null.execute()
                     resp_da_class = query_da_class.execute()
+                    resp_empty = query_empty.execute()
                     
-                    # Combina e rimuovi duplicati
+                    # Combina e rimuovi duplicati (NULL + "Da Classificare" + stringa vuota)
                     dati_null = resp_null.data if resp_null.data else []
                     dati_da_class = resp_da_class.data if resp_da_class.data else []
-                    tutti_dati = dati_null + dati_da_class
+                    dati_empty = resp_empty.data if resp_empty.data else []
+                    tutti_dati = dati_null + dati_da_class + dati_empty
                     
                     descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
                     fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
                     
-                    logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare")
+                    logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare (NULL: {len(dati_null)}, DaClass: {len(dati_da_class)}, Vuote: {len(dati_empty)})")
                 except Exception as e:
                     logger.error(f"Errore query diretta descrizioni: {e}")
                     # Fallback su df_completo se query fallisce
@@ -1379,7 +1343,7 @@ def mostra_statistiche(df_completo):
                             # ⭐ RETRY se UPDATE non ha modificato nulla (possibile timeout/race condition)
                             if num_aggiornate == 0:
                                 logger.warning(f"⚠️ UPDATE 0 righe per '{desc[:50]}...', retry...")
-                                time.sleep(0.5)
+                                time.sleep(0.1)
                                 query_retry = supabase.table("fatture").update(
                                     {"categoria": cat}
                                 ).eq("user_id", user_id).eq("descrizione", desc_normalized)
@@ -1508,14 +1472,14 @@ def mostra_statistiche(df_completo):
                         # ✅ Pulisci placeholder progress
                         progress_placeholder.empty()
                         
-                        # 🧠 SALVA in session state le descrizioni categorizzate (AI + dizionario)
-                        # Usa mappa_categorie che contiene TUTTE le descrizioni categorizzate
-                        # Salva SOLO le descrizioni che hanno comportato un update
-                        descrizioni_categorizzate = descrizioni_aggiornate if descrizioni_aggiornate else list(mappa_categorie.keys())
-                        st.session_state.righe_ai_appena_categorizzate = descrizioni_categorizzate
+                        # 🧠 SALVA in session state le descrizioni categorizzate PER FONTE
+                        # AI: solo quelle inviate all'AI (NON include keyword/dizionario)
+                        # Keyword/Dizionario: già tracciate in righe_keyword_appena_categorizzate
+                        descrizioni_solo_ai = [d for d in descrizioni_aggiornate if d in set(descrizioni_per_ai)] if descrizioni_aggiornate else list(set(descrizioni_per_ai) & set(mappa_categorie.keys()))
+                        st.session_state.righe_ai_appena_categorizzate = descrizioni_solo_ai
+                        logger.info(f"🧠 Fonte tracking: {len(descrizioni_solo_ai)} AI, {len(st.session_state.get('righe_keyword_appena_categorizzate', []))} keyword")
                         
                         # DEBUG: Log per admin
-                        logger.info(f"🧠 Salvate {len(descrizioni_categorizzate)} descrizioni in session_state")
                         logger.info(f"📊 RISULTATO FINALE: {righe_aggiornate_totali} righe aggiornate, {len(descrizioni_non_trovate)} non trovate")
                         
                         # 📊 Messaggio SEMPLICE - conteggio righe aggiornate vs descrizioni processate
@@ -1559,9 +1523,9 @@ def mostra_statistiche(df_completo):
                         st.session_state.force_empty_until_upload = False  # Assicura che i dati vengano caricati
                         logger.info("🔄 Flag force_reload impostato su True")
                         
-                        # ⭐ FIX RACE CONDITION: Delay aumentato per garantire propagazione modifiche su Supabase CDN globale
+                        # ⭐ FIX RACE CONDITION: Breve pausa per propagazione modifiche su Supabase
                         with st.spinner("⏳ Sincronizzazione database in corso..."):
-                            time.sleep(4)
+                            time.sleep(1.5)
                         
                         # Rerun per ricaricare dati freschi dal database
                         st.rerun()
@@ -1691,20 +1655,12 @@ def mostra_statistiche(df_completo):
         label_periodo = f"Mese in corso ({inizio_mese.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
     
     # APPLICA FILTRO AI DATI
-    # Converti date UNA SOLA VOLTA su df_completo (parent di food e spese)
-    if "Data_DT" not in df_completo.columns:
-        df_completo["Data_DT"] = pd.to_datetime(df_completo["DataDocumento"], errors='coerce').dt.date
-    
-    # Usa la colonna Data_DT già calcolata (df_food_completo e df_spese_generali_completo sono viste di df_completo)
-    if "Data_DT" not in df_food_completo.columns:
-        df_food_completo["Data_DT"] = pd.to_datetime(df_food_completo["DataDocumento"], errors='coerce').dt.date
+    # ⚡ Data_DT già calcolata prima dello split - le viste la ereditano automaticamente
     mask = (df_food_completo["Data_DT"] >= data_inizio_filtro) & (df_food_completo["Data_DT"] <= data_fine_filtro)
-    df_food = df_food_completo[mask].copy()
+    df_food = df_food_completo[mask]
     
-    if "Data_DT" not in df_spese_generali_completo.columns:
-        df_spese_generali_completo["Data_DT"] = pd.to_datetime(df_spese_generali_completo["DataDocumento"], errors='coerce').dt.date
     mask_spese = (df_spese_generali_completo["Data_DT"] >= data_inizio_filtro) & (df_spese_generali_completo["Data_DT"] <= data_fine_filtro)
-    df_spese_generali = df_spese_generali_completo[mask_spese].copy()
+    df_spese_generali = df_spese_generali_completo[mask_spese]
     
     # Calcola giorni nel periodo
     giorni = (data_fine_filtro - data_inizio_filtro).days + 1
@@ -1749,8 +1705,9 @@ def mostra_statistiche(df_completo):
     # Calcola spesa totale
     spesa_totale = spesa_fb + spesa_generale
     
-    # Calcola spesa media mensile
-    mesi_periodo = len(pd.to_datetime(df_completo['DataDocumento']).dt.to_period('M').unique())
+    # Calcola spesa media mensile (usa Data_DT già calcolata, evita re-parsing)
+    dates_valid = df_completo['Data_DT'].dropna()
+    mesi_periodo = len({(d.year, d.month) for d in dates_valid}) if not dates_valid.empty else 0
     spesa_media = spesa_totale / mesi_periodo if mesi_periodo > 0 else 0
     
     # CSS per KPI - Stile identico a Calcolo Marginalità
@@ -2018,9 +1975,9 @@ def mostra_statistiche(df_completo):
             righe_mem = st.session_state.get('righe_memoria_appena_categorizzate', [])
             globale_set = set(str(d).strip() for d in righe_diz) | set(str(d).strip() for d in righe_mem)
             
-            # AI BATCH 🧠
+            # AI BATCH 🧠 (solo AI pura, escludi keyword/dizionario)
             righe_ai = st.session_state.get('righe_ai_appena_categorizzate', [])
-            ai_set = set(str(d).strip() for d in righe_ai)
+            ai_set = set(str(d).strip() for d in righe_ai) - globale_set  # Rimuovi overlap con keyword
             
             # MODIFICA MANUALE ✋
             righe_man = st.session_state.get('righe_modificate_manualmente', [])
@@ -2739,16 +2696,15 @@ def mostra_statistiche(df_completo):
                     else:
                         st.toast(f"✅ {categorie_modificate_count} categorie modificate ({modifiche_effettuate} righe aggiornate)! L'AI imparerà da questo.")
                     
-                    time.sleep(1.5)
+                    time.sleep(0.5)
                     st.cache_data.clear()
                     invalida_cache_memoria()
                     st.session_state.force_reload = True  # ← Forza ricaricamento completo
                     
-                    # ⭐ NUOVO: Reset tracking fonte categorizzazione dopo salvataggio
-                    st.session_state.pop('righe_ai_appena_categorizzate', None)
-                    st.session_state.pop('righe_keyword_appena_categorizzate', None)
-                    st.session_state.pop('righe_modificate_manualmente', None)
-                    logger.info("🔄 Reset tracking fonte categorizzazione dopo salvataggio")
+                    # ⭐ Le icone Fonte vengono MANTENUTE dopo il salvataggio
+                    # per continuare a mostrare l'origine della categorizzazione.
+                    # Si resettano solo quando viene caricata una nuova fattura (linea ~4282).
+                    logger.info(f"✅ Fonte tracking mantenuto: {len(st.session_state.get('righe_ai_appena_categorizzate', []))} AI, {len(st.session_state.get('righe_keyword_appena_categorizzate', []))} keyword, {len(st.session_state.get('righe_modificate_manualmente', []))} manuali")
                     
                     st.rerun()
                 elif (ha_file or ha_numero_riga) and ha_categoria and ha_descrizione:
@@ -3135,9 +3091,8 @@ def mostra_statistiche(df_completo):
         else:
             # Prepara dati per pivot mensile
             df_cat_prep = df_food.copy()
-            df_cat_prep['Data_DT'] = pd.to_datetime(df_cat_prep['DataDocumento'], errors='coerce')
             
-            # Crea formato mese per visualizzazione (GENNAIO 2025)
+            # Crea formato mese per visualizzazione (GENNAIO 2025) - usa Data_DT già calcolata
             df_cat_prep['Mese'] = df_cat_prep['Data_DT'].apply(
                 lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
             )
@@ -3295,9 +3250,8 @@ def mostra_statistiche(df_completo):
         else:
             # Prepara dati per pivot mensile
             df_forn_prep = df_food.copy()
-            df_forn_prep['Data_DT'] = pd.to_datetime(df_forn_prep['DataDocumento'], errors='coerce')
             
-            # Crea formato mese per visualizzazione (GENNAIO 2025)
+            # Crea formato mese per visualizzazione (GENNAIO 2025) - usa Data_DT già calcolata
             df_forn_prep['Mese'] = df_forn_prep['Data_DT'].apply(
                 lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
             )
@@ -3461,8 +3415,8 @@ def mostra_statistiche(df_completo):
             
             # Aggiungi colonna Mese con formato italiano
             df_spese_con_mese = df_spese_generali.copy()
-            df_spese_con_mese['Data_DT'] = pd.to_datetime(df_spese_con_mese['DataDocumento'], errors='coerce')
             
+            # Usa Data_DT già calcolata
             df_spese_con_mese['Mese'] = df_spese_con_mese['Data_DT'].apply(
                 lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
             )
@@ -4026,7 +3980,7 @@ if not df_cache.empty:
                         invalida_cache_memoria()
                         
                         progress.progress(100, text="Completato!")
-                        time.sleep(0.3)
+                        time.sleep(0.1)
                         
                         # Mostra risultato DENTRO lo spinner (indentazione corretta)
                         if result["success"]:
@@ -4102,7 +4056,7 @@ if not df_cache.empty:
                         
                         if result["success"]:
                             st.success(f"✅ Fattura **{fattura_selezionata['File']}** eliminata! ({result['righe_eliminate']} prodotti)")
-                            time.sleep(1)
+                            time.sleep(0.3)
                             st.rerun()
                         else:
                             st.error(f"❌ Errore: {result['error']}")
@@ -4211,18 +4165,28 @@ else:
     
     # ============================================================
     # PRE-COMPUTE: Conta righe da categorizzare per UI (dal DataFrame cached)
+    # ⚡ ALLINEATO con mostra_statistiche: escludi NOTE E DICITURE + needs_review
     # ============================================================
     _righe_da_class_ui = 0
     _prodotti_unici_ui = 0
     try:
         if not df_cache.empty and 'Categoria' in df_cache.columns:
+            # Escludi le stesse righe escluse dalla dashboard (note + review)
+            _df_for_count = df_cache.copy()
+            _mask_note = _df_for_count['Categoria'].fillna('') == '📝 NOTE E DICITURE'
+            if 'needs_review' in _df_for_count.columns:
+                _mask_review = _df_for_count['needs_review'].fillna(False) == True
+                _df_for_count = _df_for_count[~(_mask_note | _mask_review)]
+            else:
+                _df_for_count = _df_for_count[~_mask_note]
+            
             _mask_da_class = (
-                df_cache['Categoria'].isna()
-                | (df_cache['Categoria'] == 'Da Classificare')
-                | (df_cache['Categoria'].astype(str).str.strip() == '')
+                _df_for_count['Categoria'].isna()
+                | (_df_for_count['Categoria'] == 'Da Classificare')
+                | (_df_for_count['Categoria'].astype(str).str.strip() == '')
             )
             _righe_da_class_ui = _mask_da_class.sum()
-            _prodotti_unici_ui = df_cache[_mask_da_class]['Descrizione'].nunique()
+            _prodotti_unici_ui = _df_for_count[_mask_da_class]['Descrizione'].nunique()
     except Exception:
         pass
 
@@ -4813,7 +4777,7 @@ if uploaded_files:
                 # PAUSA TRA BATCH (rate limit OpenAI + liberazione memoria)
                 # ============================================================
                 if batch_end < total_files:
-                    time.sleep(2)  # 2 secondi tra batch per evitare rate limit
+                    time.sleep(0.5)  # 0.5 secondi tra batch per evitare rate limit
         
         except Exception as critical_error:
             # ERRORE CRITICO: ferma tutto ma mostra report
@@ -4930,7 +4894,7 @@ if uploaded_files:
                 st.session_state.last_upload_summary = upload_summary
                 
                 # Breve pausa per mostrare il messaggio
-                time.sleep(0.5)
+                time.sleep(0.2)
                 
                 # Ricarica pagina con dati freschi
                 st.rerun()
