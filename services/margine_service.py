@@ -11,7 +11,7 @@ Gestisce:
 import pandas as pd
 import io
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timezone
 from config.logger_setup import get_logger
 from config.constants import CATEGORIE_FOOD, CATEGORIE_SPESE_GENERALI, KPI_SOGLIE
 from services import get_supabase_client
@@ -189,7 +189,7 @@ def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
                 'spese_perc': float(df_risultati.at[i, 'Spese_Perc']),
                 'personale_perc': float(df_risultati.at[i, 'Pers_Perc']),
                 'mol_perc': float(df_risultati.at[i, 'MOL_Perc']),
-                'updated_at': datetime.now().isoformat()
+                'updated_at': datetime.now(timezone.utc).isoformat()
             })
         
         # Upsert atomico su constraint UNIQUE(ristorante_id, anno, mese)

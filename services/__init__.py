@@ -76,7 +76,7 @@ __all__ = [
 import streamlit as st
 from supabase import create_client
 
-@st.cache_resource
+@st.cache_resource(ttl=3600)
 def get_supabase_client():
     """
     Restituisce istanza singleton del client Supabase.

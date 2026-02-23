@@ -637,52 +637,12 @@ def registra_logout_utente(email: str) -> bool:
         return False
 
 
-def verifica_sessione_valida(email: str, session_timestamp: float) -> bool:
-    """
-    Verifica se la sessione è ancora valida confrontando con last_logout nel DB.
-    Se l'utente ha fatto logout DOPO il login corrente, la sessione è invalida.
-    """
-    try:
-        from services import get_supabase_client
-        
-        supabase = get_supabase_client()
-        if not supabase:
-            return True  # Fallback: se non c'è DB, non blocchiamo
-            
-        # Recupera last_logout dal database
-        result = supabase.table('users').select('last_logout').eq('email', email).execute()
-        
-        if not result.data:
-            return True
-            
-        user = result.data[0]
-        last_logout = user.get('last_logout')
-        
-        if not last_logout:
-            return True  # Nessun logout mai effettuato
-            
-        # Converti last_logout in timestamp
-        logout_dt = datetime.fromisoformat(last_logout.replace('Z', '+00:00'))
-        logout_timestamp = logout_dt.timestamp()
-        
-        # Se il logout è DOPO il login della sessione corrente, invalida la sessione
-        if logout_timestamp > session_timestamp:
-            logger.warning(f"⚠️ Sessione invalida per {email}: logout {logout_dt} > login sessione")
-            return False
-            
-        return True
-    except Exception as e:
-        logger.exception(f"Errore verifica sessione per {email}")
-        return True  # In caso di errore, non blocchiamo
-
-
 __all__ = [
     'verify_and_migrate_password',
     'verifica_credenziali',
     'invia_codice_reset',
     'hash_password',
     'registra_logout_utente',
-    'verifica_sessione_valida',
     # Nuove funzioni GDPR password + P.IVA
     'valida_password_compliance',
     'valida_e_mostra_errori_password',

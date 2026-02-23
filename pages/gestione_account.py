@@ -151,14 +151,14 @@ with tab2:
         with st.spinner("Preparazione dati in corso..."):
             try:
                 import json
-                from datetime import datetime
+                from datetime import datetime, timezone
                 
                 user_id = user.get('id')
                 user_email = user.get('email')
                 
                 # Prepara dizionario dati
                 export_data = {
-                    "data_export": datetime.now().isoformat(),
+                    "data_export": datetime.now(timezone.utc).isoformat(),
                     "account": {
                         "email": user.get('email'),
                         "nome_ristorante": user.get('nome_ristorante'),
@@ -289,11 +289,16 @@ with tab3:
                         st.error("Errore: ID utente non trovato")
                         st.stop()
                     
-                    # STEP 1: Elimina tutte le fatture
+                    # STEP 1: Elimina tutte le fatture (di TUTTI i ristoranti)
+                    # Temporaneamente rimuovi ristorante_id per eliminare TUTTE le fatture dell'utente
+                    saved_ristorante_id = st.session_state.pop('ristorante_id', None)
                     logger.info(f"ELIMINAZIONE ACCOUNT - Inizio per user_id={user_id}, email={user_email}")
                     result_fatture = elimina_tutte_fatture(user_id)
                     
                     if not result_fatture.get('success'):
+                        # Ripristina ristorante_id in caso di errore
+                        if saved_ristorante_id:
+                            st.session_state['ristorante_id'] = saved_ristorante_id
                         st.error(f"Errore eliminazione fatture: {result_fatture.get('error')}")
                         st.stop()
                     
@@ -304,6 +309,9 @@ with tab3:
                         ('prodotti_utente', 'user_id'),
                         ('classificazioni_manuali', 'user_id'),
                         ('upload_events', 'user_id'),
+                        ('margini_mensili', 'user_id'),
+                        ('review_confirmed', 'user_id'),
+                        ('review_ignored', 'user_id'),
                         ('ricette', 'userid'),
                         ('ingredienti_workspace', 'userid'),
                         ('note_diario', 'userid'),
@@ -321,7 +329,8 @@ with tab3:
                     
                     logger.info(f"ELIMINAZIONE ACCOUNT - Utente {user_email} eliminato dal database")
                     
-                    # STEP 4: Pulizia sessione e logout
+                    # STEP 4: Pulizia cache e sessione, poi logout
+                    st.cache_data.clear()
                     st.session_state.clear()
                     st.session_state.logged_in = False
                     

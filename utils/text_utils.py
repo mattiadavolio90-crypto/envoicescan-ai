@@ -213,35 +213,6 @@ def normalizza_stringa(testo: str) -> str:
     return testo[:100].strip()
 
 
-def test_normalizzazione() -> None:
-    """
-    Testa funzione normalizzazione con casi comuni.
-    Utile per debug e verifiche post-refactoring.
-    
-    Output:
-        Stampa tabella comparativa descrizioni originali → normalizzate
-    """
-    test_cases = [
-        "POLLO INTERO KG 2.5",
-        "POLLO INT. KG",
-        "POLLO INTERO",
-        "OLIO EVO 1L BOT.",
-        "OLIO EVO BOTTIGLIA 1 LITRO",
-        "PASTA PENNE 500G CONF.",
-        "PASTA PENNE CONFEZIONE",
-        "COCA COLA 330 ML LAT.",
-        "COCA COLA LATTINA"
-    ]
-    
-    # Test normalizzazione (solo se eseguito come script)
-    if __name__ == "__main__":
-        print("\n=== TEST NORMALIZZAZIONE ===")
-        for test in test_cases:
-            normalized = normalizza_descrizione(test)
-            print(f"{test:<40} → {normalized}")
-        print("=" * 70)
-
-
 # ============================================================
 # ESTRAZIONE NOMI E PARSING
 # ============================================================

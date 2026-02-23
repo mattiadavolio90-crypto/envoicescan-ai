@@ -53,7 +53,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         page = 0
         
         # 🚀 OTTIMIZZAZIONE: Select solo colonne necessarie (non "*")
-        columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id"
+        columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id,needs_review"
         
         while True:
             offset = page * page_size
@@ -79,7 +79,9 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
                     "TotaleRiga": row["totale_riga"],
                     "Categoria": row["categoria"],
                     "CodiceArticolo": row["codice_articolo"],
-                    "PrezzoStandard": row.get("prezzo_standard")
+                    "PrezzoStandard": row.get("prezzo_standard"),
+                    "NeedsReview": row.get("needs_review", False),
+                    "RistoranteId": row.get("ristorante_id")
                 })
             
             # Se questa pagina ha meno di page_size record, abbiamo finito
@@ -220,23 +222,39 @@ def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
             return 0
     
     try:
-        # Leggi tutte le fatture dell'utente
+        # Leggi tutte le fatture dell'utente (con paginazione per >1000 righe)
         from utils.ristorante_helper import get_current_ristorante_id
         ristorante_id = get_current_ristorante_id()
-        query = supabase_client.table("fatture") \
-            .select("id, descrizione, quantita, prezzo_unitario, totale_riga") \
-            .eq("user_id", user_id)
-        if ristorante_id:
-            query = query.eq("ristorante_id", ristorante_id)
-        response = query.execute()
         
-        if not response.data:
+        all_rows = []
+        page = 0
+        page_size = 1000
+        
+        while True:
+            offset = page * page_size
+            query = supabase_client.table("fatture") \
+                .select("id, descrizione, quantita, prezzo_unitario, totale_riga") \
+                .eq("user_id", user_id)
+            if ristorante_id:
+                query = query.eq("ristorante_id", ristorante_id)
+            response = query.range(offset, offset + page_size - 1).execute()
+            
+            if not response.data:
+                break
+            
+            all_rows.extend(response.data)
+            
+            if len(response.data) < page_size:
+                break
+            page += 1
+        
+        if not all_rows:
             return 0
         
         # Calcola tutti i prezzi da aggiornare PRIMA, poi batch update
         updates_needed = []
         
-        for row in response.data:
+        for row in all_rows:
             totale = row.get('totale_riga', 0)
             quantita = row.get('quantita', 0)
             prezzo_attuale = row.get('prezzo_unitario', 0)
@@ -457,28 +475,42 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
         # 🏢 MULTI-RISTORANTE: Recupera ristorante_id dalla sessione
         ristorante_id = st.session_state.get('ristorante_id') if 'session_state' in dir(st) else None
         
-        # Query righe del cliente NEL PERIODO SPECIFICATO
-        query = supabase_client.table('fatture')\
-            .select('id, descrizione, categoria, fornitore, prezzo_unitario, quantita, totale_riga, data_documento, file_origine')\
-            .eq('user_id', user_id)\
-            .gte('data_documento', data_inizio)\
-            .lte('data_documento', data_fine)
+        # Query righe del cliente NEL PERIODO SPECIFICATO (con paginazione per >1000 righe)
+        all_rows = []
+        page = 0
+        page_size = 1000
         
-        # 🔒 FILTRO MULTI-RISTORANTE: Include solo fatture del ristorante attivo
-        if ristorante_id:
-            query = query.eq('ristorante_id', ristorante_id)
-            logger.debug(f"🔍 Sconti/Omaggi filtrati per ristorante_id: {ristorante_id}")
+        while True:
+            offset = page * page_size
+            query = supabase_client.table('fatture')\
+                .select('id, descrizione, categoria, fornitore, prezzo_unitario, quantita, totale_riga, data_documento, file_origine')\
+                .eq('user_id', user_id)\
+                .gte('data_documento', data_inizio)\
+                .lte('data_documento', data_fine)
+            
+            # 🔒 FILTRO MULTI-RISTORANTE: Include solo fatture del ristorante attivo
+            if ristorante_id:
+                query = query.eq('ristorante_id', ristorante_id)
+            
+            response = query.range(offset, offset + page_size - 1).execute()
+            
+            if not response.data:
+                break
+            
+            all_rows.extend(response.data)
+            
+            if len(response.data) < page_size:
+                break
+            page += 1
         
-        response = query.execute()
-        
-        if not response.data:
+        if not all_rows:
             return {
                 'sconti': pd.DataFrame(),
                 'omaggi': pd.DataFrame(),
                 'totale_risparmiato': 0.0
             }
         
-        df = pd.DataFrame(response.data)
+        df = pd.DataFrame(all_rows)
         
         # ============================================================
         # FILTRO: ESCLUDI SOLO LE 3 CATEGORIE SPESE GENERALI
@@ -601,7 +633,8 @@ def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=No
         if ristorante_id:
             query_count = query_count.eq("ristorante_id", ristorante_id)
         count_response = query_count.execute()
-        num_righe = len(count_response.data) if count_response.data else 0
+        # Usa count esatto dalle metadata (non len(data) che è cappato a 1000 righe da Supabase)
+        num_righe = count_response.count if count_response.count is not None else (len(count_response.data) if count_response.data else 0)
         
         if num_righe == 0:
             return {"success": False, "error": "not_found", "righe_eliminate": 0}
@@ -611,6 +644,28 @@ def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=No
         if ristorante_id:
             query_delete = query_delete.eq("ristorante_id", ristorante_id)
         response = query_delete.execute()
+        
+        # ✅ Verifica post-delete: controlla che le righe siano state effettivamente eliminate
+        query_verify = supabase_client.table("fatture").select("id", count="exact").eq("user_id", user_id).eq("file_origine", file_origine)
+        if ristorante_id:
+            query_verify = query_verify.eq("ristorante_id", ristorante_id)
+        verify_response = query_verify.execute()
+        num_rimaste = verify_response.count if verify_response.count is not None else len(verify_response.data) if verify_response.data else 0
+        
+        if num_rimaste > 0:
+            logger.error(f"❌ DELETE PARZIALE: {num_rimaste} righe ancora presenti per '{file_origine}', retry...")
+            # Tentativo 2: ri-esegue la DELETE
+            query_retry = supabase_client.table("fatture").delete().eq("user_id", user_id).eq("file_origine", file_origine)
+            if ristorante_id:
+                query_retry = query_retry.eq("ristorante_id", ristorante_id)
+            query_retry.execute()
+            # Seconda verifica finale
+            verify2 = supabase_client.table("fatture").select("id", count="exact").eq("user_id", user_id).eq("file_origine", file_origine)
+            if ristorante_id:
+                verify2 = verify2.eq("ristorante_id", ristorante_id)
+            v2 = verify2.execute()
+            if (v2.count or 0) > 0:
+                return {"success": False, "error": f"Eliminazione parziale: {v2.count} righe non eliminate", "righe_eliminate": num_righe - (v2.count or 0)}
         
         logger.info(f"❌ Fattura eliminata: {file_origine} ({num_righe} righe) da user {user_id}")
         
@@ -651,7 +706,25 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None) -> Dict[str, Any]:
             query_count = query_count.eq("ristorante_id", ristorante_id)
         count_response = query_count.execute()
         num_righe = count_response.count if count_response.count else 0
-        num_fatture = len(set([r['file_origine'] for r in count_response.data])) if count_response.data else 0
+        # ⚠️ count_response.data è limitato a 1000 righe da Supabase: usa la RPC o pagina
+        # Per num_fatture usiamo un approccio che non dipende dai dati restituiti
+        # (il DELETE usa solo user_id+ristorante_id quindi il conteggio esatto non è critico)
+        files_set = set()
+        for r in (count_response.data or []):
+            if r.get('file_origine'):
+                files_set.add(r['file_origine'])
+        # Se ci sono potenzialmente più di 1000 righe, fai una query distinct separata
+        if len(count_response.data or []) >= 1000:
+            try:
+                rpc_params = {'p_user_id': user_id}
+                if ristorante_id:
+                    rpc_params['p_ristorante_id'] = ristorante_id
+                rpc_resp = supabase_client.rpc('get_distinct_files', rpc_params).execute()
+                if rpc_resp.data:
+                    files_set = {row['file_origine'] for row in rpc_resp.data if row.get('file_origine')}
+            except Exception:
+                pass  # Usa conteggio parziale
+        num_fatture = len(files_set)
         
         logger.info(f"DELETE: user_id={user_id} ristorante_id={ristorante_id}, {num_fatture} fatture ({num_righe} righe)")
         
@@ -724,73 +797,6 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None) -> Dict[str, Any]:
     except Exception as e:
         logger.exception(f"Errore eliminazione massiva per user {user_id}")
         return {"success": False, "error": str(e), "righe_eliminate": 0, "fatture_eliminate": 0}
-
-
-def audit_data_consistency(user_id: str, context: str = "unknown", supabase_client=None) -> Dict[str, Any]:
-    """
-    Verifica coerenza dati tra DB e Cache.
-    
-    Args:
-        user_id: ID utente da verificare
-        context: Contesto della chiamata (es. "post-delete", "post-upload")
-        supabase_client: Client Supabase (opzionale, usa st.secrets se None)
-    
-    Returns:
-        dict con dettagli verifica:
-        - db_count: righe su Supabase
-        - db_files: file unici su Supabase
-        - cache_count: righe in cache
-        - cache_files: file unici in cache
-        - consistent: bool (True se DB = Cache)
-    """
-    if supabase_client is None:
-        try:
-            from services import get_supabase_client
-            supabase_client = get_supabase_client()
-        except Exception as e:
-            logger.error(f"❌ Impossibile inizializzare Supabase: {e}")
-            return {"context": context, "user_id": user_id, "error": "connection_error", "consistent": False}
-    
-    result = {
-        "context": context,
-        "user_id": user_id,
-        "db_count": 0,
-        "db_files": 0,
-        "cache_count": 0,
-        "cache_files": 0,
-        "consistent": False,
-        "error": None
-    }
-    
-    try:
-        # Query diretta DB
-        ristorante_id = st.session_state.get('ristorante_id') if 'session_state' in dir(st) else None
-        query_audit = supabase_client.table("fatture").select("file_origine", count="exact").eq("user_id", user_id)
-        if ristorante_id:
-            query_audit = query_audit.eq("ristorante_id", ristorante_id)
-        db_response = query_audit.execute()
-        result["db_count"] = db_response.count if db_response.count else 0
-        result["db_files"] = len(set([r['file_origine'] for r in db_response.data])) if db_response.data else 0
-        
-        # Query cache
-        df_cached = carica_e_prepara_dataframe(user_id, supabase_client=supabase_client)
-        result["cache_count"] = len(df_cached)
-        result["cache_files"] = df_cached['FileOrigine'].nunique() if not df_cached.empty else 0
-        
-        # Verifica coerenza
-        result["consistent"] = (result["db_count"] == result["cache_count"])
-        
-        if result["consistent"]:
-            logger.info(f"✅ AUDIT OK [{context}]: DB={result['db_count']} Cache={result['cache_count']} (user={user_id})")
-        else:
-            logger.warning(f"⚠️ AUDIT FAIL [{context}]: DB={result['db_count']} ≠ Cache={result['cache_count']} (user={user_id})")
-        
-        return result
-        
-    except Exception as e:
-        logger.exception(f"Errore audit per user {user_id}")
-        result["error"] = str(e)
-        return result
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -872,6 +878,5 @@ __all__ = [
     'carica_sconti_e_omaggi',
     'elimina_fattura_completa',
     'elimina_tutte_fatture',
-    'audit_data_consistency',
     'get_fatture_stats',
 ]

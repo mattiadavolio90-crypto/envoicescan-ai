@@ -61,7 +61,7 @@ Pattern: Dependency Injection per testabilità
 import json
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any, Tuple
 import streamlit as st
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -433,7 +433,7 @@ def salva_correzione_in_memoria_locale(
             'user_id': user_id,
             'descrizione': desc_normalized,
             'categoria': nuova_categoria,
-            'updated_at': datetime.now().isoformat()
+            'updated_at': datetime.now(timezone.utc).isoformat()
         }
         
         # Colonne OPZIONALI - aggiungi e rimuovi se il DB le rifiuta
@@ -543,7 +543,7 @@ def salva_correzione_in_memoria_globale(
                 'classificato_da': f'Utente ({user_email})',
                 'confidence': 'altissima',
                 'verified': True,  # ✅ Auto-verifica: correzione manuale = già controllata
-                'ultima_modifica': datetime.now().isoformat()
+                'ultima_modifica': datetime.now(timezone.utc).isoformat()
             }).eq('id', record['id']).execute()
             
             # Invalida cache per forzare ricaricamento
@@ -562,8 +562,8 @@ def salva_correzione_in_memoria_globale(
                 'confidence': 'altissima',
                 'verified': True,  # ✅ Auto-verifica: correzione manuale = già controllata
                 'volte_visto': 1,
-                'created_at': datetime.now().isoformat(),
-                'ultima_modifica': datetime.now().isoformat()
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'ultima_modifica': datetime.now(timezone.utc).isoformat()
             }).execute()
             
             # Invalida cache per forzare ricaricamento
@@ -710,8 +710,8 @@ def categorizza_con_memoria(
                 'verified': False,  # ⚠️ Da verificare: inserimento automatico
                 'volte_visto': 1,
                 'classificato_da': 'keyword',
-                'created_at': datetime.now().isoformat(),
-                'ultima_modifica': datetime.now().isoformat()
+                'created_at': datetime.now(timezone.utc).isoformat(),
+                'ultima_modifica': datetime.now(timezone.utc).isoformat()
             }, on_conflict='descrizione').execute()
             logger.info(f"💾 MEMORIA GLOBALE (auto-save): '{desc_normalized}' (orig: '{desc_original}') → {categoria_keyword} (keyword) - disponibile per TUTTI i clienti")
         except Exception as e:

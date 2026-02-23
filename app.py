@@ -3,9 +3,9 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.express as px
+
 import io
 import time
-import re
 
 # Import costanti da modulo separato
 from config.constants import (
@@ -41,15 +41,14 @@ from services.ai_service import (
     classifica_con_ai,
     mostra_loading_ai,
     svuota_memoria_globale,
-    set_global_memory_enabled
+    set_global_memory_enabled,
+    ottieni_categoria_prodotto
 )
 
 from services.auth_service import (
     verify_and_migrate_password,
     verifica_credenziali,
     invia_codice_reset,
-    registra_logout_utente,
-    verifica_sessione_valida,
 )
 
 from services.invoice_service import (
@@ -604,7 +603,7 @@ def mostra_pagina_login():
         st.markdown("---")
         
         code_input = st.text_input("🔢 Codice ricevuto", placeholder="Inserisci il codice", key="code_input")
-        new_pwd = st.text_input("🔑 Nuova password (min 8 caratteri)", type="password", key="new_pwd")
+        new_pwd = st.text_input("🔑 Nuova password (min 10 caratteri)", type="password", key="new_pwd")
         confirm_pwd = st.text_input("🔑 Conferma password", type="password", key="confirm_pwd")
         
         if st.button("✅ Conferma Reset", use_container_width=True, type="primary"):
@@ -612,8 +611,8 @@ def mostra_pagina_login():
                 st.warning("⚠️ Compila tutti i campi")
             elif new_pwd != confirm_pwd:
                 st.error("❌ Le password non coincidono")
-            elif len(new_pwd) < 8:
-                st.error("❌ Password troppo corta (min 8 caratteri)")
+            elif len(new_pwd) < 10:
+                st.error("❌ Password troppo corta (min 10 caratteri)")
             else:
                 user, errore = verifica_codice_reset(reset_email, code_input, new_pwd)
                 
@@ -1222,19 +1221,49 @@ def mostra_statistiche(df_completo):
                     </style>
                     """, unsafe_allow_html=True)
                     
-                    # 📖 STEP 1: Prima prova con DIZIONARIO (più veloce, più preciso)
-                    # applica_correzioni_dizionario già importata al top-level
+                    # � PRE-STEP: Controlla memoria (admin > locale > globale) PRIMA di keyword/AI
+                    # Invalida cache per avere dati aggiornati (altri utenti potrebbero aver categorizzato)
+                    invalida_cache_memoria()
+                    carica_memoria_completa(user_id)
                     
                     mappa_categorie = {}  # desc -> categoria
-                    descrizioni_per_ai = []  # Solo quelle che dizionario non risolve
                     prodotti_elaborati = 0  # Contatore per banner
+                    descrizioni_dopo_memoria = []  # Quelle NON risolte dalla memoria
+                    
+                    # Inizializza tracking memoria per Fonte
+                    if 'righe_memoria_appena_categorizzate' not in st.session_state:
+                        st.session_state.righe_memoria_appena_categorizzate = []
+                    
+                    for desc in descrizioni_da_classificare:
+                        cat_memoria = ottieni_categoria_prodotto(desc, user_id)
+                        if cat_memoria and cat_memoria != 'Da Classificare':
+                            mappa_categorie[desc] = cat_memoria
+                            prodotti_elaborati += 1
+                            # Aggiorna banner in tempo reale
+                            percentuale = (prodotti_elaborati / totale_da_classificare) * 100
+                            progress_placeholder.markdown(f"""
+                            <div class="ai-banner">
+                                <div class="brain-pulse-banner">🧠</div>
+                                <div class="progress-percentage">{int(percentuale)}%</div>
+                                <div class="progress-status">Memoria: {prodotti_elaborati} di {totale_da_classificare}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            logger.info(f"📦 MEMORIA: '{desc[:40]}' → {cat_memoria}")
+                        else:
+                            descrizioni_dopo_memoria.append(desc)
+                    
+                    if prodotti_elaborati > 0:
+                        logger.info(f"📦 PRE-STEP MEMORIA: {prodotti_elaborati} descrizioni risolte dalla memoria globale")
+                    
+                    # 📖 STEP 1: Dizionario keyword (più veloce, più preciso) sulle rimanenti
+                    descrizioni_per_ai = []  # Solo quelle che dizionario non risolve
                     
                     # ⭐ Inizializza tracking keyword come set (O(1) lookup)
                     if 'righe_keyword_appena_categorizzate' not in st.session_state:
                         st.session_state.righe_keyword_appena_categorizzate = []
                     _tracking_keyword_set = set(st.session_state.righe_keyword_appena_categorizzate)
                     
-                    for desc in descrizioni_da_classificare:
+                    for desc in descrizioni_dopo_memoria:
                         cat_dizionario = applica_correzioni_dizionario(desc, "Da Classificare")
                         if cat_dizionario and cat_dizionario != 'Da Classificare':
                             mappa_categorie[desc] = cat_dizionario
@@ -1254,6 +1283,22 @@ def mostra_statistiche(df_completo):
                             if desc not in _tracking_keyword_set:
                                 _tracking_keyword_set.add(desc)
                                 st.session_state.righe_keyword_appena_categorizzate.append(desc)
+                            
+                            # 💾 Salva in memoria GLOBALE (keyword) - coerente con categorizza_con_memoria()
+                            try:
+                                supabase.table('prodotti_master').upsert({
+                                    'descrizione': desc,
+                                    'categoria': cat_dizionario,
+                                    'confidence': 'media',
+                                    'verified': False,
+                                    'volte_visto': 1,
+                                    'classificato_da': 'keyword',
+                                    'created_at': datetime.now(timezone.utc).isoformat(),
+                                    'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                                }, on_conflict='descrizione').execute()
+                            except Exception as e:
+                                logger.warning(f"Errore salvataggio memoria globale keyword: {e}")
+                            
                             logger.info(f"📖 DIZIONARIO: '{desc[:40]}' → {cat_dizionario}")
                         else:
                             descrizioni_per_ai.append(desc)
@@ -4051,8 +4096,11 @@ if not df_cache.empty:
                         st.cache_data.clear()  # Reset cache Streamlit
                         
                         # 🔥 RESET SESSION: Rimuovi file eliminato dalla lista processati
+                        # (rimuovi sia il nome completo che il nome base normalizzato)
                         if 'files_processati_sessione' in st.session_state:
-                            st.session_state.files_processati_sessione.discard(fattura_selezionata['File'])
+                            file_eliminato = fattura_selezionata['File']
+                            st.session_state.files_processati_sessione.discard(file_eliminato)
+                            st.session_state.files_processati_sessione.discard(get_nome_base_file(file_eliminato))
                         
                         if result["success"]:
                             st.success(f"✅ Fattura **{fattura_selezionata['File']}** eliminata! ({result['righe_eliminate']} prodotti)")
@@ -4366,7 +4414,7 @@ if not uploaded_files and len(st.session_state.files_errori_report) > 0:
     logger.info("🧹 Auto-pulizia errori dopo rimozione file")
     st.session_state.files_con_errori = set()
     st.session_state.files_errori_report = {}
-    st.rerun()  # Forza refresh per mostrare pagina pulita
+    # Non serve rerun: la pagina è già pulita senza file caricati
 
 
 # 🔥 GESTIONE FILE CARICATI

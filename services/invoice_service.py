@@ -16,12 +16,10 @@ Dipendenze:
 """
 
 import json
-import logging
 import pandas as pd
 import streamlit as st
 import xmltodict
 from typing import List, Dict, Any, Optional
-from datetime import datetime
 
 # Import utilities
 from utils.formatters import (
@@ -166,7 +164,7 @@ def estrai_dati_da_xml(file_caricato):
                 contenuto = contenuto.decode('utf-8', errors='replace')
                 logger.warning("⚠️ Utilizzato encoding UTF-8 con sostituzione errori")
         
-        doc = xmltodict.parse(contenuto, encoding='utf-8')
+        doc = xmltodict.parse(contenuto)
         
         root_key = list(doc.keys())[0]
         fattura = doc[root_key]
