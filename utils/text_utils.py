@@ -70,7 +70,7 @@ def pulisci_caratteri_corrotti(testo: str) -> str:
         # Encode in Latin-1 ignorando errori, poi decode
         testo_bytes = testo.encode('latin-1', errors='ignore')
         testo = testo_bytes.decode('latin-1')
-    except:
+    except (UnicodeDecodeError, UnicodeEncodeError):
         pass
     
     # Step 3: Rimuove TUTTI i caratteri Unicode > 255 (non-Latin-1)

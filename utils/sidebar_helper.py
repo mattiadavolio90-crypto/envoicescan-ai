@@ -1,8 +1,30 @@
 """
-Helper per renderizzare sidebar condivisa in tutte le pagine
+Helper per renderizzare sidebar e header condivisi in tutte le pagine
 """
 import streamlit as st
+import os
 from config.constants import ADMIN_EMAILS
+from config.logger_setup import get_logger
+
+logger = get_logger('sidebar_helper')
+
+
+def render_oh_yeah_header():
+    """
+    Renderizza il titolo 'OH YEAH!' centrato in alto, 
+    un po' più grande dei titoli di pagina ma non troppo.
+    Da richiamare in ogni pagina PRIMA del contenuto.
+    """
+    st.markdown("""
+<div style="text-align: center; margin-bottom: 0.5rem; margin-top: -2rem;">
+    <h1 style="font-size: clamp(3.5rem, 7vw, 5rem); font-weight: 900; margin: 0; letter-spacing: 3px;">
+        <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;">OH YEAH! app</span>
+    </h1>
+</div>
+""", unsafe_allow_html=True)
 
 
 def render_sidebar(user_data: dict):
@@ -65,31 +87,82 @@ def render_sidebar(user_data: dict):
     """, unsafe_allow_html=True)
     
     with st.sidebar:
+        # Nome app in alto
+        st.markdown("""
+        <div style="text-align: center; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 2px solid #e2e8f0;">
+            <span style="font-size: 1.4rem; font-weight: 900; letter-spacing: 1px; color: #1e3a8a;">OH YEAH!</span>
+            <span style="font-size: 0.8rem; font-weight: 500; color: #3b82f6; margin-left: 4px;">app</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
         # Info utente
         user_email = user_data.get('email', 'Utente')
         nome_ristorante = st.session_state.get('nome_ristorante', 'Ristorante')
         
         st.markdown(f"""
         <div style="background: #e0f2fe;
-                    padding: 15px;
+                    padding: clamp(0.75rem, 2vw, 1rem);
                     border-radius: 10px;
                     border: 2px solid #0ea5e9;
-                    margin-bottom: 20px;">
-            <div style="font-size: 12px; color: #0369a1; opacity: 0.9; margin-bottom: 5px; font-weight: 600;">👤 Account</div>
-            <div style="font-size: 14px; font-weight: 700; color: #0c4a6e;">{user_email}</div>
-            <div style="font-size: 11px; color: #0369a1; opacity: 0.8; margin-top: 5px;">{nome_ristorante}</div>
+                    margin-bottom: 1.25rem;">
+            <div style="font-size: clamp(0.65rem, 1.5vw, 0.75rem); color: #0369a1; opacity: 0.9; margin-bottom: 0.3rem; font-weight: 600; word-wrap: break-word;">👤 Account</div>
+            <div style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); font-weight: 700; color: #0c4a6e; word-wrap: break-word;">{user_email}</div>
+            <div style="font-size: clamp(0.6rem, 1.4vw, 0.7rem); color: #0369a1; opacity: 0.8; margin-top: 0.3rem; word-wrap: break-word;">{nome_ristorante}</div>
         </div>
+        """, unsafe_allow_html=True)
+        
+        # Rileva pagina corrente tramite inspect stack
+        current_script = ''
+        try:
+            import inspect
+            for f in inspect.stack():
+                fname = os.path.basename(f.filename)
+                if fname in ('app.py', '1_calcolo_margine.py', '2_workspace.py', 
+                             'gestione_account.py', 'privacy_policy.py', 'admin.py'):
+                    current_script = fname
+                    break
+        except Exception:
+            pass
+        
+        # CSS per forzare colore blu uniforme sui bottoni attivi della sidebar
+        # Usa selettore specifico per la sidebar così non tocca il resto dell'app
+        st.markdown("""
+        <style>
+        [data-testid="stSidebar"] button[kind="primary"] {
+            background-color: #2563eb !important;
+            border-color: #2563eb !important;
+            color: white !important;
+            font-weight: 600 !important;
+        }
+        [data-testid="stSidebar"] button[kind="primary"]:hover {
+            background-color: #1d4ed8 !important;
+            border-color: #1d4ed8 !important;
+        }
+        [data-testid="stSidebar"] button[kind="primary"]:active,
+        [data-testid="stSidebar"] button[kind="primary"]:focus {
+            background-color: #2563eb !important;
+            border-color: #2563eb !important;
+            color: white !important;
+        }
+        </style>
         """, unsafe_allow_html=True)
         
         # ============================================
         # SEZIONE OPERATIVO
         # ============================================
-        st.markdown("### 📊 Operativo")
-        if st.button("🏠 Dashboard Principale", use_container_width=True, key="sidebar_dashboard"):
+        st.markdown("### 📋 Sezioni e Funzioni")
+        
+        if st.button("🧠 Analisi Fatture AI", use_container_width=True, key="sidebar_dashboard",
+                     type="primary" if current_script == 'app.py' else "secondary"):
             st.switch_page("app.py")
         
-        if st.button("🍴 Workspace Ricette", use_container_width=True, key="sidebar_workspace"):
-            st.switch_page("pages/workspace.py")
+        if st.button("💰 Calcolo Marginalità", use_container_width=True, key="sidebar_margine",
+                     type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
+            st.switch_page("pages/1_calcolo_margine.py")
+        
+        if st.button("🍴 Workspace Ricette", use_container_width=True, key="sidebar_workspace",
+                     type="primary" if current_script == '2_workspace.py' else "secondary"):
+            st.switch_page("pages/2_workspace.py")
         
         st.markdown("---")
         
@@ -97,13 +170,13 @@ def render_sidebar(user_data: dict):
         # SEZIONE ACCOUNT
         # ============================================
         st.markdown("### 👤 Account")
-        if st.button("⚙️ Gestione Account", use_container_width=True, key="sidebar_gestione"):
+        
+        if st.button("⚙️ Gestione Account", use_container_width=True, key="sidebar_gestione",
+                     type="primary" if current_script == 'gestione_account.py' else "secondary"):
             st.switch_page("pages/gestione_account.py")
         
-        if st.button("🔐 Cambio Password", use_container_width=True, key="sidebar_password"):
-            st.switch_page("pages/cambio_password.py")
-        
-        if st.button("📜 Privacy Policy", use_container_width=True, key="sidebar_privacy"):
+        if st.button("🔒 Privacy Policy", use_container_width=True, key="sidebar_privacy",
+                     type="primary" if current_script == 'privacy_policy.py' else "secondary"):
             st.switch_page("pages/privacy_policy.py")
         
         # ============================================
@@ -112,7 +185,8 @@ def render_sidebar(user_data: dict):
         if user_email in ADMIN_EMAILS:
             st.markdown("---")
             st.markdown("### 👨‍💼 Amministrazione")
-            if st.button("🔑 Pannello Admin", use_container_width=True, type="primary", key="sidebar_admin"):
+            if st.button("🔑 Pannello Admin", use_container_width=True, key="sidebar_admin",
+                         type="primary" if current_script == 'admin.py' else "secondary"):
                 st.switch_page("pages/admin.py")
         
         # ============================================
@@ -142,8 +216,8 @@ def render_sidebar(user_data: dict):
                 user_email_logout = st.session_state.get('user_data', {}).get('email')
                 if user_email_logout:
                     registra_logout_utente(user_email_logout)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Errore registrazione logout: {e}")
             
             # Reset completo session_state
             for key in list(st.session_state.keys()):

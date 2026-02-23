@@ -11,7 +11,7 @@ from datetime import datetime
 from supabase import Client
 from config.logger_setup import get_logger
 from utils.ristorante_helper import get_current_ristorante_id
-from utils.sidebar_helper import render_sidebar
+from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 from config.constants import CATEGORIE_SPESE_OPERATIVE
 from services import get_supabase_client
 
@@ -31,6 +31,28 @@ def get_fresh_supabase_client() -> Client:
         get_supabase_client.clear()
         return get_supabase_client()
 
+
+def invalidate_workspace_cache():
+    """Invalida SOLO le cache specifiche del workspace, senza toccare le altre pagine."""
+    get_articoli_da_fatture.clear()
+    get_ricette_come_ingredienti.clear()
+
+
+def safe_db_execute(operation_fn, description: str = "operazione DB"):
+    """
+    Esegue un'operazione DB con retry automatico su disconnessione.
+    operation_fn: lambda che riceve il client supabase e ritorna il risultato.
+    """
+    global supabase
+    try:
+        return operation_fn(supabase)
+    except Exception as e:
+        if 'disconnect' in str(e).lower() or 'closed' in str(e).lower():
+            logger.warning(f"Riconnessione Supabase per {description}...")
+            supabase = get_fresh_supabase_client()
+            return operation_fn(supabase)
+        raise
+
 # Inizializza client
 supabase = get_supabase_client()
 
@@ -38,7 +60,7 @@ supabase = get_supabase_client()
 # CONFIGURAZIONE PAGINA
 # ============================================
 st.set_page_config(
-    page_title="Workspace - FCI",
+    page_title="Workspace - OH YEAH!",
     page_icon="🛠️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -148,7 +170,7 @@ def estrai_grammatura_da_nome(nome: str) -> dict:
                     return {'valore': valore, 'um': 'ML', 'originale': f"{valore}ML"}
                 elif um_tipo == 'CL':
                     return {'valore': valore * 10, 'um': 'ML', 'originale': f"{valore}CL"}
-            except:
+            except (ValueError, AttributeError):
                 continue
     
     return None
@@ -194,22 +216,26 @@ def converti_unita_misura(quantita: float, um_src: str, prezzo_per_unita_base: f
 
 
 @st.cache_data(ttl=60, show_spinner="Caricamento articoli dalle fatture...")
-def get_articoli_da_fatture(_user_id: str) -> tuple:
+def get_articoli_da_fatture(user_id: str, ristorante_id: str = None) -> tuple:
     """
     Carica articoli unici da fatture con ultimo prezzo.
+    Filtra per user_id e ristorante_id.
     Ritorna (lista_articoli, messaggi_debug)
     """
     debug_msgs = []
     try:
-        debug_msgs.append(f"🔍 Cerco fatture per user_id: {_user_id}")
+        debug_msgs.append(f"🔍 Cerco fatture per user_id: {user_id}")
         
         # Query articoli escludendo spese operative (servizi, utenze, manutenzione)
-        response = supabase.table('fatture')\
+        query_fatture = supabase.table('fatture')\
             .select('descrizione, prezzo_unitario, unita_misura, data_documento, categoria')\
-            .eq('user_id', _user_id)\
-            .not_.in_('categoria', CATEGORIE_SPESE_OPERATIVE)\
-            .order('data_documento', desc=True)\
-            .execute()
+            .eq('user_id', user_id)\
+            .not_.in_('categoria', CATEGORIE_SPESE_OPERATIVE)
+        
+        if ristorante_id:
+            query_fatture = query_fatture.eq('ristorante_id', ristorante_id)
+        
+        response = query_fatture.order('data_documento', desc=True).execute()
         
         debug_msgs.append(f"📊 Query eseguita. Response.data type: {type(response.data)}")
         
@@ -269,7 +295,7 @@ def get_articoli_da_fatture(_user_id: str) -> tuple:
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_ricette_come_ingredienti(_user_id: str, _ristorante_id: str, exclude_id: str = None) -> list:
+def get_ricette_come_ingredienti(user_id: str, ristorante_id: str, exclude_id: str = None) -> list:
     """
     Carica ricette salvate utilizzabili come ingredienti.
     Cache 5 minuti per performance.
@@ -277,11 +303,11 @@ def get_ricette_come_ingredienti(_user_id: str, _ristorante_id: str, exclude_id:
     try:
         query = supabase.table('ricette')\
             .select('id, nome, foodcost_totale, categoria')\
-            .eq('userid', _user_id)
+            .eq('userid', user_id)
         
         # Aggiungi filtro ristorante solo se specificato
-        if _ristorante_id:
-            query = query.eq('ristorante_id', _ristorante_id)
+        if ristorante_id:
+            query = query.eq('ristorante_id', ristorante_id)
         
         # Escludi ricetta corrente per evitare loop
         if exclude_id:
@@ -320,7 +346,7 @@ def get_ingredienti_dropdown(user_id: str, ristorante_id: str, exclude_ricetta_i
     debug_messages = []
     
     # 1. Articoli da fatture (prodotti reali)
-    articoli, debug_msgs = get_articoli_da_fatture(user_id)
+    articoli, debug_msgs = get_articoli_da_fatture(user_id, ristorante_id)
     debug_messages.extend(debug_msgs)
     
     for art in articoli:
@@ -345,7 +371,7 @@ def get_ingredienti_dropdown(user_id: str, ristorante_id: str, exclude_ricetta_i
             .order('nome')\
             .execute()
         
-        for ing in workspace_response.data:
+        for ing in (workspace_response.data or []):
             label = f"📝 {ing['nome']} (€{ing['prezzo_per_um']:.2f}/{ing['um']} - manuale)"
             ingredienti_options.append({
                 'label': label,
@@ -469,20 +495,30 @@ def clear_edit_mode():
     if 'prezzo_vendita_ricetta' in st.session_state:
         del st.session_state['prezzo_vendita_ricetta']
     
-    st.cache_data.clear()  # Clear cache per refresh dati
+    invalidate_workspace_cache()  # Invalida solo cache workspace
 
 
 # ============================================
 # HEADER
 # ============================================
+render_oh_yeah_header()
+
 st.markdown("""
-<h1 style="font-size: 48px; font-weight: 700; margin: 0; margin-bottom: 10px;">
+<h2 style="font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 700; margin: 0; margin-bottom: 0.625rem;">
     🍴 <span style="background: linear-gradient(90deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;">Workspace - Gestione Ricette e Foodcost</span>
-</h1>
+</h2>
 """, unsafe_allow_html=True)
+
+st.markdown("""
+<div style='background-color: #e7f3ff; padding: clamp(0.625rem, 1.5vw, 0.75rem); border-radius: 5px; border-left: 4px solid #2196F3;'>
+<p style='margin: 0; color: #014361; font-size: clamp(0.75rem, 1.8vw, 0.875rem); line-height: 1.4; word-wrap: break-word;'>🍴 <strong>Workspace Ricette:</strong> Gestisci ricette, calcola il foodcost per piatto, monitora la marginalità e tieni il diario operativo.</p>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown("---")
 
 # ============================================
 # TAB NAVIGATION (controllabile programmaticamente)
@@ -554,23 +590,25 @@ if selected_tab == "📋 Analisi Ricette e Menù":
             # Conta ricette con prezzo impostato
             ricette_con_prezzo = df_analisi['prezzo_netto'].notna().sum()
             
-            # CSS per KPI con sfondo colorato
+            # CSS per KPI con sfondo grigio argentato traslucido e bordo
             st.markdown("""
             <style>
             div[data-testid="stMetric"] {
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                padding: 20px;
+                background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
+                padding: clamp(1rem, 2.5vw, 1.25rem);
                 border-radius: 12px;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                border: 1px solid rgba(206, 212, 218, 0.5);
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
+                backdrop-filter: blur(10px);
             }
             div[data-testid="stMetric"] label {
-                color: #ffffff !important;
+                color: #2563eb !important;
                 font-weight: 600 !important;
-                font-size: 14px !important;
+                font-size: clamp(0.75rem, 1.8vw, 0.875rem) !important;
             }
             div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-                color: #ffffff !important;
-                font-size: 28px !important;
+                color: #1e40af !important;
+                font-size: clamp(1.25rem, 3.5vw, 1.75rem) !important;
                 font-weight: 700 !important;
             }
             </style>
@@ -581,9 +619,9 @@ if selected_tab == "📋 Analisi Ricette e Menù":
             with col_kpi1:
                 st.metric("📚 Ricette Totali", len(response.data))
             with col_kpi2:
-                st.metric("💵 Costo Totale Menu", f"€{df_analisi['foodcost'].sum():.2f}")
+                st.metric("💵 Costo Totale Menu", f"€{df_analisi['foodcost'].sum():.0f}")
             with col_kpi3:
-                st.metric("📊 Costo Medio Ricetta", f"€{df_analisi['foodcost'].mean():.2f}")
+                st.metric("📊 Costo Medio Ricetta", f"€{df_analisi['foodcost'].mean():.0f}")
             
             # KPI margine e incidenza (solo se ci sono ricette con prezzo)
             if ricette_con_prezzo > 0:
@@ -591,7 +629,7 @@ if selected_tab == "📋 Analisi Ricette e Menù":
                 
                 with col_kpi4:
                     margine_medio = df_con_prezzo['margine'].mean()
-                    st.metric("💹 Margine Medio", f"€{margine_medio:.2f}")
+                    st.metric("💹 Margine Medio", f"€{margine_medio:.0f}")
                 with col_kpi5:
                     incidenza_media = df_con_prezzo['incidenza'].mean()
                     st.metric("📈 Incidenza% Media FC", f"{incidenza_media:.1f}%")
@@ -680,7 +718,7 @@ if selected_tab == "🧪 Lab Ricette":
     div[data-testid="stExpander"]:first-of-type summary {
         background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
         border-radius: 8px !important;
-        padding: 12px 16px !important;
+        padding: clamp(0.625rem, 1.5vw, 1rem) clamp(0.75rem, 2vw, 1rem) !important;
         color: #1e40af !important;
         font-weight: 600 !important;
     }
@@ -780,16 +818,20 @@ Se necessario contattare l'assistenza.
                         st.error("⚠️ Inserisci un prezzo valido")
                     else:
                         try:
-                            result = supabase.table('ingredienti_workspace').insert({
+                            ing_payload = {
                                 'userid': user_id,
                                 'ristorante_id': current_ristorante,
                                 'nome': nuovo_ing_nome.strip(),
                                 'prezzo_per_um': nuovo_ing_prezzo,
                                 'um': nuovo_ing_um
-                            }).execute()
+                            }
+                            result = safe_db_execute(
+                                lambda db: db.table('ingredienti_workspace').insert(ing_payload).execute(),
+                                "insert ingrediente workspace"
+                            )
                         
                             st.success(f"✅ Ingrediente '{nuovo_ing_nome}' creato!")
-                            st.cache_data.clear()
+                            invalidate_workspace_cache()
                             st.rerun()
                         
                         except Exception as e:
@@ -890,18 +932,20 @@ Se necessario contattare l'assistenza.
                                         st.error("⚠️ Prezzo non valido")
                                     else:
                                         try:
-                                            supabase.table('ingredienti_workspace')\
-                                                .update({
-                                                    'nome': edit_nome.strip(),
-                                                    'prezzo_per_um': edit_prezzo,
-                                                    'um': edit_um
-                                                })\
-                                                .eq('id', ing['id'])\
-                                                .execute()
+                                            upd_payload = {
+                                                'nome': edit_nome.strip(),
+                                                'prezzo_per_um': edit_prezzo,
+                                                'um': edit_um
+                                            }
+                                            upd_id = ing['id']
+                                            safe_db_execute(
+                                                lambda db, _p=upd_payload, _id=upd_id: db.table('ingredienti_workspace').update(_p).eq('id', _id).execute(),
+                                                "update ingrediente workspace"
+                                            )
                                         
                                             st.success("✅ Modifiche salvate")
                                             st.session_state[f"edit_ing_{ing['id']}"] = False
-                                            st.cache_data.clear()
+                                            invalidate_workspace_cache()
                                             st.rerun()
                                         except Exception as e:
                                             if 'duplicate' in str(e).lower() or 'unique' in str(e).lower():
@@ -928,9 +972,13 @@ Se necessario contattare l'assistenza.
                             with cols[4]:
                                 if st.button("🗑️", key=f"del_ing_{ing['id']}", help="Elimina ingrediente"):
                                     try:
-                                        supabase.table('ingredienti_workspace').delete().eq('id', ing['id']).execute()
+                                        del_id = ing['id']
+                                        safe_db_execute(
+                                            lambda db, _id=del_id: db.table('ingredienti_workspace').delete().eq('id', _id).execute(),
+                                            "delete ingrediente workspace"
+                                        )
                                         st.success("✅ Ingrediente eliminato")
-                                        st.cache_data.clear()
+                                        invalidate_workspace_cache()
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"❌ Errore eliminazione: {str(e)}")
@@ -986,7 +1034,7 @@ Se necessario contattare l'assistenza.
         if st.session_state.ricetta_edit_mode:
             try:
                 default_cat = categorie_ricette.index(st.session_state.ricetta_edit_data['categoria'])
-            except:
+            except (ValueError, KeyError):
                 default_cat = 0
         
         categoria_sel = st.selectbox(
@@ -1042,7 +1090,7 @@ Se necessario contattare l'assistenza.
         
         # Bottone refresh cache
         if st.button("🔄 Forza Refresh Cache"):
-            st.cache_data.clear()
+            invalidate_workspace_cache()
             st.rerun()
         
         # NON uso st.stop() per permettere al footer di caricarsi
@@ -1056,8 +1104,9 @@ Se necessario contattare l'assistenza.
         # Header tabella SEMPRE visibile con sfondo colorato
         st.markdown("""
         <div style="display: flex; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    color: white; padding: 10px 8px; border-radius: 8px; font-weight: 600; 
-                    font-size: 13px; margin-bottom: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                    color: white; padding: clamp(0.5rem, 1.5vw, 0.625rem) clamp(0.4rem, 1.2vw, 0.5rem); border-radius: 8px; font-weight: 600; 
+                    font-size: clamp(0.7rem, 1.6vw, 0.8rem); margin-bottom: 0.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.15); 
+                    white-space: nowrap; overflow-x: auto;">
             <div style="flex: 2.5;">🍽️ Ingrediente</div>
             <div style="flex: 1.2;">💰 Prezzo</div>
             <div style="flex: 1;">⚙️ Gram.Conf.</div>
@@ -1071,32 +1120,31 @@ Se necessario contattare l'assistenza.
         # Bottone per aggiungere ingredienti con testo allineato a sinistra
         st.markdown("""
         <style>
-        /* Forza testo a sinistra su TUTTI i bottoni secondary full-width */
-        button[kind="secondary"] {
+        /* Testo a sinistra SOLO sul bottone Aggiungi Ingrediente */
+        div.st-key-add_ingredient_btn button[kind="secondary"] {
             text-align: left !important;
             display: flex !important;
             justify-content: flex-start !important;
             align-items: center !important;
         }
-        button[kind="secondary"] > div {
+        div.st-key-add_ingredient_btn button[kind="secondary"] > div {
             text-align: left !important;
             justify-content: flex-start !important;
             display: flex !important;
             width: 100% !important;
         }
-        button[kind="secondary"] > div > p,
-        button[kind="secondary"] p {
+        div.st-key-add_ingredient_btn button[kind="secondary"] > div > p,
+        div.st-key-add_ingredient_btn button[kind="secondary"] p {
             text-align: left !important;
             width: 100% !important;
         }
-        /* Anche BaseButton-secondary */
-        .stButton button {
+        div.st-key-add_ingredient_btn .stButton button {
             justify-content: flex-start !important;
         }
-        .stButton button div {
+        div.st-key-add_ingredient_btn .stButton button div {
             justify-content: flex-start !important;
         }
-        .stButton button div p {
+        div.st-key-add_ingredient_btn .stButton button div p {
             text-align: left !important;
         }
         </style>
@@ -1126,6 +1174,7 @@ Se necessario contattare l'assistenza.
             ingredienti_da_rimuovere = []
             
             for idx, ing in enumerate(st.session_state.ingredienti_temp):
+                prezzo_riga = 0  # Calcolato in col6, riusato in col7
                 col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 1.2, 1, 0.6, 1, 1.2, 0.5])
                 
                 with col1:
@@ -1137,7 +1186,7 @@ Se necessario contattare l'assistenza.
                     if ing.get('ingrediente_ref'):
                         try:
                             default_idx = [i for i, x in enumerate(ingredienti_filtrati) if x['label'] == ing['ingrediente_ref']][0]
-                        except:
+                        except (IndexError, ValueError):
                             default_idx = 0
                     
                     ing_sel = st.selectbox(
@@ -1227,7 +1276,7 @@ Se necessario contattare l'assistenza.
                     default_um_idx = 0
                     try:
                         default_um_idx = unita_misura_options.index(ing.get('um', 'g'))
-                    except:
+                    except ValueError:
                         default_um_idx = 0
                     
                     ing['um'] = st.selectbox(
@@ -1277,31 +1326,16 @@ Se necessario contattare l'assistenza.
                         
                         ing['prezzo_unitario'] = prezzo_riga / ing['quantita']
                         st.markdown(f"<div style='background: #e0f2fe; "
-                                    f"color: #0369a1; padding: 8px; border-radius: 6px; text-align: center; "
-                                    f"font-weight: 600; font-size: 15px; border: 1px solid #bae6fd;'>€{prezzo_riga:.2f}</div>", 
+                                    f"color: #0369a1; padding: clamp(0.4rem, 1.2vw, 0.5rem); border-radius: 6px; text-align: center; "
+                                    f"font-weight: 600; font-size: clamp(0.8rem, 2vw, 0.95rem); border: 1px solid #bae6fd; word-wrap: break-word;'>€{prezzo_riga:.2f}</div>", 
                                     unsafe_allow_html=True)
                     else:
-                        st.markdown("<div style='background: #f1f5f9; color: #94a3b8; padding: 8px; "
-                                    "border-radius: 6px; text-align: center; border: 1px solid #e2e8f0;'>€0.00</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='background: #f1f5f9; color: #94a3b8; padding: clamp(0.4rem, 1.2vw, 0.5rem); "
+                                    "border-radius: 6px; text-align: center; border: 1px solid #e2e8f0; word-wrap: break-word;'>€0.00</div>", unsafe_allow_html=True)
                 
                 with col7:
-                    # Conferma eliminazione per righe costose (considera prezzo override)
-                    if ing_data:
-                        grammatura_per_calcolo = ing.get('grammatura_confezione')
-                        prezzo_override = ing.get('prezzo_override')
-                        
-                        # Calcola con override se presente
-                        if prezzo_override is not None and ing_data['tipo'] in ['articolo', 'workspace']:
-                            ing_data_temp = ing_data.copy()
-                            ing_data_temp['data'] = ing_data['data'].copy()
-                            ing_data_temp['data']['prezzo_unitario'] = prezzo_override
-                            prezzo_riga_calc = calcola_foodcost_riga(ing_data_temp, ing['quantita'], ing['um'], grammatura_per_calcolo)
-                        else:
-                            prezzo_riga_calc = calcola_foodcost_riga(ing_data, ing['quantita'], ing['um'], grammatura_per_calcolo)
-                    else:
-                        prezzo_riga_calc = 0
-                    
-                    if prezzo_riga_calc > 5:
+                    # Conferma eliminazione per righe costose (usa prezzo_riga calcolato in col6)
+                    if prezzo_riga > 5:
                         if st.button("🗑️", key=f"del_ing_{idx}", help="Elimina ingrediente"):
                             st.session_state[f'confirm_del_ing_{idx}'] = True
                         
@@ -1380,7 +1414,9 @@ Se necessario contattare l'assistenza.
                                         'um': ing['um'],
                                         'prezzo_unitario': prezzo_riga / ing['quantita'],  # Normalizzato
                                         'is_ricetta': ing['is_ricetta'],
-                                        'ricetta_id': ing.get('ricetta_id')
+                                        'ricetta_id': ing.get('ricetta_id'),
+                                        'grammatura_confezione': ing.get('grammatura_confezione'),
+                                        'prezzo_override': ing.get('prezzo_override')
                                     })
                             
                             # Prepara dati per insert/update
@@ -1400,10 +1436,10 @@ Se necessario contattare l'assistenza.
                             if st.session_state.ricetta_edit_mode:
                                 # UPDATE
                                 ricetta_id = st.session_state.ricetta_edit_data['id']
-                                response = supabase.table('ricette')\
-                                    .update(ricetta_data)\
-                                    .eq('id', ricetta_id)\
-                                    .execute()
+                                safe_db_execute(
+                                    lambda db, _d=ricetta_data, _id=ricetta_id: db.table('ricette').update(_d).eq('id', _id).execute(),
+                                    "update ricetta"
+                                )
                                 
                                 st.success(f"✅ Ricetta **{nome_ricetta}** aggiornata! Food cost: €{foodcost_totale:.2f}")
                             
@@ -1425,20 +1461,20 @@ Se necessario contattare l'assistenza.
                                             q = q.eq('ristorante_id', current_ristorante)
                                         resp = q.order('ordine_visualizzazione', desc=True).limit(1).execute()
                                         next_ordine = (resp.data[0]['ordine_visualizzazione'] + 1) if resp.data else 1
-                                    except:
+                                    except Exception:
                                         next_ordine = 1
                                 
                                 ricetta_data['ordine_visualizzazione'] = next_ordine
                                 
-                                response = supabase.table('ricette')\
-                                    .insert(ricetta_data)\
-                                    .execute()
+                                safe_db_execute(
+                                    lambda db, _d=ricetta_data: db.table('ricette').insert(_d).execute(),
+                                    "insert ricetta"
+                                )
                                 
                                 st.success(f"✅ Ricetta **{nome_ricetta}** salvata! Food cost: €{foodcost_totale:.2f}")
                             
                             # Clear form e cache
                             clear_edit_mode()
-                            st.cache_data.clear()
                             
                             # Ricarica la pagina
                             st.rerun()
@@ -1530,7 +1566,7 @@ Se necessario contattare l'assistenza.
                                         'ricetta_id_1': ricetta['id'],
                                         'ricetta_id_2': prev['id']
                                     }).execute()
-                                    st.cache_data.clear()
+                                    invalidate_workspace_cache()
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Errore: {e}")
@@ -1544,7 +1580,7 @@ Se necessario contattare l'assistenza.
                                         'ricetta_id_1': ricetta['id'],
                                         'ricetta_id_2': nxt['id']
                                     }).execute()
-                                    st.cache_data.clear()
+                                    invalidate_workspace_cache()
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Errore: {e}")
@@ -1577,8 +1613,8 @@ Se necessario contattare l'assistenza.
                                         'is_ricetta': ing_salvato.get('is_ricetta', False),
                                         'ricetta_id': ing_salvato.get('ricetta_id'),
                                         'ingrediente_ref': ing_match['label'] if ing_match else None,
-                                        'grammatura_confezione': None,
-                                        'prezzo_override': None,
+                                        'grammatura_confezione': ing_salvato.get('grammatura_confezione'),
+                                        'prezzo_override': ing_salvato.get('prezzo_override'),
                                         'tipo_riga': tipo_riga
                                     })
                                 
@@ -1598,9 +1634,13 @@ Se necessario contattare l'assistenza.
                         with col_c1:
                             if st.button("✅ Sì, elimina", key=f"s_cyes_{ricetta['id']}"):
                                 try:
-                                    supabase.table('ricette').delete().eq('id', ricetta['id']).execute()
+                                    del_ricetta_id = ricetta['id']
+                                    safe_db_execute(
+                                        lambda db, _id=del_ricetta_id: db.table('ricette').delete().eq('id', _id).execute(),
+                                        "delete ricetta"
+                                    )
                                     st.success("Ricetta eliminata")
-                                    st.cache_data.clear()
+                                    invalidate_workspace_cache()
                                     del st.session_state[f's_confirm_del_{ricetta["id"]}']
                                     st.rerun()
                                 except Exception as e:
@@ -1858,22 +1898,22 @@ if selected_tab == "📓 Diario":
     # Carica note esistenti in ordine cronologico
     try:
         try:
-            note_response = supabase.table('note_diario')\
+            query_note = supabase.table('note_diario')\
                 .select('*')\
-                .eq('userid', user_id)\
-                .eq('ristorante_id', current_ristorante)\
-                .order('created_at', desc=True)\
-                .execute()
+                .eq('userid', user_id)
+            if current_ristorante:
+                query_note = query_note.eq('ristorante_id', current_ristorante)
+            note_response = query_note.order('created_at', desc=True).execute()
         except Exception as conn_err:
             if 'disconnect' in str(conn_err).lower() or 'closed' in str(conn_err).lower():
                 logger.warning("Riconnessione Supabase per select note...")
                 fresh = get_fresh_supabase_client()
-                note_response = fresh.table('note_diario')\
+                query_note = fresh.table('note_diario')\
                     .select('*')\
-                    .eq('userid', user_id)\
-                    .eq('ristorante_id', current_ristorante)\
-                    .order('created_at', desc=True)\
-                    .execute()
+                    .eq('userid', user_id)
+                if current_ristorante:
+                    query_note = query_note.eq('ristorante_id', current_ristorante)
+                note_response = query_note.order('created_at', desc=True).execute()
             else:
                 raise conn_err
         
@@ -1916,13 +1956,13 @@ if selected_tab == "📓 Diario":
                                 # Modalità modifica - full size
                                 st.markdown(f"""
                                 <div style='background: {colore_bg}; 
-                                            padding: 15px; 
+                                            padding: clamp(0.75rem, 2vw, 1rem); 
                                             border-radius: 8px; 
                                             box-shadow: 3px 3px 8px rgba(0,0,0,0.15);
-                                            min-height: 250px;
-                                            margin-bottom: 15px;
+                                            min-height: 15.5rem;
+                                            margin-bottom: 0.9rem;
                                             border: 1px solid {colore_text}20;'>
-                                    <div style='color: {colore_text}; opacity: 0.7; font-size: 11px; margin-bottom: 10px;'>
+                                    <div style='color: {colore_text}; opacity: 0.7; font-size: clamp(0.6rem, 1.4vw, 0.7rem); margin-bottom: 0.625rem; word-wrap: break-word;'>
                                         📅 {data_str}
                                     </div>
                                 </div>
@@ -1970,23 +2010,23 @@ if selected_tab == "📓 Diario":
                                 
                                 st.markdown(f"""
                                 <div style='background: {colore_bg}; 
-                                            padding: 15px; 
+                                            padding: clamp(0.75rem, 2vw, 1rem); 
                                             border-radius: 8px; 
                                             box-shadow: 3px 3px 8px rgba(0,0,0,0.15);
-                                            min-height: 200px;
-                                            margin-bottom: 15px;
+                                            min-height: 12.5rem;
+                                            margin-bottom: 0.9rem;
                                             position: relative;
                                             border: 1px solid {colore_text}20;
                                             cursor: pointer;'>
-                                    <div style='color: {colore_text}; opacity: 0.7; font-size: 11px; margin-bottom: 10px;'>
+                                    <div style='color: {colore_text}; opacity: 0.7; font-size: clamp(0.6rem, 1.4vw, 0.7rem); margin-bottom: 0.625rem; word-wrap: break-word;'>
                                         📅 {data_str} {'✏️' if modificata else ''}
                                     </div>
                                     <div style='color: {colore_text}; 
-                                                font-size: 14px; 
+                                                font-size: clamp(0.75rem, 1.8vw, 0.875rem); 
                                                 line-height: 1.5;
                                                 white-space: pre-wrap;
                                                 word-wrap: break-word;
-                                                max-height: 140px;
+                                                max-height: 8.75rem;
                                                 overflow: hidden;'>
                                         {testo_troncato}
                                     </div>

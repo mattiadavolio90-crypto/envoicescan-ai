@@ -1,14 +1,18 @@
 ﻿"""
-🔧 PANNELLO AMMINISTRAZIONE - ANALISI FATTURE AI
+🔧 PANNELLO AMMINISTRAZIONE - OH YEAH!
 ===============================================
-Pannello admin con 3 TAB:
+Pannello admin con 6 TAB:
 - Gestione Clienti (con impersonazione)
-- Verifica Integrità Database (con dettaglio per cliente)
-- Review Righe €0 (con memoria permanente)
+- Review Righe €0 (con revisione permanente)
+- Memoria Globale AI (prodotti_master)
+- Memoria Clienti (prodotti_utente)
+- Verifica Integrità Database
+- Costi AI per Cliente
 """
 
 import streamlit as st
 import pandas as pd
+import re
 from datetime import datetime, timezone, timedelta
 import time
 import traceback
@@ -21,10 +25,10 @@ from utils.formatters import carica_categorie_da_db
 from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria
 from utils.piva_validator import valida_formato_piva, normalizza_piva
 from services.auth_service import crea_cliente_con_token
-from utils.sidebar_helper import render_sidebar
+from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 
 # Importa costanti per filtri e admin
-from config.constants import CATEGORIE_SPESE_GENERALI, ADMIN_EMAILS
+from config.constants import CATEGORIE_SPESE_GENERALI, ADMIN_EMAILS, CATEGORIE_FOOD_BEVERAGE, CATEGORIE_MATERIALI, CATEGORIE_SPESE_OPERATIVE
 
 # ============================================================
 # SETUP
@@ -127,8 +131,15 @@ if 'ristoranti' not in st.session_state:
 # HELPER FUNCTIONS
 # ============================================================
 
+# ⚠️ DEAD CODE: Le seguenti 14 funzioni (fino alla riga con "# END DEAD CODE")
+# sono definite ma MAI chiamate nel codice dei tab.
+# Le tab usano logica inline o funzioni @st.cache_data locali.
+# Mantenute per eventuale riutilizzo futuro.
+# Unica funzione attiva: invalida_cache_memoria() (più sotto)
 # ============================================================
-# FUNZIONI HELPER PER REVIEW CONFERME
+
+# ============================================================
+# FUNZIONI HELPER PER REVIEW CONFERME (NON UTILIZZATE)
 # ============================================================
 
 def conferma_prodotto_corretto(descrizione, categoria, admin_email):
@@ -704,6 +715,9 @@ def clienti_con_piu_errori():
         logger.error(traceback.format_exc())
         return pd.DataFrame()
 
+# ============================================================
+# END DEAD CODE — Funzione attiva sotto
+# ============================================================
 
 def invalida_cache_memoria():
     """Invalida ENTRAMBE le cache: Streamlit cache_data + cache in-memory ai_service."""
@@ -721,8 +735,9 @@ def invalida_cache_memoria():
 # HEADER
 # ============================================================
 
+render_oh_yeah_header()
 st.title("👨‍💼 Pannello Amministrazione")
-st.caption(f"Admin: {user.get('email')} | [🏠 Torna all'App](/) | [🔓 Cambia Password](/cambio_password)")
+st.caption(f"Admin: {user.get('email')} | [🏠 Torna all'App](/) | [🔓 Cambia Password](/gestione_account)")
 st.markdown("---")
 
 # ============================================================
@@ -1053,7 +1068,7 @@ if tab1:
                             
                             email_html = f"""
                             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                                <h2 style="color: #2c5aa0;">🎉 Benvenuto in ANALISI FATTURE AI!</h2>
+                                <h2 style="color: #2c5aa0;">🎉 Benvenuto in OH YEAH!</h2>
                                 <p>Ciao <strong>{new_name}</strong>,</p>
                                 <p>Il tuo account è stato creato con successo dal nostro team.</p>
                                 
@@ -1094,7 +1109,7 @@ if tab1:
                                 
                                 <p style="color: #666; font-size: 14px;">
                                     ---<br>
-                                    <strong>ANALISI FATTURE AI Team</strong><br>
+                                    <strong>OH YEAH! Team</strong><br>
                                     <a href="https://envoicescan-ai.streamlit.app">envoicescan-ai.streamlit.app</a><br>
                                     📧 Support: mattiadavolio90@gmail.com
                                 </p>
@@ -1102,7 +1117,7 @@ if tab1:
                             """
                             
                             payload = {
-                                "sender": {"email": sender_email, "name": "ANALISI FATTURE AI"},
+                                "sender": {"email": sender_email, "name": "OH YEAH!"},
                                 "to": [{"email": new_email, "name": new_name}],
                                 "replyTo": {"email": "mattiadavolio90@gmail.com", "name": "Mattia Davolio - Support"},
                                 "bcc": [{"email": "mattiadavolio90@gmail.com"}],
@@ -1739,16 +1754,21 @@ if tab1:
                                     
                                     email_inviata = invia_email(
                                         destinatario=row['email'],
-                                        oggetto="🔑 Reset Password - ANALISI FATTURE AI",
+                                        oggetto="🔑 Reset Password - OH YEAH!",
                                         corpo_html=f"""
-                                        <h2>Reset Password Richiesto</h2>
-                                        <p>Ciao,</p>
-                                        <p>L'amministratore ha richiesto un reset della tua password.</p>
-                                        <p>Clicca sul link per impostare una nuova password:</p>
-                                        <p><a href="{reset_url}" style="background-color:#4CAF50;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">Imposta Nuova Password</a></p>
-                                        <p><small>Link valido per 1 ora: {reset_url}</small></p>
-                                        <hr>
-                                        <p><small>Se non hai richiesto questo reset, ignora questa email.</small></p>
+                                        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                                            <h2 style="color: #2c5aa0;">🔑 Reset Password Richiesto</h2>
+                                            <p>Ciao,</p>
+                                            <p>L'amministratore ha richiesto un reset della tua password su <strong>OH YEAH!</strong>.</p>
+                                            <p>Clicca sul pulsante per impostare una nuova password:</p>
+                                            <div style="text-align: center; margin: 30px 0;">
+                                                <a href="{reset_url}" style="background-color:#0ea5e9;color:white;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">🔐 Imposta Nuova Password</a>
+                                            </div>
+                                            <p style="color: #dc2626;">⚠️ <strong>Importante:</strong> Questo link è valido per <strong>1 ora</strong>.</p>
+                                            <p style="color: #888; font-size: 13px;">Se non hai richiesto questo reset, ignora questa email.</p>
+                                            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+                                            <p style="color: #666; font-size: 13px;">---<br><strong>OH YEAH! Team</strong><br>📧 Support: mattiadavolio90@gmail.com</p>
+                                        </div>
                                         """
                                     )
                                     
@@ -1786,7 +1806,7 @@ if tab1:
                                         st.error("🚫 **ERRORE**: Non puoi eliminare il tuo account admin o altri account admin!")
                                         st.info("Se vuoi rimuovere un amministratore, contatta il supporto tecnico.")
                                         if st.button("❌ Chiudi", use_container_width=True):
-                                            st.session_state[f"show_delete_dialog_{row['user_id']}"] = False
+                                            st.session_state[f"show_delete_dialog_{row_key}"] = False
                                             st.rerun()
                                         return
                                     
@@ -1869,6 +1889,21 @@ if tab1:
                                                         deleted['upload_events'] = len(result_events.data) if result_events.data else 0
                                                     except Exception as e:
                                                         logger.warning(f"Errore eliminazione upload_events: {e}")
+                                                    
+                                                    # 3b. Elimina dati correlati (GDPR Art.17 - completezza)
+                                                    tables_extra = [
+                                                        ('classificazioni_manuali', 'user_id'),
+                                                        ('ricette', 'userid'),
+                                                        ('ingredienti_workspace', 'userid'),
+                                                        ('note_diario', 'userid'),
+                                                        ('ristoranti', 'user_id'),
+                                                    ]
+                                                    for table_name, id_col in tables_extra:
+                                                        try:
+                                                            supabase.table(table_name).delete().eq(id_col, user_id_to_delete).execute()
+                                                            logger.info(f"🗑️ Pulita tabella {table_name} per {email_deleted}")
+                                                        except Exception as e:
+                                                            logger.warning(f"Errore pulizia {table_name}: {e}")
                                                     
                                                     # 4. Eliminazione CONDIZIONALE memoria globale
                                                     if elimina_memoria:
@@ -2263,7 +2298,6 @@ if tab2:
                 # Bottone IGNORA
                 if st.button("❌", key=f"ignore_{idx}", help="Ignora definitivamente"):
                     try:
-                        from datetime import datetime
                         result = supabase.table('fatture').update({
                             'categoria': '📝 NOTE E DICITURE',
                             'needs_review': False,
@@ -2288,11 +2322,6 @@ if tab2:
         if st.session_state.get(f"editing_{idx}", False):
             with st.expander(f"🔧 Modifica: {descrizione[:30]}...", expanded=True):
                 # Usa categorie standardizzate da constants.py + NOTE E DICITURE solo qui
-                from config.constants import (
-                    CATEGORIE_FOOD_BEVERAGE, 
-                    CATEGORIE_MATERIALI, 
-                    CATEGORIE_SPESE_OPERATIVE
-                )
                 
                 # Combina e ordina categorie
                 categorie_fb = sorted(CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI)
@@ -2312,7 +2341,6 @@ if tab2:
                 with col_confirm:
                     if st.button("✅ Conferma", key=f"confirm_{idx}"):
                         try:
-                            from datetime import datetime
                             result = supabase.table('fatture').update({
                                 'categoria': nuova_categoria,
                                 'needs_review': False,
@@ -2322,7 +2350,7 @@ if tab2:
                             
                             st.success(f"✅ {len(result.data) if result.data else occorrenze} righe → {nuova_categoria}")
                             del st.session_state[f"editing_{idx}"]
-                            st.cache_data.clear()
+                            invalida_cache_memoria()
                             time.sleep(0.5)
                             st.rerun()
                         except Exception as e:
@@ -2705,7 +2733,6 @@ def tab_memoria_globale_unificata():
         # Ricerca SMART: cerca ogni parola individualmente
         # Es: "BUCCIA NERA CAMPRIANO CHIANTI DOCG 75 CL" → cerca "BUCCIA" AND "NERA" AND "CAMPRIANO" etc.
         # Ignora numeri (che vengono rimossi dalla normalizzazione)
-        import re
         parole = [p for p in search_text.strip().split() if len(p) >= 2 and not re.match(r'^\d+$', p)]
         
         if parole:
@@ -3259,7 +3286,6 @@ def tab_personalizzazioni_clienti():
     
     if search_text:
         # Ricerca SMART: parola per parola, ignora numeri (normalizzazione li rimuove dal DB)
-        import re
         parole = [p for p in search_text.strip().split() if len(p) >= 2 and not re.match(r'^\d+$', p)]
         
         if parole:
@@ -3609,7 +3635,7 @@ if tab5:
                                     'descrizione': row.get('descrizione', 'N/A')[:50],
                                     'problema': f"Data futura: {data_fattura}"
                                 })
-                        except:
+                        except Exception:
                             problemi['date_invalide'].append({
                                 'fornitore': row.get('fornitore', 'N/A'),
                                 'data': row.get('data_documento', 'N/A'),

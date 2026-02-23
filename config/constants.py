@@ -1066,6 +1066,47 @@ DIZIONARIO_CORREZIONI = {
 }
 
 # ============================================================
+# SOGLIE KPI RISTORAZIONE
+# ============================================================
+# Soglie di riferimento per commenti automatici sui KPI.
+# Ogni lista è ordinata per soglia crescente (o decrescente per margini).
+# Formato: (soglia_max, emoji, commento)
+# L'ultima entry cattura tutto ciò che supera le soglie precedenti.
+
+KPI_SOGLIE = {
+    'food_cost': [
+        (28, '🟢', 'Food cost eccellente — ottimo controllo acquisti e sprechi'),
+        (33, '🟡', 'Food cost nella norma per il settore ristorazione'),
+        (38, '🟠', 'Food cost sopra la media — valutare ottimizzazione acquisti o menù'),
+        (100, '🔴', 'Food cost critico — necessaria revisione fornitori, porzioni e sprechi'),
+    ],
+    'spese_generali': [
+        (15, '🟢', 'Spese generali contenute — gestione efficiente'),
+        (22, '🟡', 'Spese generali nella norma'),
+        (28, '🟠', 'Spese generali elevate — verificare utenze e contratti'),
+        (100, '🔴', 'Spese generali fuori controllo — necessaria rinegoziazione'),
+    ],
+    'primo_margine': [
+        (55, '🔴', '1° Margine molto basso — costi F&B troppo alti rispetto al fatturato'),
+        (62, '🟠', '1° Margine sotto la media — margine di miglioramento sui costi'),
+        (70, '🟡', '1° Margine nella norma per il settore'),
+        (100, '🟢', '1° Margine eccellente — ottima marginalità sui prodotti'),
+    ],
+    'mol': [
+        (5, '🔴', 'MOL critico — l\'attività non genera margine sufficiente'),
+        (12, '🟠', 'MOL basso — necessario contenere costi o incrementare ricavi'),
+        (20, '🟡', 'MOL nella norma — margine operativo adeguato'),
+        (100, '🟢', 'MOL eccellente — ottima redditività operativa'),
+    ],
+    # Fatturato: soglie relative (coefficiente di variazione %)
+    'fatturato_variabilita': [
+        (10, '🟢', 'Fatturato stabile nel periodo — buona costanza nei ricavi'),
+        (25, '🟡', 'Fatturato con oscillazioni moderate nel periodo'),
+        (100, '🟠', 'Fatturato molto variabile nel periodo — verificare stagionalità o anomalie'),
+    ],
+}
+
+# ============================================================
 # AMMINISTRATORI DI SISTEMA
 # ============================================================
 

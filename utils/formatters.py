@@ -107,7 +107,7 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
                     if 'files_con_errori' not in st.session_state:
                         st.session_state.files_con_errori = {}
                     st.session_state.files_con_errori[nome_file] = errore
-                except:
+                except Exception:
                     pass
                 
                 return None
@@ -121,7 +121,7 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
                     if 'files_con_errori' not in st.session_state:
                         st.session_state.files_con_errori = {}
                     st.session_state.files_con_errori[nome_file] = errore
-                except:
+                except Exception:
                     pass
                 
                 return None
@@ -526,7 +526,7 @@ def formatta_euro(valore: float) -> str:
     """
     try:
         return f"€ {valore:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    except:
+    except (ValueError, TypeError):
         return "€ 0,00"
 
 
@@ -591,16 +591,16 @@ def genera_box_recap(num_righe: int, totale: float) -> str:
     html = f"""
     <div style='
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 20px;
+        padding: clamp(1rem, 2.5vw, 1.25rem);
         border-radius: 10px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         color: white;
         text-align: center;
     '>
-        <div style='font-size: 48px; font-weight: bold; margin-bottom: 10px;'>
+        <div style='font-size: clamp(2rem, 5vw, 3rem); font-weight: bold; margin-bottom: 0.625rem; word-wrap: break-word;'>
             {formatta_euro(totale)}
         </div>
-        <div style='font-size: 18px; opacity: 0.9;'>
+        <div style='font-size: clamp(0.875rem, 2.5vw, 1.125rem); opacity: 0.9; word-wrap: break-word;'>
             {num_righe:,} prodotti analizzati
         </div>
     </div>

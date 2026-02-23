@@ -5,7 +5,7 @@ from argon2 import PasswordHasher
 from services.db_service import elimina_tutte_fatture
 from services import get_supabase_client
 from config.logger_setup import get_logger
-from utils.sidebar_helper import render_sidebar
+from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 
 # Logger
 logger = get_logger('gestione_account')
@@ -52,6 +52,7 @@ ph = PasswordHasher()
 # ============================================================
 render_sidebar(user)
 
+render_oh_yeah_header()
 st.title("⚙️ Gestione Account")
 st.info(f"**Account:** {user.get('email')}")
 
@@ -302,6 +303,7 @@ with tab3:
                     tables_to_clean = [
                         ('prodotti_utente', 'user_id'),
                         ('classificazioni_manuali', 'user_id'),
+                        ('upload_events', 'user_id'),
                         ('ricette', 'userid'),
                         ('ingredienti_workspace', 'userid'),
                         ('note_diario', 'userid'),

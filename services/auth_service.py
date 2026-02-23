@@ -554,21 +554,26 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
             return False, "Errore nell'invio email"
         
         sender_email = brevo_cfg.get('sender_email', 'contact@updates.brevo.com')
-        sender_name = brevo_cfg.get('sender_name', 'Analisi Fatture AI')
+        sender_name = brevo_cfg.get('sender_name', 'OH YEAH!')
         
         # Payload email
         payload = {
             "sender": {"name": sender_name, "email": sender_email},
             "to": [{"email": email}],
-            "subject": "Codice Reset Password",
+            "subject": "🔑 Codice Reset Password - OH YEAH!",
             "htmlContent": f"""
             <html>
-            <body>
-                <h2>Reset Password</h2>
-                <p>Hai richiesto di reimpostare la password.</p>
-                <p>Il tuo codice di reset è: <strong>{code}</strong></p>
-                <p>Il codice scadrà tra 1 ora.</p>
-                <p>Se non hai richiesto questo reset, ignora questa email.</p>
+            <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #2c5aa0;">🔑 Reset Password</h2>
+                <p>Hai richiesto di reimpostare la password per il tuo account <strong>OH YEAH!</strong>.</p>
+                <p>Il tuo codice di reset è:</p>
+                <div style="text-align: center; margin: 20px 0;">
+                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #1e3a8a; background: #f0f4ff; padding: 12px 24px; border-radius: 8px; display: inline-block;">{code}</span>
+                </div>
+                <p>Il codice scadrà tra <strong>1 ora</strong>.</p>
+                <p style="color: #888; font-size: 13px;">Se non hai richiesto questo reset, ignora questa email.</p>
+                <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
+                <p style="color: #666; font-size: 13px;">---<br><strong>OH YEAH! Team</strong><br>📧 Support: mattiadavolio90@gmail.com</p>
             </body>
             </html>
             """
@@ -604,9 +609,7 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
 
 
 def hash_password(password: str) -> str:
-    """Hash password con Argon2"""
-    from argon2 import PasswordHasher
-    ph = PasswordHasher()
+    """Hash password con Argon2 (usa hasher globale)"""
     return ph.hash(password)
 
 
@@ -616,7 +619,6 @@ def registra_logout_utente(email: str) -> bool:
     Ogni volta che l'utente fa logout, aggiorniamo un campo nel DB.
     """
     try:
-        from datetime import datetime
         from services import get_supabase_client
         
         supabase = get_supabase_client()
@@ -625,7 +627,7 @@ def registra_logout_utente(email: str) -> bool:
             
         # Aggiorna campo last_logout nella tabella users
         result = supabase.table('users').update({
-            'last_logout': datetime.now().isoformat()
+            'last_logout': datetime.now(timezone.utc).isoformat()
         }).eq('email', email).execute()
         
         logger.info(f"✅ Logout registrato per {email}")
@@ -641,7 +643,6 @@ def verifica_sessione_valida(email: str, session_timestamp: float) -> bool:
     Se l'utente ha fatto logout DOPO il login corrente, la sessione è invalida.
     """
     try:
-        from datetime import datetime
         from services import get_supabase_client
         
         supabase = get_supabase_client()

@@ -1,4 +1,4 @@
-# 🍝 ANALISI FATTURE AI - Sistema Admin Panel
+# 🍝 OH YEAH! - Sistema Admin Panel
 
 ## 📋 Overview
 
@@ -79,7 +79,7 @@ key = "eyJhbGc..."
 [brevo]
 api_key = "xkeysib-..."
 sender_email = "contact@updates.brevo.com"
-sender_name = "Analisi Fatture AI"
+sender_name = "OH YEAH!"
 
 # App URL
 [app]
@@ -95,7 +95,8 @@ FCI_PROJECT/
 ├── app.py                           # App principale (2654 righe)
 ├── pages/
 │   ├── admin.py                     # Pannello admin (550 righe)
-│   └── cambio_password.py           # Cambio password (150 righe)
+│   ├── gestione_account.py          # Gestione account + cambio password
+│   └── privacy_policy.py            # Privacy policy GDPR
 ├── database/                        # Gestione database locale
 ├── dati_input/                      # Fatture XML input
 ├── dati_processati/                 # Dati processati
@@ -398,13 +399,13 @@ Per contribuire al progetto:
 
 ## 📄 Licenza
 
-Tutti i diritti riservati - Analisi Fatture AI © 2025
+Tutti i diritti riservati - OH YEAH! © 2025
 
 ---
 
 ## 🙏 Credits
 
-- **Sviluppo App:** Analisi Fatture AI Team
+- **Sviluppo App:** OH YEAH! Team
 - **Pannello Admin:** GitHub Copilot (Claude Sonnet 4.5)
 - **Data:** 18 Dicembre 2025
 
@@ -487,7 +488,7 @@ Tutti i diritti riservati - Analisi Fatture AI © 2025
 
 ---
 
-**© 2025 Analisi Fatture AI - Sistema Admin Panel v1.0**
+**© 2025 OH YEAH! - Sistema Admin Panel v1.0**
 
 **Status:** ✅ Produzione  
 **Qualità:** ⭐⭐⭐⭐⭐ (98/100)  

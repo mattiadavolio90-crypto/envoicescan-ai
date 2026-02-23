@@ -1,5 +1,5 @@
 import streamlit as st
-from utils.sidebar_helper import render_sidebar
+from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 
 st.set_page_config(
     page_title="Privacy Policy", 
@@ -27,6 +27,7 @@ else:
     # Mostra sidebar solo per utenti loggati
     render_sidebar(st.session_state.user_data)
 
+render_oh_yeah_header()
 st.title("📋 Privacy Policy & Informativa Cookie")
 
 st.markdown("""

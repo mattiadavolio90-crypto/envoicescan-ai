@@ -61,7 +61,6 @@ Pattern: Dependency Injection per testabilità
 import json
 import os
 import re
-import shutil
 from datetime import datetime
 from typing import Optional, Dict, List, Any, Tuple
 import streamlit as st
@@ -272,15 +271,12 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
             if descrizione in locale_dict:
                 categoria = locale_dict[descrizione]
                 
-                # ✅ Traccia come memoria per icona 🧠
-                try:
-                    import streamlit as st
-                    if 'righe_memoria_appena_categorizzate' not in st.session_state:
-                        st.session_state.righe_memoria_appena_categorizzate = []
-                    if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
+                # ✅ Traccia come memoria per icona 🧠 (cap 500)
+                if 'righe_memoria_appena_categorizzate' not in st.session_state:
+                    st.session_state.righe_memoria_appena_categorizzate = []
+                if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
+                    if len(st.session_state.righe_memoria_appena_categorizzate) < 500:
                         st.session_state.righe_memoria_appena_categorizzate.append(descrizione)
-                except Exception:
-                    pass  # Ignora se streamlit non disponibile
                 
                 return categoria
         
@@ -290,15 +286,12 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
             if descrizione in _memoria_cache['prodotti_master']:
                 categoria = _memoria_cache['prodotti_master'][descrizione]
                 
-                # ✅ Traccia come memoria per icona 🧠
-                try:
-                    import streamlit as st
-                    if 'righe_memoria_appena_categorizzate' not in st.session_state:
-                        st.session_state.righe_memoria_appena_categorizzate = []
-                    if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
+                # ✅ Traccia come memoria per icona 🧠 (cap 500)
+                if 'righe_memoria_appena_categorizzate' not in st.session_state:
+                    st.session_state.righe_memoria_appena_categorizzate = []
+                if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
+                    if len(st.session_state.righe_memoria_appena_categorizzate) < 500:
                         st.session_state.righe_memoria_appena_categorizzate.append(descrizione)
-                except Exception:
-                    pass  # Ignora se streamlit non disponibile
                 
                 return categoria
             
@@ -307,14 +300,11 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
             if desc_normalized != descrizione and desc_normalized in _memoria_cache['prodotti_master']:
                 categoria = _memoria_cache['prodotti_master'][desc_normalized]
                 
-                try:
-                    import streamlit as st
-                    if 'righe_memoria_appena_categorizzate' not in st.session_state:
-                        st.session_state.righe_memoria_appena_categorizzate = []
-                    if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
+                if 'righe_memoria_appena_categorizzate' not in st.session_state:
+                    st.session_state.righe_memoria_appena_categorizzate = []
+                if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
+                    if len(st.session_state.righe_memoria_appena_categorizzate) < 500:
                         st.session_state.righe_memoria_appena_categorizzate.append(descrizione)
-                except Exception:
-                    pass
                 
                 return categoria
         
@@ -631,8 +621,8 @@ def categorizza_con_memoria(
         try:
             from services import get_supabase_client
             supabase_client = get_supabase_client()
-        except Exception:
-            pass  # Procedi senza client
+        except Exception as e:
+            logger.warning(f"Impossibile inizializzare Supabase client: {e}")
     
     try:
         # Carica cache se non già caricata
@@ -952,66 +942,3 @@ def mostra_loading_ai(placeholder, messaggio: str = "Elaborazione in corso"):
             {messaggio}...
         </div>
     """, unsafe_allow_html=True)
-
-
-# ============================================================
-# LEGACY FUNCTIONS (DEPRECATED - Usa memoria Supabase)
-# ============================================================
-
-def carica_memoria_ai() -> Dict[str, str]:
-    """
-    [LEGACY] Carica memoria AI da file JSON con cache.
-    
-    ⚠️ DEPRECATO: Usa carica_memoria_completa() + Supabase invece.
-    Mantenuto per compatibilità con codice esistente.
-    
-    Returns:
-        dict: {descrizione: categoria}
-    """
-    if os.path.exists(MEMORIA_AI_FILE):
-        try:
-            with open(MEMORIA_AI_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.warning(f"⚠️ Impossibile caricare {MEMORIA_AI_FILE}: {e}")
-            return {}
-    return {}
-
-
-def salva_memoria_ai(memoria_ai: Dict[str, str]) -> bool:
-    """
-    [LEGACY] Salvataggio atomico per prevenire corruzione file.
-    
-    ⚠️ DEPRECATO: Usa salva_correzione_in_memoria_globale() invece.
-    Mantenuto per compatibilità.
-    
-    Args:
-        memoria_ai: Dict {descrizione: categoria}
-    
-    Returns:
-        bool: True se successo
-    """
-    try:
-        temp_file = MEMORIA_AI_FILE + '.tmp'
-        
-        with open(temp_file, 'w', encoding='utf-8') as f:
-            json.dump(memoria_ai, f, ensure_ascii=False, indent=2)
-        
-        shutil.move(temp_file, MEMORIA_AI_FILE)
-        logger.info(f"💾 Memoria AI salvata: {len(memoria_ai)} voci")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Errore salvataggio memoria AI: {e}")
-        return False
-
-
-def aggiorna_memoria_ai(descrizione: str, categoria: str):
-    """
-    [LEGACY] Aggiorna entry in memoria AI.
-    
-    ⚠️ DEPRECATO: Usa salva_correzione_in_memoria_globale() invece.
-    """
-    memoria_ai = carica_memoria_ai()
-    memoria_ai[descrizione] = categoria
-    salva_memoria_ai(memoria_ai)

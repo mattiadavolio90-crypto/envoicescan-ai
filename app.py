@@ -1,9 +1,7 @@
 ﻿# Fix: Force re-deployment to resolve IndentationError on cloud
-import extra_streamlit_components as stx
 import streamlit as st
 import pandas as pd
 import os
-from openai import OpenAI
 import plotly.express as px
 import io
 import time
@@ -30,8 +28,8 @@ from utils.formatters import (
     log_upload_event
 )
 
-from utils.ristorante_helper import add_ristorante_filter, get_current_ristorante_id
-from utils.sidebar_helper import render_sidebar
+from utils.ristorante_helper import add_ristorante_filter
+from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 
 # Import services
 from services.ai_service import (
@@ -67,7 +65,6 @@ from services.db_service import (
     carica_sconti_e_omaggi,
     elimina_fattura_completa,
     elimina_tutte_fatture,
-    audit_data_consistency,
     get_fatture_stats
 )
 
@@ -98,7 +95,7 @@ if st.secrets.get("environment", {}).get("mode", "production") != "production":
 
 
 # ============================================================
-# 🔍 ANALISI FATTURE AI - VERSIONE 3.2 FINAL
+# 🔍 OH YEAH! - VERSIONE 3.2 FINAL
 # ============================================================
 
 
@@ -108,7 +105,7 @@ if st.secrets.get("environment", {}).get("mode", "production") != "production":
 # ============================================
 
 st.set_page_config(
-    page_title="Analisi Fatture AI",
+    page_title="OH YEAH!",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -185,7 +182,7 @@ st.markdown("""
     .main > div { padding-top: 2rem !important; }
     .block-container { padding-top: 2rem !important; padding-bottom: 6rem !important; }
     [data-testid="stVerticalBlock"] { overflow: visible !important; }
-    [data-testid="column"] { overflow: visible !important; min-height: 120px !important; margin-bottom: 30px !important; }
+    [data-testid="column"] { overflow: visible !important; min-height: 7.5rem !important; margin-bottom: 1.875rem !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -218,7 +215,7 @@ st.markdown("""
 # 🔒 SISTEMA AUTENTICAZIONE CON RECUPERO PASSWORD
 # ============================================================
 from supabase import Client
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 # Logger con fallback cloud-compatible
@@ -241,6 +238,11 @@ if not logger.handlers:
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
         logger.info("✅ Logging su stdout attivo (cloud mode)")
+
+
+def _escape_ilike(text: str) -> str:
+    """Escape caratteri speciali PostgreSQL ILIKE (% e _) per evitare match indesiderati."""
+    return text.replace('%', r'\%').replace('_', r'\_')
 
 
 # ============================================================
@@ -315,12 +317,11 @@ if st.query_params.get("reset_token"):
         user_data = check_result.data[0]
         
         # Check scadenza token
-        from datetime import datetime, timezone as tz
         expires_str = user_data.get('reset_expires')
         if expires_str:
             try:
                 expires = datetime.fromisoformat(expires_str.replace('Z', '+00:00'))
-                now_utc = datetime.now(tz.utc)
+                now_utc = datetime.now(timezone.utc)
                 
                 if now_utc > expires:
                     st.error("⏰ Link scaduto (validità: 24 ore)")
@@ -427,7 +428,6 @@ def verifica_codice_reset(email, code, new_password):
                 # Verifica scadenza
                 expires_str = user.get('reset_expires')
                 if expires_str:
-                    from datetime import datetime, timezone
                     try:
                         expires = datetime.fromisoformat(expires_str.replace('Z', '+00:00'))
                         if expires.tzinfo is None:
@@ -554,14 +554,7 @@ def mostra_pagina_login():
         </script>
     """, unsafe_allow_html=True)
     
-    st.markdown("""
-<h1 style="font-size: 52px; font-weight: 700; margin: 0; display: inline-block;">
-    🧠 <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;">Analisi Fatture AI</span>
-</h1>
-""", unsafe_allow_html=True)
+    render_oh_yeah_header()
     
     st.markdown("### Accedi al Sistema")
     
@@ -827,16 +820,17 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                     st.warning("⚠️ Configurazione account incompleta. Contatta l'assistenza per configurare il tuo ristorante.")
             
             # FALLBACK vecchio codice per compatibilità
-            if not st.session_state.get('user_is_admin', False):
+            # ⚠️ Solo se ristoranti NON è stato popolato dalle operazioni sopra
+            if not st.session_state.get('user_is_admin', False) and not st.session_state.get('ristoranti'):
                 piva = user.get('partita_iva')
                 nome = user.get('nome_ristorante')
                 
-                logger.warning(f"⚠️ Utente {user.get('email')} senza ristoranti in tabella")
+                logger.warning(f"⚠️ Utente {user.get('email')} senza ristoranti in tabella - fallback su dati users")
                 
                 # Imposta dati di fallback dalla tabella users
                 st.session_state.partita_iva = piva
                 st.session_state.nome_ristorante = nome
-            else:
+            elif st.session_state.get('user_is_admin', False) and not st.session_state.get('ristoranti'):
                 # Admin senza ristoranti nel sistema
                 logger.warning(f"⚠️ Admin senza ristoranti nel sistema")
     except Exception as e:
@@ -856,16 +850,16 @@ if st.session_state.get('impersonating', False):
     # Banner visibile quando l'admin sta impersonando un cliente
     st.markdown(f"""
     <div style="background: linear-gradient(135deg, #f59e0b 0%, #dc2626 100%); 
-                padding: 15px; 
+                padding: clamp(0.75rem, 2vw, 1rem); 
                 border-radius: 10px; 
-                margin-bottom: 20px; 
+                margin-bottom: 1.25rem; 
                 text-align: center;
                 border: 3px solid #dc2626;
                 box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-        <h3 style="color: white; margin: 0;">
+        <h3 style="color: white; margin: 0; font-size: clamp(1rem, 2.5vw, 1.25rem);">
             ⚠️ MODALITÀ IMPERSONAZIONE
         </h3>
-        <p style="color: #fef3c7; margin: 10px 0 0 0; font-size: 16px;">
+        <p style="color: #fef3c7; margin: 0.625rem 0 0 0; font-size: clamp(0.875rem, 2vw, 1rem); word-wrap: break-word;">
             Stai visualizzando l'account di: <strong>{user.get('nome_ristorante', 'Cliente')}</strong> ({user.get('email')})
         </p>
     </div>
@@ -929,18 +923,23 @@ render_sidebar(user)
 # HEADER
 # ============================================
 
+render_oh_yeah_header()
+
 st.markdown("""
-<h1 style="font-size: 52px; font-weight: 700; margin: 0; margin-top: 20px; display: inline-block;">
+<h2 style="font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 700; margin: 0; margin-top: 0.5rem;">
     🧠 <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;">Analisi Fatture AI</span>
-</h1>
+</h2>
+<div style='padding: 4px 14px 0; font-size: 0.88rem; color: #1e2a4a; font-weight: 500; margin-bottom: 1.5rem;'>
+    📄 <strong>Nota Legale:</strong> Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.
+</div>
 """, unsafe_allow_html=True)
 
 # Recupera email e nome ristorante intelligente
 user_email = (user.get('email') or user.get('Email') or user.get('user_email') or 
-              st.session_state.user_data.get('email') if st.session_state.user_data else None or 
+              (st.session_state.user_data.get('email') if st.session_state.user_data else None) or 
               'Email non disponibile')
 
 # 🎯 LOGICA INTELLIGENTE: Single vs Multi-Ristorante (usa dati già in sessione, zero query DB)
@@ -954,14 +953,7 @@ elif num_ristoranti == 1:
 else:
     nome_ristorante = "Multi-Ristorante"
 
-# Box informativo conservazione sostitutiva
-st.markdown("""
-<div style='background-color: #e7f3ff; padding: 12px; border-radius: 5px; border-left: 4px solid #2196F3;'>
-<p style='margin: 0; color: #014361; font-size: 14px;'>📄 <strong>Nota Legale:</strong> Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.</p>
-</div>
-""", unsafe_allow_html=True)
-
-st.markdown("---")
+# Nota legale spostata nel header accanto al titolo
 
 # ============================================
 # DROPDOWN MULTI-RISTORANTE
@@ -981,15 +973,25 @@ if user.get('email') not in ADMIN_EMAILS:
                 current_idx = idx
                 break
         
-        # Dropdown full-width
+        # Dropdown ristorante
         ristorante_idx = st.selectbox(
-            "🏪 Scegli quale ristorante vuoi gestire:",
+            "🏪 Scegli ristorante:",
             range(len(ristoranti)),
             index=current_idx,
-            format_func=lambda i: f"{ristoranti[i]['nome_ristorante']} - P.IVA: {ristoranti[i]['partita_iva']}",
+            format_func=lambda i: f"{ristoranti[i]['nome_ristorante']}",
             key="dropdown_ristorante_main",
             help="Seleziona il ristorante per cui vuoi caricare e analizzare fatture"
         )
+        
+        # Info ristorante sotto il dropdown, su tutta la larghezza
+        rag_soc = ristoranti[ristorante_idx].get('ragione_sociale') or 'N/A'
+        nome_r = ristoranti[ristorante_idx]['nome_ristorante']
+        piva_r = ristoranti[ristorante_idx]['partita_iva']
+        st.markdown(f"""
+        <div style='padding: 8px 14px; font-size: 0.88rem; color: #1e3a5f; font-weight: 500;'>
+            ✅ <strong>Attivo</strong> &nbsp;·&nbsp; 📋 {nome_r} &nbsp;·&nbsp; 🏢 IT{piva_r} &nbsp;·&nbsp; 📄 {rag_soc}
+        </div>
+        """, unsafe_allow_html=True)
         
         # Aggiorna sessione se cambiato
         selected_ristorante = ristoranti[ristorante_idx]
@@ -1007,27 +1009,11 @@ if user.get('email') not in ADMIN_EMAILS:
             logger.info(f"🔄 Ristorante cambiato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
             st.rerun()
         
-        # Info ristorante attivo - disposizione ORIZZONTALE con box azzurro standard
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.info(f"**✅ Ristorante Attivo**  \nSì")
-        
-        with col2:
-            st.info(f"**📋 Nome**  \n{selected_ristorante['nome_ristorante']}")
-        
-        with col3:
-            st.info(f"**🏢 P.IVA**  \n`{selected_ristorante['partita_iva']}`")
-        
-        with col4:
-            st.info(f"**📄 Ragione Sociale**  \n{selected_ristorante.get('ragione_sociale', 'N/A')}")
-        
-        st.warning("⚠️ **IMPORTANTE:** Le fatture caricate devono corrispondere alla P.IVA del ristorante selezionato sopra! **Altrimenti verranno scartate**")
         st.markdown("---")
     
     elif len(ristoranti) == 1:
         # Singolo ristorante: mostra solo info compatta
-        st.success(f"🏪 **Ristorante:** {ristoranti[0]['nome_ristorante']} | 📋 **P.IVA:** `{ristoranti[0]['partita_iva']}`")
+        st.success(f"🏪 **Ristorante:** {ristoranti[0]['nome_ristorante']} | 📋 **P.IVA:** `IT{ristoranti[0]['partita_iva']}`")
         st.markdown("---")
 
 # ============================================================
@@ -1151,10 +1137,6 @@ def mostra_statistiche(df_completo):
     # F&B: Escludi solo le categorie spese generali (NON i fornitori)
     df_food_completo = df_completo[~mask_spese].copy()
     
-    # Spazio sotto il box arancione
-    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-
-
     # ============================================
     # CATEGORIZZAZIONE AI
     # ============================================
@@ -1208,30 +1190,11 @@ def mostra_statistiche(df_completo):
         | (df_completo['Categoria'] == '')
     )
     
-    # Debug: cerca specificamente COPPETTA SANGO
-    if 'COPPETTA' in ' '.join(df_completo['Descrizione'].astype(str).str.upper().tolist()):
-        coppetta_rows = df_completo[df_completo['Descrizione'].str.contains('COPPETTA', case=False, na=False)]
-        if not coppetta_rows.empty:
-            logger.info(f"🔍 DEBUG: Trovata COPPETTA in df_completo ({len(coppetta_rows)} righe)")
-            for idx, row in coppetta_rows.iterrows():
-                cat = row['Categoria']
-                in_maschera = maschera_ai.loc[idx] if idx in maschera_ai.index else False
-                logger.info(f"   - '{row['Descrizione']}' cat='{cat}' in_maschera={in_maschera}")
-    
     # ============================================================
-    # LAYOUT: BOTTONE + TESTO INFORMATIVO
+    # CATEGORIZZAZIONE AI (triggerata dal bottone nella sezione upload)
     # ============================================================
-    col_btn, col_info = st.columns([1, 2])
-    
-    with col_btn:
-        # Bottone categorizzazione AI (disabilitato se nulla da classificare)
-        if st.button(
-            "🧠 Avvia AI per Categorizzare", 
-            use_container_width=True, 
-            type="secondary",  # ← GRIGIO
-            key="btn_ai_categorizza",
-            disabled=(righe_da_classificare == 0)
-        ):
+    if st.session_state.pop('trigger_ai_categorize', False):
+        if True:
             # Sopprimi i messaggi dell'uploader nel rerun successivo
             st.session_state.suppress_upload_messages_once = True
             # ============================================================
@@ -1306,29 +1269,29 @@ def mostra_statistiche(df_completo):
                     }
                     
                     .brain-pulse-banner {
-                        font-size: 60px;
+                        font-size: clamp(2.5rem, 6vw, 3.75rem);
                         animation: pulse_brain 1.5s ease-in-out infinite;
                         line-height: 1;
                     }
                     
                     .progress-percentage {
                         font-family: monospace;
-                        font-size: 32px;
+                        font-size: clamp(1.5rem, 4vw, 2rem);
                         font-weight: bold;
                         color: #FF69B4;
-                        min-width: 80px;
+                        min-width: 5rem;
                     }
                     
                     .progress-status {
                         color: #555;
-                        font-size: 18px;
+                        font-size: clamp(0.875rem, 2.5vw, 1.125rem);
                         font-weight: 500;
                     }
                     </style>
                     """, unsafe_allow_html=True)
                     
                     # 📖 STEP 1: Prima prova con DIZIONARIO (più veloce, più preciso)
-                    from services.ai_service import applica_correzioni_dizionario
+                    # applica_correzioni_dizionario già importata al top-level
                     
                     mappa_categorie = {}  # desc -> categoria
                     descrizioni_per_ai = []  # Solo quelle che dizionario non risolve
@@ -1413,19 +1376,15 @@ def mostra_statistiche(df_completo):
                         descrizioni_non_trovate = []
                         descrizioni_aggiornate = []  # Per icone AI: solo quelle realmente aggiornate
                         
-                        # Import normalizzazione
-                        from utils.text_utils import normalizza_stringa
+                        # normalizza_stringa già importata al top-level
                         
                         logger.info(f"🔄 INIZIO UPDATE: {len(mappa_categorie)} descrizioni da aggiornare")
                         
-                        # DEBUG: Log prime 5 categorie dall'AI per verificare che non siano vuote
-                        print("\n" + "="*80)
-                        print("🧠 CATEGORIE RESTITUITE DALL'AI (prime 10)")
-                        print("="*80)
+                        # DEBUG: Log prime 10 categorie dall'AI
+                        logger.info("🧠 CATEGORIE RESTITUITE DALL'AI (prime 10)")
                         for i, (desc, cat) in enumerate(list(mappa_categorie.items())[:10]):
                             cat_display = f"'{cat}'" if cat else "VUOTA/NULL"
-                            print(f"   [{i+1}] '{desc[:40]}' → {cat_display}")
-                        print("="*80 + "\n")
+                            logger.info(f"   [{i+1}] '{desc[:40]}' → {cat_display}")
                         
                         for desc, cat in mappa_categorie.items():
                             # Normalizza descrizione per matching consistente
@@ -1507,7 +1466,7 @@ def mostra_statistiche(df_completo):
                                     if num_aggiornate == 0 and len(desc.strip()) >= 5:
                                         query_update5 = supabase.table("fatture").update(
                                             {"categoria": cat}
-                                        ).eq("user_id", user_id).ilike("descrizione", f"%{desc.strip()[:30]}%")
+                                        ).eq("user_id", user_id).ilike("descrizione", f"%{_escape_ilike(desc.strip()[:30])}%")
                                         query_update5 = add_ristorante_filter(query_update5)
                                         result5 = query_update5.execute()
                                         num_aggiornate = len(result5.data) if result5.data else 0
@@ -1522,7 +1481,7 @@ def mostra_statistiche(df_completo):
                                 logger.error(f"❌ NESSUN MATCH per: '{desc}' (cat: {cat})")
                                 # Query diagnostica: cerca descrizioni simili
                                 try:
-                                    check_query = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id).ilike("descrizione", f"%{desc[:20]}%").limit(10)
+                                    check_query = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id).ilike("descrizione", f"%{_escape_ilike(desc[:20])}%").limit(10)
                                     check_query = add_ristorante_filter(check_query)
                                     check = check_query.execute()
                                     if check.data:
@@ -1552,8 +1511,7 @@ def mostra_statistiche(df_completo):
                                 if len(ancora_da_class) > 0:
                                     logger.info(f"🔧 FALLBACK: Tentando categorizzazione con dizionario per {len(ancora_da_class)} prodotti rimasti...")
                                     
-                                    # Importa funzione dizionario
-                                    from services.ai_service import applica_correzioni_dizionario
+                                    # applica_correzioni_dizionario già importata al top-level
                                     
                                     for desc in ancora_da_class:
                                         # Tenta match con dizionario
@@ -1565,7 +1523,7 @@ def mostra_statistiche(df_completo):
                                                 ristorante_id = st.session_state.get('ristorante_id')
                                                 query_fallback = supabase.table('fatture').update(
                                                     {'categoria': cat_dizionario}
-                                                ).eq('user_id', user_id).ilike('descrizione', f'%{desc.strip()}%')
+                                                ).eq('user_id', user_id).ilike('descrizione', f'%{_escape_ilike(desc.strip())}%')
                                                 if ristorante_id:
                                                     query_fallback = query_fallback.eq('ristorante_id', ristorante_id)
                                                 righe_updated = query_fallback.execute()
@@ -1649,42 +1607,9 @@ def mostra_statistiche(df_completo):
         st.session_state.force_empty_until_upload = False
         st.stop()
     
-    with col_info:
-        # ============================================================
-        # BOX INFO CON ALTEZZA FISSA = ALTEZZA BOTTONE (38px)
-        # ============================================================
-        if righe_da_classificare == 0:
-            st.markdown("""
-            <div style="
-                background-color: #d4edda;
-                border-left: 4px solid #28a745;
-                padding: 0px 15px;
-                border-radius: 4px;
-                height: 38px;
-                display: flex;
-                align-items: center;
-                margin-top: 0px;
-            ">
-                <span style="color: #155724; font-weight: 600; font-size: 14px;">✅ NON CI SONO prodotti da categorizzare</span>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            # Mostra SOLO i prodotti distinti (quello che vede nella tabella)
-            st.markdown(f"""
-            <div style="
-                background-color: #fff3cd;
-                border-left: 4px solid #ffc107;
-                padding: 0px 15px;
-                border-radius: 4px;
-                height: 38px;
-                display: flex;
-                align-items: center;
-                margin-top: 0px;
-            ">
-                <span style="color: #856404; font-weight: 600; font-size: 14px;">⚠️ CI SONO {righe_da_classificare} righe da categorizzare ({prodotti_unici_da_classificare} prodotti unici)</span>
-            </div>
-            """, unsafe_allow_html=True)
-    
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown("---")
+
     # ============================================
     # FILTRO DROPDOWN PERIODO
     # ============================================
@@ -1712,14 +1637,17 @@ def mostra_statistiche(df_completo):
     if 'periodo_dropdown' not in st.session_state:
         st.session_state.periodo_dropdown = "📅 Mese in Corso"
     
-    # Selectbox
-    periodo_selezionato = st.selectbox(
-        "Periodo",
-        options=periodo_options,
-        label_visibility="collapsed",
-        index=periodo_options.index(st.session_state.periodo_dropdown) if st.session_state.periodo_dropdown in periodo_options else 0,
-        key="filtro_periodo_main"
-    )
+    # Layout: selectbox + info box sulla stessa riga
+    col_periodo, col_info_periodo = st.columns([1, 4])
+    
+    with col_periodo:
+        periodo_selezionato = st.selectbox(
+            "Periodo",
+            options=periodo_options,
+            label_visibility="collapsed",
+            index=periodo_options.index(st.session_state.periodo_dropdown) if st.session_state.periodo_dropdown in periodo_options else 0,
+            key="filtro_periodo_main"
+        )
     
     # Aggiorna session state
     st.session_state.periodo_dropdown = periodo_selezionato
@@ -1816,93 +1744,95 @@ def mostra_statistiche(df_completo):
     df_completo_filtrato = df_completo[mask_completo]
     num_doc_filtrati = df_completo_filtrato['FileOrigine'].nunique()
     
-    # Mostra info periodo con box ben visibile (stile simile ai box blu)
+    # Mostra info periodo nel box accanto al selettore
     info_testo = f"🗓️ {label_periodo} ({giorni} giorni) | 🍽️ Righe F&B: {len(df_food):,} | 📊 Righe Totali: {num_righe_totali_df:,} | 📄 Fatture: {num_doc_filtrati} di {num_fatture_totali_df}"
-    st.markdown(f"""
-    <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); 
-                padding: 20px 25px; 
-                border-radius: 12px; 
-                border: 3px solid #f59e0b;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                margin-bottom: 20px;
-                font-size: 15px;
-                font-weight: 500;
-                line-height: 1.8;
-                transition: all 0.3s ease;">
-        {info_testo}
-    </div>
-    """, unsafe_allow_html=True)
+    with col_info_periodo:
+        st.markdown(f"""
+        <div style="margin-top: 0; background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%); 
+                    padding: 10px 16px; 
+                    border-radius: 8px; 
+                    border: 1px solid #93c5fd;
+                    font-size: clamp(0.78rem, 1.8vw, 0.88rem);
+                    font-weight: 500;
+                    line-height: 1.5;
+                    word-wrap: break-word;">
+            {info_testo}
+        </div>
+        """, unsafe_allow_html=True)
     
     if df_food.empty and df_spese_generali.empty:
         st.warning("⚠️ Nessuna fattura nel periodo selezionato")
         st.stop()
-    
-    st.markdown("---")
 
     # Calcola variabili per i KPI
     spesa_fb = df_food['TotaleRiga'].sum()
     spesa_generale = df_spese_generali['TotaleRiga'].sum()
     num_fornitori = df_food['Fornitore'].nunique()
     
-    # Layout 5 colonne per i KPI - Stile minimal
+    # Layout 5 colonne per i KPI - Stile Workspace
     col1, col2, col3, col4, col5 = st.columns(5)
 
     # Calcola spesa totale
     spesa_totale = spesa_fb + spesa_generale
+    
+    # Calcola spesa media mensile
+    mesi_periodo = len(pd.to_datetime(df_completo['DataDocumento']).dt.to_period('M').unique())
+    spesa_media = spesa_totale / mesi_periodo if mesi_periodo > 0 else 0
+    
+    # CSS per KPI - Stile identico a Calcolo Marginalità
+    st.markdown("""
+    <style>
+    .kpi-card {
+        background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
+        padding: clamp(0.75rem, 2vw, 1.25rem);
+        border-radius: 12px;
+        border: 1px solid rgba(206, 212, 218, 0.5);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
+        backdrop-filter: blur(10px);
+        text-align: center;
+    }
+    .kpi-card .kpi-label {
+        color: #2563eb;
+        font-weight: 600;
+        font-size: clamp(0.7rem, 1.6vw, 0.85rem);
+        margin-bottom: 6px;
+        line-height: 1.3;
+    }
+    .kpi-card .kpi-value {
+        color: #1e40af;
+        font-size: clamp(1.3rem, 3.5vw, 1.75rem);
+        font-weight: 700;
+        white-space: nowrap;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    def _fmt_kpi_main(val):
+        segno = "-" if val < 0 else ""
+        return f"{segno}€{abs(val):,.0f}".replace(",", ".")
+
+    def _kpi_html(label, value):
+        return f"""
+        <div class="kpi-card">
+            <div class="kpi-label">{label}</div>
+            <div class="kpi-value">{value}</div>
+        </div>
+        """
 
     with col1:
-        st.markdown("""
-        <div style="background: #f8f9fa; border-left: 4px solid #667eea;
-                    padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
-                    height: 130px; display: flex; flex-direction: column; justify-content: center;">
-            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">💰 Spesa Totale (F&B + Spese Generali)</p>
-            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">€ """ + f"{spesa_totale:.2f}" + """</h2>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(_kpi_html("💰 Spesa Totale", _fmt_kpi_main(spesa_totale)), unsafe_allow_html=True)
 
     with col2:
-        st.markdown("""
-        <div style="background: #f8f9fa; border-left: 4px solid #f093fb;
-                    padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
-                    height: 130px; display: flex; flex-direction: column; justify-content: center;">
-            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">🔥 Spesa F&B</p>
-            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">€ """ + f"{spesa_fb:.2f}" + """</h2>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(_kpi_html("🔥 Spesa F&B", _fmt_kpi_main(spesa_fb)), unsafe_allow_html=True)
 
     with col3:
-        st.markdown("""
-        <div style="background: #f8f9fa; border-left: 4px solid #43e97b;
-                    padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
-                    height: 130px; display: flex; flex-direction: column; justify-content: center;">
-            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">🏪 N. Fornitori Analizzati F&B</p>
-            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">""" + str(num_fornitori) + """</h2>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(_kpi_html("🏪 Fornitori F&B", str(num_fornitori)), unsafe_allow_html=True)
 
     with col4:
-        st.markdown("""
-        <div style="background: #f8f9fa; border-left: 4px solid #4facfe;
-                    padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
-                    height: 130px; display: flex; flex-direction: column; justify-content: center;">
-            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">🛒 Spesa Generale</p>
-            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">€ """ + f"{spesa_generale:.2f}" + """</h2>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(_kpi_html("🛒 Spesa Generale", _fmt_kpi_main(spesa_generale)), unsafe_allow_html=True)
 
     with col5:
-        # Calcola spesa media mensile
-        mesi_periodo = len(pd.to_datetime(df_completo['DataDocumento']).dt.to_period('M').unique())
-        spesa_media = spesa_totale / mesi_periodo if mesi_periodo > 0 else 0
-        
-        st.markdown("""
-        <div style="background: #f8f9fa; border-left: 4px solid #fa709a;
-                    padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); 
-                    height: 130px; display: flex; flex-direction: column; justify-content: center;">
-            <p style="font-size: 13px; margin: 0; color: #666; font-weight: 500;">📊 Spesa Media Mensile (F&B + Spese Generali)</p>
-            <h2 style="font-size: 32px; margin: 8px 0 0 0; font-weight: bold; color: #1a1a1a;">€ """ + f"{spesa_media:.2f}" + """</h2>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(_kpi_html("📊 Media Mensile", _fmt_kpi_main(spesa_media)), unsafe_allow_html=True)
 
     st.markdown("---")
     
@@ -1969,6 +1899,18 @@ def mostra_statistiche(df_completo):
     # CSS per bottoni colorati personalizzati
     st.markdown("""
         <style>
+        /* Stile globale per tutti i pulsanti primary - azzurro invece di rosso */
+        button[kind="primary"] {
+            background-color: #0ea5e9 !important;
+            color: white !important;
+            border: 2px solid #0284c7 !important;
+            font-weight: bold !important;
+        }
+        button[kind="primary"]:hover {
+            background-color: #0284c7 !important;
+            border-color: #0369a1 !important;
+        }
+        
         div[data-testid="column"] button[kind="secondary"] {
             background-color: #f0f2f6 !important;
             color: #31333F !important;
@@ -1984,6 +1926,18 @@ def mostra_statistiche(df_completo):
             border: 2px solid #0284c7 !important;
             font-weight: bold !important;
         }
+        /* Responsive button text */
+        div[data-testid="column"] button p {
+            font-size: clamp(0.7rem, 1.8vw, 0.95rem) !important;
+            line-height: 1.3 !important;
+            word-wrap: break-word !important;
+            white-space: normal !important;
+            overflow-wrap: break-word !important;
+        }
+        div[data-testid="column"] button {
+            padding: 0.5rem 0.25rem !important;
+            min-height: 3rem !important;
+        }
         </style>
     """, unsafe_allow_html=True)
     
@@ -1995,10 +1949,10 @@ def mostra_statistiche(df_completo):
     # SEZIONE 1: DETTAGLIO ARTICOLI
     # ========================================================
     if st.session_state.sezione_attiva == "dettaglio":
-        # Placeholder se dataset mancanti/vuoti
+        # Placeholder se dataset mancanti/vuoti (guard difensivo, st.stop() sopra copre il caso normale)
         if ('df_completo_filtrato' not in locals()) or ('df_food' not in locals()) or ('df_spese_generali' not in locals()) or df_completo_filtrato.empty:
             st.info("📊 Nessun dato disponibile. Carica le tue prime fatture!")
-
+            st.stop()
 
         
         # 📦 SEZIONE DETTAGLIO ARTICOLI
@@ -2428,12 +2382,12 @@ def mostra_statistiche(df_completo):
                 background-color: #28a745 !important;
                 color: white !important;
                 font-weight: 600 !important;
-                font-size: 13px !important;
+                font-size: clamp(0.7rem, 1.6vw, 0.8rem) !important;
                 border-radius: 6px !important;
                 border: none !important;
-                width: 140px !important;
-                height: 38px !important;
-                padding: 0 !important;
+                min-width: 8rem !important;
+                min-height: 2.5rem !important;
+                padding: 0.5rem !important;
             }
             [data-testid="stDownloadButton"] button:hover {
                 background-color: #218838 !important;
@@ -2490,8 +2444,8 @@ def mostra_statistiche(df_completo):
         with col_box:
             # Box blu con statistiche
             st.markdown(f"""
-            <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+            <div style="background-color: #E3F2FD; padding: clamp(0.75rem, 2vw, 1rem) clamp(1rem, 2.5vw, 1.25rem); border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 1.25rem; width: fit-content;">
+                <p style="color: #1565C0; font-size: clamp(0.875rem, 2vw, 1rem); font-weight: bold; margin: 0; white-space: normal; word-wrap: break-word; line-height: 1.4;">
                     📋 N. Righe: {num_righe:,} | 💰 Totale: € {totale_tabella:.2f}
                 </p>
             </div>
@@ -2499,7 +2453,7 @@ def mostra_statistiche(df_completo):
         
         with col_ord:
             # Selettore ordinamento affiancato al box blu
-            st.markdown('<p style="margin-top: 8px; font-size: 14px; font-weight: 500;">Seleziona ordinamento per export</p>', unsafe_allow_html=True)
+            st.markdown('<p style="margin-top: 0.5rem; font-size: clamp(0.75rem, 1.8vw, 0.875rem); font-weight: 500;">Seleziona ordinamento per export</p>', unsafe_allow_html=True)
             ordina_per = st.selectbox(
                 "ord",
                 options=["DataDocumento", "Categoria", "Fornitore", "Descrizione", "TotaleRiga"],
@@ -2708,7 +2662,6 @@ def mostra_statistiche(df_completo):
                                     logger.info(f"🔄 BATCH UPDATE: '{descrizione}' {vecchia_cat} → {nuova_cat}")
                                 
                                 # 🔍 DIAGNOSI: Log dettagliato descrizione per debug
-                                from utils.text_utils import normalizza_stringa
                                 desc_normalized = normalizza_stringa(descrizione)
                                 logger.info(f"🔍 DEBUG UPDATE:")
                                 logger.info(f"   📝 Descrizione raw (edited_df): '{descrizione}'")
@@ -2742,7 +2695,7 @@ def mostra_statistiche(df_completo):
                                             pattern_search = "%".join(parole)
                                             check_query = supabase.table("fatture").select("descrizione, categoria").eq(
                                                 "user_id", user_id
-                                            ).ilike("descrizione", f"%{pattern_search}%").limit(5)
+                                            ).ilike("descrizione", f"%{_escape_ilike(pattern_search)}%").limit(5)
                                             check_query = add_ristorante_filter(check_query)
                                             check = check_query.execute()
                                             
@@ -2925,12 +2878,12 @@ def mostra_statistiche(df_completo):
                         background-color: #28a745 !important;
                         color: white !important;
                         font-weight: 600 !important;
-                        font-size: 13px !important;
+                        font-size: clamp(0.7rem, 1.6vw, 0.8rem) !important;
                         border-radius: 6px !important;
                         border: none !important;
-                        width: 140px !important;
-                        height: 38px !important;
-                        padding: 0 !important;
+                        min-width: 8rem !important;
+                        min-height: 2.5rem !important;
+                        padding: 0.5rem !important;
                     }
                     [data-testid="stDownloadButton"] button:hover {
                         background-color: #218838 !important;
@@ -2986,16 +2939,16 @@ def mostra_statistiche(df_completo):
                 <div style="
                     background-color: #fff5f0;
                     border-left: 4px solid #dc3545;
-                    padding: 15px;
+                    padding: clamp(0.75rem, 2vw, 1rem);
                     border-radius: 5px;
-                    min-height: 130px;
+                    min-height: 8rem;
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
                 ">
-                    <div style="font-size: 14px; color: #666; font-weight: 500;">Sconti Applicati</div>
-                    <div style="font-size: 28px; font-weight: bold; margin: 8px 0; color: #dc3545;">€{:.2f}</div>
-                    <div style="font-size: 13px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{} prodotti scontati</div>
+                    <div style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); color: #666; font-weight: 500; word-wrap: break-word;">Sconti Applicati</div>
+                    <div style="font-size: clamp(1.25rem, 3.5vw, 1.75rem); font-weight: bold; margin: 0.5rem 0; color: #dc3545; word-wrap: break-word;">€{:.2f}</div>
+                    <div style="font-size: clamp(0.7rem, 1.6vw, 0.8rem); color: #999; white-space: normal; word-wrap: break-word; line-height: 1.2;">{} prodotti scontati</div>
                 </div>
                 """.format(importo_sconti, len(df_sconti)), 
                 unsafe_allow_html=True)
@@ -3006,16 +2959,16 @@ def mostra_statistiche(df_completo):
                 <div style="
                     background-color: #f0f8ff;
                     border-left: 4px solid #0d6efd;
-                    padding: 15px;
+                    padding: clamp(0.75rem, 2vw, 1rem);
                     border-radius: 5px;
-                    min-height: 130px;
+                    min-height: 8rem;
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
                 ">
-                    <div style="font-size: 14px; color: #666; font-weight: 500;">Omaggi Ricevuti</div>
-                    <div style="font-size: 28px; font-weight: bold; margin: 8px 0; color: #0d6efd;">€{:.2f}</div>
-                    <div style="font-size: 13px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{} prodotti omaggio (valore stimato)</div>
+                    <div style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); color: #666; font-weight: 500; word-wrap: break-word;">Omaggi Ricevuti</div>
+                    <div style="font-size: clamp(1.25rem, 3.5vw, 1.75rem); font-weight: bold; margin: 0.5rem 0; color: #0d6efd; word-wrap: break-word;">€{:.2f}</div>
+                    <div style="font-size: clamp(0.7rem, 1.6vw, 0.8rem); color: #999; white-space: normal; word-wrap: break-word; line-height: 1.2;">{} prodotti omaggio (valore stimato)</div>
                 </div>
                 """.format(valore_omaggi if valore_omaggi > 0 else 0.0, len(df_omaggi)), 
                 unsafe_allow_html=True)
@@ -3025,16 +2978,16 @@ def mostra_statistiche(df_completo):
                 <div style="
                     background-color: #f0fff0;
                     border-left: 4px solid #28a745;
-                    padding: 15px;
+                    padding: clamp(0.75rem, 2vw, 1rem);
                     border-radius: 5px;
-                    min-height: 130px;
+                    min-height: 8rem;
                     display: flex;
                     flex-direction: column;
                     justify-content: space-between;
                 ">
-                    <div style="font-size: 14px; color: #666; font-weight: 500;">Totale Risparmiato</div>
-                    <div style="font-size: 24px; font-weight: bold; margin: 8px 0; color: #28a745;">€{:.2f}</div>
-                    <div style="font-size: 12px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{}">{}</div>
+                    <div style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); color: #666; font-weight: 500; word-wrap: break-word;">Totale Risparmiato</div>
+                    <div style="font-size: clamp(1.125rem, 3vw, 1.5rem); font-weight: bold; margin: 0.5rem 0; color: #28a745; word-wrap: break-word;">€{:.2f}</div>
+                    <div style="font-size: clamp(0.65rem, 1.5vw, 0.75rem); color: #999; white-space: normal; word-wrap: break-word; line-height: 1.2;" title="{}">{}</div>
                 </div>
                 """.format(totale_risparmiato if totale_risparmiato > 0 else 0, label_periodo, label_periodo), 
                 unsafe_allow_html=True)
@@ -3176,11 +3129,12 @@ def mostra_statistiche(df_completo):
                             else:
                                 data_inizio_str = str(data_inizio_filtro)
                             
-                            debug_response = supabase.table('fatture')\
+                            debug_query = supabase.table('fatture')\
                                 .select('id, descrizione, categoria, prezzo_unitario')\
                                 .eq('user_id', user_id)\
-                                .gte('data_documento', data_inizio_str)\
-                                .execute()
+                                .gte('data_documento', data_inizio_str)
+                            debug_query = add_ristorante_filter(debug_query)
+                            debug_response = debug_query.execute()
                             
                             if debug_response.data:
                                 df_debug = pd.DataFrame(debug_response.data)
@@ -3875,23 +3829,23 @@ st.markdown("""
         font-weight: bold !important;
     }
     .file-status-table td {
-        padding: 12px 10px !important;
+        padding: clamp(0.625rem, 1.5vw, 0.75rem) clamp(0.5rem, 1.2vw, 0.625rem) !important;
         border-bottom: 1px solid #eee;
-        font-size: 16px !important;
+        font-size: clamp(0.875rem, 2vw, 1rem) !important;
     }
     
-    [data-testid="stMetricValue"] > div { font-size: 48px !important; font-weight: bold !important; }
-    [data-testid="stMetricLabel"] > div { font-size: 22px !important; font-weight: 600 !important; }
+    [data-testid="stMetricValue"] > div { font-size: clamp(2rem, 5vw, 3rem) !important; font-weight: bold !important; }
+    [data-testid="stMetricLabel"] > div { font-size: clamp(1rem, 2.5vw, 1.375rem) !important; font-weight: 600 !important; }
     [data-testid="stMetric"] {
         background: linear-gradient(135deg, #f0f4f8 0%, #e1e8ed 100%) !important;
         border: 4px solid #cbd5e0 !important;
         border-radius: 20px !important;
-        padding: 30px 20px !important;
+        padding: clamp(1.25rem, 3vw, 1.875rem) clamp(1rem, 2.5vw, 1.25rem) !important;
         box-shadow: 0 6px 12px rgba(0,0,0,0.15) !important;
         transition: all 0.3s ease !important;
     }
     [data-testid="stMetric"]:hover {
-        transform: translateY(-8px) !important;
+        transform: translateY(-0.5rem) !important;
         box-shadow: 0 12px 24px rgba(0,0,0,0.2) !important;
     }
     
@@ -3945,20 +3899,48 @@ except (KeyError, TypeError, AttributeError):
     st.error("⚠️ Sessione invalida. Effettua nuovamente il login.")
     st.rerun()
 
+# ⚡ SINGLE DATA LOAD: Carica una sola volta, riusa per Gestione Fatture + Dashboard
+force_refresh = st.session_state.get('force_reload', False)
+if force_refresh:
+    st.session_state.force_reload = False
+    logger.info("🔄 FORCE RELOAD attivato dopo categorizzazione AI")
 
 with st.spinner("⏳ Caricamento dati..."):
-    df_cache = carica_e_prepara_dataframe(user_id)
+    df_cache = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh)
 
 
 # 🗂️ GESTIONE FATTURE - Eliminazione (prima del file uploader)
 if not df_cache.empty:
-    with st.expander("🗂️ Gestione Fatture Caricate (Elimina)", expanded=False):
+    st.markdown("""
+    <style>
+    /* Expander Gestione Fatture - sfondo arancione chiaro */
+    div.st-key-expander_gestione_fatture [data-testid="stExpander"] details summary {
+        background: linear-gradient(135deg, rgba(255, 237, 213, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%) !important;
+        border-radius: 8px !important;
+        padding: 10px 14px !important;
+        color: #9a3412 !important;
+        font-weight: 600 !important;
+        border: 1px solid #fdba74 !important;
+    }
+    div.st-key-expander_gestione_fatture [data-testid="stExpander"] details {
+        background: rgba(255, 247, 237, 0.9) !important;
+        border: 1px solid #fdba74 !important;
+        border-radius: 8px !important;
+    }
+    div.st-key-expander_gestione_fatture [data-testid="stExpander"] details[open] summary {
+        border-bottom: 1px solid #fdba74 !important;
+        border-radius: 8px 8px 0 0 !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    with st.container(key="expander_gestione_fatture"):
+      with st.expander("🗂️ Gestione Fatture Caricate (Elimina)", expanded=False):
         
         # ========================================
         # BOX STATISTICHE
         # ========================================
         try:
-            stats_db = get_fatture_stats(user_id)
+            stats_db = get_fatture_stats(user_id, st.session_state.get('ristorante_id'))
         except Exception as e:
             logger.error(f"Errore get_fatture_stats: {e}")
             st.error("❌ Errore caricamento statistiche")
@@ -4155,6 +4137,11 @@ if not df_cache.empty:
         
         st.caption("⚠️ L'eliminazione è immediata e irreversibile")
 
+    st.markdown("""
+    <div style='padding: 8px 14px; font-size: 0.88rem; color: #9a3412; font-weight: 500;'>
+        ⚠️ <strong>IMPORTANTE:</strong> Le fatture caricate devono corrispondere alla P.IVA del ristorante selezionato sopra! <strong>Altrimenti verranno scartate</strong>
+    </div>
+    """, unsafe_allow_html=True)
 
 
 # === GESTIONE VISIBILITÀ UPLOADER ===
@@ -4190,7 +4177,7 @@ else:
         st.stop()
     
     try:
-        stats_db = get_fatture_stats(user_id)
+        stats_db = get_fatture_stats(user_id, st.session_state.get('ristorante_id'))
         righe_totali = stats_db['num_righe']
     except Exception as e:
         logger.error(f"Errore stats durante controllo limite: {e}")
@@ -4228,7 +4215,7 @@ else:
             selected_idx = st.selectbox(
                 "Seleziona ristorante per caricare fatture:",
                 range(len(ristoranti_admin)),
-                format_func=lambda i: f"🏪 {ristoranti_admin[i]['nome_ristorante']} - P.IVA: {ristoranti_admin[i]['partita_iva']}",
+                format_func=lambda i: f"🏪 {ristoranti_admin[i]['nome_ristorante']} - P.IVA: IT{ristoranti_admin[i]['partita_iva']}",
                 index=current_idx,
                 key="admin_ristorante_selector"
             )
@@ -4242,19 +4229,136 @@ else:
                 logger.info(f"👨‍💼 Admin: ristorante cambiato a {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
                 st.rerun()
             
-            st.info(f"📌 Le fatture saranno caricate per: **{st.session_state.nome_ristorante}** (P.IVA: {st.session_state.partita_iva})")
+            st.info(f"📌 Le fatture saranno caricate per: **{st.session_state.nome_ristorante}** (P.IVA: IT{st.session_state.partita_iva})")
             st.markdown("---")
         else:
             st.error("⚠️ Nessun ristorante disponibile nel sistema. Crea almeno un cliente prima di caricare fatture.")
             st.stop()
     
-    uploaded_files = st.file_uploader(
-        "Carica file XML, PDF o Immagini",
-        accept_multiple_files=True,
-        type=['xml', 'pdf', 'jpg', 'jpeg', 'png'],
-        label_visibility="collapsed",
-        key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"  # Chiave dinamica per reset
-    )
+    # ============================================================
+    # PRE-COMPUTE: Conta righe da categorizzare per UI
+    # ============================================================
+    _righe_da_class_ui = 0
+    _prodotti_unici_ui = 0
+    try:
+        _uid = st.session_state.user_data["id"]
+        _rid = st.session_state.get('ristorante_id')
+        _q1 = supabase.table("fatture").select("id", count="exact").eq("user_id", _uid).eq("categoria", "Da Classificare")
+        _q2 = supabase.table("fatture").select("id", count="exact").eq("user_id", _uid).is_("categoria", "null")
+        if _rid:
+            _q1 = _q1.eq("ristorante_id", _rid)
+            _q2 = _q2.eq("ristorante_id", _rid)
+        _r1 = _q1.execute()
+        _r2 = _q2.execute()
+        _righe_da_class_ui = (_r1.count or 0) + (_r2.count or 0)
+        _q3 = supabase.table("fatture").select("descrizione").eq("user_id", _uid).eq("categoria", "Da Classificare")
+        _q4 = supabase.table("fatture").select("descrizione").eq("user_id", _uid).is_("categoria", "null")
+        if _rid:
+            _q3 = _q3.eq("ristorante_id", _rid)
+            _q4 = _q4.eq("ristorante_id", _rid)
+        _r3 = _q3.execute()
+        _r4 = _q4.execute()
+        _descs = set()
+        if _r3.data:
+            _descs.update([r['descrizione'] for r in _r3.data if r.get('descrizione')])
+        if _r4.data:
+            _descs.update([r['descrizione'] for r in _r4.data if r.get('descrizione')])
+        _prodotti_unici_ui = len(_descs)
+    except Exception:
+        pass
+
+    # ============================================================
+    # LAYOUT: FILE UPLOADER + AI INFO/BUTTON AFFIANCATI
+    # ============================================================
+    
+    # CSS globale per compattare il file uploader e inserire testo italiano
+    st.markdown("""
+    <style>
+    /* Compatta altezza drop zone */
+    [data-testid="stFileUploaderDropzone"] {
+        padding: 8px 15px !important;
+        min-height: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        gap: 12px !important;
+    }
+    /* Nascondi testo originale inglese "Drag and drop" + limit */
+    [data-testid="stFileUploaderDropzoneInstructions"] {
+        visibility: hidden !important;
+        position: absolute !important;
+        width: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
+    }
+    /* Traduci bottone Browse files → Sfoglia */
+    [data-testid="stFileUploaderDropzone"] button {
+        font-size: 0 !important;
+        padding: 6px 16px !important;
+        min-height: 0 !important;
+        flex-shrink: 0 !important;
+    }
+    [data-testid="stFileUploaderDropzone"] button::after {
+        content: "Sfoglia" !important;
+        font-size: 0.85rem !important;
+    }
+    /* Testo italiano dentro la dropzone via ::after */
+    [data-testid="stFileUploaderDropzone"]::after {
+        content: "📂 Trascina file qui o clicca Sfoglia  ·  XML, PDF, JPG, JPEG, PNG · Max 200MB" !important;
+        font-size: 0.78rem !important;
+        color: #666 !important;
+        white-space: nowrap !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    col_upload, col_ai_right = st.columns([3, 2])
+
+    with col_upload:
+        uploaded_files = st.file_uploader(
+            "Carica file",
+            accept_multiple_files=True,
+            type=['xml', 'pdf', 'jpg', 'jpeg', 'png'],
+            label_visibility="collapsed",
+            key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"
+        )
+
+    with col_ai_right:
+        # Spazio per allinearsi con la dropzone (file_uploader collapsed label riserva ~22px)
+        st.markdown("<div style='margin-top: 34px;'></div>", unsafe_allow_html=True)
+        if _righe_da_class_ui == 0:
+            st.markdown("""
+            <div style="
+                background-color: #d4edda;
+                border-left: 4px solid #28a745;
+                padding: 10px 14px;
+                border-radius: 4px;
+                margin-bottom: 8px;
+            ">
+                <span style="color: #155724; font-weight: 600; font-size: 0.85rem;">✅ Nessun prodotto da categorizzare</span>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div style="
+                background-color: #fff3cd;
+                border-left: 4px solid #ffc107;
+                padding: 10px 14px;
+                border-radius: 4px;
+                margin-bottom: 8px;
+            ">
+                <span style="color: #856404; font-weight: 600; font-size: 0.85rem;">⚠️ {_righe_da_class_ui} righe da categorizzare ({_prodotti_unici_ui} prodotti unici)</span>
+            </div>
+            """, unsafe_allow_html=True)
+
+        if st.button(
+            "🧠 Avvia AI per Categorizzare",
+            use_container_width=True,
+            type="primary",
+            key="btn_ai_categorizza_upload",
+            disabled=(_righe_da_class_ui == 0)
+        ):
+            st.session_state.trigger_ai_categorize = True
+            st.rerun()
     
     # 🧠 RESET ICONE AI al nuovo caricamento (solo session_state, niente DB)
     if uploaded_files and len(uploaded_files) > 0:
@@ -4883,7 +4987,7 @@ if uploaded_files:
 
 
 # 🔥 CARICA E MOSTRA STATISTICHE SEMPRE (da Supabase)
-# 🔒 IMPORTANTE: user_id per cache isolata (multi-tenancy)
+# ⚡ RIUSA df_cache caricato sopra (evita doppia query DB)
 
 
 # Crea placeholder per loading
@@ -4894,13 +4998,8 @@ try:
     # Mostra animazione AI durante caricamento
     mostra_loading_ai(loading_placeholder, "Caricamento Dashboard AI")
     
-    # Carica dati (con force_refresh se richiesto dopo categorizzazione AI)
-    user_id = st.session_state.user_data["id"]
-    force_refresh = st.session_state.get('force_reload', False)
-    if force_refresh:
-        st.session_state.force_reload = False  # Reset flag
-        logger.info("🔄 FORCE RELOAD attivato dopo categorizzazione AI")
-    df_completo = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh)
+    # Riusa dati già caricati (df_cache) - evita seconda chiamata a carica_e_prepara_dataframe
+    df_completo = df_cache
     
     loading_placeholder.empty()
     

@@ -606,8 +606,6 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None) -> Dict[str, Any]:
     Returns:
         dict: {"success": bool, "error": str, "righe_eliminate": int, "fatture_eliminate": int}
     """
-    import time
-    
     if supabase_client is None:
         try:
             from services import get_supabase_client
@@ -769,13 +767,14 @@ def audit_data_consistency(user_id: str, context: str = "unknown", supabase_clie
         return result
 
 
-def get_fatture_stats(user_id: str, supabase_client=None) -> Dict[str, Any]:
+@st.cache_data(ttl=60, show_spinner=False)
+def get_fatture_stats(user_id: str, ristorante_id: str = None) -> Dict[str, Any]:
     """
-    Ottiene statistiche fatture da Supabase.
+    Ottiene statistiche fatture da Supabase (cachate 60s).
     
     Args:
         user_id: ID utente per filtro multi-tenancy
-        supabase_client: Client Supabase (opzionale, usa st.secrets se None)
+        ristorante_id: ID ristorante (opzionale)
     
     Returns:
         dict con:
@@ -783,20 +782,18 @@ def get_fatture_stats(user_id: str, supabase_client=None) -> Dict[str, Any]:
         - num_righe: Numero totale righe/prodotti
         - success: bool (True se query riuscita)
     """
-    if supabase_client is None:
-        try:
-            from services import get_supabase_client
-            supabase_client = get_supabase_client()
-        except Exception as e:
-            logger.error(f"❌ Impossibile inizializzare Supabase: {e}")
-            return {"num_uniche": 0, "num_righe": 0, "success": False}
+    try:
+        from services import get_supabase_client
+        supabase_client = get_supabase_client()
+    except Exception as e:
+        logger.error(f"❌ Impossibile inizializzare Supabase: {e}")
+        return {"num_uniche": 0, "num_righe": 0, "success": False}
     
     try:
         file_unici_set = set()
         total_rows = 0
         page = 0
         page_size = 1000
-        ristorante_id = st.session_state.get('ristorante_id') if 'session_state' in dir(st) else None
         
         while True:
             offset = page * page_size
@@ -836,5 +833,9 @@ __all__ = [
     'carica_e_prepara_dataframe',
     'ricalcola_prezzi_con_sconti',
     'calcola_alert',
-    'carica_sconti_e_omaggi'
+    'carica_sconti_e_omaggi',
+    'elimina_fattura_completa',
+    'elimina_tutte_fatture',
+    'audit_data_consistency',
+    'get_fatture_stats',
 ]

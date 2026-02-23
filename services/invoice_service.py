@@ -140,7 +140,6 @@ def estrai_dati_da_xml(file_caricato):
         # Import services solo quando necessario per evitare circular imports
         from services.ai_service import (
             carica_memoria_completa,
-            carica_memoria_ai,
             categorizza_con_memoria
         )
         
@@ -214,8 +213,6 @@ def estrai_dati_da_xml(file_caricato):
             linee = linee[:MAX_RIGHE_XML]
             import streamlit as st
             st.warning(f"⚠️ Fattura con {righe_originali_count} righe: elaborate le prime {MAX_RIGHE_XML}. Contatta l'assistenza se necessiti di processarle tutte.")
-        
-        memoria_ai = carica_memoria_ai()
         
         righe_prodotti = []
         for idx, riga in enumerate(linee, start=1):
@@ -362,7 +359,7 @@ def estrai_dati_da_xml(file_caricato):
         
     except Exception as e:
         logger.exception(f"Errore lettura XML: {getattr(file_caricato, 'name', 'sconosciuto')}")
-        st.warning(f"âš ï¸ File {file_caricato.name}: impossibile leggere")
+        st.warning(f"⚠️ File {file_caricato.name}: impossibile leggere")
         return []
 
 
@@ -440,8 +437,8 @@ def estrai_dati_da_scontrino_vision(file_caricato, openai_client=None):
     try:
         # Import services
         from services.ai_service import (
-            carica_memoria_ai,
-            ottieni_categoria_prodotto
+            ottieni_categoria_prodotto,
+            carica_memoria_completa
         )
         from openai import OpenAI
         
@@ -449,7 +446,7 @@ def estrai_dati_da_scontrino_vision(file_caricato, openai_client=None):
         if openai_client is None:
             api_key = st.secrets.get("OPENAI_API_KEY", "")
             if not api_key:
-                st.error("âŒ OPENAI_API_KEY mancante")
+                st.error("❌ OPENAI_API_KEY mancante")
                 return []
             openai_client = OpenAI(api_key=api_key)
         
@@ -501,7 +498,7 @@ FORMATO RISPOSTA (SOLO JSON):
 }
 
 IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
-        with st.spinner(f"ðŸ” Analizzo {file_caricato.name} con AI..."):
+        with st.spinner(f"🔍 Analizzo {file_caricato.name} con AI..."):
             response = openai_client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{
@@ -530,15 +527,15 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 if lines[-1].strip() == '```':
                     lines = lines[:-1]
                 testo = '\n'.join(lines)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Strip markdown code fences fallito: {e}")
 
         testo = testo.strip()
         
         try:
             dati = json.loads(testo)
         except json.JSONDecodeError:
-            st.error(f"âŒ Risposta Vision non valida per {file_caricato.name}")
+            st.error(f"❌ Risposta Vision non valida per {file_caricato.name}")
 
             return []
         
@@ -553,8 +550,11 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
             st.warning(f"⚠️ Data non valida, uso data odierna: {e}")
         
         righe_prodotti = []
-        memoria_ai = carica_memoria_ai()
         current_user_id = st.session_state.get('user_data', {}).get('id')
+        
+        # Precarica memoria per categorizzazione (come in XML path)
+        if current_user_id:
+            carica_memoria_completa(current_user_id)
         
         for idx, riga in enumerate(dati.get('righe', []), start=1):
             descrizione = normalizza_stringa(riga.get('descrizione', 'Articolo senza nome'))
@@ -584,11 +584,11 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
             if prezzo_unitario == 0 and totale_riga > 0 and quantita > 0:
                 prezzo_unitario = totale_riga / quantita
             
-            # Categorizzazione
-            if current_user_id:
-                categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id)
-            else:
-                categoria_iniziale = memoria_ai.get(descrizione, "Da Classificare")
+            # Categorizzazione (usa stesso sistema moderno del path XML)
+            categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id) if current_user_id else "Da Classificare"
+            
+            # needs_review: True se non classificato (allineato con path XML)
+            needs_review = (categoria_iniziale == "Da Classificare")
             
             # Prezzo standard
             prezzo_std = calcola_prezzo_standard_intelligente(
@@ -611,6 +611,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 'Data_Documento': data_documento,
                 'File_Origine': file_caricato.name,
                 'Prezzo_Standard': prezzo_std,
+                'needs_review': needs_review,
                 'piva_cessionario': piva_cessionario  # P.IVA destinatario per validazione
             })
                 # ============================================================
@@ -661,7 +662,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         
     except Exception as e:
         logger.exception(f"Errore Vision: {getattr(file_caricato, 'name', 'sconosciuto')}")
-        st.error(f"âŒ Errore Vision su {file_caricato.name}: {str(e)}")
+        st.error(f"❌ Errore Vision su {file_caricato.name}: {str(e)}")
         return []
 
 
@@ -680,8 +681,8 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
         Dict con: success, error, righe, location
         
     Note:
-        - PrioritÃ : Supabase SEMPRE (no fallback JSON)
-        - Forza categoria valida (mai NULL/vuoto â†’ "Da Classificare")
+        - Priorità: Supabase SEMPRE (no fallback JSON)
+        - Forza categoria valida (mai NULL/vuoto → "Da Classificare")
         - Verifica integrità post-salvataggio
         - Logging automatico su tabella upload_events
     """
@@ -754,7 +755,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             righe_confermate = len(response.data) if response.data else len(records)
 
             
-            # Verifica integritÃ 
+            # Verifica integrità
             verifica = verifica_integrita_fattura(nome_file, dati_prodotti, user_id, supabase_client)
             
             # Log upload event
@@ -794,14 +795,14 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             
             # Gestisci discrepanza
             if verifica and not verifica["integrita_ok"]:
-                logger.error(f"ðŸš¨ DISCREPANZA {nome_file}: parsed={verifica['righe_parsed']} vs db={verifica['righe_db']}")
+                logger.error(f"🚨 DISCREPANZA {nome_file}: parsed={verifica['righe_parsed']} vs db={verifica['righe_db']}")
                 if not silent:
                     if 'verifica_integrita' not in st.session_state:
                         st.session_state.verifica_integrita = []
                     st.session_state.verifica_integrita.append(verifica)
             
             if not silent:
-                st.success(f"âœ… {nome_file}: {num_righe} righe salvate su Supabase")
+                st.success(f"✅ {nome_file}: {num_righe} righe salvate su Supabase")
             
             return {
                 "success": True,
@@ -831,7 +832,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 logger.error(f"Errore logging failed event: {log_error}")
             
             if not silent:
-                st.error(f"âŒ Errore salvataggio {nome_file}: {e}")
+                st.error(f"❌ Errore salvataggio {nome_file}: {e}")
             
             return {
                 "success": False,
@@ -841,7 +842,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             }
     else:
         if not silent:
-            st.error("âŒ Supabase non disponibile")
+            st.error("❌ Supabase non disponibile")
         return {"success": False, "error": "no_supabase", "righe": 0, "location": None}
 
 

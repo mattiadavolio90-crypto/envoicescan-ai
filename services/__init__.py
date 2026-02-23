@@ -19,10 +19,6 @@ from .ai_service import (
     salva_correzione_in_memoria_locale,
     classifica_con_ai,
     mostra_loading_ai,
-    # Legacy functions (deprecate)
-    carica_memoria_ai,
-    salva_memoria_ai,
-    aggiorna_memoria_ai
 )
 
 from .auth_service import (
@@ -56,10 +52,6 @@ __all__ = [
     'salva_correzione_in_memoria_locale',
     'classifica_con_ai',
     'mostra_loading_ai',
-    # Legacy functions
-    'carica_memoria_ai',
-    'salva_memoria_ai',
-    'aggiorna_memoria_ai',
     # Auth functions
     'verify_and_migrate_password',
     'verifica_credenziali',
