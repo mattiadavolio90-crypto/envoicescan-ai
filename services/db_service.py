@@ -23,6 +23,84 @@ from config.logger_setup import get_logger
 logger = get_logger('db')
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
+    """
+    Funzione interna cached: carica fatture da Supabase.
+    Parametri hashable per @st.cache_data.
+    """
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+    
+    if supabase_client is None:
+        logger.critical("❌ CRITICAL: Supabase client non inizializzato!")
+        return pd.DataFrame()
+    
+    logger.info(f"📊 LOAD START (cached): user_id={user_id}, ristorante_id={ristorante_id}")
+    
+    dati = []
+    try:
+        # Prima query per ottenere il count totale (usa head per performance)
+        query_count = supabase_client.table("fatture").select("id", count="exact", head=True).eq("user_id", user_id)
+        if ristorante_id:
+            query_count = query_count.eq("ristorante_id", ristorante_id)
+        response_count = query_count.execute()
+        total_rows = response_count.count if response_count.count else 0
+        logger.info(f"📊 CARICAMENTO: user_id={user_id} ristorante_id={ristorante_id} ha {total_rows} righe su Supabase")
+        
+        # Paginazione per caricare tutte le righe
+        page_size = 1000
+        page = 0
+        
+        # 🚀 OTTIMIZZAZIONE: Select solo colonne necessarie (non "*")
+        columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id"
+        
+        while True:
+            offset = page * page_size
+            query_select = supabase_client.table("fatture").select(columns).eq("user_id", user_id)
+            if ristorante_id:
+                query_select = query_select.eq("ristorante_id", ristorante_id)
+            response = query_select.range(offset, offset + page_size - 1).execute()
+            
+            if not response.data:
+                break
+            
+            for row in response.data:
+                dati.append({
+                    "FileOrigine": row["file_origine"],
+                    "NumeroRiga": row["numero_riga"],
+                    "DataDocumento": row["data_documento"],
+                    "Fornitore": row["fornitore"],
+                    "Descrizione": row["descrizione"],
+                    "Quantita": row["quantita"],
+                    "UnitaMisura": row["unita_misura"],
+                    "PrezzoUnitario": row["prezzo_unitario"],
+                    "IVAPercentuale": row["iva_percentuale"],
+                    "TotaleRiga": row["totale_riga"],
+                    "Categoria": row["categoria"],
+                    "CodiceArticolo": row["codice_articolo"],
+                    "PrezzoStandard": row.get("prezzo_standard")
+                })
+            
+            # Se questa pagina ha meno di page_size record, abbiamo finito
+            if len(response.data) < page_size:
+                break
+                
+            page += 1
+        
+        if len(dati) > 0:
+            logger.info(f"✅ LOAD SUCCESS: {len(dati)} righe caricate da Supabase per user_id={user_id}")
+            return pd.DataFrame(dati)
+        else:
+            logger.info(f"ℹ️ LOAD EMPTY: Nessuna fattura per user_id={user_id}")
+            return pd.DataFrame()
+            
+    except Exception as e:
+        logger.error(f"❌ LOAD ERROR: Errore Supabase per user_id={user_id}: {e}")
+        logger.exception("Errore query Supabase")
+        return pd.DataFrame()
+
+
 def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None):
     """
     🔥 SINGLE SOURCE OF TRUTH: Carica fatture SOLO da Supabase
@@ -44,151 +122,78 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     # 🔥 FORCE EMPTY: Se c'è flag force_empty, ritorna DataFrame vuoto senza query
     # Questo previene che dati cached riappaiano dopo eliminazione massiva
     try:
-        import streamlit as st
         if hasattr(st, 'session_state') and st.session_state.get('force_empty_until_upload', False):
             logger.info(f"🚫 FORCE EMPTY attivo: ritorno DataFrame vuoto per user_id={user_id}")
             return pd.DataFrame()
     except Exception as e:
         logger.warning(f"⚠️ Impossibile controllare force_empty flag: {e}")
     
-    # Inizializza client Supabase (singleton)
-    if supabase_client is None:
-        try:
-            from services import get_supabase_client
-            supabase_client = get_supabase_client()
-        except Exception as e:
-            logger.critical(f"❌ CRITICAL: Impossibile inizializzare Supabase: {e}")
-            return pd.DataFrame()
+    # Recupera ristorante_id dalla sessione (per multi-ristorante)
+    ristorante_id = st.session_state.get('ristorante_id') if 'session_state' in dir(st) else None
     
-    logger.info(f"📊 LOAD START: user_id={user_id}, force_refresh={force_refresh}")
+    # Se force_refresh, invalida cache prima di ricaricare
+    if force_refresh:
+        _carica_fatture_da_supabase.clear()
+        logger.info("🔄 Cache invalidata per force_refresh")
     
-    dati = []
+    # 🚀 CACHED: Carica dati da Supabase (cached per 120s)
+    df_result = _carica_fatture_da_supabase(user_id, ristorante_id)
     
-    # Carica da Supabase con paginazione
-    if supabase_client is not None:
-        try:
-            # Recupera ristorante_id dalla sessione (per multi-ristorante)
-            ristorante_id = st.session_state.get('ristorante_id') if 'session_state' in dir(st) else None
-            
-            # Prima query per ottenere il count totale (usa head per performance)
-            query_count = supabase_client.table("fatture").select("id", count="exact", head=True).eq("user_id", user_id)
-            if ristorante_id:
-                query_count = query_count.eq("ristorante_id", ristorante_id)
-            response_count = query_count.execute()
-            total_rows = response_count.count if response_count.count else 0
-            logger.info(f"📊 CARICAMENTO: user_id={user_id} ristorante_id={ristorante_id} ha {total_rows} righe su Supabase")
-            
-            # Paginazione per caricare tutte le righe
-            page_size = 1000
-            page = 0
-            
-            # 🚀 OTTIMIZZAZIONE: Select solo colonne necessarie (non "*")
-            columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id"
-            
-            while True:
-                offset = page * page_size
-                query_select = supabase_client.table("fatture").select(columns).eq("user_id", user_id)
-                if ristorante_id:
-                    query_select = query_select.eq("ristorante_id", ristorante_id)
-                response = query_select.range(offset, offset + page_size - 1).execute()
-                
-                if not response.data:
-                    break
-                
-                for row in response.data:
-                    dati.append({
-                        "FileOrigine": row["file_origine"],
-                        "NumeroRiga": row["numero_riga"],
-                        "DataDocumento": row["data_documento"],
-                        "Fornitore": row["fornitore"],
-                        "Descrizione": row["descrizione"],
-                        "Quantita": row["quantita"],
-                        "UnitaMisura": row["unita_misura"],
-                        "PrezzoUnitario": row["prezzo_unitario"],
-                        "IVAPercentuale": row["iva_percentuale"],
-                        "TotaleRiga": row["totale_riga"],
-                        "Categoria": row["categoria"],
-                        "CodiceArticolo": row["codice_articolo"],
-                        "PrezzoStandard": row.get("prezzo_standard")
-                    })
-                
-                # Se questa pagina ha meno di page_size record, abbiamo finito
-                if len(response.data) < page_size:
-                    break
-                    
-                page += 1
-            
-            if len(dati) > 0:
-                logger.info(f"✅ LOAD SUCCESS: {len(dati)} righe caricate da Supabase per user_id={user_id}")
-                df_result = pd.DataFrame(dati)
-                
-                # 🔧 NORMALIZZA CATEGORIA: Converti NULL/None/vuoti in NaN per uniformità
-                if 'Categoria' in df_result.columns:
-                    df_result['Categoria'] = df_result['Categoria'].replace(
-                        to_replace=[None, '', 'None', 'null', 'NULL', ' '], 
-                        value=pd.NA
-                    )
-                    # Converti spazi bianchi in NaN
-                    df_result.loc[df_result['Categoria'].astype(str).str.strip() == '', 'Categoria'] = pd.NA
-                    
-                    # 🔄 MIGRAZIONE AUTOMATICA: Aggiorna vecchi nomi categorie
-                    mapping_categorie = {
-                        'SALSE': 'SALSE E CREME',
-                        'BIBITE E BEVANDE': 'BEVANDE',
-                        'PANE': 'PRODOTTI DA FORNO',
-                        'DOLCI': 'PASTICCERIA',
-                        'OLIO': 'OLIO E CONDIMENTI',
-                        'CONSERVE': 'SCATOLAME E CONSERVE',
-                        'CAFFÈ': 'CAFFE E THE'
-                    }
-                    
-                    righe_migrate = 0
-                    for vecchio, nuovo in mapping_categorie.items():
-                        mask = df_result['Categoria'] == vecchio
-                        if mask.any():
-                            df_result.loc[mask, 'Categoria'] = nuovo
-                            righe_migrate += mask.sum()
-                    
-                    if righe_migrate > 0:
-                        logger.info(f"✅ MIGRAZIONE: {righe_migrate} righe aggiornate")
-                    
-                    # 🎯 FIX CELLE BIANCHE DEFINITIVO: Riempie NA E vuoti con "Da Classificare"
-                    # Log diagnostico PRIMA della normalizzazione
-                    null_count_before = df_result['Categoria'].isna().sum()
-                    logger.debug(f"🔍 PRE-NORMALIZZAZIONE: {null_count_before} valori NA")
-                    
-                    # Step 1: fillna per NULL/pd.NA
-                    df_result['Categoria'] = df_result['Categoria'].fillna("Da Classificare")
-                    
-                    # Step 2: ⭐ FIX SPAZI BIANCHI - Gestisci ANCHE stringhe con spazi multipli
-                    df_result['Categoria'] = df_result['Categoria'].replace(
-                        to_replace=[None, '', 'None', 'null', 'NULL', ' ', '  ', '   ', '    '],
-                        value='Da Classificare'
-                    )
-                    
-                    # Step 3: Converti spazi bianchi (anche multipli) in "Da Classificare"
-                    mask_empty = df_result['Categoria'].astype(str).str.strip() == ''
-                    if mask_empty.any():
-                        df_result.loc[mask_empty, 'Categoria'] = 'Da Classificare'
-                        logger.debug(f"🔧 Convertiti {mask_empty.sum()} valori con solo spazi in Da Classificare")
-                    
-                    # Verifica finale
-                    da_class_count = (df_result['Categoria'] == 'Da Classificare').sum()
-                    logger.info(f"✅ CELLE BIANCHE RISOLTE: {da_class_count} celle mostrano 'Da Classificare'")
-                
-                return df_result
-            else:
-                logger.info(f"ℹ️ LOAD EMPTY: Nessuna fattura per user_id={user_id}")
-                return pd.DataFrame()
-                
-        except Exception as e:
-            logger.error(f"❌ LOAD ERROR: Errore Supabase per user_id={user_id}: {e}")
-            logger.exception("Errore query Supabase")
-            return pd.DataFrame()
+    if df_result.empty:
+        return pd.DataFrame()
     
-    # Supabase non configurato (impossibile in produzione)
-    logger.critical("❌ CRITICAL: Supabase client non inizializzato!")
-    return pd.DataFrame()
+    # Normalizzazione categorie (veloce, in-memory)
+    df_result = df_result.copy()  # Non modificare il cached DataFrame
+    
+    if 'Categoria' in df_result.columns:
+        df_result['Categoria'] = df_result['Categoria'].replace(
+            to_replace=[None, '', 'None', 'null', 'NULL', ' '], 
+            value=pd.NA
+        )
+        # Converti spazi bianchi in NaN
+        df_result.loc[df_result['Categoria'].astype(str).str.strip() == '', 'Categoria'] = pd.NA
+        
+        # 🔄 MIGRAZIONE AUTOMATICA: Aggiorna vecchi nomi categorie
+        mapping_categorie = {
+            'SALSE': 'SALSE E CREME',
+            'BIBITE E BEVANDE': 'BEVANDE',
+            'PANE': 'PRODOTTI DA FORNO',
+            'DOLCI': 'PASTICCERIA',
+            'OLIO': 'OLIO E CONDIMENTI',
+            'CONSERVE': 'SCATOLAME E CONSERVE',
+            'CAFFÈ': 'CAFFE E THE'
+        }
+        
+        righe_migrate = 0
+        for vecchio, nuovo in mapping_categorie.items():
+            mask = df_result['Categoria'] == vecchio
+            if mask.any():
+                df_result.loc[mask, 'Categoria'] = nuovo
+                righe_migrate += mask.sum()
+        
+        if righe_migrate > 0:
+            logger.info(f"✅ MIGRAZIONE: {righe_migrate} righe aggiornate")
+        
+        # 🎯 FIX CELLE BIANCHE DEFINITIVO
+        null_count_before = df_result['Categoria'].isna().sum()
+        logger.debug(f"🔍 PRE-NORMALIZZAZIONE: {null_count_before} valori NA")
+        
+        df_result['Categoria'] = df_result['Categoria'].fillna("Da Classificare")
+        
+        df_result['Categoria'] = df_result['Categoria'].replace(
+            to_replace=[None, '', 'None', 'null', 'NULL', ' ', '  ', '   ', '    '],
+            value='Da Classificare'
+        )
+        
+        mask_empty = df_result['Categoria'].astype(str).str.strip() == ''
+        if mask_empty.any():
+            df_result.loc[mask_empty, 'Categoria'] = 'Da Classificare'
+            logger.debug(f"🔧 Convertiti {mask_empty.sum()} valori con solo spazi in Da Classificare")
+        
+        da_class_count = (df_result['Categoria'] == 'Da Classificare').sum()
+        logger.info(f"✅ CELLE BIANCHE RISOLTE: {da_class_count} celle mostrano 'Da Classificare'")
+    
+    return df_result
 
 
 def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:

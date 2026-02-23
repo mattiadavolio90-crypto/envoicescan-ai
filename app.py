@@ -566,7 +566,7 @@ def mostra_pagina_login():
     with tab1:
         with st.form("login_form"):
             email = st.text_input("📧 Email", placeholder="tua@email.com")
-            password = st.text_input("🔑 Password", type="password", placeholder="Password")
+            password = st.text_input("🔑 Password", type="password", placeholder="La tua password")
             
             # CSS per bottone blu chiaro e fix spazio verticale
             st.markdown("""
@@ -1058,7 +1058,7 @@ def mostra_statistiche(df_completo):
             conteggio_cat = conteggio_cat.sort_values('Righe', ascending=False)
             st.dataframe(conteggio_cat, hide_index=True, width='stretch')
             
-            st.markdown("**Sample 15 righe (verifica categoria):**")
+            st.markdown("**Esempio 15 righe (verifica categoria):**")
             sample_df = df_completo[['FileOrigine', 'Descrizione', 'Categoria', 'Fornitore', 'TotaleRiga']].head(15)
             st.dataframe(sample_df, hide_index=True, width='stretch')
             
@@ -1141,46 +1141,9 @@ def mostra_statistiche(df_completo):
     # CATEGORIZZAZIONE AI
     # ============================================
     
-    # Conta righe da classificare con QUERY DIRETTA al database (non df_completo che può essere filtrato)
-    # user_id già recuperato sopra
-    
-    # Query 1: Conta righe con 'Da Classificare'
+    # Conta righe da classificare VELOCEMENTE dal DataFrame locale (ZERO query Supabase)
+    # I dati sono già stati caricati da carica_e_prepara_dataframe() che è cached
     ristorante_id = st.session_state.get('ristorante_id')
-    query_da_class = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).eq("categoria", "Da Classificare")
-    if ristorante_id:
-        query_da_class = query_da_class.eq("ristorante_id", ristorante_id)
-    count_da_class = query_da_class.execute()
-    righe_da_class = count_da_class.count if count_da_class.count else 0
-    
-    # Query 2: Conta righe con categoria NULL
-    query_null = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id).is_("categoria", "null")
-    if ristorante_id:
-        query_null = query_null.eq("ristorante_id", ristorante_id)
-    count_null = query_null.execute()
-    righe_null = count_null.count if count_null.count else 0
-    
-    # TOTALE righe senza categoria valida nel database
-    righe_da_classificare = righe_da_class + righe_null
-    
-    # Query 3: Conta PRODOTTI UNICI da categorizzare (descrizioni distinte)
-    query_prodotti_da_class = supabase.table("fatture").select("descrizione").eq("user_id", user_id).eq("categoria", "Da Classificare")
-    if ristorante_id:
-        query_prodotti_da_class = query_prodotti_da_class.eq("ristorante_id", ristorante_id)
-    result_prodotti_da_class = query_prodotti_da_class.execute()
-    
-    query_prodotti_null = supabase.table("fatture").select("descrizione").eq("user_id", user_id).is_("categoria", "null")
-    if ristorante_id:
-        query_prodotti_null = query_prodotti_null.eq("ristorante_id", ristorante_id)
-    result_prodotti_null = query_prodotti_null.execute()
-    
-    # Combina e conta prodotti unici
-    descrizioni_da_classificare = set()
-    if result_prodotti_da_class.data:
-        descrizioni_da_classificare.update([row['descrizione'] for row in result_prodotti_da_class.data if row.get('descrizione')])
-    if result_prodotti_null.data:
-        descrizioni_da_classificare.update([row['descrizione'] for row in result_prodotti_null.data if row.get('descrizione')])
-    
-    prodotti_unici_da_classificare = len(descrizioni_da_classificare)
     
     # Calcola maschera locale per sapere quali descrizioni processare (dal df_completo locale)
     maschera_ai = (
@@ -1189,6 +1152,11 @@ def mostra_statistiche(df_completo):
         | (df_completo['Categoria'].astype(str).str.strip() == '')
         | (df_completo['Categoria'] == '')
     )
+    
+    # Conta dal DataFrame locale (istantaneo, nessuna query HTTP)
+    righe_da_classificare = maschera_ai.sum()
+    descrizioni_da_classificare = set(df_completo[maschera_ai]['Descrizione'].dropna().unique())
+    prodotti_unici_da_classificare = len(descrizioni_da_classificare)
     
     # ============================================================
     # CATEGORIZZAZIONE AI (triggerata dal bottone nella sezione upload)
@@ -1723,11 +1691,18 @@ def mostra_statistiche(df_completo):
         label_periodo = f"Mese in corso ({inizio_mese.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
     
     # APPLICA FILTRO AI DATI
-    df_food_completo["Data_DT"] = pd.to_datetime(df_food_completo["DataDocumento"], errors='coerce').dt.date
+    # Converti date UNA SOLA VOLTA su df_completo (parent di food e spese)
+    if "Data_DT" not in df_completo.columns:
+        df_completo["Data_DT"] = pd.to_datetime(df_completo["DataDocumento"], errors='coerce').dt.date
+    
+    # Usa la colonna Data_DT già calcolata (df_food_completo e df_spese_generali_completo sono viste di df_completo)
+    if "Data_DT" not in df_food_completo.columns:
+        df_food_completo["Data_DT"] = pd.to_datetime(df_food_completo["DataDocumento"], errors='coerce').dt.date
     mask = (df_food_completo["Data_DT"] >= data_inizio_filtro) & (df_food_completo["Data_DT"] <= data_fine_filtro)
     df_food = df_food_completo[mask].copy()
     
-    df_spese_generali_completo["Data_DT"] = pd.to_datetime(df_spese_generali_completo["DataDocumento"], errors='coerce').dt.date
+    if "Data_DT" not in df_spese_generali_completo.columns:
+        df_spese_generali_completo["Data_DT"] = pd.to_datetime(df_spese_generali_completo["DataDocumento"], errors='coerce').dt.date
     mask_spese = (df_spese_generali_completo["Data_DT"] >= data_inizio_filtro) & (df_spese_generali_completo["Data_DT"] <= data_fine_filtro)
     df_spese_generali = df_spese_generali_completo[mask_spese].copy()
     
@@ -1738,8 +1713,7 @@ def mostra_statistiche(df_completo):
     num_fatture_totali_df = df_completo['FileOrigine'].nunique() if not df_completo.empty else 0
     num_righe_totali_df = len(df_completo)
     
-    # Filtra df_completo per periodo (stesso filtro di df_food)
-    df_completo["Data_DT"] = pd.to_datetime(df_completo["DataDocumento"], errors='coerce').dt.date
+    # Filtra df_completo per periodo (Data_DT già calcolata sopra)
     mask_completo = (df_completo["Data_DT"] >= data_inizio_filtro) & (df_completo["Data_DT"] <= data_fine_filtro)
     df_completo_filtrato = df_completo[mask_completo]
     num_doc_filtrati = df_completo_filtrato['FileOrigine'].nunique()
@@ -2108,26 +2082,26 @@ def mostra_statistiche(df_completo):
             
             df_editor = df_editor[mask]
         
-        # ===== CALCOLO INTELLIGENTE PREZZO STANDARDIZZATO =====
+        # ===== CALCOLO INTELLIGENTE PREZZO STANDARDIZZATO (VETTORIZZATO) =====
         
-        # Calcola prezzo_standard per ogni riga F&B
-        for idx in df_editor.index:
-            row = df_editor.loc[idx]
-            
-            # SKIP se già presente (manuale)
-            prezzo_attuale = row.get('PrezzoStandard')
-            if prezzo_attuale is not None and pd.notna(prezzo_attuale) and prezzo_attuale > 0:
-                continue
-            
-            # Calcola intelligentemente
-            prezzo_std = calcola_prezzo_standard_intelligente(
-                descrizione=row.get('Descrizione'),
-                um=row.get('UnitaMisura'),
-                prezzo_unitario=row.get('PrezzoUnitario')
+        # Calcola prezzo_standard solo dove manca (evita loop Python row-by-row)
+        mask_mancante = (
+            df_editor['PrezzoStandard'].isna() 
+            | (df_editor['PrezzoStandard'] <= 0)
+        )
+        if mask_mancante.any():
+            idx_mancanti = df_editor.index[mask_mancante]
+            prezzi_calcolati = df_editor.loc[idx_mancanti].apply(
+                lambda row: calcola_prezzo_standard_intelligente(
+                    descrizione=row.get('Descrizione'),
+                    um=row.get('UnitaMisura'),
+                    prezzo_unitario=row.get('PrezzoUnitario')
+                ), axis=1
             )
-            
-            if prezzo_std is not None:
-                df_editor.at[idx, 'PrezzoStandard'] = prezzo_std
+            # Applica solo dove il calcolo ha prodotto un risultato
+            validi = prezzi_calcolati.dropna()
+            if not validi.empty:
+                df_editor.loc[validi.index, 'PrezzoStandard'] = validi
         
         # ===== FINE CALCOLO =====
 
@@ -3141,7 +3115,7 @@ def mostra_statistiche(df_completo):
                                 
                                 # Mostra sample prezzi negativi
                                 if len(df_debug[df_debug['prezzo_unitario'] < 0]) > 0:
-                                    st.markdown("**Sample prezzi negativi:**")
+                                    st.markdown("**Esempio prezzi negativi:**")
                                     st.dataframe(
                                         df_debug[df_debug['prezzo_unitario'] < 0][['descrizione', 'categoria', 'prezzo_unitario']].head(5),
                                         hide_index=True
@@ -4039,7 +4013,7 @@ if not df_cache.empty:
                         except Exception as e:
                             logger.warning(f"⚠️ Errore clear cache_resource durante hard reset: {e}")
                         
-                        progress.progress(80, text="Reset session state...")
+                        progress.progress(80, text="Ripristino sessione...")
                         
                         # HARD RESET: Rimuovi session state specifici (mantieni login)
                         keys_to_remove = [k for k in st.session_state.keys() 
@@ -4057,7 +4031,7 @@ if not df_cache.empty:
                         # Mostra risultato DENTRO lo spinner (indentazione corretta)
                         if result["success"]:
                             st.success(f"✅ **{result['fatture_eliminate']} fatture** eliminate! ({result['righe_eliminate']} prodotti)")
-                            st.info("🧹 **Hard Reset completato**: Cache, JSON locali e session state puliti")
+                            st.info("🧹 **Ripristino completo**: Cache, JSON locali e stato sessione puliti")
                             
                             # LOG AUDIT: Verifica immediata post-delete
                             try:
@@ -4236,34 +4210,19 @@ else:
             st.stop()
     
     # ============================================================
-    # PRE-COMPUTE: Conta righe da categorizzare per UI
+    # PRE-COMPUTE: Conta righe da categorizzare per UI (dal DataFrame cached)
     # ============================================================
     _righe_da_class_ui = 0
     _prodotti_unici_ui = 0
     try:
-        _uid = st.session_state.user_data["id"]
-        _rid = st.session_state.get('ristorante_id')
-        _q1 = supabase.table("fatture").select("id", count="exact").eq("user_id", _uid).eq("categoria", "Da Classificare")
-        _q2 = supabase.table("fatture").select("id", count="exact").eq("user_id", _uid).is_("categoria", "null")
-        if _rid:
-            _q1 = _q1.eq("ristorante_id", _rid)
-            _q2 = _q2.eq("ristorante_id", _rid)
-        _r1 = _q1.execute()
-        _r2 = _q2.execute()
-        _righe_da_class_ui = (_r1.count or 0) + (_r2.count or 0)
-        _q3 = supabase.table("fatture").select("descrizione").eq("user_id", _uid).eq("categoria", "Da Classificare")
-        _q4 = supabase.table("fatture").select("descrizione").eq("user_id", _uid).is_("categoria", "null")
-        if _rid:
-            _q3 = _q3.eq("ristorante_id", _rid)
-            _q4 = _q4.eq("ristorante_id", _rid)
-        _r3 = _q3.execute()
-        _r4 = _q4.execute()
-        _descs = set()
-        if _r3.data:
-            _descs.update([r['descrizione'] for r in _r3.data if r.get('descrizione')])
-        if _r4.data:
-            _descs.update([r['descrizione'] for r in _r4.data if r.get('descrizione')])
-        _prodotti_unici_ui = len(_descs)
+        if not df_cache.empty and 'Categoria' in df_cache.columns:
+            _mask_da_class = (
+                df_cache['Categoria'].isna()
+                | (df_cache['Categoria'] == 'Da Classificare')
+                | (df_cache['Categoria'].astype(str).str.strip() == '')
+            )
+            _righe_da_class_ui = _mask_da_class.sum()
+            _prodotti_unici_ui = df_cache[_mask_da_class]['Descrizione'].nunique()
     except Exception:
         pass
 
@@ -4384,7 +4343,7 @@ else:
 
     # Bottone Reset Upload (solo admin)
     if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-        if st.button("🔄 Reset upload (pulisci cache sessione)", key="reset_upload_cache"):
+        if st.button("🔄 Ripristina upload (pulisci cache sessione)", key="reset_upload_cache"):
             st.session_state.files_processati_sessione = set()
             st.session_state.files_con_errori = set()
             st.session_state.files_errori_report = {}
@@ -4455,8 +4414,8 @@ if uploaded_files:
     # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
     if st.session_state.get('force_empty_until_upload', False):
         status_placeholder.empty()  # Rimuovi il messaggio di verifica
-        st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Reset upload' prima di caricare nuovi file.")
-        st.info("💡 Usa il pulsante '🔄 Reset upload' sopra per sbloccare il caricamento.")
+        st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Ripristina upload' prima di caricare nuovi file.")
+        st.info("💡 Usa il pulsante '🔄 Ripristina upload' sopra per sbloccare il caricamento.")
         st.stop()  # Blocca esecuzione per evitare ricaricamento automatico
     
     # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
@@ -4885,7 +4844,7 @@ if uploaded_files:
             num_errori = len(st.session_state.files_errori_report)
             
             # Messaggio principale compatto
-            st.error(f"❌ {num_errori} fattura{'e' if num_errori > 1 else ''} SCARTATA{'E' if num_errori > 1 else ''}")
+            st.error(f"❌ {num_errori} {'fatture' if num_errori > 1 else 'fattura'} {'SCARTATE' if num_errori > 1 else 'SCARTATA'}")
             
             # Expander errori - PER TUTTI
             with st.expander("📋 Dettaglio Errori", expanded=True):
@@ -4896,7 +4855,7 @@ if uploaded_files:
                 st.markdown("")
                 
                 # Istruzioni per il cliente
-                st.info("💡 **Clicca su 'Scarica Log e Azzera' e poi invia il file all'assistenza per risolvere il problema**")
+                st.info("💡 **Scarica il log degli errori e invialo all'assistenza per risolvere il problema**")
                 
                 # Due bottoni: Scarica Log + Azzera Errori
                 col_download, col_clear = st.columns([2, 1])
@@ -4933,7 +4892,7 @@ if uploaded_files:
                     st.metric("📊 Righe Totali", righe_totali)
                 with col3:
                     location_text = "Supabase" if salvati_supabase > 0 else "JSON"
-                    st.metric("💾 Storage", location_text)
+                    st.metric("💾 Archiviazione", location_text)
             else:
                 # Cliente: Messaggio già mostrato sopra prima del rerun
                 # Mostra avviso per duplicati NELL'UPLOAD STESSO se ci sono

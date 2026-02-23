@@ -560,11 +560,11 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         payload = {
             "sender": {"name": sender_name, "email": sender_email},
             "to": [{"email": email}],
-            "subject": "🔑 Codice Reset Password - OH YEAH!",
+            "subject": "🔑 Codice Recupero Password - OH YEAH!",
             "htmlContent": f"""
             <html>
             <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #2c5aa0;">🔑 Reset Password</h2>
+                <h2 style="color: #2c5aa0;">🔑 Recupero Password</h2>
                 <p>Hai richiesto di reimpostare la password per il tuo account <strong>OH YEAH!</strong>.</p>
                 <p>Il tuo codice di reset è:</p>
                 <div style="text-align: center; margin: 20px 0;">

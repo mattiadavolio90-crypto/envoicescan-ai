@@ -211,7 +211,6 @@ def estrai_dati_da_xml(file_caricato):
         if righe_originali_count > MAX_RIGHE_XML:
             logger.warning(f"{file_caricato.name}: {righe_originali_count} righe totali, limitate a {MAX_RIGHE_XML}")
             linee = linee[:MAX_RIGHE_XML]
-            import streamlit as st
             st.warning(f"⚠️ Fattura con {righe_originali_count} righe: elaborate le prime {MAX_RIGHE_XML}. Contatta l'assistenza se necessiti di processarle tutte.")
         
         righe_prodotti = []
