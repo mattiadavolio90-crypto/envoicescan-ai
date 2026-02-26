@@ -17,11 +17,12 @@ def render_oh_yeah_header():
     """
     st.markdown("""
 <div style="text-align: center; margin-bottom: 0.5rem; margin-top: -2rem;">
-    <h1 style="font-size: clamp(3.5rem, 7vw, 5rem); font-weight: 900; margin: 0; letter-spacing: 3px;">
+    <h1 style="font-size: clamp(3.5rem, 7vw, 5rem); font-weight: 900; margin: 0; letter-spacing: 3px; line-height: 1.1; display: inline-flex; align-items: flex-end; gap: 0.3rem;">
         <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        background-clip: text;">OH YEAH! app</span>
+        background-clip: text;">OH YEAH!</span>
+        <span style="font-size: clamp(1rem, 2vw, 1.5rem); font-weight: 700; color: #1e3a8a; letter-spacing: 2px; margin-bottom: 0.8rem;">app</span>
     </h1>
 </div>
 """, unsafe_allow_html=True)
@@ -90,8 +91,14 @@ def render_sidebar(user_data: dict):
         # Nome app in alto
         st.markdown("""
         <div style="text-align: center; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 2px solid #e2e8f0;">
-            <span style="font-size: 1.4rem; font-weight: 900; letter-spacing: 1px; color: #1e3a8a;">OH YEAH!</span>
-            <span style="font-size: 0.8rem; font-weight: 500; color: #3b82f6; margin-left: 4px;">app</span>
+            <div style="display: inline-flex; align-items: flex-end; gap: 0.2rem;">
+                <span style="font-size: 1.4rem; font-weight: 900; letter-spacing: 1px;
+                    background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
+                    -webkit-background-clip: text;
+                    -webkit-text-fill-color: transparent;
+                    background-clip: text;">OH YEAH!</span>
+                <span style="font-size: 0.7rem; font-weight: 700; color: #1e3a8a; letter-spacing: 1px; margin-bottom: 0.3rem;">app</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
         
