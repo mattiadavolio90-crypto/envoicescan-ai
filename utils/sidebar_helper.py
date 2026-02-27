@@ -114,9 +114,9 @@ def render_sidebar(user_data: dict):
                     border-radius: 10px;
                     border: 2px solid #0ea5e9;
                     margin-bottom: 1.25rem;">
-            <div style="font-size: clamp(0.65rem, 1.5vw, 0.75rem); color: #0369a1; opacity: 0.9; margin-bottom: 0.3rem; font-weight: 600; word-wrap: break-word;">👤 Account</div>
-            <div style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); font-weight: 700; color: #0c4a6e; word-wrap: break-word;">{user_email}</div>
-            <div style="font-size: clamp(0.6rem, 1.4vw, 0.7rem); color: #0369a1; opacity: 0.8; margin-top: 0.3rem; word-wrap: break-word;">{nome_ristorante}</div>
+            <div style="font-size: clamp(0.65rem, 1.5vw, 0.75rem); color: #0369a1; opacity: 0.9; margin-bottom: 0.3rem; font-weight: 600;">👤 Account</div>
+            <div title="{user_email}" style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); font-weight: 700; color: #0c4a6e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{user_email}</div>
+            <div title="{nome_ristorante}" style="font-size: clamp(0.6rem, 1.4vw, 0.7rem); color: #0369a1; opacity: 0.8; margin-top: 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{nome_ristorante}</div>
         </div>
         """, unsafe_allow_html=True)
         

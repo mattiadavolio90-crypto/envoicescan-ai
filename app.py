@@ -174,6 +174,30 @@ st.markdown("""
         display: none !important;
     }
     
+    /* === MANAGE APP BUTTON (bottom-right corner) === */
+    [data-testid="manage-app-button"],
+    button[data-testid="manage-app-button"],
+    .stAppDeployButton,
+    [class*="stAppDeployButton"],
+    [class*="manage-app"],
+    div[class*="StatusWidget"],
+    [data-testid="stStatusWidget"],
+    section[data-testid="stStatusWidget"],
+    .reportview-container .main footer,
+    ._container_gzau3_1,
+    ._profileContainer_gzau3_53,
+    div:has(> [data-testid="manage-app-button"]) {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        height: 0 !important;
+        width: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
+        position: absolute !important;
+        z-index: -9999 !important;
+    }
+    
     /* === LAYOUT OTTIMIZZATO === */
     .main > div { padding-top: 2rem !important; }
     .block-container { padding-top: 2rem !important; padding-bottom: 6rem !important; }
@@ -232,13 +256,17 @@ st.markdown("""
     const keywords = ['deploy','share','condividi','pubblica'];
     function cleanBranding() {
         try {
-            document.querySelectorAll('footer, [role="contentinfo"], [data-testid="stFooter"], [data-testid="stDecoration"], [data-testid="stToolbar"], header[data-testid="stHeader"], [class*="viewerBadge"]').forEach(el => el.remove());
+            document.querySelectorAll('footer, [role="contentinfo"], [data-testid="stFooter"], [data-testid="stDecoration"], [data-testid="stToolbar"], header[data-testid="stHeader"], [class*="viewerBadge"], [data-testid="manage-app-button"], [data-testid="stStatusWidget"], [class*="stAppDeployButton"], [class*="StatusWidget"]').forEach(el => el.remove());
             document.querySelectorAll('a[href*="streamlit.io"]').forEach(el => {
                 if ((el.textContent||'').match(/Made with|Streamlit/)) el.remove();
             });
             document.querySelectorAll('button, a, span').forEach(el => {
                 const combined = [(el.innerText||'').toLowerCase(), (el.title||'').toLowerCase(), (el.getAttribute('aria-label')||'').toLowerCase()].join(' ');
                 for (const k of keywords) { if (combined.includes(k)) { el.style.display='none'; break; } }
+            });
+            // Rimuovi specificamente il floating "Manage app" in basso a destra
+            document.querySelectorAll('button').forEach(el => {
+                if ((el.innerText||'').toLowerCase().includes('manage app')) { el.closest('div')?.remove() || el.remove(); }
             });
         } catch(e) {}
     }
@@ -654,6 +682,7 @@ def mostra_pagina_login():
                         if user:
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
+                            st.session_state.force_logout = False  # ← Reset flag logout
                             
                             # Salva P.IVA in session_state per validazione fatture
                             st.session_state.partita_iva = user.get('partita_iva')
@@ -722,6 +751,7 @@ def mostra_pagina_login():
                 if user:
                     st.session_state.logged_in = True
                     st.session_state.user_data = user
+                    st.session_state.force_logout = False  # ← Reset flag logout
                     # 🍪 Salva session_token anche dopo reset password
                     if _cookie_manager is not None:
                         try:
