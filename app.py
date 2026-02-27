@@ -182,6 +182,25 @@ st.markdown("""
     .block-container { padding-top: 2rem !important; padding-bottom: 6rem !important; }
     [data-testid="stVerticalBlock"] { overflow: visible !important; }
     [data-testid="column"] { overflow: visible !important; min-height: 7.5rem !important; margin-bottom: 1.875rem !important; }
+    
+    /* === TUTTI I PULSANTI PRIMARY AZZURRI (globale, prima di tutto il contenuto) === */
+    button[kind="primary"] {
+        background-color: #0ea5e9 !important;
+        color: white !important;
+        border: 2px solid #0284c7 !important;
+        font-weight: bold !important;
+    }
+    button[kind="primary"]:hover {
+        background-color: #0284c7 !important;
+        border-color: #0369a1 !important;
+    }
+    button[kind="primary"]:disabled,
+    button[kind="primary"][disabled] {
+        background-color: #0ea5e9 !important;
+        color: white !important;
+        border: 2px solid #0284c7 !important;
+        opacity: 0.5 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -263,20 +282,71 @@ except Exception as e:
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
+# ============================================================
+# COOKIE MANAGER - SESSIONE PERSISTENTE
+# ============================================================
+try:
+    import extra_streamlit_components as stx
+    _cookie_manager = stx.CookieManager(key="cookie_manager_app")
+except Exception as _ce:
+    _cookie_manager = None
+    logger.warning(f"CookieManager non disponibile: {_ce}")
 
 # ============================================
 # GESTIONE LOGOUT FORZATO VIA QUERY PARAMS
 # ============================================
-# Se c'è il parametro logout=1, forza logout completo (funziona anche su Streamlit Cloud)
 if st.query_params.get("logout") == "1":
-    logger.warning("🚨 LOGOUT FORZATO via query params - pulizia totale sessione")
-    # Pulizia sessione e reimpostazione flag (ORDINE CORRETTO)
-    st.session_state.clear()  # Cancella tutto
-    st.session_state.logged_in = False  # Reimposta dopo clear
-    st.session_state.force_logout = True  # Flag che persiste
-    # Rimuovi parametro logout dall'URL
+    logger.warning("🚨 LOGOUT FORZATO via query params - pulizia sessione")
+    # Token già invalidato da sidebar_helper, ma tenta anche qui come fallback
+    try:
+        _email_for_logout = st.session_state.get('user_data', {}).get('email')
+        if _email_for_logout:
+            supabase.table('users').update({'session_token': None}).eq('email', _email_for_logout).execute()
+    except Exception:
+        pass
+    st.session_state.clear()
+    st.session_state.logged_in = False
+    st.session_state.force_logout = True
+    st.session_state._cookie_checked = True
     st.query_params.clear()
     st.rerun()
+
+# Ripristina sessione da cookie solo se NON in stato di logout forzato
+_force_logout_active = st.session_state.get('force_logout', False)
+
+if not st.session_state.logged_in and not _force_logout_active and _cookie_manager is not None:
+    try:
+        _token_cookie = _cookie_manager.get("session_token")
+        if _token_cookie:
+            # Valida il token contro il DB - se è stato cancellato (logout), la query non trova nulla
+            _resp_cookie = supabase.table("users").select("*").eq("session_token", _token_cookie).eq("attivo", True).execute()
+            if _resp_cookie and _resp_cookie.data:
+                _u = _resp_cookie.data[0]
+                st.session_state.logged_in = True
+                st.session_state.user_data = _u
+                st.session_state.partita_iva = _u.get('partita_iva')
+                st.session_state.created_at = _u.get('created_at')
+                if _u.get('email') in ADMIN_EMAILS:
+                    st.session_state.user_is_admin = True
+                logger.info(f"✅ Sessione ripristinata da token per: {_u.get('email')}")
+            else:
+                # Token non valido (logout effettuato) → vai al login direttamente
+                logger.info("🔒 Session token non valido o scaduto - richiesto login")
+                st.session_state._cookie_checked = True
+        elif not st.session_state.get('_cookie_checked', False):
+            # Primo render: CookieManager non ha ancora letto i cookie, aspetta un ciclo
+            st.session_state._cookie_checked = True
+            st.markdown("""
+                <div style='display:flex;align-items:center;justify-content:center;
+                            height:80vh;flex-direction:column;gap:12px;'>
+                    <div style='font-size:2rem;'>⏳</div>
+                    <div style='color:#94a3b8;font-size:0.95rem;'>Caricamento sessione...</div>
+                </div>
+            """, unsafe_allow_html=True)
+            st.stop()
+        # else: nessun token e già controllato → login normale
+    except Exception as _re:
+        logger.warning(f"Errore ripristino sessione da cookie: {_re}")
 
 
 # ============================================================
@@ -568,6 +638,18 @@ def mostra_pagina_login():
                             st.session_state.partita_iva = user.get('partita_iva')
                             st.session_state.created_at = user.get('created_at')
                             
+                            # 🍪 Genera e salva session_token nel DB + cookie (30 giorni)
+                            if _cookie_manager is not None:
+                                try:
+                                    import uuid as _uuid
+                                    from datetime import datetime, timedelta
+                                    _s_token = str(_uuid.uuid4())
+                                    supabase.table('users').update({'session_token': _s_token}).eq('id', user.get('id')).execute()
+                                    _cookie_manager.set("session_token", _s_token,
+                                                        expires_at=datetime.now() + timedelta(days=30))
+                                except Exception as _ce:
+                                    logger.warning(f"Errore salvataggio session token: {_ce}")
+                            
                             # Verifica se è admin e imposta flag
                             if user.get('email') in ADMIN_EMAILS:
                                 st.session_state.user_is_admin = True
@@ -619,6 +701,17 @@ def mostra_pagina_login():
                 if user:
                     st.session_state.logged_in = True
                     st.session_state.user_data = user
+                    # 🍪 Salva session_token anche dopo reset password
+                    if _cookie_manager is not None:
+                        try:
+                            import uuid as _uuid
+                            from datetime import datetime, timedelta
+                            _s_token = str(_uuid.uuid4())
+                            supabase.table('users').update({'session_token': _s_token}).eq('id', user.get('id')).execute()
+                            _cookie_manager.set("session_token", _s_token,
+                                                expires_at=datetime.now() + timedelta(days=30))
+                        except Exception:
+                            pass
                     st.success("✅ Password aggiornata! Accesso automatico...")
                     time.sleep(0.5)
                     st.rerun()
@@ -649,8 +742,18 @@ user = st.session_state.user_data
 # ULTIMA VERIFICA: se user_data è None o invalido, FORZA logout immediato
 if not user or not user.get('email'):
     logger.critical("❌ user_data è None o mancante email - FORZA LOGOUT")
-    st.session_state.clear()  # Cancella tutto
-    st.session_state.logged_in = False  # Reimposta dopo clear
+    if _cookie_manager is not None:
+        try:
+            # Invalida token nel DB prima di pulire la sessione
+            _email_emergency = st.session_state.get('user_data', {}).get('email') if st.session_state.get('user_data') else None
+            if _email_emergency:
+                supabase.table('users').update({'session_token': None}).eq('email', _email_emergency).execute()
+        except Exception:
+            pass
+    st.session_state.clear()
+    st.session_state.logged_in = False
+    st.session_state.force_logout = True
+    st.session_state._cookie_checked = True
     st.rerun()
 
 
@@ -703,14 +806,22 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
         
         st.session_state.ristoranti = ristoranti.data if ristoranti.data else []
         
-        # Se ha ristoranti, imposta il primo come default
+        # Se ha ristoranti, imposta il default
         if st.session_state.ristoranti:
-            # Se non c'è un ristorante selezionato, usa il primo
+            # Se non c'è un ristorante selezionato, usa l'ultimo usato (se ancora disponibile)
             if 'ristorante_id' not in st.session_state:
-                st.session_state.ristorante_id = st.session_state.ristoranti[0]['id']
-                st.session_state.partita_iva = st.session_state.ristoranti[0]['partita_iva']
-                st.session_state.nome_ristorante = st.session_state.ristoranti[0]['nome_ristorante']
-                logger.info(f"🏢 Ristorante caricato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
+                ultimo_id = user.get('ultimo_ristorante_id')
+                ristorante_default = None
+                if ultimo_id:
+                    ristorante_default = next(
+                        (r for r in st.session_state.ristoranti if r['id'] == ultimo_id), None
+                    )
+                if ristorante_default is None:
+                    ristorante_default = st.session_state.ristoranti[0]
+                st.session_state.ristorante_id = ristorante_default['id']
+                st.session_state.partita_iva = ristorante_default['partita_iva']
+                st.session_state.nome_ristorante = ristorante_default['nome_ristorante']
+                logger.info(f"🏢 Ristorante caricato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva}){' [ultimo usato]' if ultimo_id and ristorante_default['id'] == ultimo_id else ' [primo in lista]'}")
         else:
             # ⚠️ UTENTE LEGACY: Nessun ristorante trovato
             if not st.session_state.get('user_is_admin', False):
@@ -961,6 +1072,14 @@ if user.get('email') not in ADMIN_EMAILS:
             if 'files_con_errori' in st.session_state:
                 st.session_state.files_con_errori = set()
             
+            # 💾 Salva l'ultimo ristorante usato nel DB per ripristinarlo alla prossima sessione
+            try:
+                supabase.table('users').update(
+                    {'ultimo_ristorante_id': selected_ristorante['id']}
+                ).eq('id', user.get('id')).execute()
+            except Exception as _e:
+                logger.warning(f"Errore salvataggio ultimo_ristorante_id: {_e}")
+            
             logger.info(f"🔄 Ristorante cambiato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
             st.rerun()
         
@@ -1102,8 +1221,6 @@ def mostra_statistiche(df_completo):
     
     # Conta righe da classificare VELOCEMENTE dal DataFrame locale (ZERO query Supabase)
     # I dati sono già stati caricati da carica_e_prepara_dataframe() che è cached
-    ristorante_id = st.session_state.get('ristorante_id')
-    
     # Calcola maschera locale per sapere quali descrizioni processare (dal df_completo locale)
     maschera_ai = (
         df_completo['Categoria'].isna()
@@ -1115,56 +1232,54 @@ def mostra_statistiche(df_completo):
     # Conta dal DataFrame locale (istantaneo, nessuna query HTTP)
     righe_da_classificare = maschera_ai.sum()
     descrizioni_da_classificare = set(df_completo[maschera_ai]['Descrizione'].dropna().unique())
-    prodotti_unici_da_classificare = len(descrizioni_da_classificare)
     
     # ============================================================
     # CATEGORIZZAZIONE AI (triggerata dal bottone nella sezione upload)
     # ============================================================
     if st.session_state.pop('trigger_ai_categorize', False):
-        if True:
-            # Sopprimi i messaggi dell'uploader nel rerun successivo
-            st.session_state.suppress_upload_messages_once = True
+        # Sopprimi i messaggi dell'uploader nel rerun successivo
+        st.session_state.suppress_upload_messages_once = True
+        # ============================================================
+        # VERIFICA FINALE (sicurezza)
+        # ============================================================
+        if righe_da_classificare == 0:
+            st.warning("⚠️ Nessun prodotto da classificare")
+        else:
             # ============================================================
-            # VERIFICA FINALE (sicurezza)
+            # CHIAMATA AI (SOLO DESCRIZIONI DA CLASSIFICARE)
             # ============================================================
-            if righe_da_classificare == 0:
-                st.warning("⚠️ Nessun prodotto da classificare")
-            else:
-                # ============================================================
-                # CHIAMATA AI (SOLO DESCRIZIONI DA CLASSIFICARE)
-                # ============================================================
-                # 🔧 FIX: Query DIRETTA al DB per evitare problema filtri locali su df_completo
-                try:
-                    # Query tutte le descrizioni che hanno categoria NULL, "Da Classificare" o stringa vuota
-                    ristorante_id = st.session_state.get('ristorante_id')
-                    query_null = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).is_("categoria", "null")
-                    query_da_class = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "Da Classificare")
-                    query_empty = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "")
-                    if ristorante_id:
-                        query_null = query_null.eq("ristorante_id", ristorante_id)
-                        query_da_class = query_da_class.eq("ristorante_id", ristorante_id)
-                        query_empty = query_empty.eq("ristorante_id", ristorante_id)
-                    resp_null = query_null.execute()
-                    resp_da_class = query_da_class.execute()
-                    resp_empty = query_empty.execute()
-                    
-                    # Combina e rimuovi duplicati (NULL + "Da Classificare" + stringa vuota)
-                    dati_null = resp_null.data if resp_null.data else []
-                    dati_da_class = resp_da_class.data if resp_da_class.data else []
-                    dati_empty = resp_empty.data if resp_empty.data else []
-                    tutti_dati = dati_null + dati_da_class + dati_empty
-                    
-                    descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
-                    fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
-                    
-                    logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare (NULL: {len(dati_null)}, DaClass: {len(dati_da_class)}, Vuote: {len(dati_empty)})")
-                except Exception as e:
-                    logger.error(f"Errore query diretta descrizioni: {e}")
-                    # Fallback su df_completo se query fallisce
-                    descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
-                    fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
+            # 🔧 FIX: Query DIRETTA al DB per evitare problema filtri locali su df_completo
+            try:
+                # Query tutte le descrizioni che hanno categoria NULL, "Da Classificare" o stringa vuota
+                ristorante_id = st.session_state.get('ristorante_id')
+                query_null = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).is_("categoria", "null")
+                query_da_class = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "Da Classificare")
+                query_empty = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "")
+                if ristorante_id:
+                    query_null = query_null.eq("ristorante_id", ristorante_id)
+                    query_da_class = query_da_class.eq("ristorante_id", ristorante_id)
+                    query_empty = query_empty.eq("ristorante_id", ristorante_id)
+                resp_null = query_null.execute()
+                resp_da_class = query_da_class.execute()
+                resp_empty = query_empty.execute()
                 
-                if descrizioni_da_classificare:
+                # Combina e rimuovi duplicati (NULL + "Da Classificare" + stringa vuota)
+                dati_null = resp_null.data if resp_null.data else []
+                dati_da_class = resp_da_class.data if resp_da_class.data else []
+                dati_empty = resp_empty.data if resp_empty.data else []
+                tutti_dati = dati_null + dati_da_class + dati_empty
+                
+                descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
+                fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
+                
+                logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare (NULL: {len(dati_null)}, DaClass: {len(dati_da_class)}, Vuote: {len(dati_empty)})")
+            except Exception as e:
+                logger.error(f"Errore query diretta descrizioni: {e}")
+                # Fallback su df_completo se query fallisce
+                descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
+                fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
+            
+            if descrizioni_da_classificare:
                     # 🧠 Placeholder per banner orizzontale
                     progress_placeholder = st.empty()
                     
@@ -1743,6 +1858,8 @@ def mostra_statistiche(df_completo):
     spesa_fb = df_food['TotaleRiga'].sum()
     spesa_generale = df_spese_generali['TotaleRiga'].sum()
     num_fornitori = df_food['Fornitore'].nunique()
+    num_fatture_spese = df_spese_generali['FileOrigine'].nunique() if not df_spese_generali.empty else 0
+    num_fornitori_spese = df_spese_generali['Fornitore'].nunique() if not df_spese_generali.empty else 0
     
     # Layout 5 colonne per i KPI - Stile Workspace
     col1, col2, col3, col4, col5 = st.columns(5)
@@ -1802,7 +1919,21 @@ def mostra_statistiche(df_completo):
         st.markdown(_kpi_html("🔥 Spesa F&B", _fmt_kpi_main(spesa_fb)), unsafe_allow_html=True)
 
     with col3:
-        st.markdown(_kpi_html("🏪 Fornitori F&B", str(num_fornitori)), unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="kpi-card">
+            <div style="display:flex; justify-content:space-around; align-items:center; height:100%;">
+                <div style="text-align:center; flex:1;">
+                    <div class="kpi-label">🏪 Fornit. F&B</div>
+                    <div class="kpi-value">{num_fornitori}</div>
+                </div>
+                <div style="width:1px; background:rgba(206,212,218,0.6); align-self:stretch; margin:4px 8px;"></div>
+                <div style="text-align:center; flex:1;">
+                    <div class="kpi-label">🏢 Fornit. Sp.Gen.</div>
+                    <div class="kpi-value">{num_fornitori_spese}</div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
 
     with col4:
         st.markdown(_kpi_html("🛒 Spesa Generale", _fmt_kpi_main(spesa_generale)), unsafe_allow_html=True)
@@ -1886,6 +2017,13 @@ def mostra_statistiche(df_completo):
             background-color: #0284c7 !important;
             border-color: #0369a1 !important;
         }
+        button[kind="primary"]:disabled,
+        button[kind="primary"][disabled] {
+            background-color: #0ea5e9 !important;
+            color: white !important;
+            border: 2px solid #0284c7 !important;
+            opacity: 0.5 !important;
+        }
         
         div[data-testid="column"] button[kind="secondary"] {
             background-color: #f0f2f6 !important;
@@ -1932,9 +2070,6 @@ def mostra_statistiche(df_completo):
 
         
         # 📦 SEZIONE DETTAGLIO ARTICOLI
-        
-        # Avviso salvataggio modifiche
-        st.warning("⚠️ ATTENZIONE: Se hai modificato dati nella tabella, **clicca SALVA** prima di cambiare filtro, altrimenti le modifiche andranno perse!")
         
         # ===== FILTRO TIPO PRODOTTI =====
         col_tipo, col_search_type, col_search, col_save = st.columns([2, 2, 3, 2])
@@ -2109,12 +2244,19 @@ def mostra_statistiche(df_completo):
 
         num_righe = len(df_editor)
         
+        # Avviso salvataggio modifiche (dopo filtri)
+        st.markdown("""
+    <div style='padding: 8px 14px; font-size: 0.88rem; color: #9a3412; font-weight: 500; text-align: left; margin-bottom: 12px;'>
+        ⚠️ <strong>ATTENZIONE:</strong> Se hai modificato dati nella tabella, <strong>clicca SALVA</strong> prima di cambiare filtro, altrimenti le modifiche andranno perse!
+    </div>
+    """, unsafe_allow_html=True)
+        
         # ============================================================
         # 📦 CHECKBOX RAGGRUPPAMENTO PRODOTTI
         # ============================================================
         vista_aggregata = st.checkbox(
             "📦 Raggruppa prodotti unici", 
-            value=False,  # ← DEFAULT OFF per rollout sicuro
+            value=True,  # ← DEFAULT ON
             help="Mostra 1 riga per prodotto con totali sommati (Q.tà, €, Prezzo medio)",
             key="checkbox_raggruppa_prodotti"
         )
@@ -3165,15 +3307,20 @@ def mostra_statistiche(df_completo):
             # Aggiungi colonna TOTALE
             pivot_cat['TOTALE'] = pivot_cat.sum(axis=1)
             
+            # Aggiungi colonna MEDIA (totale / numero mesi)
+            num_mesi_cat = len(cols_sorted)
+            pivot_cat['MEDIA'] = pivot_cat['TOTALE'] / num_mesi_cat if num_mesi_cat > 0 else 0
+            
             # Ordina per totale decrescente
             pivot_cat = pivot_cat.sort_values('TOTALE', ascending=False)
             
             # Formatta come €
             pivot_cat_display = pivot_cat.copy()
             for col in pivot_cat_display.columns:
-                if col != 'TOTALE':
+                if col not in ('TOTALE', 'MEDIA'):
                     pivot_cat_display[col] = pivot_cat_display[col].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "")
             pivot_cat_display['TOTALE'] = pivot_cat_display['TOTALE'].apply(lambda x: f"€ {x:,.2f}")
+            pivot_cat_display['MEDIA'] = pivot_cat_display['MEDIA'].apply(lambda x: f"€ {x:,.2f}")
             
             # Reset index per avere Categoria come colonna
             pivot_cat_display = pivot_cat_display.reset_index()
@@ -3191,13 +3338,14 @@ def mostra_statistiche(df_completo):
                 
                 # Calcola totale dalla somma dei valori numerici
                 totale_cat = pivot_cat['TOTALE'].sum()
+                media_cat = totale_cat / num_mesi_cat if num_mesi_cat > 0 else 0
                 col_left, col_right = st.columns([5, 1])
                 
                 with col_left:
                     st.markdown(f"""
                     <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
                         <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                            📋 N. Righe: {num_righe_cat:,} | 💰 Totale: € {totale_cat:.2f}
+                            📋 N. Righe: {num_righe_cat:,} | 💰 Totale: € {totale_cat:.2f} | 📊 Media mensile: € {media_cat:.2f}
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
@@ -3324,15 +3472,20 @@ def mostra_statistiche(df_completo):
             # Aggiungi colonna TOTALE
             pivot_forn['TOTALE'] = pivot_forn.sum(axis=1)
             
+            # Aggiungi colonna MEDIA (totale / numero mesi)
+            num_mesi_forn = len(cols_sorted)
+            pivot_forn['MEDIA'] = pivot_forn['TOTALE'] / num_mesi_forn if num_mesi_forn > 0 else 0
+            
             # Ordina per totale decrescente
             pivot_forn = pivot_forn.sort_values('TOTALE', ascending=False)
             
             # Formatta come €
             pivot_forn_display = pivot_forn.copy()
             for col in pivot_forn_display.columns:
-                if col != 'TOTALE':
+                if col not in ('TOTALE', 'MEDIA'):
                     pivot_forn_display[col] = pivot_forn_display[col].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "")
             pivot_forn_display['TOTALE'] = pivot_forn_display['TOTALE'].apply(lambda x: f"€ {x:,.2f}")
+            pivot_forn_display['MEDIA'] = pivot_forn_display['MEDIA'].apply(lambda x: f"€ {x:,.2f}")
             
             # Reset index per avere Fornitore come colonna
             pivot_forn_display = pivot_forn_display.reset_index()
@@ -3350,13 +3503,14 @@ def mostra_statistiche(df_completo):
                 
                 # Calcola totale dalla somma dei valori numerici
                 totale_forn = pivot_forn['TOTALE'].sum()
+                media_forn = totale_forn / num_mesi_forn if num_mesi_forn > 0 else 0
                 col_left, col_right = st.columns([5, 1])
                 
                 with col_left:
                     st.markdown(f"""
                     <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
                         <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                            📋 N. Righe: {num_righe_forn:,} | 💰 Totale: € {totale_forn:.2f}
+                            📋 N. Righe: {num_righe_forn:,} | 💰 Totale: € {totale_forn:.2f} | 📊 Media mensile: € {media_forn:.2f}
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
@@ -3490,25 +3644,38 @@ def mostra_statistiche(df_completo):
             # Aggiungi colonna TOTALE
             pivot_cat['TOTALE'] = pivot_cat.sum(axis=1)
             
+            # Aggiungi colonna MEDIA
+            num_mesi_spese_cat = len(cols_sorted)
+            pivot_cat['MEDIA'] = pivot_cat['TOTALE'] / num_mesi_spese_cat if num_mesi_spese_cat > 0 else 0
+            
             # Ordina per totale decrescente
             pivot_cat = pivot_cat.sort_values('TOTALE', ascending=False)
             
-            # Formatta come €
-            pivot_cat_display = pivot_cat.map(lambda x: f"€ {x:,.2f}")
+            # Formatta come € (celle vuote per valori 0 nei mesi)
+            pivot_cat_display = pivot_cat.copy()
+            for col in pivot_cat_display.columns:
+                if col not in ('TOTALE', 'MEDIA'):
+                    pivot_cat_display[col] = pivot_cat_display[col].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "")
+            pivot_cat_display['TOTALE'] = pivot_cat_display['TOTALE'].apply(lambda x: f"€ {x:,.2f}")
+            pivot_cat_display['MEDIA'] = pivot_cat_display['MEDIA'].apply(lambda x: f"€ {x:,.2f}")
+            
+            # Reset index per avere Categoria come colonna
+            pivot_cat_display = pivot_cat_display.reset_index()
             
             num_righe_spese_cat = len(pivot_cat_display)
             altezza_spese_cat = max(num_righe_spese_cat * 35 + 50, 200)
-            st.dataframe(pivot_cat_display, width='stretch', height=altezza_spese_cat)
+            st.dataframe(pivot_cat_display, hide_index=True, width='stretch', height=altezza_spese_cat)
             
             # Box + Excel per Categorie
             totale_cat_spese = pivot_cat['TOTALE'].sum()
+            media_cat_spese = totale_cat_spese / num_mesi_spese_cat if num_mesi_spese_cat > 0 else 0
             col_left, col_right = st.columns([5, 1])
             
             with col_left:
                 st.markdown(f"""
                 <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
                     <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                        📋 N. Righe: {num_righe_spese_cat:,} | 💰 Totale: € {totale_cat_spese:.2f}
+                        📋 N. Righe: {num_righe_spese_cat:,} | 💰 Totale: € {totale_cat_spese:.2f} | 📊 Media mensile: € {media_cat_spese:.2f}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -3572,25 +3739,38 @@ def mostra_statistiche(df_completo):
             # Aggiungi colonna TOTALE
             pivot_forn['TOTALE'] = pivot_forn.sum(axis=1)
             
+            # Aggiungi colonna MEDIA
+            num_mesi_spese_forn = len(cols_sorted_forn)
+            pivot_forn['MEDIA'] = pivot_forn['TOTALE'] / num_mesi_spese_forn if num_mesi_spese_forn > 0 else 0
+            
             # Ordina per totale decrescente
             pivot_forn = pivot_forn.sort_values('TOTALE', ascending=False)
             
-            # Formatta come €
-            pivot_forn_display = pivot_forn.map(lambda x: f"€ {x:,.2f}")
+            # Formatta come € (celle vuote per valori 0 nei mesi)
+            pivot_forn_display = pivot_forn.copy()
+            for col in pivot_forn_display.columns:
+                if col not in ('TOTALE', 'MEDIA'):
+                    pivot_forn_display[col] = pivot_forn_display[col].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "")
+            pivot_forn_display['TOTALE'] = pivot_forn_display['TOTALE'].apply(lambda x: f"€ {x:,.2f}")
+            pivot_forn_display['MEDIA'] = pivot_forn_display['MEDIA'].apply(lambda x: f"€ {x:,.2f}")
+            
+            # Reset index per avere Fornitore come colonna
+            pivot_forn_display = pivot_forn_display.reset_index()
             
             num_righe_spese_forn = len(pivot_forn_display)
             altezza_spese_forn = max(num_righe_spese_forn * 35 + 50, 200)
-            st.dataframe(pivot_forn_display, width='stretch', height=altezza_spese_forn)
+            st.dataframe(pivot_forn_display, hide_index=True, width='stretch', height=altezza_spese_forn)
             
             # Box + Excel per Fornitori
             totale_forn_spese = pivot_forn['TOTALE'].sum()
+            media_forn_spese = totale_forn_spese / num_mesi_spese_forn if num_mesi_spese_forn > 0 else 0
             col_left, col_right = st.columns([5, 1])
             
             with col_left:
                 st.markdown(f"""
                 <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
                     <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                        📋 N. Righe: {num_righe_spese_forn:,} | 💰 Totale: € {totale_forn_spese:.2f}
+                        📋 N. Righe: {num_righe_spese_forn:,} | 💰 Totale: € {totale_forn_spese:.2f} | 📊 Media mensile: € {media_forn_spese:.2f}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -3907,7 +4087,7 @@ if not df_cache.empty:
     </style>
     """, unsafe_allow_html=True)
     with st.container(key="expander_gestione_fatture"):
-      with st.expander("🗂️ Gestione Fatture Caricate (Elimina)", expanded=False):
+      with st.expander("🗂️ Apri per gestire le Fatture Caricate (Elimina)", expanded=False):
         
         # ========================================
         # BOX STATISTICHE
@@ -4014,9 +4194,18 @@ if not df_cache.empty:
                         
                         progress.progress(80, text="Ripristino sessione...")
                         
-                        # HARD RESET: Rimuovi session state specifici (mantieni login)
+                        # HARD RESET: Rimuovi session state specifici
+                        # 🔧 FIX: Preserva chiavi impersonazione e contesto ristorante
+                        #          per evitare che l'admin perda i poteri dopo delete
+                        keys_to_preserve = {
+                            'user_data', 'logged_in', 'check_conferma_svuota',
+                            # Impersonazione admin
+                            'impersonating', 'admin_original_user', 'user_is_admin',
+                            # Contesto ristorante attivo
+                            'ristorante_id', 'ristoranti', 'partita_iva', 'nome_ristorante',
+                        }
                         keys_to_remove = [k for k in st.session_state.keys() 
-                                         if k not in ['user_data', 'logged_in', 'check_conferma_svuota']]
+                                         if k not in keys_to_preserve]
                         for key in keys_to_remove:
                             st.session_state.pop(key, None)  # Sicuro: niente errore se non esiste
                         
@@ -4100,7 +4289,8 @@ if not df_cache.empty:
                         if 'files_processati_sessione' in st.session_state:
                             file_eliminato = fattura_selezionata['File']
                             st.session_state.files_processati_sessione.discard(file_eliminato)
-                            st.session_state.files_processati_sessione.discard(get_nome_base_file(file_eliminato))
+                            import os as _os
+                            st.session_state.files_processati_sessione.discard(_os.path.splitext(file_eliminato)[0].lower())
                         
                         if result["success"]:
                             st.success(f"✅ Fattura **{fattura_selezionata['File']}** eliminata! ({result['righe_eliminate']} prodotti)")
@@ -4311,13 +4501,10 @@ else:
         else:
             st.markdown(f"""
             <div style="
-                background-color: #fff3cd;
-                border-left: 4px solid #ffc107;
                 padding: 10px 14px;
-                border-radius: 4px;
                 margin-bottom: 8px;
             ">
-                <span style="color: #856404; font-weight: 600; font-size: 0.85rem;">⚠️ {_righe_da_class_ui} righe da categorizzare ({_prodotti_unici_ui} prodotti unici)</span>
+                <span style="color: #1e40af; font-weight: 600; font-size: 1rem;">⚠️ {_righe_da_class_ui} righe da categorizzare ({_prodotti_unici_ui} prodotti unici)</span>
             </div>
             """, unsafe_allow_html=True)
 
@@ -4448,34 +4635,39 @@ if uploaded_files:
         else:
             ristorante_id = st.session_state.get('ristorante_id')
             
+            # ⚠️ Controllo: ristorante_id DEVE essere presente
+            if not ristorante_id:
+                logger.warning(f"⚠️ ristorante_id mancante per user {user_id} - rischio falsi positivi cross-ristorante")
+            
             # Tentativo 1: Usa RPC function se disponibile (query aggregata SQL lato server)
             try:
                 # 🔧 RPC con filtro multi-ristorante
-                # NOTA: La stored procedure deve supportare il parametro opzionale p_ristorante_id
                 rpc_params = {'p_user_id': user_id}
                 if ristorante_id:
                     rpc_params['p_ristorante_id'] = ristorante_id
-                    logger.debug(f"🔍 Query file con ristorante_id: {ristorante_id}")
                 response_rpc = supabase.rpc('get_distinct_files', rpc_params).execute()
-                # Normalizza nomi file dal DB per confronto (rimuovi estensione)
+                # Tieni i nomi COMPLETI (con estensione) dal DB per confronto primario
+                file_su_supabase_full = {row["file_origine"].strip().lower()
+                                        for row in response_rpc.data 
+                                        if row.get("file_origine") and row["file_origine"].strip()}
+                # Nomi base (senza estensione) per confronto secondario XML/PDF
                 file_su_supabase = {get_nome_base_file(row["file_origine"]) 
                                    for row in response_rpc.data 
                                    if row.get("file_origine") and row["file_origine"].strip()}
+                logger.info(f"🔍 Query file DB: ristorante_id={ristorante_id}, trovati {len(file_su_supabase_full)} file distinti")
                     
             except Exception as rpc_error:
                 # Fallback: Query normale ma ottimizzata CON PAGINAZIONE
                 logger.warning(f"RPC function non disponibile, uso query normale con paginazione: {rpc_error}")
                 
-                # ⚠️ CRITICO: Supabase restituisce di default solo 1000 righe!
-                # Dobbiamo paginare per ottenere TUTTI i file
                 file_su_supabase = set()
+                file_su_supabase_full = set()
                 page = 0
                 page_size = 1000
                 
                 while True:
                     try:
                         offset = page * page_size
-                        # ✅ Usa ristorante_id dalla riga precedente (no ridefinizione)
                         query_files = (
                             supabase.table("fatture")
                             .select("file_origine", count="exact")
@@ -4488,13 +4680,11 @@ if uploaded_files:
                         if not response.data:
                             break
                             
-                        # Estrai file_origine da questa pagina (normalizzato)
                         for row in response.data:
                             if row.get("file_origine") and row["file_origine"].strip():
-                                # Normalizza rimuovendo estensione per confronto
+                                file_su_supabase_full.add(row["file_origine"].strip().lower())
                                 file_su_supabase.add(get_nome_base_file(row["file_origine"]))
                         
-                        # Se questa pagina ha meno di page_size record, abbiamo finito
                         if len(response.data) < page_size:
                             break
                             
@@ -4502,7 +4692,9 @@ if uploaded_files:
                         
                     except Exception as page_error:
                         logger.error(f"Errore paginazione pagina {page}: {page_error}")
-                        break  # Esci dal loop per evitare loop infinito
+                        break
+                
+                logger.info(f"🔍 Query file DB (fallback): ristorante_id={ristorante_id}, trovati {len(file_su_supabase_full)} file distinti")
         
         # 🔍 VERIFICA COERENZA: Se DB è vuoto ma session ha file, è un errore -> reset
         if len(file_su_supabase) == 0 and len(st.session_state.files_processati_sessione) > 0:
@@ -4534,26 +4726,59 @@ if uploaded_files:
     # ============================================================
     # FIX: DEDUPLICAZIONE CORRETTA (solo contro DB reale)
     # ============================================================
+    # Assicura che file_su_supabase_full esista (potrebbe mancare se errore prima)
+    if 'file_su_supabase_full' not in dir():
+        file_su_supabase_full = set()
+    
     file_nuovi = []
     file_gia_processati = []
     
-    # � OTTIMIZZAZIONE: Skip file appena caricati usando session_state
     just_uploaded = st.session_state.get('just_uploaded_files', set())
     
     for file in file_unici:
         filename = file.name
-        nome_base = get_nome_base_file(filename)  # Normalizza per confronto
+        filename_lower = filename.strip().lower()
+        nome_base = get_nome_base_file(filename)
         
-        # Conta come già presente se appena caricato o già nel DB (confronto nome base)
-        if nome_base in just_uploaded or nome_base in file_su_supabase:
+        # ── Confronto a 2 livelli ──────────────────────────────────
+        # 1° LIVELLO: match ESATTO sul nome file completo (affidabile)
+        # 2° LIVELLO: match sul nome base senza estensione (cattura XML/PDF stesso doc)
+        is_exact_match = filename_lower in file_su_supabase_full
+        is_base_match = nome_base in file_su_supabase
+        is_just_uploaded = nome_base in just_uploaded
+        
+        if is_exact_match or is_base_match or is_just_uploaded:
             file_gia_processati.append(filename)
-            # Log per debug: indica se è duplicato per estensione diversa
-            logger.debug(f"📋 File '{filename}' rilevato come duplicato (nome base: '{nome_base}')")
+            # Log dettagliato per diagnosi
+            reason = []
+            if is_exact_match: reason.append('nome esatto in DB')
+            if is_base_match and not is_exact_match: reason.append(f'nome base "{nome_base}" in DB')
+            if is_just_uploaded: reason.append('appena caricato')
+            logger.info(f"📋 SKIP '{filename}' → {', '.join(reason)}")
         # Protezione: Salta file che hanno già dato errore in questa sessione
         elif filename in st.session_state.get('files_con_errori', set()):
             continue
         else:
             file_nuovi.append(file)
+    
+    logger.info(f"📊 Dedup risultato: {len(file_nuovi)} nuovi, {len(file_gia_processati)} già presenti, {duplicate_count} duplicati upload")
+    
+    # Log file scartati come DUPLICATE_SKIPPED (solo quelli già nel DB, non appena caricati in sessione)
+    if file_gia_processati:
+        try:
+            _uid = st.session_state.user_data.get('id', '')
+            _email = st.session_state.user_data.get('email', 'unknown')
+            for _fname in file_gia_processati:
+                if get_nome_base_file(_fname) not in just_uploaded:
+                    log_upload_event(
+                        user_id=_uid,
+                        user_email=_email,
+                        file_name=_fname,
+                        status='DUPLICATE_SKIPPED',
+                        supabase_client=supabase
+                    )
+        except Exception as _log_ex:
+            logger.warning(f"Errore logging duplicate skip: {_log_ex}")
     
     # Messaggio SOLO per ADMIN (interfaccia pulita per clienti)
     is_admin = st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False)
@@ -4583,28 +4808,19 @@ if uploaded_files:
         # Se NESSUN file nuovo E erano just_uploaded → silenzio (post-rerun di file già elaborati)
         if not file_nuovi and len(erano_just_uploaded) > 0:
             logger.info(f"⏭️ Skip messaggi: {len(erano_just_uploaded)} file erano just_uploaded")
-        # Se ci sono file_gia_processati (indipendentemente da file_nuovi)
-        elif file_gia_processati and duplicate_count == 0:
-            # Tutte le fatture (non elaborate) erano già nel database
-            num = len(file_gia_processati)
-            if num == 1:
-                st.warning("⚠️ La fattura è stata scartata perché è già stata inserita")
-            else:
-                st.warning(f"⚠️ {num} fatture sono state scartate perché sono già state inserite")
-        # Se ci sono solo duplicati nell'upload stesso
-        elif duplicate_count and not file_gia_processati:
-            num = duplicate_count
-            if num == 1:
-                st.warning("⚠️ La fattura è stata scartata perché è già stata inserita")
-            else:
-                st.warning(f"⚠️ {num} fatture sono state scartate perché sono già state inserite")
-        # Se ci sono ENTRAMBI duplicati e già presenti
-        elif file_gia_processati and duplicate_count:
-            totale = len(file_gia_processati) + duplicate_count
+        # Se ci sono file già presenti o duplicati
+        elif file_gia_processati or duplicate_count:
+            num_db = len(file_gia_processati)
+            totale = num_db + duplicate_count
             if totale == 1:
-                st.warning("⚠️ La fattura è stata scartata perché è già stata inserita")
+                st.warning("⚠️ 1 fattura scartata perché già presente nel database")
             else:
-                st.warning(f"⚠️ {totale} fatture sono state scartate perché sono già state inserite")
+                st.warning(f"⚠️ {totale} fatture scartate perché già presenti nel database")
+            # Mostra dettaglio con lista file per verifica utente
+            if file_gia_processati:
+                with st.expander(f"📋 Mostra {num_db} file già presenti", expanded=False):
+                    for i, fname in enumerate(sorted(file_gia_processati), 1):
+                        st.text(f"  {i}. {fname}")
     
     # ✅ Pulizia flag just_uploaded dopo aver mostrato/non mostrato i messaggi
     if erano_just_uploaded:

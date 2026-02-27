@@ -272,7 +272,7 @@ st.markdown("""
 <details style='background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; margin-bottom: 16px;'>
 <summary style='background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px;
     padding: 10px 14px; color: #1e40af; font-weight: 600; cursor: pointer; font-size: 0.95rem;'>
-    📌 Note operative
+    📌 Apri per visualizzare la Legenda
 </summary>
 <div style='padding: 10px 18px; color: #1e3a5f; font-size: 0.875rem; line-height: 1.6;'>
 <ul style='margin: 4px 0; padding-left: 20px;'>

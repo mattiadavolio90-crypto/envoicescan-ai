@@ -124,7 +124,11 @@ with tab1:
                             st.info("🔄 Reindirizzamento al login tra 2 secondi...")
                             time.sleep(2)
                             
-                            # Logout automatico
+                            # Logout automatico + invalida session_token
+                            try:
+                                supabase.table('users').update({'session_token': None}).eq('id', user['id']).execute()
+                            except Exception:
+                                pass
                             st.session_state.logged_in = False
                             st.session_state.user_data = None
                             st.switch_page("app.py")
@@ -187,31 +191,62 @@ with tab2:
                 except Exception as e:
                     logger.warning(f"Errore query ristoranti export: {e}")
                 
-                # Query fatture (solo metadati, NO file completi)
+                # Query fatture con paginazione e ristorante_id (per GDPR completo)
                 try:
-                    fatture_query = supabase.table('fatture').select(
-                        'file_origine, fornitore, data_documento, totale_riga, categoria'
-                    ).eq('user_id', user_id).execute()
-                    
-                    if fatture_query.data:
-                        export_data["fatture"] = [
-                            {
+                    fatture_export = []
+                    offset = 0
+                    page_size = 1000
+                    while True:
+                        fatture_query = supabase.table('fatture').select(
+                            'file_origine, fornitore, data_documento, totale_riga, categoria, ristorante_id'
+                        ).eq('user_id', user_id)\
+                         .order('id', desc=False)\
+                         .range(offset, offset + page_size - 1)\
+                         .execute()
+                        
+                        rows = fatture_query.data or []
+                        if not rows:
+                            break
+                        
+                        for f in rows:
+                            rid = f.get('ristorante_id')
+                            fatture_export.append({
                                 "file": f.get('file_origine'),
                                 "fornitore": f.get('fornitore'),
                                 "data": f.get('data_documento'),
                                 "totale": f.get('totale_riga'),
-                                "categoria": f.get('categoria')
-                            }
-                            for f in fatture_query.data
-                        ]
+                                "categoria": f.get('categoria'),
+                                "ristorante_id": rid
+                            })
+                        
+                        if len(rows) < page_size:
+                            break
+                        offset += page_size
+                    
+                    export_data["fatture"] = fatture_export
                 except Exception as e:
                     logger.warning(f"Errore query fatture export: {e}")
                 
-                # Query classificazioni manuali
+                # Query classificazioni manuali con paginazione
                 try:
-                    class_query = supabase.table('classificazioni_manuali').select('*').eq('user_id', user_id).execute()
-                    if class_query.data:
-                        export_data["classificazioni_manuali"] = class_query.data
+                    class_export = []
+                    offset = 0
+                    page_size = 1000
+                    while True:
+                        class_query = supabase.table('classificazioni_manuali').select('*')\
+                            .eq('user_id', user_id)\
+                            .order('id', desc=False)\
+                            .range(offset, offset + page_size - 1)\
+                            .execute()
+                        rows = class_query.data or []
+                        if not rows:
+                            break
+                        class_export.extend(rows)
+                        if len(rows) < page_size:
+                            break
+                        offset += page_size
+                    if class_export:
+                        export_data["classificazioni_manuali"] = class_export
                 except Exception as e:
                     logger.warning(f"Errore query classificazioni export: {e}")
                 

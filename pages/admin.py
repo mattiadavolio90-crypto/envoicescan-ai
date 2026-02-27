@@ -22,7 +22,7 @@ import requests
 
 # Import corretto da utils (non da app.py per evitare esecuzione interfaccia)
 from utils.formatters import carica_categorie_da_db
-from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria
+from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria, pulisci_caratteri_corrotti
 from utils.piva_validator import valida_formato_piva, normalizza_piva
 from services.auth_service import crea_cliente_con_token
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
@@ -56,27 +56,27 @@ st.set_page_config(
 supabase = get_supabase_client()
 
 # ============================================================
-# RIPRISTINO SESSIONE DA COOKIE (come in app.py)
+# RIPRISTINO SESSIONE DA COOKIE (session_token, come in app.py)
 # ============================================================
 try:
     # Inizializza logged_in se non esiste
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
     
-    # Ripristina sessione da cookie se non loggato
+    # Ripristina sessione da token cookie se non loggato
     if not st.session_state.logged_in:
         cookie_manager = stx.CookieManager(key="cookie_manager_admin")
-        user_email_cookie = cookie_manager.get("user_email")
+        _token_admin = cookie_manager.get("session_token")
         
-        if user_email_cookie:
+        if _token_admin:
             try:
-                response = supabase.table("users").select("*").eq("email", user_email_cookie).eq("attivo", True).execute()
+                response = supabase.table("users").select("*").eq("session_token", _token_admin).eq("attivo", True).execute()
                 if response and getattr(response, 'data', None) and len(response.data) > 0:
                     st.session_state.logged_in = True
                     st.session_state.user_data = response.data[0]
-                    logger.info(f"✅ Sessione ripristinata da cookie per: {user_email_cookie}")
+                    logger.info(f"✅ Sessione admin ripristinata da session_token")
             except Exception as e:
-                logger.error(f"Errore recupero utente da cookie: {e}")
+                logger.error(f"Errore recupero utente da session_token: {e}")
 except Exception as e:
     logger.error(f'Errore controllo cookie sessione: {e}')
 
@@ -102,9 +102,26 @@ if not st.session_state.get('logged_in', False):
 
 user = st.session_state.get('user_data', {})
 
+is_impersonating = st.session_state.get('impersonating', False)
+admin_original_user = st.session_state.get('admin_original_user', {})
+admin_original_email = admin_original_user.get('email')
+is_admin_impersonating = is_impersonating and admin_original_email in ADMIN_EMAILS
+
 if user.get('email') not in ADMIN_EMAILS:
-    st.error("⛔ Accesso riservato agli amministratori")
-    st.stop()
+    # Se l'admin sta impersonando un cliente, consenti accesso al pannello
+    # ripristinando automaticamente l'utente admin originale.
+    if is_admin_impersonating:
+        st.session_state.user_data = admin_original_user.copy()
+        st.session_state.user_is_admin = True
+        st.session_state.impersonating = False
+        if 'admin_original_user' in st.session_state:
+            del st.session_state.admin_original_user
+        user = st.session_state.get('user_data', {})
+        logger.info(f"🔙 Ripristino automatico admin da impersonazione: {user.get('email')}")
+        st.info("🔙 Sessione admin ripristinata")
+    else:
+        st.error("⛔ Accesso riservato agli amministratori")
+        st.stop()
 
 # ============================================================
 # SIDEBAR CONDIVISA
@@ -140,6 +157,233 @@ def invalida_cache_memoria():
     except ImportError:
         pass
     logger.info("✅ Cache memoria invalidata (Streamlit + in-memory)")
+
+
+# ──────────────────────────────────────────────────────────
+# CACHED: Statistiche clienti per Tab1 (query pesanti)
+# ──────────────────────────────────────────────────────────
+
+def _empty_stats() -> dict:
+    return {
+        'num_fatture': 0,
+        'num_righe': 0,
+        'ultimo_caricamento': None,
+        'totale_costi': 0.0,
+        'debug': {
+            'totale_raw': 0,
+            'escluse_note': 0,
+            'escluse_review': 0,
+            'escluse_date_invalide': 0,
+            'incluse_finale': 0,
+            'somma_totale_riga': 0.0,
+            'righe_con_date': []
+        }
+    }
+
+def _update_stats_bucket(bucket: dict, row: dict):
+    bucket['num_righe'] += 1
+
+    file_origine = row.get('file_origine')
+    if file_origine:
+        bucket['_file_unici'].add(file_origine)
+
+    created_at = row.get('created_at')
+    if created_at:
+        try:
+            dt = pd.to_datetime(created_at)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            if bucket['ultimo_caricamento'] is None or dt > bucket['ultimo_caricamento']:
+                bucket['ultimo_caricamento'] = dt
+        except Exception:
+            pass
+
+    debug = bucket['debug']
+    debug['totale_raw'] += 1
+
+    try:
+        categoria = str(row.get('categoria', '')).strip()
+        needs_review = row.get('needs_review', False)
+        data_documento = row.get('data_documento')
+        totale_riga = float(row.get('totale_riga', 0) or 0)
+
+        if categoria == '📝 NOTE E DICITURE':
+            debug['escluse_note'] += 1
+            return
+
+        if needs_review:
+            debug['escluse_review'] += 1
+            return
+
+        try:
+            data_dt = pd.to_datetime(data_documento, errors='coerce')
+            if pd.isna(data_dt):
+                debug['escluse_date_invalide'] += 1
+                return
+        except (ValueError, TypeError):
+            debug['escluse_date_invalide'] += 1
+            return
+
+        debug['incluse_finale'] += 1
+        debug['somma_totale_riga'] += totale_riga
+        bucket['totale_costi'] += totale_riga
+
+        if len(debug['righe_con_date']) < 5:
+            debug['righe_con_date'].append({
+                'data': str(data_documento),
+                'importo': totale_riga,
+                'categoria': categoria
+            })
+    except Exception as e:
+        logger.warning(f"Errore calcolo costo riga {row.get('id')}: {e}")
+
+def _finalize_bucket(bucket: dict) -> dict:
+    return {
+        'num_fatture': len(bucket.get('_file_unici', set())),
+        'num_righe': bucket.get('num_righe', 0),
+        'ultimo_caricamento': bucket.get('ultimo_caricamento'),
+        'totale_costi': bucket.get('totale_costi', 0.0),
+        'debug': bucket.get('debug', _empty_stats()['debug'])
+    }
+
+
+@st.cache_data(ttl=60, show_spinner="⏳ Caricamento statistiche clienti...")
+def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
+    """
+    Carica e aggrega statistiche per tutti i clienti (non-admin).
+    Cached per 60 secondi per evitare query pesanti ad ogni rerun.
+    
+    Returns:
+        tuple: (stats_clienti_list, has_piva_column)
+    """
+    from services import get_supabase_client
+    sb = get_supabase_client()
+    admin_emails_set = set(admin_emails_tuple)
+
+    # 1) Query utenti
+    try:
+        query_users = sb.table('users')\
+            .select('id, email, nome_ristorante, attivo, created_at, partita_iva, ragione_sociale')\
+            .order('email')\
+            .execute()
+        has_piva_column = True
+    except Exception as col_err:
+        if '42703' in str(col_err) or 'does not exist' in str(col_err):
+            query_users = sb.table('users')\
+                .select('id, email, nome_ristorante, attivo, created_at')\
+                .order('email')\
+                .execute()
+            has_piva_column = False
+        else:
+            raise col_err
+
+    if not query_users.data:
+        return [], has_piva_column
+
+    clienti_non_admin = [u for u in query_users.data if u.get('email') not in admin_emails_set]
+    if not clienti_non_admin:
+        return [], has_piva_column
+
+    user_ids = [u['id'] for u in clienti_non_admin if u.get('id')]
+
+    # 2) Carica ristoranti attivi in batch
+    ristoranti_by_user = {}
+    try:
+        for i in range(0, len(user_ids), 100):
+            chunk_ids = user_ids[i:i + 100]
+            rist_resp = sb.table('ristoranti')\
+                .select('id, user_id, nome_ristorante, partita_iva, ragione_sociale')\
+                .eq('attivo', True)\
+                .in_('user_id', chunk_ids)\
+                .execute()
+            for rist in (rist_resp.data or []):
+                ristoranti_by_user.setdefault(rist['user_id'], []).append(rist)
+    except Exception as e:
+        logger.warning(f"Errore caricamento batch ristoranti: {e}")
+
+    # 3) Carica fatture in batch con paginazione
+    stats_by_user = {}
+    stats_by_rist = {}
+
+    for i in range(0, len(user_ids), 100):
+        chunk_ids = user_ids[i:i + 100]
+        offset = 0
+        page_size = 1000
+
+        while True:
+            fatture_resp = sb.table('fatture')\
+                .select('id, user_id, ristorante_id, file_origine, created_at, data_documento, totale_riga, categoria, needs_review')\
+                .in_('user_id', chunk_ids)\
+                .order('id', desc=False)\
+                .range(offset, offset + page_size - 1)\
+                .execute()
+
+            rows = fatture_resp.data or []
+            if not rows:
+                break
+
+            for row in rows:
+                uid = row.get('user_id')
+                rid = row.get('ristorante_id')
+
+                if uid not in stats_by_user:
+                    base = _empty_stats()
+                    base['_file_unici'] = set()
+                    stats_by_user[uid] = base
+                _update_stats_bucket(stats_by_user[uid], row)
+
+                key = (uid, rid)
+                if key not in stats_by_rist:
+                    base = _empty_stats()
+                    base['_file_unici'] = set()
+                    stats_by_rist[key] = base
+                _update_stats_bucket(stats_by_rist[key], row)
+
+            if len(rows) < page_size:
+                break
+            offset += page_size
+
+    # 4) Costruisci righe finali
+    stats_clienti = []
+    for user_data in clienti_non_admin:
+        user_id = user_data['id']
+        ristoranti_utente = ristoranti_by_user.get(user_id, [])
+
+        if ristoranti_utente:
+            for rist in ristoranti_utente:
+                stats = _finalize_bucket(stats_by_rist.get((user_id, rist['id']), {'_file_unici': set(), **_empty_stats()}))
+                stats_clienti.append({
+                    'user_id': user_id,
+                    'ristorante_id': rist['id'],
+                    'email': user_data['email'],
+                    'ristorante': rist['nome_ristorante'],
+                    'attivo': user_data.get('attivo', True),
+                    'partita_iva': rist.get('partita_iva'),
+                    'ragione_sociale': rist.get('ragione_sociale', ''),
+                    'num_fatture': stats['num_fatture'],
+                    'num_righe': stats['num_righe'],
+                    'ultimo_caricamento': stats['ultimo_caricamento'],
+                    'totale_costi': stats['totale_costi'],
+                    'debug': stats['debug']
+                })
+        else:
+            stats = _finalize_bucket(stats_by_user.get(user_id, {'_file_unici': set(), **_empty_stats()}))
+            stats_clienti.append({
+                'user_id': user_id,
+                'ristorante_id': None,
+                'email': user_data['email'],
+                'ristorante': user_data.get('nome_ristorante') or "❌ Nessun Ristorante",
+                'attivo': user_data.get('attivo', True),
+                'partita_iva': user_data.get('partita_iva'),
+                'ragione_sociale': user_data.get('ragione_sociale', ''),
+                'num_fatture': stats['num_fatture'],
+                'num_righe': stats['num_righe'],
+                'ultimo_caricamento': stats['ultimo_caricamento'],
+                'totale_costi': stats['totale_costi'],
+                'debug': stats['debug']
+            })
+
+    return stats_clienti, has_piva_column
 
 
 # ============================================================
@@ -399,6 +643,7 @@ if tab1:
                             """)
                         
                         logger.info(f"✅ Nuovo cliente creato da admin: {new_email} | P.IVA: {normalizza_piva(new_piva)} | Email: {email_inviata}")
+                        _carica_stats_clienti_admin.clear()
                         time.sleep(2)
                         st.rerun()
                         
@@ -527,6 +772,7 @@ if tab1:
                                                             st.session_state.form_ristorante_key = 0
                                                         st.session_state.form_ristorante_key += 1
                                                         
+                                                        _carica_stats_clienti_admin.clear()
                                                         time.sleep(1)
                                                         st.rerun()
                                                 except Exception as e:
@@ -584,6 +830,7 @@ if tab1:
                                                 
                                                 logger.warning(f"🗑️ Sede eliminata: {rist_da_eliminare['nome_ristorante']} di {cliente_selezionato}")
                                                 st.success("✅ Sede eliminata!")
+                                                _carica_stats_clienti_admin.clear()
                                                 time.sleep(1)
                                                 st.rerun()
                                             except Exception as e:
@@ -599,193 +846,32 @@ if tab1:
     st.markdown("---")
     
     try:
-        # Query utenti (retrocompatibile: prova con partita_iva, fallback senza)
-        try:
-            query_users = supabase.table('users')\
-                .select('id, email, nome_ristorante, attivo, created_at, partita_iva, ragione_sociale')\
-                .order('email')\
-                .execute()
-            has_piva_column = True
-        except Exception as col_err:
-            # Fallback: colonne partita_iva non ancora migrate
-            if '42703' in str(col_err) or 'does not exist' in str(col_err):
-                query_users = supabase.table('users')\
-                    .select('id, email, nome_ristorante, attivo, created_at')\
-                    .order('email')\
-                    .execute()
-                has_piva_column = False
-                st.warning("⚠️ Esegui migrazione 009 per abilitare P.IVA")
-            else:
-                raise col_err
-        
-        if not query_users.data:
-            st.info("📭 Nessun cliente registrato")
+        # 🚀 CACHED: Carica stats clienti (query pesanti cached 60s)
+        stats_clienti, has_piva_column = _carica_stats_clienti_admin(tuple(ADMIN_EMAILS))
+
+        if not has_piva_column:
+            st.warning("⚠️ Esegui migrazione 009 per abilitare P.IVA")
+
+        if not stats_clienti:
+            st.info("📭 Nessun cliente registrato (esclusi admin)")
         else:
-            # Filtra admin dalla lista clienti
-            clienti_non_admin = [u for u in query_users.data if u.get('email') not in ADMIN_EMAILS]
-            
-            if not clienti_non_admin:
-                st.info("📭 Nessun cliente registrato (esclusi admin)")
-            
-            # Calcola statistiche per ogni cliente
-            stats_clienti = []
-            
-            for user_data in clienti_non_admin:
-                user_id = user_data['id']
-                
-                # Query fatture per questo utente (con conteggio esatto)
-                query_fatture = supabase.table('fatture')\
-                    .select('file_origine, id, created_at, data_documento, totale_riga, fornitore, categoria, needs_review', count='exact')\
-                    .eq('user_id', user_id)\
-                    .execute()
-                
-                num_fatture = 0
-                num_righe = 0
-                ultimo_caricamento = None
-                totale_costi_complessivi = 0
-                
-                # DEBUG: contatori per analisi
-                debug_info = {
-                    'totale_raw': 0,
-                    'escluse_note': 0,
-                    'escluse_review': 0,
-                    'escluse_date_invalide': 0,
-                    'incluse_finale': 0,
-                    'somma_totale_riga': 0.0,
-                    'righe_con_date': []
-                }
-                
-                if query_fatture.data:
-                    # Conta file unici
-                    file_unici = set([r['file_origine'] for r in query_fatture.data])
-                    num_fatture = len(file_unici)
-                    num_righe = query_fatture.count  # ✅ FIX: usa count reale invece di len()
-                    
-                    # Ultimo caricamento (converte tutto a timezone-aware)
-                    date_caricate = []
-                    for r in query_fatture.data:
-                        dt = pd.to_datetime(r['created_at'])
-                        # Converti a timezone-aware se naive
-                        if dt.tzinfo is None:
-                            dt = dt.replace(tzinfo=timezone.utc)
-                        date_caricate.append(dt)
-                    
-                    if date_caricate:
-                        ultimo_caricamento = max(date_caricate)
-                    
-                    # Calcola totale costi complessivi (ESCLUSE NOTE E DICITURE e needs_review)
-                    for r in query_fatture.data:
-                        debug_info['totale_raw'] += 1
-                        
-                        try:
-                            categoria = str(r.get('categoria', '')).strip()
-                            needs_review = r.get('needs_review', False)
-                            data_documento = r.get('data_documento')
-                            totale_riga = float(r.get('totale_riga', 0) or 0)
-                            
-                            # Escludi NOTE E DICITURE (righe a 0€)
-                            if categoria == '📝 NOTE E DICITURE':
-                                debug_info['escluse_note'] += 1
-                                continue
-                            
-                            # Escludi righe in review (qualsiasi categoria)
-                            if needs_review:
-                                debug_info['escluse_review'] += 1
-                                continue
-                            
-                            # Verifica data valida (come fa il client)
-                            try:
-                                data_dt = pd.to_datetime(data_documento, errors='coerce')
-                                if pd.isna(data_dt):
-                                    debug_info['escluse_date_invalide'] += 1
-                                    continue
-                            except (ValueError, TypeError):
-                                debug_info['escluse_date_invalide'] += 1
-                                continue
-                            
-                            debug_info['incluse_finale'] += 1
-                            debug_info['somma_totale_riga'] += totale_riga
-                            totale_costi_complessivi += totale_riga
-                            
-                            # Salva info data per analisi (solo prime 5)
-                            if len(debug_info['righe_con_date']) < 5:
-                                debug_info['righe_con_date'].append({
-                                    'data': str(data_documento),
-                                    'importo': totale_riga,
-                                    'categoria': categoria
-                                })
-                        except Exception as e:
-                            logger.warning(f"Errore calcolo costo riga {r.get('id')}: {e}")
-                            continue
-                
-                # 🎯 NUOVA LOGICA: Una riga per ogni ristorante
-                try:
-                    ristoranti_utente = supabase.table('ristoranti')\
-                        .select('id, nome_ristorante, partita_iva, ragione_sociale')\
-                        .eq('user_id', user_id)\
-                        .eq('attivo', True)\
-                        .execute()
-                    
-                    if ristoranti_utente.data and len(ristoranti_utente.data) > 0:
-                        # CASO 1: Ha ristoranti - crea una riga per ciascuno
-                        for rist in ristoranti_utente.data:
-                            stats_clienti.append({
-                                'user_id': user_id,
-                                'ristorante_id': rist['id'],
-                                'email': user_data['email'],
-                                'ristorante': rist['nome_ristorante'],
-                                'attivo': user_data.get('attivo', True),
-                                'partita_iva': rist['partita_iva'],
-                                'ragione_sociale': rist.get('ragione_sociale', ''),
-                                'num_fatture': num_fatture,
-                                'num_righe': num_righe,
-                                'ultimo_caricamento': ultimo_caricamento,
-                                'totale_costi': totale_costi_complessivi,
-                                'debug': debug_info
-                            })
-                    else:
-                        # CASO 2: Nessun ristorante - mostra riga con warning
-                        stats_clienti.append({
-                            'user_id': user_id,
-                            'ristorante_id': None,
-                            'email': user_data['email'],
-                            'ristorante': "❌ Nessun Ristorante",
-                            'attivo': user_data.get('attivo', True),
-                            'partita_iva': user_data.get('partita_iva'),
-                            'ragione_sociale': user_data.get('ragione_sociale', ''),
-                            'num_fatture': num_fatture,
-                            'num_righe': num_righe,
-                            'ultimo_caricamento': ultimo_caricamento,
-                            'totale_costi': totale_costi_complessivi,
-                            'debug': debug_info
-                        })
-                except Exception as e:
-                    logger.warning(f"Errore caricamento ristoranti per {user_data['email']}: {e}")
-                    # Fallback: usa il valore legacy da users
-                    stats_clienti.append({
-                        'user_id': user_id,
-                        'ristorante_id': None,
-                        'email': user_data['email'],
-                        'ristorante': user_data.get('nome_ristorante', 'N/A'),
-                        'attivo': user_data.get('attivo', True),
-                        'partita_iva': user_data.get('partita_iva'),
-                        'ragione_sociale': user_data.get('ragione_sociale', ''),
-                        'num_fatture': num_fatture,
-                        'num_righe': num_righe,
-                        'ultimo_caricamento': ultimo_caricamento,
-                        'totale_costi': totale_costi_complessivi,
-                        'debug': debug_info
-                    })
-            
             df_clienti = pd.DataFrame(stats_clienti)
+
+            if df_clienti.empty:
+                st.info("📭 Nessun dato cliente disponibile")
+                st.stop()
             
             # ===== METRICHE GENERALI =====
-            col1, col2, col3, col4, col5 = st.columns(5)
+            col1, col2, col2b, col3, col4, col5 = st.columns(6)
             with col1:
-                st.metric("Totale Clienti", len(df_clienti))
+                st.metric("Totale Clienti", int(df_clienti['user_id'].nunique()))
             with col2:
-                clienti_attivi = df_clienti[df_clienti['attivo'] == True].shape[0]
+                clienti_attivi = int(df_clienti[df_clienti['attivo'] == True]['user_id'].nunique())
                 st.metric("Clienti Attivi", clienti_attivi)
+            with col2b:
+                # 🏢 Totale sedi/ristoranti configurati (esclude righe senza ristorante)
+                totale_ristoranti = int(df_clienti[df_clienti['ristorante_id'].notna()]['ristorante_id'].nunique())
+                st.metric("Totale Ristoranti", totale_ristoranti)
             with col3:
                 totale_fatture = int(df_clienti['num_fatture'].sum())
                 st.metric("Totale Fatture", totale_fatture)
@@ -889,11 +975,18 @@ if tab1:
                                 
                                 if ristoranti_cliente.data and len(ristoranti_cliente.data) > 0:
                                     st.session_state.ristoranti = ristoranti_cliente.data
-                                    # Imposta primo ristorante come default
-                                    st.session_state.ristorante_id = ristoranti_cliente.data[0]['id']
-                                    st.session_state.partita_iva = ristoranti_cliente.data[0]['partita_iva']
-                                    st.session_state.nome_ristorante = ristoranti_cliente.data[0]['nome_ristorante']
-                                    logger.info(f"🏢 Impersonazione: Caricato ristorante {ristoranti_cliente.data[0]['nome_ristorante']} (ID: {ristoranti_cliente.data[0]['id']})")
+                                    # Imposta come default la sede selezionata dall'admin (se presente), altrimenti la prima
+                                    rist_selezionato = None
+                                    row_ristorante_id = row.get('ristorante_id')
+                                    if row_ristorante_id:
+                                        rist_selezionato = next((r for r in ristoranti_cliente.data if r.get('id') == row_ristorante_id), None)
+                                    if rist_selezionato is None:
+                                        rist_selezionato = ristoranti_cliente.data[0]
+
+                                    st.session_state.ristorante_id = rist_selezionato['id']
+                                    st.session_state.partita_iva = rist_selezionato['partita_iva']
+                                    st.session_state.nome_ristorante = rist_selezionato['nome_ristorante']
+                                    logger.info(f"🏢 Impersonazione: Caricato ristorante {rist_selezionato['nome_ristorante']} (ID: {rist_selezionato['id']})")
                                 else:
                                     # Fallback: usa dati dalla tabella users (utenti legacy senza ristoranti)
                                     st.session_state.ristoranti = []
@@ -934,6 +1027,7 @@ if tab1:
                                         
                                         logger.info(f"🔴 Account disattivato: {row['email']}")
                                         st.success(f"Account {row['email']} disattivato")
+                                        _carica_stats_clienti_admin.clear()
                                         time.sleep(1)
                                         st.rerun()
                                     except Exception as e:
@@ -948,6 +1042,7 @@ if tab1:
                                         
                                         logger.info(f"🟢 Account attivato: {row['email']}")
                                         st.success(f"Account {row['email']} attivato")
+                                        _carica_stats_clienti_admin.clear()
                                         time.sleep(1)
                                         st.rerun()
                                     except Exception as e:
@@ -1207,6 +1302,7 @@ if tab1:
                                                     
                                                     # Reset dialog
                                                     st.session_state[f"show_delete_dialog_{row_key}"] = False
+                                                    _carica_stats_clienti_admin.clear()
                                                     time.sleep(2)
                                                     st.rerun()
                                                     
@@ -1230,6 +1326,19 @@ if tab1:
 if tab2:
     st.markdown("## 📊 Review Righe Prezzo €0")
     st.caption("Verifica righe con prezzo €0 - potrebbero essere omaggi o diciture")
+
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _carica_clienti_attivi_non_admin():
+        try:
+            resp = supabase.table('users')\
+                .select('id, email, nome_ristorante')\
+                .eq('attivo', True)\
+                .order('nome_ristorante', desc=False)\
+                .execute()
+            data = resp.data if resp.data else []
+            return [u for u in data if u.get('email') not in ADMIN_EMAILS]
+        except Exception:
+            return []
     
     # ============================================================
     # FILTRO PER CLIENTE
@@ -1237,13 +1346,7 @@ if tab2:
     st.markdown("### 👥 Seleziona Cliente")
     
     try:
-        clienti_response = supabase.table('users')\
-            .select('id, email, nome_ristorante')\
-            .eq('attivo', True)\
-            .order('nome_ristorante', desc=False)\
-            .execute()
-        
-        clienti = clienti_response.data if clienti_response.data else []
+        clienti = _carica_clienti_attivi_non_admin()
         
         # Opzione "Tutti" all'inizio
         opzioni_clienti = [{'id': 'TUTTI', 'email': 'Tutti i clienti', 'nome_ristorante': 'Tutti'}] + clienti
@@ -1309,6 +1412,12 @@ if tab2:
             
             df = pd.DataFrame(all_data) if all_data else pd.DataFrame()
             
+            # Pulisci descrizioni corrotte (encoding errato da fornitori CJK)
+            if not df.empty and 'descrizione' in df.columns:
+                df['descrizione'] = df['descrizione'].apply(
+                    lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x
+                )
+            
             # Log statistiche
             if not df.empty:
                 n_zero = len(df[df['prezzo_unitario'] == 0]) if 'prezzo_unitario' in df.columns else 0
@@ -1320,6 +1429,12 @@ if tab2:
         except Exception as e:
             logger.error(f"Errore caricamento righe review: {e}")
             return pd.DataFrame()
+
+    def _build_review_update_query(payload: dict, descrizione_target: str, cliente_id_target: str = None):
+        query = supabase.table('fatture').update(payload).eq('descrizione', descrizione_target)
+        if cliente_id_target:
+            query = query.eq('user_id', cliente_id_target)
+        return query
     
     df_zero = carica_righe_zero_con_filtro(filtro_cliente_id)
     
@@ -1448,23 +1563,12 @@ if tab2:
     if num_pagine > 1:
         st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe}")
     
-    # ============================================================
-    # INIZIALIZZA MODIFICHE PENDENTI
-    # ============================================================
-    if 'modifiche_review' not in st.session_state:
-        st.session_state.modifiche_review = {}
-    
     st.markdown("---")
     
     # ============================================================
     # TABELLA CON 2 AZIONI PER DESCRIZIONE UNICA
     # ============================================================
-    num_modifiche = len(st.session_state.modifiche_review)
-    
-    if num_modifiche > 0:
-        st.markdown(f"### 📝 Righe da Revisionare | 🔸 **{num_modifiche} modifiche pendenti**")
-    else:
-        st.markdown("### 📝 Righe da Revisionare (raggruppate)")
+    st.markdown("### 📝 Righe da Revisionare (raggruppate)")
     
     # HEADER
     col_desc, col_occur, col_cat, col_forn, col_azioni = st.columns([3, 0.7, 1.5, 1.5, 1.5])
@@ -1486,13 +1590,7 @@ if tab2:
     
     st.markdown("---")
     
-    # RIGHE PAGINATE - Usa categorie da cache
-    categorie = st.session_state.categorie_cached
-    
-    admin_email = user.get('email', 'admin')
-    
     for idx, row in df_pagina.iterrows():
-        row_id = row['id']
         descrizione = row['descrizione']
         categoria_corrente = row['categoria']
         fornitore = row.get('fornitore', 'N/A')
@@ -1530,12 +1628,12 @@ if tab2:
                 # Bottone IGNORA
                 if st.button("❌", key=f"ignore_{idx}", help="Ignora definitivamente"):
                     try:
-                        result = supabase.table('fatture').update({
+                        result = _build_review_update_query({
                             'categoria': '📝 NOTE E DICITURE',
                             'needs_review': False,
                             'reviewed_at': datetime.now(timezone.utc).isoformat(),
                             'reviewed_by': 'admin'
-                        }).eq('descrizione', descrizione).execute()
+                        }, descrizione, filtro_cliente_id).execute()
                         
                         st.success(f"❌ {len(result.data) if result.data else occorrenze} righe ignorate")
                         invalida_cache_memoria()
@@ -1573,12 +1671,12 @@ if tab2:
                 with col_confirm:
                     if st.button("✅ Conferma", key=f"confirm_{idx}"):
                         try:
-                            result = supabase.table('fatture').update({
+                            result = _build_review_update_query({
                                 'categoria': nuova_categoria,
                                 'needs_review': False,
                                 'reviewed_at': datetime.now(timezone.utc).isoformat(),
                                 'reviewed_by': 'admin'
-                            }).eq('descrizione', descrizione).execute()
+                            }, descrizione, filtro_cliente_id).execute()
                             
                             st.success(f"✅ {len(result.data) if result.data else occorrenze} righe → {nuova_categoria}")
                             del st.session_state[f"editing_{idx}"]
@@ -1594,82 +1692,6 @@ if tab2:
                         st.rerun()
         
         st.markdown("---")
-    
-    # ============================================================
-    # BARRA AZIONI BATCH (se ci sono modifiche)
-    # ============================================================
-    if num_modifiche > 0:
-        st.markdown("---")
-        st.markdown("### 💾 Salvataggio Batch")
-        
-        # Info modifiche
-        totale_righe_affected = sum(m['occorrenze'] for m in st.session_state.modifiche_review.values())
-        st.info(f"📊 **{num_modifiche}** descrizioni modificate → **{totale_righe_affected}** righe totali")
-        
-        # Mostra preview modifiche
-        with st.expander("🔍 Preview Modifiche", expanded=False):
-            for desc, info in list(st.session_state.modifiche_review.items())[:10]:
-                desc_short = desc[:50] + "..." if len(desc) > 50 else desc
-                st.markdown(f"- `{desc_short}` ({info['occorrenze']}×): {info['categoria_originale']} → **{info['nuova_categoria']}**")
-            if num_modifiche > 10:
-                st.caption(f"... e altre {num_modifiche - 10} modifiche")
-        
-        # Bottoni azione - TAB 3 REVIEW
-        col_save, col_cancel, col_export = st.columns([2, 1, 1.5])
-        
-        with col_save:
-            if st.button(f"💾 Salva Tutte ({num_modifiche})", type="primary", use_container_width=True, key="save_review_batch"):
-                with st.spinner(f"💾 Salvataggio {num_modifiche} modifiche in corso..."):
-                    success_count = 0
-                    total_rows = 0
-                    
-                    for descrizione, info in st.session_state.modifiche_review.items():
-                        try:
-                            result = supabase.table('fatture').update({
-                                'categoria': info['nuova_categoria']
-                            }).eq('descrizione', descrizione).execute()
-                            
-                            num_updated = len(result.data) if result.data else info['occorrenze']
-                            success_count += 1
-                            total_rows += num_updated
-                            
-                        except Exception as e:
-                            logger.error(f"Errore salvataggio '{descrizione}': {e}")
-                    
-                    # Reset modifiche
-                    st.session_state.modifiche_review = {}
-                    invalida_cache_memoria()
-                    
-                    st.success(f"✅ {success_count} modifiche salvate! {total_rows} righe aggiornate.")
-                    time.sleep(1.5)
-                    st.rerun()
-        
-        with col_cancel:
-            if st.button("❌ Annulla Tutte", use_container_width=True, key="cancel_review_batch"):
-                st.session_state.modifiche_review = {}
-                st.rerun()
-        
-        with col_export:
-            # Prepara CSV modifiche
-            export_data = []
-            for desc, info in st.session_state.modifiche_review.items():
-                export_data.append({
-                    'Descrizione': desc,
-                    'Occorrenze': info['occorrenze'],
-                    'Categoria Originale': info['categoria_originale'],
-                    'Nuova Categoria': info['nuova_categoria']
-                })
-            df_export = pd.DataFrame(export_data)
-            csv = df_export.to_csv(index=False).encode('utf-8')
-            
-            st.download_button(
-                label="📄 Export CSV",
-                data=csv,
-                file_name=f"modifiche_review_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
-                use_container_width=True,
-                key="export_review_csv"
-            )
 
 # ============================================================
 # FOOTER
@@ -1762,6 +1784,11 @@ def tab_memoria_globale_unificata():
             logger.info(f"📊 Memoria Globale caricata: {len(all_data)} prodotti (paginazione superata)")
             
             df = pd.DataFrame(all_data)
+            # Pulisci descrizioni corrotte (encoding errato da fatture CJK)
+            if not df.empty and 'descrizione' in df.columns:
+                df['descrizione'] = df['descrizione'].apply(
+                    lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x
+                )
             # Aggiungi colonna verified se non esiste (solo per UI, non nel DB)
             if 'verified' not in df.columns:
                 df['verified'] = False  # Default: da verificare
@@ -2007,8 +2034,8 @@ def tab_memoria_globale_unificata():
     # INFO SEMPLICE + PAGINAZIONE
     # ============================================================
     
-    # Paginazione per performance (25 righe = più veloce)
-    RIGHE_PER_PAGINA = 25
+    # Paginazione per performance (50 righe per pagina)
+    RIGHE_PER_PAGINA = 50
     totale_righe = len(df_filtrato)
     
     # Inizializza pagina corrente
@@ -2438,6 +2465,11 @@ def tab_personalizzazioni_clienti():
             
             logger.info(f"📊 Memoria Clienti caricata: {len(all_data)} personalizzazioni")
             df = pd.DataFrame(all_data)
+            # Pulisci descrizioni corrotte (encoding errato da fatture CJK)
+            if not df.empty and 'descrizione' in df.columns:
+                df['descrizione'] = df['descrizione'].apply(
+                    lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x
+                )
             return df
         except Exception as e:
             logger.error(f"Errore caricamento personalizzazioni: {e}")
@@ -2743,6 +2775,34 @@ if tab4:
 if tab5:
     st.markdown("## 🔍 Verifica Integrità Database")
     st.caption("Controlla anomalie nei dati delle fatture: date invalide, prezzi anomali, quantità strane, descrizioni vuote, duplicati, ecc.")
+
+    @st.cache_data(ttl=60, show_spinner=False)
+    def _carica_clienti_integrita_non_admin():
+        try:
+            resp = supabase.table('users')\
+                .select('email, nome_ristorante')\
+                .eq('attivo', True)\
+                .order('nome_ristorante')\
+                .execute()
+            data = resp.data if resp.data else []
+            return [u for u in data if u.get('email') not in ADMIN_EMAILS]
+        except Exception:
+            return []
+
+    def _fetch_fatture_integrita_paginate(query_base):
+        all_rows = []
+        page_size = 1000
+        offset = 0
+        while True:
+            resp = query_base.range(offset, offset + page_size - 1).execute()
+            rows = resp.data if resp.data else []
+            if not rows:
+                break
+            all_rows.extend(rows)
+            if len(rows) < page_size:
+                break
+            offset += page_size
+        return all_rows
     
     # ============================================================
     # FILTRI
@@ -2754,22 +2814,20 @@ if tab5:
     with col_email:
         # Carica lista clienti
         try:
-            clienti_response = supabase.table('users')\
-                .select('email, nome_ristorante')\
-                .order('nome_ristorante')\
-                .execute()
-            
-            if clienti_response.data:
+            clienti_non_admin = _carica_clienti_integrita_non_admin()
+
+            if clienti_non_admin:
+
                 # Opzione "Tutti" all'inizio
                 opzioni_clienti = ["Tutti i clienti"] + [
                     f"{c.get('nome_ristorante', 'N/A')} ({c['email']})" 
-                    for c in clienti_response.data
+                    for c in clienti_non_admin
                 ]
                 
                 # Mappa per recuperare email dalla selezione
                 email_map = {
                     f"{c.get('nome_ristorante', 'N/A')} ({c['email']})": c['email']
-                    for c in clienti_response.data
+                    for c in clienti_non_admin
                 }
             else:
                 opzioni_clienti = ["Tutti i clienti"]
@@ -2801,7 +2859,49 @@ if tab5:
         )
     
     st.markdown("---")
-    
+
+    # ============================================================
+    # FILE SCARTATI (DUPLICATI) - da upload_events
+    # ============================================================
+    st.markdown("### 📋 File Scartati come Duplicati")
+    st.caption("File che i clienti hanno tentato di ricaricare ma erano già presenti nel database")
+
+    try:
+        query_dupl = supabase.table('upload_events')\
+            .select('user_email, file_name, created_at')\
+            .eq('status', 'DUPLICATE_SKIPPED')\
+            .order('created_at', desc=True)
+
+        if filtro_email:
+            query_dupl = query_dupl.eq('user_email', filtro_email)
+
+        if filtro_periodo == "Ultimi 30 giorni":
+            query_dupl = query_dupl.gte('created_at', (datetime.now() - timedelta(days=30)).isoformat())
+        elif filtro_periodo == "Ultimi 90 giorni":
+            query_dupl = query_dupl.gte('created_at', (datetime.now() - timedelta(days=90)).isoformat())
+        elif filtro_periodo == "Ultimi 180 giorni":
+            query_dupl = query_dupl.gte('created_at', (datetime.now() - timedelta(days=180)).isoformat())
+
+        resp_dupl = query_dupl.limit(500).execute()
+        dupl_data = resp_dupl.data if resp_dupl.data else []
+
+        if not dupl_data:
+            st.info("✅ Nessun file scartato nel periodo selezionato")
+        else:
+            st.warning(f"⚠️ **{len(dupl_data)} tentativi** di ricaricare file già presenti nel database")
+            df_dupl = pd.DataFrame(dupl_data)
+            df_dupl = df_dupl.rename(columns={
+                'user_email': 'cliente',
+                'file_name': 'file',
+                'created_at': 'data tentativo'
+            })
+            df_dupl['data tentativo'] = pd.to_datetime(df_dupl['data tentativo']).dt.strftime('%Y-%m-%d %H:%M')
+            st.dataframe(df_dupl, use_container_width=True, hide_index=True)
+    except Exception as e:
+        st.warning(f"⚠️ Impossibile caricare log duplicati: {e}")
+
+    st.markdown("---")
+
     # ============================================================
     # VERIFICA INTEGRITÀ
     # ============================================================
@@ -2814,14 +2914,20 @@ if tab5:
                 
                 # Filtro per ristorante (basato su email utente)
                 if filtro_email:
-                    # Trova ristorante_id da email utente
+                    # Trova tutti i ristoranti dell'utente selezionato (multi-ristorante)
                     user_resp = supabase.table('users').select('id').eq('email', filtro_email).execute()
                     if user_resp.data:
                         user_id = user_resp.data[0]['id']
                         rist_resp = supabase.table('ristoranti').select('id').eq('user_id', user_id).execute()
                         if rist_resp.data:
-                            ristorante_id = rist_resp.data[0]['id']
-                            query = query.eq('ristorante_id', ristorante_id)
+                            ristorante_ids = [r['id'] for r in rist_resp.data if r.get('id')]
+                            if len(ristorante_ids) == 1:
+                                query = query.eq('ristorante_id', ristorante_ids[0])
+                            elif len(ristorante_ids) > 1:
+                                query = query.in_('ristorante_id', ristorante_ids)
+                        else:
+                            # Utente senza sedi: fallback su user_id per compatibilità legacy
+                            query = query.eq('user_id', user_id)
                 
                 # Filtro periodo
                 if filtro_periodo == "Ultimi 30 giorni":
@@ -2834,13 +2940,13 @@ if tab5:
                     data_limite = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
                     query = query.gte('data_documento', data_limite)
                 
-                # Esegui query
-                response = query.execute()
-                
-                if not response.data:
+                # Esegui query con paginazione (evita limite default 1000)
+                rows = _fetch_fatture_integrita_paginate(query)
+
+                if not rows:
                     st.info("📭 Nessuna fattura trovata per il periodo selezionato")
                 else:
-                    df = pd.DataFrame(response.data)
+                    df = pd.DataFrame(rows)
                     
                     # ============================================================
                     # ANALISI PROBLEMI
@@ -2851,112 +2957,108 @@ if tab5:
                         'prezzi_anomali': [],
                         'quantita_anomale': [],
                         'descrizioni_vuote': [],
-                        'totali_errati': [],
-                        'duplicati': []
+                        'totali_errati': []
                     }
                     
-                    # 1. Date invalide (future o non parsabili)
+                    # 1-5. Controlli principali in singolo pass (più veloce su dataset grandi)
                     oggi = datetime.now().date()
-                    for idx, row in df.iterrows():
+                    for _, row in df.iterrows():
+                        fornitore = row.get('fornitore', 'N/A')
+                        data_doc = row.get('data_documento', 'N/A')
+                        descrizione = str(row.get('descrizione', 'N/A') or 'N/A')
+                        desc_short = descrizione[:50]
+
+                        # 1) Date invalide
                         try:
-                            data_fattura = pd.to_datetime(row['data_documento']).date()
+                            data_fattura = pd.to_datetime(data_doc).date()
                             if data_fattura > oggi:
                                 problemi['date_invalide'].append({
-                                    'fornitore': row.get('fornitore', 'N/A'),
-                                    'data': row['data_documento'],
-                                    'descrizione': row.get('descrizione', 'N/A')[:50],
+                                    'fornitore': fornitore,
+                                    'data': data_doc,
+                                    'descrizione': desc_short,
                                     'problema': f"Data futura: {data_fattura}"
                                 })
                         except Exception:
                             problemi['date_invalide'].append({
-                                'fornitore': row.get('fornitore', 'N/A'),
-                                'data': row.get('data_documento', 'N/A'),
-                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'fornitore': fornitore,
+                                'data': data_doc,
+                                'descrizione': desc_short,
                                 'problema': "Data non valida"
                             })
-                    
-                    # 2. Prezzi anomali (negativi o troppo alti)
-                    for idx, row in df.iterrows():
-                        prezzo = row.get('prezzo_unitario', 0)
+
+                        # Normalizzazioni numeriche
+                        try:
+                            prezzo = float(row.get('prezzo_unitario', 0) or 0)
+                        except Exception:
+                            prezzo = 0.0
+
+                        try:
+                            quantita = float(row.get('quantita', 0) or 0)
+                        except Exception:
+                            quantita = 0.0
+
+                        try:
+                            totale = float(row.get('totale_riga', 0) or 0)
+                        except Exception:
+                            totale = 0.0
+
+                        # 2) Prezzi anomali
                         if prezzo < 0:
                             problemi['prezzi_anomali'].append({
-                                'fornitore': row.get('fornitore', 'N/A'),
-                                'data': row.get('data_documento', 'N/A'),
-                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'fornitore': fornitore,
+                                'data': data_doc,
+                                'descrizione': desc_short,
                                 'valore': f"€ {prezzo:.2f}",
                                 'problema': "Prezzo negativo"
                             })
                         elif prezzo > 10000:
                             problemi['prezzi_anomali'].append({
-                                'fornitore': row.get('fornitore', 'N/A'),
-                                'data': row.get('data_documento', 'N/A'),
-                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'fornitore': fornitore,
+                                'data': data_doc,
+                                'descrizione': desc_short,
                                 'valore': f"€ {prezzo:.2f}",
                                 'problema': "Prezzo molto alto (> €10.000)"
                             })
-                    
-                    # 3. Quantità anomale
-                    for idx, row in df.iterrows():
-                        quantita = row.get('quantita', 0)
+
+                        # 3) Quantità anomale
                         if quantita < 0:
                             problemi['quantita_anomale'].append({
-                                'fornitore': row.get('fornitore', 'N/A'),
-                                'data': row.get('data_documento', 'N/A'),
-                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'fornitore': fornitore,
+                                'data': data_doc,
+                                'descrizione': desc_short,
                                 'valore': quantita,
                                 'problema': "Quantità negativa"
                             })
                         elif quantita > 10000:
                             problemi['quantita_anomale'].append({
-                                'fornitore': row.get('fornitore', 'N/A'),
-                                'data': row.get('data_documento', 'N/A'),
-                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'fornitore': fornitore,
+                                'data': data_doc,
+                                'descrizione': desc_short,
                                 'valore': quantita,
                                 'problema': "Quantità molto alta (> 10.000)"
                             })
-                    
-                    # 4. Descrizioni vuote o troppo corte
-                    for idx, row in df.iterrows():
-                        desc = str(row.get('descrizione', '')).strip()
-                        if len(desc) < 3:
+
+                        # 4) Descrizioni vuote o troppo corte
+                        desc_trim = descrizione.strip()
+                        if len(desc_trim) < 3:
                             problemi['descrizioni_vuote'].append({
-                                'fornitore': row.get('fornitore', 'N/A'),
-                                'data': row.get('data_documento', 'N/A'),
-                                'descrizione': desc if desc else '(vuota)',
+                                'fornitore': fornitore,
+                                'data': data_doc,
+                                'descrizione': desc_trim if desc_trim else '(vuota)',
                                 'problema': "Descrizione mancante o troppo corta"
                             })
-                    
-                    # 5. Totali non corrispondenti (prezzo × quantità ≠ totale)
-                    for idx, row in df.iterrows():
-                        prezzo = row.get('prezzo_unitario', 0)
-                        quantita = row.get('quantita', 0)
-                        totale = row.get('totale_riga', 0)  # FIX: colonna è totale_riga, non totale
+
+                        # 5) Totali non corrispondenti (prezzo × quantità ≠ totale)
                         calcolato = prezzo * quantita
-                        
-                        # Tollera differenze di arrotondamento (< 0.02€)
                         if abs(calcolato - totale) > 0.02:
                             problemi['totali_errati'].append({
-                                'fornitore': row.get('fornitore', 'N/A'),
-                                'data': row.get('data_documento', 'N/A'),
-                                'descrizione': row.get('descrizione', 'N/A')[:50],
+                                'fornitore': fornitore,
+                                'data': data_doc,
+                                'descrizione': desc_short,
                                 'calcolato': f"€ {calcolato:.2f}",
                                 'salvato': f"€ {totale:.2f}",
                                 'problema': f"Differenza: € {abs(calcolato - totale):.2f}"
                             })
-                    
-                    # 6. Duplicati (stesso fornitore, descrizione, data, quantità, prezzo)
-                    duplicati_check = df.groupby(['fornitore', 'descrizione', 'data_documento', 'quantita', 'prezzo_unitario']).size()
-                    duplicati_trovati = duplicati_check[duplicati_check > 1]
-                    
-                    for (fornitore, descrizione, data, quantita, prezzo), count in duplicati_trovati.items():
-                        problemi['duplicati'].append({
-                            'fornitore': fornitore,
-                            'data': data,
-                            'descrizione': descrizione[:50],
-                            'quantita': quantita,
-                            'prezzo': f"€ {prezzo:.2f}",
-                            'problema': f"{count} righe identiche"
-                        })
                     
                     # ============================================================
                     # RISULTATI
@@ -2970,48 +3072,44 @@ if tab5:
                     else:
                         st.warning(f"⚠️ Trovati **{totale_problemi} problemi** su {len(df):,} righe analizzate")
                         
-                        # Mostra statistiche
-                        st.markdown("### 📊 Riepilogo Problemi")
-                        col1, col2, col3 = st.columns(3)
+                        with st.expander(f"📊 Riepilogo Problemi ({totale_problemi})", expanded=True):
+                            col1, col2, col3 = st.columns(3)
+                            
+                            with col1:
+                                st.metric("📅 Date Invalide", len(problemi['date_invalide']))
+                                st.metric("💰 Prezzi Anomali", len(problemi['prezzi_anomali']))
+                            
+                            with col2:
+                                st.metric("📦 Quantità Anomale", len(problemi['quantita_anomale']))
+                                st.metric("📝 Descrizioni Vuote", len(problemi['descrizioni_vuote']))
+                            
+                            with col3:
+                                st.metric("🧮 Totali Errati", len(problemi['totali_errati']))
+                            
+                            st.markdown("---")
+                            
+                            # Mostra dettagli per ogni categoria
+                            if len(problemi['date_invalide']) > 0:
+                                st.markdown("**📅 Date Invalide**")
+                                st.dataframe(pd.DataFrame(problemi['date_invalide']), use_container_width=True, hide_index=True)
+                            
+                            if len(problemi['prezzi_anomali']) > 0:
+                                st.markdown("**💰 Prezzi Anomali**")
+                                st.dataframe(pd.DataFrame(problemi['prezzi_anomali']), use_container_width=True, hide_index=True)
+                            
+                            if len(problemi['quantita_anomale']) > 0:
+                                st.markdown("**📦 Quantità Anomale**")
+                                st.dataframe(pd.DataFrame(problemi['quantita_anomale']), use_container_width=True, hide_index=True)
+                            
+                            if len(problemi['descrizioni_vuote']) > 0:
+                                st.markdown("**📝 Descrizioni Vuote**")
+                                st.dataframe(pd.DataFrame(problemi['descrizioni_vuote']), use_container_width=True, hide_index=True)
+                            
+                            if len(problemi['totali_errati']) > 0:
+                                st.markdown("**🧮 Totali Errati**")
+                                st.dataframe(pd.DataFrame(problemi['totali_errati']), use_container_width=True, hide_index=True)
                         
-                        with col1:
-                            st.metric("📅 Date Invalide", len(problemi['date_invalide']))
-                            st.metric("💰 Prezzi Anomali", len(problemi['prezzi_anomali']))
-                        
-                        with col2:
-                            st.metric("📦 Quantità Anomale", len(problemi['quantita_anomale']))
-                            st.metric("📝 Descrizioni Vuote", len(problemi['descrizioni_vuote']))
-                        
-                        with col3:
-                            st.metric("🧮 Totali Errati", len(problemi['totali_errati']))
-                            st.metric("🔄 Duplicati", len(problemi['duplicati']))
-                        
-                        st.markdown("---")
-                        
-                        # Mostra dettagli per ogni categoria
-                        if len(problemi['date_invalide']) > 0:
-                            with st.expander(f"📅 Date Invalide ({len(problemi['date_invalide'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['date_invalide']), width='stretch', hide_index=True)
-                        
-                        if len(problemi['prezzi_anomali']) > 0:
-                            with st.expander(f"💰 Prezzi Anomali ({len(problemi['prezzi_anomali'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['prezzi_anomali']), width='stretch', hide_index=True)
-                        
-                        if len(problemi['quantita_anomale']) > 0:
-                            with st.expander(f"📦 Quantità Anomale ({len(problemi['quantita_anomale'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['quantita_anomale']), width='stretch', hide_index=True)
-                        
-                        if len(problemi['descrizioni_vuote']) > 0:
-                            with st.expander(f"📝 Descrizioni Vuote ({len(problemi['descrizioni_vuote'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['descrizioni_vuote']), width='stretch', hide_index=True)
-                        
-                        if len(problemi['totali_errati']) > 0:
-                            with st.expander(f"🧮 Totali Errati ({len(problemi['totali_errati'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['totali_errati']), width='stretch', hide_index=True)
-                        
-                        if len(problemi['duplicati']) > 0:
-                            with st.expander(f"🔄 Duplicati ({len(problemi['duplicati'])})", expanded=True):
-                                st.dataframe(pd.DataFrame(problemi['duplicati']), width='stretch', hide_index=True)
+
             
             except Exception as e:
                 st.error(f"❌ Errore durante la verifica: {str(e)}")

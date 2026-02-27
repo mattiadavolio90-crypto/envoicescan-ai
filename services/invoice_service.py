@@ -16,6 +16,7 @@ Dipendenze:
 """
 
 import json
+import re
 import pandas as pd
 import streamlit as st
 import xmltodict
@@ -147,22 +148,51 @@ def estrai_dati_da_xml(file_caricato):
             carica_memoria_completa(current_user_id)
             logger.info("✅ Cache memoria precaricata per elaborazione XML")
         
-        contenuto = file_caricato.read()
+        contenuto_bytes = file_caricato.read()
         
         # Gestione encoding robusta per caratteri speciali (cinesi, ecc.)
-        if isinstance(contenuto, bytes):
-            # Prova encoding multipli per gestire file XML con encoding misto
-            for encoding in ['utf-8', 'gb2312', 'gbk', 'big5', 'latin-1']:
+        if isinstance(contenuto_bytes, bytes):
+            # ── Step 1: Leggi encoding dichiarato nel prolog XML ─────────────
+            # Es: <?xml version='1.0' encoding='GB2312'?>
+            xml_prolog = contenuto_bytes[:300].decode('ascii', errors='ignore')
+            _enc_match = re.search(r'encoding=["\']([^"\']+)["\']', xml_prolog, re.IGNORECASE)
+            declared_enc = _enc_match.group(1).strip().lower() if _enc_match else None
+            if declared_enc:
+                logger.info(f"📄 Encoding dichiarato nel prolog XML: {declared_enc}")
+
+            # ── Step 2: Costruisci lista priorità encoding ────────────────────
+            # Prima il dichiarato (se non è UTF-8, già incluso sotto), poi UTF-8,
+            # poi Windows-1252 (comune fatture italiane su Windows), poi CJK, poi latin-1
+            encodings_to_try = []
+            if declared_enc and declared_enc not in ('utf-8', 'utf8', 'utf_8'):
+                encodings_to_try.append(declared_enc)
+            encodings_to_try.extend(['utf-8-sig', 'utf-8', 'cp1252', 'gb2312', 'gbk', 'big5', 'latin-1'])
+
+            contenuto = None
+            for encoding in encodings_to_try:
                 try:
-                    contenuto = contenuto.decode(encoding)
+                    contenuto = contenuto_bytes.decode(encoding)
                     logger.info(f"✅ File XML decodificato con encoding: {encoding}")
                     break
                 except (UnicodeDecodeError, LookupError):
                     continue
-            else:
-                # Fallback: ignora caratteri non decodificabili
-                contenuto = contenuto.decode('utf-8', errors='replace')
-                logger.warning("⚠️ Utilizzato encoding UTF-8 con sostituzione errori")
+
+            if contenuto is None:
+                # ── Step 3: Usa charset-normalizer per rilevamento automatico ─
+                try:
+                    from charset_normalizer import from_bytes as _from_bytes
+                    _result = _from_bytes(contenuto_bytes).best()
+                    if _result:
+                        contenuto = str(_result)
+                        logger.info(f"✅ Encoding rilevato da charset-normalizer: {_result.encoding}")
+                    else:
+                        raise ValueError("charset-normalizer non ha riconosciuto l'encoding")
+                except Exception:
+                    # Fallback finale: sostituisci caratteri non decodificabili
+                    contenuto = contenuto_bytes.decode('utf-8', errors='replace')
+                    logger.warning("⚠️ Utilizzato encoding UTF-8 con sostituzione errori (fallback finale)")
+        else:
+            contenuto = contenuto_bytes
         
         doc = xmltodict.parse(contenuto)
         

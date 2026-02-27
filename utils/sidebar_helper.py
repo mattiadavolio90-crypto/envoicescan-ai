@@ -104,6 +104,8 @@ def render_sidebar(user_data: dict):
         
         # Info utente
         user_email = user_data.get('email', 'Utente')
+        admin_original_email = st.session_state.get('admin_original_user', {}).get('email')
+        is_admin_impersonating = st.session_state.get('impersonating', False) and admin_original_email in ADMIN_EMAILS
         nome_ristorante = st.session_state.get('nome_ristorante', 'Ristorante')
         
         st.markdown(f"""
@@ -189,7 +191,7 @@ def render_sidebar(user_data: dict):
         # ============================================
         # SEZIONE AMMINISTRAZIONE (solo per admin)
         # ============================================
-        if user_email in ADMIN_EMAILS:
+        if user_email in ADMIN_EMAILS or is_admin_impersonating:
             st.markdown("---")
             st.markdown("### 👨‍💼 Amministrazione")
             if st.button("🔑 Pannello Admin", use_container_width=True, key="sidebar_admin",
@@ -217,7 +219,7 @@ def render_sidebar(user_data: dict):
         """, unsafe_allow_html=True)
         
         if st.button("Logout", use_container_width=True, type="primary", key="sidebar_logout"):
-            # Registra logout nel database
+            # 1. Registra logout nel database
             try:
                 from services.auth_service import registra_logout_utente
                 user_email_logout = st.session_state.get('user_data', {}).get('email')
@@ -226,9 +228,21 @@ def render_sidebar(user_data: dict):
             except Exception as e:
                 logger.warning(f"Errore registrazione logout: {e}")
             
-            # Reset completo session_state
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
+            # 2. INVALIDA session_token nel DB (CRITICO: deve avvenire QUI,
+            #    perché in un'app multipage ?logout=1 potrebbe non raggiungere app.py)
+            try:
+                from services import get_supabase_client
+                _sb = get_supabase_client()
+                _email_logout = st.session_state.get('user_data', {}).get('email')
+                if _email_logout:
+                    _sb.table('users').update({'session_token': None}).eq('email', _email_logout).execute()
+                    logger.info(f"🔒 Session token invalidato per: {_email_logout}")
+            except Exception as _te:
+                logger.warning(f"Errore invalidazione session_token: {_te}")
             
-            # Redirect automatico alla pagina di login
-            st.switch_page("app.py")
+            # 3. Pulisci session_state e forza redirect
+            st.session_state.clear()
+            st.session_state.logged_in = False
+            st.session_state._cookie_checked = True
+            st.query_params["logout"] = "1"
+            st.rerun()
