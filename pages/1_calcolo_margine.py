@@ -495,6 +495,17 @@ if num_mesi > 0:
     # CSS per KPI con sfondo grigio argentato traslucido e bordo
     st.markdown("""
     <style>
+    /* Altezza uniforme tra tutte le card KPI al variare dello zoom */
+    [data-testid="stHorizontalBlock"]:has(div[data-testid="stMetric"]) > div[data-testid="column"] {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+    [data-testid="stHorizontalBlock"]:has(div[data-testid="stMetric"]) > div[data-testid="column"] > div {
+        flex: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
     div[data-testid="stMetric"] {
         background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
         padding: clamp(1rem, 2.5vw, 1.25rem);
@@ -502,6 +513,10 @@ if num_mesi > 0:
         border: 1px solid rgba(206, 212, 218, 0.5);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
         backdrop-filter: blur(10px);
+        height: 100%;
+        min-height: 100px;
+        box-sizing: border-box;
+        justify-content: center;
     }
     div[data-testid="stMetric"] label {
         color: #2563eb !important;

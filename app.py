@@ -1,15 +1,12 @@
-﻿# Fix: Force re-deployment to resolve IndentationError on cloud
-import streamlit as st
+﻿import streamlit as st
 import pandas as pd
 import os
-import plotly.express as px
 
 import io
 import time
 
 # Import costanti da modulo separato
 from config.constants import (
-    COLORI_PLOTLY,
     CATEGORIE_SPESE_GENERALI,
     ADMIN_EMAILS
 )
@@ -200,6 +197,30 @@ st.markdown("""
         color: white !important;
         border: 2px solid #0284c7 !important;
         opacity: 0.5 !important;
+    }
+    
+    /* === BARRE PERCENTUALE INCIDENZA (arancione, come calcolo marginalità) === */
+    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] {
+        --progress-bar-color: #f97316 !important;
+    }
+    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] > div {
+        background-color: #f97316 !important;
+    }
+    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] > div > div {
+        background-color: #f97316 !important;
+    }
+    [data-testid="stDataFrame"] div[role="progressbar"] {
+        background-color: #f97316 !important;
+    }
+    [data-testid="stDataFrame"] div[role="progressbar"] > div {
+        background-color: #f97316 !important;
+    }
+    [data-testid="stDataFrame"] div[role="progressbar"] > div > div {
+        background-color: #f97316 !important;
+    }
+    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] span {
+        color: #f97316 !important;
+        font-weight: 600 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1875,6 +1896,17 @@ def mostra_statistiche(df_completo):
     # CSS per KPI - Stile identico a Calcolo Marginalità
     st.markdown("""
     <style>
+    /* Colonne KPI: altezza uniforme per tutte e 5 */
+    [data-testid="stHorizontalBlock"]:has(.kpi-card) > div[data-testid="column"] {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+    }
+    [data-testid="stHorizontalBlock"]:has(.kpi-card) > div[data-testid="column"] > div {
+        flex: 1 !important;
+        display: flex !important;
+        flex-direction: column !important;
+    }
     .kpi-card {
         background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
         padding: clamp(0.75rem, 2vw, 1.25rem);
@@ -1883,6 +1915,13 @@ def mostra_statistiche(df_completo):
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
         backdrop-filter: blur(10px);
         text-align: center;
+        height: 100%;
+        min-height: 100px;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
     }
     .kpi-card .kpi-label {
         color: #2563eb;
@@ -1921,7 +1960,7 @@ def mostra_statistiche(df_completo):
     with col3:
         st.markdown(f"""
         <div class="kpi-card">
-            <div style="display:flex; justify-content:space-around; align-items:center; height:100%;">
+            <div style="display:flex; justify-content:space-around; align-items:center; width:100%;">
                 <div style="text-align:center; flex:1;">
                     <div class="kpi-label">🏪 Fornit. F&B</div>
                     <div class="kpi-value">{num_fornitori}</div>
@@ -3314,16 +3353,37 @@ def mostra_statistiche(df_completo):
             # Ordina per totale decrescente
             pivot_cat = pivot_cat.sort_values('TOTALE', ascending=False)
             
-            # Formatta come €
-            pivot_cat_display = pivot_cat.copy()
-            for col in pivot_cat_display.columns:
-                if col not in ('TOTALE', 'MEDIA'):
-                    pivot_cat_display[col] = pivot_cat_display[col].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "")
-            pivot_cat_display['TOTALE'] = pivot_cat_display['TOTALE'].apply(lambda x: f"€ {x:,.2f}")
-            pivot_cat_display['MEDIA'] = pivot_cat_display['MEDIA'].apply(lambda x: f"€ {x:,.2f}")
+            # Calcola totali colonna per percentuali di incidenza
+            col_totals_cat = {col: pivot_cat[col].sum() for col in cols_sorted}
+            grand_total_cat = pivot_cat['TOTALE'].sum()
             
-            # Reset index per avere Categoria come colonna
-            pivot_cat_display = pivot_cat_display.reset_index()
+            # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
+            pivot_cat_display = pd.DataFrame()
+            pivot_cat_display['Categoria'] = pivot_cat.index
+            
+            for col in cols_sorted:
+                pivot_cat_display[col] = pivot_cat[col].apply(lambda x: x if x > 0 else None).values
+                ct = col_totals_cat[col]
+                pivot_cat_display[f'{col} %'] = (pivot_cat[col] / ct * 100).round(1).values if ct > 0 else 0.0
+            
+            pivot_cat_display['TOTALE'] = pivot_cat['TOTALE'].values
+            pivot_cat_display['TOTALE %'] = (pivot_cat['TOTALE'] / grand_total_cat * 100).round(1).values if grand_total_cat > 0 else 0.0
+            pivot_cat_display['MEDIA'] = pivot_cat['MEDIA'].values
+            
+            # Column config con ProgressColumn per barre colorate incidenza
+            column_config_cat = {
+                'Categoria': st.column_config.TextColumn('Categoria', width='medium'),
+            }
+            for col in cols_sorted:
+                column_config_cat[col] = st.column_config.NumberColumn(col, format="€ %.2f")
+                column_config_cat[f'{col} %'] = st.column_config.ProgressColumn(
+                    '%', format="%.1f%%", min_value=0, max_value=100, width='small'
+                )
+            column_config_cat['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
+            column_config_cat['TOTALE %'] = st.column_config.ProgressColumn(
+                'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
+            )
+            column_config_cat['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
         
             if not pivot_cat_display.empty:
                 num_righe_cat = len(pivot_cat_display)
@@ -3333,7 +3393,8 @@ def mostra_statistiche(df_completo):
                     pivot_cat_display,
                     hide_index=True,
                     width='stretch',
-                    height=altezza_cat
+                    height=altezza_cat,
+                    column_config=column_config_cat
                 )
                 
                 # Calcola totale dalla somma dei valori numerici
@@ -3345,7 +3406,7 @@ def mostra_statistiche(df_completo):
                     st.markdown(f"""
                     <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
                         <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                            📋 N. Righe: {num_righe_cat:,} | 💰 Totale: € {totale_cat:.2f} | 📊 Media mensile: € {media_cat:.2f}
+                            📋 N. Righe: {num_righe_cat:,} | 💰 Totale: € {totale_cat:,.0f} | 📊 Media mensile: € {media_cat:,.0f}
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
@@ -3372,7 +3433,7 @@ def mostra_statistiche(df_completo):
                     
                     excel_buffer_cat = io.BytesIO()
                     with pd.ExcelWriter(excel_buffer_cat, engine='openpyxl') as writer:
-                        pivot_cat_display.to_excel(writer, index=False, sheet_name='Categorie')
+                        pivot_cat.reset_index().to_excel(writer, index=False, sheet_name='Categorie')
                     
                     st.download_button(
                         label="📊 EXCEL",
@@ -3385,51 +3446,6 @@ def mostra_statistiche(df_completo):
                     )
                     
                     st.markdown('</div>', unsafe_allow_html=True)
-                
-                # GRAFICO SPESA PER CATEGORIA
-                st.markdown("---")
-                st.subheader("📊 Spesa per Categoria")
-                spesa_cat = (
-                    df_food.groupby("Categoria")["TotaleRiga"]
-                      .sum()
-                      .reset_index()
-                      .sort_values("TotaleRiga", ascending=False)
-                )
-
-                fig1 = px.bar(
-                    spesa_cat,
-                    x="Categoria",
-                    y="TotaleRiga",
-                    text="TotaleRiga",
-                    color="Categoria",
-                    color_discrete_sequence=COLORI_PLOTLY,
-                )
-
-                fig1.update_traces(
-                    texttemplate="€ %{text:.2f}",
-                    textposition="outside",
-                    textfont_size=18,
-                    hovertemplate="<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>",
-                )
-
-                fig1.update_layout(
-                    font=dict(size=20),
-                    xaxis_title="Categoria",
-                    yaxis_title="Spesa (€)",
-                    yaxis_title_font=dict(size=24, color="#333"),
-                    xaxis=dict(tickfont=dict(size=1), showticklabels=False),
-                    yaxis=dict(tickfont=dict(size=18)),
-                    showlegend=False,
-                    height=600,
-                    hoverlabel=dict(bgcolor="white", font_size=16, font_family="Arial"),
-                )
-
-                st.plotly_chart(
-                    fig1,
-                    use_container_width=True,
-                    key="grafico_categorie_tab",
-                    config={"displayModeBar": False},
-                )
             else:
                 st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
 
@@ -3479,16 +3495,37 @@ def mostra_statistiche(df_completo):
             # Ordina per totale decrescente
             pivot_forn = pivot_forn.sort_values('TOTALE', ascending=False)
             
-            # Formatta come €
-            pivot_forn_display = pivot_forn.copy()
-            for col in pivot_forn_display.columns:
-                if col not in ('TOTALE', 'MEDIA'):
-                    pivot_forn_display[col] = pivot_forn_display[col].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "")
-            pivot_forn_display['TOTALE'] = pivot_forn_display['TOTALE'].apply(lambda x: f"€ {x:,.2f}")
-            pivot_forn_display['MEDIA'] = pivot_forn_display['MEDIA'].apply(lambda x: f"€ {x:,.2f}")
+            # Calcola totali colonna per percentuali di incidenza
+            col_totals_forn = {col: pivot_forn[col].sum() for col in cols_sorted}
+            grand_total_forn = pivot_forn['TOTALE'].sum()
             
-            # Reset index per avere Fornitore come colonna
-            pivot_forn_display = pivot_forn_display.reset_index()
+            # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
+            pivot_forn_display = pd.DataFrame()
+            pivot_forn_display['Fornitore'] = pivot_forn.index
+            
+            for col in cols_sorted:
+                pivot_forn_display[col] = pivot_forn[col].apply(lambda x: x if x > 0 else None).values
+                ct = col_totals_forn[col]
+                pivot_forn_display[f'{col} %'] = (pivot_forn[col] / ct * 100).round(1).values if ct > 0 else 0.0
+            
+            pivot_forn_display['TOTALE'] = pivot_forn['TOTALE'].values
+            pivot_forn_display['TOTALE %'] = (pivot_forn['TOTALE'] / grand_total_forn * 100).round(1).values if grand_total_forn > 0 else 0.0
+            pivot_forn_display['MEDIA'] = pivot_forn['MEDIA'].values
+            
+            # Column config con ProgressColumn per barre colorate incidenza
+            column_config_forn = {
+                'Fornitore': st.column_config.TextColumn('Fornitore', width='medium'),
+            }
+            for col in cols_sorted:
+                column_config_forn[col] = st.column_config.NumberColumn(col, format="€ %.2f")
+                column_config_forn[f'{col} %'] = st.column_config.ProgressColumn(
+                    '%', format="%.1f%%", min_value=0, max_value=100, width='small'
+                )
+            column_config_forn['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
+            column_config_forn['TOTALE %'] = st.column_config.ProgressColumn(
+                'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
+            )
+            column_config_forn['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
         
             if not pivot_forn_display.empty:
                 num_righe_forn = len(pivot_forn_display)
@@ -3498,7 +3535,8 @@ def mostra_statistiche(df_completo):
                     pivot_forn_display,
                     hide_index=True,
                     width='stretch',
-                    height=altezza_forn
+                    height=altezza_forn,
+                    column_config=column_config_forn
                 )
                 
                 # Calcola totale dalla somma dei valori numerici
@@ -3510,7 +3548,7 @@ def mostra_statistiche(df_completo):
                     st.markdown(f"""
                     <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
                         <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                            📋 N. Righe: {num_righe_forn:,} | 💰 Totale: € {totale_forn:.2f} | 📊 Media mensile: € {media_forn:.2f}
+                            📋 N. Righe: {num_righe_forn:,} | 💰 Totale: € {totale_forn:,.0f} | 📊 Media mensile: € {media_forn:,.0f}
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
@@ -3537,7 +3575,7 @@ def mostra_statistiche(df_completo):
                     
                     excel_buffer_forn = io.BytesIO()
                     with pd.ExcelWriter(excel_buffer_forn, engine='openpyxl') as writer:
-                        pivot_forn_display.to_excel(writer, index=False, sheet_name='Fornitori')
+                        pivot_forn.reset_index().to_excel(writer, index=False, sheet_name='Fornitori')
                     
                     st.download_button(
                         label="📊 EXCEL",
@@ -3550,51 +3588,6 @@ def mostra_statistiche(df_completo):
                     )
                     
                     st.markdown('</div>', unsafe_allow_html=True)
-                
-                # GRAFICO SPESA PER FORNITORE
-                st.markdown("---")
-                st.subheader("🏪 Spesa per Fornitore")
-                spesa_forn = (
-                    df_food.groupby("Fornitore")["TotaleRiga"]
-                      .sum()
-                      .reset_index()
-                      .sort_values("TotaleRiga", ascending=False)
-                )
-
-                fig2 = px.bar(
-                    spesa_forn,
-                    x="Fornitore",
-                    y="TotaleRiga",
-                    text="TotaleRiga",
-                    color="Fornitore",
-                    color_discrete_sequence=COLORI_PLOTLY,
-                )
-
-                fig2.update_traces(
-                    texttemplate="€ %{text:.2f}",
-                    textposition="outside",
-                    textfont_size=18,
-                    hovertemplate="<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>",
-                )
-
-                fig2.update_layout(
-                    font=dict(size=20),
-                    xaxis_title="Fornitore",
-                    yaxis_title="Spesa (€)",
-                    yaxis_title_font=dict(size=24, color="#333"),
-                    xaxis=dict(tickfont=dict(size=1), showticklabels=False),
-                    yaxis=dict(tickfont=dict(size=18)),
-                    showlegend=False,
-                    height=600,
-                    hoverlabel=dict(bgcolor="white", font_size=16, font_family="Arial"),
-                )
-
-                st.plotly_chart(
-                    fig2,
-                    use_container_width=True,
-                    key="grafico_fornitori_tab",
-                    config={"displayModeBar": False},
-                )
             else:
                 st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
 
@@ -3651,20 +3644,41 @@ def mostra_statistiche(df_completo):
             # Ordina per totale decrescente
             pivot_cat = pivot_cat.sort_values('TOTALE', ascending=False)
             
-            # Formatta come € (celle vuote per valori 0 nei mesi)
-            pivot_cat_display = pivot_cat.copy()
-            for col in pivot_cat_display.columns:
-                if col not in ('TOTALE', 'MEDIA'):
-                    pivot_cat_display[col] = pivot_cat_display[col].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "")
-            pivot_cat_display['TOTALE'] = pivot_cat_display['TOTALE'].apply(lambda x: f"€ {x:,.2f}")
-            pivot_cat_display['MEDIA'] = pivot_cat_display['MEDIA'].apply(lambda x: f"€ {x:,.2f}")
+            # Calcola totali colonna per percentuali di incidenza
+            col_totals_spese_cat = {col: pivot_cat[col].sum() for col in cols_sorted}
+            grand_total_spese_cat = pivot_cat['TOTALE'].sum()
             
-            # Reset index per avere Categoria come colonna
-            pivot_cat_display = pivot_cat_display.reset_index()
+            # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
+            pivot_cat_display = pd.DataFrame()
+            pivot_cat_display['Categoria'] = pivot_cat.index
+            
+            for col in cols_sorted:
+                pivot_cat_display[col] = pivot_cat[col].apply(lambda x: x if x > 0 else None).values
+                ct = col_totals_spese_cat[col]
+                pivot_cat_display[f'{col} %'] = (pivot_cat[col] / ct * 100).round(1).values if ct > 0 else 0.0
+            
+            pivot_cat_display['TOTALE'] = pivot_cat['TOTALE'].values
+            pivot_cat_display['TOTALE %'] = (pivot_cat['TOTALE'] / grand_total_spese_cat * 100).round(1).values if grand_total_spese_cat > 0 else 0.0
+            pivot_cat_display['MEDIA'] = pivot_cat['MEDIA'].values
+            
+            # Column config con ProgressColumn per barre colorate incidenza
+            column_config_spese_cat = {
+                'Categoria': st.column_config.TextColumn('Categoria', width='medium'),
+            }
+            for col in cols_sorted:
+                column_config_spese_cat[col] = st.column_config.NumberColumn(col, format="€ %.2f")
+                column_config_spese_cat[f'{col} %'] = st.column_config.ProgressColumn(
+                    '%', format="%.1f%%", min_value=0, max_value=100, width='small'
+                )
+            column_config_spese_cat['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
+            column_config_spese_cat['TOTALE %'] = st.column_config.ProgressColumn(
+                'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
+            )
+            column_config_spese_cat['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
             
             num_righe_spese_cat = len(pivot_cat_display)
             altezza_spese_cat = max(num_righe_spese_cat * 35 + 50, 200)
-            st.dataframe(pivot_cat_display, hide_index=True, width='stretch', height=altezza_spese_cat)
+            st.dataframe(pivot_cat_display, hide_index=True, width='stretch', height=altezza_spese_cat, column_config=column_config_spese_cat)
             
             # Box + Excel per Categorie
             totale_cat_spese = pivot_cat['TOTALE'].sum()
@@ -3675,7 +3689,7 @@ def mostra_statistiche(df_completo):
                 st.markdown(f"""
                 <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
                     <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                        📋 N. Righe: {num_righe_spese_cat:,} | 💰 Totale: € {totale_cat_spese:.2f} | 📊 Media mensile: € {media_cat_spese:.2f}
+                        📋 N. Righe: {num_righe_spese_cat:,} | 💰 Totale: € {totale_cat_spese:,.0f} | 📊 Media mensile: € {media_cat_spese:,.0f}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -3746,20 +3760,41 @@ def mostra_statistiche(df_completo):
             # Ordina per totale decrescente
             pivot_forn = pivot_forn.sort_values('TOTALE', ascending=False)
             
-            # Formatta come € (celle vuote per valori 0 nei mesi)
-            pivot_forn_display = pivot_forn.copy()
-            for col in pivot_forn_display.columns:
-                if col not in ('TOTALE', 'MEDIA'):
-                    pivot_forn_display[col] = pivot_forn_display[col].apply(lambda x: f"€ {x:,.2f}" if x > 0 else "")
-            pivot_forn_display['TOTALE'] = pivot_forn_display['TOTALE'].apply(lambda x: f"€ {x:,.2f}")
-            pivot_forn_display['MEDIA'] = pivot_forn_display['MEDIA'].apply(lambda x: f"€ {x:,.2f}")
+            # Calcola totali colonna per percentuali di incidenza
+            col_totals_spese_forn = {col: pivot_forn[col].sum() for col in cols_sorted_forn}
+            grand_total_spese_forn = pivot_forn['TOTALE'].sum()
             
-            # Reset index per avere Fornitore come colonna
-            pivot_forn_display = pivot_forn_display.reset_index()
+            # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
+            pivot_forn_display = pd.DataFrame()
+            pivot_forn_display['Fornitore'] = pivot_forn.index
+            
+            for col in cols_sorted_forn:
+                pivot_forn_display[col] = pivot_forn[col].apply(lambda x: x if x > 0 else None).values
+                ct = col_totals_spese_forn[col]
+                pivot_forn_display[f'{col} %'] = (pivot_forn[col] / ct * 100).round(1).values if ct > 0 else 0.0
+            
+            pivot_forn_display['TOTALE'] = pivot_forn['TOTALE'].values
+            pivot_forn_display['TOTALE %'] = (pivot_forn['TOTALE'] / grand_total_spese_forn * 100).round(1).values if grand_total_spese_forn > 0 else 0.0
+            pivot_forn_display['MEDIA'] = pivot_forn['MEDIA'].values
+            
+            # Column config con ProgressColumn per barre colorate incidenza
+            column_config_spese_forn = {
+                'Fornitore': st.column_config.TextColumn('Fornitore', width='medium'),
+            }
+            for col in cols_sorted_forn:
+                column_config_spese_forn[col] = st.column_config.NumberColumn(col, format="€ %.2f")
+                column_config_spese_forn[f'{col} %'] = st.column_config.ProgressColumn(
+                    '%', format="%.1f%%", min_value=0, max_value=100, width='small'
+                )
+            column_config_spese_forn['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
+            column_config_spese_forn['TOTALE %'] = st.column_config.ProgressColumn(
+                'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
+            )
+            column_config_spese_forn['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
             
             num_righe_spese_forn = len(pivot_forn_display)
             altezza_spese_forn = max(num_righe_spese_forn * 35 + 50, 200)
-            st.dataframe(pivot_forn_display, hide_index=True, width='stretch', height=altezza_spese_forn)
+            st.dataframe(pivot_forn_display, hide_index=True, width='stretch', height=altezza_spese_forn, column_config=column_config_spese_forn)
             
             # Box + Excel per Fornitori
             totale_forn_spese = pivot_forn['TOTALE'].sum()
@@ -3770,7 +3805,7 @@ def mostra_statistiche(df_completo):
                 st.markdown(f"""
                 <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
                     <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                        📋 N. Righe: {num_righe_spese_forn:,} | 💰 Totale: € {totale_forn_spese:.2f} | 📊 Media mensile: € {media_forn_spese:.2f}
+                        📋 N. Righe: {num_righe_spese_forn:,} | 💰 Totale: € {totale_forn_spese:,.0f} | 📊 Media mensile: € {media_forn_spese:,.0f}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -3810,95 +3845,7 @@ def mostra_statistiche(df_completo):
                 )
                 
                 st.markdown('</div>', unsafe_allow_html=True)
-            
-            st.markdown("---")
-            
-            # ============================================
-            # GRAFICI SPESE GENERALI AFFIANCATI
-            # ============================================
-            col_chart1, col_chart2 = st.columns(2)
-            
-            with col_chart1:
-                st.subheader("📊 Spesa per Categoria")
-                # Prepara dati per grafico (usa colonna TOTALE)
-                spesa_cat_grafico = pivot_cat.reset_index()
-                spesa_cat_grafico = spesa_cat_grafico[['Categoria', 'TOTALE']].sort_values('TOTALE', ascending=False)
-                
-                fig_categoria_generale = px.bar(
-                    spesa_cat_grafico,
-                    x='Categoria',
-                    y='TOTALE',
-                    text='TOTALE',
-                    color='Categoria',
-                    color_discrete_sequence=COLORI_PLOTLY,
-                )
-                
-                fig_categoria_generale.update_traces(
-                    texttemplate='€ %{text:.2f}',
-                    textposition='outside',
-                    textfont_size=18,
-                    hovertemplate='<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>',
-                )
-                
-                fig_categoria_generale.update_layout(
-                    font=dict(size=20),
-                    xaxis_title='Categoria',
-                    yaxis_title='Spesa (€)',
-                    yaxis_title_font=dict(size=24, color='#333'),
-                    xaxis=dict(tickfont=dict(size=1), showticklabels=False),
-                    yaxis=dict(tickfont=dict(size=18)),
-                    showlegend=False,
-                    height=600,
-                    hoverlabel=dict(bgcolor='white', font_size=16, font_family='Arial'),
-                )
-                
-                st.plotly_chart(
-                    fig_categoria_generale,
-                    use_container_width=True,
-                    key='grafico_categorie_spese_generali',
-                    config={'displayModeBar': False},
-                )
-            
-            with col_chart2:
-                st.subheader("🏪 Spesa per Fornitore")
-                # Prepara dati per grafico (usa colonna TOTALE)
-                spesa_forn_grafico = pivot_forn.reset_index()
-                spesa_forn_grafico = spesa_forn_grafico[['Fornitore', 'TOTALE']].sort_values('TOTALE', ascending=False)
-                
-                fig_fornitore_generale = px.bar(
-                    spesa_forn_grafico,
-                    x='Fornitore',
-                    y='TOTALE',
-                    text='TOTALE',
-                    color='Fornitore',
-                    color_discrete_sequence=COLORI_PLOTLY,
-                )
-                
-                fig_fornitore_generale.update_traces(
-                    texttemplate='€ %{text:.2f}',
-                    textposition='outside',
-                    textfont_size=18,
-                    hovertemplate='<b>%{x}</b><br>Spesa: € %{y:.2f}<extra></extra>',
-                )
-                
-                fig_fornitore_generale.update_layout(
-                    font=dict(size=20),
-                    xaxis_title='Fornitore',
-                    yaxis_title='Spesa (€)',
-                    yaxis_title_font=dict(size=24, color='#333'),
-                    xaxis=dict(tickfont=dict(size=1), showticklabels=False),
-                    yaxis=dict(tickfont=dict(size=18)),
-                    showlegend=False,
-                    height=600,
-                    hoverlabel=dict(bgcolor='white', font_size=16, font_family='Arial'),
-                )
-                
-                st.plotly_chart(
-                    fig_fornitore_generale,
-                    use_container_width=True,
-                    key='grafico_fornitori_spese_generali',
-                    config={'displayModeBar': False},
-                )
+
 
 # ============================================================
 # STILI CSS (COMPLETI)
@@ -4209,10 +4156,6 @@ if not df_cache.empty:
                         for key in keys_to_remove:
                             st.session_state.pop(key, None)  # Sicuro: niente errore se non esiste
                         
-                        # 🔥 ULTIMA PULIZIA CACHE: Doppia invalidazione per sicurezza
-                        st.cache_data.clear()
-                        invalida_cache_memoria()
-                        
                         progress.progress(100, text="Completato!")
                         time.sleep(0.1)
                         
@@ -4289,8 +4232,7 @@ if not df_cache.empty:
                         if 'files_processati_sessione' in st.session_state:
                             file_eliminato = fattura_selezionata['File']
                             st.session_state.files_processati_sessione.discard(file_eliminato)
-                            import os as _os
-                            st.session_state.files_processati_sessione.discard(_os.path.splitext(file_eliminato)[0].lower())
+                            st.session_state.files_processati_sessione.discard(os.path.splitext(file_eliminato)[0].lower())
                         
                         if result["success"]:
                             st.success(f"✅ Fattura **{fattura_selezionata['File']}** eliminata! ({result['righe_eliminate']} prodotti)")
@@ -4334,14 +4276,7 @@ else:
     MAX_RIGHE_BATCH = 500        # Max righe per batch upload
     BATCH_FILE_SIZE = 20         # Max 20 file per batch
     
-    # Recupera user_id da session state (già definito sopra ma riusato qui per chiarezza)
-    try:
-        user_id = st.session_state.user_data["id"]
-    except (KeyError, TypeError):
-        st.error("❌ Sessione non valida. Effettua il login.")
-        logger.critical("user_data mancante in sezione upload")
-        st.stop()
-    
+    # user_id già definito sopra (post-login check)
     try:
         stats_db = get_fatture_stats(user_id, st.session_state.get('ristorante_id'))
         righe_totali = stats_db['num_righe']
@@ -4727,7 +4662,7 @@ if uploaded_files:
     # FIX: DEDUPLICAZIONE CORRETTA (solo contro DB reale)
     # ============================================================
     # Assicura che file_su_supabase_full esista (potrebbe mancare se errore prima)
-    if 'file_su_supabase_full' not in dir():
+    if 'file_su_supabase_full' not in locals():
         file_su_supabase_full = set()
     
     file_nuovi = []
