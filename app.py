@@ -8,7 +8,8 @@ import time
 # Import costanti da modulo separato
 from config.constants import (
     CATEGORIE_SPESE_GENERALI,
-    ADMIN_EMAILS
+    ADMIN_EMAILS,
+    CENTRI_DI_PRODUZIONE
 )
 
 # Import utilities da moduli separati
@@ -2019,10 +2020,10 @@ def mostra_statistiche(df_completo):
         st.session_state.is_loading = False
     
     st.markdown("### 📊 Naviga tra le Sezioni")
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:
-        if st.button("📦 DETTAGLIO\nARTICOLI", key="btn_dettaglio", use_container_width=True, 
+        if st.button("📦 ARTICOLI\n(F&B)", key="btn_dettaglio", use_container_width=True, 
                      type="primary" if st.session_state.sezione_attiva == "dettaglio" else "secondary"):
             if st.session_state.sezione_attiva != "dettaglio":
                 st.session_state.sezione_attiva = "dettaglio"
@@ -2033,7 +2034,7 @@ def mostra_statistiche(df_completo):
                 st.rerun()
     
     with col2:
-        if st.button("🚨 ALERT\nARTICOLI (F&B)", key="btn_alert", use_container_width=True,
+        if st.button("🚨 ALERT\n(F&B)", key="btn_alert", use_container_width=True,
                      type="primary" if st.session_state.sezione_attiva == "alert" else "secondary"):
             if st.session_state.sezione_attiva != "alert":
                 st.session_state.sezione_attiva = "alert"
@@ -2053,6 +2054,16 @@ def mostra_statistiche(df_completo):
                 st.rerun()
     
     with col4:
+        if st.button("🏭 CENTRI\n(F&B)", key="btn_centri", use_container_width=True,
+                     type="primary" if st.session_state.sezione_attiva == "centri" else "secondary"):
+            if st.session_state.sezione_attiva != "centri":
+                st.session_state.sezione_attiva = "centri"
+                st.session_state.is_loading = True
+                if 'last_upload_summary' in st.session_state:
+                    del st.session_state.last_upload_summary
+                st.rerun()
+    
+    with col5:
         if st.button("🚚 FORNITORI\n(F&B)", key="btn_fornitori", use_container_width=True,
                      type="primary" if st.session_state.sezione_attiva == "fornitori" else "secondary"):
             if st.session_state.sezione_attiva != "fornitori":
@@ -2062,7 +2073,7 @@ def mostra_statistiche(df_completo):
                     del st.session_state.last_upload_summary
                 st.rerun()
     
-    with col5:
+    with col6:
         if st.button("🏢 SPESE\nGENERALI", key="btn_spese", use_container_width=True,
                      type="primary" if st.session_state.sezione_attiva == "spese" else "secondary"):
             if st.session_state.sezione_attiva != "spese":
@@ -2112,14 +2123,18 @@ def mostra_statistiche(df_completo):
         /* Responsive button text */
         div[data-testid="column"] button p {
             font-size: clamp(0.7rem, 1.8vw, 0.95rem) !important;
-            line-height: 1.3 !important;
+            line-height: 1.2 !important;
             word-wrap: break-word !important;
             white-space: normal !important;
             overflow-wrap: break-word !important;
         }
         div[data-testid="column"] button {
-            padding: 0.5rem 0.25rem !important;
-            min-height: 3rem !important;
+            padding: 0.4rem 0.25rem !important;
+            height: 4rem !important;
+            min-height: 4rem !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -3478,6 +3493,139 @@ def mostra_statistiche(df_completo):
                     st.markdown('</div>', unsafe_allow_html=True)
             else:
                 st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
+
+    # ======================================================
+    # ========================================================
+    # SEZIONE 3b: CENTRI DI PRODUZIONE
+    # ========================================================
+    if st.session_state.sezione_attiva == "centri":
+        if df_food.empty:
+            st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
+        else:
+            # Mappa categorie → centri di produzione
+            cat_to_centro = {}
+            for centro, cats in CENTRI_DI_PRODUZIONE.items():
+                for cat in cats:
+                    cat_to_centro[cat] = centro
+
+            df_centri = df_food.copy()
+            df_centri['Centro'] = df_centri['Categoria'].map(cat_to_centro).fillna('Da Classificare')
+
+            # Filtra solo i 6 centri definiti (escludi "Da Classificare")
+            centri_validi = list(CENTRI_DI_PRODUZIONE.keys())
+            df_centri = df_centri[df_centri['Centro'].isin(centri_validi)]
+
+            if df_centri.empty:
+                st.info("📊 Nessun dato mappato ai centri di produzione per il periodo selezionato")
+            else:
+                df_centri['mese_nome'] = df_centri['Data_DT'].apply(
+                    lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
+                )
+                df_centri['mese_sort'] = df_centri['Data_DT'].apply(
+                    lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
+                )
+
+                # Pivot: Centro × Mesi
+                pivot = df_centri.pivot_table(
+                    index='Centro',
+                    columns='mese_nome',
+                    values='TotaleRiga',
+                    aggfunc='sum',
+                    fill_value=0
+                )
+
+                # Ordine mesi cronologico
+                mesi_ord = df_centri.drop_duplicates('mese_nome').sort_values('mese_sort')['mese_nome'].tolist()
+                pivot = pivot.reindex(columns=[m for m in mesi_ord if m in pivot.columns])
+
+                # Ordine centri fisso
+                ordine_centri = [c for c in centri_validi if c in pivot.index]
+                pivot = pivot.reindex(ordine_centri)
+
+                # % per mese
+                pct = pivot.div(pivot.sum(axis=0), axis=1) * 100
+
+                # TOTALE e MEDIA
+                pivot['TOTALE'] = pivot.sum(axis=1)
+                pivot['MEDIA'] = pivot.drop(columns=['TOTALE']).replace(0, pd.NA).mean(axis=1)
+                pct['TOTALE'] = pivot['TOTALE'] / pivot['TOTALE'].sum() * 100
+                pct['MEDIA'] = pct.drop(columns=['TOTALE']).replace(0, pd.NA).mean(axis=1)
+
+                # Report
+                st.markdown("### 🏭 Spesa per Centro di Produzione mensile")
+
+                # Costruisci display DataFrame
+                display_rows = []
+                for centro in pivot.index:
+                    row_data = {'Centro': centro}
+                    for col in pivot.columns:
+                        val = pivot.loc[centro, col]
+                        p = pct.loc[centro, col] if centro in pct.index and col in pct.columns else 0
+                        if col in ['TOTALE', 'MEDIA']:
+                            bar_color = '#ef4444' if p > 50 else '#f97316' if p > 30 else '#6b7280'
+                            bar = f'<span style="display:inline-block;width:{min(p,100)*0.6:.0f}px;height:8px;background:{bar_color};border-radius:3px;margin-right:4px;"></span>'
+                            row_data[col] = f'€ {val:,.2f}'
+                            row_data[f'Incid. %' if col == 'TOTALE' else ''] = f'{bar} {p:.1f}%'
+                        else:
+                            bar_color = '#ef4444' if p > 50 else '#f97316' if p > 30 else '#6b7280'
+                            bar = f'<span style="display:inline-block;width:{min(p,100)*0.6:.0f}px;height:8px;background:{bar_color};border-radius:3px;margin-right:4px;"></span>'
+                            row_data[col] = f'€ {val:,.2f}'
+                            row_data[f'{col} %'] = f'{bar} {p:.1f}%'
+                    display_rows.append(row_data)
+
+                df_display = pd.DataFrame(display_rows)
+
+                st.markdown(
+                    df_display.to_html(escape=False, index=False),
+                    unsafe_allow_html=True
+                )
+
+                # Riepilogo
+                tot_centri = pivot['TOTALE'].sum()
+                n_centri = len(pivot)
+                media_centri = tot_centri / max(len([c for c in pivot.columns if c not in ['TOTALE', 'MEDIA']]), 1)
+                col_left_c, col_right_c = st.columns([5, 1])
+                
+                with col_left_c:
+                    st.markdown(f"""
+                    <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
+                        <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+                            📊 N. Centri: {n_centri} | 💰 Totale: € {tot_centri:,.0f} | 📊 Media mensile: € {media_centri:,.0f}
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col_right_c:
+                    st.markdown("""
+                        <style>
+                        [data-testid="stDownloadButton"] button {
+                            background-color: #28a745 !important;
+                            color: white !important;
+                            font-weight: 600 !important;
+                            border-radius: 6px !important;
+                            border: none !important;
+                            outline: none !important;
+                            box-shadow: none !important;
+                        }
+                        [data-testid="stDownloadButton"] button:hover {
+                            background-color: #218838 !important;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
+                    
+                    excel_data_centri = io.BytesIO()
+                    with pd.ExcelWriter(excel_data_centri, engine='openpyxl') as writer:
+                        pivot.to_excel(writer, sheet_name='Centri Produzione')
+                    excel_data_centri.seek(0)
+                    st.download_button(
+                        label="📊 EXCEL",
+                        data=excel_data_centri,
+                        file_name=f"centri_produzione_{st.session_state.get('anno_selezionato', 2026)}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_excel_centri",
+                        type="primary",
+                        use_container_width=False
+                    )
 
     # ======================================================
     # ========================================================

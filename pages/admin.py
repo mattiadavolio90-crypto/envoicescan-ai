@@ -263,7 +263,7 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
     # 1) Query utenti
     try:
         query_users = sb.table('users')\
-            .select('id, email, nome_ristorante, attivo, created_at, partita_iva, ragione_sociale')\
+            .select('id, email, nome_ristorante, attivo, created_at, partita_iva, ragione_sociale, pagine_abilitate')\
             .order('email')\
             .execute()
         has_piva_column = True
@@ -358,6 +358,7 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
                     'email': user_data['email'],
                     'ristorante': rist['nome_ristorante'],
                     'attivo': user_data.get('attivo', True),
+                    'pagine_abilitate': user_data.get('pagine_abilitate') or {'marginalita': True, 'workspace': True},
                     'partita_iva': rist.get('partita_iva'),
                     'ragione_sociale': rist.get('ragione_sociale', ''),
                     'num_fatture': stats['num_fatture'],
@@ -374,6 +375,7 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
                 'email': user_data['email'],
                 'ristorante': user_data.get('nome_ristorante') or "❌ Nessun Ristorante",
                 'attivo': user_data.get('attivo', True),
+                'pagine_abilitate': user_data.get('pagine_abilitate') or {'marginalita': True, 'workspace': True},
                 'partita_iva': user_data.get('partita_iva'),
                 'ragione_sociale': user_data.get('ragione_sociale', ''),
                 'num_fatture': stats['num_fatture'],
@@ -1114,6 +1116,42 @@ if tab1:
                                     else:
                                         st.error(f"Errore: {e}")
                                         logger.exception(f"Errore invio email reset: {e}")
+                            
+                            st.markdown("---")
+                            
+                            # AZIONE 2b: Gestione Pagine Abilitate
+                            st.markdown("**📄 Pagine Abilitate**")
+                            st.caption("Analisi Fatture è sempre attiva")
+                            
+                            pagine = row.get('pagine_abilitate') or {'marginalita': True, 'workspace': True}
+                            
+                            new_marginalita = st.checkbox(
+                                "💰 Marginalità",
+                                value=pagine.get('marginalita', True),
+                                key=f"page_marg_{row_key}"
+                            )
+                            new_workspace = st.checkbox(
+                                "🍴 Workspace Ricette",
+                                value=pagine.get('workspace', True),
+                                key=f"page_ws_{row_key}"
+                            )
+                            
+                            # Salva se cambiato
+                            if new_marginalita != pagine.get('marginalita', True) or new_workspace != pagine.get('workspace', True):
+                                try:
+                                    new_pagine = {'marginalita': new_marginalita, 'workspace': new_workspace}
+                                    supabase.table('users')\
+                                        .update({'pagine_abilitate': new_pagine})\
+                                        .eq('id', row['user_id'])\
+                                        .execute()
+                                    
+                                    logger.info(f"📄 Pagine aggiornate per {row['email']}: {new_pagine}")
+                                    st.success(f"✅ Pagine aggiornate")
+                                    _carica_stats_clienti_admin.clear()
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Errore: {e}")
                             
                             st.markdown("---")
                             

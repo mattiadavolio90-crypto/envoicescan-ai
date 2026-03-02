@@ -165,13 +165,25 @@ def render_sidebar(user_data: dict):
                      type="primary" if current_script == 'app.py' else "secondary"):
             st.switch_page("app.py")
         
-        if st.button("💰 Calcolo Marginalità", use_container_width=True, key="sidebar_margine",
-                     type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
-            st.switch_page("pages/1_calcolo_margine.py")
+        # Pagine abilitabili dall'admin
+        _pagine_raw = st.session_state.get('user_data', {}).get('pagine_abilitate')
+        if isinstance(_pagine_raw, str):
+            import json
+            try:
+                _pagine_raw = json.loads(_pagine_raw)
+            except Exception:
+                _pagine_raw = None
+        pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
         
-        if st.button("🍴 Workspace Ricette", use_container_width=True, key="sidebar_workspace",
-                     type="primary" if current_script == '2_workspace.py' else "secondary"):
-            st.switch_page("pages/2_workspace.py")
+        if pagine_abilitate.get('marginalita', True):
+            if st.button("💰 Marginalità", use_container_width=True, key="sidebar_margine",
+                         type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
+                st.switch_page("pages/1_calcolo_margine.py")
+        
+        if pagine_abilitate.get('workspace', True):
+            if st.button("🍴 Workspace Ricette", use_container_width=True, key="sidebar_workspace",
+                         type="primary" if current_script == '2_workspace.py' else "secondary"):
+                st.switch_page("pages/2_workspace.py")
         
         st.markdown("---")
         

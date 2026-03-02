@@ -90,6 +90,21 @@ user_id = user["id"]
 current_ristorante = get_current_ristorante_id()
 
 # ============================================
+# CONTROLLO PAGINA ABILITATA
+# ============================================
+_pagine_raw = user.get('pagine_abilitate')
+if isinstance(_pagine_raw, str):
+    import json as _json
+    try:
+        _pagine_raw = _json.loads(_pagine_raw)
+    except Exception:
+        _pagine_raw = None
+pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
+if not pagine_abilitate.get('workspace', True):
+    st.warning("⚠️ Questa pagina non è abilitata per il tuo account. Contatta l'amministratore.")
+    st.stop()
+
+# ============================================
 # SIDEBAR CONDIVISA
 # ============================================
 render_sidebar(user)
@@ -527,25 +542,103 @@ st.markdown("""
 
 st.markdown("---")
 
-# ============================================
-# TAB NAVIGATION (controllabile programmaticamente)
-# ============================================
-# Se modalità edit attiva, forza apertura tab Nuova Ricetta
-default_tab_index = 0
+# Session state per tab attivo
+if 'workspace_tab' not in st.session_state:
+    st.session_state.workspace_tab = "analisi"
+
+# Se modalità edit attiva, forza apertura Lab Ricette
 if st.session_state.ricetta_edit_mode:
-    default_tab_index = 1
+    st.session_state.workspace_tab = "lab"
 
-# Selezione tab con radio button orizzontale
-tabs_options = ["📋 Analisi Ricette e Menù", "🧪 Lab Ricette", "📓 Diario", "📊 Export Excel"]
+# Navigazione tab con bottoni - stile identico ad Analisi Fatture
+col_t1, col_t2, col_t3, col_t4 = st.columns(4)
+with col_t1:
+    if st.button("📋 ANALISI\nRICETTE E MENÙ", key="btn_ws_analisi", use_container_width=True,
+                 type="primary" if st.session_state.workspace_tab == "analisi" else "secondary"):
+        if st.session_state.workspace_tab != "analisi":
+            st.session_state.workspace_tab = "analisi"
+            st.rerun()
+with col_t2:
+    if st.button("🧪 LAB\nRICETTE", key="btn_ws_lab", use_container_width=True,
+                 type="primary" if st.session_state.workspace_tab == "lab" else "secondary"):
+        if st.session_state.workspace_tab != "lab":
+            st.session_state.workspace_tab = "lab"
+            st.rerun()
+with col_t3:
+    if st.button("📓 DIARIO", key="btn_ws_diario", use_container_width=True,
+                 type="primary" if st.session_state.workspace_tab == "diario" else "secondary"):
+        if st.session_state.workspace_tab != "diario":
+            st.session_state.workspace_tab = "diario"
+            st.rerun()
+with col_t4:
+    if st.button("📊 EXPORT\nEXCEL", key="btn_ws_export", use_container_width=True,
+                 type="primary" if st.session_state.workspace_tab == "export" else "secondary"):
+        if st.session_state.workspace_tab != "export":
+            st.session_state.workspace_tab = "export"
+            st.rerun()
 
-selected_tab = st.radio(
-    "Sezione",
-    tabs_options,
-    index=default_tab_index,
-    horizontal=True,
-    key="workspace_tab_selector",
-    label_visibility="collapsed"
-)
+# CSS per bottoni tab - stile identico a Analisi Fatture
+st.markdown("""
+    <style>
+    /* Globale: primary button azzurro */
+    button[kind="primary"] {
+        background-color: #0ea5e9 !important;
+        color: white !important;
+        border: 2px solid #0284c7 !important;
+        font-weight: bold !important;
+    }
+    button[kind="primary"]:hover {
+        background-color: #0284c7 !important;
+        border-color: #0369a1 !important;
+    }
+    button[kind="primary"]:disabled,
+    button[kind="primary"][disabled] {
+        background-color: #0ea5e9 !important;
+        color: white !important;
+        border: 2px solid #0284c7 !important;
+        opacity: 0.5 !important;
+    }
+    div[data-testid="column"] button[kind="primary"] {
+        background-color: #0ea5e9 !important;
+        color: white !important;
+        border: 2px solid #0284c7 !important;
+        font-weight: bold !important;
+    }
+    div[data-testid="column"] button[kind="primary"]:hover {
+        background-color: #0284c7 !important;
+        border-color: #0369a1 !important;
+    }
+    div[data-testid="column"] button[kind="secondary"] {
+        background-color: #f0f2f6 !important;
+        color: #31333F !important;
+        border: 2px solid #e0e0e0 !important;
+    }
+    div[data-testid="column"] button[kind="secondary"]:hover {
+        background-color: #e0e5eb !important;
+        border-color: #0ea5e9 !important;
+    }
+    div[data-testid="column"] button p {
+        font-size: clamp(0.7rem, 1.8vw, 0.95rem) !important;
+        line-height: 1.3 !important;
+        word-wrap: break-word !important;
+        white-space: normal !important;
+        overflow-wrap: break-word !important;
+    }
+    div[data-testid="column"] button {
+        padding: 0.5rem 0.25rem !important;
+        min-height: 3rem !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# Mappa session state a selected_tab per compatibilità con codice esistente
+_tab_map = {
+    "analisi": "📋 Analisi Ricette e Menù",
+    "lab": "🧪 Lab Ricette",
+    "diario": "📓 Diario",
+    "export": "📊 Export Excel"
+}
+selected_tab = _tab_map[st.session_state.workspace_tab]
 
 # ============================================
 # TAB 1: ANALISI RICETTE E MENÙ

@@ -165,6 +165,36 @@ CATEGORIE_SPESE_GENERALI = CATEGORIE_SPESE_OPERATIVE
 
 
 # ============================================
+# CENTRI DI PRODUZIONE (macro-categorie F&B)
+# ============================================
+# Mappatura: ogni centro raggruppa più categorie F&B
+# Usato nel tab "Centri" per analisi aggregata
+CENTRI_DI_PRODUZIONE = {
+    "FOOD": [
+        "CARNE", "PESCE", "LATTICINI", "SALUMI", "UOVA",
+        "SCATOLAME E CONSERVE", "OLIO E CONDIMENTI", "SECCO",
+        "VERDURE", "FRUTTA", "SALSE E CREME",
+        "PRODOTTI DA FORNO", "SPEZIE E AROMI", "SUSHI VARIE"
+    ],
+    "BAR": [
+        "ACQUA", "BEVANDE", "CAFFE E THE", "VARIE BAR"
+    ],
+    "ALCOLICI": [
+        "BIRRE", "VINI", "DISTILLATI", "AMARI/LIQUORI"
+    ],
+    "DOLCI": [
+        "PASTICCERIA", "GELATI"
+    ],
+    "MATERIALE DI CONSUMO": [
+        "MATERIALE DI CONSUMO"
+    ],
+    "SHOP": [
+        "SHOP"
+    ],
+}
+
+
+# ============================================
 # FORNITORI SPESE GENERALI (utenze, telecom, tech)
 # ============================================
 # Lista unificata di fornitori che sono SEMPRE spese generali/utenze
