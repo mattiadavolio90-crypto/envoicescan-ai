@@ -1081,7 +1081,7 @@ if user.get('email') not in ADMIN_EMAILS:
     ristoranti = st.session_state.get('ristoranti', [])
     
     if len(ristoranti) > 1:
-        st.markdown("### 🏢 Seleziona Ristorante da Gestire")
+        st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">🏢 Seleziona Ristorante da Gestire</h3>', unsafe_allow_html=True)
         
         # Trova indice ristorante corrente
         current_id = st.session_state.get('ristorante_id')
@@ -1757,7 +1757,7 @@ def mostra_statistiche(df_completo):
     # ============================================
     # FILTRO DROPDOWN PERIODO
     # ============================================
-    st.subheader("📅 Filtra per Periodo")
+    st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📅 Filtra per Periodo</h3>', unsafe_allow_html=True)
     
     # Calcola date dinamiche per i filtri
     oggi = pd.Timestamp.now()
@@ -2019,7 +2019,7 @@ def mostra_statistiche(df_completo):
     if 'is_loading' not in st.session_state:
         st.session_state.is_loading = False
     
-    st.markdown("### 📊 Naviga tra le Sezioni")
+    st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📊 Naviga tra le Sezioni</h3>', unsafe_allow_html=True)
     col1, col2, col3, col4, col5, col6 = st.columns(6)
     
     with col1:

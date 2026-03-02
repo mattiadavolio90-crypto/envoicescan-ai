@@ -103,6 +103,76 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
 
 
 # ============================================
+# COSTI PER CATEGORIA (Analisi Avanzate)
+# ============================================
+
+@st.cache_data(ttl=300, show_spinner="Caricamento dati per analisi...")
+def carica_costi_per_categoria(user_id: str, ristorante_id: str,
+                                date_from: str, date_to: str) -> pd.DataFrame:
+    """
+    Carica fatture F&B raggruppate per categoria e mese per un periodo.
+    
+    Args:
+        user_id: UUID utente
+        ristorante_id: UUID ristorante
+        date_from: Data inizio periodo (YYYY-MM-DD)
+        date_to: Data fine periodo (YYYY-MM-DD)
+    
+    Returns:
+        DataFrame con colonne: categoria, mese, totale
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        page_size = 1000
+        all_data = []
+        offset = 0
+        
+        while True:
+            response = supabase.table('fatture') \
+                .select('data_documento, totale_riga, categoria') \
+                .eq('user_id', user_id) \
+                .eq('ristorante_id', ristorante_id) \
+                .gte('data_documento', date_from) \
+                .lte('data_documento', date_to) \
+                .neq('categoria', 'Da Classificare') \
+                .range(offset, offset + page_size - 1) \
+                .execute()
+            
+            if not response.data:
+                break
+            all_data.extend(response.data)
+            if len(response.data) < page_size:
+                break
+            offset += page_size
+        
+        if not all_data:
+            return pd.DataFrame(columns=['categoria', 'mese', 'totale'])
+        
+        df = pd.DataFrame(all_data)
+        df['data_documento'] = pd.to_datetime(df['data_documento'], errors='coerce')
+        df = df.dropna(subset=['data_documento'])
+        df['mese'] = df['data_documento'].dt.month
+        df['totale_riga'] = pd.to_numeric(df['totale_riga'], errors='coerce').fillna(0)
+        
+        # Filtra solo F&B
+        df = df[df['categoria'].isin(CATEGORIE_FOOD)]
+        
+        # Aggrega per categoria e mese
+        result = df.groupby(['categoria', 'mese'])['totale_riga'].sum().reset_index()
+        result.columns = ['categoria', 'mese', 'totale']
+        
+        logger.info(f"📊 Analisi avanzate {date_from} → {date_to}: "
+                     f"{len(result)} righe aggregate, {result['categoria'].nunique()} categorie")
+        
+        return result
+        
+    except Exception as e:
+        logger.exception(f"❌ Errore caricamento costi per categoria: {e}")
+        return pd.DataFrame(columns=['categoria', 'mese', 'totale'])
+
+
+# ============================================
 # CARICAMENTO / SALVATAGGIO MARGINI
 # ============================================
 
