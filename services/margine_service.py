@@ -211,6 +211,147 @@ def carica_margini_anno(user_id: str, ristorante_id: str, anno: int) -> dict:
         return {}
 
 
+# Mappa centro → colonna DB
+_CENTRO_COL_MAP = {
+    "FOOD": "fatturato_food",
+    "BAR": "fatturato_bar",
+    "ALCOLICI": "fatturato_alcolici",
+    "DOLCI": "fatturato_dolci",
+}
+
+
+def salva_fatturato_centri(user_id: str, ristorante_id: str, anno: int, mese: int,
+                           split_euro: dict) -> bool:
+    """
+    Salva la suddivisione del fatturato per centro per un mese specifico.
+    
+    Args:
+        user_id: UUID utente
+        ristorante_id: UUID ristorante
+        anno: Anno
+        mese: Mese (1-12)
+        split_euro: dict {centro_nome: importo_euro} es. {"FOOD": 30000, "BAR": 5000, ...}
+    
+    Returns:
+        bool: True se riuscito
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        record = {
+            'user_id': user_id,
+            'ristorante_id': ristorante_id,
+            'anno': anno,
+            'mese': mese,
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        }
+        for centro, col in _CENTRO_COL_MAP.items():
+            record[col] = float(split_euro.get(centro, 0.0))
+        
+        supabase.table('margini_mensili') \
+            .upsert(record, on_conflict='ristorante_id,anno,mese') \
+            .execute()
+        
+        logger.info(f"✅ Salvato fatturato centri per {anno}/{mese}")
+        return True
+        
+    except Exception as e:
+        logger.exception(f"❌ Errore salvataggio fatturato centri {anno}/{mese}: {e}")
+        return False
+
+
+def carica_fatturato_centri_periodo(user_id: str, ristorante_id: str,
+                                     data_inizio, data_fine) -> dict:
+    """
+    Carica e aggrega la suddivisione fatturato per centro su un range di mesi.
+    
+    Args:
+        user_id: UUID utente
+        ristorante_id: UUID ristorante
+        data_inizio: date - inizio periodo
+        data_fine: date - fine periodo
+    
+    Returns:
+        dict: {centro_nome: totale_euro_nel_periodo} o {} se nessun dato
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        anno_start = data_inizio.year
+        anno_end = data_fine.year
+        
+        totali = {c: 0.0 for c in _CENTRO_COL_MAP}
+        has_data = False
+        
+        for a in range(anno_start, anno_end + 1):
+            m_from = data_inizio.month if a == anno_start else 1
+            m_to = data_fine.month if a == anno_end else 12
+            
+            response = supabase.table('margini_mensili') \
+                .select(','.join(_CENTRO_COL_MAP.values())) \
+                .eq('user_id', user_id) \
+                .eq('ristorante_id', ristorante_id) \
+                .eq('anno', a) \
+                .gte('mese', m_from) \
+                .lte('mese', m_to) \
+                .execute()
+            
+            if response.data:
+                for row in response.data:
+                    for centro, col in _CENTRO_COL_MAP.items():
+                        val = float(row.get(col, 0) or 0)
+                        if val > 0:
+                            has_data = True
+                        totali[centro] += val
+        
+        if not has_data:
+            return {}
+        
+        return totali
+        
+    except Exception as e:
+        logger.exception(f"❌ Errore caricamento fatturato centri per periodo: {e}")
+        return {}
+
+
+def carica_fatturato_centri_mese(user_id: str, ristorante_id: str,
+                                  anno: int, mese: int) -> dict:
+    """
+    Carica la suddivisione fatturato per centro per un singolo mese.
+    
+    Returns:
+        dict: {centro_nome: euro} o {} se nessun dato
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        response = supabase.table('margini_mensili') \
+            .select(','.join(_CENTRO_COL_MAP.values())) \
+            .eq('user_id', user_id) \
+            .eq('ristorante_id', ristorante_id) \
+            .eq('anno', anno) \
+            .eq('mese', mese) \
+            .execute()
+        
+        if not response.data:
+            return {}
+        
+        row = response.data[0]
+        result = {}
+        has_data = False
+        for centro, col in _CENTRO_COL_MAP.items():
+            val = float(row.get(col, 0) or 0)
+            result[centro] = val
+            if val > 0:
+                has_data = True
+        
+        return result if has_data else {}
+        
+    except Exception as e:
+        logger.exception(f"❌ Errore caricamento fatturato centri mese {anno}/{mese}: {e}")
+        return {}
+
+
 def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
                        df_input: pd.DataFrame, df_risultati: pd.DataFrame) -> bool:
     """

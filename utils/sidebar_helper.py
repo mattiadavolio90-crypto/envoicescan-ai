@@ -176,7 +176,7 @@ def render_sidebar(user_data: dict):
         pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
         
         if pagine_abilitate.get('marginalita', True):
-            if st.button("💰 Marginalità", use_container_width=True, key="sidebar_margine",
+            if st.button("💰 Calcolo Marginalità", use_container_width=True, key="sidebar_margine",
                          type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
                 st.switch_page("pages/1_calcolo_margine.py")
         
