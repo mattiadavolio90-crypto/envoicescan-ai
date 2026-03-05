@@ -391,7 +391,7 @@ if st.session_state.margine_tab == "analisi":
                 for m in range(m_from, m_to + 1):
                     _mesi_options.append((a, m, f"{_MESI_COMPLETI[m-1]} {a}"))
 
-            col_mese_sel, _col_mese_empty = st.columns([1.5, 4.5])
+            col_mese_sel, col_fatt_netto = st.columns([1.5, 4.5])
             with col_mese_sel:
                 idx_default = 0
                 mese_label_sel = st.selectbox(
@@ -418,14 +418,16 @@ if st.session_state.margine_tab == "analisi":
             _altri_r = float(_dati_m.get('altri_ricavi_noiva', 0) or 0)
             _fatt_netto_mese = (_fatt10 / 1.10) + (_fatt22 / 1.22) + _altri_r
 
-            if _fatt_netto_mese > 0:
-                st.markdown(f"""
-                <div style="display:inline-block; background:#fef9c3; padding:6px 14px; border-radius:6px; border:1px solid #fde047; font-size:0.88rem; font-weight:500; margin-bottom:10px;">
-                    💰 Fatturato Netto di {mese_label_sel}: <strong>€ {_fatt_netto_mese:,.2f}</strong>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.warning(f"⚠️ Nessun fatturato inserito per {mese_label_sel} nel tab Calcolo Ricavi-Costi-Margini.")
+            with col_fatt_netto:
+                if _fatt_netto_mese > 0:
+                    st.markdown(f"""
+                    <div style="display:inline-block; background:#fef9c3; padding:6px 14px; border-radius:6px; border:1px solid #fde047; font-size:0.88rem; font-weight:500; margin-top:28px;">
+                        💰 Fatturato Netto di {mese_label_sel}: <strong>€ {_fatt_netto_mese:,.2f}</strong>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown("<div style='margin-top:28px;'></div>", unsafe_allow_html=True)
+                    st.warning(f"⚠️ Nessun fatturato inserito per {mese_label_sel} nel tab Calcolo Ricavi-Costi-Margini.")
 
             # --- Modalità inserimento ---
             modo_split = st.radio(

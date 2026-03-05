@@ -181,7 +181,7 @@ def render_sidebar(user_data: dict):
                 st.switch_page("pages/1_calcolo_margine.py")
         
         if pagine_abilitate.get('workspace', True):
-            if st.button("🍴 Workspace Ricette", use_container_width=True, key="sidebar_workspace",
+            if st.button("🍴 Workspace", use_container_width=True, key="sidebar_workspace",
                          type="primary" if current_script == '2_workspace.py' else "secondary"):
                 st.switch_page("pages/2_workspace.py")
         

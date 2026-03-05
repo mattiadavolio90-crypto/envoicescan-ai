@@ -536,7 +536,7 @@ st.markdown("""
 
 st.markdown("""
 <div style='background-color: #e7f3ff; padding: clamp(0.625rem, 1.5vw, 0.75rem); border-radius: 5px; border-left: 4px solid #2196F3;'>
-<p style='margin: 0; color: #014361; font-size: clamp(0.75rem, 1.8vw, 0.875rem); line-height: 1.4; word-wrap: break-word;'>🍴 <strong>Workspace Ricette:</strong> Gestisci ricette, calcola il foodcost per piatto, monitora la marginalità e tieni il diario operativo.</p>
+<p style='margin: 0; color: #014361; font-size: clamp(0.75rem, 1.8vw, 0.875rem); line-height: 1.4; word-wrap: break-word;'>🍴 <strong>Workspace:</strong> Gestisci ricette, calcola il foodcost per piatto, monitora la marginalità e tieni il diario operativo.</p>
 </div>
 """, unsafe_allow_html=True)
 

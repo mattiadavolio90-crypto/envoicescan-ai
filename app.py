@@ -1495,18 +1495,20 @@ def mostra_statistiche(df_completo):
                                 
                                 # 💾 Salva in memoria GLOBALE (categorizzazione automatica AI)
                                 # CORRETTO: AI/Dizionario/Keyword → memoria GLOBALE condivisa
-                                try:
-                                    supabase.table('prodotti_master').upsert({
-                                        'descrizione': desc,
-                                        'categoria': cat,
-                                        'volte_visto': 1,
-                                        'verified': False,  # ⚠️ Da verificare: classificazione automatica AI
-                                        'classificato_da': 'AI'
-                                    }, on_conflict='descrizione').execute()
-                                    
-                                    logger.info(f"💾 MEMORIA GLOBALE (AI): '{desc[:40]}...' → {cat} - disponibile per TUTTI i clienti")
-                                except Exception as e:
-                                    logger.error(f"Errore salvataggio memoria globale '{desc[:40]}...': {e}")
+                                # ⚠️ NON salvare "Da Classificare" in memoria (non è una classificazione vera)
+                                if cat and cat != "Da Classificare":
+                                    try:
+                                        supabase.table('prodotti_master').upsert({
+                                            'descrizione': desc,
+                                            'categoria': cat,
+                                            'volte_visto': 1,
+                                            'verified': False,  # ⚠️ Da verificare: classificazione automatica AI
+                                            'classificato_da': 'AI'
+                                        }, on_conflict='descrizione').execute()
+                                        
+                                        logger.info(f"💾 MEMORIA GLOBALE (AI): '{desc[:40]}...' → {cat} - disponibile per TUTTI i clienti")
+                                    except Exception as e:
+                                        logger.error(f"Errore salvataggio memoria globale '{desc[:40]}...': {e}")
                             
                             # Invalida cache per forzare ricaricamento dopo ogni chunk
                             invalida_cache_memoria()
@@ -1539,6 +1541,11 @@ def mostra_statistiche(df_completo):
                             # VALIDAZIONE: Assicurati che cat non sia vuota o None (MA ACCETTA "Da Classificare")
                             if not cat or cat.strip() == '':
                                 logger.warning(f"⚠️ Categoria vuota/NULL per '{desc[:40]}', skip update")
+                                continue
+                            
+                            # ⚠️ SKIP: Non sovrascrivere con "Da Classificare" (stesso valore, inutile)
+                            if cat == "Da Classificare":
+                                logger.info(f"⏭️ Skip update per '{desc[:40]}' → già Da Classificare")
                                 continue
                             
                             # TENTATIVO 1: Match con descrizione normalizzata
@@ -1733,6 +1740,7 @@ def mostra_statistiche(df_completo):
                         # ⭐ FIX CRITICO: Imposta flag per forzare reload completo al prossimo caricamento
                         st.session_state.force_reload = True
                         st.session_state.force_empty_until_upload = False  # Assicura che i dati vengano caricati
+                        st.session_state.editor_refresh_counter = st.session_state.get('editor_refresh_counter', 0) + 1
                         logger.info("🔄 Flag force_reload impostato su True")
                         
                         # ⭐ FIX RACE CONDITION: Breve pausa per propagazione modifiche su Supabase
@@ -2566,13 +2574,16 @@ def mostra_statistiche(df_completo):
                 disabled=True
             )
         
+        # ⭐ Key dinamica: cambia dopo ogni salvataggio per forzare refresh widget
+        # (evita che Streamlit cache il vecchio stato della colonna Fonte)
+        _editor_version = st.session_state.get('editor_refresh_counter', 0)
         edited_df = st.data_editor(
             df_editor_paginato,
             column_config=column_config_dict,
             hide_index=True,
             width='stretch',
             height=altezza_dinamica,
-            key="editor_dati"
+            key=f"editor_dati_v{_editor_version}"
         )
         
         st.markdown("""
@@ -2971,6 +2982,10 @@ def mostra_statistiche(df_completo):
                     st.cache_data.clear()
                     invalida_cache_memoria()
                     st.session_state.force_reload = True  # ← Forza ricaricamento completo
+                    
+                    # ⭐ Incrementa counter per forzare refresh del data_editor
+                    # (altrimenti Streamlit usa il widget state cached con Fonte vuota)
+                    st.session_state.editor_refresh_counter = st.session_state.get('editor_refresh_counter', 0) + 1
                     
                     # ⭐ Le icone Fonte vengono MANTENUTE dopo il salvataggio
                     # per continuare a mostrare l'origine della categorizzazione.
@@ -3431,6 +3446,15 @@ def mostra_statistiche(df_completo):
             column_config_cat['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
         
             if not pivot_cat_display.empty:
+                # Flag per mostrare/nascondere colonne %
+                mostra_pct_cat = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_categorie")
+                
+                if not mostra_pct_cat:
+                    pct_cols_cat = [c for c in pivot_cat_display.columns if c.endswith(' %')]
+                    pivot_cat_display = pivot_cat_display.drop(columns=pct_cols_cat)
+                    for pc in pct_cols_cat:
+                        column_config_cat.pop(pc, None)
+                
                 num_righe_cat = len(pivot_cat_display)
                 altezza_cat = max(num_righe_cat * 35 + 50, 200)
                 
@@ -3554,30 +3578,55 @@ def mostra_statistiche(df_completo):
                 # Report
                 st.markdown("### 🏭 Spesa per Centro di Produzione mensile")
 
-                # Costruisci display DataFrame
-                display_rows = []
-                for centro in pivot.index:
-                    row_data = {'Centro': centro}
-                    for col in pivot.columns:
-                        val = pivot.loc[centro, col]
-                        p = pct.loc[centro, col] if centro in pct.index and col in pct.columns else 0
-                        if col in ['TOTALE', 'MEDIA']:
-                            bar_color = '#ef4444' if p > 50 else '#f97316' if p > 30 else '#6b7280'
-                            bar = f'<span style="display:inline-block;width:{min(p,100)*0.6:.0f}px;height:8px;background:{bar_color};border-radius:3px;margin-right:4px;"></span>'
-                            row_data[col] = f'€ {val:,.2f}'
-                            row_data[f'Incid. %' if col == 'TOTALE' else ''] = f'{bar} {p:.1f}%'
-                        else:
-                            bar_color = '#ef4444' if p > 50 else '#f97316' if p > 30 else '#6b7280'
-                            bar = f'<span style="display:inline-block;width:{min(p,100)*0.6:.0f}px;height:8px;background:{bar_color};border-radius:3px;margin-right:4px;"></span>'
-                            row_data[col] = f'€ {val:,.2f}'
-                            row_data[f'{col} %'] = f'{bar} {p:.1f}%'
-                    display_rows.append(row_data)
-
-                df_display = pd.DataFrame(display_rows)
-
-                st.markdown(
-                    df_display.to_html(escape=False, index=False),
-                    unsafe_allow_html=True
+                # Costruisci display DataFrame con stesso stile del tab Categorie
+                mesi_cols = [c for c in pivot.columns if c not in ['TOTALE', 'MEDIA']]
+                
+                pivot_centri_display = pd.DataFrame()
+                pivot_centri_display['Centro'] = pivot.index
+                
+                for col in mesi_cols:
+                    col_total = pivot[col].sum()
+                    pivot_centri_display[col] = pivot[col].apply(lambda x: x if x > 0 else None).values
+                    pivot_centri_display[f'{col} %'] = (pivot[col] / col_total * 100).round(1).values if col_total > 0 else 0.0
+                
+                pivot_centri_display['TOTALE'] = pivot['TOTALE'].values
+                grand_total_centri = pivot['TOTALE'].sum()
+                pivot_centri_display['TOTALE %'] = (pivot['TOTALE'] / grand_total_centri * 100).round(1).values if grand_total_centri > 0 else 0.0
+                pivot_centri_display['MEDIA'] = pivot['MEDIA'].values
+                
+                # Column config con ProgressColumn (stile identico al tab Categorie)
+                column_config_centri = {
+                    'Centro': st.column_config.TextColumn('Centro', width='medium'),
+                }
+                for col in mesi_cols:
+                    column_config_centri[col] = st.column_config.NumberColumn(col, format="€ %.2f")
+                    column_config_centri[f'{col} %'] = st.column_config.ProgressColumn(
+                        '%', format="%.1f%%", min_value=0, max_value=100, width='small'
+                    )
+                column_config_centri['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
+                column_config_centri['TOTALE %'] = st.column_config.ProgressColumn(
+                    'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
+                )
+                column_config_centri['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
+                
+                # Flag per mostrare/nascondere colonne %
+                mostra_pct_centri = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_centri")
+                
+                if not mostra_pct_centri:
+                    pct_cols_centri = [c for c in pivot_centri_display.columns if c.endswith(' %')]
+                    pivot_centri_display = pivot_centri_display.drop(columns=pct_cols_centri)
+                    for pc in pct_cols_centri:
+                        column_config_centri.pop(pc, None)
+                
+                num_righe_centri = len(pivot_centri_display)
+                altezza_centri = max(num_righe_centri * 35 + 50, 200)
+                
+                st.dataframe(
+                    pivot_centri_display,
+                    hide_index=True,
+                    width='stretch',
+                    height=altezza_centri,
+                    column_config=column_config_centri
                 )
 
                 # Riepilogo
@@ -3706,6 +3755,15 @@ def mostra_statistiche(df_completo):
             column_config_forn['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
         
             if not pivot_forn_display.empty:
+                # Flag per mostrare/nascondere colonne %
+                mostra_pct_forn = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_fornitori")
+                
+                if not mostra_pct_forn:
+                    pct_cols_forn = [c for c in pivot_forn_display.columns if c.endswith(' %')]
+                    pivot_forn_display = pivot_forn_display.drop(columns=pct_cols_forn)
+                    for pc in pct_cols_forn:
+                        column_config_forn.pop(pc, None)
+                
                 num_righe_forn = len(pivot_forn_display)
                 altezza_forn = max(num_righe_forn * 35 + 50, 200)
                 
@@ -3854,6 +3912,15 @@ def mostra_statistiche(df_completo):
             )
             column_config_spese_cat['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
             
+            # Flag per mostrare/nascondere colonne %
+            mostra_pct_spese_cat = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_spese_cat")
+            
+            if not mostra_pct_spese_cat:
+                pct_cols_spese_cat = [c for c in pivot_cat_display.columns if c.endswith(' %')]
+                pivot_cat_display = pivot_cat_display.drop(columns=pct_cols_spese_cat)
+                for pc in pct_cols_spese_cat:
+                    column_config_spese_cat.pop(pc, None)
+            
             num_righe_spese_cat = len(pivot_cat_display)
             altezza_spese_cat = max(num_righe_spese_cat * 35 + 50, 200)
             st.dataframe(pivot_cat_display, hide_index=True, width='stretch', height=altezza_spese_cat, column_config=column_config_spese_cat)
@@ -3969,6 +4036,15 @@ def mostra_statistiche(df_completo):
                 'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
             )
             column_config_spese_forn['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
+            
+            # Flag per mostrare/nascondere colonne %
+            mostra_pct_spese_forn = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_spese_forn")
+            
+            if not mostra_pct_spese_forn:
+                pct_cols_spese_forn = [c for c in pivot_forn_display.columns if c.endswith(' %')]
+                pivot_forn_display = pivot_forn_display.drop(columns=pct_cols_spese_forn)
+                for pc in pct_cols_spese_forn:
+                    column_config_spese_forn.pop(pc, None)
             
             num_righe_spese_forn = len(pivot_forn_display)
             altezza_spese_forn = max(num_righe_spese_forn * 35 + 50, 200)

@@ -787,6 +787,81 @@ def svuota_memoria_globale(supabase_client=None) -> bool:
     wait=wait_exponential(multiplier=1, min=2, max=30),
     retry=retry_if_exception_type(RETRIABLE_ERRORS)
 )
+def _chiama_gpt_classificazione(
+    da_chiedere_gpt: List[str],
+    openai_client,
+    max_tokens: int = 4096
+) -> List[str]:
+    """
+    Singola chiamata GPT per classificazione. Ritorna lista categorie (stesso ordine input).
+    Se GPT ritorna meno categorie del previsto, le mancanti saranno "Da Classificare".
+    """
+    from config.prompt_ai_potenziato import get_prompt_classificazione
+    
+    prompt = get_prompt_classificazione(json.dumps(da_chiedere_gpt, ensure_ascii=False))
+    
+    response = openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=max_tokens,
+        temperature=0.1,
+        response_format={"type": "json_object"}
+    )
+    
+    # 💰 TRACKING COSTI AI - Categorizzazione
+    try:
+        usage = response.usage
+        if usage:
+            prompt_tokens = usage.prompt_tokens
+            completion_tokens = usage.completion_tokens
+            
+            cost_input = (prompt_tokens / 1_000_000) * 0.15
+            cost_output = (completion_tokens / 1_000_000) * 0.60
+            total_cost = cost_input + cost_output
+            
+            if 'ristorante_id' in st.session_state and st.session_state.ristorante_id:
+                try:
+                    from services import get_supabase_client
+                    supabase = get_supabase_client()
+                    
+                    supabase.rpc('increment_ai_cost', {
+                        'p_ristorante_id': st.session_state.ristorante_id,
+                        'p_cost': float(total_cost),
+                        'p_tokens': prompt_tokens + completion_tokens,
+                        'p_operation_type': 'categorization'
+                    }).execute()
+                    
+                    logger.info(f"💰 Costo AI Categorizzazione tracciato: ${total_cost:.6f} (in={prompt_tokens}, out={completion_tokens})")
+                except Exception as track_err:
+                    logger.warning(f"⚠️ Errore tracking costo categorizzazione: {track_err}")
+    except Exception as cost_err:
+        logger.warning(f"⚠️ Errore calcolo costo categorizzazione: {cost_err}")
+    
+    testo = response.choices[0].message.content.strip()
+    dati = json.loads(testo)
+    categorie_gpt = dati.get("categorie", [])
+    
+    # Valida e costruisci lista risultati
+    risultati = []
+    for idx, desc in enumerate(da_chiedere_gpt):
+        if idx < len(categorie_gpt):
+            cat = categorie_gpt[idx]
+            
+            # ⚠️ VALIDAZIONE: Blocca categorie non valide (incluso NOTE E DICITURE)
+            if cat not in TUTTE_LE_CATEGORIE and cat != "Da Classificare":
+                logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → applicando dizionario")
+                cat = applica_correzioni_dizionario(desc, "Da Classificare")
+            risultati.append(cat)
+        else:
+            logger.warning(f"⚠️ AI non ha restituito categoria per indice {idx}: '{desc[:40]}' → Da Classificare")
+            risultati.append("Da Classificare")
+    
+    if len(categorie_gpt) != len(da_chiedere_gpt):
+        logger.warning(f"⚠️ MISMATCH: inviate {len(da_chiedere_gpt)} descrizioni, ricevute {len(categorie_gpt)} categorie")
+    
+    return risultati
+
+
 def classifica_con_ai(
     lista_descrizioni: List[str],
     lista_fornitori: Optional[List[str]] = None,
@@ -794,7 +869,10 @@ def classifica_con_ai(
 ) -> List[str]:
     """
     Classificazione AI con JSON strutturato + correzioni dizionario.
-    Usa retry automatico per gestire rate limits OpenAI.
+    Usa retry automatico per gestire rate limits OpenAI e risposte incomplete.
+    
+    Se la prima chiamata GPT restituisce "Da Classificare" per alcuni item,
+    ritenta automaticamente (max 2 retry) con batch più piccoli.
     
     Args:
         lista_descrizioni: Lista descrizioni prodotti da classificare
@@ -817,79 +895,51 @@ def classifica_con_ai(
     da_chiedere_gpt = list(lista_descrizioni)  # Tutte da classificare via GPT
     
     if not da_chiedere_gpt:
-        # Memoria AI ha priorità massima (correzioni manuali utente)
-        # Dizionario applicato SOLO se descrizione non in memoria
         return [
             risultati[d] if d in risultati 
             else applica_correzioni_dizionario(d, "MATERIALE DI CONSUMO")
             for d in lista_descrizioni
         ]
 
-    # Importa il prompt potenziato con esempi
-    from config.prompt_ai_potenziato import get_prompt_classificazione
-    
-    prompt = get_prompt_classificazione(json.dumps(da_chiedere_gpt, ensure_ascii=False))
-
     try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1500,
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
+        # 🧠 PRIMA CHIAMATA GPT (max_tokens=4096 per evitare troncamenti)
+        cats_prima = _chiama_gpt_classificazione(da_chiedere_gpt, openai_client, max_tokens=4096)
         
-        # 💰 TRACKING COSTI AI - Categorizzazione
-        try:
-            usage = response.usage
-            if usage:
-                prompt_tokens = usage.prompt_tokens
-                completion_tokens = usage.completion_tokens
-                
-                # Calcolo costi GPT-4o-mini (Gennaio 2026)
-                # Input: $0.15 per 1M token
-                # Output: $0.60 per 1M token
-                cost_input = (prompt_tokens / 1_000_000) * 0.15
-                cost_output = (completion_tokens / 1_000_000) * 0.60
-                total_cost = cost_input + cost_output
-                
-                # Salva in DB se abbiamo ristorante_id
-                # NOTA: prodotti_master è GLOBALE (condiviso tra tutti i ristoranti)
-                # Non viene filtrato per ristorante_id per design (memoria condivisa)
-                if 'ristorante_id' in st.session_state and st.session_state.ristorante_id:
-                    try:
-                        from services import get_supabase_client
-                        supabase = get_supabase_client()
-                        
-                        supabase.rpc('increment_ai_cost', {
-                            'p_ristorante_id': st.session_state.ristorante_id,
-                            'p_cost': float(total_cost),
-                            'p_tokens': prompt_tokens + completion_tokens,
-                            'p_operation_type': 'categorization'
-                        }).execute()
-                        
-                        logger.info(f"💰 Costo AI Categorizzazione tracciato: ${total_cost:.6f} (in={prompt_tokens}, out={completion_tokens})")
-                    except Exception as track_err:
-                        logger.warning(f"⚠️ Errore tracking costo categorizzazione: {track_err}")
-        except Exception as cost_err:
-            logger.warning(f"⚠️ Errore calcolo costo categorizzazione: {cost_err}")
+        for desc, cat in zip(da_chiedere_gpt, cats_prima):
+            risultati[desc] = cat
         
-        testo = response.choices[0].message.content.strip()
-        dati = json.loads(testo)
-        categorie_gpt = dati.get("categorie", [])
+        # 🔄 RETRY AUTOMATICO: Se ci sono "Da Classificare", ritenta con batch più piccoli
+        MAX_RETRY = 2
+        for retry_num in range(1, MAX_RETRY + 1):
+            # Trova descrizioni ancora "Da Classificare"
+            da_ritentare = [d for d in da_chiedere_gpt if risultati.get(d) == "Da Classificare"]
+            
+            if not da_ritentare:
+                break  # Tutto classificato!
+            
+            logger.info(f"🔄 RETRY {retry_num}/{MAX_RETRY}: {len(da_ritentare)} descrizioni ancora Da Classificare, ritentando...")
+            
+            try:
+                # Usa batch più piccoli nei retry per migliorare precisione
+                retry_chunk_size = min(20, len(da_ritentare))
+                for i in range(0, len(da_ritentare), retry_chunk_size):
+                    chunk_retry = da_ritentare[i:i+retry_chunk_size]
+                    cats_retry = _chiama_gpt_classificazione(chunk_retry, openai_client, max_tokens=4096)
+                    
+                    for desc, cat in zip(chunk_retry, cats_retry):
+                        if cat and cat != "Da Classificare":
+                            risultati[desc] = cat
+                            logger.info(f"✅ RETRY {retry_num}: '{desc[:40]}' → {cat}")
+            except Exception as retry_err:
+                logger.warning(f"⚠️ Errore durante retry {retry_num}: {retry_err}")
+                # Continua con i risultati che abbiamo
         
-        # Combina risultati memoria + GPT con validazione
-        for idx, desc in enumerate(da_chiedere_gpt):
-            if idx < len(categorie_gpt):
-                cat = categorie_gpt[idx]
-                
-                # ⚠️ VALIDAZIONE: Blocca categorie non valide (incluso NOTE E DICITURE)
-                if cat not in TUTTE_LE_CATEGORIE and cat != "Da Classificare":
-                    logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → applicando dizionario")
-                    cat = applica_correzioni_dizionario(desc, "Da Classificare")
-                risultati[desc] = cat
-            else:
-                risultati[desc] = "Da Classificare"
+        # Log finale
+        ancora_da_class = sum(1 for d in da_chiedere_gpt if risultati.get(d) == "Da Classificare")
+        if ancora_da_class > 0:
+            logger.warning(f"⚠️ Dopo {MAX_RETRY} retry, {ancora_da_class}/{len(da_chiedere_gpt)} descrizioni rimangono Da Classificare")
+        else:
+            logger.info(f"✅ Tutte le {len(da_chiedere_gpt)} descrizioni classificate con successo")
         
         # Ritorna nell'ordine originale
         return [risultati.get(d, "Da Classificare") for d in lista_descrizioni]
