@@ -641,7 +641,32 @@ def mostra_pagina_login():
     if 'login_tab_attivo' not in st.session_state:
         st.session_state.login_tab_attivo = "login"
 
-    col_lt1, col_lt2 = st.columns(2)
+    st.markdown("""
+        <style>
+        /* Bottone Accedi: azzurro, larghezza 200px */
+        div[data-testid="stFormSubmitButton"] button {
+            background-color: #0ea5e9 !important;
+            color: white !important;
+            width: 200px !important;
+        }
+        div[data-testid="stFormSubmitButton"] button:hover {
+            background-color: #0284c7 !important;
+        }
+        /* Fix altezza pagina */
+        .main .block-container {
+            max-height: none !important;
+        }
+        div[data-testid="stForm"] {
+            max-height: none !important;
+            height: auto !important;
+        }
+        section[data-testid="stSidebar"] ~ div {
+            max-height: none !important;
+            overflow-y: auto !important;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    col_lt1, col_lt2, _ = st.columns([1.2, 1.8, 5])
     with col_lt1:
         if st.button("🔑 LOGIN", key="lt_btn_login", use_container_width=True,
                      type="primary" if st.session_state.login_tab_attivo == "login" else "secondary"):
@@ -662,35 +687,8 @@ def mostra_pagina_login():
             email = st.text_input("📧 Email", placeholder="tua@email.com")
             password = st.text_input("🔑 Password", type="password", placeholder="La tua password")
             
-            # CSS per bottone blu chiaro e fix spazio verticale
-            st.markdown("""
-                <style>
-                div[data-testid="stFormSubmitButton"] button {
-                    background-color: #0ea5e9 !important;
-                    color: white !important;
-                    margin-bottom: 100px !important;
-                }
-                div[data-testid="stFormSubmitButton"] button:hover {
-                    background-color: #0284c7 !important;
-                }
-                /* Fix altezza pagina per vedere tutto */
-                .main .block-container {
-                    max-height: none !important;
-                    padding-bottom: 150px !important;
-                }
-                div[data-testid="stForm"] {
-                    max-height: none !important;
-                    height: auto !important;
-                    padding-bottom: 50px !important;
-                }
-                section[data-testid="stSidebar"] ~ div {
-                    max-height: none !important;
-                    overflow-y: auto !important;
-                }
-                </style>
-            """, unsafe_allow_html=True)
-            
-            submit = st.form_submit_button("🚀 Accedi", use_container_width=True)
+            st.markdown("<div style='margin-top: 0.8rem;'></div>", unsafe_allow_html=True)
+            submit = st.form_submit_button("🚀 Accedi")
             
             if submit:
                 if not email or not password:
@@ -3696,9 +3694,21 @@ if not df_cache.empty:
         
         # Usa fatture_summary già creato sopra
         if len(fatture_summary) > 0:
+            # 🔍 FILTRO FORNITORE
+            filtro_fornitore = st.text_input(
+                "🔍 Filtra per Fornitore:",
+                placeholder="Scrivi il nome del fornitore...",
+                key="filtro_fornitore_gestione"
+            )
+            fatture_filtrate = fatture_summary
+            if filtro_fornitore.strip():
+                fatture_filtrate = fatture_summary[
+                    fatture_summary['Fornitore'].str.contains(filtro_fornitore.strip(), case=False, na=False)
+                ]
+            
             # Crea opzioni dropdown con dict per passare tutti i dati
             fatture_options = []
-            for idx, row in fatture_summary.iterrows():
+            for idx, row in fatture_filtrate.iterrows():
                 fatture_options.append({
                     'File': row['File'],
                     'Fornitore': row['Fornitore'],
@@ -3707,36 +3717,39 @@ if not df_cache.empty:
                     'Data': row['Data']
                 })
             
-            fattura_selezionata = st.selectbox(
-                "Seleziona fattura da eliminare:",
-                options=fatture_options,
-                format_func=lambda x: f"📄 {x['File']} - {x['Fornitore']} (📅 {x['Data']}, 📦 {x['NumProdotti']} prodotti, 💰 €{x['Totale']:.2f})",
-                key="select_fattura_elimina"
-            )
-            
-            col_btn, col_spacer = st.columns([1, 3])
-            with col_btn:
-                if st.button("🗑️ Elimina Fattura", type="secondary", use_container_width=True):
-                    with st.spinner(f"🗑️ Eliminazione in corso..."):
-                        result = elimina_fattura_completa(fattura_selezionata['File'], user_id)
-                        
-                        # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
-                        invalida_cache_memoria()  # Reset memoria AI
-                        st.cache_data.clear()  # Reset cache Streamlit
-                        
-                        # 🔥 RESET SESSION: Rimuovi file eliminato dalla lista processati
-                        # (rimuovi sia il nome completo che il nome base normalizzato)
-                        if 'files_processati_sessione' in st.session_state:
-                            file_eliminato = fattura_selezionata['File']
-                            st.session_state.files_processati_sessione.discard(file_eliminato)
-                            st.session_state.files_processati_sessione.discard(os.path.splitext(file_eliminato)[0].lower())
-                        
-                        if result["success"]:
-                            st.success(f"✅ Fattura **{fattura_selezionata['File']}** eliminata! ({result['righe_eliminate']} prodotti)")
-                            time.sleep(0.3)
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Errore: {result['error']}")
+            if not fatture_options:
+                st.info("🔭 Nessuna fattura trovata per il fornitore cercato.")
+            else:
+                fattura_selezionata = st.selectbox(
+                    "Seleziona fattura da eliminare:",
+                    options=fatture_options,
+                    format_func=lambda x: f"📄 {x['File']} - {x['Fornitore']} (📅 {x['Data']}, 📦 {x['NumProdotti']} prodotti, 💰 €{x['Totale']:.2f})",
+                    key="select_fattura_elimina"
+                )
+                
+                col_btn, col_spacer = st.columns([1, 3])
+                with col_btn:
+                    if st.button("🗑️ Elimina Fattura", type="secondary", use_container_width=True):
+                        with st.spinner(f"🗑️ Eliminazione in corso..."):
+                            result = elimina_fattura_completa(fattura_selezionata['File'], user_id)
+                            
+                            # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
+                            invalida_cache_memoria()  # Reset memoria AI
+                            st.cache_data.clear()  # Reset cache Streamlit
+                            
+                            # 🔥 RESET SESSION: Rimuovi file eliminato dalla lista processati
+                            # (rimuovi sia il nome completo che il nome base normalizzato)
+                            if 'files_processati_sessione' in st.session_state:
+                                file_eliminato = fattura_selezionata['File']
+                                st.session_state.files_processati_sessione.discard(file_eliminato)
+                                st.session_state.files_processati_sessione.discard(os.path.splitext(file_eliminato)[0].lower())
+                            
+                            if result["success"]:
+                                st.success(f"✅ Fattura **{fattura_selezionata['File']}** eliminata! ({result['righe_eliminate']} prodotti)")
+                                time.sleep(0.3)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Errore: {result['error']}")
         else:
             st.info("🔭 Nessuna fattura da eliminare.")
         

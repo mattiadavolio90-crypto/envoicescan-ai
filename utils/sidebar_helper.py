@@ -16,7 +16,7 @@ def render_oh_yeah_header():
     Da richiamare in ogni pagina PRIMA del contenuto.
     """
     st.markdown("""
-<div style="text-align: center; margin-bottom: 0.5rem; margin-top: -2rem;">
+<div style="text-align: center; margin-bottom: 2rem; margin-top: -2rem;">
     <h1 style="font-size: clamp(3.5rem, 7vw, 5rem); font-weight: 900; margin: 0; letter-spacing: 3px; line-height: 1.1; display: inline-flex; align-items: flex-end; gap: 0.3rem;">
         <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
         -webkit-background-clip: text;
