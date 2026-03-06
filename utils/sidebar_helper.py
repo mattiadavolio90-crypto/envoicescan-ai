@@ -126,7 +126,7 @@ def render_sidebar(user_data: dict):
             import inspect
             for f in inspect.stack():
                 fname = os.path.basename(f.filename)
-                if fname in ('app.py', '1_calcolo_margine.py', '2_workspace.py', 
+                if fname in ('app.py', '1_calcolo_margine.py', '2_workspace.py', '3_controllo_prezzi.py',
                              'gestione_account.py', 'privacy_policy.py', 'admin.py'):
                     current_script = fname
                     break
@@ -174,6 +174,11 @@ def render_sidebar(user_data: dict):
             except Exception:
                 _pagine_raw = None
         pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
+        
+        if pagine_abilitate.get('controllo_prezzi', True):
+            if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",
+                         type="primary" if current_script == '3_controllo_prezzi.py' else "secondary"):
+                st.switch_page("pages/3_controllo_prezzi.py")
         
         if pagine_abilitate.get('marginalita', True):
             if st.button("💰 Calcolo Marginalità", use_container_width=True, key="sidebar_margine",

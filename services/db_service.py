@@ -53,7 +53,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         page = 0
         
         # 🚀 OTTIMIZZAZIONE: Select solo colonne necessarie (non "*")
-        columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id,needs_review"
+        columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id,needs_review,tipo_documento,sconto_percentuale"
         
         while True:
             offset = page * page_size
@@ -81,7 +81,9 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
                     "CodiceArticolo": row["codice_articolo"],
                     "PrezzoStandard": row.get("prezzo_standard"),
                     "NeedsReview": row.get("needs_review", False),
-                    "RistoranteId": row.get("ristorante_id")
+                    "RistoranteId": row.get("ristorante_id"),
+                    "TipoDocumento": row.get("tipo_documento", "TD01"),
+                    "ScontoPercentuale": row.get("sconto_percentuale", 0.0)
                 })
             
             # Se questa pagina ha meno di page_size record, abbiamo finito
@@ -551,13 +553,11 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
             df_sconti = df_sconti.sort_values('data_documento', ascending=False)
         
         # ============================================================
-        # OMAGGI: Prezzi €0 (escludi descrizioni "omaggio" esplicite)
+        # OMAGGI: Prezzi €0 (INCLUDE descrizioni con parole omaggio/gratis)
         # ============================================================
-        pattern_omaggio = r'(?i)(omaggio|campione|prova|test|gratis|gratuito)'
-        
         df_omaggi = df_food[
             (df_food['prezzo_unitario'] == 0) &
-            (~df_food['descrizione'].str.contains(pattern_omaggio, na=False))
+            (df_food['descrizione'].str.strip().str.len() > 3)  # Escludi righe senza descrizione significativa
         ].copy()
         
         if not df_omaggi.empty:
@@ -565,32 +565,78 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
             df_omaggi = df_omaggi.sort_values('data_documento', ascending=False)
         
         # ============================================================
-        # CALCOLO TOTALE RISPARMIATO
+        # CALCOLO TOTALE RISPARMIATO + ULTIMO PREZZO OMAGGI
         # ============================================================
         totale_sconti = df_sconti['importo_sconto'].sum() if not df_sconti.empty else 0.0
         
-        # Omaggi: stima valore basandosi sull'ultimo prezzo dello stesso prodotto nel periodo
-        # Se non disponibile, usa €0
         totale_omaggi = 0.0
         if not df_omaggi.empty:
-            # Vectorized: trova l'ultimo prezzo > 0 per ogni prodotto in una sola passata
-            df_positive = df[df['prezzo_unitario'] > 0].copy()
-            if not df_positive.empty:
-                # Prendi l'ultimo prezzo per ogni descrizione (ultimo per data)
-                df_positive_sorted = df_positive.sort_values('data_documento')
-                ultimo_prezzo_map = df_positive_sorted.groupby('descrizione')['prezzo_unitario'].last()
+            # Recupera TUTTO lo storico prezzi per i prodotti in omaggio
+            # (non solo il periodo corrente, per avere l'ultimo prezzo reale)
+            desc_list = df_omaggi['descrizione'].unique().tolist()
+            all_historical = []
+            batch_size = 30
+            
+            for i in range(0, len(desc_list), batch_size):
+                batch = desc_list[i:i+batch_size]
+                try:
+                    hist_query = supabase_client.table('fatture')\
+                        .select('descrizione, fornitore, prezzo_unitario, data_documento')\
+                        .eq('user_id', user_id)\
+                        .gt('prezzo_unitario', 0)\
+                        .in_('descrizione', batch)
+                    
+                    if ristorante_id:
+                        hist_query = hist_query.eq('ristorante_id', ristorante_id)
+                    
+                    hist_response = hist_query.order('data_documento', desc=True).limit(1000).execute()
+                    if hist_response.data:
+                        all_historical.extend(hist_response.data)
+                except Exception as e:
+                    logger.warning(f"Errore query storico omaggi batch {i}: {e}")
+            
+            df_hist = pd.DataFrame(all_historical) if all_historical else pd.DataFrame()
+            if not df_hist.empty:
+                df_hist['data_documento'] = pd.to_datetime(df_hist['data_documento'], errors='coerce')
+                df_hist = df_hist.sort_values('data_documento', ascending=False)
+            
+            # Normalizza anche le date degli omaggi per confronto sicuro
+            df_omaggi['data_documento'] = pd.to_datetime(df_omaggi['data_documento'], errors='coerce')
+            
+            # Per ogni omaggio, trova l'ultimo prezzo d'acquisto
+            # (stesso prodotto + stesso fornitore, data precedente all'omaggio)
+            ultimo_prezzo_list = []
+            valore_stimato_list = []
+            
+            for idx, row in df_omaggi.iterrows():
+                prezzo = None
+                if not df_hist.empty:
+                    mask = (
+                        (df_hist['descrizione'] == row['descrizione']) &
+                        (df_hist['fornitore'] == row['fornitore']) &
+                        (df_hist['data_documento'] < row['data_documento'])
+                    )
+                    matching = df_hist[mask]
+                    if not matching.empty:
+                        prezzo = matching.iloc[0]['prezzo_unitario']
                 
-                for idx, row in df_omaggi.iterrows():
-                    if row['descrizione'] in ultimo_prezzo_map.index:
-                        prezzo_ultimo = ultimo_prezzo_map[row['descrizione']]
-                        valore_stimato = prezzo_ultimo * row['quantita']
-                        totale_omaggi += abs(valore_stimato)
+                ultimo_prezzo_list.append(prezzo)
+                val = abs(prezzo * row['quantita']) if prezzo is not None else None
+                valore_stimato_list.append(val)
+            
+            df_omaggi['ultimo_prezzo'] = ultimo_prezzo_list
+            df_omaggi['valore_stimato'] = valore_stimato_list
+            
+            totale_omaggi = float(df_omaggi['valore_stimato'].sum(min_count=1))
+            if pd.isna(totale_omaggi):
+                totale_omaggi = 0.0
         
         totale_risparmiato = totale_sconti + totale_omaggi
         
         return {
             'sconti': df_sconti,
             'omaggi': df_omaggi,
+            'totale_omaggi': totale_omaggi,
             'totale_risparmiato': totale_risparmiato
         }
         

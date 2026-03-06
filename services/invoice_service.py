@@ -206,6 +206,21 @@ def estrai_dati_da_xml(file_caricato):
             keep_list=False
         )
         
+        # ============================================================
+        # ESTRAZIONE TIPO DOCUMENTO (fattura vs nota di credito)
+        # ============================================================
+        # TD01 = Fattura, TD02 = Acconto, TD04 = Nota di Credito,
+        # TD05 = Nota di Debito, TD06 = Parcella, TD07 = Autofattura
+        tipo_documento = safe_get(
+            fattura,
+            ['FatturaElettronicaBody', 'DatiGenerali', 'DatiGeneraliDocumento', 'TipoDocumento'],
+            default='TD01',
+            keep_list=False
+        )
+        is_nota_credito = str(tipo_documento).upper().strip() == 'TD04'
+        if is_nota_credito:
+            logger.info(f"📋 NOTA DI CREDITO rilevata (TipoDocumento={tipo_documento})")
+        
         fornitore = estrai_fornitore_xml(fattura)
         
         # ============================================================
@@ -261,6 +276,36 @@ def estrai_dati_da_xml(file_caricato):
                 prezzo_base = float(riga.get('PrezzoUnitario', 0) or 0)
                 totale_riga = float(riga.get('PrezzoTotale', 0) or 0)
                 
+                # ============================================================
+                # NOTA DI CREDITO: Inverti segno importi se positivi
+                # ============================================================
+                # Le note di credito (TD04) rappresentano rimborsi/resi.
+                # Se il gestionale emette importi positivi, li neghiamo
+                # perché nel nostro sistema devono RIDURRE i costi.
+                if is_nota_credito:
+                    if totale_riga > 0:
+                        totale_riga = -totale_riga
+                    if prezzo_base > 0:
+                        prezzo_base = -prezzo_base
+                
+                # ============================================================
+                # ESTRAZIONE SCONTO MAGGIORAZIONE XML
+                # ============================================================
+                sconto_percentuale = 0.0
+                sconto_maggiorazione = riga.get('ScontoMaggiorazione')
+                if sconto_maggiorazione:
+                    # Può essere dict singolo o lista
+                    if isinstance(sconto_maggiorazione, dict):
+                        sconto_maggiorazione = [sconto_maggiorazione]
+                    if isinstance(sconto_maggiorazione, list):
+                        for sm in sconto_maggiorazione:
+                            tipo_sm = sm.get('Tipo', 'SC')  # SC=Sconto, MG=Maggiorazione
+                            perc = float(sm.get('Percentuale', 0) or 0)
+                            if tipo_sm == 'SC':
+                                sconto_percentuale += perc
+                            elif tipo_sm == 'MG':
+                                sconto_percentuale -= perc  # Maggiorazione riduce lo sconto
+                
                 # MARK FOR REVIEW: Prezzo zero o mancante (potrebbe essere omaggio, dicitura, o servizio gratuito)
                 needs_review_flag = False
                 if not prezzo_base or prezzo_base == 0:
@@ -273,7 +318,7 @@ def estrai_dati_da_xml(file_caricato):
                 
                 # QUANTITÀ: Default = 1 per servizi (se manca ma c'è PrezzoTotale)
                 if quantita_raw is None or float(quantita_raw or 0) == 0:
-                    if totale_riga and totale_riga > 0:
+                    if totale_riga and totale_riga != 0:  # Accetta anche negativi (note di credito)
                         quantita = 1.0
                     else:
                         continue
@@ -287,7 +332,7 @@ def estrai_dati_da_xml(file_caricato):
                 descrizione_raw_stripped = descrizione_raw.strip() if descrizione_raw else ""
                 
                 # Se descrizione è solo "." o molto corta MA c'è prezzo > 0 → usa fornitore
-                if len(descrizione_raw_stripped) <= 3 and len(descrizione_raw_stripped) > 0 and prezzo_base > 0:
+                if len(descrizione_raw_stripped) <= 3 and len(descrizione_raw_stripped) > 0 and abs(prezzo_base) > 0:
                     descrizione = f"Servizio {fornitore}"
                     logger.info(f"{file_caricato.name} - Riga {idx}: descrizione '{descrizione_raw_stripped}' sostituita con '{descrizione}'")
                 else:
@@ -320,7 +365,9 @@ def estrai_dati_da_xml(file_caricato):
                 aliquota_iva = float(riga.get('AliquotaIVA', 0))
                 
                 # Calcola prezzo effettivo (include sconti)
-                if quantita > 0 and totale_riga > 0:
+                # Usa abs() per gestire correttamente quantità negative (resi)
+                # e note di credito (totale negativo)
+                if abs(quantita) > 0 and totale_riga != 0:
                     prezzo_unitario = totale_riga / quantita
                 else:
                     prezzo_unitario = prezzo_base
@@ -328,6 +375,11 @@ def estrai_dati_da_xml(file_caricato):
                         totale_riga = quantita * prezzo_unitario
                 
                 prezzo_unitario = round(prezzo_unitario, 4)
+                
+                # Se sconto non rilevato da XML tag ma c'è differenza prezzo base vs effettivo,
+                # calcola sconto_percentuale dal confronto prezzi
+                if sconto_percentuale == 0.0 and prezzo_base != 0 and abs(prezzo_unitario) < abs(prezzo_base):
+                    sconto_percentuale = round(((abs(prezzo_base) - abs(prezzo_unitario)) / abs(prezzo_base)) * 100, 2)
                 
 
                 # Auto-categorizzazione
@@ -352,12 +404,15 @@ def estrai_dati_da_xml(file_caricato):
                     needs_review = True
                     logger.warning(f"⚠️ NOTE con €{prezzo_unitario:.2f} → review: {descrizione[:50]}")
                 
-                # Calcolo prezzo standard
-                prezzo_std = calcola_prezzo_standard_intelligente(
-                    descrizione=descrizione,
-                    um=unita_misura,
-                    prezzo_unitario=prezzo_unitario
-                )
+                # Calcolo prezzo standard (skip per omaggi/prezzo zero - non significativo)
+                if prezzo_unitario != 0:
+                    prezzo_std = calcola_prezzo_standard_intelligente(
+                        descrizione=descrizione,
+                        um=unita_misura,
+                        prezzo_unitario=abs(prezzo_unitario)
+                    )
+                else:
+                    prezzo_std = None
                 
                 righe_prodotti.append({
                     'Numero_Riga': idx,
@@ -374,7 +429,9 @@ def estrai_dati_da_xml(file_caricato):
                     'File_Origine': file_caricato.name,
                     'Prezzo_Standard': prezzo_std,
                     'needs_review': needs_review,
-                    'piva_cessionario': piva_cessionario  # P.IVA destinatario fattura
+                    'piva_cessionario': piva_cessionario,  # P.IVA destinatario fattura
+                    'tipo_documento': tipo_documento,  # TD01=Fattura, TD04=Nota Credito
+                    'sconto_percentuale': round(sconto_percentuale, 2)  # % sconto applicato
                 })
             except Exception as e:
                 logger.warning(f"{file_caricato.name} - Riga {idx} skippata: {str(e)[:100]}")
@@ -772,7 +829,9 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     "categoria": categoria_raw,
                     "codice_articolo": prod.get("CodiceArticolo", prod.get("Codice_Articolo", "")),
                     "prezzo_standard": float(prezzo_std) if prezzo_std and pd.notna(prezzo_std) else None,
-                    "needs_review": prod.get("needs_review", False)
+                    "needs_review": prod.get("needs_review", False),
+                    "tipo_documento": prod.get("tipo_documento", "TD01"),
+                    "sconto_percentuale": prod.get("sconto_percentuale", 0.0)
                 })
             
 

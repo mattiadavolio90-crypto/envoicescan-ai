@@ -58,8 +58,6 @@ from services.invoice_service import (
 from services.db_service import (
     carica_e_prepara_dataframe,
     ricalcola_prezzi_con_sconti,
-    calcola_alert,
-    carica_sconti_e_omaggi,
     elimina_fattura_completa,
     elimina_tutte_fatture,
     get_fatture_stats
@@ -625,7 +623,7 @@ def mostra_pagina_login():
     render_oh_yeah_header()
     
     st.markdown("""
-<h2 style="font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 700; margin: 0; margin-top: 0.5rem;">
+<h2 style="font-size: clamp(2.2rem, 5.5vw, 3.2rem); font-weight: 700; margin: 0; margin-top: 0.5rem;">
     🔐 <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -633,12 +631,34 @@ def mostra_pagina_login():
 </h2>
 """, unsafe_allow_html=True)
     
-    # Box informativo sulla conservazione sostitutiva
-    st.info("📄 **Nota Legale:** Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.")
+    # Nota legale senza sfondo
+    st.markdown("""
+<p style="font-size: clamp(0.7rem, 1.6vw, 0.82rem); color: #1e3a8a; margin: 0.75rem 0 1.25rem 0; line-height: 1.6;">
+    📄 <strong>Nota Legale:</strong> Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.
+</p>
+""", unsafe_allow_html=True)
     
-    tab1, tab2 = st.tabs(["🔑 Login", "🔄 Recupera Password"])
-    
-    with tab1:
+    # Tab navigazione stile bottoni (stesso stile dell'app)
+    if 'login_tab_attivo' not in st.session_state:
+        st.session_state.login_tab_attivo = "login"
+
+    col_lt1, col_lt2 = st.columns(2)
+    with col_lt1:
+        if st.button("🔑 LOGIN", key="lt_btn_login", use_container_width=True,
+                     type="primary" if st.session_state.login_tab_attivo == "login" else "secondary"):
+            if st.session_state.login_tab_attivo != "login":
+                st.session_state.login_tab_attivo = "login"
+                st.rerun()
+    with col_lt2:
+        if st.button("🔄 RECUPERA PASSWORD", key="lt_btn_reset", use_container_width=True,
+                     type="primary" if st.session_state.login_tab_attivo == "reset" else "secondary"):
+            if st.session_state.login_tab_attivo != "reset":
+                st.session_state.login_tab_attivo = "reset"
+                st.rerun()
+
+    st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
+
+    if st.session_state.login_tab_attivo == "login":
         with st.form("login_form"):
             email = st.text_input("📧 Email", placeholder="tua@email.com")
             password = st.text_input("🔑 Password", type="password", placeholder="La tua password")
@@ -717,8 +737,8 @@ def mostra_pagina_login():
                                 st.rerun()
                         else:
                             st.error(f"❌ {errore}")
-    
-    with tab2:
+
+    elif st.session_state.login_tab_attivo == "reset":
         st.markdown("#### Reset Password via Email")
         
         reset_email = st.text_input("📧 Email per reset", placeholder="tua@email.com", key="reset_email")
@@ -2028,10 +2048,10 @@ def mostra_statistiche(df_completo):
         st.session_state.is_loading = False
     
     st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📊 Naviga tra le Sezioni</h3>', unsafe_allow_html=True)
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
+    col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        if st.button("📦 ARTICOLI\n(F&B)", key="btn_dettaglio", use_container_width=True, 
+        if st.button("📦 DETTAGLIO\nARTICOLI", key="btn_dettaglio", use_container_width=True, 
                      type="primary" if st.session_state.sezione_attiva == "dettaglio" else "secondary"):
             if st.session_state.sezione_attiva != "dettaglio":
                 st.session_state.sezione_attiva = "dettaglio"
@@ -2042,16 +2062,6 @@ def mostra_statistiche(df_completo):
                 st.rerun()
     
     with col2:
-        if st.button("🚨 ALERT\n(F&B)", key="btn_alert", use_container_width=True,
-                     type="primary" if st.session_state.sezione_attiva == "alert" else "secondary"):
-            if st.session_state.sezione_attiva != "alert":
-                st.session_state.sezione_attiva = "alert"
-                st.session_state.is_loading = True
-                if 'last_upload_summary' in st.session_state:
-                    del st.session_state.last_upload_summary
-                st.rerun()
-    
-    with col3:
         if st.button("📈 CATEGORIE\n(F&B)", key="btn_categorie", use_container_width=True,
                      type="primary" if st.session_state.sezione_attiva == "categorie" else "secondary"):
             if st.session_state.sezione_attiva != "categorie":
@@ -2061,7 +2071,7 @@ def mostra_statistiche(df_completo):
                     del st.session_state.last_upload_summary
                 st.rerun()
     
-    with col4:
+    with col3:
         if st.button("🏭 CENTRI\n(F&B)", key="btn_centri", use_container_width=True,
                      type="primary" if st.session_state.sezione_attiva == "centri" else "secondary"):
             if st.session_state.sezione_attiva != "centri":
@@ -2071,7 +2081,7 @@ def mostra_statistiche(df_completo):
                     del st.session_state.last_upload_summary
                 st.rerun()
     
-    with col5:
+    with col4:
         if st.button("🚚 FORNITORI\n(F&B)", key="btn_fornitori", use_container_width=True,
                      type="primary" if st.session_state.sezione_attiva == "fornitori" else "secondary"):
             if st.session_state.sezione_attiva != "fornitori":
@@ -2081,7 +2091,7 @@ def mostra_statistiche(df_completo):
                     del st.session_state.last_upload_summary
                 st.rerun()
     
-    with col6:
+    with col5:
         if st.button("🏢 SPESE\nGENERALI", key="btn_spese", use_container_width=True,
                      type="primary" if st.session_state.sezione_attiva == "spese" else "secondary"):
             if st.session_state.sezione_attiva != "spese":
@@ -2525,6 +2535,12 @@ def mostra_statistiche(df_completo):
             "PrezzoUnitario": st.column_config.NumberColumn("Prezzo Unit.", format="€ %.2f", disabled=True),
             "UnitaMisura": st.column_config.TextColumn("U.M.", disabled=True, width="small"),
             # ⭐ NUOVO: Colonna Fonte (dopo IVA)
+            "IVAPercentuale": st.column_config.NumberColumn(
+                "IVA %",
+                format="%.0f%%",
+                disabled=True,
+                width="small"
+            ),
             "Fonte": st.column_config.TextColumn(
                 "Fonte",
                 help="📚 Memoria Globale | 🧠 AI Batch | ✋ Modifica Manuale",
@@ -3003,371 +3019,13 @@ def mostra_statistiche(df_completo):
                 st.error(f"❌ Errore durante il salvataggio: {e}")
     
     # ========================================================
-    # SEZIONE 2: ALERT AUMENTI PREZZI - VERSIONE SEMPLIFICATA
+    # SEZIONE 2: ALERT → SPOSTATA in pages/3_controllo_prezzi.py
     # ========================================================
     if st.session_state.sezione_attiva == "alert":
-        
-        # Verifica dataset
-        if ('df_completo_filtrato' not in locals()) or df_completo_filtrato.empty:
-            st.warning("📊 Carica delle fatture per vedere gli alert.")
-        else:
-            
-            # FILTRI
-            col_search, col_soglia = st.columns([3, 1])
-            
-            with col_search:
-                filtro_prodotto = st.text_input(
-                    "🔍 Cerca Prodotto", 
-                    "", 
-                    placeholder="Digita per filtrare per nome prodotto...",
-                    key="filtro_alert_prodotto"
-                )
-            
-            with col_soglia:
-                soglia_aumento = st.number_input(
-                    "Soglia Aumento Minimo %", 
-                    min_value=0, 
-                    max_value=100, 
-                    value=5,
-                    step=1,
-                    key="soglia_alert",
-                    help="Mostra solo aumenti ≥ +X%"
-                )
-            
-            # CALCOLA ALERT (SOLO F&B) - USA DATI FILTRATI PER PERIODO
-            df_alert = calcola_alert(df_completo_filtrato, soglia_aumento, filtro_prodotto)
-            
-            # BADGE CONTEGGIO
-            if not df_alert.empty:
-                st.info(f"⚠️ **{len(df_alert)} Variazioni Rilevate** (soglia ≥ +{soglia_aumento}%) - Solo prodotti Food & Beverage")
-                
-                # 📖 LEGENDA COLONNE
-                st.caption("📖 **Storico**: ultimi 5 prezzi precedenti | **Media**: media dello storico | **Ultimo**: prezzo ultimo acquisto | **Var. %**: variazione ultimo vs penultimo")
-                
-                # Prepara colonne display
-                df_display = df_alert.copy()
-                df_display['Data'] = pd.to_datetime(df_display['Data']).dt.strftime('%d/%m/%y')
-                
-                # Formatta Media e Ultimo come €
-                df_display['Media'] = df_display['Media'].apply(lambda x: f"€{x:.2f}")
-                df_display['Ultimo'] = df_display['Ultimo'].apply(lambda x: f"€{x:.2f}")
-                
-                # PALLINI COLORATI: 🔴 Aumento / 🟢 Diminuzione
-                def formatta_variazione(perc):
-                    if perc > 0:
-                        return f"🔴 +{perc:.1f}%"
-                    elif perc < 0:
-                        return f"🟢 {perc:.1f}%"
-                    else:
-                        return f"{perc:.1f}%"
-                
-                df_display['Aumento_Perc'] = df_display['Aumento_Perc'].apply(formatta_variazione)
-                
-                # 🔧 Reset index prima di rinominare
-                df_display = df_display.reset_index(drop=True)
-                
-                # Seleziona e rinomina colonne per display
-                df_display = df_display[['Prodotto', 'Categoria', 'Fornitore', 'Storico', 'Media', 'Ultimo', 'Aumento_Perc', 'Data', 'N_Fattura']]
-                df_display.columns = ['Prodotto', 'Cat.', 'Fornitore', 'Storico (ultimi 5)', 'Media storico', 'Ultimo', 'Var. %', 'Data ultima', 'N.Fattura']
-                
-                # ============================================================
-                # ALTEZZA SCROLLABILE (min 200px, max 500px)
-                # ============================================================
-                num_righe_alert = len(df_display)
-                altezza_alert = min(max(num_righe_alert * 35 + 50, 200), 500)
-                
-                # Mostra tabella SCROLLABILE
-                st.dataframe(
-                    df_display,
-                    width='stretch',
-                    height=altezza_alert,  # MAX 500px con scroll
-                    hide_index=True
-                )
-                
-                # CSS per bottone Excel
-                st.markdown("""
-                    <style>
-                    [data-testid="stDownloadButton"] {
-                        margin-top: 10px !important;
-                    }
-                    [data-testid="stDownloadButton"] button {
-                        background-color: #28a745 !important;
-                        color: white !important;
-                        font-weight: 600 !important;
-                        font-size: clamp(0.7rem, 1.6vw, 0.8rem) !important;
-                        border-radius: 6px !important;
-                        border: none !important;
-                        min-width: 8rem !important;
-                        min-height: 2.5rem !important;
-                        padding: 0.5rem !important;
-                    }
-                    [data-testid="stDownloadButton"] button:hover {
-                        background-color: #218838 !important;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-                
-                # EXPORT EXCEL
-                excel_buffer = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-                    df_alert.to_excel(writer, sheet_name='Alert Aumenti', index=False)
-                
-                col_spacer, col_btn = st.columns([4, 2])
-                with col_btn:
-                    st.download_button(
-                        label="📊 Excel",
-                        data=excel_buffer.getvalue(),
-                        file_name=f"alert_aumenti_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="download_excel_alert",
-                        type="primary",
-                        use_container_width=False
-                    )
-            else:
-                st.success(f"✅ Nessun aumento rilevato con soglia ≥ +{soglia_aumento}%. Tutto sotto controllo!")
-            
-            st.markdown("---")
-            
-            # ============================================================
-            # NUOVA SEZIONE: SCONTI E OMAGGI
-            # ============================================================
-            st.markdown("### 🎁 Sconti e Omaggi Ricevuti")
-            
-            # 📖 LEGENDA
-            st.caption("📖 **Sconti**: totale sconti ricevuti | **Omaggi**: valore stimato (ultimo prezzo × quantità) | **Totale**: somma sconti + omaggi | Solo prodotti Food & Beverage")
-            
-            # Carica dati CON PERIODO DINAMICO
-            with st.spinner("Caricamento sconti e omaggi..."):
-                dati_sconti = carica_sconti_e_omaggi(user_id, data_inizio_filtro, data_fine_filtro)
-            
-            df_sconti = dati_sconti['sconti']
-            df_omaggi = dati_sconti['omaggi']
-            totale_risparmiato = dati_sconti['totale_risparmiato']
-            
-            # ============================================================
-            # METRICHE COMPATTE (STESSA ALTEZZA - HTML) - NO EMOJI
-            # ============================================================
-            col_metric1, col_metric2, col_metric3 = st.columns(3)
-            
-            with col_metric1:
-                importo_sconti = df_sconti['importo_sconto'].sum() if not df_sconti.empty else 0.0
-                st.markdown("""
-                <div style="
-                    background-color: #fff5f0;
-                    border-left: 4px solid #dc3545;
-                    padding: clamp(0.75rem, 2vw, 1rem);
-                    border-radius: 5px;
-                    min-height: 8rem;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: space-between;
-                ">
-                    <div style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); color: #666; font-weight: 500; word-wrap: break-word;">Sconti Applicati</div>
-                    <div style="font-size: clamp(1.25rem, 3.5vw, 1.75rem); font-weight: bold; margin: 0.5rem 0; color: #dc3545; word-wrap: break-word;">€{:.2f}</div>
-                    <div style="font-size: clamp(0.7rem, 1.6vw, 0.8rem); color: #999; white-space: normal; word-wrap: break-word; line-height: 1.2;">{} prodotti scontati</div>
-                </div>
-                """.format(importo_sconti, len(df_sconti)), 
-                unsafe_allow_html=True)
-            
-            with col_metric2:
-                valore_omaggi = totale_risparmiato - (df_sconti['importo_sconto'].sum() if not df_sconti.empty else 0.0)
-                st.markdown("""
-                <div style="
-                    background-color: #f0f8ff;
-                    border-left: 4px solid #0d6efd;
-                    padding: clamp(0.75rem, 2vw, 1rem);
-                    border-radius: 5px;
-                    min-height: 8rem;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: space-between;
-                ">
-                    <div style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); color: #666; font-weight: 500; word-wrap: break-word;">Omaggi Ricevuti</div>
-                    <div style="font-size: clamp(1.25rem, 3.5vw, 1.75rem); font-weight: bold; margin: 0.5rem 0; color: #0d6efd; word-wrap: break-word;">€{:.2f}</div>
-                    <div style="font-size: clamp(0.7rem, 1.6vw, 0.8rem); color: #999; white-space: normal; word-wrap: break-word; line-height: 1.2;">{} prodotti omaggio (valore stimato)</div>
-                </div>
-                """.format(valore_omaggi if valore_omaggi > 0 else 0.0, len(df_omaggi)), 
-                unsafe_allow_html=True)
-            
-            with col_metric3:
-                st.markdown("""
-                <div style="
-                    background-color: #f0fff0;
-                    border-left: 4px solid #28a745;
-                    padding: clamp(0.75rem, 2vw, 1rem);
-                    border-radius: 5px;
-                    min-height: 8rem;
-                    display: flex;
-                    flex-direction: column;
-                    justify-content: space-between;
-                ">
-                    <div style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); color: #666; font-weight: 500; word-wrap: break-word;">Totale Risparmiato</div>
-                    <div style="font-size: clamp(1.125rem, 3vw, 1.5rem); font-weight: bold; margin: 0.5rem 0; color: #28a745; word-wrap: break-word;">€{:.2f}</div>
-                    <div style="font-size: clamp(0.65rem, 1.5vw, 0.75rem); color: #999; white-space: normal; word-wrap: break-word; line-height: 1.2;" title="{}">{}</div>
-                </div>
-                """.format(totale_risparmiato if totale_risparmiato > 0 else 0, label_periodo, label_periodo), 
-                unsafe_allow_html=True)
-            
-            # ============================================================
-            # SPACING EXTRA (3 righe vuote)
-            # ============================================================
-            st.markdown("<br><br><br>", unsafe_allow_html=True)
-            
-            # ============================================================
-            # TABELLA SCONTI COMPLETA (SOLO F&B)
-            # ============================================================
-            if not df_sconti.empty:
-                with st.expander("💸 Dettaglio Sconti Applicati", expanded=True):
-                    st.markdown(f"**{len(df_sconti)} sconti** ricevuti dai fornitori")
-                    st.caption("Solo prodotti Food & Beverage - Escluse spese generali")
-                    
-                    # Prepara dati completi (come tabella alert sopra)
-                    df_sconti_view = df_sconti[[
-                        'descrizione',
-                        'categoria',
-                        'fornitore',
-                        'importo_sconto',
-                        'data_documento',
-                        'file_origine'
-                    ]].copy()
-                    
-                    # 🔧 FIX: Reset index prima di rinominare
-                    df_sconti_view = df_sconti_view.reset_index(drop=True)
-                    
-                    df_sconti_view.columns = [
-                        'Prodotto',
-                        'Categoria',
-                        'Fornitore',
-                        'Sconto',
-                        'Data',
-                        'Fattura'
-                    ]
-                    
-                    # Altezza dinamica scrollabile
-                    num_righe_sconti = len(df_sconti_view)
-                    altezza_sconti = min(max(num_righe_sconti * 35 + 50, 200), 500)
-                    
-                    st.dataframe(
-                        df_sconti_view,
-                        hide_index=True,
-                        width='stretch',
-                        height=altezza_sconti,
-                        column_config={
-                            'Prodotto': st.column_config.TextColumn(
-                                'Prodotto',
-                                width="large"
-                            ),
-                            'Categoria': st.column_config.TextColumn(
-                                'Categoria',
-                                width="medium"
-                            ),
-                            'Fornitore': st.column_config.TextColumn(
-                                'Fornitore',
-                                width="medium"
-                            ),
-                            'Sconto': st.column_config.NumberColumn(
-                                'Sconto',
-                                format="€%.2f",
-                                help="Importo sconto ricevuto"
-                            ),
-                            'Data': st.column_config.DateColumn(
-                                'Data',
-                                format="DD/MM/YYYY"
-                            ),
-                            'Fattura': st.column_config.TextColumn(
-                                'Fattura',
-                                width="medium"
-                            )
-                        }
-                    )
-            
-            else:
-                st.info(f"📊 Nessuno sconto applicato nel periodo {label_periodo.lower()}")
-                
-            # ============================================================
-            # TABELLA OMAGGI
-            # ============================================================
-            if not df_omaggi.empty:
-                with st.expander(f"🎁 Dettaglio Omaggi ({len(df_omaggi)})", expanded=False):
-                    st.markdown(f"**{len(df_omaggi)} omaggi** ricevuti dai fornitori")
-                    st.caption("Solo prodotti Food & Beverage - Escluse spese generali")
-                    
-                    df_omaggi_view = df_omaggi[[
-                        'descrizione',
-                        'fornitore',
-                        'quantita',
-                        'data_documento',
-                        'file_origine'
-                    ]].copy()
-                    
-                    # 🔧 FIX: Reset index prima di rinominare
-                    df_omaggi_view = df_omaggi_view.reset_index(drop=True)
-                    
-                    df_omaggi_view.columns = [
-                        'Prodotto',
-                        'Fornitore',
-                        'Quantità',
-                        'Data',
-                        'Fattura'
-                    ]
-                    
-                    # Altezza dinamica scrollabile
-                    num_righe_omaggi = len(df_omaggi_view)
-                    altezza_omaggi = min(max(num_righe_omaggi * 35 + 50, 200), 500)
-                    st.dataframe(
-                        df_omaggi_view,
-                        hide_index=True,
-                        width='stretch',
-                        height=altezza_omaggi,
-                        column_config={
-                            'Data': st.column_config.DateColumn(
-                                'Data',
-                                format="DD/MM/YYYY"
-                            )
-                        }
-                    )
-                    
-                    st.info("ℹ️ Gli omaggi sono prodotti con prezzo €0 (escluse diciture e note)")
-            
-            # ============================================================
-            # INFO SE NESSUN DATO + DEBUG
-            # ============================================================
-            if df_sconti.empty and df_omaggi.empty:
-                st.info(f"📊 Nessuno sconto o omaggio ricevuto nel periodo {label_periodo.lower()}")
-                
-                # Mostra statistiche utili per debug (solo admin/impersonificato)
-                if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-                    with st.expander("🔍 Info Debug", expanded=False):
-                        try:
-                            # Ricarica dati per debug con stesso periodo
-                            if hasattr(data_inizio_filtro, 'isoformat'):
-                                data_inizio_str = data_inizio_filtro.isoformat()
-                            else:
-                                data_inizio_str = str(data_inizio_filtro)
-                            
-                            debug_query = supabase.table('fatture')\
-                                .select('id, descrizione, categoria, prezzo_unitario')\
-                                .eq('user_id', user_id)\
-                                .gte('data_documento', data_inizio_str)
-                            debug_query = add_ristorante_filter(debug_query)
-                            debug_response = debug_query.execute()
-                            
-                            if debug_response.data:
-                                df_debug = pd.DataFrame(debug_response.data)
-                                
-                                # Mostra sample prezzi negativi
-                                if len(df_debug[df_debug['prezzo_unitario'] < 0]) > 0:
-                                    st.markdown("**Esempio prezzi negativi:**")
-                                    st.dataframe(
-                                        df_debug[df_debug['prezzo_unitario'] < 0][['descrizione', 'categoria', 'prezzo_unitario']].head(5),
-                                        hide_index=True
-                                    )
-                            else:
-                                st.warning("⚠️ Nessun dato nel periodo")
-                        except Exception as e:
-                            st.error(f"❌ Errore debug: {e}")
-                
-# ========================================================
+        st.info("📋 La sezione Alert è stata spostata nella pagina **🔍 Controllo Prezzi**.")
+        if st.button("🔍 Vai a Controllo Prezzi", key="btn_go_controllo_prezzi"):
+            st.switch_page("pages/3_controllo_prezzi.py")
+
     # ========================================================
     # SEZIONE 3: CATEGORIE
     # ========================================================
