@@ -598,14 +598,14 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
             return True, "Email inviata con successo"
         else:
             logger.error(f"Brevo API error: {response.status_code} - {response.text}")
-            return False, "Errore nell'invio email"
+            return False, f"Errore Brevo [{response.status_code}]: {response.text}"
             
     except requests.exceptions.Timeout:
         logger.error("Timeout invio email Brevo")
-        return False, "Errore nell'invio email"
+        return False, "Errore: timeout connessione a Brevo"
     except Exception as e:
         logger.exception("Errore invio codice reset")
-        return False, "Errore nell'invio email"
+        return False, f"Errore: {str(e)}"
 
 
 def hash_password(password: str) -> str:
