@@ -739,10 +739,16 @@ def mostra_pagina_login():
         st.markdown("#### Reset Password via Email")
         st.markdown("""
             <style>
-            /* Campi reset password: larghezza fissa, allineati a sinistra */
-            div.st-key-reset_col input,
-            div.st-key-reset_col div[data-testid="stTextInput"] { width: 100% !important; }
-            div.st-key-reset_btn_invia button,
+            /* Bottoni reset: larghezza auto, Invia Codice azzurro */
+            div.st-key-reset_btn_invia button {
+                width: auto !important;
+                min-width: unset !important;
+                background-color: #0ea5e9 !important;
+                color: white !important;
+            }
+            div.st-key-reset_btn_invia button:hover {
+                background-color: #0284c7 !important;
+            }
             div.st-key-reset_btn_conferma button {
                 width: auto !important;
                 min-width: unset !important;
@@ -750,59 +756,56 @@ def mostra_pagina_login():
             </style>
         """, unsafe_allow_html=True)
 
-        col_reset, _ = st.columns([2, 3])
-        with col_reset:
-            with st.container(key="reset_col"):
-                reset_email = st.text_input("📧 Email per reset", placeholder="tua@email.com", key="reset_email")
+        reset_email = st.text_input("📧 Email per reset", placeholder="tua@email.com", key="reset_email")
 
-                with st.container(key="reset_btn_invia"):
-                    if st.button("📨 Invia Codice"):
-                        if not reset_email:
-                            st.warning("⚠️ Inserisci un'email")
-                        else:
-                            success, msg = invia_codice_reset(reset_email)
-                            if success:
-                                st.success(f"✅ {msg}")
-                            else:
-                                st.info(f"ℹ️ {msg}")
+        with st.container(key="reset_btn_invia"):
+            if st.button("📨 Invia Codice"):
+                if not reset_email:
+                    st.warning("⚠️ Inserisci un'email")
+                else:
+                    success, msg = invia_codice_reset(reset_email)
+                    if success:
+                        st.success(f"✅ {msg}")
+                    else:
+                        st.info(f"ℹ️ {msg}")
 
-                st.markdown("---")
+        st.markdown("---")
 
-                code_input = st.text_input("🔢 Codice ricevuto", placeholder="Inserisci il codice", key="code_input")
-                new_pwd = st.text_input("🔑 Nuova password (min 10 caratteri)", type="password", key="new_pwd")
-                confirm_pwd = st.text_input("🔑 Conferma password", type="password", key="confirm_pwd")
+        code_input = st.text_input("🔢 Codice ricevuto", placeholder="Inserisci il codice", key="code_input")
+        new_pwd = st.text_input("🔑 Nuova password (min 10 caratteri)", type="password", key="new_pwd")
+        confirm_pwd = st.text_input("🔑 Conferma password", type="password", key="confirm_pwd")
 
-                st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
-                with st.container(key="reset_btn_conferma"):
-                    if st.button("✅ Conferma Reset", type="primary"):
-                        if not reset_email or not code_input or not new_pwd or not confirm_pwd:
-                            st.warning("⚠️ Compila tutti i campi")
-                        elif new_pwd != confirm_pwd:
-                            st.error("❌ Le password non coincidono")
-                        elif len(new_pwd) < 10:
-                            st.error("❌ Password troppo corta (min 10 caratteri)")
-                        else:
-                            user, errore = verifica_codice_reset(reset_email, code_input, new_pwd)
-                            
-                            if user:
-                                st.session_state.logged_in = True
-                                st.session_state.user_data = user
-                                st.session_state.force_logout = False
-                                if _cookie_manager is not None:
-                                    try:
-                                        import uuid as _uuid
-                                        from datetime import datetime, timedelta
-                                        _s_token = str(_uuid.uuid4())
-                                        supabase.table('users').update({'session_token': _s_token}).eq('id', user.get('id')).execute()
-                                        _cookie_manager.set("session_token", _s_token,
-                                                            expires_at=datetime.now() + timedelta(days=30))
-                                    except Exception:
-                                        pass
-                                st.success("✅ Password aggiornata! Accesso automatico...")
-                                time.sleep(0.5)
-                                st.rerun()
-                            else:
-                                st.error(f"❌ {errore}")
+        st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
+        with st.container(key="reset_btn_conferma"):
+            if st.button("✅ Conferma Reset", type="primary"):
+                if not reset_email or not code_input or not new_pwd or not confirm_pwd:
+                    st.warning("⚠️ Compila tutti i campi")
+                elif new_pwd != confirm_pwd:
+                    st.error("❌ Le password non coincidono")
+                elif len(new_pwd) < 10:
+                    st.error("❌ Password troppo corta (min 10 caratteri)")
+                else:
+                    user, errore = verifica_codice_reset(reset_email, code_input, new_pwd)
+                    
+                    if user:
+                        st.session_state.logged_in = True
+                        st.session_state.user_data = user
+                        st.session_state.force_logout = False
+                        if _cookie_manager is not None:
+                            try:
+                                import uuid as _uuid
+                                from datetime import datetime, timedelta
+                                _s_token = str(_uuid.uuid4())
+                                supabase.table('users').update({'session_token': _s_token}).eq('id', user.get('id')).execute()
+                                _cookie_manager.set("session_token", _s_token,
+                                                    expires_at=datetime.now() + timedelta(days=30))
+                            except Exception:
+                                pass
+                        st.success("✅ Password aggiornata! Accesso automatico...")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {errore}")
 
 
 # ============================================================
