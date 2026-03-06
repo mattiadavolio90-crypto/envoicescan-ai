@@ -767,7 +767,7 @@ if st.session_state.margine_tab == "analisi":
                     st.dataframe(pd.DataFrame(_mc_rows), hide_index=True, use_container_width=False)
 
         # Excel export - a destra, sotto le tabelle, prima dei KPI
-        _col_excel_spacer, _col_excel_btn = st.columns([9, 3])
+        _col_excel_spacer, _col_excel_btn = st.columns([5, 1])
         with _col_excel_btn:
             excel_buf_c = io.BytesIO()
             with pd.ExcelWriter(excel_buf_c, engine='openpyxl') as writer:
@@ -1267,9 +1267,8 @@ if st.session_state.margine_tab == "centri":
                     pivot.to_excel(writer, sheet_name='Centri Produzione')
                 excel_data_centri.seek(0)
 
-                col_left_c, col_right_c = st.columns([9, 3])
-
-                with col_left_c:
+                _col_centri_left, _col_centri_right = st.columns([5, 1])
+                with _col_centri_left:
                     st.markdown(f"""
                     <div style="background-color: #E3F2FD; padding: 12px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-top: 8px; width: fit-content;">
                         <span style="color: #1565C0; font-weight: bold; font-size: clamp(0.85rem, 2vw, 1rem); white-space: nowrap;">
@@ -1278,8 +1277,8 @@ if st.session_state.margine_tab == "centri":
                     </div>
                     """, unsafe_allow_html=True)
 
-                with col_right_c:
-                    st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+                with _col_centri_right:
+                    st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
                     st.download_button(
                         label="📊 Excel",
                         data=excel_data_centri,
@@ -1287,7 +1286,7 @@ if st.session_state.margine_tab == "centri":
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="cm_download_excel_centri",
                         type="primary",
-                        use_container_width=True
+                        use_container_width=False
                     )
 
 if st.session_state.margine_tab == "calcolo":
