@@ -9,7 +9,6 @@ import time
 from config.constants import (
     CATEGORIE_SPESE_GENERALI,
     ADMIN_EMAILS,
-    CENTRI_DI_PRODUZIONE
 )
 
 # Import utilities da moduli separati
@@ -1064,7 +1063,7 @@ render_sidebar(user)
 render_oh_yeah_header()
 
 st.markdown("""
-<h2 style="font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 700; margin: 0; margin-top: 0.5rem;">
+<h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-top: 0.5rem;">
     🧠 <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -2044,11 +2043,14 @@ def mostra_statistiche(df_completo):
     # 🎨 NAVIGAZIONE CON BOTTONI COLORATI (invece di tab)
     if 'sezione_attiva' not in st.session_state:
         st.session_state.sezione_attiva = "dettaglio"
+    # Redirect da sezioni rimosse
+    if st.session_state.sezione_attiva in ("spese", "centri", "alert"):
+        st.session_state.sezione_attiva = "categorie"
     if 'is_loading' not in st.session_state:
         st.session_state.is_loading = False
     
     st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📊 Naviga tra le Sezioni</h3>', unsafe_allow_html=True)
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3 = st.columns(3)
     
     with col1:
         if st.button("📦 DETTAGLIO\nARTICOLI", key="btn_dettaglio", use_container_width=True, 
@@ -2062,7 +2064,7 @@ def mostra_statistiche(df_completo):
                 st.rerun()
     
     with col2:
-        if st.button("📈 CATEGORIE\n(F&B)", key="btn_categorie", use_container_width=True,
+        if st.button("📈 CATEGORIE", key="btn_categorie", use_container_width=True,
                      type="primary" if st.session_state.sezione_attiva == "categorie" else "secondary"):
             if st.session_state.sezione_attiva != "categorie":
                 st.session_state.sezione_attiva = "categorie"
@@ -2072,30 +2074,10 @@ def mostra_statistiche(df_completo):
                 st.rerun()
     
     with col3:
-        if st.button("🏭 CENTRI\n(F&B)", key="btn_centri", use_container_width=True,
-                     type="primary" if st.session_state.sezione_attiva == "centri" else "secondary"):
-            if st.session_state.sezione_attiva != "centri":
-                st.session_state.sezione_attiva = "centri"
-                st.session_state.is_loading = True
-                if 'last_upload_summary' in st.session_state:
-                    del st.session_state.last_upload_summary
-                st.rerun()
-    
-    with col4:
-        if st.button("🚚 FORNITORI\n(F&B)", key="btn_fornitori", use_container_width=True,
+        if st.button("🚚 FORNITORI", key="btn_fornitori", use_container_width=True,
                      type="primary" if st.session_state.sezione_attiva == "fornitori" else "secondary"):
             if st.session_state.sezione_attiva != "fornitori":
                 st.session_state.sezione_attiva = "fornitori"
-                st.session_state.is_loading = True
-                if 'last_upload_summary' in st.session_state:
-                    del st.session_state.last_upload_summary
-                st.rerun()
-    
-    with col5:
-        if st.button("🏢 SPESE\nGENERALI", key="btn_spese", use_container_width=True,
-                     type="primary" if st.session_state.sezione_attiva == "spese" else "secondary"):
-            if st.session_state.sezione_attiva != "spese":
-                st.session_state.sezione_attiva = "spese"
                 st.session_state.is_loading = True
                 if 'last_upload_summary' in st.session_state:
                     del st.session_state.last_upload_summary
@@ -3019,744 +3001,347 @@ def mostra_statistiche(df_completo):
                 st.error(f"❌ Errore durante il salvataggio: {e}")
     
     # ========================================================
-    # SEZIONE 2: ALERT → SPOSTATA in pages/3_controllo_prezzi.py
-    # ========================================================
-    if st.session_state.sezione_attiva == "alert":
-        st.info("📋 La sezione Alert è stata spostata nella pagina **🔍 Controllo Prezzi**.")
-        if st.button("🔍 Vai a Controllo Prezzi", key="btn_go_controllo_prezzi"):
-            st.switch_page("pages/3_controllo_prezzi.py")
-
-    # ========================================================
     # SEZIONE 3: CATEGORIE
     # ========================================================
     if st.session_state.sezione_attiva == "categorie":
-        if df_food.empty:
+        if df_completo_filtrato.empty:
             st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
         else:
-            # Prepara dati per pivot mensile
-            df_cat_prep = df_food.copy()
-            
-            # Crea formato mese per visualizzazione (GENNAIO 2025) - usa Data_DT già calcolata
-            df_cat_prep['Mese'] = df_cat_prep['Data_DT'].apply(
-                lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
-            )
-            # Colonna per ordinamento cronologico
-            df_cat_prep['Mese_Ordine'] = df_cat_prep['Data_DT'].apply(
-                lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
-            )
-            
-            # Crea pivot manualmente
-            pivot_cat = df_cat_prep.pivot_table(
-                index='Categoria',
-                columns='Mese',
-                values='TotaleRiga',
-                aggfunc='sum',
-                fill_value=0
-            )
-            
-            # Ordina colonne cronologicamente usando Mese_Ordine
-            mese_ordine_map = df_cat_prep[['Mese', 'Mese_Ordine']].drop_duplicates()
-            mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
-            mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
-            cols_sorted = sorted(list(pivot_cat.columns), key=lambda x: mese_ordine_map.get(x, x))
-            pivot_cat = pivot_cat[cols_sorted]
-            
-            # Aggiungi colonna TOTALE
-            pivot_cat['TOTALE'] = pivot_cat.sum(axis=1)
-            
-            # Aggiungi colonna MEDIA (totale / numero mesi)
-            num_mesi_cat = len(cols_sorted)
-            pivot_cat['MEDIA'] = pivot_cat['TOTALE'] / num_mesi_cat if num_mesi_cat > 0 else 0
-            
-            # Ordina per totale decrescente
-            pivot_cat = pivot_cat.sort_values('TOTALE', ascending=False)
-            
-            # Calcola totali colonna per percentuali di incidenza
-            col_totals_cat = {col: pivot_cat[col].sum() for col in cols_sorted}
-            grand_total_cat = pivot_cat['TOTALE'].sum()
-            
-            # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
-            pivot_cat_display = pd.DataFrame()
-            pivot_cat_display['Categoria'] = pivot_cat.index
-            
-            for col in cols_sorted:
-                pivot_cat_display[col] = pivot_cat[col].apply(lambda x: x if x > 0 else None).values
-                ct = col_totals_cat[col]
-                pivot_cat_display[f'{col} %'] = (pivot_cat[col] / ct * 100).round(1).values if ct > 0 else 0.0
-            
-            pivot_cat_display['TOTALE'] = pivot_cat['TOTALE'].values
-            pivot_cat_display['TOTALE %'] = (pivot_cat['TOTALE'] / grand_total_cat * 100).round(1).values if grand_total_cat > 0 else 0.0
-            pivot_cat_display['MEDIA'] = pivot_cat['MEDIA'].values
-            
-            # Column config con ProgressColumn per barre colorate incidenza
-            column_config_cat = {
-                'Categoria': st.column_config.TextColumn('Categoria', width='medium'),
-            }
-            for col in cols_sorted:
-                column_config_cat[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-                column_config_cat[f'{col} %'] = st.column_config.ProgressColumn(
-                    '%', format="%.1f%%", min_value=0, max_value=100, width='small'
+            # Filtro tipo prodotti
+            col_filtro_cat, _ = st.columns([2, 5])
+            with col_filtro_cat:
+                tipo_filtro_cat = st.selectbox(
+                    "📦 Tipo Prodotti:",
+                    options=["Food & Beverage", "Spese Generali", "Tutti"],
+                    key="tipo_filtro_categorie",
+                    help="Filtra per tipologia di prodotto"
                 )
-            column_config_cat['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
-            column_config_cat['TOTALE %'] = st.column_config.ProgressColumn(
-                'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
-            )
-            column_config_cat['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
-        
-            if not pivot_cat_display.empty:
-                # Flag per mostrare/nascondere colonne %
-                mostra_pct_cat = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_categorie")
-                
-                if not mostra_pct_cat:
-                    pct_cols_cat = [c for c in pivot_cat_display.columns if c.endswith(' %')]
-                    pivot_cat_display = pivot_cat_display.drop(columns=pct_cols_cat)
-                    for pc in pct_cols_cat:
-                        column_config_cat.pop(pc, None)
-                
-                num_righe_cat = len(pivot_cat_display)
-                altezza_cat = max(num_righe_cat * 35 + 50, 200)
-                
-                st.dataframe(
-                    pivot_cat_display,
-                    hide_index=True,
-                    width='stretch',
-                    height=altezza_cat,
-                    column_config=column_config_cat
-                )
-                
-                # Calcola totale dalla somma dei valori numerici
-                totale_cat = pivot_cat['TOTALE'].sum()
-                media_cat = totale_cat / num_mesi_cat if num_mesi_cat > 0 else 0
-                col_left, col_right = st.columns([5, 1])
-                
-                with col_left:
-                    st.markdown(f"""
-                    <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                        <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                            📋 N. Righe: {num_righe_cat:,} | 💰 Totale: € {totale_cat:,.0f} | 📊 Media mensile: € {media_cat:,.0f}
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with col_right:
-                    st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
-                    
-                    st.markdown("""
-                        <style>
-                        [data-testid="stDownloadButton"] button {
-                            background-color: #28a745 !important;
-                            color: white !important;
-                            font-weight: 600 !important;
-                            border-radius: 6px !important;
-                            border: none !important;
-                            outline: none !important;
-                            box-shadow: none !important;
-                        }
-                        [data-testid="stDownloadButton"] button:hover {
-                            background-color: #218838 !important;
-                        }
-                        </style>
-                    """, unsafe_allow_html=True)
-                    
-                    excel_buffer_cat = io.BytesIO()
-                    with pd.ExcelWriter(excel_buffer_cat, engine='openpyxl') as writer:
-                        pivot_cat.reset_index().to_excel(writer, index=False, sheet_name='Categorie')
-                    
-                    st.download_button(
-                        label="📊 EXCEL",
-                        data=excel_buffer_cat.getvalue(),
-                        file_name=f"categorie_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="download_excel_categorie",
-                        type="primary",
-                        use_container_width=False
-                    )
-                    
-                    st.markdown('</div>', unsafe_allow_html=True)
+            
+            if tipo_filtro_cat == "Food & Beverage":
+                df_cat_source = df_completo_filtrato[~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
+            elif tipo_filtro_cat == "Spese Generali":
+                df_cat_source = df_completo_filtrato[df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
             else:
-                st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
-
-    # ======================================================
-    # ========================================================
-    # SEZIONE 3b: CENTRI DI PRODUZIONE
-    # ========================================================
-    if st.session_state.sezione_attiva == "centri":
-        if df_food.empty:
-            st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
-        else:
-            # Mappa categorie → centri di produzione
-            cat_to_centro = {}
-            for centro, cats in CENTRI_DI_PRODUZIONE.items():
-                for cat in cats:
-                    cat_to_centro[cat] = centro
-
-            df_centri = df_food.copy()
-            df_centri['Centro'] = df_centri['Categoria'].map(cat_to_centro).fillna('Da Classificare')
-
-            # Filtra solo i 6 centri definiti (escludi "Da Classificare")
-            centri_validi = list(CENTRI_DI_PRODUZIONE.keys())
-            df_centri = df_centri[df_centri['Centro'].isin(centri_validi)]
-
-            if df_centri.empty:
-                st.info("📊 Nessun dato mappato ai centri di produzione per il periodo selezionato")
+                df_cat_source = df_completo_filtrato.copy()
+            
+            if df_cat_source.empty:
+                st.info(f"📊 Nessun dato per '{tipo_filtro_cat}' nel periodo selezionato")
             else:
-                df_centri['mese_nome'] = df_centri['Data_DT'].apply(
+                # Prepara dati per pivot mensile
+                df_cat_prep = df_cat_source.copy()
+            
+                # Crea formato mese per visualizzazione (GENNAIO 2025) - usa Data_DT già calcolata
+                df_cat_prep['Mese'] = df_cat_prep['Data_DT'].apply(
                     lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
                 )
-                df_centri['mese_sort'] = df_centri['Data_DT'].apply(
+                # Colonna per ordinamento cronologico
+                df_cat_prep['Mese_Ordine'] = df_cat_prep['Data_DT'].apply(
                     lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
                 )
-
-                # Pivot: Centro × Mesi
-                pivot = df_centri.pivot_table(
-                    index='Centro',
-                    columns='mese_nome',
+                
+                # Crea pivot manualmente
+                pivot_cat = df_cat_prep.pivot_table(
+                    index='Categoria',
+                    columns='Mese',
                     values='TotaleRiga',
                     aggfunc='sum',
                     fill_value=0
                 )
-
-                # Ordine mesi cronologico
-                mesi_ord = df_centri.drop_duplicates('mese_nome').sort_values('mese_sort')['mese_nome'].tolist()
-                pivot = pivot.reindex(columns=[m for m in mesi_ord if m in pivot.columns])
-
-                # Ordine centri fisso
-                ordine_centri = [c for c in centri_validi if c in pivot.index]
-                pivot = pivot.reindex(ordine_centri)
-
-                # % per mese
-                pct = pivot.div(pivot.sum(axis=0), axis=1) * 100
-
-                # TOTALE e MEDIA
-                pivot['TOTALE'] = pivot.sum(axis=1)
-                pivot['MEDIA'] = pivot.drop(columns=['TOTALE']).replace(0, pd.NA).mean(axis=1)
-                pct['TOTALE'] = pivot['TOTALE'] / pivot['TOTALE'].sum() * 100
-                pct['MEDIA'] = pct.drop(columns=['TOTALE']).replace(0, pd.NA).mean(axis=1)
-
-                # Report
-                st.markdown("### 🏭 Spesa per Centro di Produzione mensile")
-
-                # Costruisci display DataFrame con stesso stile del tab Categorie
-                mesi_cols = [c for c in pivot.columns if c not in ['TOTALE', 'MEDIA']]
                 
-                pivot_centri_display = pd.DataFrame()
-                pivot_centri_display['Centro'] = pivot.index
+                # Ordina colonne cronologicamente usando Mese_Ordine
+                mese_ordine_map = df_cat_prep[['Mese', 'Mese_Ordine']].drop_duplicates()
+                mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
+                mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
+                cols_sorted = sorted(list(pivot_cat.columns), key=lambda x: mese_ordine_map.get(x, x))
+                pivot_cat = pivot_cat[cols_sorted]
                 
-                for col in mesi_cols:
-                    col_total = pivot[col].sum()
-                    pivot_centri_display[col] = pivot[col].apply(lambda x: x if x > 0 else None).values
-                    pivot_centri_display[f'{col} %'] = (pivot[col] / col_total * 100).round(1).values if col_total > 0 else 0.0
+                # Aggiungi colonna TOTALE
+                pivot_cat['TOTALE'] = pivot_cat.sum(axis=1)
                 
-                pivot_centri_display['TOTALE'] = pivot['TOTALE'].values
-                grand_total_centri = pivot['TOTALE'].sum()
-                pivot_centri_display['TOTALE %'] = (pivot['TOTALE'] / grand_total_centri * 100).round(1).values if grand_total_centri > 0 else 0.0
-                pivot_centri_display['MEDIA'] = pivot['MEDIA'].values
+                # Aggiungi colonna MEDIA (totale / numero mesi)
+                num_mesi_cat = len(cols_sorted)
+                pivot_cat['MEDIA'] = pivot_cat['TOTALE'] / num_mesi_cat if num_mesi_cat > 0 else 0
                 
-                # Column config con ProgressColumn (stile identico al tab Categorie)
-                column_config_centri = {
-                    'Centro': st.column_config.TextColumn('Centro', width='medium'),
+                # Ordina per totale decrescente
+                pivot_cat = pivot_cat.sort_values('TOTALE', ascending=False)
+                
+                # Calcola totali colonna per percentuali di incidenza
+                col_totals_cat = {col: pivot_cat[col].sum() for col in cols_sorted}
+                grand_total_cat = pivot_cat['TOTALE'].sum()
+                
+                # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
+                pivot_cat_display = pd.DataFrame()
+                pivot_cat_display['Categoria'] = pivot_cat.index
+                
+                for col in cols_sorted:
+                    pivot_cat_display[col] = pivot_cat[col].apply(lambda x: x if x > 0 else None).values
+                    ct = col_totals_cat[col]
+                    pivot_cat_display[f'{col} %'] = (pivot_cat[col] / ct * 100).round(1).values if ct > 0 else 0.0
+                
+                pivot_cat_display['TOTALE'] = pivot_cat['TOTALE'].values
+                pivot_cat_display['TOTALE %'] = (pivot_cat['TOTALE'] / grand_total_cat * 100).round(1).values if grand_total_cat > 0 else 0.0
+                pivot_cat_display['MEDIA'] = pivot_cat['MEDIA'].values
+                
+                # Column config con ProgressColumn per barre colorate incidenza
+                column_config_cat = {
+                    'Categoria': st.column_config.TextColumn('Categoria', width='medium'),
                 }
-                for col in mesi_cols:
-                    column_config_centri[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-                    column_config_centri[f'{col} %'] = st.column_config.ProgressColumn(
+                for col in cols_sorted:
+                    column_config_cat[col] = st.column_config.NumberColumn(col, format="€ %.2f")
+                    column_config_cat[f'{col} %'] = st.column_config.ProgressColumn(
                         '%', format="%.1f%%", min_value=0, max_value=100, width='small'
                     )
-                column_config_centri['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
-                column_config_centri['TOTALE %'] = st.column_config.ProgressColumn(
+                column_config_cat['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
+                column_config_cat['TOTALE %'] = st.column_config.ProgressColumn(
                     'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
                 )
-                column_config_centri['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
-                
-                # Flag per mostrare/nascondere colonne %
-                mostra_pct_centri = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_centri")
-                
-                if not mostra_pct_centri:
-                    pct_cols_centri = [c for c in pivot_centri_display.columns if c.endswith(' %')]
-                    pivot_centri_display = pivot_centri_display.drop(columns=pct_cols_centri)
-                    for pc in pct_cols_centri:
-                        column_config_centri.pop(pc, None)
-                
-                num_righe_centri = len(pivot_centri_display)
-                altezza_centri = max(num_righe_centri * 35 + 50, 200)
-                
-                st.dataframe(
-                    pivot_centri_display,
-                    hide_index=True,
-                    width='stretch',
-                    height=altezza_centri,
-                    column_config=column_config_centri
-                )
-
-                # Riepilogo
-                tot_centri = pivot['TOTALE'].sum()
-                n_centri = len(pivot)
-                media_centri = tot_centri / max(len([c for c in pivot.columns if c not in ['TOTALE', 'MEDIA']]), 1)
-                col_left_c, col_right_c = st.columns([5, 1])
-                
-                with col_left_c:
-                    st.markdown(f"""
-                    <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                        <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                            📊 N. Centri: {n_centri} | 💰 Totale: € {tot_centri:,.0f} | 📊 Media mensile: € {media_centri:,.0f}
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with col_right_c:
-                    st.markdown("""
-                        <style>
-                        [data-testid="stDownloadButton"] button {
-                            background-color: #28a745 !important;
-                            color: white !important;
-                            font-weight: 600 !important;
-                            border-radius: 6px !important;
-                            border: none !important;
-                            outline: none !important;
-                            box-shadow: none !important;
-                        }
-                        [data-testid="stDownloadButton"] button:hover {
-                            background-color: #218838 !important;
-                        }
-                        </style>
-                    """, unsafe_allow_html=True)
+                column_config_cat['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
+            
+                if not pivot_cat_display.empty:
+                    # Flag per mostrare/nascondere colonne %
+                    mostra_pct_cat = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_categorie")
                     
-                    excel_data_centri = io.BytesIO()
-                    with pd.ExcelWriter(excel_data_centri, engine='openpyxl') as writer:
-                        pivot.to_excel(writer, sheet_name='Centri Produzione')
-                    excel_data_centri.seek(0)
-                    st.download_button(
-                        label="📊 EXCEL",
-                        data=excel_data_centri,
-                        file_name=f"centri_produzione_{st.session_state.get('anno_selezionato', 2026)}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="download_excel_centri",
-                        type="primary",
-                        use_container_width=False
+                    if not mostra_pct_cat:
+                        pct_cols_cat = [c for c in pivot_cat_display.columns if c.endswith(' %')]
+                        pivot_cat_display = pivot_cat_display.drop(columns=pct_cols_cat)
+                        for pc in pct_cols_cat:
+                            column_config_cat.pop(pc, None)
+                    
+                    num_righe_cat = len(pivot_cat_display)
+                    altezza_cat = max(num_righe_cat * 35 + 50, 200)
+                    
+                    st.dataframe(
+                        pivot_cat_display,
+                        hide_index=True,
+                        width='stretch',
+                        height=altezza_cat,
+                        column_config=column_config_cat
                     )
+                    
+                    # Calcola totale dalla somma dei valori numerici
+                    totale_cat = pivot_cat['TOTALE'].sum()
+                    media_cat = totale_cat / num_mesi_cat if num_mesi_cat > 0 else 0
+                    col_left, col_right = st.columns([5, 1])
+                    
+                    with col_left:
+                        st.markdown(f"""
+                        <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
+                            <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+                                📋 N. Righe: {num_righe_cat:,} | 💰 Totale: € {totale_cat:,.0f} | 📊 Media mensile: € {media_cat:,.0f}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col_right:
+                        st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+                        
+                        st.markdown("""
+                            <style>
+                            [data-testid="stDownloadButton"] button {
+                                background-color: #28a745 !important;
+                                color: white !important;
+                                font-weight: 600 !important;
+                                border-radius: 6px !important;
+                                border: none !important;
+                                outline: none !important;
+                                box-shadow: none !important;
+                            }
+                            [data-testid="stDownloadButton"] button:hover {
+                                background-color: #218838 !important;
+                            }
+                            </style>
+                        """, unsafe_allow_html=True)
+                        
+                        excel_buffer_cat = io.BytesIO()
+                        with pd.ExcelWriter(excel_buffer_cat, engine='openpyxl') as writer:
+                            pivot_cat.reset_index().to_excel(writer, index=False, sheet_name='Categorie')
+                        
+                        st.download_button(
+                            label="📊 EXCEL",
+                            data=excel_buffer_cat.getvalue(),
+                            file_name=f"categorie_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="download_excel_categorie",
+                            type="primary",
+                            use_container_width=False
+                        )
+                        
+                        st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
 
     # ======================================================
     # ========================================================
     # SEZIONE 4: FORNITORI
     # ========================================================
     if st.session_state.sezione_attiva == "fornitori":
-        if df_food.empty:
+        if df_completo_filtrato.empty:
             st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
         else:
-            # Prepara dati per pivot mensile
-            df_forn_prep = df_food.copy()
-            
-            # Crea formato mese per visualizzazione (GENNAIO 2025) - usa Data_DT già calcolata
-            df_forn_prep['Mese'] = df_forn_prep['Data_DT'].apply(
-                lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
-            )
-            # Colonna per ordinamento cronologico
-            df_forn_prep['Mese_Ordine'] = df_forn_prep['Data_DT'].apply(
-                lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
-            )
-            
-            # Crea pivot manualmente
-            pivot_forn = df_forn_prep.pivot_table(
-                index='Fornitore',
-                columns='Mese',
-                values='TotaleRiga',
-                aggfunc='sum',
-                fill_value=0
-            )
-            
-            # Ordina colonne cronologicamente usando Mese_Ordine
-            mese_ordine_map = df_forn_prep[['Mese', 'Mese_Ordine']].drop_duplicates()
-            mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
-            mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
-            cols_sorted = sorted(list(pivot_forn.columns), key=lambda x: mese_ordine_map.get(x, x))
-            pivot_forn = pivot_forn[cols_sorted]
-            
-            # Aggiungi colonna TOTALE
-            pivot_forn['TOTALE'] = pivot_forn.sum(axis=1)
-            
-            # Aggiungi colonna MEDIA (totale / numero mesi)
-            num_mesi_forn = len(cols_sorted)
-            pivot_forn['MEDIA'] = pivot_forn['TOTALE'] / num_mesi_forn if num_mesi_forn > 0 else 0
-            
-            # Ordina per totale decrescente
-            pivot_forn = pivot_forn.sort_values('TOTALE', ascending=False)
-            
-            # Calcola totali colonna per percentuali di incidenza
-            col_totals_forn = {col: pivot_forn[col].sum() for col in cols_sorted}
-            grand_total_forn = pivot_forn['TOTALE'].sum()
-            
-            # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
-            pivot_forn_display = pd.DataFrame()
-            pivot_forn_display['Fornitore'] = pivot_forn.index
-            
-            for col in cols_sorted:
-                pivot_forn_display[col] = pivot_forn[col].apply(lambda x: x if x > 0 else None).values
-                ct = col_totals_forn[col]
-                pivot_forn_display[f'{col} %'] = (pivot_forn[col] / ct * 100).round(1).values if ct > 0 else 0.0
-            
-            pivot_forn_display['TOTALE'] = pivot_forn['TOTALE'].values
-            pivot_forn_display['TOTALE %'] = (pivot_forn['TOTALE'] / grand_total_forn * 100).round(1).values if grand_total_forn > 0 else 0.0
-            pivot_forn_display['MEDIA'] = pivot_forn['MEDIA'].values
-            
-            # Column config con ProgressColumn per barre colorate incidenza
-            column_config_forn = {
-                'Fornitore': st.column_config.TextColumn('Fornitore', width='medium'),
-            }
-            for col in cols_sorted:
-                column_config_forn[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-                column_config_forn[f'{col} %'] = st.column_config.ProgressColumn(
-                    '%', format="%.1f%%", min_value=0, max_value=100, width='small'
+            # Filtro tipo prodotti
+            col_filtro_forn, _ = st.columns([2, 5])
+            with col_filtro_forn:
+                tipo_filtro_forn = st.selectbox(
+                    "📦 Tipo Prodotti:",
+                    options=["Food & Beverage", "Spese Generali", "Tutti"],
+                    key="tipo_filtro_fornitori",
+                    help="Filtra per tipologia di prodotto"
                 )
-            column_config_forn['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
-            column_config_forn['TOTALE %'] = st.column_config.ProgressColumn(
-                'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
-            )
-            column_config_forn['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
-        
-            if not pivot_forn_display.empty:
-                # Flag per mostrare/nascondere colonne %
-                mostra_pct_forn = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_fornitori")
-                
-                if not mostra_pct_forn:
-                    pct_cols_forn = [c for c in pivot_forn_display.columns if c.endswith(' %')]
-                    pivot_forn_display = pivot_forn_display.drop(columns=pct_cols_forn)
-                    for pc in pct_cols_forn:
-                        column_config_forn.pop(pc, None)
-                
-                num_righe_forn = len(pivot_forn_display)
-                altezza_forn = max(num_righe_forn * 35 + 50, 200)
-                
-                st.dataframe(
-                    pivot_forn_display,
-                    hide_index=True,
-                    width='stretch',
-                    height=altezza_forn,
-                    column_config=column_config_forn
+            
+            if tipo_filtro_forn == "Food & Beverage":
+                df_forn_source = df_completo_filtrato[~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
+            elif tipo_filtro_forn == "Spese Generali":
+                df_forn_source = df_completo_filtrato[df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
+            else:
+                df_forn_source = df_completo_filtrato.copy()
+            
+            if df_forn_source.empty:
+                st.info(f"📊 Nessun dato per '{tipo_filtro_forn}' nel periodo selezionato")
+            else:
+                # Prepara dati per pivot mensile
+                df_forn_prep = df_forn_source.copy()
+            
+                # Crea formato mese per visualizzazione (GENNAIO 2025) - usa Data_DT già calcolata
+                df_forn_prep['Mese'] = df_forn_prep['Data_DT'].apply(
+                    lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
+                )
+                # Colonna per ordinamento cronologico
+                df_forn_prep['Mese_Ordine'] = df_forn_prep['Data_DT'].apply(
+                    lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
                 )
                 
-                # Calcola totale dalla somma dei valori numerici
-                totale_forn = pivot_forn['TOTALE'].sum()
-                media_forn = totale_forn / num_mesi_forn if num_mesi_forn > 0 else 0
-                col_left, col_right = st.columns([5, 1])
+                # Crea pivot manualmente
+                pivot_forn = df_forn_prep.pivot_table(
+                    index='Fornitore',
+                    columns='Mese',
+                    values='TotaleRiga',
+                    aggfunc='sum',
+                    fill_value=0
+                )
                 
-                with col_left:
-                    st.markdown(f"""
-                    <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                        <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                            📋 N. Righe: {num_righe_forn:,} | 💰 Totale: € {totale_forn:,.0f} | 📊 Media mensile: € {media_forn:,.0f}
-                        </p>
-                    </div>
-                    """, unsafe_allow_html=True)
+                # Ordina colonne cronologicamente usando Mese_Ordine
+                mese_ordine_map = df_forn_prep[['Mese', 'Mese_Ordine']].drop_duplicates()
+                mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
+                mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
+                cols_sorted = sorted(list(pivot_forn.columns), key=lambda x: mese_ordine_map.get(x, x))
+                pivot_forn = pivot_forn[cols_sorted]
                 
-                with col_right:
-                    st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+                # Aggiungi colonna TOTALE
+                pivot_forn['TOTALE'] = pivot_forn.sum(axis=1)
+                
+                # Aggiungi colonna MEDIA (totale / numero mesi)
+                num_mesi_forn = len(cols_sorted)
+                pivot_forn['MEDIA'] = pivot_forn['TOTALE'] / num_mesi_forn if num_mesi_forn > 0 else 0
+                
+                # Ordina per totale decrescente
+                pivot_forn = pivot_forn.sort_values('TOTALE', ascending=False)
+                
+                # Calcola totali colonna per percentuali di incidenza
+                col_totals_forn = {col: pivot_forn[col].sum() for col in cols_sorted}
+                grand_total_forn = pivot_forn['TOTALE'].sum()
+                
+                # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
+                pivot_forn_display = pd.DataFrame()
+                pivot_forn_display['Fornitore'] = pivot_forn.index
+                
+                for col in cols_sorted:
+                    pivot_forn_display[col] = pivot_forn[col].apply(lambda x: x if x > 0 else None).values
+                    ct = col_totals_forn[col]
+                    pivot_forn_display[f'{col} %'] = (pivot_forn[col] / ct * 100).round(1).values if ct > 0 else 0.0
+                
+                pivot_forn_display['TOTALE'] = pivot_forn['TOTALE'].values
+                pivot_forn_display['TOTALE %'] = (pivot_forn['TOTALE'] / grand_total_forn * 100).round(1).values if grand_total_forn > 0 else 0.0
+                pivot_forn_display['MEDIA'] = pivot_forn['MEDIA'].values
+                
+                # Column config con ProgressColumn per barre colorate incidenza
+                column_config_forn = {
+                    'Fornitore': st.column_config.TextColumn('Fornitore', width='medium'),
+                }
+                for col in cols_sorted:
+                    column_config_forn[col] = st.column_config.NumberColumn(col, format="€ %.2f")
+                    column_config_forn[f'{col} %'] = st.column_config.ProgressColumn(
+                        '%', format="%.1f%%", min_value=0, max_value=100, width='small'
+                    )
+                column_config_forn['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
+                column_config_forn['TOTALE %'] = st.column_config.ProgressColumn(
+                    'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
+                )
+                column_config_forn['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
+            
+                if not pivot_forn_display.empty:
+                    # Flag per mostrare/nascondere colonne %
+                    mostra_pct_forn = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_fornitori")
                     
-                    st.markdown("""
-                        <style>
-                        [data-testid="stDownloadButton"] button {
-                            background-color: #28a745 !important;
-                            color: white !important;
-                            font-weight: 600 !important;
-                            border-radius: 6px !important;
-                            border: none !important;
-                            outline: none !important;
-                            box-shadow: none !important;
-                        }
-                        [data-testid="stDownloadButton"] button:hover {
-                            background-color: #218838 !important;
-                        }
-                        </style>
-                    """, unsafe_allow_html=True)
+                    if not mostra_pct_forn:
+                        pct_cols_forn = [c for c in pivot_forn_display.columns if c.endswith(' %')]
+                        pivot_forn_display = pivot_forn_display.drop(columns=pct_cols_forn)
+                        for pc in pct_cols_forn:
+                            column_config_forn.pop(pc, None)
                     
-                    excel_buffer_forn = io.BytesIO()
-                    with pd.ExcelWriter(excel_buffer_forn, engine='openpyxl') as writer:
-                        pivot_forn.reset_index().to_excel(writer, index=False, sheet_name='Fornitori')
+                    num_righe_forn = len(pivot_forn_display)
+                    altezza_forn = max(num_righe_forn * 35 + 50, 200)
                     
-                    st.download_button(
-                        label="📊 EXCEL",
-                        data=excel_buffer_forn.getvalue(),
-                        file_name=f"fornitori_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="download_excel_fornitori",
-                        type="primary",
-                        use_container_width=False
+                    st.dataframe(
+                        pivot_forn_display,
+                        hide_index=True,
+                        width='stretch',
+                        height=altezza_forn,
+                        column_config=column_config_forn
                     )
                     
-                    st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
+                    # Calcola totale dalla somma dei valori numerici
+                    totale_forn = pivot_forn['TOTALE'].sum()
+                    media_forn = totale_forn / num_mesi_forn if num_mesi_forn > 0 else 0
+                    col_left, col_right = st.columns([5, 1])
+                    
+                    with col_left:
+                        st.markdown(f"""
+                        <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
+                            <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+                                📋 N. Righe: {num_righe_forn:,} | 💰 Totale: € {totale_forn:,.0f} | 📊 Media mensile: € {media_forn:,.0f}
+                            </p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with col_right:
+                        st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+                        
+                        st.markdown("""
+                            <style>
+                            [data-testid="stDownloadButton"] button {
+                                background-color: #28a745 !important;
+                                color: white !important;
+                                font-weight: 600 !important;
+                                border-radius: 6px !important;
+                                border: none !important;
+                                outline: none !important;
+                                box-shadow: none !important;
+                            }
+                            [data-testid="stDownloadButton"] button:hover {
+                                background-color: #218838 !important;
+                            }
+                            </style>
+                        """, unsafe_allow_html=True)
+                        
+                        excel_buffer_forn = io.BytesIO()
+                        with pd.ExcelWriter(excel_buffer_forn, engine='openpyxl') as writer:
+                            pivot_forn.reset_index().to_excel(writer, index=False, sheet_name='Fornitori')
+                        
+                        st.download_button(
+                            label="📊 EXCEL",
+                            data=excel_buffer_forn.getvalue(),
+                            file_name=f"fornitori_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="download_excel_fornitori",
+                            type="primary",
+                            use_container_width=False
+                        )
+                        
+                        st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
 
 
-    # ========================================================
-    # ========================================================
-    # SEZIONE 5: SPESE GENERALI
-    # ========================================================
-    if st.session_state.sezione_attiva == "spese":
-        if df_spese_generali.empty:
-            st.info("📊 Nessuna spesa generale nel periodo selezionato")
-        else:
-            # ============================================
-            # TABELLA 1: CATEGORIE × MESI
-            # ============================================
-            st.markdown("#### 📊 Spesa per Categoria mensile")
-            
-            # Aggiungi colonna Mese con formato italiano
-            df_spese_con_mese = df_spese_generali.copy()
-            
-            # Usa Data_DT già calcolata
-            df_spese_con_mese['Mese'] = df_spese_con_mese['Data_DT'].apply(
-                lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
-            )
-            
-            df_spese_con_mese['Mese_Ordine'] = df_spese_con_mese['Data_DT'].apply(
-                lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
-            )
-            
-            # Pivot: Categorie × Mesi
-            pivot_cat = df_spese_con_mese.pivot_table(
-                index='Categoria',
-                columns='Mese',
-                values='TotaleRiga',
-                aggfunc='sum',
-                fill_value=0
-            )
-            
-            # Ordina colonne cronologicamente
-            mese_ordine_map = df_spese_con_mese[['Mese', 'Mese_Ordine']].drop_duplicates()
-            mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
-            mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
-            
-            cols_sorted = sorted(list(pivot_cat.columns), key=lambda x: mese_ordine_map.get(x, x))
-            pivot_cat = pivot_cat[cols_sorted]
-            
-            # Aggiungi colonna TOTALE
-            pivot_cat['TOTALE'] = pivot_cat.sum(axis=1)
-            
-            # Aggiungi colonna MEDIA
-            num_mesi_spese_cat = len(cols_sorted)
-            pivot_cat['MEDIA'] = pivot_cat['TOTALE'] / num_mesi_spese_cat if num_mesi_spese_cat > 0 else 0
-            
-            # Ordina per totale decrescente
-            pivot_cat = pivot_cat.sort_values('TOTALE', ascending=False)
-            
-            # Calcola totali colonna per percentuali di incidenza
-            col_totals_spese_cat = {col: pivot_cat[col].sum() for col in cols_sorted}
-            grand_total_spese_cat = pivot_cat['TOTALE'].sum()
-            
-            # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
-            pivot_cat_display = pd.DataFrame()
-            pivot_cat_display['Categoria'] = pivot_cat.index
-            
-            for col in cols_sorted:
-                pivot_cat_display[col] = pivot_cat[col].apply(lambda x: x if x > 0 else None).values
-                ct = col_totals_spese_cat[col]
-                pivot_cat_display[f'{col} %'] = (pivot_cat[col] / ct * 100).round(1).values if ct > 0 else 0.0
-            
-            pivot_cat_display['TOTALE'] = pivot_cat['TOTALE'].values
-            pivot_cat_display['TOTALE %'] = (pivot_cat['TOTALE'] / grand_total_spese_cat * 100).round(1).values if grand_total_spese_cat > 0 else 0.0
-            pivot_cat_display['MEDIA'] = pivot_cat['MEDIA'].values
-            
-            # Column config con ProgressColumn per barre colorate incidenza
-            column_config_spese_cat = {
-                'Categoria': st.column_config.TextColumn('Categoria', width='medium'),
-            }
-            for col in cols_sorted:
-                column_config_spese_cat[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-                column_config_spese_cat[f'{col} %'] = st.column_config.ProgressColumn(
-                    '%', format="%.1f%%", min_value=0, max_value=100, width='small'
-                )
-            column_config_spese_cat['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
-            column_config_spese_cat['TOTALE %'] = st.column_config.ProgressColumn(
-                'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
-            )
-            column_config_spese_cat['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
-            
-            # Flag per mostrare/nascondere colonne %
-            mostra_pct_spese_cat = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_spese_cat")
-            
-            if not mostra_pct_spese_cat:
-                pct_cols_spese_cat = [c for c in pivot_cat_display.columns if c.endswith(' %')]
-                pivot_cat_display = pivot_cat_display.drop(columns=pct_cols_spese_cat)
-                for pc in pct_cols_spese_cat:
-                    column_config_spese_cat.pop(pc, None)
-            
-            num_righe_spese_cat = len(pivot_cat_display)
-            altezza_spese_cat = max(num_righe_spese_cat * 35 + 50, 200)
-            st.dataframe(pivot_cat_display, hide_index=True, width='stretch', height=altezza_spese_cat, column_config=column_config_spese_cat)
-            
-            # Box + Excel per Categorie
-            totale_cat_spese = pivot_cat['TOTALE'].sum()
-            media_cat_spese = totale_cat_spese / num_mesi_spese_cat if num_mesi_spese_cat > 0 else 0
-            col_left, col_right = st.columns([5, 1])
-            
-            with col_left:
-                st.markdown(f"""
-                <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                    <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                        📋 N. Righe: {num_righe_spese_cat:,} | 💰 Totale: € {totale_cat_spese:,.0f} | 📊 Media mensile: € {media_cat_spese:,.0f}
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col_right:
-                st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
-                
-                st.markdown("""
-                    <style>
-                    [data-testid="stDownloadButton"] button {
-                        background-color: #28a745 !important;
-                        color: white !important;
-                        font-weight: 600 !important;
-                        border-radius: 6px !important;
-                        border: none !important;
-                        outline: none !important;
-                        box-shadow: none !important;
-                    }
-                    [data-testid="stDownloadButton"] button:hover {
-                        background-color: #218838 !important;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-                
-                excel_buffer_spese_cat = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer_spese_cat, engine='openpyxl') as writer:
-                    pivot_cat.to_excel(writer, sheet_name='Categorie_Spese')
-                
-                st.download_button(
-                    label="📊 EXCEL",
-                    data=excel_buffer_spese_cat.getvalue(),
-                    file_name=f"spese_categorie_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="download_excel_spese_categorie",
-                    type="primary",
-                    use_container_width=False
-                )
-                
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            st.markdown("---")
-            
-            # ============================================
-            # TABELLA 2: FORNITORI × MESI
-            # ============================================
-            st.markdown("#### 🏪 Spesa per Fornitore mensile")
-            
-            # Pivot: Fornitori × Mesi (usa stesso df con mesi formattati)
-            pivot_forn = df_spese_con_mese.pivot_table(
-                index='Fornitore',
-                columns='Mese',
-                values='TotaleRiga',
-                aggfunc='sum',
-                fill_value=0
-            )
-            
-            # Ordina colonne cronologicamente (usa stesso mapping)
-            cols_sorted_forn = sorted(list(pivot_forn.columns), key=lambda x: mese_ordine_map.get(x, x))
-            pivot_forn = pivot_forn[cols_sorted_forn]
-            
-            # Aggiungi colonna TOTALE
-            pivot_forn['TOTALE'] = pivot_forn.sum(axis=1)
-            
-            # Aggiungi colonna MEDIA
-            num_mesi_spese_forn = len(cols_sorted_forn)
-            pivot_forn['MEDIA'] = pivot_forn['TOTALE'] / num_mesi_spese_forn if num_mesi_spese_forn > 0 else 0
-            
-            # Ordina per totale decrescente
-            pivot_forn = pivot_forn.sort_values('TOTALE', ascending=False)
-            
-            # Calcola totali colonna per percentuali di incidenza
-            col_totals_spese_forn = {col: pivot_forn[col].sum() for col in cols_sorted_forn}
-            grand_total_spese_forn = pivot_forn['TOTALE'].sum()
-            
-            # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
-            pivot_forn_display = pd.DataFrame()
-            pivot_forn_display['Fornitore'] = pivot_forn.index
-            
-            for col in cols_sorted_forn:
-                pivot_forn_display[col] = pivot_forn[col].apply(lambda x: x if x > 0 else None).values
-                ct = col_totals_spese_forn[col]
-                pivot_forn_display[f'{col} %'] = (pivot_forn[col] / ct * 100).round(1).values if ct > 0 else 0.0
-            
-            pivot_forn_display['TOTALE'] = pivot_forn['TOTALE'].values
-            pivot_forn_display['TOTALE %'] = (pivot_forn['TOTALE'] / grand_total_spese_forn * 100).round(1).values if grand_total_spese_forn > 0 else 0.0
-            pivot_forn_display['MEDIA'] = pivot_forn['MEDIA'].values
-            
-            # Column config con ProgressColumn per barre colorate incidenza
-            column_config_spese_forn = {
-                'Fornitore': st.column_config.TextColumn('Fornitore', width='medium'),
-            }
-            for col in cols_sorted_forn:
-                column_config_spese_forn[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-                column_config_spese_forn[f'{col} %'] = st.column_config.ProgressColumn(
-                    '%', format="%.1f%%", min_value=0, max_value=100, width='small'
-                )
-            column_config_spese_forn['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
-            column_config_spese_forn['TOTALE %'] = st.column_config.ProgressColumn(
-                'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
-            )
-            column_config_spese_forn['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
-            
-            # Flag per mostrare/nascondere colonne %
-            mostra_pct_spese_forn = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_spese_forn")
-            
-            if not mostra_pct_spese_forn:
-                pct_cols_spese_forn = [c for c in pivot_forn_display.columns if c.endswith(' %')]
-                pivot_forn_display = pivot_forn_display.drop(columns=pct_cols_spese_forn)
-                for pc in pct_cols_spese_forn:
-                    column_config_spese_forn.pop(pc, None)
-            
-            num_righe_spese_forn = len(pivot_forn_display)
-            altezza_spese_forn = max(num_righe_spese_forn * 35 + 50, 200)
-            st.dataframe(pivot_forn_display, hide_index=True, width='stretch', height=altezza_spese_forn, column_config=column_config_spese_forn)
-            
-            # Box + Excel per Fornitori
-            totale_forn_spese = pivot_forn['TOTALE'].sum()
-            media_forn_spese = totale_forn_spese / num_mesi_spese_forn if num_mesi_spese_forn > 0 else 0
-            col_left, col_right = st.columns([5, 1])
-            
-            with col_left:
-                st.markdown(f"""
-                <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                    <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                        📋 N. Righe: {num_righe_spese_forn:,} | 💰 Totale: € {totale_forn_spese:,.0f} | 📊 Media mensile: € {media_forn_spese:,.0f}
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col_right:
-                st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
-                
-                st.markdown("""
-                    <style>
-                    [data-testid="stDownloadButton"] button {
-                        background-color: #28a745 !important;
-                        color: white !important;
-                        font-weight: 600 !important;
-                        border-radius: 6px !important;
-                        border: none !important;
-                        outline: none !important;
-                        box-shadow: none !important;
-                    }
-                    [data-testid="stDownloadButton"] button:hover {
-                        background-color: #218838 !important;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-                
-                excel_buffer_spese_forn = io.BytesIO()
-                with pd.ExcelWriter(excel_buffer_spese_forn, engine='openpyxl') as writer:
-                    pivot_forn.to_excel(writer, sheet_name='Fornitori_Spese')
-                
-                st.download_button(
-                    label="📊 EXCEL",
-                    data=excel_buffer_spese_forn.getvalue(),
-                    file_name=f"spese_fornitori_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="download_excel_spese_fornitori",
-                    type="primary",
-                    use_container_width=False
-                )
-                
-                st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ============================================================
@@ -4159,7 +3744,7 @@ if not df_cache.empty:
 
     st.markdown("""
     <div style='padding: 8px 14px; font-size: 0.88rem; color: #9a3412; font-weight: 500;'>
-        ⚠️ <strong>IMPORTANTE:</strong> Le fatture caricate devono corrispondere alla P.IVA del ristorante selezionato sopra! <strong>Altrimenti verranno scartate</strong>
+        ⚠️ <strong>IMPORTANTE:</strong> Le fatture caricate devono corrispondere alla P.IVA del ristorante mostrato sopra! <strong>Altrimenti verranno scartate</strong>
     </div>
     """, unsafe_allow_html=True)
 

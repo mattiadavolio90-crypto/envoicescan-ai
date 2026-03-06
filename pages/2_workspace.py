@@ -526,7 +526,7 @@ def clear_edit_mode():
 render_oh_yeah_header()
 
 st.markdown("""
-<h2 style="font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 700; margin: 0; margin-bottom: 0.625rem;">
+<h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-bottom: 0.625rem;">
     🍴 <span style="background: linear-gradient(90deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;

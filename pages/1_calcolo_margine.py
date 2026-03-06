@@ -98,7 +98,7 @@ render_sidebar(user)
 render_oh_yeah_header()
 
 st.markdown("""
-<h2 style="font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 700; margin: 0; margin-bottom: 10px;">
+<h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-bottom: 10px;">
     💰 <span style="background: linear-gradient(90deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -114,7 +114,7 @@ st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
 if 'margine_tab' not in st.session_state:
     st.session_state.margine_tab = "calcolo"
 
-col_tab1, col_tab2 = st.columns(2)
+col_tab1, col_tab2, col_tab3 = st.columns(3)
 with col_tab1:
     if st.button("📊 CALCOLO\nRICAVI-COSTI-MARGINI", key="btn_tab_calcolo", use_container_width=True,
                  type="primary" if st.session_state.margine_tab == "calcolo" else "secondary"):
@@ -122,6 +122,12 @@ with col_tab1:
             st.session_state.margine_tab = "calcolo"
             st.rerun()
 with col_tab2:
+    if st.button("🏭 CENTRI\nDI PRODUZIONE", key="btn_tab_centri", use_container_width=True,
+                 type="primary" if st.session_state.margine_tab == "centri" else "secondary"):
+        if st.session_state.margine_tab != "centri":
+            st.session_state.margine_tab = "centri"
+            st.rerun()
+with col_tab3:
     if st.button("🔬 ANALISI\nAVANZATE", key="btn_tab_analisi", use_container_width=True,
                  type="primary" if st.session_state.margine_tab == "analisi" else "secondary"):
         if st.session_state.margine_tab != "analisi":
@@ -1013,6 +1019,265 @@ if st.session_state.margine_tab == "analisi":
                 )
         else:
             st.info("📊 Nessun dato disponibile per il calcolo dei KPI del periodo.")
+
+# ============================================
+# TAB: CENTRI DI PRODUZIONE (F&B)
+# ============================================
+if st.session_state.margine_tab == "centri":
+
+    from config.constants import CENTRI_DI_PRODUZIONE, CATEGORIE_SPESE_GENERALI
+    from services.db_service import carica_e_prepara_dataframe
+
+    MESI_ITA = {1: "GENNAIO", 2: "FEBBRAIO", 3: "MARZO", 4: "APRILE", 5: "MAGGIO", 6: "GIUGNO",
+                7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE", 10: "OTTOBRE", 11: "NOVEMBRE", 12: "DICEMBRE"}
+
+    st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
+
+    # ============================================
+    # FILTRO TEMPORALE
+    # ============================================
+    oggi_cp = pd.Timestamp.now()
+    oggi_date_cp = oggi_cp.date()
+    inizio_mese_cp = oggi_cp.replace(day=1).date()
+    inizio_trimestre_cp = oggi_cp.replace(month=((oggi_cp.month-1)//3)*3+1, day=1).date()
+    inizio_semestre_cp = oggi_cp.replace(month=1 if oggi_cp.month <= 6 else 7, day=1).date()
+    inizio_anno_cp = oggi_cp.replace(month=1, day=1).date()
+
+    periodo_options_cp = [
+        "📅 Mese in Corso",
+        "📊 Trimestre in Corso",
+        "📈 Semestre in Corso",
+        "🗓️ Anno in Corso",
+        "📋 Anno Scorso",
+        "⚙️ Periodo Personalizzato"
+    ]
+
+    if 'cm_centri_periodo_dropdown' not in st.session_state:
+        st.session_state.cm_centri_periodo_dropdown = "🗓️ Anno in Corso"
+
+    col_periodo_cp, col_info_cp = st.columns([1, 3])
+
+    with col_periodo_cp:
+        periodo_sel_cp = st.selectbox(
+            "Periodo",
+            options=periodo_options_cp,
+            label_visibility="collapsed",
+            index=periodo_options_cp.index(st.session_state.cm_centri_periodo_dropdown) if st.session_state.cm_centri_periodo_dropdown in periodo_options_cp else 3,
+            key="cm_centri_filtro_periodo"
+        )
+
+    st.session_state.cm_centri_periodo_dropdown = periodo_sel_cp
+
+    data_inizio_cp = None
+    data_fine_cp = oggi_date_cp
+
+    if periodo_sel_cp == "📅 Mese in Corso":
+        data_inizio_cp = inizio_mese_cp
+    elif periodo_sel_cp == "📊 Trimestre in Corso":
+        data_inizio_cp = inizio_trimestre_cp
+    elif periodo_sel_cp == "📈 Semestre in Corso":
+        data_inizio_cp = inizio_semestre_cp
+    elif periodo_sel_cp == "🗓️ Anno in Corso":
+        data_inizio_cp = inizio_anno_cp
+    elif periodo_sel_cp == "📋 Anno Scorso":
+        data_inizio_cp = oggi_cp.replace(year=oggi_cp.year - 1, month=1, day=1).date()
+        data_fine_cp = oggi_cp.replace(year=oggi_cp.year - 1, month=12, day=31).date()
+    elif periodo_sel_cp == "⚙️ Periodo Personalizzato":
+        st.markdown("##### Seleziona Range Date")
+        col_da_cp, col_a_cp = st.columns(2)
+        if 'cp_centri_data_inizio' not in st.session_state:
+            st.session_state.cp_centri_data_inizio = inizio_anno_cp
+        if 'cp_centri_data_fine' not in st.session_state:
+            st.session_state.cp_centri_data_fine = oggi_date_cp
+        with col_da_cp:
+            data_inizio_custom_cp = st.date_input("📅 Da", value=st.session_state.cp_centri_data_inizio, key="cp_centri_data_da")
+        with col_a_cp:
+            data_fine_custom_cp = st.date_input("📅 A", value=st.session_state.cp_centri_data_fine, key="cp_centri_data_a")
+        if data_inizio_custom_cp > data_fine_custom_cp:
+            st.error("⚠️ La data iniziale deve essere precedente alla data finale!")
+            data_inizio_cp = st.session_state.cp_centri_data_inizio
+            data_fine_cp = st.session_state.cp_centri_data_fine
+        else:
+            st.session_state.cp_centri_data_inizio = data_inizio_custom_cp
+            st.session_state.cp_centri_data_fine = data_fine_custom_cp
+            data_inizio_cp = data_inizio_custom_cp
+            data_fine_cp = data_fine_custom_cp
+
+    if data_inizio_cp is None:
+        data_inizio_cp = inizio_anno_cp
+
+    giorni_cp = (data_fine_cp - data_inizio_cp).days + 1
+    with col_info_cp:
+        st.markdown(f"""
+        <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
+                    padding: 10px 16px;
+                    border-radius: 8px;
+                    border: 1px solid #fde047;
+                    font-size: clamp(0.78rem, 1.8vw, 0.88rem);
+                    font-weight: 500;
+                    line-height: 1.5;
+                    margin-top: 0px;
+                    vertical-align: middle;">
+            📆 {data_inizio_cp.strftime('%d/%m/%Y')} → {data_fine_cp.strftime('%d/%m/%Y')} ({giorni_cp} giorni)
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ============================================
+    # CARICA DATI E FILTRA
+    # ============================================
+    df_full = carica_e_prepara_dataframe(user_id)
+
+    if df_full is None or df_full.empty:
+        st.warning("⚠️ Nessun dato disponibile.")
+    else:
+        # Crea colonna Data_DT se mancante
+        if 'Data_DT' not in df_full.columns and 'DataDocumento' in df_full.columns:
+            df_full['Data_DT'] = pd.to_datetime(df_full['DataDocumento'], errors='coerce')
+
+        # Filtra per periodo
+        if 'Data_DT' in df_full.columns:
+            df_filtrato_cp = df_full[
+                (df_full['Data_DT'].dt.date >= data_inizio_cp) &
+                (df_full['Data_DT'].dt.date <= data_fine_cp)
+            ].copy()
+        else:
+            df_filtrato_cp = df_full.copy()
+
+        # Filtra solo F&B (escludi spese generali)
+        df_food_cp = df_filtrato_cp[~df_filtrato_cp['Categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
+
+        if df_food_cp.empty:
+            st.warning("⚠️ Nessun dato F&B disponibile per il periodo selezionato")
+        else:
+            # Mappa categorie → centri di produzione
+            cat_to_centro = {}
+            for centro, cats in CENTRI_DI_PRODUZIONE.items():
+                for cat in cats:
+                    cat_to_centro[cat] = centro
+
+            df_centri = df_food_cp.copy()
+            df_centri['Centro'] = df_centri['Categoria'].map(cat_to_centro).fillna('Da Classificare')
+
+            # Filtra solo i centri definiti (escludi "Da Classificare")
+            centri_validi = list(CENTRI_DI_PRODUZIONE.keys())
+            df_centri = df_centri[df_centri['Centro'].isin(centri_validi)]
+
+            if df_centri.empty:
+                st.info("📊 Nessun dato mappato ai centri di produzione per il periodo selezionato")
+            else:
+                df_centri['mese_nome'] = df_centri['Data_DT'].apply(
+                    lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
+                )
+                df_centri['mese_sort'] = df_centri['Data_DT'].apply(
+                    lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
+                )
+
+                # Pivot: Centro × Mesi
+                pivot = df_centri.pivot_table(
+                    index='Centro',
+                    columns='mese_nome',
+                    values='TotaleRiga',
+                    aggfunc='sum',
+                    fill_value=0
+                )
+
+                # Ordine mesi cronologico
+                mesi_ord = df_centri.drop_duplicates('mese_nome').sort_values('mese_sort')['mese_nome'].tolist()
+                pivot = pivot.reindex(columns=[m for m in mesi_ord if m in pivot.columns])
+
+                # Ordine centri fisso
+                ordine_centri = [c for c in centri_validi if c in pivot.index]
+                pivot = pivot.reindex(ordine_centri)
+
+                # TOTALE e MEDIA
+                pivot['TOTALE'] = pivot.sum(axis=1)
+                pivot['MEDIA'] = pivot.drop(columns=['TOTALE']).replace(0, pd.NA).mean(axis=1)
+
+                # Report
+                st.markdown("### 🏭 Spesa per Centro di Produzione mensile")
+
+                # Costruisci display DataFrame
+                mesi_cols = [c for c in pivot.columns if c not in ['TOTALE', 'MEDIA']]
+
+                pivot_centri_display = pd.DataFrame()
+                pivot_centri_display['Centro'] = pivot.index
+
+                for col in mesi_cols:
+                    col_total = pivot[col].sum()
+                    pivot_centri_display[col] = pivot[col].apply(lambda x: x if x > 0 else None).values
+                    pivot_centri_display[f'{col} %'] = (pivot[col] / col_total * 100).round(1).values if col_total > 0 else 0.0
+
+                pivot_centri_display['TOTALE'] = pivot['TOTALE'].values
+                grand_total_centri = pivot['TOTALE'].sum()
+                pivot_centri_display['TOTALE %'] = (pivot['TOTALE'] / grand_total_centri * 100).round(1).values if grand_total_centri > 0 else 0.0
+                pivot_centri_display['MEDIA'] = pivot['MEDIA'].values
+
+                # Column config
+                column_config_centri = {
+                    'Centro': st.column_config.TextColumn('Centro', width='medium'),
+                }
+                for col in mesi_cols:
+                    column_config_centri[col] = st.column_config.NumberColumn(col, format="€ %.2f")
+                    column_config_centri[f'{col} %'] = st.column_config.ProgressColumn(
+                        '%', format="%.1f%%", min_value=0, max_value=100, width='small'
+                    )
+                column_config_centri['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
+                column_config_centri['TOTALE %'] = st.column_config.ProgressColumn(
+                    'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
+                )
+                column_config_centri['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
+
+                # Flag per mostrare/nascondere colonne %
+                mostra_pct_centri = st.checkbox("📊 Visualizza incidenze %", value=False, key="cm_mostra_incidenze_pct_centri")
+
+                if not mostra_pct_centri:
+                    pct_cols_centri = [c for c in pivot_centri_display.columns if c.endswith(' %')]
+                    pivot_centri_display = pivot_centri_display.drop(columns=pct_cols_centri)
+                    for pc in pct_cols_centri:
+                        column_config_centri.pop(pc, None)
+
+                num_righe_centri = len(pivot_centri_display)
+                altezza_centri = max(num_righe_centri * 35 + 50, 200)
+
+                st.dataframe(
+                    pivot_centri_display,
+                    hide_index=True,
+                    width='stretch',
+                    height=altezza_centri,
+                    column_config=column_config_centri
+                )
+
+                # Riepilogo
+                tot_centri = pivot['TOTALE'].sum()
+                n_centri = len(pivot)
+                media_centri = tot_centri / max(len(mesi_cols), 1)
+                excel_data_centri = io.BytesIO()
+                with pd.ExcelWriter(excel_data_centri, engine='openpyxl') as writer:
+                    pivot.to_excel(writer, sheet_name='Centri Produzione')
+                excel_data_centri.seek(0)
+
+                col_left_c, col_right_c = st.columns([7, 3])
+
+                with col_left_c:
+                    st.markdown(f"""
+                    <div style="background-color: #E3F2FD; padding: 12px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-top: 8px; width: fit-content;">
+                        <span style="color: #1565C0; font-weight: bold; font-size: clamp(0.85rem, 2vw, 1rem); white-space: nowrap;">
+                            📊 N. Centri: {n_centri} | 💰 Totale: € {tot_centri:,.0f} | 📊 Media mensile: € {media_centri:,.0f}
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                with col_right_c:
+                    st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+                    st.download_button(
+                        label="📊 EXCEL",
+                        data=excel_data_centri,
+                        file_name=f"centri_produzione_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="cm_download_excel_centri",
+                        type="primary",
+                        use_container_width=True
+                    )
 
 if st.session_state.margine_tab == "calcolo":
 

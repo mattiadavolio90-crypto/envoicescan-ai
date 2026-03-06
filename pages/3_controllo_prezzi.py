@@ -6,11 +6,11 @@ Pagina dedicata al monitoraggio prezzi e documenti finanziari.
 import streamlit as st
 import pandas as pd
 import io
-from datetime import datetime, date
+from datetime import datetime
 
 from config.logger_setup import get_logger
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
-from utils.ristorante_helper import get_current_ristorante_id, add_ristorante_filter
+from utils.ristorante_helper import get_current_ristorante_id
 from services.db_service import (
     carica_e_prepara_dataframe,
     calcola_alert,
@@ -86,7 +86,7 @@ render_sidebar(user)
 render_oh_yeah_header()
 
 st.markdown("""
-<h2 style="font-size: clamp(1.5rem, 4vw, 2.2rem); font-weight: 700; margin: 0; margin-bottom: 10px;">
+<h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-bottom: 10px;">
     🔍 <span style="background: linear-gradient(90deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -107,9 +107,6 @@ inizio_trimestre = oggi_date.replace(month=mese_trimestre, day=1)
 mese_semestre = 1 if oggi_date.month <= 6 else 7
 inizio_semestre = oggi_date.replace(month=mese_semestre, day=1)
 inizio_anno = oggi_date.replace(month=1, day=1)
-
-MESI_ITA = {1: "GENNAIO", 2: "FEBBRAIO", 3: "MARZO", 4: "APRILE", 5: "MAGGIO", 6: "GIUGNO",
-            7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE", 10: "OTTOBRE", 11: "NOVEMBRE", 12: "DICEMBRE"}
 
 periodo_options = [
     "📅 Mese in Corso",
@@ -199,13 +196,16 @@ elif periodo_selezionato == "⚙️ Periodo Personalizzato":
     label_periodo = f"{data_inizio_filtro.strftime('%d/%m/%Y')} → {data_fine_filtro.strftime('%d/%m/%Y')}"
 
 with col_info_periodo:
+    st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
     st.markdown(f"""
-    <div style="display: inline-flex; align-items: center; margin-top: 0.35rem;
-                padding: 0.35rem 0.65rem; background: #f0f9ff;
-                border-left: 3px solid #0ea5e9; border-radius: 4px;">
-        <span style="font-size: clamp(0.7rem, 1.6vw, 0.82rem); color: #0c4a6e; font-weight: 500; white-space: nowrap;">
-            📊 {label_periodo}
-        </span>
+    <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
+                padding: 10px 16px;
+                border-radius: 8px;
+                border: 1px solid #fde047;
+                font-size: clamp(0.78rem, 1.8vw, 0.88rem);
+                font-weight: 500;
+                line-height: 1.5;">
+        📊 {label_periodo}
     </div>
     """, unsafe_allow_html=True)
 
@@ -391,7 +391,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             df_alert.to_excel(writer, sheet_name='Variazioni Prezzo', index=False)
 
-        col_spacer, col_btn = st.columns([4, 2])
+        col_spacer, col_btn = st.columns([9, 3])
         with col_btn:
             st.download_button(
                 label="📊 Excel",
@@ -542,7 +542,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
             with pd.ExcelWriter(excel_sconti, engine='openpyxl') as writer:
                 df_sconti_view.to_excel(writer, sheet_name='Sconti', index=False)
 
-            col_spacer, col_btn = st.columns([4, 2])
+            col_spacer, col_btn = st.columns([9, 3])
             with col_btn:
                 st.download_button(
                     label="📊 Excel",
@@ -607,7 +607,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
             with pd.ExcelWriter(excel_omaggi, engine='openpyxl') as writer:
                 df_omaggi_view.to_excel(writer, sheet_name='Omaggi', index=False)
 
-            col_spacer, col_btn = st.columns([4, 2])
+            col_spacer, col_btn = st.columns([9, 3])
             with col_btn:
                 st.download_button(
                     label="📊 Excel",
@@ -727,30 +727,24 @@ elif st.session_state.cp_tab_attivo == "nc":
             num_doc_nc_view = df_nc_view['FileOrigine'].nunique()
             num_righe_nc_view_box = len(df_nc_view)
 
-            st.markdown("""
-            <div style="
-                background-color: #E3F2FD;
-                padding: clamp(0.75rem, 2vw, 1rem) clamp(1rem, 2.5vw, 1.25rem);
-                border-radius: 8px;
-                border: 2px solid #2196F3;
-                margin-top: 1rem;
-                margin-bottom: 1rem;
-                text-align: center;
-            ">
-                <span style="color: #1565C0; font-weight: bold; font-size: clamp(0.85rem, 2vw, 1rem);">
-                    📋 N. Documenti: {} &nbsp;|&nbsp; N. Righe: {} &nbsp;|&nbsp; 💰 Totale Note di Credito: €{:.2f}
-                </span>
-            </div>
-            """.format(num_doc_nc_view, num_righe_nc_view_box, abs(totale_nc_view)),
-            unsafe_allow_html=True)
-
             # Export Excel note di credito
             excel_nc = io.BytesIO()
             with pd.ExcelWriter(excel_nc, engine='openpyxl') as writer:
                 df_nc_display.to_excel(writer, sheet_name='Note di Credito', index=False)
 
-            col_spacer, col_btn = st.columns([4, 2])
-            with col_btn:
+            col_riep_nc, col_btn_nc = st.columns([7, 3])
+            with col_riep_nc:
+                st.markdown("""
+                <div style="background-color: #E3F2FD; padding: 12px 20px; border-radius: 8px;
+                            border: 2px solid #2196F3; margin-top: 8px; width: fit-content;">
+                    <span style="color: #1565C0; font-weight: bold; font-size: clamp(0.85rem, 2vw, 1rem); white-space: nowrap;">
+                        📋 N. Documenti: {} &nbsp;|&nbsp; N. Righe: {} &nbsp;|&nbsp; 💰 Totale Note di Credito: €{:.2f}
+                    </span>
+                </div>
+                """.format(num_doc_nc_view, num_righe_nc_view_box, abs(totale_nc_view)),
+                unsafe_allow_html=True)
+            with col_btn_nc:
+                st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
                 st.download_button(
                     label="📊 Excel",
                     data=excel_nc.getvalue(),
@@ -758,7 +752,7 @@ elif st.session_state.cp_tab_attivo == "nc":
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="cp_download_excel_nc",
                     type="primary",
-                    use_container_width=False
+                    use_container_width=True
                 )
         else:
             st.info("📊 Nessun risultato con i filtri applicati")
