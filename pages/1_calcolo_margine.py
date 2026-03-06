@@ -1210,53 +1210,80 @@ if st.session_state.margine_tab == "centri":
                 # Costruisci display DataFrame
                 mesi_cols = [c for c in pivot.columns if c not in ['TOTALE', 'MEDIA']]
 
-                pivot_centri_display = pd.DataFrame()
-                pivot_centri_display['Centro'] = pivot.index
-
-                for col in mesi_cols:
-                    col_total = pivot[col].sum()
-                    pivot_centri_display[col] = pivot[col].apply(lambda x: x if x > 0 else None).values
-                    pivot_centri_display[f'{col} %'] = (pivot[col] / col_total * 100).round(1).values if col_total > 0 else 0.0
-
-                pivot_centri_display['TOTALE'] = pivot['TOTALE'].values
-                grand_total_centri = pivot['TOTALE'].sum()
-                pivot_centri_display['TOTALE %'] = (pivot['TOTALE'] / grand_total_centri * 100).round(1).values if grand_total_centri > 0 else 0.0
-                pivot_centri_display['MEDIA'] = pivot['MEDIA'].values
-
-                # Column config
-                column_config_centri = {
-                    'Centro': st.column_config.TextColumn('Centro', width='medium'),
+                # ========================================================
+                # CENTRI ESPANDIBILI CON CATEGORIE
+                # ========================================================
+                icone_centri_cp = {
+                    "FOOD": "🍖", "BAR": "☕", "ALCOLICI": "🍷",
+                    "DOLCI": "🍰", "MATERIALE DI CONSUMO": "📦", "SHOP": "🛒"
                 }
-                for col in mesi_cols:
-                    column_config_centri[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-                    column_config_centri[f'{col} %'] = st.column_config.ProgressColumn(
-                        '%', format="%.1f%%", min_value=0, max_value=100, width='small'
-                    )
-                column_config_centri['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
-                column_config_centri['TOTALE %'] = st.column_config.ProgressColumn(
-                    'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
-                )
-                column_config_centri['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
 
                 # Flag per mostrare/nascondere colonne %
                 mostra_pct_centri = st.checkbox("📊 Visualizza incidenze %", value=False, key="cm_mostra_incidenze_pct_centri")
 
-                if not mostra_pct_centri:
-                    pct_cols_centri = [c for c in pivot_centri_display.columns if c.endswith(' %')]
-                    pivot_centri_display = pivot_centri_display.drop(columns=pct_cols_centri)
-                    for pc in pct_cols_centri:
-                        column_config_centri.pop(pc, None)
+                grand_total_centri = pivot['TOTALE'].sum()
 
-                num_righe_centri = len(pivot_centri_display)
-                altezza_centri = max(num_righe_centri * 35 + 50, 200)
+                for centro_nome in ordine_centri:
+                    spesa_tot = pivot.loc[centro_nome, 'TOTALE']
+                    media_c = pivot.loc[centro_nome, 'MEDIA']
+                    pct_incid = (spesa_tot / grand_total_centri * 100) if grand_total_centri > 0 else 0.0
+                    icona = icone_centri_cp.get(centro_nome, "📁")
 
-                st.dataframe(
-                    pivot_centri_display,
-                    hide_index=True,
-                    width='stretch',
-                    height=altezza_centri,
-                    column_config=column_config_centri
-                )
+                    with st.expander(f"{icona} **{centro_nome}** — Totale: € {spesa_tot:,.2f} | Media: € {media_c:,.2f} | Incid.: {pct_incid:.1f}%", expanded=False):
+                        # Categorie di questo centro
+                        cats_centro = CENTRI_DI_PRODUZIONE.get(centro_nome, [])
+                        df_cats = df_centri[df_centri['Centro'] == centro_nome].copy()
+
+                        if df_cats.empty:
+                            st.info("Nessun dato per questo centro")
+                            continue
+
+                        # Pivot per categoria
+                        pivot_cat = df_cats.pivot_table(
+                            index='Categoria',
+                            columns='mese_nome',
+                            values='TotaleRiga',
+                            aggfunc='sum',
+                            fill_value=0
+                        )
+                        pivot_cat = pivot_cat.reindex(columns=[m for m in mesi_ord if m in pivot_cat.columns])
+
+                        pivot_cat['TOTALE'] = pivot_cat.sum(axis=1)
+                        pivot_cat['MEDIA'] = pivot_cat.drop(columns=['TOTALE']).replace(0, pd.NA).mean(axis=1)
+                        pivot_cat = pivot_cat.sort_values('TOTALE', ascending=False)
+
+                        # Build display dataframe
+                        cat_display = pd.DataFrame()
+                        cat_display['Categoria'] = pivot_cat.index
+
+                        cat_mesi_cols = [c for c in pivot_cat.columns if c not in ['TOTALE', 'MEDIA']]
+                        for col in cat_mesi_cols:
+                            cat_display[col] = pivot_cat[col].apply(lambda x: x if x > 0 else None).values
+                            if mostra_pct_centri:
+                                col_tot = pivot_cat[col].sum()
+                                cat_display[f'{col} %'] = (pivot_cat[col] / col_tot * 100).round(1).values if col_tot > 0 else 0.0
+
+                        cat_display['TOTALE'] = pivot_cat['TOTALE'].values
+                        if mostra_pct_centri:
+                            tot_centro = pivot_cat['TOTALE'].sum()
+                            cat_display['TOTALE %'] = (pivot_cat['TOTALE'] / tot_centro * 100).round(1).values if tot_centro > 0 else 0.0
+                        cat_display['MEDIA'] = pivot_cat['MEDIA'].values
+
+                        # Column config
+                        cc = {'Categoria': st.column_config.TextColumn('Categoria', width='medium')}
+                        for col in cat_mesi_cols:
+                            cc[col] = st.column_config.NumberColumn(col, format="€ %.2f")
+                            if mostra_pct_centri:
+                                cc[f'{col} %'] = st.column_config.ProgressColumn('%', format="%.1f%%", min_value=0, max_value=100, width='small')
+                        cc['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
+                        if mostra_pct_centri:
+                            cc['TOTALE %'] = st.column_config.ProgressColumn('Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small')
+                        cc['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
+
+                        alt = max(len(cat_display) * 35 + 50, 120)
+                        st.dataframe(cat_display, hide_index=True, use_container_width=True, height=alt, column_config=cc)
+
+                    st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
 
                 # Riepilogo
                 tot_centri = pivot['TOTALE'].sum()

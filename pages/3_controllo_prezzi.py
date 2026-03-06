@@ -196,7 +196,6 @@ elif periodo_selezionato == "⚙️ Periodo Personalizzato":
     label_periodo = f"{data_inizio_filtro.strftime('%d/%m/%Y')} → {data_fine_filtro.strftime('%d/%m/%Y')}"
 
 with col_info_periodo:
-    st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
     st.markdown(f"""
     <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
                 padding: 10px 16px;
@@ -204,7 +203,8 @@ with col_info_periodo:
                 border: 1px solid #fde047;
                 font-size: clamp(0.78rem, 1.8vw, 0.88rem);
                 font-weight: 500;
-                line-height: 1.5;">
+                line-height: 1.5;
+                margin-top: 0px;">
         📊 {label_periodo}
     </div>
     """, unsafe_allow_html=True)
@@ -560,6 +560,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
     # ============================================================
     # TABELLA OMAGGI
     # ============================================================
+    st.markdown("<div style='margin-top: 1.2rem;'></div>", unsafe_allow_html=True)
     if not df_omaggi.empty:
         with st.expander(f"🎁 Dettaglio Omaggi ({len(df_omaggi)})", expanded=False):
             st.markdown(f"**{len(df_omaggi)} omaggi** ricevuti dai fornitori")
@@ -677,7 +678,6 @@ elif st.session_state.cp_tab_attivo == "nc":
         # TABELLA NOTE DI CREDITO
         # ============================================================
         if not df_nc_view.empty:
-            st.info(f"📋 **{len(df_nc_view)} righe** in {df_nc_view['FileOrigine'].nunique()} note di credito")
 
             # Prepara colonne per display
             cols_display = ['FileOrigine', 'DataDocumento', 'Fornitore', 'Descrizione', 'Categoria',
