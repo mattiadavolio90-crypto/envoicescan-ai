@@ -185,6 +185,17 @@ st.markdown("""
         padding: 0.5rem 0.25rem !important;
         min-height: 3rem !important;
     }
+    /* Download Button - verde */
+    [data-testid="stDownloadButton"] button {
+        background-color: #28a745 !important;
+        color: white !important;
+        font-weight: 600 !important;
+        border: none !important;
+        border-radius: 6px !important;
+    }
+    [data-testid="stDownloadButton"] button:hover {
+        background-color: #218838 !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -378,8 +389,25 @@ if st.session_state.margine_tab == "analisi":
         fatturato_per_centro = fatturato_per_centro_db if fatturato_split_attivo else {}
         fatturato_totale_split = sum(fatturato_per_centro.values()) if fatturato_per_centro else 0.0
 
-        # Expander per inserimento/modifica
-        with st.expander("📌 Apri per suddividere il Fatturato per Centro di Produzione", expanded=False):
+        # Expander per inserimento/modifica — sfondo azzurro
+        st.markdown("""
+        <style>
+        div.st-key-expander_fatturato_centri div[data-testid="stExpander"] > details > summary {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
+            border-radius: 8px !important;
+            padding: clamp(0.625rem, 1.5vw, 1rem) clamp(0.75rem, 2vw, 1rem) !important;
+            color: #1e40af !important;
+            font-weight: 600 !important;
+        }
+        div.st-key-expander_fatturato_centri div[data-testid="stExpander"] > details[open] > div {
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%) !important;
+            border-radius: 0 0 8px 8px !important;
+            padding: 12px !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        with st.container(key="expander_fatturato_centri"):
+          with st.expander("📌 Apri per suddividere il Fatturato per Centro di Produzione", expanded=False):
             st.markdown("""
             <div style='color: #1e3a5f; font-size: 0.875rem; line-height: 1.6; margin-bottom: 12px;'>
             Ripartisci il Fatturato Netto tra i centri di produzione <strong>mese per mese</strong>.
@@ -738,10 +766,41 @@ if st.session_state.margine_tab == "analisi":
                 if _mc_rows:
                     st.dataframe(pd.DataFrame(_mc_rows), hide_index=True, use_container_width=False)
 
+        # Excel export - a destra, sotto le tabelle, prima dei KPI
+        _col_excel_spacer, _col_excel_btn = st.columns([9, 3])
+        with _col_excel_btn:
+            excel_buf_c = io.BytesIO()
+            with pd.ExcelWriter(excel_buf_c, engine='openpyxl') as writer:
+                df_export_centri = df_centri_agg.copy()
+                df_export_centri.loc[len(df_export_centri)] = {
+                    'Centro': 'TOTALE F&B', 'Spesa': totale_costi_fb,
+                    'pct_fatt': tot_pct_fatt, 'pct_fb': 100.0
+                }
+                df_export_centri.columns = ['Centro', 'Spesa (€)', '% su Fatturato', '% su Costi F&B']
+                df_export_centri.to_excel(writer, index=False, sheet_name='Centri Riepilogo')
+                for centro_n in ordine_centri_fisso:
+                    df_c = df_costi_cat[df_costi_cat['centro'] == centro_n]
+                    if df_c.empty:
+                        continue
+                    df_c_agg_exp = df_c.groupby('categoria')['totale'].sum().reset_index()
+                    df_c_agg_exp.columns = ['Categoria', 'Spesa (€)']
+                    df_c_agg_exp = df_c_agg_exp.sort_values('Spesa (€)', ascending=False)
+                    sheet_name = centro_n[:31]
+                    df_c_agg_exp.to_excel(writer, index=False, sheet_name=sheet_name)
+            excel_buf_c.seek(0)
+            st.download_button(
+                label="📊 Excel",
+                data=excel_buf_c.getvalue(),
+                file_name=f"analisi_centri_categorie_{anno_aa}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="aa_download_centri",
+                type="primary",
+                use_container_width=False
+            )
+
         # ============================================
         # KPI PERIODO - ANALISI CENTRI
         # ============================================
-        st.markdown("---")
         st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📊 Riepilogo KPI - Media valori per periodo</h3>', unsafe_allow_html=True)
 
         # Calcola numero mesi nel periodo
@@ -969,54 +1028,6 @@ if st.session_state.margine_tab == "analisi":
                     """, unsafe_allow_html=True)
                 st.markdown("<br>", unsafe_allow_html=True)
 
-            # Excel export a destra — sotto all'analisi KPI
-            _col_excel_empty, col_excel_aa = st.columns([5, 1])
-            with col_excel_aa:
-                st.markdown("""
-                    <style>
-                    [data-testid="stDownloadButton"] button {
-                        background-color: #28a745 !important;
-                        color: white !important;
-                        font-weight: 600 !important;
-                        border-radius: 6px !important;
-                        border: none !important;
-                        outline: none !important;
-                        box-shadow: none !important;
-                    }
-                    [data-testid="stDownloadButton"] button:hover {
-                        background-color: #218838 !important;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-                st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
-                excel_buf_c = io.BytesIO()
-                with pd.ExcelWriter(excel_buf_c, engine='openpyxl') as writer:
-                    df_export_centri = df_centri_agg.copy()
-                    df_export_centri.loc[len(df_export_centri)] = {
-                        'Centro': 'TOTALE F&B', 'Spesa': totale_costi_fb,
-                        'pct_fatt': tot_pct_fatt, 'pct_fb': 100.0
-                    }
-                    df_export_centri.columns = ['Centro', 'Spesa (€)', '% su Fatturato', '% su Costi F&B']
-                    df_export_centri.to_excel(writer, index=False, sheet_name='Centri Riepilogo')
-                    for centro_n in ordine_centri_fisso:
-                        df_c = df_costi_cat[df_costi_cat['centro'] == centro_n]
-                        if df_c.empty:
-                            continue
-                        df_c_agg_exp = df_c.groupby('categoria')['totale'].sum().reset_index()
-                        df_c_agg_exp.columns = ['Categoria', 'Spesa (€)']
-                        df_c_agg_exp = df_c_agg_exp.sort_values('Spesa (€)', ascending=False)
-                        sheet_name = centro_n[:31]
-                        df_c_agg_exp.to_excel(writer, index=False, sheet_name=sheet_name)
-                excel_buf_c.seek(0)
-                st.download_button(
-                    label="📊 EXCEL",
-                    data=excel_buf_c.getvalue(),
-                    file_name=f"analisi_centri_categorie_{anno_aa}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="aa_download_centri",
-                    type="primary",
-                    use_container_width=False
-                )
         else:
             st.info("📊 Nessun dato disponibile per il calcolo dei KPI del periodo.")
 
@@ -1256,7 +1267,7 @@ if st.session_state.margine_tab == "centri":
                     pivot.to_excel(writer, sheet_name='Centri Produzione')
                 excel_data_centri.seek(0)
 
-                col_left_c, col_right_c = st.columns([7, 3])
+                col_left_c, col_right_c = st.columns([9, 3])
 
                 with col_left_c:
                     st.markdown(f"""
@@ -1270,7 +1281,7 @@ if st.session_state.margine_tab == "centri":
                 with col_right_c:
                     st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
                     st.download_button(
-                        label="📊 EXCEL",
+                        label="📊 Excel",
                         data=excel_data_centri,
                         file_name=f"centri_produzione_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1600,17 +1611,6 @@ if st.session_state.margine_tab == "calcolo":
     .main .stButton button[kind="primary"]:hover {
         background-color: #0284c7 !important;
     }
-    /* Download Button - verde */
-    [data-testid="stDownloadButton"] button {
-        background-color: #28a745 !important;
-        color: white !important;
-        font-weight: 600 !important;
-        border: none !important;
-        max-width: 250px !important;
-    }
-    [data-testid="stDownloadButton"] button:hover {
-        background-color: #218838 !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1783,20 +1783,6 @@ if st.session_state.margine_tab == "calcolo":
         excel_data = export_excel_margini(df_risultati, anno, nome_rist, kpi_data)
         _col_excel_empty_t1, col_excel_t1 = st.columns([5, 1])
         with col_excel_t1:
-            st.markdown("""
-                <style>
-                [data-testid="stDownloadButton"] button {
-                    background-color: #28a745 !important;
-                    color: white !important;
-                    font-weight: 600 !important;
-                    border-radius: 6px !important;
-                    border: none !important;
-                }
-                [data-testid="stDownloadButton"] button:hover {
-                    background-color: #218838 !important;
-                }
-                </style>
-            """, unsafe_allow_html=True)
             st.download_button(
                 "📊 Excel",
                 data=excel_data,
