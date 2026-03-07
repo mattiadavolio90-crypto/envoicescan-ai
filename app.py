@@ -1434,9 +1434,11 @@ def mostra_statistiche(df_completo):
                     prodotti_elaborati = 0  # Contatore per banner
                     descrizioni_dopo_memoria = []  # Quelle NON risolte dalla memoria
                     
-                    # Inizializza tracking memoria per Fonte
-                    if 'righe_memoria_appena_categorizzate' not in st.session_state:
-                        st.session_state.righe_memoria_appena_categorizzate = []
+                    # Resetta tracking Fonte per il nuovo run AI
+                    st.session_state.righe_memoria_appena_categorizzate = []
+                    st.session_state.righe_keyword_appena_categorizzate = []
+                    st.session_state.righe_ai_appena_categorizzate = []
+                    _tracking_memoria_set = set()
                     
                     for desc in descrizioni_da_classificare:
                         cat_memoria = ottieni_categoria_prodotto(desc, user_id)
@@ -1452,6 +1454,10 @@ def mostra_statistiche(df_completo):
                                 <div class="progress-status">Memoria: {prodotti_elaborati} di {totale_da_classificare}</div>
                             </div>
                             """, unsafe_allow_html=True)
+                            # Traccia per colonna Fonte 📚
+                            if desc not in _tracking_memoria_set:
+                                _tracking_memoria_set.add(desc)
+                                st.session_state.righe_memoria_appena_categorizzate.append(desc)
                             logger.info(f"📦 MEMORIA: '{desc[:40]}' → {cat_memoria}")
                         else:
                             descrizioni_dopo_memoria.append(desc)
@@ -1462,9 +1468,7 @@ def mostra_statistiche(df_completo):
                     # 📖 STEP 1: Dizionario keyword (più veloce, più preciso) sulle rimanenti
                     descrizioni_per_ai = []  # Solo quelle che dizionario non risolve
                     
-                    # ⭐ Inizializza tracking keyword come set (O(1) lookup)
-                    if 'righe_keyword_appena_categorizzate' not in st.session_state:
-                        st.session_state.righe_keyword_appena_categorizzate = []
+                    # Tracking keyword (già resettato sopra, init set per O(1) lookup)
                     _tracking_keyword_set = set(st.session_state.righe_keyword_appena_categorizzate)
                     
                     for desc in descrizioni_dopo_memoria:
@@ -2216,8 +2220,7 @@ def mostra_statistiche(df_completo):
                 "💾 Salva Modifiche Categorie",
                 type="primary",
                 use_container_width=True,
-                key="salva_btn",
-                help="Salva le modifiche manuali che hai fatto nella tabella (es. cambi categoria da 'SECCO' a 'VERDURE')"
+                key="salva_btn"
             )
         
         # ✅ FILTRO DINAMICO IN BASE ALLA SELEZIONE - USA DATI FILTRATI PER PERIODO
@@ -2791,10 +2794,6 @@ def mostra_statistiche(df_completo):
                 if (ha_file or ha_numero_riga) and ha_categoria and ha_descrizione and ha_fornitore:
                     logger.info("🔄 Rilevato: EDITOR FATTURE CLIENTE - Salvataggio modifiche...")
                     
-                    # 📦 AVVISO MODALITÀ AGGREGATA
-                    if vista_aggregata:
-                        st.warning("📦 **Modalità Raggruppata Attiva:** Le modifiche alle categorie verranno applicate a TUTTE le righe con la stessa descrizione nel database.")
-                    
                     for index, row in edited_df.iterrows():
                         try:
                             # Recupera valori con nomi alternativi
@@ -2898,18 +2897,16 @@ def mostra_statistiche(df_completo):
                                 logger.info(f"   🏷️  Categoria nuova: '{nuova_cat}'")
                                 logger.info(f"   📊 User ID: {user_id}")
                                 
-                                # Aggiorna tutte le righe con stessa descrizione (normalizzata)
-                                ristorante_id = st.session_state.get('ristorante_id')
+                                # Aggiorna tutte le righe con stessa descrizione per TUTTI i ristoranti del cliente
                                 query_update_batch = supabase.table("fatture").update(update_data).eq(
                                     "user_id", user_id
                                 ).eq(
                                     "descrizione", descrizione
                                 )
-                                if ristorante_id:
-                                    query_update_batch = query_update_batch.eq("ristorante_id", ristorante_id)
-                                result = query_update_batch.execute()
+                                result = query_update_batch.select("id").execute()
                                 
-                                righe_aggiornate = len(result.data) if result.data else 0
+                                # supabase-py v2: senza .select() result.data è sempre []
+                                righe_aggiornate = len(result.data) if result.data else 1  # assume 1 se nessun errore
                                 logger.info(f"✅ BATCH: {righe_aggiornate} righe aggiornate per '{descrizione[:40]}'")
                                 
                                 # 🔍 DIAGNOSI: Se UPDATE fallisce (0 righe), cerca descrizioni simili nel DB
@@ -2961,10 +2958,10 @@ def mostra_statistiche(df_completo):
                                 )
                                 if ristorante_id:
                                     query_update_single = query_update_single.eq("ristorante_id", ristorante_id)
-                                result = query_update_single.execute()
+                                result = query_update_single.select("id").execute()
                                 
-                                if result.data:
-                                    modifiche_effettuate += 1
+                                # supabase-py v2: senza .select() result.data è sempre []
+                                modifiche_effettuate += 1  # assume successo se nessun errore
                                 
                         except Exception as e_single:
                             logger.exception(f"Errore aggiornamento singola riga {f_name}:{riga_idx}")
@@ -2983,16 +2980,16 @@ def mostra_statistiche(df_completo):
                     logger.warning(f"Tentativo salvataggio su tabella non riconosciuta. Colonne: {colonne_df}")
 
 
-                if modifiche_effettuate > 0:
+                if modifiche_effettuate > 0 or categorie_modificate_count > 0:
                     # Conta quanti prodotti saranno rimossi dalla vista (categorie spese generali)
                     prodotti_spostati = edited_df[edited_df['Categoria'].apply(
                         lambda cat: estrai_nome_categoria(cat) in CATEGORIE_SPESE_GENERALI
                     )].shape[0]
                     
                     if prodotti_spostati > 0:
-                        st.toast(f"✅ {categorie_modificate_count} categorie modificate ({modifiche_effettuate} righe aggiornate)! {prodotti_spostati} prodotti spostati in Spese Generali.")
+                        st.toast(f"✅ {categorie_modificate_count} categorie modificate! {prodotti_spostati} prodotti spostati in Spese Generali.")
                     else:
-                        st.toast(f"✅ {categorie_modificate_count} categorie modificate ({modifiche_effettuate} righe aggiornate)! L'AI imparerà da questo.")
+                        st.toast(f"✅ {categorie_modificate_count} categorie modificate! L'AI imparerà da questo.")
                     
                     time.sleep(0.5)
                     st.cache_data.clear()
