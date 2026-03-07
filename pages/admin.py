@@ -260,29 +260,43 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
     sb = get_supabase_client()
     admin_emails_set = set(admin_emails_tuple)
 
-    # 1) Query utenti
+    # 1) Query utenti - fallback progressivi per colonne mancanti
+    has_piva_column = True
+    has_pagine_column = True
+
+    _MISSING_COL = ('42703', 'does not exist', 'PGRST204', 'Could not find')
+
     try:
         query_users = sb.table('users')\
             .select('id, email, nome_ristorante, attivo, created_at, partita_iva, ragione_sociale, pagine_abilitate')\
             .order('email')\
             .execute()
-        has_piva_column = True
     except Exception as col_err:
-        if '42703' in str(col_err) or 'does not exist' in str(col_err):
+        if not any(k in str(col_err) for k in _MISSING_COL):
+            raise col_err
+        # Potrebbe mancare pagine_abilitate: riprova senza
+        has_pagine_column = False
+        try:
+            query_users = sb.table('users')\
+                .select('id, email, nome_ristorante, attivo, created_at, partita_iva, ragione_sociale')\
+                .order('email')\
+                .execute()
+        except Exception as col_err2:
+            if not any(k in str(col_err2) for k in _MISSING_COL):
+                raise col_err2
+            # Manca anche partita_iva (migration 009 non eseguita)
             query_users = sb.table('users')\
                 .select('id, email, nome_ristorante, attivo, created_at')\
                 .order('email')\
                 .execute()
             has_piva_column = False
-        else:
-            raise col_err
 
     if not query_users.data:
-        return [], has_piva_column
+        return [], has_piva_column, has_pagine_column
 
     clienti_non_admin = [u for u in query_users.data if u.get('email') not in admin_emails_set]
     if not clienti_non_admin:
-        return [], has_piva_column
+        return [], has_piva_column, has_pagine_column
 
     user_ids = [u['id'] for u in clienti_non_admin if u.get('id')]
 
@@ -385,7 +399,7 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
                 'debug': stats['debug']
             })
 
-    return stats_clienti, has_piva_column
+    return stats_clienti, has_piva_column, has_pagine_column
 
 
 # ============================================================
@@ -849,10 +863,12 @@ if tab1:
     
     try:
         # 🚀 CACHED: Carica stats clienti (query pesanti cached 60s)
-        stats_clienti, has_piva_column = _carica_stats_clienti_admin(tuple(ADMIN_EMAILS))
+        stats_clienti, has_piva_column, has_pagine_column = _carica_stats_clienti_admin(tuple(ADMIN_EMAILS))
 
         if not has_piva_column:
-            st.warning("⚠️ Esegui migrazione 009 per abilitare P.IVA")
+            st.warning("⚠️ Esegui migrazione 009_add_piva_password.sql su Supabase per abilitare P.IVA")
+        if not has_pagine_column:
+            st.warning("⚠️ Esegui migrazione 038_add_pagine_abilitate.sql su Supabase per abilitare i flag pagine")
 
         if not stats_clienti:
             st.info("📭 Nessun cliente registrato (esclusi admin)")
@@ -1151,7 +1167,11 @@ if tab1:
                                     time.sleep(1)
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Errore: {e}")
+                                    if 'pagine_abilitate' in str(e) or 'PGRST204' in str(e):
+                                        st.error("⚠️ Esegui migrazione 038_add_pagine_abilitate.sql su Supabase per abilitare questa funzionalità")
+                                    else:
+                                        st.error(f"Errore: {e}")
+                                        logger.exception(f"Errore aggiornamento pagine_abilitate per {row.get('email')}")
                             
                             st.markdown("---")
                             
@@ -1763,18 +1783,7 @@ def tab_memoria_globale_unificata():
     user_email = user.get('email', '')
     is_admin = user_email in ADMIN_EMAILS
     
-    if is_admin:
-        st.info("""
-        🔧 **MODALITÀ ADMIN**: Modifiche applicate GLOBALMENTE
-        
-        ℹ️ **Comportamento:**
-        - ✅ Modifica si propaga a TUTTI i clienti futuri
-        - ✅ Tutte le fatture nel database vengono aggiornate
-        - ⚠️ **Le personalizzazioni locali dei clienti hanno priorità**
-        
-        💡 **Per modificare un cliente specifico:** impersonificalo e modifica dalla sua tabella
-        """)
-    else:
+    if not is_admin:
         st.info("👤 **MODALITÀ CLIENTE**: Personalizzazioni solo tue")
     
     # ============================================================
@@ -1932,29 +1941,6 @@ def tab_memoria_globale_unificata():
                 if st.button("❌ ANNULLA", use_container_width=True):
                     st.session_state.show_confirm_delete_memoria = False
                     st.rerun()
-    
-    st.markdown("---")
-    
-    # ============================================================
-    # DEBUG INFO (solo admin)
-    # ============================================================
-    if is_admin:
-        with st.expander("🔧 Debug Info - Ricerca Memoria", expanded=False):
-            st.markdown("### Informazioni per Debugging Ricerca")
-            st.caption("Usa questo per capire perché un articolo non viene trovato")
-            
-            col_d1, col_d2 = st.columns(2)
-            
-            with col_d1:
-                st.metric("Totale in DB", len(df_memoria))
-                st.metric("Dopo Filtri", len(df_filtrato) if 'df_filtrato' in locals() else len(df_memoria))
-            
-            with col_d2:
-                # Mostra sample di descrizioni random nel DB
-                st.markdown("**Sample descrizioni casuali nel DB:**")
-                sample_random = df_memoria['descrizione'].sample(min(5, len(df_memoria))).tolist()
-                for desc in sample_random:
-                    st.code(desc, language=None)
     
     st.markdown("---")
     
@@ -2571,7 +2557,28 @@ def tab_personalizzazioni_clienti():
         if st.button("🔄 Reset", key="reset_filtri_pers"):
             st.session_state.search_personalizzazioni = ""
             st.session_state.filtro_cat_pers = "Tutte"
+            st.session_state.filtro_cliente_pers = "Tutti"
             st.rerun()
+    
+    # Filtro per cliente (mappa user_id → email)
+    user_id_to_email = {}
+    try:
+        resp_utenti = supabase.table('users').select('id, email').execute()
+        user_id_to_email = {u['id']: u['email'] for u in (resp_utenti.data or [])}
+    except Exception:
+        pass
+    
+    df_personalizzazioni['email_cliente'] = df_personalizzazioni['user_id'].map(user_id_to_email).fillna('Sconosciuto')
+    
+    emails_disponibili = sorted(df_personalizzazioni['email_cliente'].unique().tolist())
+    if 'filtro_cliente_pers' not in st.session_state:
+        st.session_state.filtro_cliente_pers = "Tutti"
+    
+    filtro_cliente = st.selectbox(
+        "👤 Filtra per cliente",
+        ["Tutti"] + emails_disponibili,
+        key="filtro_cliente_pers"
+    )
     
     # ============================================================
     # APPLICA FILTRI
@@ -2579,7 +2586,7 @@ def tab_personalizzazioni_clienti():
     df_filtrato = df_personalizzazioni.copy()
     
     # Traccia filtri precedenti per reset pagina
-    filtri_correnti = f"{search_text}_{filtro_cat}"
+    filtri_correnti = f"{search_text}_{filtro_cat}_{filtro_cliente}"
     if 'filtri_pers_prev' not in st.session_state:
         st.session_state.filtri_pers_prev = filtri_correnti
     elif st.session_state.filtri_pers_prev != filtri_correnti:
@@ -2599,6 +2606,9 @@ def tab_personalizzazioni_clienti():
     if filtro_cat != "Tutte":
         cat_clean = estrai_nome_categoria(filtro_cat)
         df_filtrato = df_filtrato[df_filtrato['categoria'] == cat_clean]
+    
+    if filtro_cliente != "Tutti":
+        df_filtrato = df_filtrato[df_filtrato['email_cliente'] == filtro_cliente]
     
     # ORDINA ALFABETICAMENTE per descrizione
     df_filtrato = df_filtrato.sort_values('descrizione').reset_index(drop=True)

@@ -1,6 +1,7 @@
 ﻿import streamlit as st
 import pandas as pd
 import os
+import hmac as _hmac
 
 import io
 import time
@@ -321,7 +322,7 @@ try:
     supabase: Client = get_supabase_client()
 except Exception as e:
     logger.exception("Connessione Supabase fallita")
-    st.error(f"⛔ Errore connessione Supabase: {e}")
+    st.error("⛔ Servizio temporaneamente non disponibile. Riprova tra qualche minuto.")
     st.stop()
 
 
@@ -520,7 +521,7 @@ if st.query_params.get("reset_token"):
                             st.error(messaggio)
     
     except Exception as e:
-        st.error(f"❌ Errore durante verifica token: {e}")
+        st.error("❌ Errore durante la verifica del link. Riprova o contatta il supporto.")
         logger.exception("Errore verifica reset_token")
     
     st.stop()  # Non mostrare resto app
@@ -539,8 +540,8 @@ def verifica_codice_reset(email, code, new_password):
         valid = False
         
         if user:
-            stored_code = user.get('reset_code')
-            if stored_code == code:
+            stored_code = user.get('reset_code') or ''
+            if _hmac.compare_digest(str(stored_code), str(code)):
                 # Verifica scadenza
                 expires_str = user.get('reset_expires')
                 if expires_str:
@@ -557,7 +558,7 @@ def verifica_codice_reset(email, code, new_password):
         if not valid:
             codes = st.session_state.get('reset_codes', {})
             entry = codes.get(email)
-            if entry and entry.get('code') == code:
+            if entry and _hmac.compare_digest(str(entry.get('code', '')), str(code)):
                 valid = True
         
         if not valid:
@@ -587,7 +588,7 @@ def verifica_codice_reset(email, code, new_password):
         
     except Exception as e:
         logger.exception("Errore reset password")
-        return None, str(e)
+        return None, "Errore durante il reset. Riprova."
 
 
 # ============================================================
@@ -1186,7 +1187,7 @@ try:
     api_key = st.secrets["OPENAI_API_KEY"]
 except Exception:
     logger.exception("API Key OpenAI non trovata o accesso a st.secrets fallito")
-    st.error("⛔ ERRORE: API Key non trovata!")
+    st.error("⛔ Configurazione AI non disponibile. Contatta l'amministratore.")
     st.stop()
 
 
@@ -1492,24 +1493,32 @@ def mostra_statistiche(df_completo):
                                 _tracking_keyword_set.add(desc)
                                 st.session_state.righe_keyword_appena_categorizzate.append(desc)
                             
-                            # 💾 Salva in memoria GLOBALE (keyword) - coerente con categorizza_con_memoria()
-                            try:
-                                supabase.table('prodotti_master').upsert({
-                                    'descrizione': desc,
-                                    'categoria': cat_dizionario,
-                                    'confidence': 'media',
-                                    'verified': False,
-                                    'volte_visto': 1,
-                                    'classificato_da': 'keyword',
-                                    'created_at': datetime.now(timezone.utc).isoformat(),
-                                    'ultima_modifica': datetime.now(timezone.utc).isoformat()
-                                }, on_conflict='descrizione').execute()
-                            except Exception as e:
-                                logger.warning(f"Errore salvataggio memoria globale keyword: {e}")
-                            
-                            logger.info(f"📖 DIZIONARIO: '{desc[:40]}' → {cat_dizionario}")
+                            logger.debug(f"📖 DIZIONARIO: '{desc[:40]}' → {cat_dizionario}")
                         else:
                             descrizioni_per_ai.append(desc)
+                    
+                    # 💾 Batch upsert memoria GLOBALE per keyword (singola query)
+                    keyword_upsert_data = [
+                        {
+                            'descrizione': desc,
+                            'categoria': mappa_categorie[desc],
+                            'confidence': 'media',
+                            'verified': False,
+                            'volte_visto': 1,
+                            'classificato_da': 'keyword',
+                            'created_at': datetime.now(timezone.utc).isoformat(),
+                            'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                        }
+                        for desc in _tracking_keyword_set if desc in mappa_categorie
+                    ]
+                    if keyword_upsert_data:
+                        try:
+                            supabase.table('prodotti_master').upsert(
+                                keyword_upsert_data, on_conflict='descrizione'
+                            ).execute()
+                            logger.info(f"💾 BATCH keyword: {len(keyword_upsert_data)} prodotti salvati in memoria globale")
+                        except Exception as e:
+                            logger.warning(f"Errore batch salvataggio memoria keyword: {e}")
                     
                     # 🧠 STEP 2: Invia all'AI solo quelli che dizionario non ha risolto
                     chunk_size = 50
@@ -1519,9 +1528,9 @@ def mostra_statistiche(df_completo):
                         for i in range(0, len(descrizioni_per_ai), chunk_size):
                             chunk = descrizioni_per_ai[i:i+chunk_size]
                             cats = classifica_con_ai(chunk, fornitori_da_classificare)
+                            ai_batch_upsert = []
                             for desc, cat in zip(chunk, cats):
                                 mappa_categorie[desc] = cat
-                                # ✅ Categorizzazione AI → salva in memoria GLOBALE (condivisa tra tutti i clienti)
                                 prodotti_elaborati += 1
                             
                                 # 🧠 Aggiorna banner orizzontale in tempo reale (REPLACE)
@@ -1534,25 +1543,27 @@ def mostra_statistiche(df_completo):
                                 </div>
                                 """, unsafe_allow_html=True)
                                 
-                                # 💾 Salva in memoria GLOBALE (categorizzazione automatica AI)
-                                # CORRETTO: AI/Dizionario/Keyword → memoria GLOBALE condivisa
-                                # ⚠️ NON salvare "Da Classificare" in memoria (non è una classificazione vera)
                                 if cat and cat != "Da Classificare":
-                                    try:
-                                        supabase.table('prodotti_master').upsert({
-                                            'descrizione': desc,
-                                            'categoria': cat,
-                                            'volte_visto': 1,
-                                            'verified': False,  # ⚠️ Da verificare: classificazione automatica AI
-                                            'classificato_da': 'AI'
-                                        }, on_conflict='descrizione').execute()
-                                        
-                                        logger.info(f"💾 MEMORIA GLOBALE (AI): '{desc[:40]}...' → {cat} - disponibile per TUTTI i clienti")
-                                    except Exception as e:
-                                        logger.error(f"Errore salvataggio memoria globale '{desc[:40]}...': {e}")
+                                    ai_batch_upsert.append({
+                                        'descrizione': desc,
+                                        'categoria': cat,
+                                        'volte_visto': 1,
+                                        'verified': False,
+                                        'classificato_da': 'AI'
+                                    })
                             
-                            # Invalida cache per forzare ricaricamento dopo ogni chunk
-                            invalida_cache_memoria()
+                            # 💾 Batch upsert memoria GLOBALE per AI (singola query per chunk)
+                            if ai_batch_upsert:
+                                try:
+                                    supabase.table('prodotti_master').upsert(
+                                        ai_batch_upsert, on_conflict='descrizione'
+                                    ).execute()
+                                    logger.info(f"💾 BATCH AI: {len(ai_batch_upsert)} prodotti salvati in memoria globale")
+                                except Exception as e:
+                                    logger.error(f"Errore batch salvataggio memoria AI: {e}")
+                        
+                        # Invalida cache una sola volta dopo tutti i chunk
+                        invalida_cache_memoria()
 
 
                     # Aggiorna categorie su Supabase
@@ -1793,7 +1804,8 @@ def mostra_statistiche(df_completo):
                         
                     except Exception as e:
                         logger.exception("Errore aggiornamento categorie AI su Supabase")
-                        st.error(f"❌ Errore aggiornamento categorie: {e}")
+                        logger.error(f"Errore aggiornamento categorie: {e}")
+                        st.error("❌ Errore durante l'aggiornamento delle categorie. Riprova.")
     
     # Rimuovi il flag automaticamente quando tutti i file sono stati rimossi (dopo aver cliccato la X)
     if not uploaded_files and st.session_state.get("force_empty_until_upload"):
@@ -2511,13 +2523,10 @@ def mostra_statistiche(df_completo):
         # ✅ Le categorie vengono normalizzate automaticamente al caricamento
         # Migrazione vecchi nomi → nuovi nomi avviene in carica_e_prepara_dataframe()
         
-        # 🚫 RIMUOVI colonna LISTINO dalla visualizzazione
-        if 'PrezzoStandard' in df_editor_paginato.columns:
-            df_editor_paginato = df_editor_paginato.drop(columns=['PrezzoStandard'])
-        elif 'Listino' in df_editor_paginato.columns:
-            df_editor_paginato = df_editor_paginato.drop(columns=['Listino'])
-        elif 'LISTINO' in df_editor_paginato.columns:
-            df_editor_paginato = df_editor_paginato.drop(columns=['LISTINO'])
+        # 🚫 RIMUOVI colonne LISTINO dalla visualizzazione
+        cols_to_drop = [c for c in ['PrezzoStandard', 'Listino', 'LISTINO'] if c in df_editor_paginato.columns]
+        if cols_to_drop:
+            df_editor_paginato = df_editor_paginato.drop(columns=cols_to_drop)
 
         # Configurazione colonne (ordine allineato tra vista normale e aggregata)
         column_config_dict = {
@@ -2757,7 +2766,8 @@ def mostra_statistiche(df_completo):
                     use_container_width=False
                 )
             except Exception as e:
-                st.error(f"Errore: {e}")
+                logger.error(f"Errore esportazione Excel: {e}")
+                st.error("❌ Errore nell'esportazione. Riprova.")
             
             st.markdown('</div>', unsafe_allow_html=True)
 
@@ -2768,6 +2778,7 @@ def mostra_statistiche(df_completo):
                 user_email = st.session_state.user_data.get("email", "unknown")
                 modifiche_effettuate = 0
                 categorie_modificate_count = 0  # Conta prodotti unici modificati (non righe DB)
+                skip_da_classificare_count = 0  # Conta righe "Da Classificare" saltate
                 
                 logger.info(f"💾 INIZIO SALVATAGGIO: user={user_email}, righe_edited={len(edited_df)}, vista_aggregata={vista_aggregata}")
                 st.toast("💾 Salvataggio in corso...", icon="💾")
@@ -2807,7 +2818,8 @@ def mostra_statistiche(df_completo):
                             
                             # ⛔ SKIP se categoria è "Da Classificare" (non salvare categorie placeholder)
                             if nuova_cat == "Da Classificare":
-                                logger.info(f"⏭️ SKIP: Categoria 'Da Classificare' non salvata per {descrizione[:30]}")
+                                logger.debug(f"⏭️ SKIP: Categoria 'Da Classificare' non salvata per {descrizione[:30]}")
+                                skip_da_classificare_count += 1
                                 continue
                             
                             # Recupera categoria originale per tracciare correzione
@@ -2891,11 +2903,7 @@ def mostra_statistiche(df_completo):
                                 
                                 # 🔍 DIAGNOSI: Log dettagliato descrizione per debug
                                 desc_normalized = normalizza_stringa(descrizione)
-                                logger.info(f"🔍 DEBUG UPDATE:")
-                                logger.info(f"   📝 Descrizione raw (edited_df): '{descrizione}'")
-                                logger.info(f"   🔧 Descrizione normalizzata: '{desc_normalized}'")
-                                logger.info(f"   🏷️  Categoria nuova: '{nuova_cat}'")
-                                logger.info(f"   📊 User ID: {user_id}")
+                                logger.debug(f"🔍 DEBUG UPDATE: '{descrizione}' → '{desc_normalized}' → {nuova_cat} (user={user_id})")
                                 
                                 # Aggiorna tutte le righe con stessa descrizione per TUTTI i ristoranti del cliente
                                 query_update_batch = supabase.table("fatture").update(update_data).eq(
@@ -3008,12 +3016,16 @@ def mostra_statistiche(df_completo):
                     st.rerun()
                 elif (ha_file or ha_numero_riga) and ha_categoria and ha_descrizione:
                     # Solo se era davvero l'editor fatture
-                    st.toast("⚠️ Nessuna modifica rilevata.")
+                    if skip_da_classificare_count > 0:
+                        st.toast(f"⚠️ {skip_da_classificare_count} prodotti 'Da Classificare' saltati. Assegna una categoria prima di salvare.")
+                    else:
+                        st.toast("⚠️ Nessuna modifica rilevata.")
 
 
             except Exception as e:
                 logger.exception("Errore durante il salvataggio modifiche categorie")
-                st.error(f"❌ Errore durante il salvataggio: {e}")
+                logger.error(f"Errore durante il salvataggio: {e}")
+                st.error("❌ Errore durante il salvataggio. Riprova.")
     
     # ========================================================
     # SEZIONE 3: CATEGORIE
@@ -3599,23 +3611,29 @@ if not df_cache.empty:
         if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
             st.markdown("### 🗑️ Eliminazione Massiva")
             
-            col_check, col_btn = st.columns([3, 1])
+            conferma_check = st.checkbox(
+                "⚠️ **Confermo di voler eliminare TUTTE le fatture**",
+                key="check_conferma_svuota",
+                help="Questa azione è irreversibile"
+            )
             
-            with col_check:
-                conferma_check = st.checkbox(
-                    "⚠️ **Confermo di voler eliminare TUTTE le fatture**",
-                    key="check_conferma_svuota",
-                    help="Questa azione è irreversibile"
+            conferma_testo = ""
+            if conferma_check:
+                conferma_testo = st.text_input(
+                    "Scrivi **ELIMINA** per confermare:",
+                    key="txt_conferma_elimina",
+                    placeholder="ELIMINA"
                 )
             
-            with col_btn:
-                if st.button(
-                    "🗑️ ELIMINA TUTTO", 
-                    type="primary" if conferma_check else "secondary",
-                    disabled=not conferma_check,
-                    use_container_width=True,
-                    key="btn_svuota_definitivo"
-                ):
+            doppia_conferma = conferma_check and conferma_testo.strip().upper() == "ELIMINA"
+            
+            if st.button(
+                "🗑️ ELIMINA TUTTO", 
+                type="primary" if doppia_conferma else "secondary",
+                disabled=not doppia_conferma,
+                use_container_width=True,
+                key="btn_svuota_definitivo"
+            ):
                     with st.spinner("🗑️ Eliminazione in corso..."):
                         # Progress bar per UX
                         progress = st.progress(0)
@@ -4126,8 +4144,9 @@ if uploaded_files:
                 file_su_supabase_full = set()
                 page = 0
                 page_size = 1000
+                max_pages = 100  # Safety guard: max 100k righe
                 
-                while True:
+                while page < max_pages:
                     try:
                         offset = page * page_size
                         query_files = (
@@ -4166,7 +4185,8 @@ if uploaded_files:
         
     except Exception as e:
         logger.exception(f"Errore caricamento file da DB per user_id={st.session_state.user_data.get('id')}")
-        st.error(f"Errore caricamento file da DB: {e}")
+        logger.error(f"Errore caricamento file da DB: {e}")
+        st.error("❌ Errore nel caricamento dei dati. Riprova.")
         file_su_supabase = set()
 
 
@@ -4661,5 +4681,6 @@ try:
 
 except Exception as e:
     loading_placeholder.empty()
-    st.error(f"❌ Errore durante il caricamento: {e}")
+    logger.error(f"Errore durante il caricamento: {e}")
+    st.error("❌ Errore durante il caricamento del file. Riprova.")
     logger.exception("Errore caricamento dashboard")

@@ -218,12 +218,17 @@ def invalida_cache_memoria():
     """
     Invalida la cache in-memory forzando ricaricamento al prossimo accesso.
     Da chiamare dopo INSERT/UPDATE/DELETE su tabelle memoria.
+    Thread-safe: crea nuovo dict per evitare race condition su letture concorrenti.
     """
     global _memoria_cache
-    _memoria_cache['loaded'] = False
-    _memoria_cache['prodotti_utente'] = {}
-    _memoria_cache['prodotti_master'] = {}
-    _memoria_cache['classificazioni_manuali'] = {}
+    _memoria_cache = {
+        'loaded': False,
+        'prodotti_utente': {},
+        'prodotti_master': {},
+        'classificazioni_manuali': {},
+        'version': (_memoria_cache.get('version', 0) + 1),
+        'timestamp': None
+    }
     logger.info("🔄 Cache memoria invalidata")
 
 

@@ -746,7 +746,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         
     except Exception as e:
         logger.exception(f"Errore Vision: {getattr(file_caricato, 'name', 'sconosciuto')}")
-        st.error(f"❌ Errore Vision su {file_caricato.name}: {str(e)}")
+        st.error(f"❌ Errore nell'elaborazione di {file_caricato.name}. Riprova.")
         return []
 
 
@@ -918,7 +918,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 logger.error(f"Errore logging failed event: {log_error}")
             
             if not silent:
-                st.error(f"❌ Errore salvataggio {nome_file}: {e}")
+                st.error(f"❌ Errore salvataggio {nome_file}. Riprova.")
             
             return {
                 "success": False,

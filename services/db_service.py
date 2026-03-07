@@ -51,11 +51,12 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         # Paginazione per caricare tutte le righe
         page_size = 1000
         page = 0
+        max_pages = 200  # Safety guard: max 200k righe
         
         # 🚀 OTTIMIZZAZIONE: Select solo colonne necessarie (non "*")
         columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id,needs_review,tipo_documento,sconto_percentuale"
         
-        while True:
+        while page < max_pages:
             offset = page * page_size
             query_select = supabase_client.table("fatture").select(columns).eq("user_id", user_id)
             if ristorante_id:
@@ -231,8 +232,9 @@ def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
         all_rows = []
         page = 0
         page_size = 1000
+        max_pages = 200
         
-        while True:
+        while page < max_pages:
             offset = page * page_size
             query = supabase_client.table("fatture") \
                 .select("id, descrizione, quantita, prezzo_unitario, totale_riga") \
@@ -481,8 +483,9 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
         all_rows = []
         page = 0
         page_size = 1000
+        max_pages = 200
         
-        while True:
+        while page < max_pages:
             offset = page * page_size
             query = supabase_client.table('fatture')\
                 .select('id, descrizione, categoria, fornitore, prezzo_unitario, quantita, totale_riga, data_documento, file_origine')\
@@ -885,8 +888,9 @@ def get_fatture_stats(user_id: str, ristorante_id: str = None) -> Dict[str, Any]
         file_unici_set = set()
         page = 0
         page_size = 1000
+        max_pages = 200
         
-        while True:
+        while page < max_pages:
             offset = page * page_size
             query_files = supabase_client.table("fatture") \
                 .select("file_origine") \

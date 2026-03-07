@@ -381,7 +381,7 @@ def imposta_password_da_token(
         
     except Exception as e:
         logger.exception("Errore impostazione password da token")
-        return False, f"❌ Errore: {str(e)}", {}
+        return False, "❌ Errore durante l'impostazione della password. Riprova.", {}
 
 
 def verify_and_migrate_password(user_record: dict, password: str) -> bool:
@@ -416,9 +416,10 @@ def verify_and_migrate_password(user_record: dict, password: str) -> bool:
     try:
         import streamlit as st
         from services import get_supabase_client
+        import hmac as _hmac
         
         sha = hashlib.sha256(password.encode()).hexdigest()
-        if sha == stored:
+        if _hmac.compare_digest(sha, stored):
             # Password corretta - migra ad Argon2
             try:
                 new_hash = ph.hash(password)
