@@ -17,7 +17,6 @@ from datetime import datetime, timezone, timedelta
 import time
 import traceback
 import extra_streamlit_components as stx
-import plotly.express as px
 import requests
 
 # Import corretto da utils (non da app.py per evitare esecuzione interfaccia)
@@ -264,10 +263,10 @@ def _finalize_bucket(bucket: dict) -> dict:
 def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
     """
     Carica e aggrega statistiche per tutti i clienti (non-admin).
-    Cached per 60 secondi per evitare query pesanti ad ogni rerun.
+    Cached per 300 secondi per evitare query pesanti ad ogni rerun.
     
     Returns:
-        tuple: (stats_clienti_list, has_piva_column)
+        tuple: (stats_clienti_list, has_piva_column, has_pagine_column)
     """
     from services import get_supabase_client
     sb = get_supabase_client()
@@ -1063,7 +1062,6 @@ if tab1:
                             if st.button("📧 Invia Email Reset", key=f"reset_{row_key}", type="primary", use_container_width=True):
                                 try:
                                     import uuid
-                                    from datetime import datetime, timedelta
                                     
                                     reset_token = str(uuid.uuid4())
                                     expires_at = datetime.now() + timedelta(hours=1)
@@ -1333,7 +1331,6 @@ if tab1:
                                                     
                                                     try:
                                                         invalida_cache_memoria()
-                                                        st.cache_data.clear()
                                                     except Exception as e:
                                                         logger.warning(f"Errore invalidazione cache: {e}")
                                                     
@@ -1492,7 +1489,9 @@ if tab2:
             return pd.DataFrame()
 
     def _build_review_update_query(payload: dict, descrizione_target: str, cliente_id_target: str = None):
-        query = supabase.table('fatture').update(payload).eq('descrizione', descrizione_target)
+        query = supabase.table('fatture').update(payload)\
+            .eq('descrizione', descrizione_target)\
+            .or_('prezzo_unitario.eq.0,needs_review.eq.true')
         if cliente_id_target:
             query = query.eq('user_id', cliente_id_target)
         return query
@@ -1504,26 +1503,27 @@ if tab2:
         st.stop()
     
     # ============================================================
-    # STATISTICHE
+    # STATISTICHE (CARD STILIZZATE)
     # ============================================================
-    col1, col2, col3 = st.columns(3)
+    cat_sospette = df_zero[~df_zero['categoria'].isin(['NOTE E DICITURE', 'Da Classificare'])]
+    _cliente_label = cliente_selezionato['nome_ristorante'][:20] if filtro_cliente_id else "Tutti"
     
-    with col1:
-        st.metric("Righe Totali €0", len(df_zero))
-    
-    with col2:
-        # Calcola categorie sospette
-        cat_sospette = df_zero[~df_zero['categoria'].isin(['NOTE E DICITURE', 'Da Classificare'])]
-        st.metric("Prodotti Classificati", len(cat_sospette))
-    
-    with col3:
-        # Info cliente selezionato
-        if filtro_cliente_id:
-            st.metric("Cliente", cliente_selezionato['nome_ristorante'][:20])
-        else:
-            st.metric("Cliente", "Tutti")
-    
-    st.markdown("---")
+    st.markdown(f"""
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:14px 16px; text-align:center;">
+            <div style="font-size:0.8rem; color:#e65100; font-weight:600;">📋 Righe Totali €0</div>
+            <div style="font-size:1.6rem; color:#e65100; font-weight:bold;">{len(df_zero)}</div>
+        </div>
+        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:14px 16px; text-align:center;">
+            <div style="font-size:0.8rem; color:#2e7d32; font-weight:600;">✅ Prodotti Classificati</div>
+            <div style="font-size:1.6rem; color:#1b5e20; font-weight:bold;">{len(cat_sospette)}</div>
+        </div>
+        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
+            <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">👤 Cliente</div>
+            <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{_cliente_label}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     # ============================================================
     # FILTRO PER CATEGORIA
@@ -1627,25 +1627,25 @@ if tab2:
     st.markdown("---")
     
     # ============================================================
-    # TABELLA CON 2 AZIONI PER DESCRIZIONE UNICA
+    # TABELLA CON AZIONI INLINE (selectbox + 2 bottoni per riga)
     # ============================================================
     st.markdown("### 📝 Righe da Revisionare (raggruppate)")
     
-    # HEADER
-    col_desc, col_occur, col_cat, col_forn, col_azioni = st.columns([3, 0.7, 1.5, 1.5, 1.5])
+    # Prepara lista categorie (usata per ogni riga)
+    _categorie_fb = sorted(CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI)
+    _categorie_spese = sorted(CATEGORIE_SPESE_OPERATIVE)
+    _categorie_review = ["NOTE E DICITURE"] + _categorie_spese + _categorie_fb
     
+    # HEADER
+    col_desc, col_occur, col_cat_h, col_forn, col_azioni = st.columns([2.5, 0.6, 2.5, 1.5, 1.2])
     with col_desc:
         st.markdown("**Descrizione**")
-    
     with col_occur:
         st.markdown("**N°**")
-    
-    with col_cat:
+    with col_cat_h:
         st.markdown("**Categoria**")
-    
     with col_forn:
         st.markdown("**Fornitore**")
-    
     with col_azioni:
         st.markdown("**Azioni**")
     
@@ -1657,11 +1657,10 @@ if tab2:
         fornitore = row.get('fornitore', 'N/A')
         occorrenze = row['occorrenze']
         
-        col_desc, col_occur, col_cat, col_forn, col_azioni = st.columns([3, 0.7, 1.5, 1.5, 1.5])
+        col_desc, col_occur, col_cat, col_forn, col_azioni = st.columns([2.5, 0.6, 2.5, 1.5, 1.2])
         
         # DESCRIZIONE + Badge review
         with col_desc:
-            # Accesso sicuro a needs_review dalla riga corrente
             needs_review_flag = row.get('needs_review', False) if 'needs_review' in df_pagina.columns else False
             review_badge = "🔍 " if needs_review_flag else ""
             desc_short = descrizione[:45] + "..." if len(descrizione) > 45 else descrizione
@@ -1671,32 +1670,42 @@ if tab2:
         with col_occur:
             st.markdown(f"`{occorrenze}×`")
         
-        # CATEGORIA ATTUALE
+        # SELECTBOX CATEGORIA INLINE
         with col_cat:
-            cat_short = categoria_corrente[:20] if categoria_corrente else "N/A"
-            st.text(cat_short)
+            # Pre-seleziona categoria corrente se presente nella lista
+            _cat_norm = categoria_corrente.replace("📝 ", "") if categoria_corrente else "NOTE E DICITURE"
+            _default_idx = 0
+            for _i, _c in enumerate(_categorie_review):
+                if _c == categoria_corrente or _c == _cat_norm:
+                    _default_idx = _i
+                    break
+            nuova_categoria = st.selectbox(
+                "",
+                _categorie_review,
+                index=_default_idx,
+                key=f"cat_{idx}",
+                label_visibility="collapsed"
+            )
         
         # FORNITORE
         with col_forn:
             forn_short = fornitore[:15] if fornitore else "N/A"
             st.caption(forn_short)
         
-        # AZIONI - Bottoni Ignora e Modifica
+        # AZIONI: ✅ Salva categoria selezionata | 📝 Dicitura (NOTE E DICITURE in 1 click)
         with col_azioni:
             col_a1, col_a2 = st.columns(2)
             
             with col_a1:
-                # Bottone IGNORA
-                if st.button("❌", key=f"ignore_{idx}", help="Ignora definitivamente"):
+                if st.button("✅", key=f"save_{idx}", help="Salva categoria selezionata"):
                     try:
                         result = _build_review_update_query({
-                            'categoria': '📝 NOTE E DICITURE',
+                            'categoria': nuova_categoria,
                             'needs_review': False,
                             'reviewed_at': datetime.now(timezone.utc).isoformat(),
                             'reviewed_by': 'admin'
                         }, descrizione, filtro_cliente_id).execute()
-                        
-                        st.success(f"❌ {len(result.data) if result.data else occorrenze} righe ignorate")
+                        st.success(f"✅ {len(result.data) if result.data else occorrenze} righe → {nuova_categoria}")
                         invalida_cache_memoria()
                         time.sleep(0.5)
                         st.rerun()
@@ -1704,53 +1713,20 @@ if tab2:
                         st.error(f"Errore: {e}")
             
             with col_a2:
-                # Bottone MODIFICA (apre expander)
-                if st.button("✏️", key=f"edit_{idx}", help="Modifica categoria"):
-                    st.session_state[f"editing_{idx}"] = True
-                    st.rerun()
-        
-        # EXPANDER PER MODIFICA CATEGORIA
-        if st.session_state.get(f"editing_{idx}", False):
-            with st.expander(f"🔧 Modifica: {descrizione[:30]}...", expanded=True):
-                # Usa categorie standardizzate da constants.py + NOTE E DICITURE solo qui
-                
-                # Combina e ordina categorie
-                categorie_fb = sorted(CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI)
-                categorie_spese = sorted(CATEGORIE_SPESE_OPERATIVE)
-                
-                # NOTE E DICITURE disponibile SOLO nel tab Review Righe €0
-                categorie_review = ["NOTE E DICITURE"] + categorie_spese + categorie_fb
-                
-                nuova_categoria = st.selectbox(
-                    "Nuova categoria:",
-                    categorie_review,
-                    key=f"newcat_{idx}"
-                )
-                
-                col_confirm, col_cancel = st.columns(2)
-                
-                with col_confirm:
-                    if st.button("✅ Conferma", key=f"confirm_{idx}"):
-                        try:
-                            result = _build_review_update_query({
-                                'categoria': nuova_categoria,
-                                'needs_review': False,
-                                'reviewed_at': datetime.now(timezone.utc).isoformat(),
-                                'reviewed_by': 'admin'
-                            }, descrizione, filtro_cliente_id).execute()
-                            
-                            st.success(f"✅ {len(result.data) if result.data else occorrenze} righe → {nuova_categoria}")
-                            del st.session_state[f"editing_{idx}"]
-                            invalida_cache_memoria()
-                            time.sleep(0.5)
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Errore: {e}")
-                
-                with col_cancel:
-                    if st.button("🚫 Annulla", key=f"cancel_{idx}"):
-                        del st.session_state[f"editing_{idx}"]
+                if st.button("📝", key=f"nota_{idx}", help="Segna come Nota/Dicitura"):
+                    try:
+                        result = _build_review_update_query({
+                            'categoria': '📝 NOTE E DICITURE',
+                            'needs_review': False,
+                            'reviewed_at': datetime.now(timezone.utc).isoformat(),
+                            'reviewed_by': 'admin'
+                        }, descrizione, filtro_cliente_id).execute()
+                        st.success(f"📝 {len(result.data) if result.data else occorrenze} righe → NOTE E DICITURE")
+                        invalida_cache_memoria()
+                        time.sleep(0.5)
                         st.rerun()
+                    except Exception as e:
+                        st.error(f"Errore: {e}")
         
         st.markdown("---")
 
@@ -1865,25 +1841,32 @@ def tab_memoria_globale_unificata():
         """)
     
     # ============================================================
-    # METRICHE
+    # METRICHE (CARD STILIZZATE)
     # ============================================================
-    col1, col2, col3, col4 = st.columns(4)
+    totale_utilizzi = int(df_memoria['volte_visto'].sum())
+    chiamate_risparmiate = totale_utilizzi - len(df_memoria)
+    _non_verificati_html = ""
+    if is_admin and campo_verified_exists:
+        non_verificati = int((~df_memoria['verified']).sum())
+        _non_verificati_html = f'<div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63; border-radius:12px; padding:14px 16px; text-align:center;"><div style="font-size:0.8rem; color:#c2185b; font-weight:600;">⚠️ Da Verificare</div><div style="font-size:1.6rem; color:#880e4f; font-weight:bold;">{non_verificati}</div></div>'
     
-    with col1:
-        st.metric("Prodotti Totali", len(df_memoria))
-    
-    with col2:
-        totale_utilizzi = int(df_memoria['volte_visto'].sum())
-        st.metric("Totale Utilizzi", totale_utilizzi)
-    
-    with col3:
-        chiamate_risparmiate = totale_utilizzi - len(df_memoria)
-        st.metric("Chiamate API Risparmiate", chiamate_risparmiate)
-    
-    with col4:
-        if is_admin and campo_verified_exists:
-            non_verificati = (~df_memoria['verified']).sum()
-            st.metric("⚠️ Da Verificare", non_verificati)
+    st.markdown(f"""
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
+            <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">🧠 Prodotti Totali</div>
+            <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{len(df_memoria):,}</div>
+        </div>
+        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:14px 16px; text-align:center;">
+            <div style="font-size:0.8rem; color:#2e7d32; font-weight:600;">📊 Totale Utilizzi</div>
+            <div style="font-size:1.6rem; color:#1b5e20; font-weight:bold;">{totale_utilizzi:,}</div>
+        </div>
+        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0; border-radius:12px; padding:14px 16px; text-align:center;">
+            <div style="font-size:0.8rem; color:#7b1fa2; font-weight:600;">💡 API Risparmiate</div>
+            <div style="font-size:1.6rem; color:#6a1b9a; font-weight:bold;">{chiamate_risparmiate:,}</div>
+        </div>
+        {_non_verificati_html}
+    </div>
+    """, unsafe_allow_html=True)
     
     # ============================================================
     # AZIONI ADMIN CRITICHE
@@ -1930,7 +1913,7 @@ def tab_memoria_globale_unificata():
                         if count_after == 0:
                             st.success("✅ Memoria globale svuotata con successo!")
                             logger.warning(f"🗑️ Memoria globale svuotata da admin: {user_email}")
-                            st.cache_data.clear()
+                            invalida_cache_memoria()
                             st.session_state.show_confirm_delete_memoria = False
                             time.sleep(1)
                             st.rerun()
@@ -2509,22 +2492,27 @@ def tab_personalizzazioni_clienti():
         return
     
     # ============================================================
-    # METRICHE
+    # METRICHE (CARD STILIZZATE)
     # ============================================================
-    col1, col2, col3 = st.columns(3)
+    _tot_utilizzi_clienti = int(df_personalizzazioni['volte_visto'].sum())
+    _clienti_unici = int(df_personalizzazioni['user_id'].nunique())
     
-    with col1:
-        st.metric("Voci in Memoria", len(df_personalizzazioni))
-    
-    with col2:
-        totale_utilizzi = int(df_personalizzazioni['volte_visto'].sum())
-        st.metric("Totale Utilizzi", totale_utilizzi)
-    
-    with col3:
-        clienti_unici = df_personalizzazioni['user_id'].nunique()
-        st.metric("Clienti Attivi", clienti_unici)
-    
-    st.markdown("---")
+    st.markdown(f"""
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
+            <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">📝 Voci in Memoria</div>
+            <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{len(df_personalizzazioni):,}</div>
+        </div>
+        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:14px 16px; text-align:center;">
+            <div style="font-size:0.8rem; color:#2e7d32; font-weight:600;">📊 Totale Utilizzi</div>
+            <div style="font-size:1.6rem; color:#1b5e20; font-weight:bold;">{_tot_utilizzi_clienti:,}</div>
+        </div>
+        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:14px 16px; text-align:center;">
+            <div style="font-size:0.8rem; color:#e65100; font-weight:600;">👥 Clienti Attivi</div>
+            <div style="font-size:1.6rem; color:#e65100; font-weight:bold;">{_clienti_unici}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     # ============================================================
     # FILTRI
@@ -2840,12 +2828,13 @@ if tab5:
         except Exception:
             return []
 
-    def _fetch_fatture_integrita_paginate(query_base):
+    def _fetch_fatture_integrita_paginate(build_query_fn):
+        """Pagina una query Supabase. build_query_fn() deve restituire un nuovo oggetto query ogni volta."""
         all_rows = []
         page_size = 1000
         offset = 0
         while True:
-            resp = query_base.range(offset, offset + page_size - 1).execute()
+            resp = build_query_fn().range(offset, offset + page_size - 1).execute()
             rows = resp.data if resp.data else []
             if not rows:
                 break
@@ -2960,39 +2949,45 @@ if tab5:
     if st.button("🔍 Verifica Integrità Dati", key="btn_verifica_integrity", type="primary"):
         with st.spinner("Analisi dati in corso..."):
             try:
-                # Costruisci query base
-                query = supabase.table('fatture').select('data_documento, prezzo_unitario, quantita, descrizione, totale_riga, fornitore')
+                # Prepara filtri per query paginata
+                _filtro_rist_ids = None
+                _filtro_user_id = None
+                _filtro_data_limite = None
                 
                 # Filtro per ristorante (basato su email utente)
                 if filtro_email:
-                    # Trova tutti i ristoranti dell'utente selezionato (multi-ristorante)
                     user_resp = supabase.table('users').select('id').eq('email', filtro_email).execute()
                     if user_resp.data:
                         user_id = user_resp.data[0]['id']
                         rist_resp = supabase.table('ristoranti').select('id').eq('user_id', user_id).execute()
                         if rist_resp.data:
-                            ristorante_ids = [r['id'] for r in rist_resp.data if r.get('id')]
-                            if len(ristorante_ids) == 1:
-                                query = query.eq('ristorante_id', ristorante_ids[0])
-                            elif len(ristorante_ids) > 1:
-                                query = query.in_('ristorante_id', ristorante_ids)
+                            _filtro_rist_ids = [r['id'] for r in rist_resp.data if r.get('id')]
                         else:
-                            # Utente senza sedi: fallback su user_id per compatibilità legacy
-                            query = query.eq('user_id', user_id)
+                            _filtro_user_id = user_id
                 
                 # Filtro periodo
                 if filtro_periodo == "Ultimi 30 giorni":
-                    data_limite = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
-                    query = query.gte('data_documento', data_limite)
+                    _filtro_data_limite = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
                 elif filtro_periodo == "Ultimi 90 giorni":
-                    data_limite = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
-                    query = query.gte('data_documento', data_limite)
+                    _filtro_data_limite = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
                 elif filtro_periodo == "Ultimi 180 giorni":
-                    data_limite = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
-                    query = query.gte('data_documento', data_limite)
+                    _filtro_data_limite = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
+                
+                def _build_integrity_query():
+                    q = supabase.table('fatture').select('data_documento, prezzo_unitario, quantita, descrizione, totale_riga, fornitore')
+                    if _filtro_rist_ids:
+                        if len(_filtro_rist_ids) == 1:
+                            q = q.eq('ristorante_id', _filtro_rist_ids[0])
+                        else:
+                            q = q.in_('ristorante_id', _filtro_rist_ids)
+                    elif _filtro_user_id:
+                        q = q.eq('user_id', _filtro_user_id)
+                    if _filtro_data_limite:
+                        q = q.gte('data_documento', _filtro_data_limite)
+                    return q
                 
                 # Esegui query con paginazione (evita limite default 1000)
-                rows = _fetch_fatture_integrita_paginate(query)
+                rows = _fetch_fatture_integrita_paginate(_build_integrity_query)
 
                 if not rows:
                     st.info("📭 Nessuna fattura trovata per il periodo selezionato")
@@ -3124,18 +3119,36 @@ if tab5:
                         st.warning(f"⚠️ Trovati **{totale_problemi} problemi** su {len(df):,} righe analizzate")
                         
                         with st.expander(f"📊 Riepilogo Problemi ({totale_problemi})", expanded=True):
-                            col1, col2, col3 = st.columns(3)
+                            _n_date = len(problemi['date_invalide'])
+                            _n_prezzi = len(problemi['prezzi_anomali'])
+                            _n_qta = len(problemi['quantita_anomale'])
+                            _n_desc = len(problemi['descrizioni_vuote'])
+                            _n_totali = len(problemi['totali_errati'])
                             
-                            with col1:
-                                st.metric("📅 Date Invalide", len(problemi['date_invalide']))
-                                st.metric("💰 Prezzi Anomali", len(problemi['prezzi_anomali']))
-                            
-                            with col2:
-                                st.metric("📦 Quantità Anomale", len(problemi['quantita_anomale']))
-                                st.metric("📝 Descrizioni Vuote", len(problemi['descrizioni_vuote']))
-                            
-                            with col3:
-                                st.metric("🧮 Totali Errati", len(problemi['totali_errati']))
+                            st.markdown(f"""
+                            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+                                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:14px 16px; text-align:center;">
+                                    <div style="font-size:0.8rem; color:#e65100; font-weight:600;">📅 Date Invalide</div>
+                                    <div style="font-size:1.6rem; color:#e65100; font-weight:bold;">{_n_date}</div>
+                                </div>
+                                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63; border-radius:12px; padding:14px 16px; text-align:center;">
+                                    <div style="font-size:0.8rem; color:#c2185b; font-weight:600;">💰 Prezzi Anomali</div>
+                                    <div style="font-size:1.6rem; color:#880e4f; font-weight:bold;">{_n_prezzi}</div>
+                                </div>
+                                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0; border-radius:12px; padding:14px 16px; text-align:center;">
+                                    <div style="font-size:0.8rem; color:#7b1fa2; font-weight:600;">📦 Quantità Anomale</div>
+                                    <div style="font-size:1.6rem; color:#6a1b9a; font-weight:bold;">{_n_qta}</div>
+                                </div>
+                                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
+                                    <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">📝 Descrizioni Vuote</div>
+                                    <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{_n_desc}</div>
+                                </div>
+                                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e0f7fa,#b2ebf2); border:2px solid #00bcd4; border-radius:12px; padding:14px 16px; text-align:center;">
+                                    <div style="font-size:0.8rem; color:#006064; font-weight:600;">🧮 Totali Errati</div>
+                                    <div style="font-size:1.6rem; color:#00838f; font-weight:bold;">{_n_totali}</div>
+                                </div>
+                            </div>
+                            """, unsafe_allow_html=True)
                             
                             st.markdown("---")
                             
@@ -3192,54 +3205,41 @@ if tab6:
                 df_costs['ai_avg_cost_per_operation'] = df_costs.get('ai_avg_cost_per_pdf', 0)
             
             # ============================================================
-            # STATISTICHE GENERALI
+            # STATISTICHE GENERALI (CARD STILIZZATE)
             # ============================================================
             st.markdown("### 📊 Riepilogo Globale")
             
-            col1, col2, col3, col4, col5 = st.columns(5)
+            totale_costi = df_costs['ai_cost_total'].sum()
+            totale_pdf = int(df_costs['ai_pdf_count'].sum())
+            totale_categorization = int(df_costs['ai_categorization_count'].sum())
+            totale_operazioni = totale_pdf + totale_categorization
+            costo_medio = totale_costi / totale_operazioni if totale_operazioni > 0 else 0
+            clienti_attivi = len(df_costs[(df_costs['ai_pdf_count'] > 0) | (df_costs['ai_categorization_count'] > 0)])
             
-            with col1:
-                totale_costi = df_costs['ai_cost_total'].sum()
-                st.metric(
-                    "💰 Totale Costi",
-                    f"${totale_costi:.2f}",
-                    help="Costo totale cumulativo di tutte le chiamate AI"
-                )
-            
-            with col2:
-                totale_pdf = df_costs['ai_pdf_count'].sum()
-                st.metric(
-                    "📄 PDF Processati",
-                    f"{int(totale_pdf):,}",
-                    help="Numero totale di PDF/immagini elaborati con Vision API"
-                )
-            
-            with col3:
-                totale_categorization = df_costs['ai_categorization_count'].sum()
-                st.metric(
-                    "🧠 Categorizzazioni",
-                    f"{int(totale_categorization):,}",
-                    help="Numero totale di categorizzazioni AI effettuate"
-                )
-            
-            with col4:
-                totale_operazioni = totale_pdf + totale_categorization
-                costo_medio = totale_costi / totale_operazioni if totale_operazioni > 0 else 0
-                st.metric(
-                    "📊 Costo Medio",
-                    f"${costo_medio:.4f}",
-                    help="Costo medio per singola operazione AI"
-                )
-            
-            with col5:
-                clienti_attivi = len(df_costs[(df_costs['ai_pdf_count'] > 0) | (df_costs['ai_categorization_count'] > 0)])
-                st.metric(
-                    "👥 Clienti Attivi",
-                    clienti_attivi,
-                    help="Numero di clienti che hanno usato funzioni AI"
-                )
-            
-            st.markdown("---")
+            st.markdown(f"""
+            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#c2185b; font-weight:600;">💰 Totale Costi</div>
+                    <div style="font-size:1.6rem; color:#880e4f; font-weight:bold;">${totale_costi:.2f}</div>
+                </div>
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">📄 PDF Processati</div>
+                    <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{totale_pdf:,}</div>
+                </div>
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#7b1fa2; font-weight:600;">🧠 Categorizzazioni</div>
+                    <div style="font-size:1.6rem; color:#6a1b9a; font-weight:bold;">{totale_categorization:,}</div>
+                </div>
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#e65100; font-weight:600;">📊 Costo Medio</div>
+                    <div style="font-size:1.6rem; color:#e65100; font-weight:bold;">${costo_medio:.4f}</div>
+                </div>
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#2e7d32; font-weight:600;">👥 Clienti Attivi</div>
+                    <div style="font-size:1.6rem; color:#1b5e20; font-weight:bold;">{clienti_attivi}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
             
             # ============================================================
             # TABELLA DETTAGLIO PER CLIENTE

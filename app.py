@@ -65,34 +65,8 @@ from services.db_service import (
 
 
 # ============================================================
-# 🔄 HOT RELOAD AUTOMATICO MODULI (Development Mode)
+# � OH YEAH! - VERSIONE 3.2 FINAL
 # ============================================================
-import importlib
-import sys
-
-# Hot reload automatico per development
-if st.secrets.get("environment", {}).get("mode", "production") != "production":
-    # Lista tutti i moduli in services/
-    services_modules = [
-        'services.db_service',
-        'services.invoice_service',
-        'services.auth_service',
-        'services.ai_service',
-        'utils.text_utils',
-        'utils.validation',
-        'utils.formatters',
-        'config.constants'
-    ]
-    
-    for module_name in services_modules:
-        if module_name in sys.modules:
-            importlib.reload(sys.modules[module_name])
-
-
-# ============================================================
-# 🔍 OH YEAH! - VERSIONE 3.2 FINAL
-# ============================================================
-
 
 
 # ============================================
@@ -282,7 +256,9 @@ st.markdown("""
 # ============================================================
 from supabase import Client
 from datetime import datetime, timedelta, timezone
+import uuid as _uuid
 import logging
+import sys
 
 # Logger con fallback cloud-compatible
 logger = logging.getLogger('fci_app')
@@ -726,8 +702,6 @@ def mostra_pagina_login():
                             # 🍪 Genera e salva session_token nel DB + cookie (30 giorni)
                             if _cookie_manager is not None:
                                 try:
-                                    import uuid as _uuid
-                                    from datetime import datetime, timedelta
                                     _s_token = str(_uuid.uuid4())
                                     supabase.table('users').update({'session_token': _s_token}).eq('id', user.get('id')).execute()
                                     _cookie_manager.set("session_token", _s_token,
@@ -810,8 +784,6 @@ def mostra_pagina_login():
                         st.session_state.force_logout = False
                         if _cookie_manager is not None:
                             try:
-                                import uuid as _uuid
-                                from datetime import datetime, timedelta
                                 _s_token = str(_uuid.uuid4())
                                 supabase.table('users').update({'session_token': _s_token}).eq('id', user.get('id')).execute()
                                 _cookie_manager.set("session_token", _s_token,
@@ -1495,6 +1467,7 @@ def mostra_statistiche(df_completo):
                     
                     # � PRE-STEP: Controlla memoria (admin > locale > globale) PRIMA di keyword/AI
                     # Invalida cache per avere dati aggiornati (altri utenti potrebbero aver categorizzato)
+                    st.cache_data.clear()
                     invalida_cache_memoria()
                     carica_memoria_completa(user_id)
                     
@@ -1630,6 +1603,7 @@ def mostra_statistiche(df_completo):
                                     logger.error(f"Errore batch salvataggio memoria AI: {e}")
                         
                         # Invalida cache una sola volta dopo tutti i chunk
+                        st.cache_data.clear()
                         invalida_cache_memoria()
 
 
@@ -2187,25 +2161,6 @@ def mostra_statistiche(df_completo):
     # CSS per bottoni colorati personalizzati
     st.markdown("""
         <style>
-        /* Stile globale per tutti i pulsanti primary - azzurro invece di rosso */
-        button[kind="primary"] {
-            background-color: #0ea5e9 !important;
-            color: white !important;
-            border: 2px solid #0284c7 !important;
-            font-weight: bold !important;
-        }
-        button[kind="primary"]:hover {
-            background-color: #0284c7 !important;
-            border-color: #0369a1 !important;
-        }
-        button[kind="primary"]:disabled,
-        button[kind="primary"][disabled] {
-            background-color: #0ea5e9 !important;
-            color: white !important;
-            border: 2px solid #0284c7 !important;
-            opacity: 0.5 !important;
-        }
-        
         div[data-testid="column"] button[kind="secondary"] {
             background-color: #f0f2f6 !important;
             color: #31333F !important;
@@ -2214,12 +2169,6 @@ def mostra_statistiche(df_completo):
         div[data-testid="column"] button[kind="secondary"]:hover {
             background-color: #e0e5eb !important;
             border-color: #0ea5e9 !important;
-        }
-        div[data-testid="column"] button[kind="primary"] {
-            background-color: #0ea5e9 !important;
-            color: white !important;
-            border: 2px solid #0284c7 !important;
-            font-weight: bold !important;
         }
         /* Responsive button text */
         div[data-testid="column"] button p {
@@ -3229,23 +3178,6 @@ def mostra_statistiche(df_completo):
                     with col_right:
                         st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
                         
-                        st.markdown("""
-                            <style>
-                            [data-testid="stDownloadButton"] button {
-                                background-color: #28a745 !important;
-                                color: white !important;
-                                font-weight: 600 !important;
-                                border-radius: 6px !important;
-                                border: none !important;
-                                outline: none !important;
-                                box-shadow: none !important;
-                            }
-                            [data-testid="stDownloadButton"] button:hover {
-                                background-color: #218838 !important;
-                            }
-                            </style>
-                        """, unsafe_allow_html=True)
-                        
                         excel_buffer_cat = io.BytesIO()
                         with pd.ExcelWriter(excel_buffer_cat, engine='openpyxl') as writer:
                             pivot_cat.reset_index().to_excel(writer, index=False, sheet_name='Categorie')
@@ -3399,23 +3331,6 @@ def mostra_statistiche(df_completo):
                     
                     with col_right:
                         st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
-                        
-                        st.markdown("""
-                            <style>
-                            [data-testid="stDownloadButton"] button {
-                                background-color: #28a745 !important;
-                                color: white !important;
-                                font-weight: 600 !important;
-                                border-radius: 6px !important;
-                                border: none !important;
-                                outline: none !important;
-                                box-shadow: none !important;
-                            }
-                            [data-testid="stDownloadButton"] button:hover {
-                                background-color: #218838 !important;
-                            }
-                            </style>
-                        """, unsafe_allow_html=True)
                         
                         excel_buffer_forn = io.BytesIO()
                         with pd.ExcelWriter(excel_buffer_forn, engine='openpyxl') as writer:
@@ -3766,6 +3681,7 @@ if not df_cache.empty:
                             st.session_state.hide_uploader = True
                             st.session_state.files_processati_sessione = set()
                             st.cache_data.clear()
+                            invalida_cache_memoria()
                             st.success("✅ Eliminato tutto!")
                             st.rerun()
                         else:
@@ -4698,6 +4614,7 @@ if uploaded_files:
                 else:
                     st.success(f"✅ {file_processati} fatture caricate con successo!")
                 st.cache_data.clear()
+                invalida_cache_memoria()
                 
                 # Reset icone AI: nuove fatture = nuova sessione
                 if 'righe_ai_appena_categorizzate' in st.session_state:
