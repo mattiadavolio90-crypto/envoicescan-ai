@@ -55,6 +55,13 @@ st.set_page_config(
 # Ottieni client Supabase singleton
 supabase = get_supabase_client()
 
+# CookieManager sempre attivo (usato sia per sessione che per cookie impersonazione)
+try:
+    _cookie_manager_admin = stx.CookieManager(key="cookie_manager_admin")
+except Exception as _ce_adm:
+    _cookie_manager_admin = None
+    logger.warning(f"CookieManager non disponibile in admin: {_ce_adm}")
+
 # ============================================================
 # RIPRISTINO SESSIONE DA COOKIE (session_token, come in app.py)
 # ============================================================
@@ -64,9 +71,8 @@ try:
         st.session_state.logged_in = False
     
     # Ripristina sessione da token cookie se non loggato
-    if not st.session_state.logged_in:
-        cookie_manager = stx.CookieManager(key="cookie_manager_admin")
-        _token_admin = cookie_manager.get("session_token")
+    if not st.session_state.logged_in and _cookie_manager_admin is not None:
+        _token_admin = _cookie_manager_admin.get("session_token")
         
         if _token_admin:
             try:
@@ -117,6 +123,13 @@ if user.get('email') not in ADMIN_EMAILS:
         if 'admin_original_user' in st.session_state:
             del st.session_state.admin_original_user
         user = st.session_state.get('user_data', {})
+        # Pulisci cookie impersonazione
+        if _cookie_manager_admin is not None:
+            try:
+                _cookie_manager_admin.set("impersonation_user_id", "",
+                                          expires_at=datetime(1970, 1, 1, tzinfo=timezone.utc))
+            except Exception:
+                pass
         logger.info(f"🔙 Ripristino automatico admin da impersonazione: {user.get('email')}")
         st.info("🔙 Sessione admin ripristinata")
     else:
@@ -247,7 +260,7 @@ def _finalize_bucket(bucket: dict) -> dict:
     }
 
 
-@st.cache_data(ttl=60, show_spinner="⏳ Caricamento statistiche clienti...")
+@st.cache_data(ttl=300, show_spinner="⏳ Caricamento statistiche clienti...")
 def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
     """
     Carica e aggrega statistiche per tutti i clienti (non-admin).
@@ -326,9 +339,9 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
 
         while True:
             fatture_resp = sb.table('fatture')\
-                .select('id, user_id, ristorante_id, file_origine, created_at, data_documento, totale_riga, categoria, needs_review')\
+                .select('user_id, ristorante_id, file_origine, created_at, data_documento, totale_riga, categoria, needs_review')\
                 .in_('user_id', chunk_ids)\
-                .order('id', desc=False)\
+                .order('created_at', desc=False)\
                 .range(offset, offset + page_size - 1)\
                 .execute()
 
@@ -667,8 +680,6 @@ if tab1:
                     st.error(f"❌ Errore creazione cliente: {e}")
                     logger.exception(f"Errore creazione cliente {new_email}")
     
-    st.markdown("---")
-    
     # ════════════════════════════════════════════════════════════════════════════
     # SEZIONE: GESTIONE MULTI-RISTORANTE
     # ════════════════════════════════════════════════════════════════════════════
@@ -859,10 +870,8 @@ if tab1:
             st.error(f"❌ Errore gestione multi-ristorante: {e}")
             logger.exception("Errore sezione multi-ristorante")
     
-    st.markdown("---")
-    
     try:
-        # 🚀 CACHED: Carica stats clienti (query pesanti cached 60s)
+        # 🚀 CACHED: Carica stats clienti (query pesanti cached 300s)
         stats_clienti, has_piva_column, has_pagine_column = _carica_stats_clienti_admin(tuple(ADMIN_EMAILS))
 
         if not has_piva_column:
@@ -879,102 +888,88 @@ if tab1:
                 st.info("📭 Nessun dato cliente disponibile")
                 st.stop()
             
-            # ===== METRICHE GENERALI =====
-            col1, col2, col2b, col3, col4, col5 = st.columns(6)
-            with col1:
-                st.metric("Totale Clienti", int(df_clienti['user_id'].nunique()))
-            with col2:
-                clienti_attivi = int(df_clienti[df_clienti['attivo'] == True]['user_id'].nunique())
-                st.metric("Clienti Attivi", clienti_attivi)
-            with col2b:
-                # 🏢 Totale sedi/ristoranti configurati (esclude righe senza ristorante)
-                totale_ristoranti = int(df_clienti[df_clienti['ristorante_id'].notna()]['ristorante_id'].nunique())
-                st.metric("Totale Ristoranti", totale_ristoranti)
-            with col3:
-                totale_fatture = int(df_clienti['num_fatture'].sum())
-                st.metric("Totale Fatture", totale_fatture)
-            with col4:
-                totale_righe = int(df_clienti['num_righe'].sum())
-                st.metric("Totale Righe", totale_righe)
-            with col5:
-                totale_costi_globale = df_clienti['totale_costi'].sum()
-                st.metric("Totale Costi", f"€{totale_costi_globale:,.2f}")
+            # ===== METRICHE GENERALI (CARD STILIZZATE) =====
+            _n_clienti = int(df_clienti['user_id'].nunique())
+            _n_attivi = int(df_clienti[df_clienti['attivo'] == True]['user_id'].nunique())
+            _n_ristoranti = int(df_clienti[df_clienti['ristorante_id'].notna()]['ristorante_id'].nunique())
+            _n_fatture = int(df_clienti['num_fatture'].sum())
+            _n_righe = int(df_clienti['num_righe'].sum())
+            _tot_costi = df_clienti['totale_costi'].sum()
             
-            st.markdown("---")
+            st.markdown(f"""
+            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">👥 Clienti</div>
+                    <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{_n_clienti}</div>
+                </div>
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#2e7d32; font-weight:600;">✅ Attivi</div>
+                    <div style="font-size:1.6rem; color:#1b5e20; font-weight:bold;">{_n_attivi}</div>
+                </div>
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#7b1fa2; font-weight:600;">🏢 Sedi</div>
+                    <div style="font-size:1.6rem; color:#6a1b9a; font-weight:bold;">{_n_ristoranti}</div>
+                </div>
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#e65100; font-weight:600;">📄 Fatture</div>
+                    <div style="font-size:1.6rem; color:#e65100; font-weight:bold;">{_n_fatture:,}</div>
+                </div>
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e0f7fa,#b2ebf2); border:2px solid #00bcd4; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#006064; font-weight:600;">📊 Righe</div>
+                    <div style="font-size:1.6rem; color:#00838f; font-weight:bold;">{_n_righe:,}</div>
+                </div>
+                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63; border-radius:12px; padding:14px 16px; text-align:center;">
+                    <div style="font-size:0.8rem; color:#c2185b; font-weight:600;">💰 Costi</div>
+                    <div style="font-size:1.6rem; color:#880e4f; font-weight:bold;">€{_tot_costi:,.0f}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
             
             # Ordina alfabeticamente per email
             df_clienti_sorted = df_clienti.sort_values('email', ascending=True)
             
-            # ===== TABELLA CLIENTI CON IMPERSONAZIONE =====
-            # Layout dinamico: con/senza colonna P.IVA in base a migrazione
+            # ===== LISTA CLIENTI CON EXPANDER =====
             for idx, row in df_clienti_sorted.iterrows():
-                if has_piva_column:
-                    col1, col2, col_piva, col3, col4, col5, col6, col7 = st.columns([2.5, 1.8, 1.5, 0.8, 0.8, 1.3, 1.2, 1])
+                row_key = f"{row['user_id']}_{row.get('ristorante_id', idx)}"
+                status_icon = "🟢" if row['attivo'] else "🔴"
+                
+                # Calcola label attività
+                _ultimo = row.get('ultimo_caricamento')
+                if pd.notna(_ultimo):
+                    _giorni = (pd.Timestamp.now(tz=timezone.utc) - _ultimo).days
+                    if _giorni == 0:
+                        _att_label = "🟢 Oggi"
+                    elif _giorni < 7:
+                        _att_label = f"🟢 {_giorni}g fa"
+                    elif _giorni < 30:
+                        _att_label = f"🟡 {_giorni}g fa"
+                    else:
+                        _att_label = f"🔴 {_giorni}g fa"
                 else:
-                    col1, col2, col3, col4, col5, col6, col7 = st.columns([2.5, 2, 1, 1, 1.5, 1.5, 1])
-                    col_piva = None
+                    _att_label = "⚪ Mai"
                 
-                with col1:
-                    status_icon = "🟢" if row['attivo'] else "🔴"
-                    st.markdown(f"{status_icon} **{row['email']}**")
+                _exp_label = f"{status_icon} **{row['ristorante']}** — {row['email']}"
                 
-                with col2:
-                    st.text(row['ristorante'])
-                
-                if col_piva:
-                    with col_piva:
-                        # P.IVA con badge
-                        piva = row.get('partita_iva')
-                        if piva:
-                            st.caption(f"🏢 {piva}")
-                        else:
-                            st.caption("⚠️ P.IVA mancante")
-                
-                with col3:
-                    st.caption(f"📄 {row['num_fatture']}")
-                
-                with col4:
-                    st.caption(f"📊 {row['num_righe']}")
-                
-                with col5:
-                    # Mostra totale costi complessivi formattato
-                    costi_totali = row.get('totale_costi', 0)
-                    if costi_totali > 0:
-                        st.caption(f"💰 €{costi_totali:,.2f}")
-                    else:
-                        st.caption("💰 €0,00")
-                
-                with col6:
-                    if pd.notna(row['ultimo_caricamento']):
-                        now_aware = pd.Timestamp.now(tz=timezone.utc)
-                        giorni_fa = (now_aware - row['ultimo_caricamento']).days
-                        
-                        if giorni_fa == 0:
-                            st.caption("🟢 Oggi")
-                        elif giorni_fa < 7:
-                            st.caption(f"🟢 {giorni_fa}g fa")
-                        elif giorni_fa < 30:
-                            st.caption(f"🟡 {giorni_fa}g fa")
-                        else:
-                            st.caption(f"🔴 {giorni_fa}g fa")
-                    else:
-                        st.caption("⚪ Mai")
-                
-                with col7:
-                    # ===== BOTTONI AZIONI =====
-                    col_entra, col_menu = st.columns([1, 0.3])
+                with st.expander(_exp_label, expanded=False):
+                    # Box blu con statistiche (stile app principale)
+                    _costi_fmt = f"€{row.get('totale_costi', 0):,.2f}"
+                    _piva_str = row.get('partita_iva', '') or '—'
+                    st.markdown(f"""
+                    <div style="background-color:#E3F2FD; padding:12px 18px; border-radius:8px; border:2px solid #2196F3; margin-bottom:12px;">
+                        <p style="color:#1565C0; font-size:0.95rem; font-weight:bold; margin:0; line-height:1.5;">
+                            📄 Fatture: {row['num_fatture']}  &nbsp;|&nbsp;  📊 Righe: {row['num_righe']}  &nbsp;|&nbsp;  💰 {_costi_fmt}  &nbsp;|&nbsp;  🕐 {_att_label}  &nbsp;|&nbsp;  🏢 P.IVA: {_piva_str}
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
                     
-                    # Chiave unica: combina user_id + ristorante_id (o idx per righe senza ristorante)
-                    row_key = f"{row['user_id']}_{row.get('ristorante_id', idx)}"
+                    # Riga bottoni
+                    col_entra, col_menu, col_spacer = st.columns([1.5, 1.5, 5])
                     
                     with col_entra:
-                        # Bottone impersonazione
-                        if st.button("👁️ Entra", key=f"impersona_{row_key}", type="secondary", use_container_width=True):
-                            # Salva admin originale
+                        if st.button("👁️ Entra come cliente", key=f"impersona_{row_key}", type="primary", use_container_width=True):
                             st.session_state.admin_original_user = st.session_state.user_data.copy()
                             st.session_state.impersonating = True
                             
-                            # Imposta dati cliente
                             cliente_data = {
                                 'id': row['user_id'],
                                 'email': row['email'],
@@ -983,7 +978,6 @@ if tab1:
                             }
                             st.session_state.user_data = cliente_data
                             
-                            # 🏢 CARICA RISTORANTI DELL'UTENTE IMPERSONATO
                             try:
                                 ristoranti_cliente = supabase.table('ristoranti')\
                                     .select('id, nome_ristorante, partita_iva, ragione_sociale')\
@@ -993,7 +987,6 @@ if tab1:
                                 
                                 if ristoranti_cliente.data and len(ristoranti_cliente.data) > 0:
                                     st.session_state.ristoranti = ristoranti_cliente.data
-                                    # Imposta come default la sede selezionata dall'admin (se presente), altrimenti la prima
                                     rist_selezionato = None
                                     row_ristorante_id = row.get('ristorante_id')
                                     if row_ristorante_id:
@@ -1006,7 +999,6 @@ if tab1:
                                     st.session_state.nome_ristorante = rist_selezionato['nome_ristorante']
                                     logger.info(f"🏢 Impersonazione: Caricato ristorante {rist_selezionato['nome_ristorante']} (ID: {rist_selezionato['id']})")
                                 else:
-                                    # Fallback: usa dati dalla tabella users (utenti legacy senza ristoranti)
                                     st.session_state.ristoranti = []
                                     st.session_state.ristorante_id = None
                                     st.session_state.partita_iva = row.get('partita_iva')
@@ -1017,20 +1009,16 @@ if tab1:
                                 st.session_state.ristoranti = []
                                 st.session_state.ristorante_id = None
                             
-                            # Disabilita flag admin per cliente impersonato
                             st.session_state.user_is_admin = False
+                            st.session_state._set_impersonation_cookie = str(row['user_id'])
                             
-                            # Log
                             logger.info(f"🔀 IMPERSONAZIONE: admin={st.session_state.admin_original_user['email']} → cliente={row['email']}")
-                            
-                            # Redirect
                             st.success(f"✅ Accesso come: {row['email']}")
                             time.sleep(0.8)
                             st.switch_page("app.py")
-                
-                with col_menu:
-                        # Menu azioni aggiuntive
-                        with st.popover("⚙️", use_container_width=True):
+                    
+                    with col_menu:
+                        with st.popover("⚙️ Azioni", use_container_width=True):
                             st.markdown("**Azioni Cliente**")
                             
                             # AZIONE 1: Attiva/Disattiva
@@ -1077,11 +1065,9 @@ if tab1:
                                     import uuid
                                     from datetime import datetime, timedelta
                                     
-                                    # Genera token reset (1 ora validità)
                                     reset_token = str(uuid.uuid4())
                                     expires_at = datetime.now() + timedelta(hours=1)
                                     
-                                    # Salva token nel database
                                     supabase.table('users')\
                                         .update({
                                             'reset_code': reset_token,
@@ -1090,10 +1076,8 @@ if tab1:
                                         .eq('id', row['user_id'])\
                                         .execute()
                                     
-                                    # Invia email con link reset
                                     from services.email_service import invia_email
                                     
-                                    # Costruisci URL reset
                                     base_url = st.secrets.get("app", {}).get("url", "https://envoicescan-ai.streamlit.app")
                                     reset_url = f"{base_url}/?reset_token={reset_token}"
                                     
@@ -1126,7 +1110,6 @@ if tab1:
                                     time.sleep(1.5)
                                     st.rerun()
                                 except Exception as e:
-                                    # Fallback se colonne reset_code non esistono
                                     if '42703' in str(e) or 'does not exist' in str(e):
                                         st.error("⚠️ Esegui migrazione 001 per abilitare reset password via email")
                                     else:
@@ -1152,10 +1135,13 @@ if tab1:
                                 key=f"page_ws_{row_key}"
                             )
                             
-                            # Salva se cambiato
                             if new_marginalita != pagine.get('marginalita', True) or new_workspace != pagine.get('workspace', True):
                                 try:
-                                    new_pagine = {'marginalita': new_marginalita, 'workspace': new_workspace}
+                                    new_pagine = {
+                                        'marginalita': new_marginalita,
+                                        'workspace': new_workspace,
+                                        'blocco_anno_precedente': pagine.get('blocco_anno_precedente', True)
+                                    }
                                     supabase.table('users')\
                                         .update({'pagine_abilitate': new_pagine})\
                                         .eq('id', row['user_id'])\
@@ -1175,17 +1161,51 @@ if tab1:
                             
                             st.markdown("---")
                             
+                            # AZIONE 2c: Blocco Fatture Anno Precedente
+                            st.markdown("**📅 Restrizione Periodo Fatture**")
+                            anno_corrente = datetime.now().year
+                            st.caption(f"Se attivo, il cliente può caricare solo fatture dal 1 Gennaio {anno_corrente}")
+                            
+                            blocco_attivo = pagine.get('blocco_anno_precedente', True)
+                            new_blocco = st.checkbox(
+                                f"🔒 Blocca fatture precedenti al {anno_corrente}",
+                                value=blocco_attivo,
+                                key=f"blocco_anno_{row_key}"
+                            )
+                            
+                            if new_blocco != blocco_attivo:
+                                try:
+                                    updated_pagine = {
+                                        'marginalita': pagine.get('marginalita', True),
+                                        'workspace': pagine.get('workspace', True),
+                                        'blocco_anno_precedente': new_blocco
+                                    }
+                                    supabase.table('users')\
+                                        .update({'pagine_abilitate': updated_pagine})\
+                                        .eq('id', row['user_id'])\
+                                        .execute()
+                                    
+                                    stato = "ATTIVATO" if new_blocco else "DISATTIVATO"
+                                    logger.info(f"📅 Blocco anno precedente {stato} per {row['email']}")
+                                    st.success(f"✅ Blocco fatture anno precedente {stato.lower()}")
+                                    _carica_stats_clienti_admin.clear()
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Errore: {e}")
+                                    logger.exception(f"Errore aggiornamento blocco_anno per {row.get('email')}")
+                            
+                            st.markdown("---")
+                            
                             # AZIONE 3: Elimina Account Completo (2 click)
                             st.markdown("**⚠️ Zona Pericolosa**")
                             
                             if st.button("🗑️ Elimina Account", key=f"elimina_btn_{row_key}", type="secondary", use_container_width=True):
                                 st.session_state[f"show_delete_dialog_{row_key}"] = True
                             
-                            # Dialog conferma (solo se attivato)
                             if st.session_state.get(f"show_delete_dialog_{row_key}", False):
                                 @st.dialog("⚠️ Conferma Eliminazione Account")
                                 def show_delete_confirmation():
-                                    # CONTROLLO SICUREZZA: Impedisci eliminazione dell'admin
                                     admin_email = st.session_state.user_data.get('email')
                                     if row['email'] == admin_email or row['email'] in ADMIN_EMAILS:
                                         st.error("🚫 **ERRORE**: Non puoi eliminare il tuo account admin o altri account admin!")
@@ -1209,7 +1229,6 @@ if tab1:
                                         f"⚠️ **Questa azione è IRREVERSIBILE**"
                                     )
                                     
-                                    # Checkbox opzionale per eliminare memoria globale
                                     st.markdown("---")
                                     elimina_memoria = st.checkbox(
                                         "🗑️ Elimina anche contributi alla memoria globale",
@@ -1237,7 +1256,6 @@ if tab1:
                                                     user_id_to_delete = row['user_id']
                                                     email_deleted = row['email']
                                                     
-                                                    # Contatori eliminazioni
                                                     deleted = {
                                                         'fatture': 0,
                                                         'prodotti': 0,
@@ -1245,7 +1263,6 @@ if tab1:
                                                         'memoria_globale': 0
                                                     }
                                                     
-                                                    # 1. Elimina fatture
                                                     try:
                                                         result_fatture = supabase.table('fatture')\
                                                             .delete()\
@@ -1255,7 +1272,6 @@ if tab1:
                                                     except Exception as e:
                                                         logger.warning(f"Errore eliminazione fatture: {e}")
                                                     
-                                                    # 2. Elimina prodotti_utente (dati locali)
                                                     try:
                                                         result_prodotti = supabase.table('prodotti_utente')\
                                                             .delete()\
@@ -1265,7 +1281,6 @@ if tab1:
                                                     except Exception as e:
                                                         logger.warning(f"Errore eliminazione prodotti: {e}")
                                                     
-                                                    # 3. Elimina upload_events
                                                     try:
                                                         result_events = supabase.table('upload_events')\
                                                             .delete()\
@@ -1275,7 +1290,6 @@ if tab1:
                                                     except Exception as e:
                                                         logger.warning(f"Errore eliminazione upload_events: {e}")
                                                     
-                                                    # 3b. Elimina dati correlati (GDPR Art.17 - completezza)
                                                     tables_extra = [
                                                         ('classificazioni_manuali', 'user_id'),
                                                         ('ricette', 'userid'),
@@ -1290,7 +1304,6 @@ if tab1:
                                                         except Exception as e:
                                                             logger.warning(f"Errore pulizia {table_name}: {e}")
                                                     
-                                                    # 4. Eliminazione CONDIZIONALE memoria globale
                                                     if elimina_memoria:
                                                         try:
                                                             result_master = supabase.table('prodotti_master')\
@@ -1302,12 +1315,9 @@ if tab1:
                                                         except Exception as e:
                                                             logger.warning(f"Errore eliminazione memoria globale: {e}")
                                                     
-                                                    # 5. Elimina utente (con doppia verifica sicurezza)
-                                                    # Verifica che user_id non sia None/vuoto
                                                     if not user_id_to_delete:
                                                         raise ValueError("user_id_to_delete è vuoto!")
                                                     
-                                                    # Verifica che non sia l'admin
                                                     if email_deleted in ADMIN_EMAILS:
                                                         raise ValueError(f"Tentativo di eliminare admin: {email_deleted}")
                                                     
@@ -1318,18 +1328,15 @@ if tab1:
                                                         .eq('id', user_id_to_delete)\
                                                         .execute()
                                                     
-                                                    # Verifica che l'eliminazione abbia funzionato
                                                     if not result_user.data:
                                                         logger.error(f"⚠️ Eliminazione utente fallita per ID: {user_id_to_delete}")
                                                     
-                                                    # 6. Invalida cache
                                                     try:
                                                         invalida_cache_memoria()
                                                         st.cache_data.clear()
                                                     except Exception as e:
                                                         logger.warning(f"Errore invalidazione cache: {e}")
                                                     
-                                                    # Log operazione
                                                     memoria_status = f"ELIMINATA ({deleted['memoria_globale']} record)" if elimina_memoria else "PRESERVATA"
                                                     logger.warning(
                                                         f"🗑️ ELIMINAZIONE ACCOUNT | "
@@ -1343,7 +1350,6 @@ if tab1:
                                                     
                                                     st.success(f"✅ Account {email_deleted} eliminato")
                                                     
-                                                    # Messaggio riepilogo con stato memoria
                                                     info_msg = (
                                                         f"📊 **Dati eliminati:**\n"
                                                         f"- Fatture: {deleted['fatture']}\n"
@@ -1358,7 +1364,6 @@ if tab1:
                                                     
                                                     st.info(info_msg)
                                                     
-                                                    # Reset dialog
                                                     st.session_state[f"show_delete_dialog_{row_key}"] = False
                                                     _carica_stats_clienti_admin.clear()
                                                     time.sleep(2)
@@ -1369,8 +1374,6 @@ if tab1:
                                                 logger.exception(f"Errore critico eliminazione {row['email']}")
                                 
                                 show_delete_confirmation()
-                
-                st.markdown("---")
     
     except Exception as e:
         st.error(f"❌ Errore caricamento clienti: {e}")

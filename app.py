@@ -341,6 +341,22 @@ except Exception as _ce:
     logger.warning(f"CookieManager non disponibile: {_ce}")
 
 # ============================================
+# IMPOSTA COOKIE IMPERSONAZIONE (richiesto da admin.py via session_state)
+# ============================================
+# admin.py imposta _set_impersonation_cookie prima di switch_page("app.py").
+# Qui lo leggiamo e scriviamo il cookie browser, così sopravvive al F5.
+if st.session_state.get('_set_impersonation_cookie') and _cookie_manager is not None:
+    try:
+        _cookie_manager.set(
+            "impersonation_user_id",
+            str(st.session_state['_set_impersonation_cookie']),
+            expires_at=datetime.now() + timedelta(hours=12)
+        )
+    except Exception as _ice:
+        logger.warning(f"Errore impostazione cookie impersonazione: {_ice}")
+    del st.session_state['_set_impersonation_cookie']
+
+# ============================================
 # GESTIONE LOGOUT FORZATO VIA QUERY PARAMS
 # ============================================
 if st.query_params.get("logout") == "1":
@@ -864,6 +880,43 @@ else:
 
 
 # ============================================
+# RIPRISTINO IMPERSONAZIONE DA COOKIE (dopo F5/refresh)
+# ============================================
+# Se l'admin è loggato ma non sta impersonando, controlla se c'era
+# un'impersonazione attiva prima del refresh e ripristinala.
+if (st.session_state.get('user_is_admin', False)
+        and not st.session_state.get('impersonating', False)
+        and _cookie_manager is not None):
+    try:
+        _imp_uid_cookie = _cookie_manager.get("impersonation_user_id")
+        if _imp_uid_cookie:
+            _imp_resp = supabase.table("users").select("*")\
+                .eq("id", _imp_uid_cookie).eq("attivo", True).execute()
+            if _imp_resp and _imp_resp.data:
+                _imp_customer = _imp_resp.data[0]
+                # Salva dati admin originali e passa a quelli del cliente
+                st.session_state.admin_original_user = st.session_state.user_data.copy()
+                st.session_state.user_data = {
+                    'id': _imp_customer['id'],
+                    'email': _imp_customer['email'],
+                    'nome_ristorante': _imp_customer.get('nome_ristorante'),
+                    'attivo': _imp_customer.get('attivo', True)
+                }
+                st.session_state.user_is_admin = False
+                st.session_state.impersonating = True
+                # Aggiorna variabile locale user per il resto della pagina
+                user = st.session_state.user_data
+                logger.info(f"✅ Impersonazione ripristinata da cookie dopo refresh: {_imp_customer['email']}")
+            else:
+                # Cliente non trovato (disattivato o cancellato) → pulisci il cookie
+                _cookie_manager.set("impersonation_user_id", "",
+                                    expires_at=datetime(1970, 1, 1, tzinfo=timezone.utc))
+                logger.warning(f"⚠️ Cliente impersonato non trovato (id={_imp_uid_cookie}) - cookie rimosso")
+    except Exception as _imp_e:
+        logger.warning(f"Errore ripristino impersonazione da cookie: {_imp_e}")
+
+
+# ============================================
 # CARICAMENTO RISTORANTI (MULTI-RISTORANTE STEP 2)
 # ============================================
 # Carica ristoranti dell'utente (oppure TUTTI i ristoranti se admin)
@@ -1059,11 +1112,25 @@ if st.session_state.get('impersonating', False):
                 # Log uscita impersonazione
                 logger.info(f"FINE IMPERSONAZIONE: Ritorno a admin {st.session_state.user_data.get('email')}")
                 
+                # Rimuovi cookie impersonazione (non deve più sopravvivere al refresh)
+                if _cookie_manager is not None:
+                    try:
+                        _cookie_manager.set("impersonation_user_id", "",
+                                            expires_at=datetime(1970, 1, 1, tzinfo=timezone.utc))
+                    except Exception:
+                        pass
+                
                 # Redirect al pannello admin
                 st.switch_page("pages/admin.py")
             else:
                 st.error("⚠️ Errore: dati admin originali non trovati")
                 st.session_state.impersonating = False
+                if _cookie_manager is not None:
+                    try:
+                        _cookie_manager.set("impersonation_user_id", "",
+                                            expires_at=datetime(1970, 1, 1, tzinfo=timezone.utc))
+                    except Exception:
+                        pass
                 st.rerun()
     
     st.markdown("---")
@@ -3606,31 +3673,13 @@ if not df_cache.empty:
         
         # 🔍 DEBUG TOOL: Rimosso - Usa Upload Events in Admin Panel per diagnostica
         
-        # 🗑️ PULSANTE SVUOTA TUTTO CON CONFERMA INLINE
-        # Solo admin e impersonificati vedono eliminazione massiva
+        # 🗑️ PULSANTE SVUOTA TUTTO (solo admin/impersonificati - nessuna conferma richiesta)
         if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
             st.markdown("### 🗑️ Eliminazione Massiva")
             
-            conferma_check = st.checkbox(
-                "⚠️ **Confermo di voler eliminare TUTTE le fatture**",
-                key="check_conferma_svuota",
-                help="Questa azione è irreversibile"
-            )
-            
-            conferma_testo = ""
-            if conferma_check:
-                conferma_testo = st.text_input(
-                    "Scrivi **ELIMINA** per confermare:",
-                    key="txt_conferma_elimina",
-                    placeholder="ELIMINA"
-                )
-            
-            doppia_conferma = conferma_check and conferma_testo.strip().upper() == "ELIMINA"
-            
             if st.button(
-                "🗑️ ELIMINA TUTTO", 
-                type="primary" if doppia_conferma else "secondary",
-                disabled=not doppia_conferma,
+                "🗑️ ELIMINA TUTTO",
+                type="primary",
                 use_container_width=True,
                 key="btn_svuota_definitivo"
             ):
@@ -3675,7 +3724,7 @@ if not df_cache.empty:
                         # 🔧 FIX: Preserva chiavi impersonazione e contesto ristorante
                         #          per evitare che l'admin perda i poteri dopo delete
                         keys_to_preserve = {
-                            'user_data', 'logged_in', 'check_conferma_svuota',
+                            'user_data', 'logged_in',
                             # Impersonazione admin
                             'impersonating', 'admin_original_user', 'user_is_admin',
                             # Contesto ristorante attivo
@@ -4444,6 +4493,36 @@ if uploaded_files:
                             if isinstance(items, list) and len(items) > 0:
                                 piva_cessionario = items[0].get('piva_cessionario')
                             logger.debug(f"👨‍💼 Admin upload {file.name} - P.IVA fattura: {piva_cessionario} (validazione bypassata)")
+                        
+                        # ============================================================
+                        # BLOCCO FATTURE ANNO PRECEDENTE (per clienti non-admin)
+                        # ============================================================
+                        # Se il flag blocco_anno_precedente è attivo in pagine_abilitate,
+                        # impedisci caricamento fatture con data_documento < 1 Gennaio anno corrente.
+                        # Admin e impersonificati bypassano sempre.
+                        if not is_admin and not is_impersonating:
+                            _pagine_cfg = st.session_state.get('user_data', {}).get('pagine_abilitate') or {}
+                            if _pagine_cfg.get('blocco_anno_precedente', True):
+                                _data_doc = None
+                                if isinstance(items, list) and len(items) > 0:
+                                    _data_doc = items[0].get('Data_Documento') or items[0].get('data_documento')
+                                if _data_doc and _data_doc != 'N/A':
+                                    try:
+                                        _dt_doc = pd.to_datetime(_data_doc)
+                                        _anno_corrente = pd.Timestamp.now().year
+                                        if _dt_doc.year < _anno_corrente:
+                                            logger.warning(
+                                                f"📅 UPLOAD BLOCCATO {file.name} - Data {_data_doc} precedente al {_anno_corrente} "
+                                                f"(user: {st.session_state.get('user_data', {}).get('email')})"
+                                            )
+                                            raise ValueError(
+                                                f"📅 FATTURA NON AMMESSA - La data documento ({_data_doc}) è precedente al "
+                                                f"1 Gennaio {_anno_corrente}. È possibile caricare solo fatture dell'anno corrente."
+                                            )
+                                    except ValueError:
+                                        raise
+                                    except Exception:
+                                        pass  # Se la data non è parsabile, lascia passare
                         
                         # Salva in memoria se trovati dati (SILENZIOSO)
                         result = salva_fattura_processata(file.name, items, silent=True)
