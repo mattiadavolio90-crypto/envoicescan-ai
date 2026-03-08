@@ -4255,19 +4255,10 @@ if uploaded_files:
         # Se NESSUN file nuovo E erano just_uploaded → silenzio (post-rerun di file già elaborati)
         if not file_nuovi and len(erano_just_uploaded) > 0:
             logger.info(f"⏭️ Skip messaggi: {len(erano_just_uploaded)} file erano just_uploaded")
-        # Se ci sono file già presenti o duplicati
+        # Se ci sono file già presenti o duplicati → aggiungi al report errori unificato
         elif file_gia_processati or duplicate_count:
-            num_db = len(file_gia_processati)
-            totale = num_db + duplicate_count
-            if totale == 1:
-                st.warning("⚠️ 1 fattura scartata perché già presente nel database")
-            else:
-                st.warning(f"⚠️ {totale} fatture scartate perché già presenti nel database")
-            # Mostra dettaglio con lista file per verifica utente
-            if file_gia_processati:
-                with st.expander(f"📋 Mostra {num_db} file già presenti", expanded=False):
-                    for i, fname in enumerate(sorted(file_gia_processati), 1):
-                        st.text(f"  {i}. {fname}")
+            for fname in file_gia_processati:
+                st.session_state.files_errori_report[fname] = "Già presente nel database"
     
     # ✅ Pulizia flag just_uploaded dopo aver mostrato/non mostrato i messaggi
     if erano_just_uploaded:
@@ -4548,22 +4539,18 @@ if uploaded_files:
             
             num_errori = len(st.session_state.files_errori_report)
             
-            # Messaggio principale compatto
-            st.error(f"❌ {num_errori} {'fatture' if num_errori > 1 else 'fattura'} {'SCARTATE' if num_errori > 1 else 'SCARTATA'}")
-            
-            # Expander errori - PER TUTTI
-            with st.expander("📋 Dettaglio Errori", expanded=True):
+            # Expander errori unificato
+            with st.expander(f"❌ {num_errori} {'fatture' if num_errori > 1 else 'fattura'} {'SCARTATE' if num_errori > 1 else 'SCARTATA'} — Dettaglio", expanded=True):
                 for nome_file, errore in st.session_state.files_errori_report.items():
-                    st.warning(f"**{nome_file}**")
-                    st.caption(f"{errore[:200]}")
+                    st.markdown(f"- **{nome_file}** — {errore[:200]}")
                 
                 st.markdown("")
                 
                 # Istruzioni per il cliente
                 st.info("💡 **Scarica il log degli errori e invialo all'assistenza per risolvere il problema**")
                 
-                # Due bottoni: Scarica Log + Azzera Errori
-                col_download, col_clear = st.columns([2, 1])
+                # Bottoni compatti allineati a sinistra
+                col_download, col_clear, _ = st.columns([1, 1, 4])
                 
                 with col_download:
                     error_log = "\n".join([f"{nome}: {err}" for nome, err in st.session_state.files_errori_report.items()])
@@ -4572,14 +4559,12 @@ if uploaded_files:
                         data=error_log,
                         file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
                         mime="text/plain",
-                        use_container_width=True,
-                        type="primary"
                     )
                 
                 with col_clear:
-                    if st.button("✖️ Azzera", use_container_width=True, type="secondary"):
+                    if st.button("✖️ Chiudi"):
                         st.session_state.files_errori_report = {}
-                        st.session_state.files_con_errori = set()  # 🔥 FIX: Pulisci ANCHE il set errori
+                        st.session_state.files_con_errori = set()
                         logger.info("✅ Report errori azzerato manualmente")
                         st.rerun()
             
@@ -4649,6 +4634,30 @@ if uploaded_files:
     else:
         # Nessun file nuovo: persistiamo comunque un riepilogo accurato
         st.session_state.last_upload_summary = upload_summary
+        
+        # Mostra report errori unificato (es. solo duplicati, nessun file nuovo)
+        if len(st.session_state.files_errori_report) > 0:
+            num_errori = len(st.session_state.files_errori_report)
+            with st.expander(f"❌ {num_errori} {'fatture' if num_errori > 1 else 'fattura'} {'SCARTATE' if num_errori > 1 else 'SCARTATA'} — Dettaglio", expanded=True):
+                for nome_file, errore in st.session_state.files_errori_report.items():
+                    st.markdown(f"- **{nome_file}** — {errore[:200]}")
+                
+                st.markdown("")
+                col_download, col_clear, _ = st.columns([1, 1, 4])
+                with col_download:
+                    error_log = "\n".join([f"{nome}: {err}" for nome, err in st.session_state.files_errori_report.items()])
+                    st.download_button(
+                        label="📥 Scarica Log",
+                        data=error_log,
+                        file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
+                        mime="text/plain",
+                    )
+                with col_clear:
+                    if st.button("✖️ Chiudi"):
+                        st.session_state.files_errori_report = {}
+                        st.session_state.files_con_errori = set()
+                        st.rerun()
+            st.markdown("---")
 
 
 # 🔥 CARICA E MOSTRA STATISTICHE SEMPRE (da Supabase)
