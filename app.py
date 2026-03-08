@@ -15,7 +15,8 @@ from config.constants import (
 # Import utilities da moduli separati
 from utils.text_utils import (
     normalizza_stringa,
-    estrai_nome_categoria
+    estrai_nome_categoria,
+    escape_ilike as _escape_ilike
 )
 
 from utils.piva_validator import normalizza_piva
@@ -23,11 +24,13 @@ from utils.piva_validator import normalizza_piva
 from utils.formatters import (
     calcola_prezzo_standard_intelligente,
     carica_categorie_da_db,
-    log_upload_event
+    log_upload_event,
+    get_nome_base_file
 )
 
 from utils.ristorante_helper import add_ristorante_filter
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
+from utils.ui_helpers import load_css, load_js, render_pivot_mensile
 
 # Import services
 from services.ai_service import (
@@ -105,150 +108,9 @@ if not st.session_state.get('logged_in', False):
     </style>
     """, unsafe_allow_html=True)
 
-# ============================================================
-# CSS UNIFICATO - NASCONDI BRANDING STREAMLIT
-# ============================================================
-st.markdown("""
-<style>
-    /* === FOOTER E BRANDING === */
-    footer, .stApp footer, div[role="contentinfo"], [data-testid="stFooter"],
-    [data-testid="stStatusWidget"], .stStatusWidget,
-    div[data-testid="stDecoration"], .stDecoration,
-    footer::after, footer::before {
-        visibility: hidden !important;
-        display: none !important;
-        height: 0 !important;
-        overflow: hidden !important;
-    }
-    
-    /* === HEADER, TOOLBAR, MENU === */
-    header[data-testid="stHeader"], .stApp > header,
-    [data-testid="stToolbar"], div[data-testid="stToolbar"],
-    #MainMenu, header[role="banner"], .stDeployButton,
-    [data-testid="manage-app-button"], button[kind="header"],
-    button[aria-label*="Manage"], button[title*="Manage"] {
-        display: none !important;
-        visibility: hidden !important;
-    }
-    
-    /* === VIEWERBADGE (Made with Streamlit) === */
-    .viewerBadge_container__1QSob, .viewerBadge_link__1S137,
-    .styles_viewerBadge__1yB5_, [class*="viewerBadge"],
-    a[href*="streamlit.io"], a[target="_blank"][rel*="noopener"] {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-    }
-    
-    /* === DEPLOY/SHARE/CONDIVIDI BUTTONS === */
-    button[title*="Deploy" i], a[title*="Deploy" i], [aria-label*="Deploy" i], [data-testid*="deploy" i],
-    button[title*="Share" i], a[title*="Share" i], [aria-label*="Share" i], [data-testid*="share" i],
-    button[title*="Condividi" i], a[title*="Condividi" i], [aria-label*="Condividi" i] {
-        display: none !important;
-    }
-    
-    /* === MANAGE APP BUTTON (bottom-right corner) === */
-    [data-testid="manage-app-button"],
-    button[data-testid="manage-app-button"],
-    .stAppDeployButton,
-    [class*="stAppDeployButton"],
-    [class*="manage-app"],
-    div[class*="StatusWidget"],
-    [data-testid="stStatusWidget"],
-    section[data-testid="stStatusWidget"],
-    .reportview-container .main footer,
-    ._container_gzau3_1,
-    ._profileContainer_gzau3_53,
-    div:has(> [data-testid="manage-app-button"]) {
-        display: none !important;
-        visibility: hidden !important;
-        opacity: 0 !important;
-        height: 0 !important;
-        width: 0 !important;
-        overflow: hidden !important;
-        pointer-events: none !important;
-        position: absolute !important;
-        z-index: -9999 !important;
-    }
-    
-    /* === LAYOUT OTTIMIZZATO === */
-    .main > div { padding-top: 2rem !important; }
-    .block-container { padding-top: 2rem !important; padding-bottom: 6rem !important; }
-    [data-testid="stVerticalBlock"] { overflow: visible !important; }
-    [data-testid="column"] { overflow: visible !important; min-height: 7.5rem !important; margin-bottom: 1.875rem !important; }
-    
-    /* === TUTTI I PULSANTI PRIMARY AZZURRI (globale, prima di tutto il contenuto) === */
-    button[kind="primary"] {
-        background-color: #0ea5e9 !important;
-        color: white !important;
-        border: 2px solid #0284c7 !important;
-        font-weight: bold !important;
-    }
-    button[kind="primary"]:hover {
-        background-color: #0284c7 !important;
-        border-color: #0369a1 !important;
-    }
-    button[kind="primary"]:disabled,
-    button[kind="primary"][disabled] {
-        background-color: #0ea5e9 !important;
-        color: white !important;
-        border: 2px solid #0284c7 !important;
-        opacity: 0.5 !important;
-    }
-    
-    /* === BARRE PERCENTUALE INCIDENZA (arancione, come calcolo marginalità) === */
-    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] {
-        --progress-bar-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] > div {
-        background-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] > div > div {
-        background-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] div[role="progressbar"] {
-        background-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] div[role="progressbar"] > div {
-        background-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] div[role="progressbar"] > div > div {
-        background-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] span {
-        color: #f97316 !important;
-        font-weight: 600 !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# JavaScript per rimuovere branding Streamlit (singolo, efficiente)
-st.markdown("""
-<script>
-(function() {
-    const keywords = ['deploy','share','condividi','pubblica'];
-    function cleanBranding() {
-        try {
-            document.querySelectorAll('footer, [role="contentinfo"], [data-testid="stFooter"], [data-testid="stDecoration"], [data-testid="stToolbar"], header[data-testid="stHeader"], [class*="viewerBadge"], [data-testid="manage-app-button"], [data-testid="stStatusWidget"], [class*="stAppDeployButton"], [class*="StatusWidget"]').forEach(el => el.remove());
-            document.querySelectorAll('a[href*="streamlit.io"]').forEach(el => {
-                if ((el.textContent||'').match(/Made with|Streamlit/)) el.remove();
-            });
-            document.querySelectorAll('button, a, span').forEach(el => {
-                const combined = [(el.innerText||'').toLowerCase(), (el.title||'').toLowerCase(), (el.getAttribute('aria-label')||'').toLowerCase()].join(' ');
-                for (const k of keywords) { if (combined.includes(k)) { el.style.display='none'; break; } }
-            });
-            // Rimuovi specificamente il floating "Manage app" in basso a destra
-            document.querySelectorAll('button').forEach(el => {
-                if ((el.innerText||'').toLowerCase().includes('manage app')) { el.closest('div')?.remove() || el.remove(); }
-            });
-        } catch(e) {}
-    }
-    cleanBranding();
-    const observer = new MutationObserver(cleanBranding);
-    observer.observe(document.body, {childList:true, subtree:true});
-})();
-</script>
-""", unsafe_allow_html=True)
+# CSS + JS branding (caricati da file statici)
+load_css('branding.css')
+load_js('branding.js')
 
 
 # ============================================================
@@ -280,11 +142,6 @@ if not logger.handlers:
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
         logger.info("✅ Logging su stdout attivo (cloud mode)")
-
-
-def _escape_ilike(text: str) -> str:
-    """Escape caratteri speciali PostgreSQL ILIKE (% e _) per evitare match indesiderati."""
-    return text.replace('%', r'\%').replace('_', r'\_')
 
 
 # ============================================================
@@ -3050,7 +2907,6 @@ def mostra_statistiche(df_completo):
         if df_completo_filtrato.empty:
             st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
         else:
-            # Filtro tipo prodotti
             col_filtro_cat, _ = st.columns([2, 5])
             with col_filtro_cat:
                 tipo_filtro_cat = st.selectbox(
@@ -3070,133 +2926,8 @@ def mostra_statistiche(df_completo):
             if df_cat_source.empty:
                 st.info(f"📊 Nessun dato per '{tipo_filtro_cat}' nel periodo selezionato")
             else:
-                # Prepara dati per pivot mensile
-                df_cat_prep = df_cat_source.copy()
-            
-                # Crea formato mese per visualizzazione (GENNAIO 2025) - usa Data_DT già calcolata
-                df_cat_prep['Mese'] = df_cat_prep['Data_DT'].apply(
-                    lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
-                )
-                # Colonna per ordinamento cronologico
-                df_cat_prep['Mese_Ordine'] = df_cat_prep['Data_DT'].apply(
-                    lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
-                )
-                
-                # Crea pivot manualmente
-                pivot_cat = df_cat_prep.pivot_table(
-                    index='Categoria',
-                    columns='Mese',
-                    values='TotaleRiga',
-                    aggfunc='sum',
-                    fill_value=0
-                )
-                
-                # Ordina colonne cronologicamente usando Mese_Ordine
-                mese_ordine_map = df_cat_prep[['Mese', 'Mese_Ordine']].drop_duplicates()
-                mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
-                mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
-                cols_sorted = sorted(list(pivot_cat.columns), key=lambda x: mese_ordine_map.get(x, x))
-                pivot_cat = pivot_cat[cols_sorted]
-                
-                # Aggiungi colonna TOTALE
-                pivot_cat['TOTALE'] = pivot_cat.sum(axis=1)
-                
-                # Aggiungi colonna MEDIA (totale / numero mesi)
-                num_mesi_cat = len(cols_sorted)
-                pivot_cat['MEDIA'] = pivot_cat['TOTALE'] / num_mesi_cat if num_mesi_cat > 0 else 0
-                
-                # Ordina per totale decrescente
-                pivot_cat = pivot_cat.sort_values('TOTALE', ascending=False)
-                
-                # Calcola totali colonna per percentuali di incidenza
-                col_totals_cat = {col: pivot_cat[col].sum() for col in cols_sorted}
-                grand_total_cat = pivot_cat['TOTALE'].sum()
-                
-                # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
-                pivot_cat_display = pd.DataFrame()
-                pivot_cat_display['Categoria'] = pivot_cat.index
-                
-                for col in cols_sorted:
-                    pivot_cat_display[col] = pivot_cat[col].apply(lambda x: x if x > 0 else None).values
-                    ct = col_totals_cat[col]
-                    pivot_cat_display[f'{col} %'] = (pivot_cat[col] / ct * 100).round(1).values if ct > 0 else 0.0
-                
-                pivot_cat_display['TOTALE'] = pivot_cat['TOTALE'].values
-                pivot_cat_display['TOTALE %'] = (pivot_cat['TOTALE'] / grand_total_cat * 100).round(1).values if grand_total_cat > 0 else 0.0
-                pivot_cat_display['MEDIA'] = pivot_cat['MEDIA'].values
-                
-                # Column config con ProgressColumn per barre colorate incidenza
-                column_config_cat = {
-                    'Categoria': st.column_config.TextColumn('Categoria', width='medium'),
-                }
-                for col in cols_sorted:
-                    column_config_cat[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-                    column_config_cat[f'{col} %'] = st.column_config.ProgressColumn(
-                        '%', format="%.1f%%", min_value=0, max_value=100, width='small'
-                    )
-                column_config_cat['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
-                column_config_cat['TOTALE %'] = st.column_config.ProgressColumn(
-                    'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
-                )
-                column_config_cat['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
-            
-                if not pivot_cat_display.empty:
-                    # Flag per mostrare/nascondere colonne %
-                    mostra_pct_cat = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_categorie")
-                    
-                    if not mostra_pct_cat:
-                        pct_cols_cat = [c for c in pivot_cat_display.columns if c.endswith(' %')]
-                        pivot_cat_display = pivot_cat_display.drop(columns=pct_cols_cat)
-                        for pc in pct_cols_cat:
-                            column_config_cat.pop(pc, None)
-                    
-                    num_righe_cat = len(pivot_cat_display)
-                    altezza_cat = max(num_righe_cat * 35 + 50, 200)
-                    
-                    st.dataframe(
-                        pivot_cat_display,
-                        hide_index=True,
-                        width='stretch',
-                        height=altezza_cat,
-                        column_config=column_config_cat
-                    )
-                    
-                    # Calcola totale dalla somma dei valori numerici
-                    totale_cat = pivot_cat['TOTALE'].sum()
-                    media_cat = totale_cat / num_mesi_cat if num_mesi_cat > 0 else 0
-                    col_left, col_right = st.columns([5, 1])
-                    
-                    with col_left:
-                        st.markdown(f"""
-                        <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                            <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                                📋 N. Righe: {num_righe_cat:,} | 💰 Totale: € {totale_cat:,.0f} | 📊 Media mensile: € {media_cat:,.0f}
-                            </p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with col_right:
-                        st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
-                        
-                        excel_buffer_cat = io.BytesIO()
-                        with pd.ExcelWriter(excel_buffer_cat, engine='openpyxl') as writer:
-                            pivot_cat.reset_index().to_excel(writer, index=False, sheet_name='Categorie')
-                        
-                        st.download_button(
-                            label="📊 EXCEL",
-                            data=excel_buffer_cat.getvalue(),
-                            file_name=f"categorie_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="download_excel_categorie",
-                            type="primary",
-                            use_container_width=False
-                        )
-                        
-                        st.markdown('</div>', unsafe_allow_html=True)
-                else:
-                    st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
+                render_pivot_mensile(df_cat_source, 'Categoria', MESI_ITA, 'categorie', 'Categorie')
 
-    # ======================================================
     # ========================================================
     # SEZIONE 4: FORNITORI
     # ========================================================
@@ -3204,7 +2935,6 @@ def mostra_statistiche(df_completo):
         if df_completo_filtrato.empty:
             st.warning("⚠️ Nessun dato disponibile per il periodo selezionato")
         else:
-            # Filtro tipo prodotti
             col_filtro_forn, _ = st.columns([2, 5])
             with col_filtro_forn:
                 tipo_filtro_forn = st.selectbox(
@@ -3224,267 +2954,11 @@ def mostra_statistiche(df_completo):
             if df_forn_source.empty:
                 st.info(f"📊 Nessun dato per '{tipo_filtro_forn}' nel periodo selezionato")
             else:
-                # Prepara dati per pivot mensile
-                df_forn_prep = df_forn_source.copy()
-            
-                # Crea formato mese per visualizzazione (GENNAIO 2025) - usa Data_DT già calcolata
-                df_forn_prep['Mese'] = df_forn_prep['Data_DT'].apply(
-                    lambda x: f"{MESI_ITA[x.month]} {x.year}" if pd.notna(x) else ''
-                )
-                # Colonna per ordinamento cronologico
-                df_forn_prep['Mese_Ordine'] = df_forn_prep['Data_DT'].apply(
-                    lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
-                )
-                
-                # Crea pivot manualmente
-                pivot_forn = df_forn_prep.pivot_table(
-                    index='Fornitore',
-                    columns='Mese',
-                    values='TotaleRiga',
-                    aggfunc='sum',
-                    fill_value=0
-                )
-                
-                # Ordina colonne cronologicamente usando Mese_Ordine
-                mese_ordine_map = df_forn_prep[['Mese', 'Mese_Ordine']].drop_duplicates()
-                mese_ordine_map = mese_ordine_map[mese_ordine_map['Mese'] != '']
-                mese_ordine_map = dict(zip(mese_ordine_map['Mese'], mese_ordine_map['Mese_Ordine']))
-                cols_sorted = sorted(list(pivot_forn.columns), key=lambda x: mese_ordine_map.get(x, x))
-                pivot_forn = pivot_forn[cols_sorted]
-                
-                # Aggiungi colonna TOTALE
-                pivot_forn['TOTALE'] = pivot_forn.sum(axis=1)
-                
-                # Aggiungi colonna MEDIA (totale / numero mesi)
-                num_mesi_forn = len(cols_sorted)
-                pivot_forn['MEDIA'] = pivot_forn['TOTALE'] / num_mesi_forn if num_mesi_forn > 0 else 0
-                
-                # Ordina per totale decrescente
-                pivot_forn = pivot_forn.sort_values('TOTALE', ascending=False)
-                
-                # Calcola totali colonna per percentuali di incidenza
-                col_totals_forn = {col: pivot_forn[col].sum() for col in cols_sorted}
-                grand_total_forn = pivot_forn['TOTALE'].sum()
-                
-                # Crea DataFrame con colonne % interleaved (barra colorata incidenza)
-                pivot_forn_display = pd.DataFrame()
-                pivot_forn_display['Fornitore'] = pivot_forn.index
-                
-                for col in cols_sorted:
-                    pivot_forn_display[col] = pivot_forn[col].apply(lambda x: x if x > 0 else None).values
-                    ct = col_totals_forn[col]
-                    pivot_forn_display[f'{col} %'] = (pivot_forn[col] / ct * 100).round(1).values if ct > 0 else 0.0
-                
-                pivot_forn_display['TOTALE'] = pivot_forn['TOTALE'].values
-                pivot_forn_display['TOTALE %'] = (pivot_forn['TOTALE'] / grand_total_forn * 100).round(1).values if grand_total_forn > 0 else 0.0
-                pivot_forn_display['MEDIA'] = pivot_forn['MEDIA'].values
-                
-                # Column config con ProgressColumn per barre colorate incidenza
-                column_config_forn = {
-                    'Fornitore': st.column_config.TextColumn('Fornitore', width='medium'),
-                }
-                for col in cols_sorted:
-                    column_config_forn[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-                    column_config_forn[f'{col} %'] = st.column_config.ProgressColumn(
-                        '%', format="%.1f%%", min_value=0, max_value=100, width='small'
-                    )
-                column_config_forn['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
-                column_config_forn['TOTALE %'] = st.column_config.ProgressColumn(
-                    'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
-                )
-                column_config_forn['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
-            
-                if not pivot_forn_display.empty:
-                    # Flag per mostrare/nascondere colonne %
-                    mostra_pct_forn = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct_fornitori")
-                    
-                    if not mostra_pct_forn:
-                        pct_cols_forn = [c for c in pivot_forn_display.columns if c.endswith(' %')]
-                        pivot_forn_display = pivot_forn_display.drop(columns=pct_cols_forn)
-                        for pc in pct_cols_forn:
-                            column_config_forn.pop(pc, None)
-                    
-                    num_righe_forn = len(pivot_forn_display)
-                    altezza_forn = max(num_righe_forn * 35 + 50, 200)
-                    
-                    st.dataframe(
-                        pivot_forn_display,
-                        hide_index=True,
-                        width='stretch',
-                        height=altezza_forn,
-                        column_config=column_config_forn
-                    )
-                    
-                    # Calcola totale dalla somma dei valori numerici
-                    totale_forn = pivot_forn['TOTALE'].sum()
-                    media_forn = totale_forn / num_mesi_forn if num_mesi_forn > 0 else 0
-                    col_left, col_right = st.columns([5, 1])
-                    
-                    with col_left:
-                        st.markdown(f"""
-                        <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                            <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
-                                📋 N. Righe: {num_righe_forn:,} | 💰 Totale: € {totale_forn:,.0f} | 📊 Media mensile: € {media_forn:,.0f}
-                            </p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    with col_right:
-                        st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
-                        
-                        excel_buffer_forn = io.BytesIO()
-                        with pd.ExcelWriter(excel_buffer_forn, engine='openpyxl') as writer:
-                            pivot_forn.reset_index().to_excel(writer, index=False, sheet_name='Fornitori')
-                        
-                        st.download_button(
-                            label="📊 EXCEL",
-                            data=excel_buffer_forn.getvalue(),
-                            file_name=f"fornitori_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key="download_excel_fornitori",
-                            type="primary",
-                            use_container_width=False
-                        )
-                        
-                        st.markdown('</div>', unsafe_allow_html=True)
-                else:
-                    st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
+                render_pivot_mensile(df_forn_source, 'Fornitore', MESI_ITA, 'fornitori', 'Fornitori')
 
 
-
-
-# ============================================================
-# STILI CSS (COMPLETI)
-# ============================================================
-
-
-
-st.markdown("""
-    <style>
-    [data-testid="stTab"] {
-        font-size: 20px !important;
-        font-weight: bold !important;
-        text-transform: uppercase !important;
-        padding: 15px 30px !important;
-    }
-    
-    [data-testid="stFileUploader"] > div > div:not(:first-child) { display: none !important; }
-    [data-testid="stFileUploader"] ul { display: none !important; }
-    [data-testid="stFileUploader"] button[kind="icon"] { display: none !important; }
-    [data-testid="stFileUploader"] small { display: none !important; }
-    [data-testid="stFileUploader"] svg { display: none !important; }
-    [data-testid="stFileUploader"] section > div > span { display: none !important; }
-    [data-testid="stFileUploader"] section > div:last-child { display: none !important; }
-    
-    [data-testid="stFileUploader"] { margin: 20px 0; }
-    [data-testid="stFileUploader"] > div { width: 100%; max-width: 700px; }
-    [data-testid="stFileUploader"] section {
-        padding: 50px 80px !important;
-        border: 5px dashed #4CAF50 !important;
-        border-radius: 25px !important;
-        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%) !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 6px 12px rgba(0,0,0,0.1) !important;
-    }
-    [data-testid="stFileUploader"] section:hover {
-        border-color: #2E7D32 !important;
-        background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%) !important;
-        transform: translateY(-3px) !important;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.15) !important;
-    }
-    [data-testid="stFileUploader"] label {
-        font-size: 32px !important;
-        font-weight: bold !important;
-        color: #1b5e20 !important;
-        letter-spacing: 1px !important;
-        text-transform: uppercase !important;
-    }
-    [data-testid="stFileUploader"] button {
-        padding: 15px 40px !important;
-        font-size: 18px !important;
-        font-weight: bold !important;
-        background-color: #4CAF50 !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 10px !important;
-        cursor: pointer !important;
-        transition: all 0.3s ease !important;
-    }
-    [data-testid="stFileUploader"] button:hover {
-        background-color: #45a049 !important;
-        transform: scale(1.05) !important;
-    }
-    
-    .file-status-table {
-        max-height: 400px;
-        overflow-y: auto;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        padding: 10px;
-        background-color: #fafafa;
-    }
-    .file-status-table table { width: 100%; border-collapse: collapse; }
-    .file-status-table th {
-        background-color: #f0f0f0;
-        padding: 15px 10px !important;
-        text-align: left;
-        position: sticky;
-        top: 0;
-        z-index: 10;
-        font-size: 18px !important;
-        font-weight: bold !important;
-    }
-    .file-status-table td {
-        padding: clamp(0.625rem, 1.5vw, 0.75rem) clamp(0.5rem, 1.2vw, 0.625rem) !important;
-        border-bottom: 1px solid #eee;
-        font-size: clamp(0.875rem, 2vw, 1rem) !important;
-    }
-    
-    [data-testid="stMetricValue"] > div { font-size: clamp(2rem, 5vw, 3rem) !important; font-weight: bold !important; }
-    [data-testid="stMetricLabel"] > div { font-size: clamp(1rem, 2.5vw, 1.375rem) !important; font-weight: 600 !important; }
-    [data-testid="stMetric"] {
-        background: linear-gradient(135deg, #f0f4f8 0%, #e1e8ed 100%) !important;
-        border: 4px solid #cbd5e0 !important;
-        border-radius: 20px !important;
-        padding: clamp(1.25rem, 3vw, 1.875rem) clamp(1rem, 2.5vw, 1.25rem) !important;
-        box-shadow: 0 6px 12px rgba(0,0,0,0.15) !important;
-        transition: all 0.3s ease !important;
-    }
-    [data-testid="stMetric"]:hover {
-        transform: translateY(-0.5rem) !important;
-        box-shadow: 0 12px 24px rgba(0,0,0,0.2) !important;
-    }
-    
-    [data-testid="column"]:nth-child(1) [data-testid="stMetric"] {
-        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%) !important;
-        border-color: #2196f3 !important;
-    }
-    [data-testid="column"]:nth-child(1) [data-testid="stMetricValue"] { color: #1565c0 !important; }
-    [data-testid="column"]:nth-child(1) [data-testid="stMetricLabel"] { color: #1976d2 !important; }
-    [data-testid="column"]:nth-child(2) [data-testid="stMetric"] {
-        background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%) !important;
-        border-color: #4caf50 !important;
-    }
-    [data-testid="column"]:nth-child(2) [data-testid="stMetricValue"] { color: #2e7d32 !important; }
-    [data-testid="column"]:nth-child(2) [data-testid="stMetricLabel"] { color: #388e3c !important; }
-    [data-testid="column"]:nth-child(3) [data-testid="stMetric"] {
-        background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%) !important;
-        border-color: #ff9800 !important;
-    }
-    [data-testid="column"]:nth-child(3) [data-testid="stMetricValue"] { color: #e65100 !important; }
-    [data-testid="column"]:nth-child(3) [data-testid="stMetricLabel"] { color: #f57c00 !important; }
-    [data-testid="column"]:nth-child(4) [data-testid="stMetric"] {
-        background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%) !important;
-        border-color: #f44336 !important;
-    }
-    [data-testid="column"]:nth-child(4) [data-testid="stMetricValue"] { color: #c62828 !important; }
-    [data-testid="column"]:nth-child(4) [data-testid="stMetricLabel"] { color: #d32f2f !important; }
-            
-    #MainMenu { visibility: hidden; }
-    header { visibility: hidden; }
-    footer { visibility: hidden; }
-    </style>
-""", unsafe_allow_html=True)
+# CSS layout e stili componenti (caricato da file statico)
+load_css('layout.css')
 
 
 # ============================================================
@@ -3999,35 +3473,8 @@ else:
 
 
 # ============================================================
-# HELPER FUNCTION: Normalizzazione nome file per deduplicazione
+# SESSION STATE: Tracking file elaborati/errori
 # ============================================================
-def get_nome_base_file(filename: str) -> str:
-    """
-    Estrae il nome base del file senza estensione per deduplicazione.
-    
-    Questa funzione permette di rilevare duplicati anche quando lo stesso
-    documento è caricato in formati diversi (es. XML + PDF della stessa fattura).
-    
-    Esempi:
-        '0_IT04157540966_h8390.xml' → '0_it04157540966_h8390'
-        '0_IT04157540966_h8390.pdf' → '0_it04157540966_h8390'
-        'Fattura_123.PDF' → 'fattura_123'
-        
-    Comportamento:
-        - Rimuove l'estensione (.xml, .pdf, .jpg, etc.)
-        - Converte in lowercase per confronto case-insensitive
-        - Permette di riconoscere '0_IT04157540966_h8390.xml' e 
-          '0_IT04157540966_h8390.pdf' come lo stesso documento
-    
-    Returns:
-        Nome file senza estensione, lowercased per confronto case-insensitive
-    """
-    import os
-    # Rimuovi estensione e converti in lowercase per confronto case-insensitive
-    nome_base = os.path.splitext(filename)[0].lower()
-    return nome_base
-
-
 if 'files_processati_sessione' not in st.session_state:
     st.session_state.files_processati_sessione = set()
 

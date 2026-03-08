@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 # PULIZIA CARATTERI CORROTTI
 # ============================================================
 
+def escape_ilike(text: str) -> str:
+    """Escape caratteri speciali PostgreSQL ILIKE (% e _) per evitare match indesiderati."""
+    return text.replace('%', r'\%').replace('_', r'\_')
+
+
 def pulisci_caratteri_corrotti(testo: str) -> str:
     """
     Rimuove caratteri corrotti (encoding errato) dalle descrizioni.

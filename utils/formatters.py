@@ -539,4 +539,17 @@ def formatta_euro(valore: float) -> str:
         return "€ 0,00"
 
 
+def get_nome_base_file(filename: str) -> str:
+    """
+    Estrae il nome base del file senza estensione per deduplicazione.
+    Converte in lowercase per confronto case-insensitive.
+    
+    Esempi:
+        '0_IT04157540966_h8390.xml' → '0_it04157540966_h8390'
+        'Fattura_123.PDF' → 'fattura_123'
+    """
+    import os
+    return os.path.splitext(filename)[0].lower()
+
+
 

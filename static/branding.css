@@ -1,0 +1,109 @@
+/* === FOOTER E BRANDING === */
+footer, .stApp footer, div[role="contentinfo"], [data-testid="stFooter"],
+[data-testid="stStatusWidget"], .stStatusWidget,
+div[data-testid="stDecoration"], .stDecoration,
+footer::after, footer::before {
+    visibility: hidden !important;
+    display: none !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+
+/* === HEADER, TOOLBAR, MENU === */
+header[data-testid="stHeader"], .stApp > header,
+[data-testid="stToolbar"], div[data-testid="stToolbar"],
+#MainMenu, header[role="banner"], .stDeployButton,
+[data-testid="manage-app-button"], button[kind="header"],
+button[aria-label*="Manage"], button[title*="Manage"] {
+    display: none !important;
+    visibility: hidden !important;
+}
+
+/* === VIEWERBADGE (Made with Streamlit) === */
+.viewerBadge_container__1QSob, .viewerBadge_link__1S137,
+.styles_viewerBadge__1yB5_, [class*="viewerBadge"],
+a[href*="streamlit.io"], a[target="_blank"][rel*="noopener"] {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+}
+
+/* === DEPLOY/SHARE/CONDIVIDI BUTTONS === */
+button[title*="Deploy" i], a[title*="Deploy" i], [aria-label*="Deploy" i], [data-testid*="deploy" i],
+button[title*="Share" i], a[title*="Share" i], [aria-label*="Share" i], [data-testid*="share" i],
+button[title*="Condividi" i], a[title*="Condividi" i], [aria-label*="Condividi" i] {
+    display: none !important;
+}
+
+/* === MANAGE APP BUTTON (bottom-right corner) === */
+[data-testid="manage-app-button"],
+button[data-testid="manage-app-button"],
+.stAppDeployButton,
+[class*="stAppDeployButton"],
+[class*="manage-app"],
+div[class*="StatusWidget"],
+[data-testid="stStatusWidget"],
+section[data-testid="stStatusWidget"],
+.reportview-container .main footer,
+._container_gzau3_1,
+._profileContainer_gzau3_53,
+div:has(> [data-testid="manage-app-button"]) {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
+    position: absolute !important;
+    z-index: -9999 !important;
+}
+
+/* === LAYOUT OTTIMIZZATO === */
+.main > div { padding-top: 2rem !important; }
+.block-container { padding-top: 2rem !important; padding-bottom: 6rem !important; }
+[data-testid="stVerticalBlock"] { overflow: visible !important; }
+[data-testid="column"] { overflow: visible !important; min-height: 7.5rem !important; margin-bottom: 1.875rem !important; }
+
+/* === TUTTI I PULSANTI PRIMARY AZZURRI (globale, prima di tutto il contenuto) === */
+button[kind="primary"] {
+    background-color: #0ea5e9 !important;
+    color: white !important;
+    border: 2px solid #0284c7 !important;
+    font-weight: bold !important;
+}
+button[kind="primary"]:hover {
+    background-color: #0284c7 !important;
+    border-color: #0369a1 !important;
+}
+button[kind="primary"]:disabled,
+button[kind="primary"][disabled] {
+    background-color: #0ea5e9 !important;
+    color: white !important;
+    border: 2px solid #0284c7 !important;
+    opacity: 0.5 !important;
+}
+
+/* === BARRE PERCENTUALE INCIDENZA (arancione, come calcolo marginalità) === */
+[data-testid="stDataFrame"] [data-baseweb="progress-bar"] {
+    --progress-bar-color: #f97316 !important;
+}
+[data-testid="stDataFrame"] [data-baseweb="progress-bar"] > div {
+    background-color: #f97316 !important;
+}
+[data-testid="stDataFrame"] [data-baseweb="progress-bar"] > div > div {
+    background-color: #f97316 !important;
+}
+[data-testid="stDataFrame"] div[role="progressbar"] {
+    background-color: #f97316 !important;
+}
+[data-testid="stDataFrame"] div[role="progressbar"] > div {
+    background-color: #f97316 !important;
+}
+[data-testid="stDataFrame"] div[role="progressbar"] > div > div {
+    background-color: #f97316 !important;
+}
+[data-testid="stDataFrame"] [data-baseweb="progress-bar"] span {
+    color: #f97316 !important;
+    font-weight: 600 !important;
+}
