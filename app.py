@@ -3987,6 +3987,13 @@ if uploaded_files:
             num_errori = len(st.session_state.files_errori_report)
             
             # Expander errori unificato
+            # Se ci sono anche file elaborati con successo, mostra messaggio
+            if file_processati > 0:
+                if file_processati == 1:
+                    st.success(f"✅ 1 fattura caricata con successo!")
+                else:
+                    st.success(f"✅ {file_processati} fatture caricate con successo!")
+            
             with st.expander(f"❌ {num_errori} {'fatture' if num_errori > 1 else 'fattura'} {'SCARTATE' if num_errori > 1 else 'SCARTATA'} — Dettaglio", expanded=True):
                 for nome_file, errore in st.session_state.files_errori_report.items():
                     st.markdown(f"- **{nome_file}** — {errore[:200]}")
@@ -3996,7 +4003,7 @@ if uploaded_files:
                 # Istruzioni per il cliente
                 st.info("💡 **Scarica il log degli errori e invialo all'assistenza per risolvere il problema**")
                 
-                # Bottoni compatti allineati a sinistra
+                # Bottoni compatti allineati
                 col_download, col_clear, _ = st.columns([1, 1, 4])
                 
                 with col_download:
@@ -4006,12 +4013,24 @@ if uploaded_files:
                         data=error_log,
                         file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
                         mime="text/plain",
+                        use_container_width=True,
                     )
                 
                 with col_clear:
-                    if st.button("✖️ Chiudi"):
+                    if st.button("✖️ Chiudi", key="chiudi_errori_1", use_container_width=True):
+                        # Segna file con errori come già processati per evitare ri-elaborazione
+                        for nome_file in st.session_state.files_errori_report:
+                            st.session_state.files_processati_sessione.add(nome_file)
+                            st.session_state.files_processati_sessione.add(get_nome_base_file(nome_file))
                         st.session_state.files_errori_report = {}
                         st.session_state.files_con_errori = set()
+                        # Reset uploader per svuotare i file caricati
+                        if 'uploader_key' not in st.session_state:
+                            st.session_state.uploader_key = 0
+                        st.session_state.uploader_key += 1
+                        # Invalida cache per eventuali file elaborati con successo
+                        st.cache_data.clear()
+                        invalida_cache_memoria()
                         logger.info("✅ Report errori azzerato manualmente")
                         st.rerun()
             
@@ -4098,11 +4117,24 @@ if uploaded_files:
                         data=error_log,
                         file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
                         mime="text/plain",
+                        use_container_width=True,
                     )
                 with col_clear:
-                    if st.button("✖️ Chiudi"):
+                    if st.button("✖️ Chiudi", key="chiudi_errori_2", use_container_width=True):
+                        # Segna file con errori come già processati per evitare ri-elaborazione
+                        for nome_file in st.session_state.files_errori_report:
+                            st.session_state.files_processati_sessione.add(nome_file)
+                            st.session_state.files_processati_sessione.add(get_nome_base_file(nome_file))
                         st.session_state.files_errori_report = {}
                         st.session_state.files_con_errori = set()
+                        # Reset uploader per svuotare i file caricati
+                        if 'uploader_key' not in st.session_state:
+                            st.session_state.uploader_key = 0
+                        st.session_state.uploader_key += 1
+                        # Invalida cache per eventuali file elaborati con successo
+                        st.cache_data.clear()
+                        invalida_cache_memoria()
+                        logger.info("✅ Report errori azzerato manualmente")
                         st.rerun()
             st.markdown("---")
 
