@@ -841,6 +841,19 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None) -> Dict[str, Any]:
         
         logger.warning(f"⚠️ ELIMINAZIONE MASSIVA SUCCESSO: {num_fatture} fatture ({num_righe} righe) da user {user_id}")
         
+        # Reset memoria locale: elimina prodotti_utente e classificazioni_manuali dell'utente
+        try:
+            supabase_client.table("prodotti_utente").delete().eq("user_id", user_id).execute()
+            logger.info(f"🧹 prodotti_utente resettati per user {user_id}")
+        except Exception as e_pu:
+            logger.warning(f"⚠️ Impossibile resettare prodotti_utente: {e_pu}")
+        
+        try:
+            supabase_client.table("classificazioni_manuali").delete().eq("user_id", user_id).execute()
+            logger.info(f"🧹 classificazioni_manuali resettate per user {user_id}")
+        except Exception as e_cm:
+            logger.warning(f"⚠️ Impossibile resettare classificazioni_manuali: {e_cm}")
+        
         return {"success": True, "error": None, "righe_eliminate": num_righe, "fatture_eliminate": num_fatture}
         
     except Exception as e:

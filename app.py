@@ -1732,7 +1732,6 @@ def mostra_statistiche(df_completo):
         "📊 Trimestre in Corso",
         "📈 Semestre in Corso",
         "🗓️ Anno in Corso",
-        "📋 Anno Scorso",
         "⚙️ Periodo Personalizzato"
     ]
     
@@ -1774,13 +1773,6 @@ def mostra_statistiche(df_completo):
     elif periodo_selezionato == "🗓️ Anno in Corso":
         data_inizio_filtro = inizio_anno
         label_periodo = f"Anno in corso ({inizio_anno.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
-    
-    elif periodo_selezionato == "📋 Anno Scorso":
-        inizio_anno_scorso = (oggi.replace(year=oggi.year - 1, month=1, day=1)).date()
-        fine_anno_scorso = (oggi.replace(year=oggi.year - 1, month=12, day=31)).date()
-        data_inizio_filtro = inizio_anno_scorso
-        data_fine_filtro = fine_anno_scorso
-        label_periodo = f"Anno scorso ({inizio_anno_scorso.strftime('%d/%m/%Y')} → {fine_anno_scorso.strftime('%d/%m/%Y')})"
     
     elif periodo_selezionato == "⚙️ Periodo Personalizzato":
         st.markdown("##### Seleziona Range Date")

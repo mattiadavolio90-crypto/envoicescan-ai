@@ -220,7 +220,6 @@ if st.session_state.margine_tab == "analisi":
         "📊 Trimestre in Corso",
         "📈 Semestre in Corso",
         "🗓️ Anno in Corso",
-        "📋 Anno Scorso",
         "⚙️ Periodo Personalizzato"
     ]
 
@@ -258,13 +257,6 @@ if st.session_state.margine_tab == "analisi":
     elif periodo_sel_aa == "🗓️ Anno in Corso":
         data_inizio_aa = inizio_anno_aa
         label_periodo = f"Anno in corso ({inizio_anno_aa.strftime('%d/%m/%Y')} → {oggi_date_aa.strftime('%d/%m/%Y')})"
-    elif periodo_sel_aa == "📋 Anno Scorso":
-        inizio_anno_scorso_aa = oggi_aa.replace(year=oggi_aa.year - 1, month=1, day=1).date()
-        fine_anno_scorso_aa = oggi_aa.replace(year=oggi_aa.year - 1, month=12, day=31).date()
-        data_inizio_aa = inizio_anno_scorso_aa
-        data_fine_aa = fine_anno_scorso_aa
-        anno_aa = oggi_aa.year - 1
-        label_periodo = f"Anno scorso ({inizio_anno_scorso_aa.strftime('%d/%m/%Y')} → {fine_anno_scorso_aa.strftime('%d/%m/%Y')})"
     elif periodo_sel_aa == "⚙️ Periodo Personalizzato":
         st.markdown("##### Seleziona Range Date")
         col_da_aa, col_a_aa = st.columns(2)
@@ -1059,7 +1051,6 @@ if st.session_state.margine_tab == "centri":
         "📊 Trimestre in Corso",
         "📈 Semestre in Corso",
         "🗓️ Anno in Corso",
-        "📋 Anno Scorso",
         "⚙️ Periodo Personalizzato"
     ]
 
@@ -1090,9 +1081,6 @@ if st.session_state.margine_tab == "centri":
         data_inizio_cp = inizio_semestre_cp
     elif periodo_sel_cp == "🗓️ Anno in Corso":
         data_inizio_cp = inizio_anno_cp
-    elif periodo_sel_cp == "📋 Anno Scorso":
-        data_inizio_cp = oggi_cp.replace(year=oggi_cp.year - 1, month=1, day=1).date()
-        data_fine_cp = oggi_cp.replace(year=oggi_cp.year - 1, month=12, day=31).date()
     elif periodo_sel_cp == "⚙️ Periodo Personalizzato":
         st.markdown("##### Seleziona Range Date")
         col_da_cp, col_a_cp = st.columns(2)
