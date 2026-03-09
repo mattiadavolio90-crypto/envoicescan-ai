@@ -398,7 +398,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
         col_spacer, col_btn = st.columns([9, 3])
         with col_btn:
             st.download_button(
-                label="📊 Excel",
+                label="Excel",
                 data=excel_buffer.getvalue(),
                 file_name=f"variazioni_prezzo_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -549,7 +549,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
             col_spacer, col_btn = st.columns([9, 3])
             with col_btn:
                 st.download_button(
-                    label="📊 Excel",
+                    label="Excel",
                     data=excel_sconti.getvalue(),
                     file_name=f"sconti_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -615,7 +615,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
             col_spacer, col_btn = st.columns([9, 3])
             with col_btn:
                 st.download_button(
-                    label="📊 Excel",
+                    label="Excel",
                     data=excel_omaggi.getvalue(),
                     file_name=f"omaggi_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -750,7 +750,7 @@ elif st.session_state.cp_tab_attivo == "nc":
             with col_btn_nc:
                 st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
                 st.download_button(
-                    label="📊 Excel",
+                    label="Excel",
                     data=excel_nc.getvalue(),
                     file_name=f"note_credito_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -158,7 +158,7 @@ def render_pivot_mensile(
                 pivot.reset_index().to_excel(writer, index=False, sheet_name=sheet_name)
 
             st.download_button(
-                label="📊 EXCEL",
+                label="Excel",
                 data=excel_buffer.getvalue(),
                 file_name=f"{sezione_key}_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

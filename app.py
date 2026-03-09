@@ -2572,7 +2572,7 @@ def mostra_statistiche(df_completo):
                     df_export.to_excel(writer, index=False, sheet_name='Articoli')
                 
                 st.download_button(
-                    label="📊 EXCEL",
+                    label="Excel",
                     data=excel_buffer.getvalue(),
                     file_name=f"dettaglio_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -793,7 +793,7 @@ if st.session_state.margine_tab == "analisi":
                     df_c_agg_exp.to_excel(writer, index=False, sheet_name=sheet_name)
             excel_buf_c.seek(0)
             st.download_button(
-                label="📊 Excel",
+                label="Excel",
                 data=excel_buf_c.getvalue(),
                 file_name=f"analisi_centri_categorie_{anno_aa}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1307,7 +1307,7 @@ if st.session_state.margine_tab == "centri":
                 with _col_centri_right:
                     st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
                     st.download_button(
-                        label="📊 Excel",
+                        label="Excel",
                         data=excel_data_centri,
                         file_name=f"centri_produzione_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1787,7 +1787,7 @@ if st.session_state.margine_tab == "calcolo":
         _col_excel_empty_t1, col_excel_t1 = st.columns([5, 1])
         with col_excel_t1:
             st.download_button(
-                "📊 Excel",
+                "Excel",
                 data=excel_data,
                 file_name=f"Margini_{anno}_{nome_rist.replace(' ', '_')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
