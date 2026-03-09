@@ -18,16 +18,8 @@ st.set_page_config(
 
 # Nascondi sidebar immediatamente se non loggato
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.markdown("""
-        <style>
-        [data-testid="stSidebar"],
-        section[data-testid="stSidebar"] {
-            display: none !important;
-            visibility: hidden !important;
-            width: 0 !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    from utils.ui_helpers import hide_sidebar_css
+    hide_sidebar_css()
 
 # Verifica autenticazione
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:

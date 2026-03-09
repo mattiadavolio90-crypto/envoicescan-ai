@@ -27,8 +27,9 @@ from config.constants import (
     REGEX_NUMERO_LT,
     REGEX_NUMERO_GR
 )
+from config.logger_setup import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger('formatters')
 
 
 # ============================================================

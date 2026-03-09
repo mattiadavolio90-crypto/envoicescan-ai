@@ -22,6 +22,7 @@ import hashlib
 import logging
 import re
 import uuid
+import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict, Any, List
 
@@ -31,6 +32,53 @@ logger = get_logger('auth')
 
 # Hasher globale Argon2
 ph = argon2.PasswordHasher()
+
+# ============================================================
+# RATE LIMITING LOGIN (in-memory, thread-safe)
+# ============================================================
+_login_attempts_lock = threading.Lock()
+_login_attempts: Dict[str, Dict] = {}  # {email: {'count': int, 'locked_until': datetime}}
+_MAX_LOGIN_ATTEMPTS = 5
+_LOCKOUT_MINUTES = 15
+
+
+def _check_login_rate_limit(email: str) -> Optional[str]:
+    """Controlla se l'email è in lockout. Ritorna messaggio errore o None se OK."""
+    email_lower = email.lower().strip()
+    with _login_attempts_lock:
+        record = _login_attempts.get(email_lower)
+        if not record:
+            return None
+        if record.get('locked_until') and datetime.now(timezone.utc) < record['locked_until']:
+            remaining = int((record['locked_until'] - datetime.now(timezone.utc)).total_seconds() / 60) + 1
+            logger.warning(f"⛔ Login bloccato per {email_lower}: lockout {remaining} min rimanenti")
+            return f"Troppi tentativi falliti. Riprova tra {remaining} minuti."
+        # Lockout scaduto: resetta
+        if record.get('locked_until') and datetime.now(timezone.utc) >= record['locked_until']:
+            del _login_attempts[email_lower]
+    return None
+
+
+def _record_login_failure(email: str):
+    """Registra un tentativo fallito. Dopo N tentativi, imposta lockout."""
+    email_lower = email.lower().strip()
+    with _login_attempts_lock:
+        if email_lower not in _login_attempts:
+            _login_attempts[email_lower] = {'count': 0, 'locked_until': None}
+        _login_attempts[email_lower]['count'] += 1
+        count = _login_attempts[email_lower]['count']
+        if count >= _MAX_LOGIN_ATTEMPTS:
+            _login_attempts[email_lower]['locked_until'] = (
+                datetime.now(timezone.utc) + timedelta(minutes=_LOCKOUT_MINUTES)
+            )
+            logger.warning(f"🔒 LOCKOUT attivato per {email_lower} dopo {count} tentativi falliti")
+
+
+def _clear_login_failures(email: str):
+    """Resetta contatore dopo login riuscito."""
+    email_lower = email.lower().strip()
+    with _login_attempts_lock:
+        _login_attempts.pop(email_lower, None)
 
 
 # ============================================================
@@ -127,10 +175,10 @@ def valida_password_compliance(
         errori.append("🚫 Password troppo comune. Scegli qualcosa di più unico")
     
     # Check pattern semplici
-    if re.match(r'^(.)\1+$', password):  # Carattere ripetuto (es: "aaaaaaaaaa")
+    if re.fullmatch(r'(.)\1+', password):  # Carattere ripetuto (es: "aaaaaaaaaa")
         errori.append("🚫 La password non può essere un singolo carattere ripetuto")
     
-    if re.match(r'^(012|123|234|345|456|567|678|789|890)+', password):
+    if re.search(r'(012|123|234|345|456|567|678|789|890){2,}', password):
         errori.append("🚫 La password non può essere una sequenza numerica")
     
     return errori
@@ -250,8 +298,8 @@ def crea_cliente_con_token(
         expires = datetime.now(timezone.utc) + timedelta(hours=24)
         
         # Placeholder password_hash (NON usabile per login, sarà sovrascritto)
-        # Usa hash di un UUID random - impossibile da indovinare
-        placeholder_hash = hashlib.sha256(f"PENDING_ACTIVATION_{uuid.uuid4()}".encode()).hexdigest()
+        # Token crittografico random - impossibile da indovinare
+        placeholder_hash = secrets.token_hex(32)
         
         # Inserisci cliente
         nuovo_cliente = {
@@ -290,9 +338,9 @@ def crea_cliente_con_token(
             if rist_result.data:
                 logger.info(f"✅ Ristorante creato per cliente: {nome_ristorante} (P.IVA: {piva_norm})")
             else:
-                logger.warning(f"⚠️ Cliente creato ma ristorante non inserito: {email}")
+                logger.error(f"❌ Cliente creato ma ristorante non inserito: {email} (user_id={user_id})")
         except Exception as rist_err:
-            logger.warning(f"⚠️ Errore creazione ristorante per {email}: {rist_err}")
+            logger.error(f"❌ Errore creazione ristorante per {email} (user_id={user_id}): {rist_err}")
             # Non fallire la creazione cliente se il ristorante fallisce
         
         logger.info(f"✅ Cliente creato: {email} (P.IVA: {piva_norm})")
@@ -364,16 +412,21 @@ def imposta_password_da_token(
         if errori:
             return False, errori[0], {}  # Ritorna primo errore
         
-        # 4. Hash password e salva
+        # 4. Invalida token PRIMA del cambio password (previene replay attack)
         password_hash = ph.hash(nuova_password)
+        user_id = user['id']
         
         supabase_client.table('users').update({
-            'password_hash': password_hash,
-            'reset_code': None,  # Invalida token
+            'reset_code': None,
             'reset_expires': None,
-            'attivo': True,  # Attiva account
+        }).eq('id', user_id).execute()
+        
+        # 5. Salva nuova password (token già invalidato)
+        supabase_client.table('users').update({
+            'password_hash': password_hash,
+            'attivo': True,
             'password_changed_at': datetime.now(timezone.utc).isoformat()
-        }).eq('id', user['id']).execute()
+        }).eq('id', user_id).execute()
         
         logger.info(f"✅ Password impostata per: {user.get('email')}")
         
@@ -458,6 +511,11 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         import streamlit as st
         from services import get_supabase_client
         
+        # Rate limiting: controlla lockout
+        rate_limit_msg = _check_login_rate_limit(email)
+        if rate_limit_msg:
+            return None, rate_limit_msg
+        
         # Ottieni client Supabase (singleton)
         if supabase_client is None:
             supabase_client = get_supabase_client()
@@ -466,12 +524,14 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         response = supabase_client.table("users").select("*").eq("email", email).eq("attivo", True).execute()
         
         if not response.data:
+            _record_login_failure(email)
             return None, "Credenziali errate o account disattivato"
         
         user = response.data[0]
         
         # Verifica password
         if verify_and_migrate_password(user, password):
+            _clear_login_failures(email)
             # Aggiorna last_login
             try:
                 supabase_client.table('users').update({
@@ -482,6 +542,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             
             return user, None
         else:
+            _record_login_failure(email)
             return None, "Credenziali errate"
             
     except Exception as e:

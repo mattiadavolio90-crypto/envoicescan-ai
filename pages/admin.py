@@ -13,6 +13,7 @@ Pannello admin con 6 TAB:
 import streamlit as st
 import pandas as pd
 import re
+import html as _html
 from datetime import datetime, timezone, timedelta
 import time
 import traceback
@@ -91,16 +92,8 @@ except Exception as e:
 
 # Nascondi sidebar immediatamente se non loggato
 if not st.session_state.get('logged_in', False):
-    st.markdown("""
-        <style>
-        [data-testid="stSidebar"],
-        section[data-testid="stSidebar"] {
-            display: none !important;
-            visibility: hidden !important;
-            width: 0 !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    from utils.ui_helpers import hide_sidebar_css
+    hide_sidebar_css()
 
 if not st.session_state.get('logged_in', False):
     st.switch_page("app.py")
@@ -116,6 +109,13 @@ if user.get('email') not in ADMIN_EMAILS:
     # Se l'admin sta impersonando un cliente, consenti accesso al pannello
     # ripristinando automaticamente l'utente admin originale.
     if is_admin_impersonating:
+        # Verifica integrità dati admin prima del ripristino
+        if not admin_original_user.get('email') or admin_original_user['email'] not in ADMIN_EMAILS:
+            logger.critical(f"⛔ Tentativo ripristino admin con email non autorizzata: {admin_original_user.get('email')}")
+            st.session_state.clear()
+            st.session_state.logged_in = False
+            st.error("⛔ Sessione compromessa. Effettua un nuovo login.")
+            st.stop()
         st.session_state.user_data = admin_original_user.copy()
         st.session_state.user_is_admin = True
         st.session_state.impersonating = False
@@ -573,7 +573,7 @@ if tab1:
                             email_html = f"""
                             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                                 <h2 style="color: #2c5aa0;">🎉 Benvenuto in OH YEAH!</h2>
-                                <p>Ciao <strong>{new_name}</strong>,</p>
+                                <p>Ciao <strong>{_html.escape(new_name)}</strong>,</p>
                                 <p>Il tuo account è stato creato con successo dal nostro team.</p>
                                 
                                 <p><strong>Per iniziare, imposta la tua password personale:</strong></p>
@@ -597,8 +597,8 @@ if tab1:
                                 
                                 <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;">
                                 
-                                <p><strong>📧 La tua email di accesso:</strong> {new_email}</p>
-                                <p><strong>🏢 P.IVA registrata:</strong> {normalizza_piva(new_piva)}</p>
+                                <p><strong>📧 La tua email di accesso:</strong> {_html.escape(new_email)}</p>
+                                <p><strong>🏢 P.IVA registrata:</strong> {_html.escape(normalizza_piva(new_piva))}</p>
                                 
                                 <p>Dopo aver impostato la password, potrai:</p>
                                 <ul>
@@ -622,10 +622,9 @@ if tab1:
                             
                             payload = {
                                 "sender": {"email": sender_email, "name": "OH YEAH!"},
-                                "to": [{"email": new_email, "name": new_name}],
+                                "to": [{"email": new_email, "name": _html.escape(new_name)}],
                                 "replyTo": {"email": "mattiadavolio90@gmail.com", "name": "Mattia Davolio - Support"},
-                                "bcc": [{"email": "mattiadavolio90@gmail.com"}],
-                                "subject": f"🆕 Benvenuto {new_name} - Imposta la tua Password",
+                                "subject": f"🆕 Benvenuto {_html.escape(new_name)} - Imposta la tua Password",
                                 "htmlContent": email_html
                             }
                             
@@ -2369,7 +2368,7 @@ def tab_memoria_globale_unificata():
         if num_selezionate > 0:
             info_parts.append(f"**{num_selezionate}** verifiche checkbox")
         
-        st.info(f"📊 Azioni pendenti: " + " | ".join(info_parts))
+        st.info(f"📊 Azioni pendenti: {' | '.join(info_parts)}")
         
         # Preview modifiche (se esistono)
         if num_modifiche > 0:

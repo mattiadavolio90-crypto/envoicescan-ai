@@ -5,8 +5,10 @@ Servizio per invio email tramite Brevo SMTP API.
 import streamlit as st
 import requests
 import logging
+import time
+from config.logger_setup import get_logger
 
-logger = logging.getLogger('fci_app.email')
+logger = get_logger('email')
 
 
 def invia_email(destinatario: str, oggetto: str, corpo_html: str, reply_to_email: str = None, reply_to_name: str = None) -> bool:
@@ -46,42 +48,62 @@ def invia_email(destinatario: str, oggetto: str, corpo_html: str, reply_to_email
         sender_email = brevo_cfg.get('sender_email', 'noreply@example.com')
         sender_name = brevo_cfg.get('sender_name', 'OH YEAH!')
         
-        # Default reply-to (support Gmail)
+        # Default reply-to da secrets (no PII hardcoded)
         if not reply_to_email:
-            reply_to_email = "mattiadavolio90@gmail.com"
+            reply_to_email = brevo_cfg.get('reply_to_email', sender_email)
         if not reply_to_name:
-            reply_to_name = "Mattia Davolio - Support"
+            reply_to_name = brevo_cfg.get('reply_to_name', sender_name)
         
         # Costruisci payload
         payload = {
             "sender": {"email": sender_email, "name": sender_name},
             "to": [{"email": destinatario}],
             "replyTo": {"email": reply_to_email, "name": reply_to_name},
-            "bcc": [{"email": "mattiadavolio90@gmail.com"}],  # Copia nascosta per log
             "subject": oggetto,
             "htmlContent": corpo_html
         }
         
-        # Invio tramite Brevo API v3
-        response = requests.post(
-            "https://api.brevo.com/v3/smtp/email",
-            json=payload,
-            headers={
-                "api-key": api_key,
-                "Content-Type": "application/json"
-            },
-            timeout=10
-        )
+        # BCC opzionale: solo se configurato in secrets
+        bcc_email = brevo_cfg.get('bcc_email')
+        if bcc_email:
+            payload["bcc"] = [{"email": bcc_email}]
         
-        if response.status_code == 201:
-            logger.info(f"✅ Email inviata a {destinatario}: {oggetto}")
-            return True
-        else:
-            logger.error(f"❌ Brevo API error: {response.status_code} - {response.text}")
-            return False
+        # Invio tramite Brevo API v3 (con retry per errori transitori)
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = requests.post(
+                    "https://api.brevo.com/v3/smtp/email",
+                    json=payload,
+                    headers={
+                        "api-key": api_key,
+                        "Content-Type": "application/json"
+                    },
+                    timeout=15
+                )
+                
+                if response.status_code == 201:
+                    logger.info(f"✅ Email inviata a {destinatario}: {oggetto}")
+                    return True
+                elif response.status_code >= 500:
+                    resp_excerpt = response.text[:200] if response.text else ''
+                    last_error = f"Brevo API {response.status_code}: {resp_excerpt}"
+                    logger.warning(f"⚠️ Tentativo {attempt + 1}/3 fallito (server error): {last_error}")
+                else:
+                    resp_excerpt = response.text[:200] if response.text else ''
+                    logger.error(f"❌ Brevo API error: {response.status_code} - {resp_excerpt}")
+                    return False
+            except requests.Timeout:
+                last_error = "Timeout"
+                logger.warning(f"⚠️ Tentativo {attempt + 1}/3 timeout invio email Brevo")
+            except requests.ConnectionError as e:
+                last_error = str(e)
+                logger.warning(f"⚠️ Tentativo {attempt + 1}/3 errore connessione: {e}")
             
-    except requests.Timeout:
-        logger.error("⏱️ Timeout invio email Brevo")
+            if attempt < 2:
+                time.sleep(2 ** attempt)
+        
+        logger.error(f"❌ Email non inviata dopo 3 tentativi. Ultimo errore: {last_error}")
         return False
     except Exception as e:
         logger.exception(f"❌ Errore invio email: {e}")

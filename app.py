@@ -1,6 +1,7 @@
 ﻿import streamlit as st
 import pandas as pd
 import os
+import html as _html
 import hmac as _hmac
 from collections import defaultdict
 
@@ -11,6 +12,14 @@ import time
 from config.constants import (
     CATEGORIE_SPESE_GENERALI,
     ADMIN_EMAILS,
+    TRUNCATE_ERROR_DISPLAY,
+    TRUNCATE_DESC_LOG,
+    TRUNCATE_DESC_QUERY,
+    UI_DELAY_SHORT,
+    UI_DELAY_MEDIUM,
+    UI_DELAY_LONG,
+    UI_DELAY_QUICK,
+    BATCH_RATE_LIMIT_DELAY,
 )
 
 # Import utilities da moduli separati
@@ -91,24 +100,23 @@ st.set_page_config(
 )
 
 # ============================================================
+# GUARDIA ANTI-LOOP: Limita rerun consecutivi (safety net)
+# ============================================================
+_rerun_count = st.session_state.get('_rerun_guard', 0)
+if _rerun_count > 8:
+    logger.critical(f"🚨 RERUN LOOP DETECTED ({_rerun_count} consecutivi) - reset forzato")
+    st.session_state._rerun_guard = 0
+    st.session_state.force_reload = False
+    st.error("⚠️ Rilevato loop di aggiornamento. La pagina è stata stabilizzata.")
+    st.stop()
+st.session_state._rerun_guard = _rerun_count + 1
+
+# ============================================================
 # SIDEBAR: NASCONDI SUBITO SE NON LOGGATO (anti-flash)
 # ============================================================
 if not st.session_state.get('logged_in', False):
-    st.markdown("""
-    <style>
-    [data-testid="stSidebar"],
-    section[data-testid="stSidebar"],
-    [data-testid="stSidebarNav"],
-    [data-testid="collapsedControl"] {
-        display: none !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        min-width: 0 !important;
-        opacity: 0 !important;
-        transform: translateX(-100%) !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    from utils.ui_helpers import hide_sidebar_css
+    hide_sidebar_css()
 
 # CSS + JS branding (caricati da file statici)
 load_css('branding.css')
@@ -222,6 +230,7 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
             _resp_cookie = supabase.table("users").select("*").eq("session_token", _token_cookie).eq("attivo", True).execute()
             if _resp_cookie and _resp_cookie.data:
                 _u = _resp_cookie.data[0]
+                _u.pop('password_hash', None)  # Non esporre hash in session
                 st.session_state.logged_in = True
                 st.session_state.user_data = _u
                 st.session_state.partita_iva = _u.get('partita_iva')
@@ -259,12 +268,7 @@ if st.query_params.get("reset_token"):
     reset_token = st.query_params.get("reset_token")
     
     # Nascondi sidebar per pagina pulita
-    st.markdown("""
-        <style>
-        [data-testid="stSidebar"] { display: none !important; }
-        [data-testid="collapsedControl"] { display: none !important; }
-        </style>
-    """, unsafe_allow_html=True)
+    hide_sidebar_css()
     
     st.title("🔐 Imposta la tua Password")
     
@@ -366,7 +370,7 @@ if st.query_params.get("reset_token"):
                             st.balloons()
                             
                             # Pulisci token da URL
-                            time.sleep(0.5)
+                            time.sleep(UI_DELAY_LONG)
                             st.query_params.clear()
                             st.rerun()
                         else:
@@ -551,6 +555,7 @@ def mostra_pagina_login():
                         user, errore = verifica_credenziali(email, password)
                         
                         if user:
+                            user.pop('password_hash', None)  # Non esporre hash in session
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
                             st.session_state.force_logout = False  # ← Reset flag logout
@@ -574,14 +579,14 @@ def mostra_pagina_login():
                                 st.session_state.user_is_admin = True
                                 logger.info(f"✅ Login ADMIN: {user.get('email')}")
                                 st.success("✅ Accesso effettuato come ADMIN!")
-                                time.sleep(0.2)
+                                time.sleep(UI_DELAY_SHORT)
                                 # Reindirizza direttamente al pannello admin
                                 st.switch_page("pages/admin.py")
                             else:
                                 st.session_state.user_is_admin = False
                                 logger.info(f"✅ Login cliente: {user.get('email')} | P.IVA: {user.get('partita_iva', 'N/A')}")
                                 st.success("✅ Accesso effettuato!")
-                                time.sleep(0.3)
+                                time.sleep(UI_DELAY_MEDIUM)
                                 st.rerun()
                         else:
                             st.error(f"❌ {errore}")
@@ -639,6 +644,7 @@ def mostra_pagina_login():
                     user, errore = verifica_codice_reset(reset_email, code_input, new_pwd)
                     
                     if user:
+                        user.pop('password_hash', None)  # Non esporre hash in session
                         st.session_state.logged_in = True
                         st.session_state.user_data = user
                         st.session_state.force_logout = False
@@ -651,7 +657,7 @@ def mostra_pagina_login():
                             except Exception:
                                 pass
                         st.success("✅ Password aggiornata! Accesso automatico...")
-                        time.sleep(0.5)
+                        time.sleep(UI_DELAY_LONG)
                         st.rerun()
                     else:
                         st.error(f"❌ {errore}")
@@ -901,7 +907,7 @@ if st.session_state.get('impersonating', False):
             ⚠️ MODALITÀ IMPERSONAZIONE
         </h3>
         <p style="color: #fef3c7; margin: 0.625rem 0 0 0; font-size: clamp(0.875rem, 2vw, 1rem); word-wrap: break-word;">
-            Stai visualizzando l'account di: <strong>{user.get('nome_ristorante', 'Cliente')}</strong> ({user.get('email')})
+            Stai visualizzando l'account di: <strong>{_html.escape(user.get('nome_ristorante', 'Cliente'))}</strong> ({_html.escape(user.get('email', ''))})
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -1039,9 +1045,9 @@ if user.get('email') not in ADMIN_EMAILS:
         )
         
         # Info ristorante sotto il dropdown, su tutta la larghezza
-        rag_soc = ristoranti[ristorante_idx].get('ragione_sociale') or 'N/A'
-        nome_r = ristoranti[ristorante_idx]['nome_ristorante']
-        piva_r = ristoranti[ristorante_idx]['partita_iva']
+        rag_soc = _html.escape(ristoranti[ristorante_idx].get('ragione_sociale') or 'N/A')
+        nome_r = _html.escape(ristoranti[ristorante_idx]['nome_ristorante'])
+        piva_r = _html.escape(ristoranti[ristorante_idx]['partita_iva'])
         st.markdown(f"""
         <div style='padding: 8px 14px; font-size: 0.88rem; color: #1e3a5f; font-weight: 500;'>
             ✅ <strong>Attivo</strong> &nbsp;·&nbsp; 📋 {nome_r} &nbsp;·&nbsp; 🏢 IT{piva_r} &nbsp;·&nbsp; 📄 {rag_soc}
@@ -1060,6 +1066,13 @@ if user.get('email') not in ADMIN_EMAILS:
                 st.session_state.files_processati_sessione = set()
             if 'files_con_errori' in st.session_state:
                 st.session_state.files_con_errori = set()
+            # 🧹 Pulizia chiavi stale da ristorante precedente
+            for _stale_key in ['righe_ai_appena_categorizzate', 'righe_keyword_appena_categorizzate',
+                               'righe_modificate_manualmente', 'force_reload', 'force_empty_until_upload',
+                               'files_errori_report', 'last_upload_summary', 'ultimo_upload_ids',
+                               'ingredienti_temp', 'ricetta_edit_mode', 'ricetta_edit_data']:
+                st.session_state.pop(_stale_key, None)
+            st.cache_data.clear()
             
             # 💾 Salva l'ultimo ristorante usato nel DB per ripristinarlo alla prossima sessione
             try:
@@ -1359,7 +1372,7 @@ def mostra_statistiche(df_completo):
                             if desc not in _tracking_memoria_set:
                                 _tracking_memoria_set.add(desc)
                                 st.session_state.righe_memoria_appena_categorizzate.append(desc)
-                            logger.info(f"📦 MEMORIA: '{desc[:40]}' → {cat_memoria}")
+                            logger.info(f"📦 MEMORIA: '{desc[:TRUNCATE_DESC_LOG]}' → {cat_memoria}")
                         else:
                             descrizioni_dopo_memoria.append(desc)
                     
@@ -1393,7 +1406,7 @@ def mostra_statistiche(df_completo):
                                 _tracking_keyword_set.add(desc)
                                 st.session_state.righe_keyword_appena_categorizzate.append(desc)
                             
-                            logger.debug(f"📖 DIZIONARIO: '{desc[:40]}' → {cat_dizionario}")
+                            logger.debug(f"📖 DIZIONARIO: '{desc[:TRUNCATE_DESC_LOG]}' → {cat_dizionario}")
                         else:
                             descrizioni_per_ai.append(desc)
                     
@@ -1413,10 +1426,11 @@ def mostra_statistiche(df_completo):
                     ]
                     if keyword_upsert_data:
                         try:
-                            supabase.table('prodotti_master').upsert(
+                            _kw_result = supabase.table('prodotti_master').upsert(
                                 keyword_upsert_data, on_conflict='descrizione'
                             ).execute()
-                            logger.info(f"💾 BATCH keyword: {len(keyword_upsert_data)} prodotti salvati in memoria globale")
+                            _kw_saved = len(_kw_result.data) if _kw_result.data else 0
+                            logger.info(f"💾 BATCH keyword: {_kw_saved}/{len(keyword_upsert_data)} prodotti salvati in memoria globale")
                         except Exception as e:
                             logger.warning(f"Errore batch salvataggio memoria keyword: {e}")
                     
@@ -1455,10 +1469,11 @@ def mostra_statistiche(df_completo):
                             # 💾 Batch upsert memoria GLOBALE per AI (singola query per chunk)
                             if ai_batch_upsert:
                                 try:
-                                    supabase.table('prodotti_master').upsert(
+                                    _ai_result = supabase.table('prodotti_master').upsert(
                                         ai_batch_upsert, on_conflict='descrizione'
                                     ).execute()
-                                    logger.info(f"💾 BATCH AI: {len(ai_batch_upsert)} prodotti salvati in memoria globale")
+                                    _ai_saved = len(_ai_result.data) if _ai_result.data else 0
+                                    logger.info(f"💾 BATCH AI: {_ai_saved}/{len(ai_batch_upsert)} prodotti salvati in memoria globale")
                                 except Exception as e:
                                     logger.error(f"Errore batch salvataggio memoria AI: {e}")
                         
@@ -1483,80 +1498,96 @@ def mostra_statistiche(df_completo):
                         logger.info("🧠 CATEGORIE RESTITUITE DALL'AI (prime 10)")
                         for i, (desc, cat) in enumerate(list(mappa_categorie.items())[:10]):
                             cat_display = f"'{cat}'" if cat else "VUOTA/NULL"
-                            logger.info(f"   [{i+1}] '{desc[:40]}' → {cat_display}")
+                            logger.info(f"   [{i+1}] '{desc[:TRUNCATE_DESC_LOG]}' → {cat_display}")
                         
+                        # ⚡ OTTIMIZZAZIONE: Raggruppa descrizioni per categoria per batch UPDATE
+                        # Invece di 1 query per descrizione (N+1), facciamo 1 query per categoria
+                        cat_to_descs = {}  # {categoria: [(desc_orig, desc_normalized), ...]}
                         for desc, cat in mappa_categorie.items():
-                            # Normalizza descrizione per matching consistente
-                            desc_normalized = normalizza_stringa(desc)
-                            
-                            logger.info(f"🔍 Tentando update: '{desc[:50]}' → {cat}")
-                            
-                            # VALIDAZIONE: Assicurati che cat non sia vuota o None (MA ACCETTA "Da Classificare")
                             if not cat or cat.strip() == '':
-                                logger.warning(f"⚠️ Categoria vuota/NULL per '{desc[:40]}', skip update")
+                                logger.warning(f"⚠️ Categoria vuota/NULL per '{desc[:TRUNCATE_DESC_LOG]}', skip update")
                                 continue
-                            
-                            # ⚠️ SKIP: Non sovrascrivere con "Da Classificare" (stesso valore, inutile)
                             if cat == "Da Classificare":
-                                logger.info(f"⏭️ Skip update per '{desc[:40]}' → già Da Classificare")
+                                logger.info(f"⏭️ Skip update per '{desc[:TRUNCATE_DESC_LOG]}' → già Da Classificare")
                                 continue
+                            cat_to_descs.setdefault(cat, []).append((desc, normalizza_stringa(desc)))
+                        
+                        logger.info(f"⚡ BATCH UPDATE: {len(cat_to_descs)} categorie distinte per {sum(len(v) for v in cat_to_descs.values())} descrizioni")
+                        
+                        # FASE 1: Batch UPDATE per categoria con descrizioni normalizzate (.in_())
+                        descs_non_matchate = {}  # {desc_orig: cat} - fallback individuale
+                        
+                        for cat, desc_pairs in cat_to_descs.items():
+                            normalized_list = [dn for _, dn in desc_pairs]
+                            original_list = [do for do, _ in desc_pairs]
                             
-                            # TENTATIVO 1: Match con descrizione normalizzata
-                            query_update1 = supabase.table("fatture").update(
-                                {"categoria": cat}
-                            ).eq("user_id", user_id).eq("descrizione", desc_normalized)
-                            query_update1 = add_ristorante_filter(query_update1)
-                            result = query_update1.execute()
-                            
-                            num_aggiornate = len(result.data) if result.data else 0
-                            if num_aggiornate > 0:
-                                logger.info(f"✅ Match normalizzato: '{desc[:40]}...' ({num_aggiornate} righe)")
-                            
-                            # ⭐ RETRY se UPDATE non ha modificato nulla (possibile timeout/race condition)
-                            if num_aggiornate == 0:
-                                logger.warning(f"⚠️ UPDATE 0 righe per '{desc[:50]}...', retry...")
-                                time.sleep(0.1)
-                                query_retry = supabase.table("fatture").update(
+                            # Batch UPDATE con tutte le descrizioni normalizzate per questa categoria
+                            try:
+                                query_batch = supabase.table("fatture").update(
                                     {"categoria": cat}
-                                ).eq("user_id", user_id).eq("descrizione", desc_normalized)
-                                query_retry = add_ristorante_filter(query_retry)
-                                result = query_retry.execute()
-                                num_aggiornate = len(result.data) if result.data else 0
-                                if num_aggiornate > 0:
-                                    logger.info(f"✅ Retry riuscito: {num_aggiornate} righe aggiornate")
+                                ).eq("user_id", user_id).in_("descrizione", normalized_list)
+                                query_batch = add_ristorante_filter(query_batch)
+                                result_batch = query_batch.execute()
+                                
+                                matched_count = len(result_batch.data) if result_batch.data else 0
+                                matched_descs = {row['descrizione'] for row in result_batch.data} if result_batch.data else set()
+                                
+                                if matched_count > 0:
+                                    logger.info(f"⚡ Batch {cat}: {matched_count} righe aggiornate")
+                                
+                                righe_aggiornate_totali += matched_count
+                                
+                                # Identifica descrizioni matchate per tracking
+                                for desc_orig, desc_norm in desc_pairs:
+                                    if desc_norm in matched_descs:
+                                        descrizioni_aggiornate.append(desc_orig)
+                                    else:
+                                        descs_non_matchate[desc_orig] = cat
+                                
+                            except Exception as batch_err:
+                                logger.warning(f"⚠️ Batch UPDATE fallito per {cat}: {batch_err}, fallback individuale")
+                                for desc_orig, _ in desc_pairs:
+                                    descs_non_matchate[desc_orig] = cat
+                        
+                        # FASE 2: Fallback individuale SOLO per descrizioni non matchate dal batch
+                        if descs_non_matchate:
+                            logger.info(f"🔄 Fallback individuale per {len(descs_non_matchate)} descrizioni non matchate")
+                        
+                        for desc, cat in descs_non_matchate.items():
+                            num_aggiornate = 0
                             
-                            # TENTATIVO 2: Se non trovato, prova con descrizione originale
-                            if num_aggiornate == 0:
+                            # Tentativo con descrizione originale (non normalizzata)
+                            try:
                                 query_update2 = supabase.table("fatture").update(
                                     {"categoria": cat}
                                 ).eq("user_id", user_id).eq("descrizione", desc)
                                 query_update2 = add_ristorante_filter(query_update2)
                                 result2 = query_update2.execute()
-                                
                                 num_aggiornate = len(result2.data) if result2.data else 0
-                                
                                 if num_aggiornate > 0:
-                                    logger.info(f"✅ Match con desc originale: '{desc[:40]}...' ({num_aggiornate} righe)")
+                                    logger.info(f"✅ Match desc originale: '{desc[:TRUNCATE_DESC_LOG]}...' ({num_aggiornate} righe)")
+                            except Exception as _e_orig:
+                                logger.debug(f"Fallback desc originale per '{desc[:TRUNCATE_DESC_QUERY]}': {_e_orig}")
                             
-                            # TENTATIVO 3: Prova con trim
+                            # Tentativo con trim
                             if num_aggiornate == 0:
                                 desc_trimmed = desc.strip()
                                 if desc_trimmed != desc:
-                                    query_update3 = supabase.table("fatture").update(
-                                        {"categoria": cat}
-                                    ).eq("user_id", user_id).eq("descrizione", desc_trimmed)
-                                    query_update3 = add_ristorante_filter(query_update3)
-                                    result3 = query_update3.execute()
-                                    
-                                    num_aggiornate = len(result3.data) if result3.data else 0
-                                    
-                                    if num_aggiornate > 0:
-                                        logger.info(f"✅ Match con trim: '{desc_trimmed[:40]}...' ({num_aggiornate} righe)")
+                                    try:
+                                        query_update3 = supabase.table("fatture").update(
+                                            {"categoria": cat}
+                                        ).eq("user_id", user_id).eq("descrizione", desc_trimmed)
+                                        query_update3 = add_ristorante_filter(query_update3)
+                                        result3 = query_update3.execute()
+                                        num_aggiornate = len(result3.data) if result3.data else 0
+                                        if num_aggiornate > 0:
+                                            logger.info(f"✅ Match trim: '{desc_trimmed[:TRUNCATE_DESC_LOG]}...' ({num_aggiornate} righe)")
+                                    except Exception as _e_trim:
+                                        logger.debug(f"Fallback trim per '{desc[:TRUNCATE_DESC_QUERY]}': {_e_trim}")
                             
-                            # TENTATIVO 4: Match case-insensitive parziale (ILIKE) controllato
+                            # Tentativo ILIKE case-insensitive
                             if num_aggiornate == 0 and len(desc.strip()) >= 3:
                                 try:
-                                    # Prova prima con desc originale via ILIKE esatto
                                     query_update4 = supabase.table("fatture").update(
                                         {"categoria": cat}
                                     ).eq("user_id", user_id).ilike("descrizione", desc.strip())
@@ -1564,44 +1595,28 @@ def mostra_statistiche(df_completo):
                                     result4 = query_update4.execute()
                                     num_aggiornate = len(result4.data) if result4.data else 0
                                     if num_aggiornate > 0:
-                                        logger.info(f"✅ Match ILIKE esatto: '{desc[:40]}...' ({num_aggiornate} righe)")
+                                        logger.info(f"✅ Match ILIKE esatto: '{desc[:TRUNCATE_DESC_LOG]}...' ({num_aggiornate} righe)")
                                     
-                                    # Se ancora zero, prova con pattern parziale
                                     if num_aggiornate == 0 and len(desc.strip()) >= 5:
                                         query_update5 = supabase.table("fatture").update(
                                             {"categoria": cat}
-                                        ).eq("user_id", user_id).ilike("descrizione", f"%{_escape_ilike(desc.strip()[:30])}%")
+                                        ).eq("user_id", user_id).ilike("descrizione", f"%{_escape_ilike(desc.strip()[:TRUNCATE_DESC_QUERY])}%")
                                         query_update5 = add_ristorante_filter(query_update5)
                                         result5 = query_update5.execute()
                                         num_aggiornate = len(result5.data) if result5.data else 0
                                         if num_aggiornate > 0:
-                                            logger.info(f"✅ Match ILIKE parziale: '{desc[:40]}...' ({num_aggiornate} righe)")
+                                            logger.info(f"✅ Match ILIKE parziale: '{desc[:TRUNCATE_DESC_LOG]}...' ({num_aggiornate} righe)")
                                 except Exception as ilike_err:
-                                    logger.warning(f"Errore ILIKE update '{desc[:30]}...': {ilike_err}")
+                                    logger.warning(f"Errore ILIKE update '{desc[:TRUNCATE_DESC_QUERY]}...': {ilike_err}")
                             
-                            # Se ancora non trovato, logga DETTAGLIATO
                             if num_aggiornate == 0:
                                 descrizioni_non_trovate.append(desc)
                                 logger.error(f"❌ NESSUN MATCH per: '{desc}' (cat: {cat})")
-                                # Query diagnostica: cerca descrizioni simili
-                                try:
-                                    check_query = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id).ilike("descrizione", f"%{_escape_ilike(desc[:20])}%").limit(10)
-                                    check_query = add_ristorante_filter(check_query)
-                                    check = check_query.execute()
-                                    if check.data:
-                                        logger.error(f"   Descrizioni simili trovate nel DB:")
-                                        for row in check.data[:5]:
-                                            logger.error(f"     - '{row['descrizione']}' (cat: {row.get('categoria', 'N/A')})")
-                                    else:
-                                        logger.error(f"   Nessuna descrizione simile trovata per '{desc[:30]}...'")
-                                except Exception as diag_err:
-                                    logger.error(f"   Errore query diagnostica: {diag_err}")
                             
                             righe_aggiornate_totali += num_aggiornate
-                            
                             if num_aggiornate > 0:
                                 descrizioni_aggiornate.append(desc)
-                                logger.info(f"✅ AGGIORNATO '{desc[:40]}...' → {cat} ({num_aggiornate} righe)")
+                                logger.info(f"✅ AGGIORNATO '{desc[:TRUNCATE_DESC_LOG]}...' → {cat} ({num_aggiornate} righe)")
                         
                         # 🔧 FALLBACK: Applica dizionario ai prodotti rimasti "Da Classificare"
                         try:
@@ -1615,29 +1630,31 @@ def mostra_statistiche(df_completo):
                                 if len(ancora_da_class) > 0:
                                     logger.info(f"🔧 FALLBACK: Tentando categorizzazione con dizionario per {len(ancora_da_class)} prodotti rimasti...")
                                     
-                                    # applica_correzioni_dizionario già importata al top-level
-                                    
+                                    # ⚡ BATCH: Raggruppa per categoria prima di fare query
+                                    _fb_cat_to_descs = {}  # {categoria: [desc1, desc2, ...]}
                                     for desc in ancora_da_class:
-                                        # Tenta match con dizionario
                                         cat_dizionario = applica_correzioni_dizionario(desc, "Da Classificare")
-                                        
                                         if cat_dizionario and cat_dizionario != 'Da Classificare':
-                                            # Aggiorna con categoria da dizionario
-                                            try:
-                                                ristorante_id = st.session_state.get('ristorante_id')
-                                                query_fallback = supabase.table('fatture').update(
-                                                    {'categoria': cat_dizionario}
-                                                ).eq('user_id', user_id).ilike('descrizione', f'%{_escape_ilike(desc.strip())}%')
-                                                if ristorante_id:
-                                                    query_fallback = query_fallback.eq('ristorante_id', ristorante_id)
-                                                righe_updated = query_fallback.execute()
-                                                righe_aggiornate_totali += len(righe_updated.data) if righe_updated.data else 0
-                                                logger.info(f"✅ Fallback dizionario: '{desc[:40]}...' → {cat_dizionario}")
-                                            except Exception as fb_err:
-                                                logger.warning(f"Errore fallback: {fb_err}")
+                                            _fb_cat_to_descs.setdefault(cat_dizionario, []).append(desc)
                                         else:
-                                            # NON categorizzare - rimane "Da Classificare" per intervento manuale
-                                            logger.warning(f"⚠️ '{desc[:40]}...' rimane Da Classificare - richiede intervento manuale")
+                                            logger.warning(f"⚠️ '{desc[:TRUNCATE_DESC_LOG]}...' rimane Da Classificare - richiede intervento manuale")
+                                    
+                                    ristorante_id = st.session_state.get('ristorante_id')
+                                    for _fb_cat, _fb_descs in _fb_cat_to_descs.items():
+                                        try:
+                                            # Batch update: tutte le descrizioni con stessa categoria
+                                            query_fallback = supabase.table('fatture').update(
+                                                {'categoria': _fb_cat}
+                                            ).eq('user_id', user_id).in_('descrizione', [d.strip() for d in _fb_descs])
+                                            if ristorante_id:
+                                                query_fallback = query_fallback.eq('ristorante_id', ristorante_id)
+                                            righe_updated = query_fallback.execute()
+                                            _fb_count = len(righe_updated.data) if righe_updated.data else 0
+                                            righe_aggiornate_totali += _fb_count
+                                            if _fb_count > 0:
+                                                logger.info(f"✅ Fallback batch {_fb_cat}: {_fb_count} righe ({len(_fb_descs)} desc)")
+                                        except Exception as fb_err:
+                                            logger.warning(f"Errore fallback batch {_fb_cat}: {fb_err}")
                         except Exception as fb_err:
                             logger.warning(f"Errore fallback categorizzazione: {fb_err}")
                         
@@ -1696,9 +1713,8 @@ def mostra_statistiche(df_completo):
                         st.session_state.editor_refresh_counter = st.session_state.get('editor_refresh_counter', 0) + 1
                         logger.info("🔄 Flag force_reload impostato su True")
                         
-                        # ⭐ FIX RACE CONDITION: Breve pausa per propagazione modifiche su Supabase
-                        with st.spinner("⏳ Sincronizzazione database in corso..."):
-                            time.sleep(1.5)
+                        # ⭐ FIX: Pausa minima per propagazione (Supabase è sincrono, la cache è già pulita)
+                        time.sleep(UI_DELAY_MEDIUM)
                         
                         # Rerun per ricaricare dati freschi dal database
                         st.rerun()
@@ -1719,24 +1735,13 @@ def mostra_statistiche(df_completo):
     # ============================================
     # FILTRO DROPDOWN PERIODO
     # ============================================
+    from utils.period_helper import PERIODO_OPTIONS, calcola_date_periodo, risolvi_periodo
+    
     st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📅 Filtra per Periodo</h3>', unsafe_allow_html=True)
     
-    # Calcola date dinamiche per i filtri
-    oggi = pd.Timestamp.now()
-    oggi_date = oggi.date()
-    inizio_mese = oggi.replace(day=1).date()
-    inizio_trimestre = oggi.replace(month=((oggi.month-1)//3)*3+1, day=1).date()
-    inizio_semestre = oggi.replace(month=1 if oggi.month <= 6 else 7, day=1).date()
-    inizio_anno = oggi.replace(month=1, day=1).date()
-    
-    # Opzioni filtro periodo
-    periodo_options = [
-        "📅 Mese in Corso",
-        "📊 Trimestre in Corso",
-        "📈 Semestre in Corso",
-        "🗓️ Anno in Corso",
-        "⚙️ Periodo Personalizzato"
-    ]
+    date_periodo = calcola_date_periodo()
+    oggi_date = date_periodo['oggi']
+    inizio_anno = date_periodo['inizio_anno']
     
     # Default: Anno in Corso
     if 'periodo_dropdown' not in st.session_state:
@@ -1748,9 +1753,9 @@ def mostra_statistiche(df_completo):
     with col_periodo:
         periodo_selezionato = st.selectbox(
             "Periodo",
-            options=periodo_options,
+            options=PERIODO_OPTIONS,
             label_visibility="collapsed",
-            index=periodo_options.index(st.session_state.periodo_dropdown) if st.session_state.periodo_dropdown in periodo_options else 0,
+            index=PERIODO_OPTIONS.index(st.session_state.periodo_dropdown) if st.session_state.periodo_dropdown in PERIODO_OPTIONS else 0,
             key="filtro_periodo_main"
         )
     
@@ -1758,30 +1763,13 @@ def mostra_statistiche(df_completo):
     st.session_state.periodo_dropdown = periodo_selezionato
     
     # Gestione logica periodo
-    data_inizio_filtro = None
-    data_fine_filtro = oggi_date
+    data_inizio_filtro, data_fine_filtro, label_periodo = risolvi_periodo(periodo_selezionato, date_periodo)
     
-    if periodo_selezionato == "📅 Mese in Corso":
-        data_inizio_filtro = inizio_mese
-        label_periodo = f"Mese in corso ({inizio_mese.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
-    
-    elif periodo_selezionato == "📊 Trimestre in Corso":
-        data_inizio_filtro = inizio_trimestre
-        label_periodo = f"Trimestre in corso ({inizio_trimestre.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
-    
-    elif periodo_selezionato == "📈 Semestre in Corso":
-        data_inizio_filtro = inizio_semestre
-        label_periodo = f"Semestre in corso ({inizio_semestre.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
-    
-    elif periodo_selezionato == "🗓️ Anno in Corso":
-        data_inizio_filtro = inizio_anno
-        label_periodo = f"Anno in corso ({inizio_anno.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
-    
-    elif periodo_selezionato == "⚙️ Periodo Personalizzato":
+    if data_inizio_filtro is None:
+        # Periodo Personalizzato
         st.markdown("##### Seleziona Range Date")
         col_da, col_a = st.columns(2)
         
-        # Inizializza date personalizzate se non esistono
         if 'data_inizio_filtro' not in st.session_state:
             st.session_state.data_inizio_filtro = inizio_anno
         if 'data_fine_filtro' not in st.session_state:
@@ -1803,24 +1791,17 @@ def mostra_statistiche(df_completo):
                 key="data_a_custom"
             )
         
-        # Valida date
         if data_inizio_custom > data_fine_custom:
             st.error("⚠️ La data iniziale deve essere precedente alla data finale!")
             data_inizio_filtro = st.session_state.data_inizio_filtro
             data_fine_filtro = st.session_state.data_fine_filtro
         else:
-            # Salva le date valide
             st.session_state.data_inizio_filtro = data_inizio_custom
             st.session_state.data_fine_filtro = data_fine_custom
             data_inizio_filtro = data_inizio_custom
             data_fine_filtro = data_fine_custom
         
         label_periodo = f"{data_inizio_filtro.strftime('%d/%m/%Y')} → {data_fine_filtro.strftime('%d/%m/%Y')}"
-    
-    else:
-        # Default: Mese in Corso
-        data_inizio_filtro = inizio_mese
-        label_periodo = f"Mese in corso ({inizio_mese.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
     
     # APPLICA FILTRO AI DATI
     # ⚡ Data_DT già calcolata prima dello split - le viste la ereditano automaticamente
@@ -1958,35 +1939,7 @@ def mostra_statistiche(df_completo):
                 st.rerun()
     
     # CSS per bottoni colorati personalizzati
-    st.markdown("""
-        <style>
-        div[data-testid="column"] button[kind="secondary"] {
-            background-color: #f0f2f6 !important;
-            color: #31333F !important;
-            border: 2px solid #e0e0e0 !important;
-        }
-        div[data-testid="column"] button[kind="secondary"]:hover {
-            background-color: #e0e5eb !important;
-            border-color: #0ea5e9 !important;
-        }
-        /* Responsive button text */
-        div[data-testid="column"] button p {
-            font-size: clamp(0.7rem, 1.8vw, 0.95rem) !important;
-            line-height: 1.2 !important;
-            word-wrap: break-word !important;
-            white-space: normal !important;
-            overflow-wrap: break-word !important;
-        }
-        div[data-testid="column"] button {
-            padding: 0.4rem 0.25rem !important;
-            height: 4rem !important;
-            min-height: 4rem !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    load_css('common.css')
     
     # Resetta il flag is_loading dopo il rerun
     if st.session_state.is_loading:
@@ -2431,24 +2384,6 @@ def mostra_statistiche(df_completo):
         
         st.markdown("""
             <style>
-            [data-testid="stDownloadButton"] {
-                margin-top: 10px !important;
-            }
-            [data-testid="stDownloadButton"] button {
-                background-color: #28a745 !important;
-                color: white !important;
-                font-weight: 600 !important;
-                font-size: clamp(0.7rem, 1.6vw, 0.8rem) !important;
-                border-radius: 6px !important;
-                border: none !important;
-                min-width: 8rem !important;
-                min-height: 2.5rem !important;
-                padding: 0.5rem !important;
-            }
-            [data-testid="stDownloadButton"] button:hover {
-                background-color: #218838 !important;
-            }
-            
             /* 🧠 COLORAZIONE ROSA per righe classificate da AI */
             [data-testid="stDataFrame"] [data-testid="stDataFrameCell"] {
                 transition: background-color 0.3s ease;
@@ -2633,7 +2568,7 @@ def mostra_statistiche(df_completo):
                             
                             # ⛔ SKIP se categoria è "Da Classificare" (non salvare categorie placeholder)
                             if nuova_cat == "Da Classificare":
-                                logger.debug(f"⏭️ SKIP: Categoria 'Da Classificare' non salvata per {descrizione[:30]}")
+                                logger.debug(f"⏭️ SKIP: Categoria 'Da Classificare' non salvata per {descrizione[:TRUNCATE_DESC_QUERY]}")
                                 skip_da_classificare_count += 1
                                 continue
                             
@@ -2666,7 +2601,7 @@ def mostra_statistiche(df_completo):
                             
                             if categoria_modificata:
                                 categorie_modificate_count += 1
-                                logger.info(f"✋ MANUALE: '{descrizione[:40]}' modificato da '{vecchia_cat or "vuoto"}' → {nuova_cat}")
+                                logger.info(f"✋ MANUALE: '{descrizione[:TRUNCATE_DESC_LOG]}' modificato da '{vecchia_cat or "vuoto"}' → {nuova_cat}")
                                 
                                 # ⭐ NUOVO: Traccia modifica manuale per colonna Fonte
                                 if 'righe_modificate_manualmente' not in st.session_state:
@@ -2697,9 +2632,9 @@ def mostra_statistiche(df_completo):
                                     )
                                     
                                     if successo:
-                                        logger.info(f"✅ CLIENTE: Salvato locale '{descrizione[:40]}' → {nuova_cat}")
+                                        logger.info(f"✅ CLIENTE: Salvato locale '{descrizione[:TRUNCATE_DESC_LOG]}' → {nuova_cat}")
                                     else:
-                                        logger.error(f"❌ CLIENTE: Errore salvataggio locale '{descrizione[:40]}'")
+                                        logger.error(f"❌ CLIENTE: Errore salvataggio locale '{descrizione[:TRUNCATE_DESC_LOG]}'")
                             
                             # 🔄 MODIFICA BATCH: Se categoria è cambiata, aggiorna TUTTE le righe con stessa descrizione
                             # In vista aggregata: SEMPRE batch update (1 riga vista = N righe DB)
@@ -2730,7 +2665,7 @@ def mostra_statistiche(df_completo):
                                 
                                 # supabase-py v2: senza .select() result.data è sempre []
                                 righe_aggiornate = len(result.data) if result.data else 1  # assume 1 se nessun errore
-                                logger.info(f"✅ BATCH: {righe_aggiornate} righe aggiornate per '{descrizione[:40]}'")
+                                logger.info(f"✅ BATCH: {righe_aggiornate} righe aggiornate per '{descrizione[:TRUNCATE_DESC_LOG]}'")
                                 
                                 # 🔍 DIAGNOSI: Se UPDATE fallisce (0 righe), cerca descrizioni simili nel DB
                                 if righe_aggiornate == 0:
@@ -2927,6 +2862,9 @@ if force_refresh:
 
 with st.spinner("⏳ Caricamento dati..."):
     df_cache = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh)
+
+# ✅ Render riuscito: reset contatore anti-loop
+st.session_state._rerun_guard = 0
 
 
 # 🗂️ GESTIONE FATTURE - Eliminazione (prima del file uploader)
@@ -3268,14 +3206,13 @@ else:
     _prodotti_unici_ui = 0
     try:
         if not df_cache.empty and 'Categoria' in df_cache.columns:
-            # Escludi le stesse righe escluse dalla dashboard (note + review)
-            _df_for_count = df_cache.copy()
-            _mask_note = _df_for_count['Categoria'].fillna('') == '📝 NOTE E DICITURE'
-            if 'needs_review' in _df_for_count.columns:
-                _mask_review = _df_for_count['needs_review'].fillna(False) == True
-                _df_for_count = _df_for_count[~(_mask_note | _mask_review)]
+            # Escludi le stesse righe escluse dalla dashboard (note + review) — solo lettura, no copy
+            _mask_note = df_cache['Categoria'].fillna('') == '📝 NOTE E DICITURE'
+            if 'needs_review' in df_cache.columns:
+                _mask_review = df_cache['needs_review'].fillna(False) == True
+                _df_for_count = df_cache[~(_mask_note | _mask_review)]
             else:
-                _df_for_count = _df_for_count[~_mask_note]
+                _df_for_count = df_cache[~_mask_note]
             
             _mask_da_class = (
                 _df_for_count['Categoria'].isna()
@@ -3698,10 +3635,16 @@ if uploaded_files:
                     # Aggiorna progress GLOBALE
                     progress = idx_globale / total_files
                     progress_bar.progress(progress)
-                    status_text.text(f"📄 Elaborazione {idx_globale}/{total_files}: {file.name[:40]}...")
+                    status_text.text(f"📄 Elaborazione {idx_globale}/{total_files}: {file.name[:TRUNCATE_DESC_LOG]}...")
                     
                     # Routing automatico per tipo file con TRY/EXCEPT ROBUSTO
                     try:
+                        # ⚡ Validazione dimensione file (0-byte / file vuoti)
+                        file_content = file.getvalue()
+                        if not file_content or len(file_content) == 0:
+                            raise ValueError(f"File vuoto (0 byte): {file.name}")
+                        file.seek(0)  # Reset posizione dopo getvalue()
+                        
                         if nome_file.endswith('.xml'):
                             items = estrai_dati_da_xml(file)
                         elif nome_file.endswith('.p7m'):
@@ -3827,8 +3770,9 @@ if uploaded_files:
                     
                     except Exception as e:
                         # TRACCIA ERRORE DETTAGLIATO (silenzioso - solo log)
-                        error_msg = str(e)[:150]
-                        logger.exception(f"❌ Errore elaborazione {file.name}")
+                        full_error = str(e)
+                        error_msg = full_error[:TRUNCATE_ERROR_DISPLAY] + ("..." if len(full_error) > TRUNCATE_ERROR_DISPLAY else "")
+                        logger.exception(f"❌ Errore elaborazione {file.name}: {full_error}")
                         file_errore[file.name] = error_msg
                         errori.append(f"{file.name}: {error_msg}")
                         
@@ -3873,7 +3817,7 @@ if uploaded_files:
                 # PAUSA TRA BATCH (rate limit OpenAI + liberazione memoria)
                 # ============================================================
                 if batch_end < total_files:
-                    time.sleep(0.5)  # 0.5 secondi tra batch per evitare rate limit
+                    time.sleep(BATCH_RATE_LIMIT_DELAY)  # Pausa tra batch per evitare rate limit
         
         except Exception as critical_error:
             # ERRORE CRITICO: ferma tutto ma mostra report
@@ -3971,7 +3915,7 @@ if uploaded_files:
         total_check = len(uploaded_files)
         for i in range(total_check):
             progress_bar.progress((i + 1) / total_check)
-            status_text.text(f"🔍 Verifica {i + 1}/{total_check}: {uploaded_files[i].name[:40]}...")
+            status_text.text(f"🔍 Verifica {i + 1}/{total_check}: {uploaded_files[i].name[:TRUNCATE_DESC_LOG]}...")
             time.sleep(0.05)
         
         upload_placeholder.empty()

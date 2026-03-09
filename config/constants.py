@@ -1241,3 +1241,27 @@ KPI_SOGLIE = {
 # Lista email degli amministratori (fonte unica di verità)
 ADMIN_EMAILS = ["mattiadavolio90@gmail.com"]
 
+
+# ============================================================
+# LIMITI E COSTANTI APPLICAZIONE
+# ============================================================
+
+# Troncamento descrizioni nei log
+TRUNCATE_DESC_LOG = 40
+TRUNCATE_DESC_QUERY = 30
+TRUNCATE_ERROR_DISPLAY = 150
+
+# Limiti upload e batch
+MAX_FILE_SIZE_P7M = 50_000_000  # 50 MB
+MAX_DESC_LENGTH_DB = 500
+
+# Memoria sessione AI
+MEMORIA_SESSION_CAP = 500
+
+# Delay UI Streamlit (secondi)
+UI_DELAY_QUICK = 0.05
+UI_DELAY_SHORT = 0.2
+UI_DELAY_MEDIUM = 0.3
+UI_DELAY_LONG = 0.5
+BATCH_RATE_LIMIT_DELAY = 0.5
+

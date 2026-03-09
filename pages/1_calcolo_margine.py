@@ -48,16 +48,8 @@ st.set_page_config(
 # NASCONDI SIDEBAR SE NON LOGGATO
 # ============================================
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.markdown("""
-        <style>
-        [data-testid="stSidebar"],
-        section[data-testid="stSidebar"] {
-            display: none !important;
-            visibility: hidden !important;
-            width: 0 !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    from utils.ui_helpers import hide_sidebar_css
+    hide_sidebar_css()
 
 # ============================================
 # AUTENTICAZIONE RICHIESTA
@@ -76,26 +68,8 @@ if not current_ristorante:
 # ============================================
 # CONTROLLO PAGINA ABILITATA (legge sempre dal DB per riflettere modifiche admin)
 # ============================================
-_supabase = get_supabase_client()
-try:
-    _fresh = _supabase.table('users').select('pagine_abilitate').eq('id', user_id).execute()
-    if _fresh.data:
-        _pagine_raw = _fresh.data[0].get('pagine_abilitate')
-        st.session_state.user_data['pagine_abilitate'] = _pagine_raw  # sync per sidebar
-    else:
-        _pagine_raw = user.get('pagine_abilitate')
-except Exception:
-    _pagine_raw = user.get('pagine_abilitate')
-if isinstance(_pagine_raw, str):
-    import json as _json
-    try:
-        _pagine_raw = _json.loads(_pagine_raw)
-    except Exception:
-        _pagine_raw = None
-pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
-if not pagine_abilitate.get('marginalita', True):
-    st.warning("⚠️ Questa pagina non è abilitata per il tuo account. Contatta l'amministratore.")
-    st.stop()
+from utils.page_setup import check_page_enabled
+check_page_enabled('marginalita', user_id)
 
 # ============================================
 # SIDEBAR CONDIVISA
@@ -144,67 +118,16 @@ with col_tab3:
             st.session_state.margine_tab = "analisi"
             st.rerun()
 
-# CSS per bottoni tab - stile identico a Analisi Fatture
+# CSS per bottoni tab - caricato da file statico condiviso
+from utils.ui_helpers import load_css
+load_css('common.css')
 st.markdown("""
     <style>
-    /* Globale: primary button azzurro */
-    button[kind="primary"] {
-        background-color: #0ea5e9 !important;
-        color: white !important;
-        border: 2px solid #0284c7 !important;
-        font-weight: bold !important;
-    }
-    button[kind="primary"]:hover {
-        background-color: #0284c7 !important;
-        border-color: #0369a1 !important;
-    }
-    button[kind="primary"]:disabled,
-    button[kind="primary"][disabled] {
-        background-color: #0ea5e9 !important;
-        color: white !important;
-        border: 2px solid #0284c7 !important;
-        opacity: 0.5 !important;
-    }
-    div[data-testid="column"] button[kind="primary"] {
-        background-color: #0ea5e9 !important;
-        color: white !important;
-        border: 2px solid #0284c7 !important;
-        font-weight: bold !important;
-    }
-    div[data-testid="column"] button[kind="primary"]:hover {
-        background-color: #0284c7 !important;
-        border-color: #0369a1 !important;
-    }
-    div[data-testid="column"] button[kind="secondary"] {
-        background-color: #f0f2f6 !important;
-        color: #31333F !important;
-        border: 2px solid #e0e0e0 !important;
-    }
-    div[data-testid="column"] button[kind="secondary"]:hover {
-        background-color: #e0e5eb !important;
-        border-color: #0ea5e9 !important;
-    }
-    div[data-testid="column"] button p {
-        font-size: clamp(0.7rem, 1.8vw, 0.95rem) !important;
-        line-height: 1.3 !important;
-        word-wrap: break-word !important;
-        white-space: normal !important;
-        overflow-wrap: break-word !important;
-    }
+    /* Override specifico: altezza bottoni più compatta per questa pagina */
     div[data-testid="column"] button {
         padding: 0.5rem 0.25rem !important;
         min-height: 3rem !important;
-    }
-    /* Download Button - verde */
-    [data-testid="stDownloadButton"] button {
-        background-color: #28a745 !important;
-        color: white !important;
-        font-weight: 600 !important;
-        border: none !important;
-        border-radius: 6px !important;
-    }
-    [data-testid="stDownloadButton"] button:hover {
-        background-color: #218838 !important;
+        height: auto !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -218,20 +141,11 @@ if st.session_state.margine_tab == "analisi":
     # ============================================
     # FILTRO TEMPORALE (stile identico ad Analisi Fatture)
     # ============================================
-    oggi_aa = pd.Timestamp.now()
-    oggi_date_aa = oggi_aa.date()
-    inizio_mese_aa = oggi_aa.replace(day=1).date()
-    inizio_trimestre_aa = oggi_aa.replace(month=((oggi_aa.month-1)//3)*3+1, day=1).date()
-    inizio_semestre_aa = oggi_aa.replace(month=1 if oggi_aa.month <= 6 else 7, day=1).date()
-    inizio_anno_aa = oggi_aa.replace(month=1, day=1).date()
-
-    periodo_options_aa = [
-        "📅 Mese in Corso",
-        "📊 Trimestre in Corso",
-        "📈 Semestre in Corso",
-        "🗓️ Anno in Corso",
-        "⚙️ Periodo Personalizzato"
-    ]
+    from utils.period_helper import PERIODO_OPTIONS, calcola_date_periodo, risolvi_periodo
+    
+    date_periodo = calcola_date_periodo()
+    oggi_date_aa = date_periodo['oggi']
+    inizio_anno_aa = date_periodo['inizio_anno']
 
     if 'aa_periodo_dropdown' not in st.session_state:
         st.session_state.aa_periodo_dropdown = "🗓️ Anno in Corso"
@@ -242,32 +156,20 @@ if st.session_state.margine_tab == "analisi":
         st.markdown('<p style="color:#1e3a5f;font-weight:600;font-size:0.9rem;margin:0 0 4px 0;">📅 Filtra per Periodo</p>', unsafe_allow_html=True)
         periodo_sel_aa = st.selectbox(
             "📅 Filtra per Periodo",
-            options=periodo_options_aa,
+            options=PERIODO_OPTIONS,
             label_visibility="collapsed",
-            index=periodo_options_aa.index(st.session_state.aa_periodo_dropdown) if st.session_state.aa_periodo_dropdown in periodo_options_aa else 3,
+            index=PERIODO_OPTIONS.index(st.session_state.aa_periodo_dropdown) if st.session_state.aa_periodo_dropdown in PERIODO_OPTIONS else 3,
             key="aa_filtro_periodo"
         )
 
     st.session_state.aa_periodo_dropdown = periodo_sel_aa
 
     # Logica date
-    data_inizio_aa = None
-    data_fine_aa = oggi_date_aa
-    anno_aa = oggi_aa.year  # default
+    data_inizio_aa, data_fine_aa, label_periodo = risolvi_periodo(periodo_sel_aa, date_periodo)
+    anno_aa = oggi_date_aa.year  # default
 
-    if periodo_sel_aa == "📅 Mese in Corso":
-        data_inizio_aa = inizio_mese_aa
-        label_periodo = f"Mese in corso ({inizio_mese_aa.strftime('%d/%m/%Y')} → {oggi_date_aa.strftime('%d/%m/%Y')})"
-    elif periodo_sel_aa == "📊 Trimestre in Corso":
-        data_inizio_aa = inizio_trimestre_aa
-        label_periodo = f"Trimestre in corso ({inizio_trimestre_aa.strftime('%d/%m/%Y')} → {oggi_date_aa.strftime('%d/%m/%Y')})"
-    elif periodo_sel_aa == "📈 Semestre in Corso":
-        data_inizio_aa = inizio_semestre_aa
-        label_periodo = f"Semestre in corso ({inizio_semestre_aa.strftime('%d/%m/%Y')} → {oggi_date_aa.strftime('%d/%m/%Y')})"
-    elif periodo_sel_aa == "🗓️ Anno in Corso":
-        data_inizio_aa = inizio_anno_aa
-        label_periodo = f"Anno in corso ({inizio_anno_aa.strftime('%d/%m/%Y')} → {oggi_date_aa.strftime('%d/%m/%Y')})"
-    elif periodo_sel_aa == "⚙️ Periodo Personalizzato":
+    if data_inizio_aa is None:
+        # Periodo Personalizzato
         st.markdown("##### Seleziona Range Date")
         col_da_aa, col_a_aa = st.columns(2)
 
@@ -303,9 +205,6 @@ if st.session_state.margine_tab == "analisi":
 
         anno_aa = data_inizio_aa.year
         label_periodo = f"{data_inizio_aa.strftime('%d/%m/%Y')} → {data_fine_aa.strftime('%d/%m/%Y')}"
-    else:
-        data_inizio_aa = inizio_anno_aa
-        label_periodo = f"Anno in corso ({inizio_anno_aa.strftime('%d/%m/%Y')} → {oggi_date_aa.strftime('%d/%m/%Y')})"
 
     # Info periodo
     giorni_aa = (data_fine_aa - data_inizio_aa).days + 1

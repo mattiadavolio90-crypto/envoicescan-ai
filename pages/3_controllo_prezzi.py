@@ -35,16 +35,8 @@ st.set_page_config(
 # NASCONDI SIDEBAR SE NON LOGGATO
 # ============================================
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
-    st.markdown("""
-        <style>
-        [data-testid="stSidebar"],
-        section[data-testid="stSidebar"] {
-            display: none !important;
-            visibility: hidden !important;
-            width: 0 !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    from utils.ui_helpers import hide_sidebar_css
+    hide_sidebar_css()
 
 # ============================================
 # AUTENTICAZIONE RICHIESTA
@@ -63,27 +55,8 @@ if not current_ristorante:
 # ============================================
 # CONTROLLO PAGINA ABILITATA (legge sempre dal DB per riflettere modifiche admin)
 # ============================================
-_supabase = get_supabase_client()
-try:
-    _fresh = _supabase.table('users').select('pagine_abilitate').eq('id', user_id).execute()
-    if _fresh.data:
-        _pagine_raw = _fresh.data[0].get('pagine_abilitate')
-        st.session_state.user_data['pagine_abilitate'] = _pagine_raw  # sync per sidebar
-    else:
-        _pagine_raw = user.get('pagine_abilitate')
-except Exception:
-    _pagine_raw = user.get('pagine_abilitate')
-if isinstance(_pagine_raw, str):
-    import json as _json
-    try:
-        _pagine_raw = _json.loads(_pagine_raw)
-    except Exception:
-        _pagine_raw = None
-pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
-# Controllo prezzi è abilitato di default (come le altre pagine)
-if not pagine_abilitate.get('controllo_prezzi', True):
-    st.warning("⚠️ Questa pagina non è abilitata per il tuo account. Contatta l'amministratore.")
-    st.stop()
+from utils.page_setup import check_page_enabled
+check_page_enabled('controllo_prezzi', user_id)
 
 # ============================================
 # SIDEBAR CONDIVISA
@@ -109,22 +82,11 @@ st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
 # ============================================
 # FILTRO PERIODO
 # ============================================
-oggi = datetime.now()
-oggi_date = oggi.date()
-inizio_mese = oggi_date.replace(day=1)
-mese_trimestre = ((oggi_date.month - 1) // 3) * 3 + 1
-inizio_trimestre = oggi_date.replace(month=mese_trimestre, day=1)
-mese_semestre = 1 if oggi_date.month <= 6 else 7
-inizio_semestre = oggi_date.replace(month=mese_semestre, day=1)
-inizio_anno = oggi_date.replace(month=1, day=1)
+from utils.period_helper import PERIODO_OPTIONS, calcola_date_periodo, risolvi_periodo
 
-periodo_options = [
-    "📅 Mese in Corso",
-    "📊 Trimestre in Corso",
-    "📈 Semestre in Corso",
-    "🗓️ Anno in Corso",
-    "⚙️ Periodo Personalizzato"
-]
+date_periodo = calcola_date_periodo()
+oggi_date = date_periodo['oggi']
+inizio_anno = date_periodo['inizio_anno']
 
 if 'cp_periodo_dropdown' not in st.session_state:
     st.session_state.cp_periodo_dropdown = "🗓️ Anno in Corso"
@@ -134,35 +96,19 @@ col_periodo, col_info_periodo = st.columns([1, 3])
 with col_periodo:
     periodo_selezionato = st.selectbox(
         "Periodo",
-        options=periodo_options,
+        options=PERIODO_OPTIONS,
         label_visibility="collapsed",
-        index=periodo_options.index(st.session_state.cp_periodo_dropdown) if st.session_state.cp_periodo_dropdown in periodo_options else 0,
+        index=PERIODO_OPTIONS.index(st.session_state.cp_periodo_dropdown) if st.session_state.cp_periodo_dropdown in PERIODO_OPTIONS else 0,
         key="cp_filtro_periodo"
     )
 
 st.session_state.cp_periodo_dropdown = periodo_selezionato
 
 # Gestione logica periodo
-data_inizio_filtro = None
-data_fine_filtro = oggi_date
+data_inizio_filtro, data_fine_filtro, label_periodo = risolvi_periodo(periodo_selezionato, date_periodo)
 
-if periodo_selezionato == "📅 Mese in Corso":
-    data_inizio_filtro = inizio_mese
-    label_periodo = f"Mese in corso ({inizio_mese.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
-
-elif periodo_selezionato == "📊 Trimestre in Corso":
-    data_inizio_filtro = inizio_trimestre
-    label_periodo = f"Trimestre in corso ({inizio_trimestre.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
-
-elif periodo_selezionato == "📈 Semestre in Corso":
-    data_inizio_filtro = inizio_semestre
-    label_periodo = f"Semestre in corso ({inizio_semestre.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
-
-elif periodo_selezionato == "🗓️ Anno in Corso":
-    data_inizio_filtro = inizio_anno
-    label_periodo = f"Anno in corso ({inizio_anno.strftime('%d/%m/%Y')} → {oggi_date.strftime('%d/%m/%Y')})"
-
-elif periodo_selezionato == "⚙️ Periodo Personalizzato":
+if data_inizio_filtro is None:
+    # Periodo Personalizzato
     st.markdown("##### Seleziona Range Date")
     col_da, col_a = st.columns(2)
 
@@ -266,58 +212,9 @@ with col_t3:
             st.session_state.cp_tab_attivo = "nc"
             st.rerun()
 
-# CSS bottoni tab (stesso stile app.py)
-st.markdown("""
-    <style>
-    button[kind="primary"] {
-        background-color: #0ea5e9 !important;
-        color: white !important;
-        border: 2px solid #0284c7 !important;
-        font-weight: bold !important;
-    }
-    button[kind="primary"]:hover {
-        background-color: #0284c7 !important;
-        border-color: #0369a1 !important;
-    }
-    div[data-testid="column"] button[kind="secondary"] {
-        background-color: #f0f2f6 !important;
-        color: #31333F !important;
-        border: 2px solid #e0e0e0 !important;
-    }
-    div[data-testid="column"] button[kind="secondary"]:hover {
-        background-color: #e0e5eb !important;
-        border-color: #0ea5e9 !important;
-    }
-    div[data-testid="column"] button p {
-        font-size: clamp(0.7rem, 1.8vw, 0.95rem) !important;
-        line-height: 1.2 !important;
-        word-wrap: break-word !important;
-        white-space: normal !important;
-    }
-    div[data-testid="column"] button {
-        padding: 0.4rem 0.25rem !important;
-        height: 4rem !important;
-        min-height: 4rem !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }
-    [data-testid="stDownloadButton"] button {
-        background-color: #28a745 !important;
-        color: white !important;
-        font-weight: 600 !important;
-        font-size: clamp(0.7rem, 1.6vw, 0.8rem) !important;
-        border-radius: 6px !important;
-        border: none !important;
-        min-width: 8rem !important;
-        min-height: 2.5rem !important;
-        padding: 0.5rem !important;
-    }
-    [data-testid="stDownloadButton"] button:hover {
-        background-color: #218838 !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# CSS bottoni tab e download (caricati da file statico condiviso)
+from utils.ui_helpers import load_css
+load_css('common.css')
 
 st.markdown("---")
 

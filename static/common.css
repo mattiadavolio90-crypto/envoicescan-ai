@@ -1,0 +1,44 @@
+/* ===== DOWNLOAD BUTTON GREEN ===== */
+[data-testid="stDownloadButton"] {
+    margin-top: 10px !important;
+}
+[data-testid="stDownloadButton"] button {
+    background-color: #28a745 !important;
+    color: white !important;
+    font-weight: 600 !important;
+    font-size: clamp(0.7rem, 1.6vw, 0.8rem) !important;
+    border-radius: 6px !important;
+    border: none !important;
+    min-width: 8rem !important;
+    min-height: 2.5rem !important;
+    padding: 0.5rem !important;
+}
+[data-testid="stDownloadButton"] button:hover {
+    background-color: #218838 !important;
+}
+
+/* ===== COLUMN BUTTON RESPONSIVE ===== */
+div[data-testid="column"] button[kind="secondary"] {
+    background-color: #f0f2f6 !important;
+    color: #31333F !important;
+    border: 2px solid #e0e0e0 !important;
+}
+div[data-testid="column"] button[kind="secondary"]:hover {
+    background-color: #e0e5eb !important;
+    border-color: #0ea5e9 !important;
+}
+div[data-testid="column"] button p {
+    font-size: clamp(0.7rem, 1.8vw, 0.95rem) !important;
+    line-height: 1.2 !important;
+    word-wrap: break-word !important;
+    white-space: normal !important;
+    overflow-wrap: break-word !important;
+}
+div[data-testid="column"] button {
+    padding: 0.4rem 0.25rem !important;
+    height: 4rem !important;
+    min-height: 4rem !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}

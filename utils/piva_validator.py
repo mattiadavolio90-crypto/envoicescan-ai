@@ -15,9 +15,10 @@ Note:
 import re
 from typing import Tuple
 import logging
+from config.logger_setup import get_logger
 
 # Logger
-logger = logging.getLogger('fci.piva')
+logger = get_logger('piva')
 
 
 def valida_formato_piva(piva: str) -> Tuple[bool, str]:

@@ -21,8 +21,9 @@ from config.constants import (
     REGEX_ARTICOLI,
     REGEX_PUNTEGGIATURA_FINALE
 )
+from config.logger_setup import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger('text_utils')
 
 
 # ============================================================

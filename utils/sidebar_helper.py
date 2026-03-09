@@ -38,16 +38,8 @@ def render_sidebar(user_data: dict):
     # ⚠️ SAFETY CHECK: Non renderizzare sidebar se utente non loggato
     if not st.session_state.get('logged_in', False):
         # Nasconde immediatamente la sidebar
-        st.markdown("""
-            <style>
-            [data-testid="stSidebar"],
-            section[data-testid="stSidebar"] {
-                display: none !important;
-                visibility: hidden !important;
-                width: 0 !important;
-            }
-            </style>
-        """, unsafe_allow_html=True)
+        from utils.ui_helpers import hide_sidebar_css
+        hide_sidebar_css()
         return
     
     # CSS: nasconde navigazione automatica, pulsante chiusura, e FORZA sidebar sempre aperta
@@ -120,16 +112,22 @@ def render_sidebar(user_data: dict):
         </div>
         """, unsafe_allow_html=True)
         
-        # Rileva pagina corrente tramite inspect stack
+        # Rileva pagina corrente tramite sys._getframe (O(1), evita inspect.stack())
         current_script = ''
         try:
-            import inspect
-            for f in inspect.stack():
-                fname = os.path.basename(f.filename)
-                if fname in ('app.py', '1_calcolo_margine.py', '2_workspace.py', '3_controllo_prezzi.py',
-                             'gestione_account.py', 'privacy_policy.py', 'admin.py'):
+            import sys
+            frame = sys._getframe(1)
+            # Risali max 10 frame per trovare il file pagina (molto più veloce di inspect.stack())
+            _page_names = {'app.py', '1_calcolo_margine.py', '2_workspace.py', '3_controllo_prezzi.py',
+                           'gestione_account.py', 'privacy_policy.py', 'admin.py'}
+            for _ in range(10):
+                if frame is None:
+                    break
+                fname = os.path.basename(frame.f_code.co_filename)
+                if fname in _page_names:
                     current_script = fname
                     break
+                frame = frame.f_back
         except Exception:
             pass
         

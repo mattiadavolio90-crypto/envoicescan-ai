@@ -75,6 +75,7 @@ __all__ = [
 # ============================================
 import streamlit as st
 from supabase import create_client
+from supabase.lib.client_options import SyncClientOptions
 
 @st.cache_resource(ttl=3600)
 def get_supabase_client():
@@ -85,8 +86,13 @@ def get_supabase_client():
     Returns:
         Client Supabase configurato
     """
+    options = SyncClientOptions(
+        postgrest_client_timeout=30,
+        storage_client_timeout=30,
+    )
     return create_client(
         st.secrets["supabase"]["url"],
-        st.secrets["supabase"]["key"]
+        st.secrets["supabase"]["key"],
+        options=options,
     )
 

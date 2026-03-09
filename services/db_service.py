@@ -100,8 +100,11 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
             logger.info(f"ℹ️ LOAD EMPTY: Nessuna fattura per user_id={user_id}")
             return pd.DataFrame()
             
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"❌ LOAD ERROR: Connessione Supabase fallita per user_id={user_id}: {e}")
+        return pd.DataFrame()
     except Exception as e:
-        logger.error(f"❌ LOAD ERROR: Errore Supabase per user_id={user_id}: {e}")
+        logger.error(f"❌ LOAD ERROR: Errore Supabase per user_id={user_id}: {type(e).__name__}: {e}")
         logger.exception("Errore query Supabase")
         return pd.DataFrame()
 
@@ -325,13 +328,15 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     Returns:
         DataFrame con alert ordinati per aumento decrescente
     """
+    _ALERT_COLUMNS = ['Prodotto', 'Categoria', 'Fornitore', 'Storico', 'Media',
+                       'Ultimo', 'Aumento_Perc', 'Data', 'N_Fattura']
     if df.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=_ALERT_COLUMNS)
     
     # Verifica colonne necessarie
     required_cols = ['Descrizione', 'Fornitore', 'DataDocumento', 'PrezzoUnitario', 'Categoria', 'FileOrigine']
     if not all(col in df.columns for col in required_cols):
-        return pd.DataFrame()
+        return pd.DataFrame(columns=_ALERT_COLUMNS)
     
     # ============================================================
     # FILTRO: ESCLUDI SOLO LE 3 CATEGORIE SPESE GENERALI
@@ -356,7 +361,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     df = df_fb  # Usa solo prodotti F&B
     
     if df.empty:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=_ALERT_COLUMNS)
     
     alert_list = []
     
@@ -381,8 +386,8 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
         
         # 🛡️ PROTEZIONE: Ignora se troppo tempo tra ultimo e penultimo (>180 giorni)
         try:
-            data_penultimo = pd.to_datetime(penultimo['DataDocumento'])
-            data_ultimo = pd.to_datetime(ultimo['DataDocumento'])
+            data_penultimo = pd.to_datetime(penultimo['DataDocumento'], utc=True)
+            data_ultimo = pd.to_datetime(ultimo['DataDocumento'], utc=True)
             giorni_diff = (data_ultimo - data_penultimo).days
             
             if giorni_diff > 180:
@@ -427,7 +432,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
             })
     
     if not alert_list:
-        return pd.DataFrame()
+        return pd.DataFrame(columns=_ALERT_COLUMNS)
     
     df_alert = pd.DataFrame(alert_list)
     # Ordina per Aumento_Perc DECRESCENTE (maggiori aumenti prima, ribassi alla fine)
@@ -771,8 +776,8 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None) -> Dict[str, Any]:
                 rpc_resp = supabase_client.rpc('get_distinct_files', rpc_params).execute()
                 if rpc_resp.data:
                     files_set = {row['file_origine'] for row in rpc_resp.data if row.get('file_origine')}
-            except Exception:
-                pass  # Usa conteggio parziale
+            except Exception as rpc_err:
+                logger.warning(f"RPC get_distinct_files fallita, uso conteggio parziale: {rpc_err}")
         num_fatture = len(files_set)
         
         logger.info(f"DELETE: user_id={user_id} ristorante_id={ristorante_id}, {num_fatture} fatture ({num_righe} righe)")

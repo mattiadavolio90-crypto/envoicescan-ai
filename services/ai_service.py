@@ -61,6 +61,7 @@ Pattern: Dependency Injection per testabilità
 import json
 import os
 import re
+import threading
 from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any, Tuple
 import streamlit as st
@@ -68,7 +69,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError, APIError
 
 # Import da moduli interni
-from config.constants import DIZIONARIO_CORREZIONI, TUTTE_LE_CATEGORIE
+from config.constants import DIZIONARIO_CORREZIONI, TUTTE_LE_CATEGORIE, MEMORIA_SESSION_CAP, MAX_DESC_LENGTH_DB
 from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizza_stringa
 from utils.validation import is_dicitura_sicura
 
@@ -86,6 +87,7 @@ MAX_TOKENS_PER_BATCH = 12000  # Limite sicuro per evitare timeout
 # ============================================================
 # CACHE GLOBALE IN-MEMORY (ELIMINA N+1 QUERY)
 # ============================================================
+_cache_lock = threading.Lock()
 _memoria_cache = {
     'prodotti_utente': {},      # {user_id: {descrizione: categoria}}
     'prodotti_master': {},      # {descrizione: categoria}
@@ -153,65 +155,70 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
     if _memoria_cache['loaded']:
         return _memoria_cache
     
-    # Usa client iniettato o fallback a singleton
-    if supabase_client is None:
-        try:
-            from services import get_supabase_client
-            supabase_client = get_supabase_client()
-        except Exception as e:
-            logger.error(f"Impossibile creare client Supabase: {e}")
+    with _cache_lock:
+        # Double-check dopo acquisizione lock
+        if _memoria_cache['loaded']:
             return _memoria_cache
     
-    try:
-        # Query 1: Carica TUTTA la memoria locale utente (1 query sola)
-        result_locale = supabase_client.table('prodotti_utente')\
-            .select('descrizione, categoria')\
-            .eq('user_id', user_id)\
-            .execute()
+        # Usa client iniettato o fallback a singleton
+        if supabase_client is None:
+            try:
+                from services import get_supabase_client
+                supabase_client = get_supabase_client()
+            except Exception as e:
+                logger.error(f"Impossibile creare client Supabase: {e}")
+                return _memoria_cache
+    
+        try:
+            # Query 1: Carica TUTTA la memoria locale utente (1 query sola)
+            result_locale = supabase_client.table('prodotti_utente')\
+                .select('descrizione, categoria')\
+                .eq('user_id', user_id)\
+                .execute()
         
-        if result_locale.data:
-            _memoria_cache['prodotti_utente'][user_id] = {
-                row['descrizione']: row['categoria'] 
-                for row in result_locale.data
-            }
-            logger.info(f"📦 Cache LOCALE caricata: {len(result_locale.data)} prodotti")
-        
-        # Query 2: Carica TUTTA la memoria globale (1 query sola)
-        result_globale = supabase_client.table('prodotti_master')\
-            .select('descrizione, categoria')\
-            .execute()
-        
-        if result_globale.data:
-            _memoria_cache['prodotti_master'] = {
-                row['descrizione']: row['categoria'] 
-                for row in result_globale.data
-            }
-            logger.info(f"📦 Cache GLOBALE caricata: {len(result_globale.data)} prodotti")
-        
-        # Query 3: Carica TUTTE le classificazioni manuali admin (1 query sola)
-        result_manuali = supabase_client.table('classificazioni_manuali')\
-            .select('descrizione, categoria_corretta, is_dicitura')\
-            .execute()
-        
-        if result_manuali.data:
-            _memoria_cache['classificazioni_manuali'] = {
-                row['descrizione']: {
-                    'categoria': row['categoria_corretta'],
-                    'is_dicitura': row.get('is_dicitura', False)
+            if result_locale.data:
+                _memoria_cache['prodotti_utente'][user_id] = {
+                    row['descrizione']: row['categoria'] 
+                    for row in result_locale.data
                 }
-                for row in result_manuali.data
-            }
-            logger.info(f"📦 Cache MANUALI caricata: {len(result_manuali.data)} classificazioni")
+                logger.info(f"📦 Cache LOCALE caricata: {len(result_locale.data)} prodotti")
         
-        _memoria_cache['loaded'] = True
-        _memoria_cache['version'] += 1
+            # Query 2: Carica TUTTA la memoria globale (1 query sola)
+            result_globale = supabase_client.table('prodotti_master')\
+                .select('descrizione, categoria')\
+                .execute()
         
-        logger.info(f"✅ Cache completa caricata (v{_memoria_cache['version']})")
-        return _memoria_cache
+            if result_globale.data:
+                _memoria_cache['prodotti_master'] = {
+                    row['descrizione']: row['categoria'] 
+                    for row in result_globale.data
+                }
+                logger.info(f"📦 Cache GLOBALE caricata: {len(result_globale.data)} prodotti")
         
-    except Exception as e:
-        logger.error(f"Errore caricamento cache completa: {e}")
-        return _memoria_cache
+            # Query 3: Carica TUTTE le classificazioni manuali admin (1 query sola)
+            result_manuali = supabase_client.table('classificazioni_manuali')\
+                .select('descrizione, categoria_corretta, is_dicitura')\
+                .execute()
+        
+            if result_manuali.data:
+                _memoria_cache['classificazioni_manuali'] = {
+                    row['descrizione']: {
+                        'categoria': row['categoria_corretta'],
+                        'is_dicitura': row.get('is_dicitura', False)
+                    }
+                    for row in result_manuali.data
+                }
+                logger.info(f"📦 Cache MANUALI caricata: {len(result_manuali.data)} classificazioni")
+        
+            _memoria_cache['loaded'] = True
+            _memoria_cache['version'] += 1
+        
+            logger.info(f"✅ Cache completa caricata (v{_memoria_cache['version']})")
+            return _memoria_cache
+        
+        except Exception as e:
+            logger.error(f"Errore caricamento cache completa: {e}")
+            return _memoria_cache
 
 
 def invalida_cache_memoria():
@@ -221,15 +228,31 @@ def invalida_cache_memoria():
     Thread-safe: crea nuovo dict per evitare race condition su letture concorrenti.
     """
     global _memoria_cache
-    _memoria_cache = {
-        'loaded': False,
-        'prodotti_utente': {},
-        'prodotti_master': {},
-        'classificazioni_manuali': {},
-        'version': (_memoria_cache.get('version', 0) + 1),
-        'timestamp': None
-    }
+    with _cache_lock:
+        _memoria_cache = {
+            'loaded': False,
+            'prodotti_utente': {},
+            'prodotti_master': {},
+            'classificazioni_manuali': {},
+            'version': (_memoria_cache.get('version', 0) + 1),
+            'timestamp': None
+        }
     logger.info("🔄 Cache memoria invalidata")
+
+
+_MEMORIA_CAP = MEMORIA_SESSION_CAP
+
+def _traccia_memoria_categorizzata(descrizione: str):
+    """Traccia descrizione come categorizzata da memoria (icona 🧠), cap a _MEMORIA_CAP."""
+    if 'righe_memoria_appena_categorizzate' not in st.session_state:
+        st.session_state.righe_memoria_appena_categorizzate = []
+    lista = st.session_state.righe_memoria_appena_categorizzate
+    if descrizione not in lista:
+        if len(lista) < _MEMORIA_CAP:
+            lista.append(descrizione)
+        elif len(lista) == _MEMORIA_CAP:
+            logger.warning(f"⚠️ Raggiunto limite {_MEMORIA_CAP} righe memoria categorizzate nella sessione")
+            lista.append(descrizione)  # append one extra to avoid re-logging
 
 
 def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
@@ -275,14 +298,7 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
             locale_dict = _memoria_cache['prodotti_utente'][user_id]
             if descrizione in locale_dict:
                 categoria = locale_dict[descrizione]
-                
-                # ✅ Traccia come memoria per icona 🧠 (cap 500)
-                if 'righe_memoria_appena_categorizzate' not in st.session_state:
-                    st.session_state.righe_memoria_appena_categorizzate = []
-                if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
-                    if len(st.session_state.righe_memoria_appena_categorizzate) < 500:
-                        st.session_state.righe_memoria_appena_categorizzate.append(descrizione)
-                
+                _traccia_memoria_categorizzata(descrizione)
                 return categoria
         
         # 2️⃣ Check memoria GLOBALE (da cache, 0 query!) se abilitata
@@ -290,27 +306,14 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
             # Prova con descrizione esatta
             if descrizione in _memoria_cache['prodotti_master']:
                 categoria = _memoria_cache['prodotti_master'][descrizione]
-                
-                # ✅ Traccia come memoria per icona 🧠 (cap 500)
-                if 'righe_memoria_appena_categorizzate' not in st.session_state:
-                    st.session_state.righe_memoria_appena_categorizzate = []
-                if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
-                    if len(st.session_state.righe_memoria_appena_categorizzate) < 500:
-                        st.session_state.righe_memoria_appena_categorizzate.append(descrizione)
-                
+                _traccia_memoria_categorizzata(descrizione)
                 return categoria
             
             # Prova anche con descrizione normalizzata (per matching consistente)
             desc_normalized, _ = get_descrizione_normalizzata_e_originale(descrizione)
             if desc_normalized != descrizione and desc_normalized in _memoria_cache['prodotti_master']:
                 categoria = _memoria_cache['prodotti_master'][desc_normalized]
-                
-                if 'righe_memoria_appena_categorizzate' not in st.session_state:
-                    st.session_state.righe_memoria_appena_categorizzate = []
-                if descrizione not in st.session_state.righe_memoria_appena_categorizzate:
-                    if len(st.session_state.righe_memoria_appena_categorizzate) < 500:
-                        st.session_state.righe_memoria_appena_categorizzate.append(descrizione)
-                
+                _traccia_memoria_categorizzata(descrizione)
                 return categoria
         
         # 3️⃣ Fallback
@@ -432,6 +435,12 @@ def salva_correzione_in_memoria_locale(
         # Normalizza descrizione
         desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
         
+        # Sanitizza: rimuovi null bytes e limita lunghezza
+        desc_normalized = desc_normalized.replace('\x00', '').strip()[:MAX_DESC_LENGTH_DB]
+        if not desc_normalized:
+            logger.warning("Descrizione vuota dopo sanitizzazione, skip salvataggio locale")
+            return False
+        
         logger.info(f"💾 SALVATAGGIO LOCALE: '{desc_normalized}' → {nuova_categoria} (user={user_email})")
         
         # Colonne ESSENZIALI (sicuramente presenti nella tabella)
@@ -532,6 +541,12 @@ def salva_correzione_in_memoria_globale(
     try:
         # Normalizza descrizione
         desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
+        
+        # Sanitizza: rimuovi null bytes e limita lunghezza
+        desc_normalized = desc_normalized.replace('\x00', '').strip()[:MAX_DESC_LENGTH_DB]
+        if not desc_normalized:
+            logger.warning("Descrizione vuota dopo sanitizzazione, skip salvataggio globale")
+            return False
         
         # Check se esiste già in memoria
         existing = supabase_client.table('prodotti_master')\

@@ -14,8 +14,9 @@ from config.constants import (
     REGEX_LETTERE_MINIME,
     REGEX_PATTERN_BOLLA
 )
+from config.logger_setup import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger('validation')
 
 
 # ============================================================

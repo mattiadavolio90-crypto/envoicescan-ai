@@ -11,8 +11,9 @@ import io
 import logging
 import pandas as pd
 import streamlit as st
+from config.logger_setup import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger('ui_helpers')
 
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
 
@@ -22,6 +23,30 @@ def load_css(filename: str):
     path = os.path.join(_STATIC_DIR, filename)
     with open(path, 'r', encoding='utf-8') as f:
         st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
+
+_HIDE_SIDEBAR_CSS = """
+<style>
+[data-testid="stSidebar"],
+section[data-testid="stSidebar"] {
+    display: none !important;
+    visibility: hidden !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    opacity: 0 !important;
+    transform: translateX(-100%) !important;
+}
+[data-testid="stSidebarNav"],
+[data-testid="collapsedControl"] {
+    display: none !important;
+}
+</style>
+"""
+
+
+def hide_sidebar_css():
+    """Inietta CSS per nascondere completamente la sidebar."""
+    st.markdown(_HIDE_SIDEBAR_CSS, unsafe_allow_html=True)
 
 
 def load_js(filename: str):

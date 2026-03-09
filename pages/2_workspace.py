@@ -92,25 +92,8 @@ current_ristorante = get_current_ristorante_id()
 # ============================================
 # CONTROLLO PAGINA ABILITATA (legge sempre dal DB per riflettere modifiche admin)
 # ============================================
-try:
-    _fresh = supabase.table('users').select('pagine_abilitate').eq('id', user_id).execute()
-    if _fresh.data:
-        _pagine_raw = _fresh.data[0].get('pagine_abilitate')
-        st.session_state.user_data['pagine_abilitate'] = _pagine_raw  # sync per sidebar
-    else:
-        _pagine_raw = user.get('pagine_abilitate')
-except Exception:
-    _pagine_raw = user.get('pagine_abilitate')
-if isinstance(_pagine_raw, str):
-    import json as _json
-    try:
-        _pagine_raw = _json.loads(_pagine_raw)
-    except Exception:
-        _pagine_raw = None
-pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
-if not pagine_abilitate.get('workspace', True):
-    st.warning("⚠️ Questa pagina non è abilitata per il tuo account. Contatta l'amministratore.")
-    st.stop()
+from utils.page_setup import check_page_enabled
+check_page_enabled('workspace', user_id)
 
 # ============================================
 # SIDEBAR CONDIVISA
@@ -238,7 +221,7 @@ def converti_unita_misura(quantita: float, um_src: str, prezzo_per_unita_base: f
         return quantita * prezzo_per_unita_base
 
 
-@st.cache_data(ttl=60, show_spinner="Caricamento articoli dalle fatture...")
+@st.cache_data(ttl=300, show_spinner="Caricamento articoli dalle fatture...")
 def get_articoli_da_fatture(user_id: str, ristorante_id: str = None) -> tuple:
     """
     Carica articoli unici da fatture con ultimo prezzo.
@@ -360,9 +343,9 @@ def get_ricette_come_ingredienti(user_id: str, ristorante_id: str, exclude_id: s
         return []
 
 
-@st.cache_data(ttl=120, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def _get_ingredienti_workspace_cached(user_id: str, ristorante_id: str) -> list:
-    """Cache ingredienti workspace per 2 minuti."""
+    """Cache ingredienti workspace per 5 minuti."""
     try:
         workspace_response = supabase.table('ingredienti_workspace')\
             .select('*')\
@@ -468,7 +451,7 @@ def calcola_foodcost_riga(ingrediente_data: dict, quantita: float, um: str, gram
             grammatura_conf = ingrediente_data['data'].get('grammatura_confezione')
         
         # PASSO 2: Calcola prezzo unitario reale
-        if grammatura_conf:
+        if grammatura_conf and grammatura_conf > 0:
             # Abbiamo la grammatura confezione!
             # Es: Barilla 5KG a €8.30 → €8.30 / 5000g = €0.00166 al grammo
             grammatura_um = ingrediente_data['data'].get('grammatura_um', 'G')
@@ -1447,7 +1430,7 @@ Se necessario contattare l'assistenza.
                         else:
                             prezzo_riga = calcola_foodcost_riga(ing_data, ing['quantita'], ing['um'], grammatura_per_calcolo)
                         
-                        ing['prezzo_unitario'] = prezzo_riga / ing['quantita']
+                        ing['prezzo_unitario'] = (prezzo_riga / ing['quantita']) if ing['quantita'] > 0 else 0
                         st.markdown(f"<div style='background: #e0f2fe; "
                                     f"color: #0369a1; padding: clamp(0.4rem, 1.2vw, 0.5rem); border-radius: 6px; text-align: center; "
                                     f"font-weight: 600; font-size: clamp(0.8rem, 2vw, 0.95rem); border: 1px solid #bae6fd; word-wrap: break-word;'>€{prezzo_riga:.2f}</div>", 
@@ -1535,7 +1518,7 @@ Se necessario contattare l'assistenza.
                                         'nome': ing['nome'],
                                         'quantita': ing['quantita'],
                                         'um': ing['um'],
-                                        'prezzo_unitario': prezzo_riga / ing['quantita'],  # Normalizzato
+                                        'prezzo_unitario': (prezzo_riga / ing['quantita']) if ing['quantita'] > 0 else 0,
                                         'is_ricetta': ing['is_ricetta'],
                                         'ricetta_id': ing.get('ricetta_id'),
                                         'grammatura_confezione': ing.get('grammatura_confezione'),

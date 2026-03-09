@@ -40,6 +40,7 @@ from utils.validation import (
 
 # Logger centralizzato
 from config.logger_setup import get_logger
+from config.constants import MAX_FILE_SIZE_P7M
 logger = get_logger('invoice')
 
 
@@ -60,7 +61,7 @@ def normalizza_unita_misura(um: str) -> str:
         "grammi" → "GR"
     """
     if not um or not isinstance(um, str):
-        return ""
+        return "PZ"
     
     um_upper = um.upper().strip()
     
@@ -135,6 +136,11 @@ def estrai_xml_da_p7m(file_caricato):
     import io
     
     contenuto_bytes = file_caricato.read()
+    
+    # Limite dimensione file P7M
+    if len(contenuto_bytes) > MAX_FILE_SIZE_P7M:
+        raise ValueError(f"File P7M troppo grande ({len(contenuto_bytes) / 1_000_000:.1f} MB). Limite: {MAX_FILE_SIZE_P7M // 1_000_000} MB")
+    
     xml_bytes = None
     
     # Metodo 1: Parsing ASN.1/CMS con asn1crypto
@@ -181,6 +187,13 @@ def estrai_xml_da_p7m(file_caricato):
     
     if xml_bytes is None or len(xml_bytes) == 0:
         raise ValueError("Impossibile estrarre XML dal file .p7m - firma digitale non riconosciuta")
+    
+    # Validazione base: verifica che i bytes estratti siano XML valido
+    import xml.etree.ElementTree as ET
+    try:
+        ET.fromstring(xml_bytes)
+    except ET.ParseError as parse_err:
+        raise ValueError(f"File .p7m: contenuto estratto non è XML valido: {parse_err}")
     
     # Restituisci come BytesIO con attributo name per compatibilità con estrai_dati_da_xml
     xml_stream = io.BytesIO(xml_bytes)
@@ -256,10 +269,10 @@ def estrai_dati_da_xml(file_caricato):
                         logger.info(f"✅ Encoding rilevato da charset-normalizer: {_result.encoding}")
                     else:
                         raise ValueError("charset-normalizer non ha riconosciuto l'encoding")
-                except Exception:
+                except (ImportError, ValueError) as enc_err:
                     # Fallback finale: sostituisci caratteri non decodificabili
                     contenuto = contenuto_bytes.decode('utf-8', errors='replace')
-                    logger.warning("⚠️ Utilizzato encoding UTF-8 con sostituzione errori (fallback finale)")
+                    logger.warning(f"⚠️ Encoding fallback UTF-8 con sostituzione: {enc_err}")
         else:
             contenuto = contenuto_bytes
         
@@ -280,13 +293,18 @@ def estrai_dati_da_xml(file_caricato):
         # ============================================================
         # TD01 = Fattura, TD02 = Acconto, TD04 = Nota di Credito,
         # TD05 = Nota di Debito, TD06 = Parcella, TD07 = Autofattura
-        tipo_documento = safe_get(
+        _TIPI_DOCUMENTO_VALIDI = {'TD01', 'TD02', 'TD04', 'TD05', 'TD06', 'TD07', 'TD16', 'TD17', 'TD18', 'TD19', 'TD20', 'TD24', 'TD25', 'TD26', 'TD27'}
+        tipo_documento_raw = safe_get(
             fattura,
             ['FatturaElettronicaBody', 'DatiGenerali', 'DatiGeneraliDocumento', 'TipoDocumento'],
             default='TD01',
             keep_list=False
         )
-        is_nota_credito = str(tipo_documento).upper().strip() == 'TD04'
+        tipo_documento = str(tipo_documento_raw).upper().strip()
+        if tipo_documento not in _TIPI_DOCUMENTO_VALIDI:
+            logger.warning(f"⚠️ TipoDocumento sconosciuto: '{tipo_documento_raw}', fallback a TD01")
+            tipo_documento = 'TD01'
+        is_nota_credito = tipo_documento == 'TD04'
         if is_nota_credito:
             logger.info(f"📋 NOTA DI CREDITO rilevata (TipoDocumento={tipo_documento})")
         
@@ -486,7 +504,7 @@ def estrai_dati_da_xml(file_caricato):
                     'Fornitore': fornitore,
                     'Categoria': categoria_finale,
                     'Data_Documento': data_documento,
-                    'File_Origine': file_caricato.name,
+                    'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', ''),
                     'Prezzo_Standard': prezzo_std,
                     'needs_review': needs_review,
                     'piva_cessionario': piva_cessionario,  # P.IVA destinatario fattura
