@@ -13,6 +13,7 @@ import io
 from config.logger_setup import get_logger
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 from utils.ristorante_helper import get_current_ristorante_id
+from services import get_supabase_client
 from services.margine_service import (
     calcola_costi_automatici_per_anno,
     carica_margini_anno,
@@ -73,9 +74,18 @@ if not current_ristorante:
     st.stop()
 
 # ============================================
-# CONTROLLO PAGINA ABILITATA
+# CONTROLLO PAGINA ABILITATA (legge sempre dal DB per riflettere modifiche admin)
 # ============================================
-_pagine_raw = user.get('pagine_abilitate')
+_supabase = get_supabase_client()
+try:
+    _fresh = _supabase.table('users').select('pagine_abilitate').eq('id', user_id).execute()
+    if _fresh.data:
+        _pagine_raw = _fresh.data[0].get('pagine_abilitate')
+        st.session_state.user_data['pagine_abilitate'] = _pagine_raw  # sync per sidebar
+    else:
+        _pagine_raw = user.get('pagine_abilitate')
+except Exception:
+    _pagine_raw = user.get('pagine_abilitate')
 if isinstance(_pagine_raw, str):
     import json as _json
     try:
@@ -270,12 +280,14 @@ if st.session_state.margine_tab == "analisi":
             data_inizio_custom_aa = st.date_input(
                 "📅 Da",
                 value=st.session_state.aa_data_inizio,
+                min_value=inizio_anno_aa,
                 key="aa_data_da_custom"
             )
         with col_a_aa:
             data_fine_custom_aa = st.date_input(
                 "📅 A",
                 value=st.session_state.aa_data_fine,
+                min_value=inizio_anno_aa,
                 key="aa_data_a_custom"
             )
 
@@ -1089,9 +1101,9 @@ if st.session_state.margine_tab == "centri":
         if 'cp_centri_data_fine' not in st.session_state:
             st.session_state.cp_centri_data_fine = oggi_date_cp
         with col_da_cp:
-            data_inizio_custom_cp = st.date_input("📅 Da", value=st.session_state.cp_centri_data_inizio, key="cp_centri_data_da")
+            data_inizio_custom_cp = st.date_input("📅 Da", value=st.session_state.cp_centri_data_inizio, min_value=inizio_anno_cp, key="cp_centri_data_da")
         with col_a_cp:
-            data_fine_custom_cp = st.date_input("📅 A", value=st.session_state.cp_centri_data_fine, key="cp_centri_data_a")
+            data_fine_custom_cp = st.date_input("📅 A", value=st.session_state.cp_centri_data_fine, min_value=inizio_anno_cp, key="cp_centri_data_a")
         if data_inizio_custom_cp > data_fine_custom_cp:
             st.error("⚠️ La data iniziale deve essere precedente alla data finale!")
             data_inizio_cp = st.session_state.cp_centri_data_inizio
@@ -1308,32 +1320,9 @@ if st.session_state.margine_tab == "calcolo":
 
     st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
 
-    # ============================================
-    # SELETTORE ANNO + BOTTONE AGGIORNA
-    # ============================================
+    # Anno fisso: anno corrente
     anno_corrente = datetime.now().year
-    # Range: da 2026 (primo anno clienti) fino a anno_corrente + 2
-    anni_disponibili = list(range(2026, anno_corrente + 3))
-
-    col_anno, col_refresh, col_anno_empty = st.columns([1.5, 1, 3.5])
-
-    with col_anno:
-        # Imposta indice default sull'anno corrente
-        default_idx = anni_disponibili.index(anno_corrente) if anno_corrente in anni_disponibili else 0
-        anno = st.selectbox(
-            "📅 Anno di riferimento",
-            options=anni_disponibili,
-            index=default_idx,
-            key="margine_anno_select"
-        )
-
-    with col_refresh:
-        st.markdown("<div style='margin-top: 32px;'></div>", unsafe_allow_html=True)
-        if st.button("🔄 Aggiorna", use_container_width=True, key="margine_refresh",
-                     help="Ricalcola costi automatici dalle fatture"):
-            # Invalida SOLO la cache di questa funzione, non tutta la cache app
-            calcola_costi_automatici_per_anno.clear()
-            st.rerun()
+    anno = anno_corrente
 
     # ============================================
     # CARICA DATI

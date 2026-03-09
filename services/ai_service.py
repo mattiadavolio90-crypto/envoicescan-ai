@@ -330,8 +330,9 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
 # Se non c'è nessun alimento, questi matchano e danno MATERIALE DI CONSUMO
 _KEYWORDS_CONTENITORI = frozenset({
     "VASCHETTA", "VASCHETTE", "VASCHETTINA", "VASC",
-    "CONFEZIONE", "CONF", "BUSTA", "SCATOLA", "CARTONE",
+    "CONFEZIONE", "CONF", "BUSTA", "BUSTE", "SCATOLA", "CARTONE",
     "PACCO", "BARATTOLO", "BOTTIGLIA", "LATTINA",
+    "SACCHETTI", "SACCHETTO", "SACCHI", "SACCO",
 })
 
 def _build_compiled_patterns() -> Tuple[list, list]:

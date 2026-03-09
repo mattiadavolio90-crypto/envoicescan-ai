@@ -247,15 +247,6 @@ def estrai_dati_da_xml(file_caricato):
         if isinstance(linee, dict):
             linee = [linee]
         
-        # Limite sicurezza: 200 righe max per fattura XML (parsing locale, no API)
-        # Se superato, processa le prime 200 e logga warning
-        MAX_RIGHE_XML = 200
-        righe_originali_count = len(linee)
-        if righe_originali_count > MAX_RIGHE_XML:
-            logger.warning(f"{file_caricato.name}: {righe_originali_count} righe totali, limitate a {MAX_RIGHE_XML}")
-            linee = linee[:MAX_RIGHE_XML]
-            st.warning(f"⚠️ Fattura con {righe_originali_count} righe: elaborate le prime {MAX_RIGHE_XML}. Contatta l'assistenza se necessiti di processarle tutte.")
-        
         righe_prodotti = []
         for idx, riga in enumerate(linee, start=1):
             if not isinstance(riga, dict):

@@ -90,9 +90,17 @@ user_id = user["id"]
 current_ristorante = get_current_ristorante_id()
 
 # ============================================
-# CONTROLLO PAGINA ABILITATA
+# CONTROLLO PAGINA ABILITATA (legge sempre dal DB per riflettere modifiche admin)
 # ============================================
-_pagine_raw = user.get('pagine_abilitate')
+try:
+    _fresh = supabase.table('users').select('pagine_abilitate').eq('id', user_id).execute()
+    if _fresh.data:
+        _pagine_raw = _fresh.data[0].get('pagine_abilitate')
+        st.session_state.user_data['pagine_abilitate'] = _pagine_raw  # sync per sidebar
+    else:
+        _pagine_raw = user.get('pagine_abilitate')
+except Exception:
+    _pagine_raw = user.get('pagine_abilitate')
 if isinstance(_pagine_raw, str):
     import json as _json
     try:

@@ -11,6 +11,7 @@ from datetime import datetime
 from config.logger_setup import get_logger
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 from utils.ristorante_helper import get_current_ristorante_id
+from services import get_supabase_client
 from services.db_service import (
     carica_e_prepara_dataframe,
     calcola_alert,
@@ -60,9 +61,18 @@ if not current_ristorante:
     st.stop()
 
 # ============================================
-# CONTROLLO PAGINA ABILITATA
+# CONTROLLO PAGINA ABILITATA (legge sempre dal DB per riflettere modifiche admin)
 # ============================================
-_pagine_raw = user.get('pagine_abilitate')
+_supabase = get_supabase_client()
+try:
+    _fresh = _supabase.table('users').select('pagine_abilitate').eq('id', user_id).execute()
+    if _fresh.data:
+        _pagine_raw = _fresh.data[0].get('pagine_abilitate')
+        st.session_state.user_data['pagine_abilitate'] = _pagine_raw  # sync per sidebar
+    else:
+        _pagine_raw = user.get('pagine_abilitate')
+except Exception:
+    _pagine_raw = user.get('pagine_abilitate')
 if isinstance(_pagine_raw, str):
     import json as _json
     try:
@@ -117,7 +127,7 @@ periodo_options = [
 ]
 
 if 'cp_periodo_dropdown' not in st.session_state:
-    st.session_state.cp_periodo_dropdown = "📅 Mese in Corso"
+    st.session_state.cp_periodo_dropdown = "🗓️ Anno in Corso"
 
 col_periodo, col_info_periodo = st.columns([1, 3])
 
@@ -165,6 +175,7 @@ elif periodo_selezionato == "⚙️ Periodo Personalizzato":
         data_inizio_custom = st.date_input(
             "📅 Da",
             value=st.session_state.cp_data_inizio,
+            min_value=inizio_anno,
             key="cp_data_da_custom"
         )
 
@@ -172,6 +183,7 @@ elif periodo_selezionato == "⚙️ Periodo Personalizzato":
         data_fine_custom = st.date_input(
             "📅 A",
             value=st.session_state.cp_data_fine,
+            min_value=inizio_anno,
             key="cp_data_a_custom"
         )
 

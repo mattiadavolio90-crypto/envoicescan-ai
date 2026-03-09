@@ -1128,7 +1128,7 @@ if tab1:
                                 key=f"page_marg_{row_key}"
                             )
                             new_workspace = st.checkbox(
-                                "🍴 Workspace Ricette",
+                                "🍴 Workspace",
                                 value=pagine.get('workspace', True),
                                 key=f"page_ws_{row_key}"
                             )
@@ -1495,6 +1495,15 @@ if tab2:
         if cliente_id_target:
             query = query.eq('user_id', cliente_id_target)
         return query
+
+    def _build_review_batch_update(payload: dict, descrizioni: list, cliente_id_target: str = None):
+        """Aggiorna N descrizioni in una singola query con .in_()"""
+        query = supabase.table('fatture').update(payload)\
+            .in_('descrizione', descrizioni)\
+            .or_('prezzo_unitario.eq.0,needs_review.eq.true')
+        if cliente_id_target:
+            query = query.eq('user_id', cliente_id_target)
+        return query
     
     df_zero = carica_righe_zero_con_filtro(filtro_cliente_id)
     
@@ -1635,9 +1644,39 @@ if tab2:
     _categorie_fb = sorted(CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI)
     _categorie_spese = sorted(CATEGORIE_SPESE_OPERATIVE)
     _categorie_review = ["NOTE E DICITURE"] + _categorie_spese + _categorie_fb
-    
+
+    # Init session state per selezione massiva
+    if 'review_zero_selezionate' not in st.session_state:
+        st.session_state.review_zero_selezionate = set()
+    if 'review_zero_cb_counter' not in st.session_state:
+        st.session_state.review_zero_cb_counter = 0
+
+    # Descrizioni della pagina corrente (per select/deselect all)
+    _desc_pagina = set(df_pagina['descrizione'].tolist())
+
+    # Pulsanti selezione rapida
+    _num_sel = len(st.session_state.review_zero_selezionate & _desc_pagina)
+    col_sel_all, col_desel_all, col_sel_info = st.columns([1.5, 1.5, 3])
+    with col_sel_all:
+        if st.button(f"☑️ Seleziona Tutte ({len(_desc_pagina)})", use_container_width=True, key="rv_select_all"):
+            st.session_state.review_zero_selezionate.update(_desc_pagina)
+            st.session_state.review_zero_cb_counter += 1
+            st.rerun()
+    with col_desel_all:
+        if st.button("⬜ Deseleziona Tutte", use_container_width=True, key="rv_deselect_all"):
+            st.session_state.review_zero_selezionate.difference_update(_desc_pagina)
+            st.session_state.review_zero_cb_counter += 1
+            st.rerun()
+    with col_sel_info:
+        if _num_sel > 0:
+            st.info(f"✅ {_num_sel} righe selezionate — usa le Azioni Massive in fondo")
+
+    st.markdown("---")
+
     # HEADER
-    col_desc, col_occur, col_cat_h, col_forn, col_azioni = st.columns([2.5, 0.6, 2.5, 1.5, 1.2])
+    col_sel_h, col_desc, col_occur, col_cat_h, col_forn, col_azioni = st.columns([0.4, 2.5, 0.6, 2.5, 1.5, 1.2])
+    with col_sel_h:
+        st.markdown("**☑**")
     with col_desc:
         st.markdown("**Descrizione**")
     with col_occur:
@@ -1657,8 +1696,17 @@ if tab2:
         fornitore = row.get('fornitore', 'N/A')
         occorrenze = row['occorrenze']
         
-        col_desc, col_occur, col_cat, col_forn, col_azioni = st.columns([2.5, 0.6, 2.5, 1.5, 1.2])
-        
+        col_sel, col_desc, col_occur, col_cat, col_forn, col_azioni = st.columns([0.4, 2.5, 0.6, 2.5, 1.5, 1.2])
+
+        # CHECKBOX SELEZIONE
+        with col_sel:
+            _cb_key = f"rv_cb_{idx}_{st.session_state.review_zero_cb_counter}"
+            _checked = descrizione in st.session_state.review_zero_selezionate
+            if st.checkbox("", value=_checked, key=_cb_key, label_visibility="collapsed"):
+                st.session_state.review_zero_selezionate.add(descrizione)
+            else:
+                st.session_state.review_zero_selezionate.discard(descrizione)
+
         # DESCRIZIONE + Badge review
         with col_desc:
             needs_review_flag = row.get('needs_review', False) if 'needs_review' in df_pagina.columns else False
@@ -1729,6 +1777,75 @@ if tab2:
                         st.error(f"Errore: {e}")
         
         st.markdown("---")
+
+    # ============================================================
+    # AZIONI MASSIVE (mostrate solo se ci sono righe selezionate)
+    # ============================================================
+    _num_sel_fin = len(st.session_state.review_zero_selezionate)
+    if _num_sel_fin > 0:
+        st.markdown("---")
+        st.markdown(f"### ⚡ Azioni Massive — {_num_sel_fin} righe selezionate")
+
+        col_mass_cat, col_mass_btn1, col_mass_btn2, col_mass_cancel = st.columns([3, 1.5, 1.5, 1])
+
+        with col_mass_cat:
+            _cat_massiva = st.selectbox(
+                "Categoria da applicare a tutte le selezionate",
+                _categorie_review,
+                key="rv_cat_massiva",
+                label_visibility="visible"
+            )
+
+        with col_mass_btn1:
+            st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+            if st.button(f"✅ Conferma ({_num_sel_fin})", use_container_width=True, key="rv_mass_confirm", type="primary"):
+                with st.spinner("Salvataggio in corso..."):
+                    try:
+                        _descs = list(st.session_state.review_zero_selezionate)
+                        result = _build_review_batch_update({
+                            'categoria': _cat_massiva,
+                            'needs_review': False,
+                            'reviewed_at': datetime.now(timezone.utc).isoformat(),
+                            'reviewed_by': 'admin'
+                        }, _descs, filtro_cliente_id).execute()
+                        _ok = len(result.data) if result.data else len(_descs)
+                        st.success(f"✅ {_ok} righe aggiornate → {_cat_massiva}")
+                    except Exception as _e:
+                        st.error(f"Errore batch: {_e}")
+                st.session_state.review_zero_selezionate = set()
+                st.session_state.review_zero_cb_counter += 1
+                invalida_cache_memoria()
+                time.sleep(0.8)
+                st.rerun()
+
+        with col_mass_btn2:
+            st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+            if st.button(f"📝 Tutte Diciture ({_num_sel_fin})", use_container_width=True, key="rv_mass_nota"):
+                with st.spinner("Salvataggio in corso..."):
+                    try:
+                        _descs = list(st.session_state.review_zero_selezionate)
+                        result = _build_review_batch_update({
+                            'categoria': '📝 NOTE E DICITURE',
+                            'needs_review': False,
+                            'reviewed_at': datetime.now(timezone.utc).isoformat(),
+                            'reviewed_by': 'admin'
+                        }, _descs, filtro_cliente_id).execute()
+                        _ok = len(result.data) if result.data else len(_descs)
+                        st.success(f"📝 {_ok} righe → NOTE E DICITURE")
+                    except Exception as _e:
+                        st.error(f"Errore batch: {_e}")
+                st.session_state.review_zero_selezionate = set()
+                st.session_state.review_zero_cb_counter += 1
+                invalida_cache_memoria()
+                time.sleep(0.8)
+                st.rerun()
+
+        with col_mass_cancel:
+            st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
+            if st.button("❌ Annulla", use_container_width=True, key="rv_mass_cancel"):
+                st.session_state.review_zero_selezionate = set()
+                st.session_state.review_zero_cb_counter += 1
+                st.rerun()
 
 # ============================================================
 # FOOTER

@@ -110,6 +110,7 @@ if not st.session_state.get('logged_in', False):
 
 # CSS + JS branding (caricati da file statici)
 load_css('branding.css')
+load_css('layout.css')
 load_js('branding.js')
 
 
@@ -1735,9 +1736,9 @@ def mostra_statistiche(df_completo):
         "⚙️ Periodo Personalizzato"
     ]
     
-    # Default: Mese in Corso
+    # Default: Anno in Corso
     if 'periodo_dropdown' not in st.session_state:
-        st.session_state.periodo_dropdown = "📅 Mese in Corso"
+        st.session_state.periodo_dropdown = "🗓️ Anno in Corso"
     
     # Layout: selectbox + info box sulla stessa riga
     col_periodo, col_info_periodo = st.columns([1, 4])
@@ -1787,14 +1788,16 @@ def mostra_statistiche(df_completo):
         with col_da:
             data_inizio_custom = st.date_input(
                 "📅 Da", 
-                value=st.session_state.data_inizio_filtro, 
+                value=st.session_state.data_inizio_filtro,
+                min_value=inizio_anno,
                 key="data_da_custom"
             )
         
         with col_a:
             data_fine_custom = st.date_input(
                 "📅 A", 
-                value=st.session_state.data_fine_filtro, 
+                value=st.session_state.data_fine_filtro,
+                min_value=inizio_anno,
                 key="data_a_custom"
             )
         
@@ -1864,8 +1867,8 @@ def mostra_statistiche(df_completo):
     num_fatture_spese = df_spese_generali['FileOrigine'].nunique() if not df_spese_generali.empty else 0
     num_fornitori_spese = df_spese_generali['Fornitore'].nunique() if not df_spese_generali.empty else 0
     
-    # Layout 5 colonne per i KPI - Stile Workspace
-    col1, col2, col3, col4, col5 = st.columns(5)
+    # Layout 6 colonne per i KPI - una card per metrica
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
 
     # Calcola spesa totale
     spesa_totale = spesa_fb + spesa_generale
@@ -1875,51 +1878,7 @@ def mostra_statistiche(df_completo):
     mesi_periodo = len({(d.year, d.month) for d in dates_valid}) if not dates_valid.empty else 0
     spesa_media = spesa_totale / mesi_periodo if mesi_periodo > 0 else 0
     
-    # CSS per KPI - Stile identico a Calcolo Marginalità
-    st.markdown("""
-    <style>
-    /* Colonne KPI: altezza uniforme per tutte e 5 */
-    [data-testid="stHorizontalBlock"]:has(.kpi-card) > div[data-testid="column"] {
-        display: flex !important;
-        flex-direction: column !important;
-        align-items: stretch !important;
-    }
-    [data-testid="stHorizontalBlock"]:has(.kpi-card) > div[data-testid="column"] > div {
-        flex: 1 !important;
-        display: flex !important;
-        flex-direction: column !important;
-    }
-    .kpi-card {
-        background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
-        padding: clamp(0.75rem, 2vw, 1.25rem);
-        border-radius: 12px;
-        border: 1px solid rgba(206, 212, 218, 0.5);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
-        backdrop-filter: blur(10px);
-        text-align: center;
-        height: 100%;
-        min-height: 100px;
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-    }
-    .kpi-card .kpi-label {
-        color: #2563eb;
-        font-weight: 600;
-        font-size: clamp(0.7rem, 1.6vw, 0.85rem);
-        margin-bottom: 6px;
-        line-height: 1.3;
-    }
-    .kpi-card .kpi-value {
-        color: #1e40af;
-        font-size: clamp(1.3rem, 3.5vw, 1.75rem);
-        font-weight: 700;
-        white-space: nowrap;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # CSS per KPI caricato da static/layout.css (kpi-card styles)
 
     def _fmt_kpi_main(val):
         segno = "-" if val < 0 else ""
@@ -1940,26 +1899,15 @@ def mostra_statistiche(df_completo):
         st.markdown(_kpi_html("🔥 Spesa F&B", _fmt_kpi_main(spesa_fb)), unsafe_allow_html=True)
 
     with col3:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div style="display:flex; justify-content:space-around; align-items:center; width:100%;">
-                <div style="text-align:center; flex:1;">
-                    <div class="kpi-label">🏪 Fornit. F&B</div>
-                    <div class="kpi-value">{num_fornitori}</div>
-                </div>
-                <div style="width:1px; background:rgba(206,212,218,0.6); align-self:stretch; margin:4px 8px;"></div>
-                <div style="text-align:center; flex:1;">
-                    <div class="kpi-label">🏢 Fornit. Sp.Gen.</div>
-                    <div class="kpi-value">{num_fornitori_spese}</div>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(_kpi_html("🏪 Fornit. F&B", str(num_fornitori)), unsafe_allow_html=True)
 
     with col4:
-        st.markdown(_kpi_html("🛒 Spesa Generale", _fmt_kpi_main(spesa_generale)), unsafe_allow_html=True)
+        st.markdown(_kpi_html("🏢 Fornit. Sp.Gen.", str(num_fornitori_spese)), unsafe_allow_html=True)
 
     with col5:
+        st.markdown(_kpi_html("🛒 Spesa Generale", _fmt_kpi_main(spesa_generale)), unsafe_allow_html=True)
+
+    with col6:
         st.markdown(_kpi_html("📊 Media Mensile", _fmt_kpi_main(spesa_media)), unsafe_allow_html=True)
 
     st.markdown("---")
@@ -2949,8 +2897,6 @@ def mostra_statistiche(df_completo):
                 render_pivot_mensile(df_forn_source, 'Fornitore', MESI_ITA, 'fornitori', 'Fornitori')
 
 
-# CSS layout e stili componenti (caricato da file statico)
-load_css('layout.css')
 
 
 # ============================================================
@@ -3843,7 +3789,7 @@ if uploaded_files:
                                                 f"(user: {st.session_state.get('user_data', {}).get('email')})"
                                             )
                                             raise ValueError(
-                                                f"📅 FATTURA NON AMMESSA - La data documento ({_data_doc}) è precedente al "
+                                                f"ANNO PRECEDENTE - La data documento ({_data_doc}) è precedente al "
                                                 f"1 Gennaio {_anno_corrente}. È possibile caricare solo fatture dell'anno corrente."
                                             )
                                     except ValueError:
@@ -3977,8 +3923,14 @@ if uploaded_files:
             # Determina etichetta specifica
             solo_duplicati = len(file_errore) == 0 and len(file_gia_processati) > 0
             solo_errori = len(file_errore) > 0 and len(file_gia_processati) == 0
+            solo_piva_mismatch = solo_errori and all("P.IVA FATTURA DIVERSA" in v for v in file_errore.values())
+            solo_anno_prec = solo_errori and all("ANNO PRECEDENTE" in v for v in file_errore.values())
             if solo_duplicati:
                 lbl = "fattura scartata perché duplicata" if n == 1 else "fatture scartate perché duplicate"
+            elif solo_piva_mismatch:
+                lbl = "fattura scartata perché la p.iva della fattura è diversa da quella dell'azienda" if n == 1 else "fatture scartate perché la p.iva della fattura è diversa da quella dell'azienda"
+            elif solo_anno_prec:
+                lbl = "fattura scartata perché la data è dell'anno precedente" if n == 1 else "fatture scartate perché la data è dell'anno precedente"
             elif solo_errori:
                 lbl = "fattura scartata perché non valida" if n == 1 else "fatture scartate perché non valide"
             else:
