@@ -1096,6 +1096,101 @@ DIZIONARIO_CORREZIONI = {
     "SPESE DI BOLLO": "SERVIZI E CONSULENZE",
     "STRUDEL": "PASTICCERIA",
 
+    # ===== BATCH FIX: Plurali/singolari mancanti =====
+    # PESCE - varianti plurali/singolari
+    "SALMONI": "PESCE",          # plurale di SALMONE (×3 fatture)
+    "BRANZINI": "PESCE",         # plurale di BRANZINO (×4 fatture)
+    "RICCIOLA": "PESCE",         # ricciola oceanica (×3 fatture)
+    "SCAMPO": "PESCE",           # singolare di SCAMPI (×2 fatture)
+    "RICCIO": "PESCE",           # riccio di mare
+    "CAPPASANTA": "PESCE",       # cappasanta/capasanta
+    "CAPPESANTA": "PESCE",       # variante
+    # VERDURE - singolari/plurali mancanti
+    "CIPOLLA": "VERDURE",        # singolare di CIPOLLE
+    "CAVOLFIORI": "VERDURE",     # plurale di CAVOLFIORE
+    "CETRIOLI": "VERDURE",
+    "CETRIOLO": "VERDURE",
+    "CAVOLO": "VERDURE",
+    "CAVOLI": "VERDURE",
+    "FRAGOLA": "FRUTTA",         # singolare di FRAGOLE
+    "MELA": "FRUTTA",            # singolare di MELE
+
+    # ===== BATCH FIX: Keyword verdure semplici =====
+    "PAK CHOI": "VERDURE",
+    "PACHOI": "VERDURE",
+    "BOK CHOY": "VERDURE",
+    "ICEBERG": "VERDURE",
+    "FIORE DI ZUCCA": "VERDURE",
+    "FIORI DI ZUCCA": "VERDURE",
+    "AGLIO": "VERDURE",
+    "PORRO": "VERDURE",
+    "PORRI": "VERDURE",
+    "DAIKON": "VERDURE",
+    "CRAUTI": "VERDURE",
+    "CHAYOTE": "VERDURE",
+    "RAPA": "VERDURE",
+    "RAPE": "VERDURE",
+    "CIPOLOTTO": "VERDURE",
+    "CILIEGINO": "VERDURE",      # pomodoro ciliegino
+    "CRESS": "VERDURE",          # microgreens/cress mix
+
+    # ===== BATCH FIX: Keyword frutta semplici =====
+    "PAPAYA": "FRUTTA",
+    "MELAGRANA": "FRUTTA",
+    "MELOGRANO": "FRUTTA",
+    "MANDORLE": "SECCO",         # frutta secca → secco
+    "MANDORLA": "SECCO",
+
+    # ===== BATCH FIX: Carne - keyword generiche sicure =====
+    "BOVINO": "CARNE",           # copre: roast-beef bovino, coscia bovino, nervetti bovino (×5)
+    "ROAST BEEF": "CARNE",
+    "ROAST-BEEF": "CARNE",
+    "NERVETTI": "CARNE",
+    "COSCIA": "CARNE",
+
+    # ===== BATCH FIX: Latticini =====
+    "PHILADELPHIA": "LATTICINI",  # formaggio spalmabile (×3 fatture)
+    "DOUFU": "LATTICINI",         # variante cinese di tofu
+
+    # ===== BATCH FIX: Spezie e aromi =====
+    "FINOCCHIETTO": "SPEZIE E AROMI",  # erba aromatica (non verdura)
+    "ZENZERO": "SPEZIE E AROMI",       # radice/spezia
+
+    # ===== BATCH FIX: Salse asiatiche =====
+    "SRIRACHA": "SALSE E CREME",
+    "SOYSAUCE": "SALSE E CREME",
+    "SOY SAUCE": "SALSE E CREME",
+    "HADAY": "SALSE E CREME",          # brand salsa soia cinese
+
+    # ===== BATCH FIX: Pasticceria =====
+    "MONOPORZIONE": "PASTICCERIA",     # copre 6 prodotti (lampone, esotica, golosa, pistacchiosa, etc.)
+    "MOCHI": "PASTICCERIA",
+
+    # ===== BATCH FIX: Materiale di consumo =====
+    "AMMONIACA": "MATERIALE DI CONSUMO",
+    "ALCOOL": "MATERIALE DI CONSUMO",
+    "ACCENDIGAS": "MATERIALE DI CONSUMO",
+    "MOP": "MATERIALE DI CONSUMO",     # mop/lavapavimenti
+    "SGRASS": "MATERIALE DI CONSUMO",  # abbreviazione sgrassatore
+    "DEO BAGNO": "MATERIALE DI CONSUMO",
+
+    # ===== BATCH FIX: Servizi e consulenze =====
+    "SPESE DI INCASSO": "SERVIZI E CONSULENZE",
+    "ESTRATTO CONTO": "SERVIZI E CONSULENZE",
+    "COSTO A TRANSAZIONE": "SERVIZI E CONSULENZE",
+    "COSTO FATTURA ELETTRONICA": "SERVIZI E CONSULENZE",
+    "NR.TRANSAZIONI": "SERVIZI E CONSULENZE",
+    "TRANSAZIONI": "SERVIZI E CONSULENZE",
+    "DISINFESTAZIONE": "SERVIZI E CONSULENZE",
+    "BOLLO": "SERVIZI E CONSULENZE",   # bollo pagato, riaddebito bollo
+    "RIADDEB": "SERVIZI E CONSULENZE",  # riaddebito
+    "ACCREDITO": "SERVIZI E CONSULENZE",
+    "RIMBORSO": "SERVIZI E CONSULENZE",
+    "PROGRAMMAZIONI": "SERVIZI E CONSULENZE",  # programmazioni menu, software, etc.
+
+    # ===== BATCH FIX: Utenze e locali =====
+    "ISTAT": "UTENZE E LOCALI",        # adeguamento ISTAT (affitto)
+
 }
 
 # ============================================================
