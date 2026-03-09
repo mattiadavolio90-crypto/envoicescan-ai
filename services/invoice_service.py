@@ -119,6 +119,75 @@ def normalizza_unita_misura(um: str) -> str:
     return mappa_normalizzazione.get(um_upper, um_upper)
 
 
+def estrai_xml_da_p7m(file_caricato):
+    """
+    Estrae il contenuto XML da un file .p7m (firma digitale CAdES/PKCS#7).
+    
+    Args:
+        file_caricato: File .p7m caricato (UploadedFile di Streamlit)
+        
+    Returns:
+        io.BytesIO: Stream contenente l'XML estratto, pronto per estrai_dati_da_xml()
+        
+    Raises:
+        ValueError: Se non è possibile estrarre XML dal file .p7m
+    """
+    import io
+    
+    contenuto_bytes = file_caricato.read()
+    xml_bytes = None
+    
+    # Metodo 1: Parsing ASN.1/CMS con asn1crypto
+    try:
+        from asn1crypto import cms
+        content_info = cms.ContentInfo.load(contenuto_bytes)
+        signed_data = content_info['content']
+        encap_content = signed_data['encap_content_info']['content']
+        if encap_content is not None:
+            xml_bytes = encap_content.native
+            if isinstance(xml_bytes, bytes) and b'<' in xml_bytes:
+                logger.info("✅ XML estratto da .p7m tramite parsing ASN.1/CMS")
+    except Exception as e:
+        logger.warning(f"⚠️ Parsing ASN.1 .p7m fallito: {e}")
+    
+    # Metodo 2: Fallback - ricerca pattern XML nel binario
+    if xml_bytes is None:
+        try:
+            # Cerca l'inizio dell'XML (<?xml o <p:FatturaElettronica)
+            idx_prolog = contenuto_bytes.find(b'<?xml')
+            idx_fattura = contenuto_bytes.find(b'<p:FatturaElettronica')
+            idx_fattura2 = contenuto_bytes.find(b'<FatturaElettronica')
+            
+            start_idx = -1
+            for idx in [idx_prolog, idx_fattura, idx_fattura2]:
+                if idx >= 0 and (start_idx < 0 or idx < start_idx):
+                    start_idx = idx
+            
+            if start_idx >= 0:
+                # Cerca la fine dell'XML
+                end_markers = [b'</p:FatturaElettronica>', b'</FatturaElettronica>']
+                end_idx = -1
+                for marker in end_markers:
+                    pos = contenuto_bytes.find(marker, start_idx)
+                    if pos >= 0:
+                        end_idx = pos + len(marker)
+                        break
+                
+                if end_idx > start_idx:
+                    xml_bytes = contenuto_bytes[start_idx:end_idx]
+                    logger.info("✅ XML estratto da .p7m tramite ricerca pattern (fallback)")
+        except Exception as e:
+            logger.warning(f"⚠️ Ricerca pattern XML in .p7m fallita: {e}")
+    
+    if xml_bytes is None or len(xml_bytes) == 0:
+        raise ValueError("Impossibile estrarre XML dal file .p7m - firma digitale non riconosciuta")
+    
+    # Restituisci come BytesIO con attributo name per compatibilità con estrai_dati_da_xml
+    xml_stream = io.BytesIO(xml_bytes)
+    xml_stream.name = getattr(file_caricato, 'name', 'fattura.xml').replace('.p7m', '.xml')
+    return xml_stream
+
+
 def estrai_dati_da_xml(file_caricato):
     """
     Estrae dati da fatture XML elettroniche italiane.

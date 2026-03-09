@@ -54,6 +54,7 @@ from services.auth_service import (
 
 from services.invoice_service import (
     estrai_dati_da_xml,
+    estrai_xml_da_p7m,
     estrai_dati_da_scontrino_vision,
     salva_fattura_processata,
 )
@@ -3321,7 +3322,7 @@ else:
     }
     /* Testo italiano dentro la dropzone via ::after */
     [data-testid="stFileUploaderDropzone"]::after {
-        content: "📂 Trascina file qui o clicca Sfoglia  ·  XML, PDF, JPG, JPEG, PNG · Max 200MB" !important;
+        content: "📂 Trascina file qui o clicca Sfoglia  ·  XML, P7M, PDF, JPG, JPEG, PNG · Max 200MB" !important;
         font-size: 0.78rem !important;
         color: #666 !important;
         white-space: nowrap !important;
@@ -3335,7 +3336,7 @@ else:
         uploaded_files = st.file_uploader(
             "Carica file",
             accept_multiple_files=True,
-            type=['xml', 'pdf', 'jpg', 'jpeg', 'png'],
+            type=['xml', 'p7m', 'pdf', 'jpg', 'jpeg', 'png'],
             label_visibility="collapsed",
             key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"
         )
@@ -3709,6 +3710,9 @@ if uploaded_files:
                     try:
                         if nome_file.endswith('.xml'):
                             items = estrai_dati_da_xml(file)
+                        elif nome_file.endswith('.p7m'):
+                            xml_stream = estrai_xml_da_p7m(file)
+                            items = estrai_dati_da_xml(xml_stream)
                         elif nome_file.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
                             items = estrai_dati_da_scontrino_vision(file)
                         else:
@@ -3855,7 +3859,7 @@ if uploaded_files:
                         try:
                             user_id = st.session_state.user_data.get("id")
                             user_email = st.session_state.user_data.get("email", "unknown")
-                            error_stage = "PARSING" if file.name.endswith('.xml') else "VISION"
+                            error_stage = "PARSING" if file.name.endswith(('.xml', '.p7m')) else "VISION"
                             
                             log_upload_event(
                                 user_id=user_id,
