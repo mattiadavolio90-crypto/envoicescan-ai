@@ -543,13 +543,23 @@ def get_nome_base_file(filename: str) -> str:
     """
     Estrae il nome base del file senza estensione per deduplicazione.
     Converte in lowercase per confronto case-insensitive.
+    Gestisce doppie estensioni come .xml.p7m.
     
     Esempi:
         '0_IT04157540966_h8390.xml' → '0_it04157540966_h8390'
         'Fattura_123.PDF' → 'fattura_123'
+        'IT123_abc.xml.p7m' → 'it123_abc'
     """
     import os
-    return os.path.splitext(filename)[0].lower()
+    nome = filename
+    # Rimuovi estensioni note iterativamente (.p7m, .xml, .pdf, etc.)
+    while True:
+        base, ext = os.path.splitext(nome)
+        if ext.lower() in ('.p7m', '.xml', '.pdf', '.jpg', '.jpeg', '.png'):
+            nome = base
+        else:
+            break
+    return nome.lower()
 
 
 

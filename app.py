@@ -2,6 +2,7 @@
 import pandas as pd
 import os
 import hmac as _hmac
+from collections import defaultdict
 
 import io
 import time
@@ -3552,8 +3553,6 @@ if uploaded_files:
         file_su_supabase_full = set()
 
 
-    tutti_file_processati = st.session_state.files_processati_sessione | file_su_supabase  # noqa: usato per logging
-    
     # Calcola nomi caricati e duplicati in modo robusto
     uploaded_names = [f.name for f in uploaded_files]
     uploaded_unique = set(uploaded_names)
@@ -3645,7 +3644,7 @@ if uploaded_files:
     # Riepilogo base per questa selezione (aggiornato dopo l'elaborazione)
     upload_summary = {
         'totale_selezionati': len(uploaded_names),
-        'gia_presenti': len({n for n in uploaded_unique if (n in file_su_supabase or n in erano_just_uploaded)}),
+        'gia_presenti': len({n for n in uploaded_unique if (get_nome_base_file(n) in file_su_supabase or get_nome_base_file(n) in erano_just_uploaded)}),
         'duplicati_upload': duplicate_count,
         'nuovi_da_elaborare': len(file_nuovi),
         'caricate_successo': 0,
@@ -3656,24 +3655,19 @@ if uploaded_files:
         # Aggiorna progress bar: inizio elaborazione
         status_text.text(f"📄 Elaborazione {len(file_nuovi)} fatture...")
         
-        # Valori default (sicurezza in caso di errore critico prima dell'inizializzazione)
+        # Contatori per statistiche DETTAGLIATE
         file_processati = 0
-        file_errore = {}
+        righe_batch = 0
+        salvati_supabase = 0
+        salvati_json = 0
+        errori = []
+        file_ok = []
         file_note_credito = []
+        file_errore = {}
         
         try:
             # Mostra animazione AI
             mostra_loading_ai(upload_placeholder, f"Analisi AI di {len(file_nuovi)} Fatture")
-            
-            # Contatori per statistiche DETTAGLIATE (GLOBALI - fuori batch)
-            file_processati = 0
-            righe_totali = 0
-            salvati_supabase = 0
-            salvati_json = 0
-            errori = []
-            file_ok = []
-            file_note_credito = []  # file TD04 (note di credito) caricate con successo
-            file_errore = {}  # {nome_file: messaggio_errore}
             
             total_files = len(file_nuovi)
             
@@ -3806,7 +3800,7 @@ if uploaded_files:
                         
                         if result["success"]:
                             file_processati += 1
-                            righe_totali += result["righe"]
+                            righe_batch += result["righe"]
                             if result["location"] == "supabase":
                                 salvati_supabase += 1
                             elif result["location"] == "json":
@@ -3845,10 +3839,6 @@ if uploaded_files:
                         # altrimenti il file viene skippato per sempre e non può riprovare
                         # ============================================================
                         # st.session_state.files_processati_sessione.add(file.name)  # ❌ RIMOSSO
-                        
-                        # Inizializza set errori se non esiste
-                        if 'files_con_errori' not in st.session_state:
-                            st.session_state.files_con_errori = set()
                         
                         st.session_state.files_con_errori.add(file.name)
                         
@@ -3924,7 +3914,6 @@ if uploaded_files:
         if tutti_problematici:
             n = len(tutti_problematici)
             # ── Raggruppa file per motivo di scarto ──
-            from collections import defaultdict
             motivi_raggruppati = defaultdict(list)
             for fname, motivo in tutti_problematici.items():
                 # Normalizza motivi per raggruppamento leggibile
