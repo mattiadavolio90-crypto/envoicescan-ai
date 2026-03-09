@@ -3922,24 +3922,30 @@ if uploaded_files:
                 _messages.append(f'<div style="padding:10px 16px;background:#cce5ff;border-left:5px solid #004085;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#004085;">ℹ️ Attenzione: {nc_n} {nc_lbl}: </span><span style="font-size:0.82rem;color:#004085;">{nc_nomi}</span></div>')
         
         if tutti_problematici:
-            nomi = ", ".join(tutti_problematici.keys())
             n = len(tutti_problematici)
-            # Determina etichetta specifica
-            solo_duplicati = len(file_errore) == 0 and len(file_gia_processati) > 0
-            solo_errori = len(file_errore) > 0 and len(file_gia_processati) == 0
-            solo_piva_mismatch = solo_errori and all("P.IVA FATTURA DIVERSA" in v for v in file_errore.values())
-            solo_anno_prec = solo_errori and all("ANNO PRECEDENTE" in v for v in file_errore.values())
-            if solo_duplicati:
-                lbl = "fattura scartata perché duplicata" if n == 1 else "fatture scartate perché duplicate"
-            elif solo_piva_mismatch:
-                lbl = "fattura scartata perché la p.iva della fattura è diversa da quella dell'azienda" if n == 1 else "fatture scartate perché la p.iva della fattura è diversa da quella dell'azienda"
-            elif solo_anno_prec:
-                lbl = "fattura scartata perché la data è dell'anno precedente" if n == 1 else "fatture scartate perché la data è dell'anno precedente"
-            elif solo_errori:
-                lbl = "fattura scartata perché non valida" if n == 1 else "fatture scartate perché non valide"
-            else:
-                lbl = "fattura scartata" if n == 1 else "fatture scartate"
-            _messages.append(f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}: </span><span style="font-size:0.82rem;color:#856404;">{nomi}</span></div>')
+            # ── Raggruppa file per motivo di scarto ──
+            from collections import defaultdict
+            motivi_raggruppati = defaultdict(list)
+            for fname, motivo in tutti_problematici.items():
+                # Normalizza motivi per raggruppamento leggibile
+                if motivo == "Già presente nel database":
+                    motivo_label = "Già caricata in precedenza (duplicata)"
+                elif "P.IVA FATTURA DIVERSA" in motivo:
+                    motivo_label = "P.IVA della fattura diversa da quella dell'azienda"
+                elif "ANNO PRECEDENTE" in motivo:
+                    motivo_label = "Data fattura dell'anno precedente"
+                else:
+                    motivo_label = motivo
+                motivi_raggruppati[motivo_label].append(fname)
+            
+            # Costruisci HTML con dettaglio per motivo
+            lbl = "fattura scartata" if n == 1 else "fatture scartate"
+            dettaglio_html = ""
+            for motivo, files_list in motivi_raggruppati.items():
+                nomi_files = ", ".join(files_list)
+                dettaglio_html += f'<div style="margin-top:6px;"><span style="font-size:0.82rem;font-weight:600;color:#856404;">📌 {motivo} ({len(files_list)}):</span><br/><span style="font-size:0.78rem;color:#856404;">{nomi_files}</span></div>'
+            
+            _messages.append(f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}:</span>{dettaglio_html}</div>')
             # Segna come processati per evitare ri-elaborazione
             for nome_file in tutti_problematici:
                 st.session_state.files_processati_sessione.add(nome_file)
@@ -3989,9 +3995,9 @@ if uploaded_files:
         if file_gia_processati:
             nomi = ", ".join(file_gia_processati)
             n = len(file_gia_processati)
-            lbl = "fattura scartata perché duplicata" if n == 1 else "fatture scartate perché duplicate"
+            lbl = "fattura scartata perché già caricata in precedenza (duplicata)" if n == 1 else "fatture scartate perché già caricate in precedenza (duplicate)"
             st.session_state.upload_messages = [
-                f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}: </span><span style="font-size:0.82rem;color:#856404;">{nomi}</span></div>'
+                f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}:</span><br/><span style="font-size:0.78rem;color:#856404;">{nomi}</span></div>'
             ]
             st.session_state.upload_messages_time = time.time()
             # Segna come processati
