@@ -3496,26 +3496,36 @@ if not uploaded_files and len(st.session_state.files_errori_report) > 0:
     # Non serve rerun: la pagina è già pulita senza file caricati
 
 
+# ============================================================
+# MOSTRA MESSAGGI PERSISTENTI DALL'ULTIMO UPLOAD
+# (rimangono visibili per 30 secondi, poi spariscono)
+# ============================================================
+if 'upload_messages' in st.session_state and st.session_state.upload_messages:
+    _msg_age = time.time() - st.session_state.get('upload_messages_time', 0)
+    if _msg_age < 30:
+        for _msg in st.session_state.upload_messages:
+            st.markdown(_msg, unsafe_allow_html=True)
+    else:
+        st.session_state.upload_messages = []
+
+
 # 🔥 GESTIONE FILE CARICATI
 if uploaded_files:
-    # 🚀 FEEDBACK IMMEDIATO: Mostra subito un placeholder che stiamo lavorando
-    status_placeholder = st.empty()
-    status_placeholder.info(f"🔍 Verifica in corso per {len(uploaded_files)} file...")
-    
-    # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
+    # Pulisci messaggi precedenti all'inizio di un nuovo caricamento
+    st.session_state.upload_messages = []
+    # � BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
     if st.session_state.get('force_empty_until_upload', False):
-        status_placeholder.empty()  # Rimuovi il messaggio di verifica
         st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Ripristina upload' prima di caricare nuovi file.")
         st.info("💡 Usa il pulsante '🔄 Ripristina upload' sopra per sbloccare il caricamento.")
         st.stop()  # Blocca esecuzione per evitare ricaricamento automatico
     
-    # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
-    # ⚠️ IMPORTANTE: Query fresca senza cache per evitare dati stale dopo eliminazione
-    # 🚀 OTTIMIZZAZIONE: Usa RPC function per ottenere solo file unici (evita 6000+ righe)
+    # 🚀 PROGRESS BAR IMMEDIATA: Mostra subito che stiamo lavorando
+    upload_placeholder = st.empty()
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    status_text.text(f"🔍 Analisi di {len(uploaded_files)} file in corso...")
     
-    # Aggiorna stato: stiamo verificando i duplicati
-    if 'status_placeholder' in locals():
-        status_placeholder.info(f"🔍 Verifica duplicati tra {len(uploaded_files)} file caricati...")
+    # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
     
     try:
         # Verifica user_id disponibile
@@ -3600,9 +3610,10 @@ if uploaded_files:
         logger.error(f"Errore caricamento file da DB: {e}")
         st.error("❌ Errore nel caricamento dei dati. Riprova.")
         file_su_supabase = set()
+        file_su_supabase_full = set()
 
 
-    tutti_file_processati = st.session_state.files_processati_sessione | file_su_supabase
+    tutti_file_processati = st.session_state.files_processati_sessione | file_su_supabase  # noqa: usato per logging
     
     # Calcola nomi caricati e duplicati in modo robusto
     uploaded_names = [f.name for f in uploaded_files]
@@ -3677,37 +3688,14 @@ if uploaded_files:
     # Messaggio SOLO per ADMIN (interfaccia pulita per clienti)
     is_admin = st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False)
     
-    # ============================================================
-    # 🔥 FIX: Conserva info file appena caricati per messaggi corretti
-    # ============================================================
     # Salva riferimento a just_uploaded PRIMA di pulirlo
     erano_just_uploaded = just_uploaded.copy() if just_uploaded else set()
     
-    # NON pulire il flag subito - mantienilo per il ciclo di controllo messaggi
-    # Verrà azzerato DOPO che abbiamo verificato i messaggi
-    
-    if is_admin:
-        if file_nuovi:
-            st.info(f"✅ **{len(file_nuovi)} nuove fatture** da elaborare")
-    
-    # ============================================================
-    # GESTIONE MESSAGGI: Mostra TUTTI i messaggi rilevanti
-    # (anche se ci sono file_nuovi, mostra comunque duplicati/già presenti)
-    # Sopprimi se arriviamo da AVVIA AI (flag one-shot)
-    # ============================================================
+    # Sopprimi messaggi se arriviamo da AVVIA AI (flag one-shot)
     if st.session_state.get('suppress_upload_messages_once', False):
-        # Pulisci il flag per usare solo una volta
         st.session_state.suppress_upload_messages_once = False
-    else:
-        # Se NESSUN file nuovo E erano just_uploaded → silenzio (post-rerun di file già elaborati)
-        if not file_nuovi and len(erano_just_uploaded) > 0:
-            logger.info(f"⏭️ Skip messaggi: {len(erano_just_uploaded)} file erano just_uploaded")
-        # Se ci sono file già presenti o duplicati → aggiungi al report errori unificato
-        elif file_gia_processati or duplicate_count:
-            for fname in file_gia_processati:
-                st.session_state.files_errori_report[fname] = "Già presente nel database"
     
-    # ✅ Pulizia flag just_uploaded dopo aver mostrato/non mostrato i messaggi
+    # ✅ Pulizia flag just_uploaded
     if erano_just_uploaded:
         st.session_state.just_uploaded_files = set()
     
@@ -3724,19 +3712,15 @@ if uploaded_files:
         'caricate_successo': 0,
         'errori': 0
     }
-
-    # Rimuovi il placeholder di verifica iniziale se esiste
-    if 'status_placeholder' in locals():
-        status_placeholder.empty()
     
     if file_nuovi:
-        # 🚀 FEEDBACK IMMEDIATO: Mostra subito la progress bar
-        upload_placeholder = st.empty()
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+        # Aggiorna progress bar: inizio elaborazione
+        status_text.text(f"📄 Elaborazione {len(file_nuovi)} fatture...")
         
-        # Mostra immediatamente che stiamo lavorando
-        status_text.text(f"🔍 Preparazione elaborazione {len(file_nuovi)} fatture...")
+        # Valori default (sicurezza in caso di errore critico prima dell'inizializzazione)
+        file_processati = 0
+        file_errore = {}
+        file_note_credito = []
         
         try:
             # Mostra animazione AI
@@ -3749,6 +3733,7 @@ if uploaded_files:
             salvati_json = 0
             errori = []
             file_ok = []
+            file_note_credito = []  # file TD04 (note di credito) caricate con successo
             file_errore = {}  # {nome_file: messaggio_errore}
             
             total_files = len(file_nuovi)
@@ -3803,14 +3788,10 @@ if uploaded_files:
                         # VALIDAZIONE P.IVA MULTI-RISTORANTE
                         # Applicata solo a XML e PDF (NON a immagini)
                         # ═══════════════════════════════════════════════════════════════
-                        # ⚠️ SKIP per admin e impersonazione (possono caricare qualsiasi fattura)
-                        is_admin = st.session_state.get('user_is_admin', False)
-                        is_impersonating = st.session_state.get('impersonating', False)
-                        
                         # ⚠️ SKIP anche per immagini JPG/PNG (solo XML e PDF)
                         is_image = nome_file.endswith(('.jpg', '.jpeg', '.png'))
                         
-                        if not is_admin and not is_impersonating and not is_image:
+                        if not is_admin and not is_image:
                             # Estrai P.IVA dal cessionario (dalla prima riga - items è lista di dict)
                             piva_cessionario = None
                             if isinstance(items, list) and len(items) > 0:
@@ -3854,7 +3835,7 @@ if uploaded_files:
                         # Se il flag blocco_anno_precedente è attivo in pagine_abilitate,
                         # impedisci caricamento fatture con data_documento < 1 Gennaio anno corrente.
                         # Admin e impersonificati bypassano sempre.
-                        if not is_admin and not is_impersonating:
+                        if not is_admin:
                             _pagine_cfg = st.session_state.get('user_data', {}).get('pagine_abilitate') or {}
                             if _pagine_cfg.get('blocco_anno_precedente', True):
                                 _data_doc = None
@@ -3895,6 +3876,10 @@ if uploaded_files:
                             
                             # Traccia successo (aggiungi sia nome completo che base normalizzato)
                             file_ok.append(file.name)
+                            # Rileva nota di credito (TD04)
+                            if isinstance(items, list) and len(items) > 0:
+                                if str(items[0].get('tipo_documento', '')).upper().strip() == 'TD04':
+                                    file_note_credito.append(file.name)
                             st.session_state.files_processati_sessione.add(file.name)
                             # Aggiungi anche nome base per prevenire duplicati con estensione diversa
                             st.session_state.files_processati_sessione.add(get_nome_base_file(file.name))
@@ -3972,171 +3957,108 @@ if uploaded_files:
             status_text.empty()
         
         # ============================================
-        # REPORT FINALE PULITO E PROFESSIONALE
+        # REPORT FINALE UNIFICATO
         # ============================================
         
-        # Usa il report persistente da session_state (rimane anche dopo rerun del download)
-        if len(file_errore) > 0:
-            # Aggiorna il report persistente con nuovi errori
-            st.session_state.files_errori_report.update(file_errore)
+        # Raccogli TUTTI i file problematici (errori elaborazione + duplicati)
+        tutti_problematici = {}
+        if file_errore:
+            tutti_problematici.update(file_errore)
+        for fname in file_gia_processati:
+            tutti_problematici[fname] = "Già presente nel database"
         
-        # Mostra report se ci sono errori persistenti
-        if len(st.session_state.files_errori_report) > 0:
-            # CI SONO ERRORI - Report compatto e immediato
-            
-            num_errori = len(st.session_state.files_errori_report)
-            
-            # Expander errori unificato
-            # Se ci sono anche file elaborati con successo, mostra messaggio
-            if file_processati > 0:
-                if file_processati == 1:
-                    st.success(f"✅ 1 fattura caricata con successo!")
-                else:
-                    st.success(f"✅ {file_processati} fatture caricate con successo!")
-            
-            with st.expander(f"❌ {num_errori} {'fatture' if num_errori > 1 else 'fattura'} {'SCARTATE' if num_errori > 1 else 'SCARTATA'} — Dettaglio", expanded=True):
-                for nome_file, errore in st.session_state.files_errori_report.items():
-                    st.markdown(f"- **{nome_file}** — {errore[:200]}")
-                
-                st.markdown("")
-                
-                # Istruzioni per il cliente
-                st.info("💡 **Scarica il log degli errori e invialo all'assistenza per risolvere il problema**")
-                
-                # Bottoni compatti allineati
-                col_download, col_clear, _ = st.columns([1, 1, 4])
-                
-                with col_download:
-                    error_log = "\n".join([f"{nome}: {err}" for nome, err in st.session_state.files_errori_report.items()])
-                    st.download_button(
-                        label="📥 Scarica Log",
-                        data=error_log,
-                        file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
-                        mime="text/plain",
-                        use_container_width=True,
-                    )
-                
-                with col_clear:
-                    if st.button("✖️ Chiudi", key="chiudi_errori_1", use_container_width=True):
-                        # Segna file con errori come già processati per evitare ri-elaborazione
-                        for nome_file in st.session_state.files_errori_report:
-                            st.session_state.files_processati_sessione.add(nome_file)
-                            st.session_state.files_processati_sessione.add(get_nome_base_file(nome_file))
-                        st.session_state.files_errori_report = {}
-                        st.session_state.files_con_errori = set()
-                        # Reset uploader per svuotare i file caricati
-                        if 'uploader_key' not in st.session_state:
-                            st.session_state.uploader_key = 0
-                        st.session_state.uploader_key += 1
-                        # Invalida cache per eventuali file elaborati con successo
-                        st.cache_data.clear()
-                        invalida_cache_memoria()
-                        logger.info("✅ Report errori azzerato manualmente")
-                        st.rerun()
-            
-            # Separatore visivo prima del resto della pagina
-            st.markdown("---")
+        # === SALVA MESSAGGI IN SESSION_STATE (persistono fino al prossimo upload) ===
+        _messages = []
+        if file_processati > 0:
+            msg_ok = f"1 fattura caricata" if file_processati == 1 else f"{file_processati} fatture caricate"
+            _messages.append(f'<div style="padding:10px 16px;background:#d4edda;border-left:5px solid #28a745;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#155724;">✅ {msg_ok} con successo!</span></div>')
+            # Messaggio aggiuntivo per note di credito
+            if file_note_credito:
+                nc_nomi = ", ".join(file_note_credito)
+                nc_n = len(file_note_credito)
+                nc_lbl = "nota di credito caricata" if nc_n == 1 else "note di credito caricate"
+                _messages.append(f'<div style="padding:10px 16px;background:#cce5ff;border-left:5px solid #004085;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#004085;">ℹ️ Attenzione: {nc_n} {nc_lbl}: </span><span style="font-size:0.82rem;color:#004085;">{nc_nomi}</span></div>')
         
+        if tutti_problematici:
+            nomi = ", ".join(tutti_problematici.keys())
+            n = len(tutti_problematici)
+            # Determina etichetta specifica
+            solo_duplicati = len(file_errore) == 0 and len(file_gia_processati) > 0
+            solo_errori = len(file_errore) > 0 and len(file_gia_processati) == 0
+            if solo_duplicati:
+                lbl = "fattura scartata perché duplicata" if n == 1 else "fatture scartate perché duplicate"
+            elif solo_errori:
+                lbl = "fattura scartata perché non valida" if n == 1 else "fatture scartate perché non valide"
+            else:
+                lbl = "fattura scartata" if n == 1 else "fatture scartate"
+            _messages.append(f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}: </span><span style="font-size:0.82rem;color:#856404;">{nomi}</span></div>')
+            # Segna come processati per evitare ri-elaborazione
+            for nome_file in tutti_problematici:
+                st.session_state.files_processati_sessione.add(nome_file)
+                st.session_state.files_processati_sessione.add(get_nome_base_file(nome_file))
+        
+        st.session_state.upload_messages = _messages
+        st.session_state.upload_messages_time = time.time()
+        st.session_state.files_errori_report = {}
+        st.session_state.files_con_errori = set()
+        
+        if file_processati > 0 or tutti_problematici:
+            st.cache_data.clear()
+            invalida_cache_memoria()
+            if 'righe_ai_appena_categorizzate' in st.session_state:
+                st.session_state.righe_ai_appena_categorizzate = []
+            if 'uploader_key' not in st.session_state:
+                st.session_state.uploader_key = 0
+            st.session_state.uploader_key += 1
+            st.session_state.just_uploaded_files = set()
+            st.session_state.files_processati_sessione = set()
+            st.session_state.ultimo_upload_ids = []
+            upload_summary['caricate_successo'] = file_processati
+            upload_summary['errori'] = len(tutti_problematici)
+            st.session_state.last_upload_summary = upload_summary
+            st.rerun()
         else:
-            # TUTTO OK - Messaggio pulito per clienti, dettagliato per admin
-            if is_admin:
-                # Admin: Report dettagliato (in aggiunta al successo mostrato sopra)
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("📄 File", file_processati)
-                with col2:
-                    st.metric("📊 Righe Totali", righe_totali)
-                with col3:
-                    location_text = "Supabase" if salvati_supabase > 0 else "JSON"
-                    st.metric("💾 Archiviazione", location_text)
-            else:
-                # Cliente: Messaggio già mostrato sopra prima del rerun
-                # Mostra avviso per duplicati NELL'UPLOAD STESSO se ci sono
-                if duplicate_count > 0:
-                    sing_plur_dup = "fattura" if duplicate_count == 1 else "fatture"
-                    sing_plur_ign = "ignorata" if duplicate_count == 1 else "ignorate"
-                    st.warning(f"⚠️ {duplicate_count} {sing_plur_dup} duplicata nell'upload, {sing_plur_ign}")
-            
-            # Invalidazione cache e reset stati
-            if file_processati > 0:
-                # ✅ MOSTRA SUCCESSO PRIMA DEL RERUN per evitare che venga perso
-                if file_processati == 1:
-                    st.success(f"✅ 1 fattura caricata con successo!")
-                else:
-                    st.success(f"✅ {file_processati} fatture caricate con successo!")
-                st.cache_data.clear()
-                invalida_cache_memoria()
-                
-                # Reset icone AI: nuove fatture = nuova sessione
-                if 'righe_ai_appena_categorizzate' in st.session_state:
-                    st.session_state.righe_ai_appena_categorizzate = []
-                
-                # 🔄 RESET AUTOMATICO UPLOADER: incrementa key per svuotarlo
-                if 'uploader_key' not in st.session_state:
-                    st.session_state.uploader_key = 0
-                st.session_state.uploader_key += 1
-                
-                # 🧹 PULIZIA COMPLETA STATI UPLOAD per reset totale
-                st.session_state.just_uploaded_files = set()
-                st.session_state.files_processati_sessione = set()
-                st.session_state.ultimo_upload_ids = []
-                
-                # Aggiorna riepilogo e persistilo per la sessione
-                upload_summary['caricate_successo'] = file_processati
-                upload_summary['errori'] = len(st.session_state.files_errori_report)
-                st.session_state.last_upload_summary = upload_summary
-                
-                # Breve pausa per mostrare il messaggio
-                time.sleep(0.2)
-                
-                # Ricarica pagina con dati freschi
-                st.rerun()
-            else:
-                # Nessuna fattura caricata con successo: salva comunque riepilogo
-                upload_summary['caricate_successo'] = 0
-                upload_summary['errori'] = len(st.session_state.files_errori_report)
-                st.session_state.last_upload_summary = upload_summary
+            upload_summary['caricate_successo'] = 0
+            upload_summary['errori'] = len(tutti_problematici)
+            st.session_state.last_upload_summary = upload_summary
 
     else:
-        # Nessun file nuovo: persistiamo comunque un riepilogo accurato
+        # Nessun file nuovo — TUTTI duplicati/già presenti
+        # Mostra progress bar rapida anche per duplicati
+        total_check = len(uploaded_files)
+        for i in range(total_check):
+            progress_bar.progress((i + 1) / total_check)
+            status_text.text(f"🔍 Verifica {i + 1}/{total_check}: {uploaded_files[i].name[:40]}...")
+            time.sleep(0.05)
+        
+        upload_placeholder.empty()
+        progress_bar.empty()
+        status_text.empty()
+        
         st.session_state.last_upload_summary = upload_summary
         
-        # Mostra report errori unificato (es. solo duplicati, nessun file nuovo)
-        if len(st.session_state.files_errori_report) > 0:
-            num_errori = len(st.session_state.files_errori_report)
-            with st.expander(f"❌ {num_errori} {'fatture' if num_errori > 1 else 'fattura'} {'SCARTATE' if num_errori > 1 else 'SCARTATA'} — Dettaglio", expanded=True):
-                for nome_file, errore in st.session_state.files_errori_report.items():
-                    st.markdown(f"- **{nome_file}** — {errore[:200]}")
-                
-                st.markdown("")
-                col_download, col_clear, _ = st.columns([1, 1, 4])
-                with col_download:
-                    error_log = "\n".join([f"{nome}: {err}" for nome, err in st.session_state.files_errori_report.items()])
-                    st.download_button(
-                        label="📥 Scarica Log",
-                        data=error_log,
-                        file_name=f"errori_upload_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.txt",
-                        mime="text/plain",
-                        use_container_width=True,
-                    )
-                with col_clear:
-                    if st.button("✖️ Chiudi", key="chiudi_errori_2", use_container_width=True):
-                        # Segna file con errori come già processati per evitare ri-elaborazione
-                        for nome_file in st.session_state.files_errori_report:
-                            st.session_state.files_processati_sessione.add(nome_file)
-                            st.session_state.files_processati_sessione.add(get_nome_base_file(nome_file))
-                        st.session_state.files_errori_report = {}
-                        st.session_state.files_con_errori = set()
-                        # Reset uploader per svuotare i file caricati
-                        if 'uploader_key' not in st.session_state:
-                            st.session_state.uploader_key = 0
-                        st.session_state.uploader_key += 1
-                        # Invalida cache per eventuali file elaborati con successo
-                        st.cache_data.clear()
-                        invalida_cache_memoria()
-                        logger.info("✅ Report errori azzerato manualmente")
-                        st.rerun()
-            st.markdown("---")
+        # Salva messaggio persistente per duplicati
+        if file_gia_processati:
+            nomi = ", ".join(file_gia_processati)
+            n = len(file_gia_processati)
+            lbl = "fattura scartata perché duplicata" if n == 1 else "fatture scartate perché duplicate"
+            st.session_state.upload_messages = [
+                f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}: </span><span style="font-size:0.82rem;color:#856404;">{nomi}</span></div>'
+            ]
+            st.session_state.upload_messages_time = time.time()
+            # Segna come processati
+            for nome_file in file_gia_processati:
+                st.session_state.files_processati_sessione.add(nome_file)
+                st.session_state.files_processati_sessione.add(get_nome_base_file(nome_file))
+        
+        # Pulizia stato e reset uploader
+        st.session_state.files_errori_report = {}
+        st.session_state.files_con_errori = set()
+        if 'uploader_key' not in st.session_state:
+            st.session_state.uploader_key = 0
+        st.session_state.uploader_key += 1
+        logger.info(f"⚠️ {len(file_gia_processati)} fatture duplicate - stato pulito automaticamente")
+        st.rerun()
 
 
 # 🔥 CARICA E MOSTRA STATISTICHE SEMPRE (da Supabase)
