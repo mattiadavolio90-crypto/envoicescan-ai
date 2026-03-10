@@ -23,6 +23,7 @@ import requests
 # Import corretto da utils (non da app.py per evitare esecuzione interfaccia)
 from utils.formatters import carica_categorie_da_db
 from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria, pulisci_caratteri_corrotti
+from utils.validation import is_dicitura_sicura, is_sconto_omaggio_sicuro
 from utils.piva_validator import valida_formato_piva, normalizza_piva
 from services.auth_service import crea_cliente_con_token
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
@@ -1511,6 +1512,125 @@ if tab2:
         st.stop()
     
     # ============================================================
+    # 🤖 AUTO-REVIEW INTELLIGENTE (riduce lavoro admin ~70%)
+    # ============================================================
+    st.markdown("### 🤖 Auto-Review Intelligente")
+    st.caption("Classifica automaticamente diciture sicure e sconti/omaggi riconoscibili")
+    
+    # Pre-calcola quante righe sarebbero auto-classificate
+    _desc_uniche_zero = df_zero['descrizione'].unique()
+    _auto_diciture = []
+    _auto_sconti = []
+    _ambigue = []
+    for _d in _desc_uniche_zero:
+        if is_dicitura_sicura(_d, 0, 1):
+            _auto_diciture.append(_d)
+        elif is_sconto_omaggio_sicuro(_d):
+            _auto_sconti.append(_d)
+        else:
+            _ambigue.append(_d)
+    
+    _col_prev1, _col_prev2, _col_prev3 = st.columns(3)
+    with _col_prev1:
+        st.metric("📝 Diciture auto-rilevate", len(_auto_diciture))
+    with _col_prev2:
+        st.metric("🎁 Sconti/Omaggi auto-rilevati", len(_auto_sconti))
+    with _col_prev3:
+        st.metric("❓ Ambigue (da revisionare)", len(_ambigue))
+    
+    if len(_auto_diciture) > 0 or len(_auto_sconti) > 0:
+        with st.expander("🔍 Anteprima auto-classificazione", expanded=False):
+            if _auto_diciture:
+                st.markdown("**📝 Diciture (saranno marcate NOTE E DICITURE):**")
+                for _d in _auto_diciture[:15]:
+                    st.caption(f"  • {_d[:80]}")
+                if len(_auto_diciture) > 15:
+                    st.caption(f"  ... e altre {len(_auto_diciture) - 15}")
+            if _auto_sconti:
+                st.markdown("**🎁 Sconti/Omaggi (categoria confermata):**")
+                for _d in _auto_sconti[:15]:
+                    _cat = df_zero[df_zero['descrizione'] == _d]['categoria'].iloc[0] if not df_zero[df_zero['descrizione'] == _d].empty else 'N/A'
+                    st.caption(f"  • {_d[:80]} → {_cat}")
+                if len(_auto_sconti) > 15:
+                    st.caption(f"  ... e altri {len(_auto_sconti) - 15}")
+        
+        if st.button("🤖 Esegui Auto-Review", type="primary", key="btn_auto_review"):
+            with st.spinner("Auto-classificazione in corso..."):
+                _auto_ok = 0
+                _auto_err = 0
+                _auto_mem_ok = 0
+                
+                # 1) Diciture sicure → NOTE E DICITURE + salva in memoria globale
+                if _auto_diciture:
+                    try:
+                        result = _build_review_batch_update({
+                            'categoria': '📝 NOTE E DICITURE',
+                            'needs_review': False,
+                            'reviewed_at': datetime.now(timezone.utc).isoformat(),
+                            'reviewed_by': 'auto-review'
+                        }, _auto_diciture, filtro_cliente_id).execute()
+                        _auto_ok += len(result.data) if result.data else len(_auto_diciture)
+                        
+                        # Salva in memoria globale come diciture verificate
+                        for _d in _auto_diciture:
+                            try:
+                                supabase.table('prodotti_master').upsert({
+                                    'descrizione': _d,
+                                    'categoria': '📝 NOTE E DICITURE',
+                                    'confidence': 'altissima',
+                                    'verified': True,
+                                    'classificato_da': 'auto-review',
+                                    'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                                }, on_conflict='descrizione').execute()
+                                _auto_mem_ok += 1
+                            except Exception:
+                                pass
+                    except Exception as _e:
+                        _auto_err += 1
+                        logger.error(f"Errore auto-review diciture: {_e}")
+                
+                # 2) Sconti/omaggi → conferma categoria attuale + salva in memoria globale
+                if _auto_sconti:
+                    for _d in _auto_sconti:
+                        try:
+                            _cat_corrente = df_zero[df_zero['descrizione'] == _d]['categoria'].iloc[0]
+                            # Se categoria è ancora "Da Classificare", skip (non sappiamo quale assegnare)
+                            if not _cat_corrente or _cat_corrente == 'Da Classificare':
+                                continue
+                            
+                            result = _build_review_update_query({
+                                'needs_review': False,
+                                'reviewed_at': datetime.now(timezone.utc).isoformat(),
+                                'reviewed_by': 'auto-review'
+                            }, _d, filtro_cliente_id).execute()
+                            _auto_ok += len(result.data) if result.data else 1
+                            
+                            # Salva in memoria globale con categoria confermata
+                            supabase.table('prodotti_master').upsert({
+                                'descrizione': _d,
+                                'categoria': _cat_corrente,
+                                'confidence': 'alta',
+                                'verified': True,
+                                'classificato_da': 'auto-review',
+                                'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                            }, on_conflict='descrizione').execute()
+                            _auto_mem_ok += 1
+                        except Exception as _e:
+                            _auto_err += 1
+                            logger.error(f"Errore auto-review sconto '{_d[:40]}': {_e}")
+                
+                invalida_cache_memoria()
+                st.success(f"🤖 Auto-Review completata: {_auto_ok} righe classificate, {_auto_mem_ok} salvate in memoria globale")
+                if _auto_err > 0:
+                    st.warning(f"⚠️ {_auto_err} errori durante auto-review")
+                time.sleep(1)
+                st.rerun()
+    else:
+        st.info("✅ Nessuna riga auto-classificabile. Tutte le righe richiedono revisione manuale.")
+    
+    st.markdown("---")
+    
+    # ============================================================
     # STATISTICHE (CARD STILIZZATE)
     # ============================================================
     cat_sospette = df_zero[~df_zero['categoria'].isin(['NOTE E DICITURE', 'Da Classificare'])]
@@ -1706,12 +1826,22 @@ if tab2:
             else:
                 st.session_state.review_zero_selezionate.discard(descrizione)
 
-        # DESCRIZIONE + Badge review
+        # DESCRIZIONE + Badge review + Badge tipo sospetto
         with col_desc:
             needs_review_flag = row.get('needs_review', False) if 'needs_review' in df_pagina.columns else False
             review_badge = "🔍 " if needs_review_flag else ""
-            desc_short = descrizione[:45] + "..." if len(descrizione) > 45 else descrizione
-            st.markdown(f"`{review_badge}{desc_short}`")
+            # Badge tipo sospetto auto-rilevato
+            if is_dicitura_sicura(descrizione, 0, 1):
+                tipo_badge = "🏷️"
+                tipo_help = "Dicitura probabile"
+            elif is_sconto_omaggio_sicuro(descrizione):
+                tipo_badge = "🎁"
+                tipo_help = "Sconto/Omaggio probabile"
+            else:
+                tipo_badge = "❓"
+                tipo_help = "Ambiguo - revisione manuale"
+            desc_short = descrizione[:80] + "..." if len(descrizione) > 80 else descrizione
+            st.markdown(f"{tipo_badge} `{review_badge}{desc_short}`", help=f"{tipo_help} | Testo completo: {descrizione}")
         
         # OCCORRENZE
         with col_occur:
@@ -1744,7 +1874,7 @@ if tab2:
             col_a1, col_a2 = st.columns(2)
             
             with col_a1:
-                if st.button("✅", key=f"save_{idx}", help="Salva categoria selezionata"):
+                if st.button("✅", key=f"save_{idx}", help="Salva categoria selezionata + memoria globale"):
                     try:
                         result = _build_review_update_query({
                             'categoria': nuova_categoria,
@@ -1752,7 +1882,16 @@ if tab2:
                             'reviewed_at': datetime.now(timezone.utc).isoformat(),
                             'reviewed_by': 'admin'
                         }, descrizione, filtro_cliente_id).execute()
-                        st.success(f"✅ {len(result.data) if result.data else occorrenze} righe → {nuova_categoria}")
+                        # 💾 Salva in memoria globale (verificato da admin)
+                        supabase.table('prodotti_master').upsert({
+                            'descrizione': descrizione,
+                            'categoria': nuova_categoria,
+                            'confidence': 'altissima',
+                            'verified': True,
+                            'classificato_da': 'review-admin',
+                            'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                        }, on_conflict='descrizione').execute()
+                        st.success(f"✅ {len(result.data) if result.data else occorrenze} righe → {nuova_categoria} (+ memoria globale)")
                         invalida_cache_memoria()
                         time.sleep(0.5)
                         st.rerun()
@@ -1760,7 +1899,7 @@ if tab2:
                         st.error(f"Errore: {e}")
             
             with col_a2:
-                if st.button("📝", key=f"nota_{idx}", help="Segna come Nota/Dicitura"):
+                if st.button("📝", key=f"nota_{idx}", help="Segna come Nota/Dicitura + memoria globale"):
                     try:
                         result = _build_review_update_query({
                             'categoria': '📝 NOTE E DICITURE',
@@ -1768,7 +1907,16 @@ if tab2:
                             'reviewed_at': datetime.now(timezone.utc).isoformat(),
                             'reviewed_by': 'admin'
                         }, descrizione, filtro_cliente_id).execute()
-                        st.success(f"📝 {len(result.data) if result.data else occorrenze} righe → NOTE E DICITURE")
+                        # 💾 Salva in memoria globale come dicitura verificata
+                        supabase.table('prodotti_master').upsert({
+                            'descrizione': descrizione,
+                            'categoria': '📝 NOTE E DICITURE',
+                            'confidence': 'altissima',
+                            'verified': True,
+                            'classificato_da': 'review-admin',
+                            'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                        }, on_conflict='descrizione').execute()
+                        st.success(f"📝 {len(result.data) if result.data else occorrenze} righe → NOTE E DICITURE (+ memoria globale)")
                         invalida_cache_memoria()
                         time.sleep(0.5)
                         st.rerun()
@@ -1808,7 +1956,20 @@ if tab2:
                             'reviewed_by': 'admin'
                         }, _descs, filtro_cliente_id).execute()
                         _ok = len(result.data) if result.data else len(_descs)
-                        st.success(f"✅ {_ok} righe aggiornate → {_cat_massiva}")
+                        # 💾 Salva tutte in memoria globale
+                        for _d in _descs:
+                            try:
+                                supabase.table('prodotti_master').upsert({
+                                    'descrizione': _d,
+                                    'categoria': _cat_massiva,
+                                    'confidence': 'altissima',
+                                    'verified': True,
+                                    'classificato_da': 'review-admin',
+                                    'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                                }, on_conflict='descrizione').execute()
+                            except Exception:
+                                pass
+                        st.success(f"✅ {_ok} righe aggiornate → {_cat_massiva} (+ memoria globale)")
                     except Exception as _e:
                         st.error(f"Errore batch: {_e}")
                 st.session_state.review_zero_selezionate = set()
@@ -1830,7 +1991,20 @@ if tab2:
                             'reviewed_by': 'admin'
                         }, _descs, filtro_cliente_id).execute()
                         _ok = len(result.data) if result.data else len(_descs)
-                        st.success(f"📝 {_ok} righe → NOTE E DICITURE")
+                        # 💾 Salva tutte in memoria globale come diciture
+                        for _d in _descs:
+                            try:
+                                supabase.table('prodotti_master').upsert({
+                                    'descrizione': _d,
+                                    'categoria': '📝 NOTE E DICITURE',
+                                    'confidence': 'altissima',
+                                    'verified': True,
+                                    'classificato_da': 'review-admin',
+                                    'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                                }, on_conflict='descrizione').execute()
+                            except Exception:
+                                pass
+                        st.success(f"📝 {_ok} righe → NOTE E DICITURE (+ memoria globale)")
                     except Exception as _e:
                         st.error(f"Errore batch: {_e}")
                 st.session_state.review_zero_selezionate = set()
@@ -2299,12 +2473,12 @@ def tab_memoria_globale_unificata():
         
         # DESCRIZIONE
         with col_desc:
-            desc_short = descrizione[:50] + "..." if len(descrizione) > 50 else descrizione
+            desc_short = descrizione[:80] + "..." if len(descrizione) > 80 else descrizione
             # Emoji stato verifica
             if not verified:
-                st.markdown(f"⚠️ `{desc_short}`")
+                st.markdown(f"⚠️ `{desc_short}`", help=f"Testo completo: {descrizione}")
             else:
-                st.markdown(f"✅ `{desc_short}`")
+                st.markdown(f"✅ `{desc_short}`", help=f"Testo completo: {descrizione}")
         
         # DROPDOWN CATEGORIA (modifica inline)
         with col_cat:
@@ -2374,7 +2548,7 @@ def tab_memoria_globale_unificata():
         if num_modifiche > 0:
             with st.expander("🔍 Preview Modifiche Categorie", expanded=False):
                 for desc, info in list(st.session_state.modifiche_memoria.items())[:10]:
-                    desc_short = desc[:50] + "..." if len(desc) > 50 else desc
+                    desc_short = desc[:80] + "..." if len(desc) > 80 else desc
                     st.markdown(f"- `{desc_short}` ({info['occorrenze']}×): {info['categoria_originale']} → **{info['nuova_categoria']}**")
                 if num_modifiche > 10:
                     st.caption(f"... e altre {num_modifiche - 10} modifiche")

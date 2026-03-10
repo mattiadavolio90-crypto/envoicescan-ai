@@ -717,9 +717,9 @@ def categorizza_con_memoria(
     
     # 💾 SALVATAGGIO AUTOMATICO IN MEMORIA GLOBALE
     # Se la categoria è diversa da "Da Classificare", salva in memoria globale per futuri clienti
-    # QUESTO È CORRETTO: categorizzazioni automatiche (AI/keyword/dizionario) vanno in memoria GLOBALE
-    # La memoria globale è condivisa tra TUTTI i clienti per efficienza
-    if categoria_keyword != "Da Classificare" and supabase_client:
+    # 🛡️ QUARANTENA: NON salvare righe con prezzo = 0 in memoria globale
+    # Le righe €0 vanno revisionate dall'admin nel tab "Review Righe 0€" prima di entrare in memoria
+    if categoria_keyword != "Da Classificare" and supabase_client and prezzo != 0:
         try:
             # Normalizza descrizione per salvataggio
             desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
@@ -737,10 +737,12 @@ def categorizza_con_memoria(
             logger.info(f"💾 MEMORIA GLOBALE (auto-save): '{desc_normalized}' (orig: '{desc_original}') → {categoria_keyword} (keyword) - disponibile per TUTTI i clienti")
         except Exception as e:
             logger.warning(f"❌ Errore salvataggio memoria globale per '{descrizione[:40]}': {e}")
+    elif categoria_keyword != "Da Classificare" and prezzo == 0:
+        # 🛡️ QUARANTENA: Riga €0 categorizzata ma NON salvata in memoria globale
+        # Andrà nel tab "Review Righe 0€" per validazione admin
+        logger.info(f"🛡️ QUARANTENA €0: '{descrizione[:60]}' → {categoria_keyword} (NON salvato in memoria globale, in attesa review)")
     else:
         # AUTO-CATEGORIZZAZIONE FALLITA: nessun match nel dizionario
-        # L'articolo NON viene salvato in memoria globale (rimane "Da Classificare")
-        # Se il cliente lo categorizza manualmente, andrà in memoria LOCALE (prodotti_utente)
         logger.info(f"⚠️ AUTO-CATEGORIZZAZIONE FALLITA: '{descrizione[:60]}' rimasto 'Da Classificare' (NON salvato in memoria globale)")
     
     return categoria_keyword

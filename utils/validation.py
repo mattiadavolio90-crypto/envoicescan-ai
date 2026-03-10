@@ -116,6 +116,52 @@ def is_dicitura_sicura(descrizione: str, prezzo: float, quantita: float) -> bool
     return False
 
 
+def is_sconto_omaggio_sicuro(descrizione: str) -> bool:
+    """
+    Identifica sconti, omaggi e abbuoni con ALTA confidenza.
+    Ritorna True SOLO se certissimi che è sconto/omaggio, non dicitura.
+    
+    Se True → la categoria assegnata da AI/keyword è corretta (es: CARNI per "SCONTO MERCE CARNI"),
+    quindi va confermata e salvata in memoria globale.
+    
+    Args:
+        descrizione: testo descrizione riga
+    
+    Returns:
+        bool: True se sconto/omaggio certo
+    """
+    if not descrizione:
+        return False
+    
+    desc_upper = descrizione.upper().strip()
+    
+    KEYWORD_SCONTO_OMAGGIO = [
+        # Sconti merce
+        "SCONTO MERCE", "SC. MERCE", "SCONTO IN MERCE", "SCONTO PROMOZIONALE",
+        "SCONTO INCONDIZ", "SCONTO CONDIZ", "SCONTO QUANTITA", "SCONTO CLIENTE",
+        "SCONTO FINE ANNO", "SCONTO VOLUME", "SCONTO EXTRA", "SC.MERCE",
+        "SCONTO COMM", "SCONTO COMMER",
+        
+        # Omaggi
+        "OMAGGIO", "CAMPIONE GRATUITO", "CAMPIONE OMAGGIO",
+        "MERCE IN OMAGGIO", "PRODOTTO IN OMAGGIO", "OMAGGI",
+        
+        # Abbuoni / resi
+        "ABBUONO MERCE", "ABBUONO SU MERCE", "ABBUONO",
+        "RESO MERCE", "MERCE RESA", "RESO SU MERCE",
+        "NOTA CREDITO MERCE", "NC MERCE",
+        
+        # Promo
+        "PROMOZIONE", "PROMO ", "OFFERTA SPECIALE",
+    ]
+    
+    if any(kw in desc_upper for kw in KEYWORD_SCONTO_OMAGGIO):
+        logger.info(f"✓ Sconto/omaggio identificato: {descrizione}")
+        return True
+    
+    return False
+
+
 # ============================================================
 # VALIDAZIONE INTEGRITÀ FATTURE
 # ============================================================

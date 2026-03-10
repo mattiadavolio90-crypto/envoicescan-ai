@@ -424,9 +424,9 @@ def estrai_dati_da_xml(file_caricato):
                 if descrizione.strip().upper() in ['DDT', 'DT', 'N/A']:
                     continue
                 
-                # TRIM: Descrizioni lunghe (max 100 caratteri)
-                if len(descrizione) > 100:
-                    descrizione = descrizione[:100] + "..."
+                # TRIM: Descrizioni lunghe (max 150 caratteri)
+                if len(descrizione) > 150:
+                    descrizione = descrizione[:150] + "..."
                 
                 # Codice articolo
                 codice_articolo = ""

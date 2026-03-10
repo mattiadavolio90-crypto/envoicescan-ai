@@ -19,6 +19,7 @@ from .text_utils import (
 
 from .validation import (
     is_dicitura_sicura,
+    is_sconto_omaggio_sicuro,
     verifica_integrita_fattura,
     is_prezzo_valido
 )
@@ -41,6 +42,7 @@ __all__ = [
     'aggiungi_icona_categoria',
     # validation
     'is_dicitura_sicura',
+    'is_sconto_omaggio_sicuro',
     'verifica_integrita_fattura',
     'is_prezzo_valido',
     # formatters

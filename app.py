@@ -1254,9 +1254,9 @@ def mostra_statistiche(df_completo):
             try:
                 # Query tutte le descrizioni che hanno categoria NULL, "Da Classificare" o stringa vuota
                 ristorante_id = st.session_state.get('ristorante_id')
-                query_null = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).is_("categoria", "null")
-                query_da_class = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "Da Classificare")
-                query_empty = supabase.table("fatture").select("descrizione, fornitore").eq("user_id", user_id).eq("categoria", "")
+                query_null = supabase.table("fatture").select("descrizione, fornitore, prezzo_unitario").eq("user_id", user_id).is_("categoria", "null")
+                query_da_class = supabase.table("fatture").select("descrizione, fornitore, prezzo_unitario").eq("user_id", user_id).eq("categoria", "Da Classificare")
+                query_empty = supabase.table("fatture").select("descrizione, fornitore, prezzo_unitario").eq("user_id", user_id).eq("categoria", "")
                 if ristorante_id:
                     query_null = query_null.eq("ristorante_id", ristorante_id)
                     query_da_class = query_da_class.eq("ristorante_id", ristorante_id)
@@ -1274,12 +1274,28 @@ def mostra_statistiche(df_completo):
                 descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
                 fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
                 
+                # 🛡️ QUARANTENA: Identifica descrizioni che hanno ALMENO una riga €0
+                # Queste NON andranno in memoria globale (restano in attesa di review admin)
+                _descrizioni_con_prezzo_zero = set()
+                for row in tutti_dati:
+                    desc = row.get('descrizione')
+                    prezzo = row.get('prezzo_unitario', 0) or 0
+                    if desc and float(prezzo) == 0:
+                        _descrizioni_con_prezzo_zero.add(desc)
+                logger.info(f"🛡️ QUARANTENA: {len(_descrizioni_con_prezzo_zero)} descrizioni con righe €0 (escluse da memoria globale)")
+                
                 logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare (NULL: {len(dati_null)}, DaClass: {len(dati_da_class)}, Vuote: {len(dati_empty)})")
             except Exception as e:
                 logger.error(f"Errore query diretta descrizioni: {e}")
                 # Fallback su df_completo se query fallisce
                 descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
                 fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
+                # Fallback quarantena: usa TotaleRiga dal DataFrame locale
+                _descrizioni_con_prezzo_zero = set()
+                if 'TotaleRiga' in df_completo.columns:
+                    _mask_zero = maschera_ai & (df_completo['TotaleRiga'] == 0)
+                    _descrizioni_con_prezzo_zero = set(df_completo[_mask_zero]['Descrizione'].dropna().unique())
+                logger.info(f"🛡️ QUARANTENA (fallback): {len(_descrizioni_con_prezzo_zero)} descrizioni €0")
             
             if descrizioni_da_classificare:
                     # 🧠 Placeholder per banner orizzontale
@@ -1411,6 +1427,7 @@ def mostra_statistiche(df_completo):
                             descrizioni_per_ai.append(desc)
                     
                     # 💾 Batch upsert memoria GLOBALE per keyword (singola query)
+                    # 🛡️ QUARANTENA: Escludi descrizioni con righe €0 dalla memoria globale
                     keyword_upsert_data = [
                         {
                             'descrizione': desc,
@@ -1422,8 +1439,11 @@ def mostra_statistiche(df_completo):
                             'created_at': datetime.now(timezone.utc).isoformat(),
                             'ultima_modifica': datetime.now(timezone.utc).isoformat()
                         }
-                        for desc in _tracking_keyword_set if desc in mappa_categorie
+                        for desc in _tracking_keyword_set if desc in mappa_categorie and desc not in _descrizioni_con_prezzo_zero
                     ]
+                    _kw_quarantined = len([d for d in _tracking_keyword_set if d in mappa_categorie and d in _descrizioni_con_prezzo_zero])
+                    if _kw_quarantined > 0:
+                        logger.info(f"🛡️ QUARANTENA keyword: {_kw_quarantined} descrizioni €0 escluse da memoria globale")
                     if keyword_upsert_data:
                         try:
                             _kw_result = supabase.table('prodotti_master').upsert(
@@ -1458,13 +1478,17 @@ def mostra_statistiche(df_completo):
                                 """, unsafe_allow_html=True)
                                 
                                 if cat and cat != "Da Classificare":
-                                    ai_batch_upsert.append({
-                                        'descrizione': desc,
-                                        'categoria': cat,
-                                        'volte_visto': 1,
-                                        'verified': False,
-                                        'classificato_da': 'AI'
-                                    })
+                                    # 🛡️ QUARANTENA: Escludi descrizioni €0 dalla memoria globale
+                                    if desc not in _descrizioni_con_prezzo_zero:
+                                        ai_batch_upsert.append({
+                                            'descrizione': desc,
+                                            'categoria': cat,
+                                            'volte_visto': 1,
+                                            'verified': False,
+                                            'classificato_da': 'AI'
+                                        })
+                                    else:
+                                        logger.info(f"🛡️ QUARANTENA AI: '{desc[:60]}' → {cat} (€0, escluso da memoria globale)")
                             
                             # 💾 Batch upsert memoria GLOBALE per AI (singola query per chunk)
                             if ai_batch_upsert:
