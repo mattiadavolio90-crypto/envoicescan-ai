@@ -281,7 +281,9 @@ def crea_cliente_con_token(
         if check_email.data:
             return False, f"❌ Email {email} già registrata", ""
         
-        # Check P.IVA duplicata
+        # Check P.IVA duplicata nella tabella users
+        # (P.IVA può coesistere in ristoranti diversi di utenti diversi,
+        #  es. admin che replica ristorante cliente per test)
         if piva_norm:
             check_piva = supabase_client.table('users')\
                 .select('email')\
@@ -290,7 +292,7 @@ def crea_cliente_con_token(
             
             if check_piva.data:
                 email_esistente = check_piva.data[0].get('email', 'altro utente')
-                return False, f"⚠️ P.IVA già registrata da: {email_esistente}", ""
+                logger.warning(f"⚠️ P.IVA {piva_norm} già presente in users (utente: {email_esistente}), procedo comunque")
         
         # Genera token univoco (24h validità per primo accesso)
         # secrets.token_urlsafe(32) = 192 bit entropia, URL-safe (superiore a uuid4)
@@ -324,6 +326,8 @@ def crea_cliente_con_token(
         user_id = result.data[0]['id']
         
         # Crea record ristorante associato (tabella multi-ristorante)
+        # ⚠️ CRITICO: senza questo record il cliente NON può caricare fatture
+        ristorante_creato = False
         try:
             nuovo_ristorante = {
                 'user_id': user_id,
@@ -337,15 +341,18 @@ def crea_cliente_con_token(
             
             if rist_result.data:
                 logger.info(f"✅ Ristorante creato per cliente: {nome_ristorante} (P.IVA: {piva_norm})")
+                ristorante_creato = True
             else:
-                logger.error(f"❌ Cliente creato ma ristorante non inserito: {email} (user_id={user_id})")
+                logger.error(f"❌ Cliente creato ma ristorante non inserito (response vuota): {email} (user_id={user_id})")
         except Exception as rist_err:
             logger.error(f"❌ Errore creazione ristorante per {email} (user_id={user_id}): {rist_err}")
-            # Non fallire la creazione cliente se il ristorante fallisce
         
         logger.info(f"✅ Cliente creato: {email} (P.IVA: {piva_norm})")
         
-        return True, f"✅ Cliente {email} creato con successo!", token
+        if ristorante_creato:
+            return True, f"✅ Cliente {email} creato con successo!", token
+        else:
+            return True, f"⚠️ Cliente {email} creato, ma il ristorante NON è stato configurato. Verifica nel pannello admin.", token
         
     except Exception as e:
         logger.exception(f"Errore creazione cliente {email}")

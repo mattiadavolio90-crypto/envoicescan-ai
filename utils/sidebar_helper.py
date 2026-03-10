@@ -157,36 +157,40 @@ def render_sidebar(user_data: dict):
         # ============================================
         # SEZIONE OPERATIVO
         # ============================================
-        st.markdown("### 📋 Sezioni e Funzioni")
+        # Admin puro (non impersonificato) vede SOLO pannello admin
+        _is_pure_admin = user_email in ADMIN_EMAILS and not is_admin_impersonating
         
-        if st.button("🧠 Analisi Fatture AI", use_container_width=True, key="sidebar_dashboard",
-                     type="primary" if current_script == 'app.py' else "secondary"):
-            st.switch_page("app.py")
-        
-        # Pagine abilitabili dall'admin
-        _pagine_raw = st.session_state.get('user_data', {}).get('pagine_abilitate')
-        if isinstance(_pagine_raw, str):
-            import json
-            try:
-                _pagine_raw = json.loads(_pagine_raw)
-            except Exception:
-                _pagine_raw = None
-        pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
-        
-        if pagine_abilitate.get('controllo_prezzi', True):
-            if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",
-                         type="primary" if current_script == '3_controllo_prezzi.py' else "secondary"):
-                st.switch_page("pages/3_controllo_prezzi.py")
-        
-        if pagine_abilitate.get('marginalita', True):
-            if st.button("💰 Calcolo Marginalità", use_container_width=True, key="sidebar_margine",
-                         type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
-                st.switch_page("pages/1_calcolo_margine.py")
-        
-        if pagine_abilitate.get('workspace', True):
-            if st.button("🍴 Workspace", use_container_width=True, key="sidebar_workspace",
-                         type="primary" if current_script == '2_workspace.py' else "secondary"):
-                st.switch_page("pages/2_workspace.py")
+        if not _is_pure_admin:
+            st.markdown("### 📋 Sezioni e Funzioni")
+            
+            if st.button("🧠 Analisi Fatture AI", use_container_width=True, key="sidebar_dashboard",
+                         type="primary" if current_script == 'app.py' else "secondary"):
+                st.switch_page("app.py")
+            
+            # Pagine abilitabili dall'admin
+            _pagine_raw = st.session_state.get('user_data', {}).get('pagine_abilitate')
+            if isinstance(_pagine_raw, str):
+                import json
+                try:
+                    _pagine_raw = json.loads(_pagine_raw)
+                except Exception:
+                    _pagine_raw = None
+            pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
+            
+            if pagine_abilitate.get('controllo_prezzi', True):
+                if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",
+                             type="primary" if current_script == '3_controllo_prezzi.py' else "secondary"):
+                    st.switch_page("pages/3_controllo_prezzi.py")
+            
+            if pagine_abilitate.get('marginalita', True):
+                if st.button("💰 Calcolo Marginalità", use_container_width=True, key="sidebar_margine",
+                             type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
+                    st.switch_page("pages/1_calcolo_margine.py")
+            
+            if pagine_abilitate.get('workspace', True):
+                if st.button("🍴 Workspace", use_container_width=True, key="sidebar_workspace",
+                             type="primary" if current_script == '2_workspace.py' else "secondary"):
+                    st.switch_page("pages/2_workspace.py")
         
         st.markdown("---")
         

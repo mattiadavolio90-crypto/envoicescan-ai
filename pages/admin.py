@@ -559,6 +559,9 @@ if tab1:
                     if not successo:
                         st.error(messaggio)
                     else:
+                        # Se il messaggio contiene warning ristorante, mostralo
+                        if "⚠️" in messaggio:
+                            st.warning(messaggio)
                         # Invia email con link attivazione
                         email_inviata = False
                         try:
@@ -764,14 +767,15 @@ if tab1:
                                                 st.error(msg_mr)
                                             else:
                                                 try:
-                                                    # Verifica P.IVA non duplicata
+                                                    # Verifica P.IVA non duplicata PER LO STESSO UTENTE
                                                     check_piva = supabase.table('ristoranti')\
                                                         .select('id')\
                                                         .eq('partita_iva', piva_norm_mr)\
+                                                        .eq('user_id', user_sel['id'])\
                                                         .execute()
                                                     
                                                     if check_piva.data:
-                                                        st.error(f"❌ P.IVA {piva_norm_mr} già registrata")
+                                                        st.error(f"❌ P.IVA {piva_norm_mr} già registrata per questo cliente")
                                                     else:
                                                         # Inserisci nuovo ristorante
                                                         supabase.table('ristoranti').insert({
@@ -973,7 +977,8 @@ if tab1:
                                 'id': row['user_id'],
                                 'email': row['email'],
                                 'nome_ristorante': row['ristorante'],
-                                'attivo': row['attivo']
+                                'attivo': row['attivo'],
+                                'partita_iva': row.get('partita_iva'),
                             }
                             st.session_state.user_data = cliente_data
                             

@@ -104,7 +104,8 @@ st.set_page_config(
 # ============================================================
 _rerun_count = st.session_state.get('_rerun_guard', 0)
 if _rerun_count > 8:
-    logger.critical(f"🚨 RERUN LOOP DETECTED ({_rerun_count} consecutivi) - reset forzato")
+    import logging as _logging_guard
+    _logging_guard.getLogger('fci_app').critical(f"🚨 RERUN LOOP DETECTED ({_rerun_count} consecutivi) - reset forzato")
     st.session_state._rerun_guard = 0
     st.session_state.force_reload = False
     st.error("⚠️ Rilevato loop di aggiornamento. La pagina è stata stabilizzata.")
@@ -764,7 +765,7 @@ if not user or not user.get('id'):
     st.session_state.logged_in = False
     st.rerun()
 
-if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_state:
+if 'ristoranti' not in st.session_state or not st.session_state.get('ristorante_id'):
     try:
         # Admin: carica TUTTI i ristoranti dal sistema
         if st.session_state.get('user_is_admin', False):
@@ -811,35 +812,31 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
                 user_id = user.get('id')
                 
                 # Tenta creazione automatica ristorante se ha P.IVA
-                if piva and nome and user_id:
+                if piva and user_id:
                     logger.warning(f"⚠️ Utente legacy {user_id} senza ristoranti - tentativo creazione automatica")
                     logger.warning(f"   Dati: nome='{nome}', piva='{piva}'")
                     try:
-                        # Prima verifica se esiste già un ristorante con questa P.IVA
+                        # Cerca ristorante con questa P.IVA DELLO STESSO UTENTE
                         check_existing = supabase.table('ristoranti')\
                             .select('id, user_id, nome_ristorante')\
                             .eq('partita_iva', piva)\
+                            .eq('user_id', user_id)\
                             .execute()
                         
                         if check_existing.data and len(check_existing.data) > 0:
-                            # Ristorante già esistente con questa P.IVA
+                            # È il suo ristorante, usalo
                             existing = check_existing.data[0]
-                            if existing['user_id'] == user_id:
-                                # È il suo ristorante, usalo
-                                st.session_state.ristoranti = [existing]
-                                st.session_state.ristorante_id = existing['id']
-                                st.session_state.partita_iva = piva
-                                st.session_state.nome_ristorante = existing['nome_ristorante']
-                                logger.info(f"✅ Ristorante esistente trovato e collegato: {existing['id']}")
-                            else:
-                                # P.IVA già usata da altro utente - errore grave
-                                logger.error(f"❌ P.IVA {piva} già associata ad altro utente: {existing['user_id']}")
-                                st.error("⚠️ La tua P.IVA risulta già registrata. Contatta l'assistenza.")
+                            st.session_state.ristoranti = [existing]
+                            st.session_state.ristorante_id = existing['id']
+                            st.session_state.partita_iva = piva
+                            st.session_state.nome_ristorante = existing['nome_ristorante']
+                            logger.info(f"✅ Ristorante esistente trovato e collegato: {existing['id']}")
                         else:
                             # Non esiste, crea nuovo
+                            nome_rist = nome or f"Ristorante {piva}"
                             new_rist = supabase.table('ristoranti').insert({
                                 'user_id': user_id,
-                                'nome_ristorante': nome,
+                                'nome_ristorante': nome_rist,
                                 'partita_iva': piva,
                                 'ragione_sociale': user.get('ragione_sociale', ''),
                                 'attivo': True
@@ -888,6 +885,14 @@ if 'ristoranti' not in st.session_state or 'ristorante_id' not in st.session_sta
             st.session_state.partita_iva = user.get('partita_iva')
             st.session_state.nome_ristorante = user.get('nome_ristorante')
 
+
+# ============================================
+# ADMIN PURO: REDIRECT A PANNELLO ADMIN
+# ============================================
+# L'admin (non impersonificato) non accede alle pagine app, solo al pannello admin.
+if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
+    logger.info(f"👨‍💼 Admin {user.get('email')} su app.py → redirect a pannello admin")
+    st.switch_page("pages/admin.py")
 
 # ============================================
 # BANNER IMPERSONAZIONE (solo per admin che impersonano)
