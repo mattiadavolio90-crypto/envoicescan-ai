@@ -1449,6 +1449,7 @@ if tab2:
                 query = supabase.table('fatture')\
                     .select('id, descrizione, categoria, fornitore, file_origine, data_documento, user_id, prezzo_unitario, needs_review, reviewed_at, reviewed_by')\
                     .or_('prezzo_unitario.eq.0,needs_review.eq.true')\
+                    .is_('reviewed_at', 'null')\
                     .order('id', desc=False)\
                     .range(offset, offset + page_size - 1)
                 
@@ -1620,6 +1621,7 @@ if tab2:
                             logger.error(f"Errore auto-review sconto '{_d[:40]}': {_e}")
                 
                 invalida_cache_memoria()
+                st.cache_data.clear()
                 st.success(f"🤖 Auto-Review completata: {_auto_ok} righe classificate, {_auto_mem_ok} salvate in memoria globale")
                 if _auto_err > 0:
                     st.warning(f"⚠️ {_auto_err} errori durante auto-review")
@@ -1893,6 +1895,7 @@ if tab2:
                         }, on_conflict='descrizione').execute()
                         st.success(f"✅ {len(result.data) if result.data else occorrenze} righe → {nuova_categoria} (+ memoria globale)")
                         invalida_cache_memoria()
+                        st.cache_data.clear()
                         time.sleep(0.5)
                         st.rerun()
                     except Exception as e:
@@ -1918,6 +1921,7 @@ if tab2:
                         }, on_conflict='descrizione').execute()
                         st.success(f"📝 {len(result.data) if result.data else occorrenze} righe → NOTE E DICITURE (+ memoria globale)")
                         invalida_cache_memoria()
+                        st.cache_data.clear()
                         time.sleep(0.5)
                         st.rerun()
                     except Exception as e:
@@ -1933,53 +1937,56 @@ if tab2:
         st.markdown("---")
         st.markdown(f"### ⚡ Azioni Massive — {_num_sel_fin} righe selezionate")
 
-        col_mass_cat, col_mass_btn1, col_mass_btn2, col_mass_cancel = st.columns([3, 1.5, 1.5, 1])
-
-        with col_mass_cat:
-            _cat_massiva = st.selectbox(
-                "Categoria da applicare a tutte le selezionate",
-                _categorie_review,
-                key="rv_cat_massiva",
-                label_visibility="visible"
-            )
+        col_mass_btn1, col_mass_btn2, col_mass_cancel = st.columns([2, 2, 1])
 
         with col_mass_btn1:
-            st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
-            if st.button(f"✅ Conferma ({_num_sel_fin})", use_container_width=True, key="rv_mass_confirm", type="primary"):
-                with st.spinner("Salvataggio in corso..."):
+            if st.button(f"✅ Conferma Categorie Correnti ({_num_sel_fin})", use_container_width=True, key="rv_mass_confirm", type="primary"):
+                with st.spinner("Conferma categorie in corso..."):
                     try:
                         _descs = list(st.session_state.review_zero_selezionate)
-                        result = _build_review_batch_update({
-                            'categoria': _cat_massiva,
-                            'needs_review': False,
-                            'reviewed_at': datetime.now(timezone.utc).isoformat(),
-                            'reviewed_by': 'admin'
-                        }, _descs, filtro_cliente_id).execute()
-                        _ok = len(result.data) if result.data else len(_descs)
-                        # 💾 Salva tutte in memoria globale
+                        _ok_count = 0
+                        _mem_count = 0
+                        # Per ogni descrizione selezionata, conferma la SUA categoria corrente
                         for _d in _descs:
+                            # Recupera categoria corrente dal df
+                            _cat_row = df_grouped[df_grouped['descrizione'] == _d]
+                            _cat_corrente = _cat_row['categoria'].iloc[0] if not _cat_row.empty else None
+                            if not _cat_corrente or _cat_corrente == 'Da Classificare':
+                                continue
+                            
+                            # Aggiorna fatture: segna come reviewato
+                            result = _build_review_update_query({
+                                'needs_review': False,
+                                'reviewed_at': datetime.now(timezone.utc).isoformat(),
+                                'reviewed_by': 'admin'
+                            }, _d, filtro_cliente_id).execute()
+                            _ok_count += len(result.data) if result.data else 1
+                            
+                            # Salva in memoria globale con categoria confermata
                             try:
                                 supabase.table('prodotti_master').upsert({
                                     'descrizione': _d,
-                                    'categoria': _cat_massiva,
+                                    'categoria': _cat_corrente,
                                     'confidence': 'altissima',
                                     'verified': True,
                                     'classificato_da': 'review-admin',
                                     'ultima_modifica': datetime.now(timezone.utc).isoformat()
                                 }, on_conflict='descrizione').execute()
+                                _mem_count += 1
                             except Exception:
                                 pass
-                        st.success(f"✅ {_ok} righe aggiornate → {_cat_massiva} (+ memoria globale)")
+                        
+                        st.success(f"✅ {_ok_count} righe confermate + {_mem_count} salvate in memoria globale")
                     except Exception as _e:
                         st.error(f"Errore batch: {_e}")
                 st.session_state.review_zero_selezionate = set()
                 st.session_state.review_zero_cb_counter += 1
                 invalida_cache_memoria()
+                st.cache_data.clear()
                 time.sleep(0.8)
                 st.rerun()
 
         with col_mass_btn2:
-            st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
             if st.button(f"📝 Tutte Diciture ({_num_sel_fin})", use_container_width=True, key="rv_mass_nota"):
                 with st.spinner("Salvataggio in corso..."):
                     try:
@@ -2010,11 +2017,11 @@ if tab2:
                 st.session_state.review_zero_selezionate = set()
                 st.session_state.review_zero_cb_counter += 1
                 invalida_cache_memoria()
+                st.cache_data.clear()
                 time.sleep(0.8)
                 st.rerun()
 
         with col_mass_cancel:
-            st.markdown("<div style='margin-top:28px'></div>", unsafe_allow_html=True)
             if st.button("❌ Annulla", use_container_width=True, key="rv_mass_cancel"):
                 st.session_state.review_zero_selezionate = set()
                 st.session_state.review_zero_cb_counter += 1
@@ -2074,7 +2081,7 @@ def tab_memoria_globale_unificata():
             while True:
                 try:
                     response = supabase.table('prodotti_master')\
-                        .select('id, descrizione, categoria, volte_visto, created_at, verified')\
+                        .select('id, descrizione, categoria, volte_visto, created_at, verified, classificato_da')\
                         .order('id', desc=False)\
                         .range(offset, offset + page_size - 1)\
                         .execute()
@@ -2108,6 +2115,8 @@ def tab_memoria_globale_unificata():
             # Aggiungi colonna verified se non esiste (solo per UI, non nel DB)
             if 'verified' not in df.columns:
                 df['verified'] = False  # Default: da verificare
+            if 'classificato_da' not in df.columns:
+                df['classificato_da'] = ''
             return df, campo_verified_exists
         except Exception as e:
             logger.error(f"Errore caricamento memoria globale: {e}")
@@ -2259,7 +2268,7 @@ def tab_memoria_globale_unificata():
             
             filtro_verified = st.selectbox(
                 "Stato verifica",
-                ["Da Verificare", "Già Verificate", "Tutte"],
+                ["Da Verificare", "Già Verificate", "Righe €0 Verificate", "Tutte"],
                 key="filtro_verified"
             )
         else:
@@ -2326,6 +2335,14 @@ def tab_memoria_globale_unificata():
             df_filtrato = df_filtrato[df_filtrato['verified'] == False]
         elif filtro_verified == "Già Verificate":
             df_filtrato = df_filtrato[df_filtrato['verified'] == True]
+        elif filtro_verified == "Righe €0 Verificate":
+            if 'classificato_da' in df_filtrato.columns:
+                df_filtrato = df_filtrato[
+                    (df_filtrato['verified'] == True) &
+                    (df_filtrato['classificato_da'] == 'review-admin')
+                ]
+            else:
+                df_filtrato = df_filtrato.iloc[0:0]  # Nessun risultato se colonna mancante
     
     # ORDINA ALFABETICAMENTE per descrizione
     df_filtrato = df_filtrato.sort_values('descrizione').reset_index(drop=True)
@@ -2347,7 +2364,7 @@ def tab_memoria_globale_unificata():
     col_info, col_pag = st.columns([2, 1])
     
     with col_info:
-        st.info(f"📊 Mostrando {totale_righe} prodotti")
+        st.caption(f"📊 Mostrando {totale_righe} prodotti")
     
     with col_pag:
         if num_pagine > 1:
