@@ -51,7 +51,7 @@ def _check_login_rate_limit(email: str) -> Optional[str]:
             return None
         if record.get('locked_until') and datetime.now(timezone.utc) < record['locked_until']:
             remaining = int((record['locked_until'] - datetime.now(timezone.utc)).total_seconds() / 60) + 1
-            logger.warning(f"⛔ Login bloccato per {email_lower}: lockout {remaining} min rimanenti")
+            logger.warning(f"⛔ Login bloccato: lockout {remaining} min rimanenti")
             return f"Troppi tentativi falliti. Riprova tra {remaining} minuti."
         # Lockout scaduto: resetta
         if record.get('locked_until') and datetime.now(timezone.utc) >= record['locked_until']:
@@ -71,7 +71,7 @@ def _record_login_failure(email: str):
             _login_attempts[email_lower]['locked_until'] = (
                 datetime.now(timezone.utc) + timedelta(minutes=_LOCKOUT_MINUTES)
             )
-            logger.warning(f"🔒 LOCKOUT attivato per {email_lower} dopo {count} tentativi falliti")
+            logger.warning(f"🔒 LOCKOUT attivato dopo {count} tentativi falliti")
 
 
 def _clear_login_failures(email: str):
@@ -79,6 +79,35 @@ def _clear_login_failures(email: str):
     email_lower = email.lower().strip()
     with _login_attempts_lock:
         _login_attempts.pop(email_lower, None)
+
+
+# ============================================================
+# RATE LIMITING RESET PASSWORD (in-memory, thread-safe)
+# ============================================================
+_reset_attempts_lock = threading.Lock()
+_reset_attempts: Dict[str, datetime] = {}  # {email: last_request_time}
+_RESET_COOLDOWN_SECONDS = 300  # 5 minuti tra una richiesta e l'altra
+
+
+def _check_reset_rate_limit(email: str) -> Optional[str]:
+    """Controlla se l'email può richiedere un nuovo reset. Ritorna messaggio errore o None se OK."""
+    email_lower = email.lower().strip()
+    with _reset_attempts_lock:
+        last_request = _reset_attempts.get(email_lower)
+        if last_request:
+            elapsed = (datetime.now(timezone.utc) - last_request).total_seconds()
+            if elapsed < _RESET_COOLDOWN_SECONDS:
+                remaining = int((_RESET_COOLDOWN_SECONDS - elapsed) / 60) + 1
+                logger.warning("⛔ Reset password bloccato: cooldown attivo")
+                return f"Attendi {remaining} minuti prima di richiedere un altro reset."
+    return None
+
+
+def _record_reset_request(email: str):
+    """Registra una richiesta di reset password."""
+    email_lower = email.lower().strip()
+    with _reset_attempts_lock:
+        _reset_attempts[email_lower] = datetime.now(timezone.utc)
 
 
 # ============================================================
@@ -340,14 +369,14 @@ def crea_cliente_con_token(
             rist_result = supabase_client.table('ristoranti').insert(nuovo_ristorante).execute()
             
             if rist_result.data:
-                logger.info(f"✅ Ristorante creato per cliente: {nome_ristorante} (P.IVA: {piva_norm})")
+                logger.info(f"✅ Ristorante creato per user_id={user_id}")
                 ristorante_creato = True
             else:
-                logger.error(f"❌ Cliente creato ma ristorante non inserito (response vuota): {email} (user_id={user_id})")
+                logger.error(f"❌ Cliente creato ma ristorante non inserito (response vuota): user_id={user_id}")
         except Exception as rist_err:
-            logger.error(f"❌ Errore creazione ristorante per {email} (user_id={user_id}): {rist_err}")
+            logger.error(f"❌ Errore creazione ristorante per user_id={user_id}: {rist_err}")
         
-        logger.info(f"✅ Cliente creato: {email} (P.IVA: {piva_norm})")
+        logger.info(f"✅ Cliente creato: user_id={user_id}")
         
         if ristorante_creato:
             return True, f"✅ Cliente {email} creato con successo!", token
@@ -355,7 +384,7 @@ def crea_cliente_con_token(
             return True, f"⚠️ Cliente {email} creato, ma il ristorante NON è stato configurato. Verifica nel pannello admin.", token
         
     except Exception as e:
-        logger.exception(f"Errore creazione cliente {email}")
+        logger.exception("Errore creazione cliente")
         return False, f"❌ Errore: {str(e)}", ""
 
 
@@ -419,23 +448,19 @@ def imposta_password_da_token(
         if errori:
             return False, errori[0], {}  # Ritorna primo errore
         
-        # 4. Invalida token PRIMA del cambio password (previene replay attack)
+        # 4. Invalida token + salva nuova password in un'unica operazione atomica
         password_hash = ph.hash(nuova_password)
         user_id = user['id']
         
         supabase_client.table('users').update({
             'reset_code': None,
             'reset_expires': None,
-        }).eq('id', user_id).execute()
-        
-        # 5. Salva nuova password (token già invalidato)
-        supabase_client.table('users').update({
             'password_hash': password_hash,
             'attivo': True,
             'password_changed_at': datetime.now(timezone.utc).isoformat()
         }).eq('id', user_id).execute()
         
-        logger.info(f"✅ Password impostata per: {user.get('email')}")
+        logger.info(f"✅ Password impostata per user_id={user_id}")
         
         return True, "🎉 Password impostata con successo!", user
         
@@ -586,6 +611,11 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         import streamlit as st
         from services import get_supabase_client
         
+        # Rate limiting: max 1 richiesta reset ogni 5 minuti per email
+        rate_limit_msg = _check_reset_rate_limit(email)
+        if rate_limit_msg:
+            return False, rate_limit_msg
+        
         # Genera codice sicuro (12 bytes = 96 bit entropia)
         code = secrets.token_urlsafe(12)
         expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
@@ -663,7 +693,8 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         )
         
         if response.status_code in (200, 201):
-            logger.info(f"Email reset inviata a {email}")
+            _record_reset_request(email)
+            logger.info("Email reset inviata con successo")
             return True, "Email inviata con successo"
         else:
             logger.error(f"Brevo API error: {response.status_code} - {response.text}")

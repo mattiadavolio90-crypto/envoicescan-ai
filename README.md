@@ -484,6 +484,35 @@ Tutti i diritti riservati - OH YEAH! © 2025
 
 ---
 
+## 🔒 Sicurezza e Backup
+
+### Strategia di Backup
+| Componente | Backup | Frequenza | Responsabile |
+|-----------|--------|-----------|--------------|
+| **Database (Supabase)** | Backup automatici Supabase (Point-in-Time Recovery) | Continuo (piano Pro) / Giornaliero (piano Free) | Supabase |
+| **Codice sorgente** | Repository Git | Ad ogni commit | Sviluppatore |
+| **Secrets (API keys)** | File `secrets.toml` locale + backup cifrato offline | Ad ogni modifica | Sviluppatore |
+| **Dipendenze** | `requirements-lock.txt` con versioni esatte | Ad ogni aggiornamento | Sviluppatore |
+
+### Procedura di Ripristino
+1. **Database:** Ripristino da backup Supabase tramite Dashboard → Database → Backups
+2. **Applicazione:** Redeploy da Git con `pip install -r requirements-lock.txt`
+3. **Secrets:** Ripristino da backup cifrato offline in `.streamlit/secrets.toml`
+
+### Misure di Sicurezza Implementate
+- Password hash con Argon2 (parametri: m=65536, t=3)
+- Rate limiting login (5 tentativi → blocco 15 min)
+- Rate limiting reset password (1 richiesta ogni 5 min)
+- Token sessione con scadenza server-side (30 giorni)
+- Validazione magic bytes su file uploadati
+- Sanitizzazione input AI (anti prompt injection)
+- PII rimossi dai log applicativi (GDPR Art. 32)
+- Protezione XSS su dati utente nel rendering HTML
+- XSRF protection attiva, CORS disabilitato
+- Admin email configurabile da variabile d'ambiente
+
+---
+
 **⭐ Se questo progetto ti è utile, lascia una stella su GitHub!**
 
 ---

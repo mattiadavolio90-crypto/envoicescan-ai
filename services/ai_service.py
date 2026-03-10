@@ -821,7 +821,14 @@ def _chiama_gpt_classificazione(
     """
     from config.prompt_ai_potenziato import get_prompt_classificazione
     
-    prompt = get_prompt_classificazione(json.dumps(da_chiedere_gpt, ensure_ascii=False))
+    # 🔒 Sanitizza input: rimuovi caratteri di controllo, limita lunghezza per descrizione
+    _MAX_DESC_LEN = 300
+    _CTRL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+    da_chiedere_sanitized = [
+        _CTRL_RE.sub('', desc)[:_MAX_DESC_LEN] for desc in da_chiedere_gpt
+    ]
+    
+    prompt = get_prompt_classificazione(json.dumps(da_chiedere_sanitized, ensure_ascii=False))
     
     response = openai_client.chat.completions.create(
         model="gpt-4o-mini",

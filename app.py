@@ -20,6 +20,9 @@ from config.constants import (
     UI_DELAY_LONG,
     UI_DELAY_QUICK,
     BATCH_RATE_LIMIT_DELAY,
+    MAX_FILES_PER_UPLOAD,
+    MAX_UPLOAD_TOTAL_MB,
+    MAX_AI_CALLS_PER_DAY,
 )
 
 # Import utilities da moduli separati
@@ -140,7 +143,7 @@ if not logger.handlers:
     try:
         # Prova filesystem locale (sviluppo)
         from logging.handlers import RotatingFileHandler
-        handler = RotatingFileHandler('debug.log', maxBytes=5_000_000, backupCount=5, encoding='utf-8')
+        handler = RotatingFileHandler('debug.log', maxBytes=50_000_000, backupCount=10, encoding='utf-8')
         formatter = logging.Formatter('%(asctime)s %(levelname)s: %(message)s')
         handler.setFormatter(formatter)
         logger.addHandler(handler)
@@ -231,14 +234,31 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
             _resp_cookie = supabase.table("users").select("*").eq("session_token", _token_cookie).eq("attivo", True).execute()
             if _resp_cookie and _resp_cookie.data:
                 _u = _resp_cookie.data[0]
-                _u.pop('password_hash', None)  # Non esporre hash in session
-                st.session_state.logged_in = True
-                st.session_state.user_data = _u
-                st.session_state.partita_iva = _u.get('partita_iva')
-                st.session_state.created_at = _u.get('created_at')
-                if _u.get('email') in ADMIN_EMAILS:
-                    st.session_state.user_is_admin = True
-                logger.info(f"✅ Sessione ripristinata da token per: {_u.get('email')}")
+                # Verifica scadenza token sessione (30 giorni)
+                _token_created = _u.get('session_token_created_at')
+                _token_expired = False
+                if _token_created:
+                    try:
+                        _token_dt = datetime.fromisoformat(_token_created.replace('Z', '+00:00'))
+                        if _token_dt.tzinfo is None:
+                            _token_dt = _token_dt.replace(tzinfo=timezone.utc)
+                        _token_expired = (datetime.now(timezone.utc) - _token_dt).days > 30
+                    except (ValueError, TypeError):
+                        _token_expired = True
+                if _token_expired:
+                    # Token scaduto → invalida e richiedi login
+                    supabase.table("users").update({"session_token": None, "session_token_created_at": None}).eq("id", _u.get("id")).execute()
+                    logger.info("🔒 Session token scaduto (>30gg) - richiesto login")
+                    st.session_state._cookie_checked = True
+                else:
+                    _u.pop('password_hash', None)  # Non esporre hash in session
+                    st.session_state.logged_in = True
+                    st.session_state.user_data = _u
+                    st.session_state.partita_iva = _u.get('partita_iva')
+                    st.session_state.created_at = _u.get('created_at')
+                    if _u.get('email') in ADMIN_EMAILS:
+                        st.session_state.user_is_admin = True
+                    logger.info(f"✅ Sessione ripristinata da token per user_id={_u.get('id')}")
             else:
                 # Token non valido (logout effettuato) → vai al login direttamente
                 logger.info("🔒 Session token non valido o scaduto - richiesto login")
@@ -569,7 +589,10 @@ def mostra_pagina_login():
                             if _cookie_manager is not None:
                                 try:
                                     _s_token = str(_uuid.uuid4())
-                                    supabase.table('users').update({'session_token': _s_token}).eq('id', user.get('id')).execute()
+                                    supabase.table('users').update({
+                                        'session_token': _s_token,
+                                        'session_token_created_at': datetime.now(timezone.utc).isoformat()
+                                    }).eq('id', user.get('id')).execute()
                                     _cookie_manager.set("session_token", _s_token,
                                                         expires_at=datetime.now() + timedelta(days=30))
                                 except Exception as _ce:
@@ -578,14 +601,14 @@ def mostra_pagina_login():
                             # Verifica se è admin e imposta flag
                             if user.get('email') in ADMIN_EMAILS:
                                 st.session_state.user_is_admin = True
-                                logger.info(f"✅ Login ADMIN: {user.get('email')}")
+                                logger.info(f"✅ Login ADMIN: user_id={user.get('id')}")
                                 st.success("✅ Accesso effettuato come ADMIN!")
                                 time.sleep(UI_DELAY_SHORT)
                                 # Reindirizza direttamente al pannello admin
                                 st.switch_page("pages/admin.py")
                             else:
                                 st.session_state.user_is_admin = False
-                                logger.info(f"✅ Login cliente: {user.get('email')} | P.IVA: {user.get('partita_iva', 'N/A')}")
+                                logger.info(f"✅ Login cliente: user_id={user.get('id')}")
                                 st.success("✅ Accesso effettuato!")
                                 time.sleep(UI_DELAY_MEDIUM)
                                 st.rerun()
@@ -710,12 +733,12 @@ if not user or not user.get('email'):
 if user.get('email') in ADMIN_EMAILS:
     if not st.session_state.get('user_is_admin', False):
         st.session_state.user_is_admin = True
-        logger.info(f"✅ Flag admin ripristinato per: {user.get('email')}")
+        logger.info(f"✅ Flag admin ripristinato per user_id={user.get('id')}")
 else:
     # Assicura che non-admin non abbiano il flag
     if st.session_state.get('user_is_admin', False):
         st.session_state.user_is_admin = False
-        logger.warning(f"⚠️ Flag admin rimosso per utente non-admin: {user.get('email')}")
+        logger.warning(f"⚠️ Flag admin rimosso per utente non-admin: user_id={user.get('id')}")
 
 
 # ============================================
@@ -745,7 +768,7 @@ if (st.session_state.get('user_is_admin', False)
                 st.session_state.impersonating = True
                 # Aggiorna variabile locale user per il resto della pagina
                 user = st.session_state.user_data
-                logger.info(f"✅ Impersonazione ripristinata da cookie dopo refresh: {_imp_customer['email']}")
+                logger.info(f"✅ Impersonazione ripristinata da cookie dopo refresh: user_id={_imp_customer.get('id')}")
             else:
                 # Cliente non trovato (disattivato o cancellato) → pulisci il cookie
                 _cookie_manager.set("impersonation_user_id", "",
@@ -803,7 +826,7 @@ if 'ristoranti' not in st.session_state or not st.session_state.get('ristorante_
                 st.session_state.ristorante_id = ristorante_default['id']
                 st.session_state.partita_iva = ristorante_default['partita_iva']
                 st.session_state.nome_ristorante = ristorante_default['nome_ristorante']
-                logger.info(f"🏢 Ristorante caricato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva}){' [ultimo usato]' if ultimo_id and ristorante_default['id'] == ultimo_id else ' [primo in lista]'}")
+                logger.info(f"🏢 Ristorante caricato: rist_id={ristorante_default['id']}{' [ultimo usato]' if ultimo_id and ristorante_default['id'] == ultimo_id else ' [primo in lista]'}")
         else:
             # ⚠️ UTENTE LEGACY: Nessun ristorante trovato
             if not st.session_state.get('user_is_admin', False):
@@ -891,7 +914,7 @@ if 'ristoranti' not in st.session_state or not st.session_state.get('ristorante_
 # ============================================
 # L'admin (non impersonificato) non accede alle pagine app, solo al pannello admin.
 if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
-    logger.info(f"👨‍💼 Admin {user.get('email')} su app.py → redirect a pannello admin")
+    logger.info(f"👨‍💼 Admin user_id={user.get('id')} su app.py → redirect a pannello admin")
     st.switch_page("pages/admin.py")
 
 # ============================================
@@ -953,7 +976,7 @@ if st.session_state.get('impersonating', False):
                     logger.error(f"Errore ripristino ristoranti admin: {e}")
                 
                 # Log uscita impersonazione
-                logger.info(f"FINE IMPERSONAZIONE: Ritorno a admin {st.session_state.user_data.get('email')}")
+                logger.info(f"FINE IMPERSONAZIONE: Ritorno a admin user_id={st.session_state.user_data.get('id')}")
                 
                 # Rimuovi cookie impersonazione (non deve più sopravvivere al refresh)
                 if _cookie_manager is not None:
@@ -1087,7 +1110,7 @@ if user.get('email') not in ADMIN_EMAILS:
             except Exception as _e:
                 logger.warning(f"Errore salvataggio ultimo_ristorante_id: {_e}")
             
-            logger.info(f"🔄 Ristorante cambiato: {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
+            logger.info(f"🔄 Ristorante cambiato: rist_id={selected_ristorante['id']}")
             st.rerun()
         
         st.markdown("---")
@@ -1464,9 +1487,26 @@ def mostra_statistiche(df_completo):
                     # prodotti_elaborati già inizializzato sopra e aggiornato durante STEP 1
                     
                     if descrizioni_per_ai:
+                        # 🔒 BUDGET GIORNALIERO AI: limita chiamate per sessione/giorno
+                        from datetime import date as _date_cls
+                        _today = _date_cls.today().isoformat()
+                        if st.session_state.get('_ai_budget_date') != _today:
+                            st.session_state['_ai_budget_date'] = _today
+                            st.session_state['_ai_budget_calls'] = 0
+                        
+                        _ai_calls_today = st.session_state.get('_ai_budget_calls', 0)
+                        _ai_chunks_needed = (len(descrizioni_per_ai) + chunk_size - 1) // chunk_size
+                        if _ai_calls_today + _ai_chunks_needed > MAX_AI_CALLS_PER_DAY:
+                            _remaining = max(0, MAX_AI_CALLS_PER_DAY - _ai_calls_today)
+                            st.warning(f"⚠️ Limite giornaliero AI raggiunto ({MAX_AI_CALLS_PER_DAY} chiamate/giorno). "
+                                       f"Rimanenti: {_remaining}. Le descrizioni non classificate resteranno 'Da Classificare'.")
+                            logger.warning(f"🔒 Budget AI giornaliero esaurito: {_ai_calls_today} chiamate, servirebbero {_ai_chunks_needed}")
+                            descrizioni_per_ai = []  # Skip AI classification
+                        
                         for i in range(0, len(descrizioni_per_ai), chunk_size):
                             chunk = descrizioni_per_ai[i:i+chunk_size]
                             cats = classifica_con_ai(chunk, fornitori_da_classificare)
+                            st.session_state['_ai_budget_calls'] = st.session_state.get('_ai_budget_calls', 0) + 1
                             ai_batch_upsert = []
                             for desc, cat in zip(chunk, cats):
                                 mappa_categorie[desc] = cat
@@ -2559,7 +2599,7 @@ def mostra_statistiche(df_completo):
                 categorie_modificate_count = 0  # Conta prodotti unici modificati (non righe DB)
                 skip_da_classificare_count = 0  # Conta righe "Da Classificare" saltate
                 
-                logger.info(f"💾 INIZIO SALVATAGGIO: user={user_email}, righe_edited={len(edited_df)}, vista_aggregata={vista_aggregata}")
+                logger.info(f"💾 INIZIO SALVATAGGIO: user_id={user_id}, righe_edited={len(edited_df)}, vista_aggregata={vista_aggregata}")
                 st.toast("💾 Salvataggio in corso...", icon="💾")
                 
                 # ⚠️ NOTA PAGINAZIONE: Il salvataggio riguarda SOLO le righe della pagina corrente
@@ -3218,7 +3258,7 @@ else:
                 st.session_state.ristorante_id = selected_ristorante['id']
                 st.session_state.partita_iva = selected_ristorante['partita_iva']
                 st.session_state.nome_ristorante = selected_ristorante['nome_ristorante']
-                logger.info(f"👨‍💼 Admin: ristorante cambiato a {st.session_state.nome_ristorante} (P.IVA: {st.session_state.partita_iva})")
+                logger.info(f"👨‍💼 Admin: ristorante cambiato a rist_id={selected_ristorante['id']}")
                 st.rerun()
             
             st.info(f"📌 Le fatture saranno caricate per: **{st.session_state.nome_ristorante}** (P.IVA: IT{st.session_state.partita_iva})")
@@ -3419,11 +3459,23 @@ if 'upload_messages' in st.session_state and st.session_state.upload_messages:
 if uploaded_files:
     # Pulisci messaggi precedenti all'inizio di un nuovo caricamento
     st.session_state.upload_messages = []
-    # � BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
+    # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
     if st.session_state.get('force_empty_until_upload', False):
         st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Ripristina upload' prima di caricare nuovi file.")
         st.info("💡 Usa il pulsante '🔄 Ripristina upload' sopra per sbloccare il caricamento.")
         st.stop()  # Blocca esecuzione per evitare ricaricamento automatico
+    
+    # 🔒 RATE LIMIT UPLOAD: max file e dimensione totale
+    if len(uploaded_files) > MAX_FILES_PER_UPLOAD:
+        st.error(f"⚠️ Puoi caricare al massimo **{MAX_FILES_PER_UPLOAD} file** per volta. Hai selezionato {len(uploaded_files)} file.")
+        st.stop()
+    
+    _total_upload_bytes = sum(f.size for f in uploaded_files)
+    _max_upload_bytes = MAX_UPLOAD_TOTAL_MB * 1024 * 1024
+    if _total_upload_bytes > _max_upload_bytes:
+        _total_mb = _total_upload_bytes / (1024 * 1024)
+        st.error(f"⚠️ Dimensione totale troppo grande: **{_total_mb:.0f} MB** (max {MAX_UPLOAD_TOTAL_MB} MB). Riduci il numero di file.")
+        st.stop()
     
     # 🚀 PROGRESS BAR IMMEDIATA: Mostra subito che stiamo lavorando
     upload_placeholder = st.empty()
@@ -3674,6 +3726,26 @@ if uploaded_files:
                             raise ValueError(f"File vuoto (0 byte): {file.name}")
                         file.seek(0)  # Reset posizione dopo getvalue()
                         
+                        # 🔒 Validazione magic bytes (verifica contenuto reale vs estensione)
+                        _ext = nome_file.rsplit('.', 1)[-1].lower() if '.' in nome_file else ''
+                        _magic_ok = False
+                        if _ext == 'xml':
+                            # XML: deve iniziare con <?xml o <  (BOM UTF-8 opzionale)
+                            _head = file_content[:100].lstrip(b'\xef\xbb\xbf')  # strip BOM
+                            _magic_ok = _head.lstrip().startswith((b'<?xml', b'<'))
+                        elif _ext == 'p7m':
+                            # P7M (PKCS#7/CMS): ASN.1 DER encoding starts with 0x30
+                            _magic_ok = len(file_content) > 2 and file_content[0:1] == b'\x30'
+                        elif _ext == 'pdf':
+                            _magic_ok = file_content[:5] == b'%PDF-'
+                        elif _ext in ('jpg', 'jpeg'):
+                            _magic_ok = file_content[:2] == b'\xff\xd8'
+                        elif _ext == 'png':
+                            _magic_ok = file_content[:4] == b'\x89PNG'
+                        
+                        if not _magic_ok:
+                            raise ValueError(f"Il contenuto del file non corrisponde all'estensione .{_ext}")
+                        
                         if nome_file.endswith('.xml'):
                             items = estrai_dati_da_xml(file)
                         elif nome_file.endswith('.p7m'):
@@ -3711,7 +3783,7 @@ if uploaded_files:
                             piva_attiva = st.session_state.get('partita_iva')
                             nome_ristorante_attivo = st.session_state.get('nome_ristorante', 'N/A')
                             
-                            logger.info(f"🔍 Validazione P.IVA {file.name} - Attiva: {piva_attiva}, Fattura: {piva_cessionario}")
+                            logger.info(f"🔍 Validazione P.IVA {file.name} - rist_id={st.session_state.get('ristorante_id')}")
                             
                             # ✅ CASO 2: P.IVA presente → VALIDAZIONE STRICT MULTI-RISTORANTE
                             if piva_attiva and piva_cessionario:
@@ -3722,13 +3794,13 @@ if uploaded_files:
                                     # 🚫 BLOCCO: P.IVA non corrisponde al ristorante selezionato
                                     
                                     logger.warning(
-                                        f"⚠️ UPLOAD BLOCCATO {file.name} - User {st.session_state.get('user_data', {}).get('email')} "
-                                        f"ha tentato upload con P.IVA {piva_cessionario} (ristorante attivo: {piva_attiva})"
+                                        f"⚠️ UPLOAD BLOCCATO {file.name} - user_id={st.session_state.get('user_data', {}).get('id')} "
+                                        f"P.IVA mismatch (rist_id={st.session_state.get('ristorante_id')})"
                                     )
                                     raise ValueError("🚫 FATTURA NON VALIDA - P.IVA FATTURA DIVERSA DA P.IVA AZIENDA")
                                 else:
                                     # ✅ P.IVA match: log successo
-                                    logger.info(f"✅ Validazione OK: P.IVA {piva_attiva_norm} match per {nome_ristorante_attivo}")
+                                    logger.info(f"✅ Validazione OK: P.IVA match per rist_id={st.session_state.get('ristorante_id')}")
                         
                         else:
                             # Admin/Impersonazione: log per debug (bypass validazione)
@@ -3879,7 +3951,7 @@ if uploaded_files:
             _messages.append(f'<div style="padding:10px 16px;background:#d4edda;border-left:5px solid #28a745;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#155724;">✅ {msg_ok} con successo!</span></div>')
             # Messaggio aggiuntivo per note di credito
             if file_note_credito:
-                nc_nomi = ", ".join(file_note_credito)
+                nc_nomi = ", ".join(_html.escape(f) for f in file_note_credito)
                 nc_n = len(file_note_credito)
                 nc_lbl = "nota di credito caricata" if nc_n == 1 else "note di credito caricate"
                 _messages.append(f'<div style="padding:10px 16px;background:#cce5ff;border-left:5px solid #004085;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#004085;">ℹ️ Attenzione: {nc_n} {nc_lbl}: </span><span style="font-size:0.82rem;color:#004085;">{nc_nomi}</span></div>')
@@ -3904,8 +3976,8 @@ if uploaded_files:
             lbl = "fattura scartata" if n == 1 else "fatture scartate"
             dettaglio_html = ""
             for motivo, files_list in motivi_raggruppati.items():
-                nomi_files = ", ".join(files_list)
-                dettaglio_html += f'<div style="margin-top:6px;"><span style="font-size:0.82rem;font-weight:600;color:#856404;">📌 {motivo} ({len(files_list)}):</span><br/><span style="font-size:0.78rem;color:#856404;">{nomi_files}</span></div>'
+                nomi_files = ", ".join(_html.escape(f) for f in files_list)
+                dettaglio_html += f'<div style="margin-top:6px;"><span style="font-size:0.82rem;font-weight:600;color:#856404;">📌 {_html.escape(motivo)} ({len(files_list)}):</span><br/><span style="font-size:0.78rem;color:#856404;">{nomi_files}</span></div>'
             
             _messages.append(f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}:</span>{dettaglio_html}</div>')
             # Segna come processati per evitare ri-elaborazione
@@ -3955,7 +4027,7 @@ if uploaded_files:
         
         # Salva messaggio persistente per duplicati
         if file_gia_processati:
-            nomi = ", ".join(file_gia_processati)
+            nomi = ", ".join(_html.escape(f) for f in file_gia_processati)
             n = len(file_gia_processati)
             lbl = "fattura scartata perché già caricata in precedenza (duplicata)" if n == 1 else "fatture scartate perché già caricate in precedenza (duplicate)"
             st.session_state.upload_messages = [

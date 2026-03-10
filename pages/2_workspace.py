@@ -6,6 +6,7 @@ Pagina dedicata alla gestione operativa del ristorante
 import streamlit as st
 import pandas as pd
 import json
+import html as _html
 import io
 from datetime import datetime
 from supabase import Client
@@ -2116,7 +2117,8 @@ if selected_tab == "📓 Diario":
                                         st.rerun()
                             else:
                                 # Modalità visualizzazione - post-it compatto
-                                testo_troncato = nota['testo'][:120] + "..." if len(nota['testo']) > 120 else nota['testo']
+                                _testo_escaped = _html.escape(nota['testo'])
+                                testo_troncato = _testo_escaped[:120] + "..." if len(_testo_escaped) > 120 else _testo_escaped
                                 
                                 st.markdown(f"""
                                 <div style='background: {colore_bg}; 

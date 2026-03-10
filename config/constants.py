@@ -1238,8 +1238,12 @@ KPI_SOGLIE = {
 # AMMINISTRATORI DI SISTEMA
 # ============================================================
 
-# Lista email degli amministratori (fonte unica di verità)
-ADMIN_EMAILS = ["mattiadavolio90@gmail.com"]
+import os as _os
+
+# Lista email degli amministratori - caricata da variabile d'ambiente
+# Configurare: ADMIN_EMAILS=email1@example.com,email2@example.com
+_admin_env = _os.environ.get("ADMIN_EMAILS", "").strip()
+ADMIN_EMAILS = [e.strip().lower() for e in _admin_env.split(",") if e.strip()] if _admin_env else ["mattiadavolio90@gmail.com"]
 
 
 # ============================================================
@@ -1253,7 +1257,12 @@ TRUNCATE_ERROR_DISPLAY = 150
 
 # Limiti upload e batch
 MAX_FILE_SIZE_P7M = 50_000_000  # 50 MB
+MAX_FILES_PER_UPLOAD = 100       # Max file per singolo upload
+MAX_UPLOAD_TOTAL_MB = 200        # Max dimensione totale upload (MB)
 MAX_DESC_LENGTH_DB = 500
+
+# Budget AI giornaliero per ristorante
+MAX_AI_CALLS_PER_DAY = 1000      # Max classificazioni AI al giorno per ristorante
 
 # Memoria sessione AI
 MEMORIA_SESSION_CAP = 500
