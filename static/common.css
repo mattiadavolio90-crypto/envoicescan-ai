@@ -17,6 +17,35 @@
     background-color: #218838 !important;
 }
 
+/* ===== PRIMARY BUTTON AZZURRO (override theme primaryColor rosso) ===== */
+button[kind="primary"] {
+    background-color: #0ea5e9 !important;
+    color: white !important;
+    border: 2px solid #0284c7 !important;
+    font-weight: bold !important;
+}
+button[kind="primary"]:hover {
+    background-color: #0284c7 !important;
+    border-color: #0369a1 !important;
+}
+button[kind="primary"]:disabled,
+button[kind="primary"][disabled] {
+    background-color: #0ea5e9 !important;
+    color: white !important;
+    border: 2px solid #0284c7 !important;
+    opacity: 0.5 !important;
+}
+div[data-testid="column"] button[kind="primary"] {
+    background-color: #0ea5e9 !important;
+    color: white !important;
+    border: 2px solid #0284c7 !important;
+    font-weight: bold !important;
+}
+div[data-testid="column"] button[kind="primary"]:hover {
+    background-color: #0284c7 !important;
+    border-color: #0369a1 !important;
+}
+
 /* ===== COLUMN BUTTON RESPONSIVE ===== */
 div[data-testid="column"] button[kind="secondary"] {
     background-color: #f0f2f6 !important;

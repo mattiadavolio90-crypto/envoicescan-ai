@@ -2168,64 +2168,18 @@ def tab_memoria_globale_unificata():
     """, unsafe_allow_html=True)
     
     # ============================================================
-    # AZIONI ADMIN CRITICHE
+    # AZIONI ADMIN
     # ============================================================
     if is_admin:
         st.markdown("---")
         st.markdown("### ⚠️ Azioni Amministratore")
-        
-        col_btn1, col_btn2, col_spacer = st.columns([2, 2, 6])
-        
-        with col_btn1:
-            if st.button("🗑️ Svuota Memoria Globale", type="secondary", use_container_width=True):
-                st.session_state.show_confirm_delete_memoria = True
-        
-        with col_btn2:
+
+        col_btn, col_spacer = st.columns([2, 8])
+        with col_btn:
             if st.button("🔄 Invalida Cache", type="secondary", use_container_width=True):
                 invalida_cache_memoria()
                 st.success("✅ Cache invalidata (Streamlit + in-memory)!")
                 st.rerun()
-        
-        # Mostra conferma solo se bottone premuto
-        if st.session_state.get('show_confirm_delete_memoria', False):
-            st.warning("""
-            ### ⚠️ ATTENZIONE - OPERAZIONE IRREVERSIBILE
-            
-            Stai per **cancellare TUTTA la memoria globale AI**:
-            - ❌ Tutti i prodotti appresi verranno eliminati
-            - ❌ Tutti gli utenti dovranno ri-categorizzare da zero
-            - ❌ Operazione NON può essere annullata
-            """)
-            
-            col_confirm, col_cancel, col_spacer = st.columns([1, 1, 4])
-            
-            with col_confirm:
-                if st.button("✅ CONFERMA", type="primary", use_container_width=True):
-                    try:
-                        # Svuota tabella prodotti_master (elimina tutti i record)
-                        result = supabase.table('prodotti_master').delete().gte('id', 0).execute()
-                        
-                        # Verifica
-                        check = supabase.table('prodotti_master').select('id', count='exact').execute()
-                        count_after = check.count if check.count else 0
-                        
-                        if count_after == 0:
-                            st.success("✅ Memoria globale svuotata con successo!")
-                            logger.warning(f"🗑️ Memoria globale svuotata da admin: {user_email}")
-                            invalida_cache_memoria()
-                            st.session_state.show_confirm_delete_memoria = False
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error(f"⚠️ Operazione parziale: rimasti {count_after} record")
-                    except Exception as e:
-                        st.error(f"❌ Errore: {str(e)}")
-                        logger.error(f"Errore svuotamento memoria: {e}")
-            
-            with col_cancel:
-                if st.button("❌ ANNULLA", use_container_width=True):
-                    st.session_state.show_confirm_delete_memoria = False
-                    st.rerun()
     
     st.markdown("---")
     
@@ -2234,7 +2188,11 @@ def tab_memoria_globale_unificata():
     # ============================================================
     st.markdown("### 🔍 Filtri")
     
-    col_search, col_cat, col_verified, col_reset = st.columns([3, 2, 2, 1])
+    # Inizializza pagina corrente
+    if 'pagina_memoria' not in st.session_state:
+        st.session_state.pagina_memoria = 0
+
+    col_search, col_cat, col_verified, col_pag = st.columns([3, 2, 2, 1.5])
     
     with col_search:
         # Inizializza session_state se non esiste
@@ -2274,14 +2232,8 @@ def tab_memoria_globale_unificata():
         else:
             filtro_verified = "Tutte"
     
-    with col_reset:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 Reset", key="reset_filtri"):
-            st.session_state.search_memoria = ""
-            st.session_state.filtro_cat = "Tutte"
-            if is_admin:
-                st.session_state.filtro_verified = "Da Verificare"
-            st.rerun()
+    with col_pag:
+        pag_placeholder = st.empty()
     
     # ============================================================
     # APPLICA FILTRI
@@ -2355,18 +2307,9 @@ def tab_memoria_globale_unificata():
     RIGHE_PER_PAGINA = 50
     totale_righe = len(df_filtrato)
     
-    # Inizializza pagina corrente
-    if 'pagina_memoria' not in st.session_state:
-        st.session_state.pagina_memoria = 0
-    
     num_pagine = (totale_righe + RIGHE_PER_PAGINA - 1) // RIGHE_PER_PAGINA
-    
-    col_info, col_pag = st.columns([2, 1])
-    
-    with col_info:
-        st.caption(f"📊 Mostrando {totale_righe} prodotti")
-    
-    with col_pag:
+
+    with pag_placeholder.container():
         if num_pagine > 1:
             pagina = st.number_input(
                 f"Pag. (max {num_pagine})",
@@ -2378,6 +2321,8 @@ def tab_memoria_globale_unificata():
                 label_visibility="visible"
             )
             st.session_state.pagina_memoria = pagina - 1
+        else:
+            st.caption("Pag. 1")
     
     if df_filtrato.empty:
         st.warning("⚠️ Nessun prodotto trovato con questi filtri")
@@ -2387,9 +2332,6 @@ def tab_memoria_globale_unificata():
     inizio = st.session_state.pagina_memoria * RIGHE_PER_PAGINA
     fine = min(inizio + RIGHE_PER_PAGINA, totale_righe)
     df_pagina = df_filtrato.iloc[inizio:fine]
-    
-    if num_pagine > 1:
-        st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe}")
     
     # ============================================================
     # INIZIALIZZA MODIFICHE PENDENTI E SELEZIONE
@@ -2405,42 +2347,43 @@ def tab_memoria_globale_unificata():
     if 'checkbox_refresh_counter' not in st.session_state:
         st.session_state.checkbox_refresh_counter = 0
     
-    st.markdown("---")
-    
     # ============================================================
     # TABELLA - TUTTE LE RIGHE FILTRATE
     # ============================================================
-    num_modifiche = len(st.session_state.modifiche_memoria)
-    
-    if num_modifiche > 0:
-        st.markdown(f"### 📋 Prodotti | 🔸 **{num_modifiche} modifiche pendenti**")
-    else:
-        st.markdown("### 📋 Prodotti")
-    
+
     # HEADER TABELLA (con checkbox solo se admin, campo exists e filtro da verificare)
     mostra_checkbox = is_admin and campo_verified_exists and filtro_verified == "Da Verificare"
     
     if mostra_checkbox:
-        # Bottoni per selezione massiva PRIMA della tabella
-        st.markdown("#### Selezione Rapida")
-        col_sel_all, col_desel_all = st.columns(2)
-        
-        with col_sel_all:
-            righe_pagina_ids = set(df_pagina['id'].tolist())
-            if st.button(f"☑️ Seleziona Tutte ({len(righe_pagina_ids)} righe)", use_container_width=True, key="btn_select_all"):
-                st.session_state.righe_selezionate.update(righe_pagina_ids)
-                st.session_state.checkbox_refresh_counter += 1  # Forza refresh checkbox
-                st.rerun()
-        
-        with col_desel_all:
-            if st.button("⬜ Deseleziona Tutte", use_container_width=True, key="btn_deselect_all"):
-                st.session_state.righe_selezionate.difference_update(righe_pagina_ids)
-                st.session_state.checkbox_refresh_counter += 1  # Forza refresh checkbox
-                st.rerun()
-        
+        # Selezione rapida + info righe
+        col_sel_title, col_sel_info = st.columns([2, 3])
+        with col_sel_title:
+            st.markdown("#### Selezione Rapida")
+        with col_sel_info:
+            st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe}")
+
+        # Bottoni compatti, ravvicinati e allineati a sinistra
+        col_actions_left, _spacer = st.columns([2.2, 5.8])
+        with col_actions_left:
+            col_sel_all, col_desel_all = st.columns([1, 1])
+
+            with col_sel_all:
+                righe_pagina_ids = set(df_pagina['id'].tolist())
+                if st.button("☑️ Seleziona", use_container_width=False, key="btn_select_all"):
+                    st.session_state.righe_selezionate.update(righe_pagina_ids)
+                    st.session_state.checkbox_refresh_counter += 1  # Forza refresh checkbox
+                    st.rerun()
+
+            with col_desel_all:
+                if st.button("⬜ Deseleziona", use_container_width=False, key="btn_deselect_all"):
+                    st.session_state.righe_selezionate.difference_update(righe_pagina_ids)
+                    st.session_state.checkbox_refresh_counter += 1  # Forza refresh checkbox
+                    st.rerun()
+
         st.markdown("---")
         col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
     else:
+        st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe}")
         col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
     
     with col_desc:
@@ -2545,6 +2488,7 @@ def tab_memoria_globale_unificata():
     # ============================================================
     # Ricalcola num_selezionate DOPO il ciclo (quando le checkbox hanno aggiornato lo stato)
     num_selezionate = len(st.session_state.righe_selezionate)
+    num_modifiche = len(st.session_state.modifiche_memoria)
     
     # ✅ PULSANTE UNICO: Gestisce entrambe le operazioni (verifiche checkbox + modifiche categorie)
     if is_admin and campo_verified_exists and (num_selezionate > 0 or num_modifiche > 0):
