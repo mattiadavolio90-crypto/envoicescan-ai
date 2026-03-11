@@ -57,12 +57,6 @@ if not current_ristorante:
     st.stop()
 
 # ============================================
-# CONTROLLO PAGINA ABILITATA (legge sempre dal DB per riflettere modifiche admin)
-# ============================================
-from utils.page_setup import check_page_enabled
-check_page_enabled('controllo_prezzi', user_id)
-
-# ============================================
 # SIDEBAR CONDIVISA
 # ============================================
 render_sidebar(user)
@@ -82,6 +76,28 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
+
+# CSS globale per bottoni Excel verdi
+st.markdown("""
+<style>
+div.st-key-cp_download_excel_alert .stDownloadButton button,
+div.st-key-cp_download_excel_sconti .stDownloadButton button,
+div.st-key-cp_download_excel_omaggi .stDownloadButton button,
+div.st-key-cp_download_excel_nc .stDownloadButton button {
+    background-color: #22c55e !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+}
+div.st-key-cp_download_excel_alert .stDownloadButton button:hover,
+div.st-key-cp_download_excel_sconti .stDownloadButton button:hover,
+div.st-key-cp_download_excel_omaggi .stDownloadButton button:hover,
+div.st-key-cp_download_excel_nc .stDownloadButton button:hover {
+    background-color: #16a34a !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================
 # FILTRO PERIODO
@@ -657,7 +673,7 @@ elif st.session_state.cp_tab_attivo == "nc":
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="cp_download_excel_nc",
                     type="primary",
-                    use_container_width=True
+                    use_container_width=False
                 )
         else:
             st.info("📊 Nessun risultato con i filtri applicati")

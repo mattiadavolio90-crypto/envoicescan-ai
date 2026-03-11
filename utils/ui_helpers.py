@@ -176,22 +176,33 @@ def render_pivot_mensile(
             """, unsafe_allow_html=True)
 
         with col_right:
-            st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
+            st.markdown(f"""
+            <style>
+            div.st-key-download_excel_{sezione_key} .stDownloadButton button {{
+                background-color: #22c55e !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 8px !important;
+                font-weight: 600 !important;
+            }}
+            div.st-key-download_excel_{sezione_key} .stDownloadButton button:hover {{
+                background-color: #16a34a !important;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
 
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                 pivot.reset_index().to_excel(writer, index=False, sheet_name=sheet_name)
 
-            st.download_button(
-                label="Excel",
-                data=excel_buffer.getvalue(),
-                file_name=f"{sezione_key}_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key=f"download_excel_{sezione_key}",
-                type="primary",
-                use_container_width=False
-            )
-
-            st.markdown('</div>', unsafe_allow_html=True)
+            with st.container(key=f"download_excel_{sezione_key}"):
+                st.download_button(
+                    label="Excel",
+                    data=excel_buffer.getvalue(),
+                    file_name=f"{sezione_key}_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key=f"btn_excel_{sezione_key}",
+                    use_container_width=False
+                )
     else:
         st.info("📊 Nessun dato da visualizzare per il periodo selezionato")

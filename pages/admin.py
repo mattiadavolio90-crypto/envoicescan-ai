@@ -979,6 +979,7 @@ if tab1:
                                 'nome_ristorante': row['ristorante'],
                                 'attivo': row['attivo'],
                                 'partita_iva': row.get('partita_iva'),
+                                'pagine_abilitate': row.get('pagine_abilitate'),
                             }
                             st.session_state.user_data = cliente_data
                             
@@ -1125,23 +1126,17 @@ if tab1:
                             st.markdown("**📄 Pagine Abilitate**")
                             st.caption("Analisi Fatture è sempre attiva")
                             
-                            pagine = row.get('pagine_abilitate') or {'marginalita': True, 'workspace': True}
+                            pagine = row.get('pagine_abilitate') or {'workspace': True}
                             
-                            new_marginalita = st.checkbox(
-                                "💰 Marginalità",
-                                value=pagine.get('marginalita', True),
-                                key=f"page_marg_{row_key}"
-                            )
                             new_workspace = st.checkbox(
                                 "🍴 Workspace",
                                 value=pagine.get('workspace', True),
                                 key=f"page_ws_{row_key}"
                             )
                             
-                            if new_marginalita != pagine.get('marginalita', True) or new_workspace != pagine.get('workspace', True):
+                            if new_workspace != pagine.get('workspace', True):
                                 try:
                                     new_pagine = {
-                                        'marginalita': new_marginalita,
                                         'workspace': new_workspace,
                                         'blocco_anno_precedente': pagine.get('blocco_anno_precedente', True)
                                     }

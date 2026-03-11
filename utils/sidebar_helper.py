@@ -177,15 +177,13 @@ def render_sidebar(user_data: dict):
                     _pagine_raw = None
             pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
             
-            if pagine_abilitate.get('controllo_prezzi', True):
-                if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",
-                             type="primary" if current_script == '3_controllo_prezzi.py' else "secondary"):
-                    st.switch_page("pages/3_controllo_prezzi.py")
+            if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",
+                         type="primary" if current_script == '3_controllo_prezzi.py' else "secondary"):
+                st.switch_page("pages/3_controllo_prezzi.py")
             
-            if pagine_abilitate.get('marginalita', True):
-                if st.button("💰 Calcolo Marginalità", use_container_width=True, key="sidebar_margine",
-                             type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
-                    st.switch_page("pages/1_calcolo_margine.py")
+            if st.button("💰 Calcolo Marginalità", use_container_width=True, key="sidebar_margine",
+                         type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
+                st.switch_page("pages/1_calcolo_margine.py")
             
             if pagine_abilitate.get('workspace', True):
                 if st.button("🍴 Workspace", use_container_width=True, key="sidebar_workspace",

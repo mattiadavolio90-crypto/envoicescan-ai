@@ -70,12 +70,6 @@ if not current_ristorante:
     st.stop()
 
 # ============================================
-# CONTROLLO PAGINA ABILITATA (legge sempre dal DB per riflettere modifiche admin)
-# ============================================
-from utils.page_setup import check_page_enabled
-check_page_enabled('marginalita', user_id)
-
-# ============================================
 # SIDEBAR CONDIVISA
 # ============================================
 render_sidebar(user)
@@ -95,6 +89,26 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
+
+# CSS globale per bottoni Excel verdi
+st.markdown("""
+<style>
+div.st-key-aa_download_centri .stDownloadButton button,
+div.st-key-cm_download_excel_centri .stDownloadButton button,
+div.st-key-margine_download .stDownloadButton button {
+    background-color: #22c55e !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+}
+div.st-key-aa_download_centri .stDownloadButton button:hover,
+div.st-key-cm_download_excel_centri .stDownloadButton button:hover,
+div.st-key-margine_download .stDownloadButton button:hover {
+    background-color: #16a34a !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================
 # TABS: Calcolo Marginalità + Analisi Avanzate
@@ -1695,7 +1709,7 @@ if st.session_state.margine_tab == "calcolo":
                 file_name=f"Margini_{anno}_{nome_rist.replace(' ', '_')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="margine_download",
-                use_container_width=True,
+                use_container_width=False,
             )
 
 

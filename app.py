@@ -762,7 +762,8 @@ if (st.session_state.get('user_is_admin', False)
                     'id': _imp_customer['id'],
                     'email': _imp_customer['email'],
                     'nome_ristorante': _imp_customer.get('nome_ristorante'),
-                    'attivo': _imp_customer.get('attivo', True)
+                    'attivo': _imp_customer.get('attivo', True),
+                    'pagine_abilitate': _imp_customer.get('pagine_abilitate'),
                 }
                 st.session_state.user_is_admin = False
                 st.session_state.impersonating = True
@@ -2527,10 +2528,17 @@ def mostra_statistiche(df_completo):
             st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
             st.markdown("""
                 <style>
-                [data-testid="stDownloadButton"] button {
+                div.st-key-btn_excel_dettaglio .stDownloadButton button {
+                    background-color: #22c55e !important;
+                    color: white !important;
                     border: none !important;
+                    border-radius: 8px !important;
+                    font-weight: 600 !important;
                     outline: none !important;
                     box-shadow: none !important;
+                }
+                div.st-key-btn_excel_dettaglio .stDownloadButton button:hover {
+                    background-color: #16a34a !important;
                 }
                 </style>
             """, unsafe_allow_html=True)

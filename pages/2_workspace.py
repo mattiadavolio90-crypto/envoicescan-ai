@@ -1941,17 +1941,14 @@ if selected_tab == "📊 Export Excel":
                 </style>
                 """, unsafe_allow_html=True)
                 
-                # Posiziona bottone a sinistra con colonne
-                col_btn, col_spacer = st.columns([1, 3])
-                with col_btn:
-                    with st.container(key="export_excel_btn_container"):
-                        st.download_button(
-                            label="📥 Scarica Excel",
-                            data=output.getvalue(),
-                            file_name=filename,
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            use_container_width=True
-                        )
+                with st.container(key="export_excel_btn_container"):
+                    st.download_button(
+                        label="Excel",
+                        data=output.getvalue(),
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=False
+                    )
             
             except Exception as e:
                 st.error(f"❌ Errore generazione Excel: {e}")
