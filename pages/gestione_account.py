@@ -4,6 +4,7 @@ import hashlib
 from argon2 import PasswordHasher
 from services.db_service import elimina_tutte_fatture
 from services import get_supabase_client
+from services.auth_service import valida_password_compliance
 from config.logger_setup import get_logger
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 
@@ -78,9 +79,16 @@ with tab1:
                 st.error("⚠️ Compila tutti i campi")
             elif nuova_password != conferma_password:
                 st.error("❌ Le nuove password non coincidono")
-            elif len(nuova_password) < 10:
-                st.error("❌ Password troppo corta (minimo 10 caratteri)")
-            elif vecchia_password == nuova_password:
+            else:
+                errori_compliance = valida_password_compliance(
+                    nuova_password, 
+                    user.get('email', ''), 
+                    user.get('nome_ristorante', '')
+                )
+                if errori_compliance:
+                    for err in errori_compliance:
+                        st.error(err)
+                elif vecchia_password == nuova_password:
                 st.warning("⚠️ La nuova password deve essere diversa da quella attuale")
             else:
                 try:

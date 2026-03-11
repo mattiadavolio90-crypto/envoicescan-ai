@@ -973,13 +973,20 @@ if tab1:
                             st.session_state.admin_original_user = st.session_state.user_data.copy()
                             st.session_state.impersonating = True
                             
+                            # Leggi pagine_abilitate FRESCO dal DB (non dalla cache)
+                            try:
+                                _fresh_user = supabase.table('users').select('pagine_abilitate').eq('id', row['user_id']).execute()
+                                _fresh_pagine = _fresh_user.data[0].get('pagine_abilitate') if _fresh_user.data else row.get('pagine_abilitate')
+                            except Exception:
+                                _fresh_pagine = row.get('pagine_abilitate')
+                            
                             cliente_data = {
                                 'id': row['user_id'],
                                 'email': row['email'],
                                 'nome_ristorante': row['ristorante'],
                                 'attivo': row['attivo'],
                                 'partita_iva': row.get('partita_iva'),
-                                'pagine_abilitate': row.get('pagine_abilitate'),
+                                'pagine_abilitate': _fresh_pagine,
                             }
                             st.session_state.user_data = cliente_data
                             
@@ -1139,15 +1146,19 @@ if tab1:
                                         'workspace': new_workspace,
                                         'blocco_anno_precedente': pagine.get('blocco_anno_precedente', True)
                                     }
-                                    supabase.table('users')\
+                                    _upd_result = supabase.table('users')\
                                         .update({'pagine_abilitate': new_pagine})\
                                         .eq('id', row['user_id'])\
                                         .execute()
                                     
-                                    logger.info(f"📄 Pagine aggiornate per {row['email']}: {new_pagine}")
-                                    st.success(f"✅ Pagine aggiornate")
+                                    # Verifica che il salvataggio sia andato a buon fine
+                                    _verify = supabase.table('users').select('pagine_abilitate').eq('id', row['user_id']).execute()
+                                    _verify_val = _verify.data[0].get('pagine_abilitate') if _verify.data else None
+                                    
+                                    logger.info(f"📄 Pagine aggiornate per {row['email']} (user_id={row['user_id']}): salvato={new_pagine}, verifica_db={_verify_val}")
+                                    st.success(f"✅ Workspace {'attivato' if new_workspace else 'disattivato'} per {row['email']}")
                                     _carica_stats_clienti_admin.clear()
-                                    time.sleep(1)
+                                    time.sleep(2)
                                     st.rerun()
                                 except Exception as e:
                                     if 'pagine_abilitate' in str(e) or 'PGRST204' in str(e):

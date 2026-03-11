@@ -278,6 +278,7 @@ if st.session_state.margine_tab == "analisi":
 
     if df_costi_cat.empty:
         st.info("📊 Nessun dato fatture F&B disponibile per il periodo selezionato. Carica le fatture nella pagina Analisi Fatture.")
+        st.stop()
     else:
         df_costi_cat['centro'] = df_costi_cat['categoria'].map(cat_to_centro).fillna('Altro')
         df_costi_cat = df_costi_cat[df_costi_cat['centro'] != 'Altro']
