@@ -385,7 +385,7 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
                     'email': user_data['email'],
                     'ristorante': rist['nome_ristorante'],
                     'attivo': user_data.get('attivo', True),
-                    'pagine_abilitate': user_data.get('pagine_abilitate') or {'marginalita': True, 'workspace': True},
+                    'pagine_abilitate': user_data.get('pagine_abilitate') or {},
                     'partita_iva': rist.get('partita_iva'),
                     'ragione_sociale': rist.get('ragione_sociale', ''),
                     'num_fatture': stats['num_fatture'],
@@ -402,7 +402,7 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
                 'email': user_data['email'],
                 'ristorante': user_data.get('nome_ristorante') or "❌ Nessun Ristorante",
                 'attivo': user_data.get('attivo', True),
-                'pagine_abilitate': user_data.get('pagine_abilitate') or {'marginalita': True, 'workspace': True},
+                'pagine_abilitate': user_data.get('pagine_abilitate') or {},
                 'partita_iva': user_data.get('partita_iva'),
                 'ragione_sociale': user_data.get('ragione_sociale', ''),
                 'num_fatture': stats['num_fatture'],
@@ -1123,13 +1123,12 @@ if tab1:
                             st.markdown("---")
                             
                             # AZIONE 2b: Gestione Pagine Abilitate
-                            st.markdown("**📄 Pagine Abilitate**")
-                            st.caption("Analisi Fatture è sempre attiva")
-                            
                             pagine = row.get('pagine_abilitate') or {'workspace': True}
                             
+                            _ws_stato = "✅ attivo" if pagine.get('workspace', True) else "❌ disattivo"
+                            st.markdown(f"**🍴 Workspace: {_ws_stato}**")
                             new_workspace = st.checkbox(
-                                "🍴 Workspace",
+                                "Abilita Workspace",
                                 value=pagine.get('workspace', True),
                                 key=f"page_ws_{row_key}"
                             )

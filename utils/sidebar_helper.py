@@ -175,7 +175,7 @@ def render_sidebar(user_data: dict):
                     _pagine_raw = json.loads(_pagine_raw)
                 except Exception:
                     _pagine_raw = None
-            pagine_abilitate = _pagine_raw or {'marginalita': True, 'workspace': True}
+            pagine_abilitate = _pagine_raw if isinstance(_pagine_raw, dict) else {}
             
             if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",
                          type="primary" if current_script == '3_controllo_prezzi.py' else "secondary"):
