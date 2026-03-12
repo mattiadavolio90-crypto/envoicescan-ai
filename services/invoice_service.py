@@ -224,6 +224,13 @@ def _estrai_xml_con_pattern(contenuto_bytes: bytes) -> bytes | None:
 
             if end_idx > start_idx:
                 xml_bytes = contenuto_bytes[start_idx:end_idx]
+                # Verifica qualità: se contiene control chars invalidi per XML
+                # (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F), l'XML è corrotto
+                # (succede con OCTET STRING chunked dove i DER header sono inclusi)
+                bad_bytes = sum(1 for b in xml_bytes if b < 32 and b not in (9, 10, 13))
+                if bad_bytes > 0:
+                    logger.warning(f"⚠️ Pattern search: XML contiene {bad_bytes} control chars invalidi - rifiutato, provo metodo successivo")
+                    return None
                 logger.info("✅ XML estratto da .p7m tramite ricerca pattern (fallback)")
                 return xml_bytes
     except Exception as e:
@@ -232,48 +239,71 @@ def _estrai_xml_con_pattern(contenuto_bytes: bytes) -> bytes | None:
 
 
 def _estrai_xml_con_der_scan(contenuto_bytes: bytes) -> bytes | None:
-    """Metodo 4: Scansione manuale DER per trovare OCTET STRING contenenti XML."""
+    """Metodo 4: Riassemblaggio chunk DER OCTET STRING.
+    
+    Nei p7m italiani con firma CAdES, l'XML è spesso dentro un
+    Constructed OCTET STRING (tag 0x24, indefinite length 0x80)
+    suddiviso in chunk primitivi (tag 0x04 + lunghezza DER).
+    Questo metodo riassembla i chunk rimuovendo gli header DER intermedi.
+    """
     try:
-        # Nei p7m CAdES, lo XML è dentro un OCTET STRING (tag 0x04)
-        # Cerchiamo tutti i blocchi OCTET STRING grandi che contengono XML
-        pos = 0
-        best_xml = None
-        while pos < len(contenuto_bytes) - 10:
-            # Cerca tag OCTET STRING (0x04) con length >= 100 bytes
-            if contenuto_bytes[pos] == 0x04:
-                # Decodifica lunghezza DER
-                length_byte = contenuto_bytes[pos + 1]
-                data_start = pos + 2
-                data_length = 0
-                
-                if length_byte < 0x80:
-                    data_length = length_byte
-                elif length_byte == 0x81:
-                    data_length = contenuto_bytes[pos + 2]
-                    data_start = pos + 3
-                elif length_byte == 0x82:
-                    data_length = (contenuto_bytes[pos + 2] << 8) | contenuto_bytes[pos + 3]
-                    data_start = pos + 4
-                elif length_byte == 0x83:
-                    data_length = (contenuto_bytes[pos + 2] << 16) | (contenuto_bytes[pos + 3] << 8) | contenuto_bytes[pos + 4]
-                    data_start = pos + 5
-                
-                if data_length > 200 and data_start + data_length <= len(contenuto_bytes):
-                    chunk = contenuto_bytes[data_start:data_start + data_length]
-                    if b'FatturaElettronica' in chunk and b'<' in chunk:
-                        # Trovato XML dentro OCTET STRING
-                        xml_candidate = _estrai_xml_con_pattern(chunk)
-                        if xml_candidate and (best_xml is None or len(xml_candidate) > len(best_xml)):
-                            best_xml = xml_candidate
-                    pos = data_start + data_length
-                    continue
-            pos += 1
-        
-        if best_xml:
-            logger.info("✅ XML estratto da .p7m tramite scansione DER manuale")
-            return best_xml
+        # Cerca il primo <?xml o BOM+<?xml
+        xml_pos = contenuto_bytes.find(b'<?xml')
+        if xml_pos < 0:
+            bom_pos = contenuto_bytes.find(b'\xef\xbb\xbf')
+            if bom_pos >= 0:
+                xml_pos = bom_pos
+            else:
+                return None
+
+        # Cerca il Constructed OCTET STRING (0x24 0x80) prima di <?xml
+        found_outer = False
+        for i in range(xml_pos - 1, max(0, xml_pos - 20), -1):
+            if contenuto_bytes[i] == 0x80 and i > 0 and contenuto_bytes[i - 1] == 0x24:
+                pos = i + 1
+                found_outer = True
+                break
+
+        if not found_outer:
+            return None
+
+        # Leggi chunk per chunk fino a 0x00 0x00 (end-of-contents)
+        total_data = bytearray()
+        chunks = 0
+        while pos < len(contenuto_bytes) - 2:
+            if contenuto_bytes[pos] == 0x00 and contenuto_bytes[pos + 1] == 0x00:
+                break
+            if contenuto_bytes[pos] != 0x04:
+                break
+
+            lb = contenuto_bytes[pos + 1]
+            if lb < 0x80:
+                chunk_len = lb
+                header_len = 2
+            elif lb == 0x81:
+                chunk_len = contenuto_bytes[pos + 2]
+                header_len = 3
+            elif lb == 0x82:
+                chunk_len = (contenuto_bytes[pos + 2] << 8) | contenuto_bytes[pos + 3]
+                header_len = 4
+            elif lb == 0x83:
+                chunk_len = (contenuto_bytes[pos + 2] << 16) | (contenuto_bytes[pos + 3] << 8) | contenuto_bytes[pos + 4]
+                header_len = 5
+            else:
+                break
+
+            if pos + header_len + chunk_len > len(contenuto_bytes):
+                break
+
+            total_data.extend(contenuto_bytes[pos + header_len : pos + header_len + chunk_len])
+            pos += header_len + chunk_len
+            chunks += 1
+
+        if chunks > 1 and b'FatturaElettronica' in total_data:
+            logger.info(f"✅ XML estratto da .p7m tramite riassemblaggio DER ({chunks} chunks, {len(total_data)} bytes)")
+            return bytes(total_data)
     except Exception as e:
-        logger.warning(f"⚠️ Scansione DER .p7m fallita: {e}")
+        logger.warning(f"⚠️ Riassemblaggio DER .p7m fallito: {e}")
     return None
 
 
