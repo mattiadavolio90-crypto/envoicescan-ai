@@ -277,6 +277,57 @@ def _estrai_xml_con_der_scan(contenuto_bytes: bytes) -> bytes | None:
     return None
 
 
+def _estrai_xml_con_pulizia_byte(contenuto_bytes: bytes) -> bytes | None:
+    """Metodo 5: Rimuovi byte binari DER e riassembla XML.
+    
+    Nei p7m con OCTET STRING chunked, il contenuto XML è spezzato da
+    header DER (tag + length). Rimuovendo tutti i byte non-ASCII si ottiene
+    il testo XML riassemblato.
+    """
+    try:
+        if b'FatturaElettronica' not in contenuto_bytes:
+            return None
+        
+        # Rimuovi byte non-ASCII (mantieni solo printable + whitespace XML-valido)
+        cleaned = bytearray()
+        for b in contenuto_bytes:
+            if 32 <= b <= 126 or b in (9, 10, 13):
+                cleaned.append(b)
+        text = bytes(cleaned)
+        
+        # Cerca inizio XML
+        patterns_inizio = [b'<?xml', b'<p:FatturaElettronica', b'<FatturaElettronica',
+                           b'<ns2:FatturaElettronica', b'<ns3:FatturaElettronica',
+                           b'<n:FatturaElettronica', b'<a:FatturaElettronica']
+        start_idx = -1
+        for pat in patterns_inizio:
+            idx = text.find(pat)
+            if idx >= 0 and (start_idx < 0 or idx < start_idx):
+                start_idx = idx
+        
+        if start_idx < 0:
+            return None
+        
+        # Cerca fine XML
+        end_markers = [b'</p:FatturaElettronica>', b'</FatturaElettronica>',
+                       b'</ns2:FatturaElettronica>', b'</ns3:FatturaElettronica>',
+                       b'</n:FatturaElettronica>', b'</a:FatturaElettronica>']
+        end_idx = -1
+        for marker in end_markers:
+            pos = text.find(marker, start_idx)
+            if pos >= 0:
+                end_idx = pos + len(marker)
+                break
+        
+        if end_idx > start_idx:
+            xml_bytes = text[start_idx:end_idx]
+            logger.info(f"✅ XML estratto da .p7m tramite pulizia byte ({len(xml_bytes)} bytes)")
+            return xml_bytes
+    except Exception as e:
+        logger.warning(f"⚠️ Pulizia byte .p7m fallita: {e}")
+    return None
+
+
 def _prova_decodifica_base64(contenuto_bytes: bytes) -> bytes | None:
     """Se il p7m è base64-encoded (PEM), decodifica e restituisce il DER."""
     import base64
@@ -377,13 +428,18 @@ def estrai_xml_da_p7m(file_caricato):
     if xml_bytes is None:
         xml_bytes = _estrai_xml_con_der_scan(raw_bytes)
     
+    # Metodo 5: rimuovi byte binari DER e riassembla XML dal testo pulito
+    # (essenziale per p7m con OCTET STRING chunked dove asn1crypto non è disponibile)
+    if xml_bytes is None:
+        xml_bytes = _estrai_xml_con_pulizia_byte(raw_bytes)
+    
     # Se ancora nulla, riprova pattern sul contenuto originale (pre-base64 decode)
     if xml_bytes is None and raw_bytes is not contenuto_bytes:
         xml_bytes = _estrai_xml_con_pattern(contenuto_bytes)
     
-    # Ultimo tentativo: cerca XML anche come pattern grezzo nell'intero file
-    if xml_bytes is None:
-        xml_bytes = _estrai_xml_con_pattern(contenuto_bytes)
+    # Riprova pulizia byte sul contenuto originale
+    if xml_bytes is None and raw_bytes is not contenuto_bytes:
+        xml_bytes = _estrai_xml_con_pulizia_byte(contenuto_bytes)
     
     if xml_bytes is None or len(xml_bytes) == 0:
         raise ValueError("Impossibile estrarre XML dal file .p7m - firma digitale non riconosciuta")
