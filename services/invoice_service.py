@@ -120,6 +120,134 @@ def normalizza_unita_misura(um: str) -> str:
     return mappa_normalizzazione.get(um_upper, um_upper)
 
 
+def _estrai_xml_con_asn1crypto(contenuto_bytes: bytes) -> bytes | None:
+    """Metodo 1: Parsing ASN.1/CMS con asn1crypto (gestisce strutture nidificate)."""
+    try:
+        from asn1crypto import cms, core
+        content_info = cms.ContentInfo.load(contenuto_bytes)
+        signed_data = content_info['content']
+        encap_content = signed_data['encap_content_info']['content']
+        if encap_content is not None:
+            raw = encap_content.native
+            if isinstance(raw, bytes) and b'<' in raw:
+                logger.info("✅ XML estratto da .p7m tramite parsing ASN.1/CMS")
+                return raw
+            # Potrebbe essere un OCTET STRING annidato
+            if isinstance(raw, bytes):
+                try:
+                    inner = core.OctetString.load(raw)
+                    inner_bytes = inner.native
+                    if isinstance(inner_bytes, bytes) and b'<' in inner_bytes:
+                        logger.info("✅ XML estratto da .p7m tramite ASN.1 (OCTET STRING annidato)")
+                        return inner_bytes
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.warning(f"⚠️ Parsing ASN.1 .p7m fallito: {e}")
+    return None
+
+
+def _estrai_xml_con_openssl(contenuto_bytes: bytes) -> bytes | None:
+    """Metodo 2: OpenSSL via subprocess (gestisce anche firme multiple/nidificate)."""
+    import subprocess
+    import tempfile
+    import os
+    try:
+        # Verifica che openssl sia disponibile
+        subprocess.run(["openssl", "version"], capture_output=True, timeout=5)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+
+    tmp_in = None
+    tmp_out = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.p7m') as f:
+            f.write(contenuto_bytes)
+            tmp_in = f.name
+        tmp_out = tmp_in + '.xml'
+
+        result = subprocess.run(
+            ["openssl", "cms", "-verify", "-noverify", "-inform", "DER",
+             "-in", tmp_in, "-out", tmp_out],
+            capture_output=True, timeout=30
+        )
+        if result.returncode != 0:
+            # Prova con smime invece di cms
+            result = subprocess.run(
+                ["openssl", "smime", "-verify", "-noverify", "-inform", "DER",
+                 "-in", tmp_in, "-out", tmp_out],
+                capture_output=True, timeout=30
+            )
+
+        if result.returncode == 0 and os.path.exists(tmp_out):
+            with open(tmp_out, 'rb') as f:
+                xml_bytes = f.read()
+            if xml_bytes and b'<' in xml_bytes:
+                logger.info("✅ XML estratto da .p7m tramite OpenSSL")
+                return xml_bytes
+    except Exception as e:
+        logger.warning(f"⚠️ Estrazione OpenSSL .p7m fallita: {e}")
+    finally:
+        for path in [tmp_in, tmp_out]:
+            if path:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+    return None
+
+
+def _estrai_xml_con_pattern(contenuto_bytes: bytes) -> bytes | None:
+    """Metodo 3: Fallback - ricerca pattern XML nel binario."""
+    try:
+        # Cerca l'inizio dell'XML
+        patterns_inizio = [b'<?xml', b'<p:FatturaElettronica', b'<FatturaElettronica',
+                           b'<ns2:FatturaElettronica', b'<ns3:FatturaElettronica']
+        start_idx = -1
+        for pat in patterns_inizio:
+            idx = contenuto_bytes.find(pat)
+            if idx >= 0 and (start_idx < 0 or idx < start_idx):
+                start_idx = idx
+
+        if start_idx >= 0:
+            # Cerca la fine dell'XML
+            end_markers = [b'</p:FatturaElettronica>', b'</FatturaElettronica>',
+                           b'</ns2:FatturaElettronica>', b'</ns3:FatturaElettronica>']
+            end_idx = -1
+            for marker in end_markers:
+                pos = contenuto_bytes.find(marker, start_idx)
+                if pos >= 0:
+                    end_idx = pos + len(marker)
+                    break
+
+            if end_idx > start_idx:
+                xml_bytes = contenuto_bytes[start_idx:end_idx]
+                logger.info("✅ XML estratto da .p7m tramite ricerca pattern (fallback)")
+                return xml_bytes
+    except Exception as e:
+        logger.warning(f"⚠️ Ricerca pattern XML in .p7m fallita: {e}")
+    return None
+
+
+def _prova_decodifica_base64(contenuto_bytes: bytes) -> bytes | None:
+    """Se il p7m è base64-encoded (PEM), decodifica e restituisce il DER."""
+    import base64
+    try:
+        # Rimuovi header/footer PEM se presenti
+        testo = contenuto_bytes
+        if b'-----BEGIN' in testo:
+            linee = testo.split(b'\n')
+            linee = [l for l in linee if not l.startswith(b'-----')]
+            testo = b''.join(linee)
+        decoded = base64.b64decode(testo, validate=True)
+        # Verifica che sia DER valido (inizia con 0x30 = SEQUENCE)
+        if decoded and decoded[0:1] == b'\x30':
+            return decoded
+    except Exception:
+        pass
+    return None
+
+
 def estrai_xml_da_p7m(file_caricato):
     """
     Estrae il contenuto XML da un file .p7m (firma digitale CAdES/PKCS#7).
@@ -141,52 +269,36 @@ def estrai_xml_da_p7m(file_caricato):
     if len(contenuto_bytes) > MAX_FILE_SIZE_P7M:
         raise ValueError(f"File P7M troppo grande ({len(contenuto_bytes) / 1_000_000:.1f} MB). Limite: {MAX_FILE_SIZE_P7M // 1_000_000} MB")
     
+    # Se il file è base64 encoded (PEM), decodifica prima
+    raw_bytes = contenuto_bytes
+    if raw_bytes[0:1] != b'\x30':
+        decoded = _prova_decodifica_base64(raw_bytes)
+        if decoded:
+            logger.info("✅ P7M base64 decodificato in DER")
+            raw_bytes = decoded
+    
     xml_bytes = None
     
-    # Metodo 1: Parsing ASN.1/CMS con asn1crypto
-    try:
-        from asn1crypto import cms
-        content_info = cms.ContentInfo.load(contenuto_bytes)
-        signed_data = content_info['content']
-        encap_content = signed_data['encap_content_info']['content']
-        if encap_content is not None:
-            xml_bytes = encap_content.native
-            if isinstance(xml_bytes, bytes) and b'<' in xml_bytes:
-                logger.info("✅ XML estratto da .p7m tramite parsing ASN.1/CMS")
-    except Exception as e:
-        logger.warning(f"⚠️ Parsing ASN.1 .p7m fallito: {e}")
+    # Metodo 1: ASN.1/CMS parsing (più affidabile)
+    xml_bytes = _estrai_xml_con_asn1crypto(raw_bytes)
     
-    # Metodo 2: Fallback - ricerca pattern XML nel binario
+    # Metodo 2: OpenSSL (gestisce firme complesse/nidificate)
     if xml_bytes is None:
-        try:
-            # Cerca l'inizio dell'XML (<?xml o <p:FatturaElettronica)
-            idx_prolog = contenuto_bytes.find(b'<?xml')
-            idx_fattura = contenuto_bytes.find(b'<p:FatturaElettronica')
-            idx_fattura2 = contenuto_bytes.find(b'<FatturaElettronica')
-            
-            start_idx = -1
-            for idx in [idx_prolog, idx_fattura, idx_fattura2]:
-                if idx >= 0 and (start_idx < 0 or idx < start_idx):
-                    start_idx = idx
-            
-            if start_idx >= 0:
-                # Cerca la fine dell'XML
-                end_markers = [b'</p:FatturaElettronica>', b'</FatturaElettronica>']
-                end_idx = -1
-                for marker in end_markers:
-                    pos = contenuto_bytes.find(marker, start_idx)
-                    if pos >= 0:
-                        end_idx = pos + len(marker)
-                        break
-                
-                if end_idx > start_idx:
-                    xml_bytes = contenuto_bytes[start_idx:end_idx]
-                    logger.info("✅ XML estratto da .p7m tramite ricerca pattern (fallback)")
-        except Exception as e:
-            logger.warning(f"⚠️ Ricerca pattern XML in .p7m fallita: {e}")
+        xml_bytes = _estrai_xml_con_openssl(raw_bytes)
+    
+    # Metodo 3: ricerca pattern nel binario (ultimo fallback)
+    if xml_bytes is None:
+        xml_bytes = _estrai_xml_con_pattern(raw_bytes)
+    
+    # Se ancora nulla, riprova i metodi sul contenuto originale (pre-base64 decode)
+    if xml_bytes is None and raw_bytes is not contenuto_bytes:
+        xml_bytes = _estrai_xml_con_pattern(contenuto_bytes)
     
     if xml_bytes is None or len(xml_bytes) == 0:
         raise ValueError("Impossibile estrarre XML dal file .p7m - firma digitale non riconosciuta")
+    
+    # Pulizia: rimuovi eventuali BOM o byte nulli iniziali
+    xml_bytes = xml_bytes.lstrip(b'\xef\xbb\xbf\x00')
     
     # Validazione base: verifica che i bytes estratti siano XML valido
     import xml.etree.ElementTree as ET
