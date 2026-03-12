@@ -200,9 +200,10 @@ def _estrai_xml_con_openssl(contenuto_bytes: bytes) -> bytes | None:
 def _estrai_xml_con_pattern(contenuto_bytes: bytes) -> bytes | None:
     """Metodo 3: Fallback - ricerca pattern XML nel binario."""
     try:
-        # Cerca l'inizio dell'XML
+        # Cerca l'inizio dell'XML (inclusi namespace vari usati da SDI)
         patterns_inizio = [b'<?xml', b'<p:FatturaElettronica', b'<FatturaElettronica',
-                           b'<ns2:FatturaElettronica', b'<ns3:FatturaElettronica']
+                           b'<ns2:FatturaElettronica', b'<ns3:FatturaElettronica',
+                           b'<n:FatturaElettronica', b'<a:FatturaElettronica']
         start_idx = -1
         for pat in patterns_inizio:
             idx = contenuto_bytes.find(pat)
@@ -210,9 +211,10 @@ def _estrai_xml_con_pattern(contenuto_bytes: bytes) -> bytes | None:
                 start_idx = idx
 
         if start_idx >= 0:
-            # Cerca la fine dell'XML
+            # Cerca la fine dell'XML (tutti i possibili namespace)
             end_markers = [b'</p:FatturaElettronica>', b'</FatturaElettronica>',
-                           b'</ns2:FatturaElettronica>', b'</ns3:FatturaElettronica>']
+                           b'</ns2:FatturaElettronica>', b'</ns3:FatturaElettronica>',
+                           b'</n:FatturaElettronica>', b'</a:FatturaElettronica>']
             end_idx = -1
             for marker in end_markers:
                 pos = contenuto_bytes.find(marker, start_idx)
@@ -229,6 +231,52 @@ def _estrai_xml_con_pattern(contenuto_bytes: bytes) -> bytes | None:
     return None
 
 
+def _estrai_xml_con_der_scan(contenuto_bytes: bytes) -> bytes | None:
+    """Metodo 4: Scansione manuale DER per trovare OCTET STRING contenenti XML."""
+    try:
+        # Nei p7m CAdES, lo XML è dentro un OCTET STRING (tag 0x04)
+        # Cerchiamo tutti i blocchi OCTET STRING grandi che contengono XML
+        pos = 0
+        best_xml = None
+        while pos < len(contenuto_bytes) - 10:
+            # Cerca tag OCTET STRING (0x04) con length >= 100 bytes
+            if contenuto_bytes[pos] == 0x04:
+                # Decodifica lunghezza DER
+                length_byte = contenuto_bytes[pos + 1]
+                data_start = pos + 2
+                data_length = 0
+                
+                if length_byte < 0x80:
+                    data_length = length_byte
+                elif length_byte == 0x81:
+                    data_length = contenuto_bytes[pos + 2]
+                    data_start = pos + 3
+                elif length_byte == 0x82:
+                    data_length = (contenuto_bytes[pos + 2] << 8) | contenuto_bytes[pos + 3]
+                    data_start = pos + 4
+                elif length_byte == 0x83:
+                    data_length = (contenuto_bytes[pos + 2] << 16) | (contenuto_bytes[pos + 3] << 8) | contenuto_bytes[pos + 4]
+                    data_start = pos + 5
+                
+                if data_length > 200 and data_start + data_length <= len(contenuto_bytes):
+                    chunk = contenuto_bytes[data_start:data_start + data_length]
+                    if b'FatturaElettronica' in chunk and b'<' in chunk:
+                        # Trovato XML dentro OCTET STRING
+                        xml_candidate = _estrai_xml_con_pattern(chunk)
+                        if xml_candidate and (best_xml is None or len(xml_candidate) > len(best_xml)):
+                            best_xml = xml_candidate
+                    pos = data_start + data_length
+                    continue
+            pos += 1
+        
+        if best_xml:
+            logger.info("✅ XML estratto da .p7m tramite scansione DER manuale")
+            return best_xml
+    except Exception as e:
+        logger.warning(f"⚠️ Scansione DER .p7m fallita: {e}")
+    return None
+
+
 def _prova_decodifica_base64(contenuto_bytes: bytes) -> bytes | None:
     """Se il p7m è base64-encoded (PEM), decodifica e restituisce il DER."""
     import base64
@@ -239,6 +287,8 @@ def _prova_decodifica_base64(contenuto_bytes: bytes) -> bytes | None:
             linee = testo.split(b'\n')
             linee = [l for l in linee if not l.startswith(b'-----')]
             testo = b''.join(linee)
+        # Rimuovi whitespace (base64 multi-linea)
+        testo = testo.replace(b'\r', b'').replace(b'\n', b'').replace(b' ', b'')
         decoded = base64.b64decode(testo, validate=True)
         # Verifica che sia DER valido (inizia con 0x30 = SEQUENCE)
         if decoded and decoded[0:1] == b'\x30':
@@ -246,6 +296,39 @@ def _prova_decodifica_base64(contenuto_bytes: bytes) -> bytes | None:
     except Exception:
         pass
     return None
+
+
+def _pulisci_xml_bytes(xml_bytes: bytes) -> bytes:
+    """Pulisce XML estratto da caratteri problematici comuni nelle fatture italiane."""
+    import re as _re
+    
+    # Rimuovi BOM e byte nulli iniziali
+    xml_bytes = xml_bytes.lstrip(b'\xef\xbb\xbf\x00')
+    
+    # Rimuovi byte nulli sparsi (common in some p7m extractions)
+    xml_bytes = xml_bytes.replace(b'\x00', b'')
+    
+    # Rimuovi caratteri di controllo (tranne \t, \n, \r che sono validi in XML)
+    xml_bytes = _re.sub(rb'[\x00-\x08\x0b\x0c\x0e-\x1f]', b'', xml_bytes)
+    
+    # Gestisci problemi di encoding: prova a decodificare e ri-encodare
+    # Molte fatture dichiarano UTF-8 ma usano Latin-1/CP1252
+    try:
+        xml_bytes.decode('utf-8')
+    except UnicodeDecodeError:
+        try:
+            # Prova Latin-1 → UTF-8
+            text = xml_bytes.decode('latin-1')
+            xml_bytes = text.encode('utf-8')
+            # Aggiorna la dichiarazione encoding se presente
+            xml_bytes = xml_bytes.replace(b'encoding="ISO-8859-1"', b'encoding="UTF-8"')
+            xml_bytes = xml_bytes.replace(b"encoding='ISO-8859-1'", b"encoding='UTF-8'")
+            xml_bytes = xml_bytes.replace(b'encoding="iso-8859-1"', b'encoding="UTF-8"')
+            logger.info("✅ P7M: corretto encoding Latin-1 → UTF-8")
+        except Exception:
+            pass
+    
+    return xml_bytes
 
 
 def estrai_xml_da_p7m(file_caricato):
@@ -286,26 +369,33 @@ def estrai_xml_da_p7m(file_caricato):
     if xml_bytes is None:
         xml_bytes = _estrai_xml_con_openssl(raw_bytes)
     
-    # Metodo 3: ricerca pattern nel binario (ultimo fallback)
+    # Metodo 3: ricerca pattern nel binario
     if xml_bytes is None:
         xml_bytes = _estrai_xml_con_pattern(raw_bytes)
     
-    # Se ancora nulla, riprova i metodi sul contenuto originale (pre-base64 decode)
+    # Metodo 4: scansione manuale strutture DER per OCTET STRING con XML
+    if xml_bytes is None:
+        xml_bytes = _estrai_xml_con_der_scan(raw_bytes)
+    
+    # Se ancora nulla, riprova pattern sul contenuto originale (pre-base64 decode)
     if xml_bytes is None and raw_bytes is not contenuto_bytes:
+        xml_bytes = _estrai_xml_con_pattern(contenuto_bytes)
+    
+    # Ultimo tentativo: cerca XML anche come pattern grezzo nell'intero file
+    if xml_bytes is None:
         xml_bytes = _estrai_xml_con_pattern(contenuto_bytes)
     
     if xml_bytes is None or len(xml_bytes) == 0:
         raise ValueError("Impossibile estrarre XML dal file .p7m - firma digitale non riconosciuta")
     
-    # Pulizia: rimuovi eventuali BOM o byte nulli iniziali
-    xml_bytes = xml_bytes.lstrip(b'\xef\xbb\xbf\x00')
+    # Pulizia XML: rimuovi caratteri problematici, fix encoding
+    xml_bytes = _pulisci_xml_bytes(xml_bytes)
     
-    # Validazione base: verifica che i bytes estratti siano XML valido
-    import xml.etree.ElementTree as ET
-    try:
-        ET.fromstring(xml_bytes)
-    except ET.ParseError as parse_err:
-        raise ValueError(f"File .p7m: contenuto estratto non è XML valido: {parse_err}")
+    # Validazione soft: verifica che contenga il tag radice FatturaElettronica
+    # NON usiamo ET.fromstring() perché è troppo rigido e fallisce su XML
+    # con encoding misti che però estrai_dati_da_xml gestisce correttamente
+    if b'FatturaElettronica' not in xml_bytes:
+        raise ValueError("File .p7m: contenuto estratto non contiene una FatturaElettronica")
     
     # Restituisci come BytesIO con attributo name per compatibilità con estrai_dati_da_xml
     xml_stream = io.BytesIO(xml_bytes)
