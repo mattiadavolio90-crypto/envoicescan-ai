@@ -180,7 +180,6 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
 # Regole sessione
-_SESSION_MAX_AGE_DAYS = 30
 _SESSION_INACTIVITY_HOURS = 8
 _LAST_SEEN_WRITE_THROTTLE_SECONDS = 300
 
@@ -246,20 +245,7 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
                 _u = _resp_cookie.data[0]
                 _now_utc = datetime.now(timezone.utc)
 
-                # Verifica scadenza token sessione (30 giorni massimi)
                 _token_created = _u.get('session_token_created_at')
-                _token_expired = False
-                if _token_created:
-                    try:
-                        _token_dt = datetime.fromisoformat(_token_created.replace('Z', '+00:00'))
-                        if _token_dt.tzinfo is None:
-                            _token_dt = _token_dt.replace(tzinfo=timezone.utc)
-                        _token_expired = (_now_utc - _token_dt) > timedelta(days=_SESSION_MAX_AGE_DAYS)
-                    except (ValueError, TypeError):
-                        _token_expired = True
-                else:
-                    _token_expired = True
-
                 # Verifica inattivita': se last_seen_at e' NULL usa fallback su session_token_created_at
                 _last_seen_raw = _u.get('last_seen_at') or _token_created
                 _inactive_expired = False
@@ -274,14 +260,14 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
                 else:
                     _inactive_expired = True
 
-                if _token_expired or _inactive_expired:
-                    # Token scaduto → invalida e richiedi login
+                if _inactive_expired:
+                    # Sessione inattiva troppo a lungo -> invalida e richiedi login
                     supabase.table("users").update({
                         "session_token": None,
                         "session_token_created_at": None,
                         "last_seen_at": None,
                     }).eq("id", _u.get("id")).execute()
-                    logger.info("🔒 Sessione scaduta (30gg o inattivita' 8h) - richiesto login")
+                    logger.info("🔒 Sessione scaduta per inattivita' (>8h) - richiesto login")
                     st.session_state._cookie_checked = True
                 else:
                     _u.pop('password_hash', None)  # Non esporre hash in session
@@ -642,7 +628,7 @@ def mostra_pagina_login():
                             st.session_state.partita_iva = user.get('partita_iva')
                             st.session_state.created_at = user.get('created_at')
                             
-                            # 🍪 Genera e salva session_token nel DB + cookie (30 giorni)
+                            # 🍪 Genera e salva session_token nel DB + cookie persistente
                             if _cookie_manager is not None:
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
@@ -734,10 +720,16 @@ def mostra_pagina_login():
                         st.session_state.force_logout = False
                         if _cookie_manager is not None:
                             try:
+                                _now_utc = datetime.now(timezone.utc)
                                 _s_token = str(_uuid.uuid4())
-                                supabase.table('users').update({'session_token': _s_token}).eq('id', user.get('id')).execute()
+                                supabase.table('users').update({
+                                    'session_token': _s_token,
+                                    'session_token_created_at': _now_utc.isoformat(),
+                                    'last_seen_at': _now_utc.isoformat(),
+                                }).eq('id', user.get('id')).execute()
                                 _cookie_manager.set("session_token", _s_token,
                                                     expires_at=datetime.now() + timedelta(days=30))
+                                st.session_state._last_seen_write_at = _now_utc.isoformat()
                             except Exception:
                                 pass
                         st.success("✅ Password aggiornata! Accesso automatico...")
@@ -775,7 +767,11 @@ if not user or not user.get('email'):
             # Invalida token nel DB prima di pulire la sessione
             _email_emergency = st.session_state.get('user_data', {}).get('email') if st.session_state.get('user_data') else None
             if _email_emergency:
-                supabase.table('users').update({'session_token': None}).eq('email', _email_emergency).execute()
+                supabase.table('users').update({
+                    'session_token': None,
+                    'session_token_created_at': None,
+                    'last_seen_at': None,
+                }).eq('email', _email_emergency).execute()
         except Exception:
             pass
     st.session_state.clear()
