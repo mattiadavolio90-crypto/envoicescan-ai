@@ -1035,6 +1035,7 @@ if tab1:
                         if st.button("👁️ Entra come cliente", key=f"impersona_{row_key}", type="primary", use_container_width=True):
                             st.session_state.admin_original_user = st.session_state.user_data.copy()
                             st.session_state.impersonating = True
+                            st.session_state.impersonation_started_at = datetime.now(timezone.utc).isoformat()
                             
                             # Leggi pagine_abilitate FRESCO dal DB (non dalla cache)
                             try:
@@ -1087,7 +1088,7 @@ if tab1:
                             st.session_state.user_is_admin = False
                             st.session_state._set_impersonation_cookie = str(row['user_id'])
                             
-                            logger.info(f"🔀 IMPERSONAZIONE: admin={st.session_state.admin_original_user['email']} → cliente={row['email']}")
+                            logger.info(f"� IMPERSONATION START: admin={st.session_state.admin_original_user['email']} → client={row['email']}")
                             st.success(f"✅ Accesso come: {row['email']}")
                             time.sleep(0.8)
                             st.switch_page("app.py")

@@ -212,6 +212,38 @@ if st.session_state.get('_set_impersonation_cookie') and _cookie_manager is not 
     del st.session_state['_set_impersonation_cookie']
 
 # ============================================
+# TIMEOUT IMPERSONAZIONE (max 30 minuti)
+# ============================================
+if st.session_state.get('impersonating', False):
+    _imp_started_raw = st.session_state.get('impersonation_started_at')
+    if _imp_started_raw:
+        try:
+            _imp_started_dt = datetime.fromisoformat(str(_imp_started_raw).replace('Z', '+00:00'))
+            if _imp_started_dt.tzinfo is None:
+                _imp_started_dt = _imp_started_dt.replace(tzinfo=timezone.utc)
+            if (datetime.now(timezone.utc) - _imp_started_dt) > timedelta(minutes=30):
+                _imp_client_email = st.session_state.get('user_data', {}).get('email', '?')
+                _imp_admin_email = st.session_state.get('admin_original_user', {}).get('email', '?')
+                logger.warning(f"🔒 IMPERSONATION TIMEOUT: admin={_imp_admin_email} → client={_imp_client_email}")
+                # Ripristina admin
+                if 'admin_original_user' in st.session_state:
+                    st.session_state.user_data = st.session_state.admin_original_user.copy()
+                    del st.session_state.admin_original_user
+                st.session_state.impersonating = False
+                st.session_state.user_is_admin = True
+                st.session_state.pop('impersonation_started_at', None)
+                if _cookie_manager is not None:
+                    try:
+                        _cookie_manager.set("impersonation_user_id", "",
+                                            expires_at=datetime(1970, 1, 1, tzinfo=timezone.utc))
+                    except Exception:
+                        pass
+                st.warning("⏰ Sessione impersonazione scaduta (30 min). Sei tornato admin.")
+                st.rerun()
+        except (ValueError, TypeError):
+            pass
+
+# ============================================
 # GESTIONE LOGOUT FORZATO VIA QUERY PARAMS
 # ============================================
 if st.query_params.get("logout") == "1":
@@ -734,6 +766,8 @@ if (st.session_state.get('user_is_admin', False)
                 }
                 st.session_state.user_is_admin = False
                 st.session_state.impersonating = True
+                # NON persistere impersonation_started_at nel cookie: un refresh termina la protezione timeout
+                st.session_state.impersonation_started_at = datetime.now(timezone.utc).isoformat()
                 # Aggiorna variabile locale user per il resto della pagina
                 user = st.session_state.user_data
                 logger.info(f"✅ Impersonazione ripristinata da cookie dopo refresh: user_id={_imp_customer.get('id')}")
@@ -914,6 +948,7 @@ if st.session_state.get('impersonating', False):
         if st.button("🔙 Torna Admin", type="primary", use_container_width=True, key="back_to_admin_btn"):
             # Ripristina dati admin originali
             if 'admin_original_user' in st.session_state:
+                _imp_client_email_end = st.session_state.get('user_data', {}).get('email', '?')
                 st.session_state.user_data = st.session_state.admin_original_user.copy()
                 del st.session_state.admin_original_user
                 st.session_state.impersonating = False
@@ -943,8 +978,19 @@ if st.session_state.get('impersonating', False):
                 except Exception as e:
                     logger.error(f"Errore ripristino ristoranti admin: {e}")
                 
-                # Log uscita impersonazione
-                logger.info(f"FINE IMPERSONAZIONE: Ritorno a admin user_id={st.session_state.user_data.get('id')}")
+                # Log uscita impersonazione con durata
+                _imp_duration_min = '?'
+                _imp_started_end = st.session_state.get('impersonation_started_at')
+                if _imp_started_end:
+                    try:
+                        _imp_s_dt = datetime.fromisoformat(str(_imp_started_end).replace('Z', '+00:00'))
+                        if _imp_s_dt.tzinfo is None:
+                            _imp_s_dt = _imp_s_dt.replace(tzinfo=timezone.utc)
+                        _imp_duration_min = int((datetime.now(timezone.utc) - _imp_s_dt).total_seconds() / 60)
+                    except (ValueError, TypeError):
+                        pass
+                st.session_state.pop('impersonation_started_at', None)
+                logger.info(f"🔒 IMPERSONATION END: admin={st.session_state.user_data.get('email')} → client={_imp_client_email_end} duration={_imp_duration_min}min")
                 
                 # Rimuovi cookie impersonazione (non deve più sopravvivere al refresh)
                 if _cookie_manager is not None:

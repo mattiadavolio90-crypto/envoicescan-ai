@@ -34,51 +34,104 @@ logger = get_logger('auth')
 ph = argon2.PasswordHasher()
 
 # ============================================================
-# RATE LIMITING LOGIN (in-memory, thread-safe)
+# RATE LIMITING LOGIN (persistente su DB — tabella login_attempts)
 # ============================================================
-_login_attempts_lock = threading.Lock()
-_login_attempts: Dict[str, Dict] = {}  # {email: {'count': int, 'locked_until': datetime}}
 _MAX_LOGIN_ATTEMPTS = 5
 _LOCKOUT_MINUTES = 15
 
 
-def _check_login_rate_limit(email: str) -> Optional[str]:
-    """Controlla se l'email è in lockout. Ritorna messaggio errore o None se OK."""
-    email_lower = email.lower().strip()
-    with _login_attempts_lock:
-        record = _login_attempts.get(email_lower)
-        if not record:
-            return None
-        if record.get('locked_until') and datetime.now(timezone.utc) < record['locked_until']:
-            remaining = int((record['locked_until'] - datetime.now(timezone.utc)).total_seconds() / 60) + 1
+def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
+    """
+    Controlla se l'email è in lockout interrogando la tabella login_attempts.
+
+    Returns:
+        (True, minuti_rimanenti) se bloccato,
+        (False, 0) se può procedere.
+    """
+    try:
+        from services import get_supabase_client
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
+
+        email_lower = email.lower().strip()
+        since = (datetime.now(timezone.utc) - timedelta(minutes=_LOCKOUT_MINUTES)).isoformat()
+
+        resp = supabase_client.table('login_attempts') \
+            .select('id', count='exact') \
+            .eq('email', email_lower) \
+            .eq('success', False) \
+            .gte('attempted_at', since) \
+            .execute()
+
+        fail_count = resp.count if resp.count is not None else 0
+
+        if fail_count >= _MAX_LOGIN_ATTEMPTS:
+            # Calcola minuti rimanenti dal tentativo più vecchio nella finestra
+            remaining = _LOCKOUT_MINUTES  # worst-case
+            try:
+                oldest = supabase_client.table('login_attempts') \
+                    .select('attempted_at') \
+                    .eq('email', email_lower) \
+                    .eq('success', False) \
+                    .gte('attempted_at', since) \
+                    .order('attempted_at') \
+                    .limit(1) \
+                    .execute()
+                if oldest.data:
+                    oldest_dt = datetime.fromisoformat(oldest.data[0]['attempted_at'].replace('Z', '+00:00'))
+                    if oldest_dt.tzinfo is None:
+                        oldest_dt = oldest_dt.replace(tzinfo=timezone.utc)
+                    expires_at = oldest_dt + timedelta(minutes=_LOCKOUT_MINUTES)
+                    remaining = max(1, int((expires_at - datetime.now(timezone.utc)).total_seconds() / 60) + 1)
+            except Exception:
+                pass
             logger.warning(f"⛔ Login bloccato: lockout {remaining} min rimanenti")
-            return f"Troppi tentativi falliti. Riprova tra {remaining} minuti."
-        # Lockout scaduto: resetta
-        if record.get('locked_until') and datetime.now(timezone.utc) >= record['locked_until']:
-            del _login_attempts[email_lower]
-    return None
+            return True, remaining
+
+        return False, 0
+    except Exception:
+        logger.exception('Errore controlla_rate_limit')
+        # In caso di errore DB, non bloccare il login (graceful degradation)
+        return False, 0
 
 
-def _record_login_failure(email: str):
-    """Registra un tentativo fallito. Dopo N tentativi, imposta lockout."""
-    email_lower = email.lower().strip()
-    with _login_attempts_lock:
-        if email_lower not in _login_attempts:
-            _login_attempts[email_lower] = {'count': 0, 'locked_until': None}
-        _login_attempts[email_lower]['count'] += 1
-        count = _login_attempts[email_lower]['count']
-        if count >= _MAX_LOGIN_ATTEMPTS:
-            _login_attempts[email_lower]['locked_until'] = (
-                datetime.now(timezone.utc) + timedelta(minutes=_LOCKOUT_MINUTES)
-            )
-            logger.warning(f"🔒 LOCKOUT attivato dopo {count} tentativi falliti")
+def registra_tentativo(email: str, success: bool, supabase_client=None):
+    """
+    Inserisce un record in login_attempts.
+    Se success=True elimina i tentativi falliti precedenti per quell'email.
+    Pulisce automaticamente i record più vecchi di 24h per quell'email.
+    """
+    try:
+        from services import get_supabase_client
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
 
+        email_lower = email.lower().strip()
 
-def _clear_login_failures(email: str):
-    """Resetta contatore dopo login riuscito."""
-    email_lower = email.lower().strip()
-    with _login_attempts_lock:
-        _login_attempts.pop(email_lower, None)
+        # Inserisci il tentativo
+        supabase_client.table('login_attempts').insert({
+            'email': email_lower,
+            'success': success,
+        }).execute()
+
+        if success:
+            # Login riuscito: elimina tentativi falliti precedenti
+            supabase_client.table('login_attempts') \
+                .delete() \
+                .eq('email', email_lower) \
+                .eq('success', False) \
+                .execute()
+
+        # Pulizia record > 24h per questa email
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        supabase_client.table('login_attempts') \
+            .delete() \
+            .eq('email', email_lower) \
+            .lt('attempted_at', cutoff) \
+            .execute()
+
+    except Exception:
+        logger.exception('Errore registra_tentativo')
 
 
 # ============================================================
@@ -547,27 +600,27 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         import streamlit as st
         from services import get_supabase_client
         
-        # Rate limiting: controlla lockout
-        rate_limit_msg = _check_login_rate_limit(email)
-        if rate_limit_msg:
-            return None, rate_limit_msg
-        
         # Ottieni client Supabase (singleton)
         if supabase_client is None:
             supabase_client = get_supabase_client()
+        
+        # Rate limiting su DB: controlla lockout
+        bloccato, minuti = controlla_rate_limit(email, supabase_client)
+        if bloccato:
+            return None, f"Troppi tentativi falliti. Riprova tra {minuti} minuti."
         
         # Query utente attivo
         response = supabase_client.table("users").select("*").eq("email", email).eq("attivo", True).execute()
         
         if not response.data:
-            _record_login_failure(email)
+            registra_tentativo(email, False, supabase_client)
             return None, "Credenziali errate o account disattivato"
         
         user = response.data[0]
         
         # Verifica password
         if verify_and_migrate_password(user, password):
-            _clear_login_failures(email)
+            registra_tentativo(email, True, supabase_client)
             # Aggiorna last_login e last_seen_at
             try:
                 supabase_client.table('users').update({
@@ -583,7 +636,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             
             return user, None
         else:
-            _record_login_failure(email)
+            registra_tentativo(email, False, supabase_client)
             return None, "Credenziali errate"
             
     except Exception as e:
