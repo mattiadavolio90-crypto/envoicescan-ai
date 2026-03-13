@@ -63,6 +63,7 @@ from services.auth_service import (
     verify_and_migrate_password,
     verifica_credenziali,
     invia_codice_reset,
+    aggiorna_last_seen,
 )
 
 from services.invoice_service import (
@@ -178,6 +179,11 @@ except Exception as e:
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
+# Regole sessione
+_SESSION_MAX_AGE_DAYS = 30
+_SESSION_INACTIVITY_HOURS = 8
+_LAST_SEEN_WRITE_THROTTLE_SECONDS = 300
+
 # ============================================================
 # COOKIE MANAGER - SESSIONE PERSISTENTE
 # ============================================================
@@ -213,7 +219,11 @@ if st.query_params.get("logout") == "1":
     try:
         _email_for_logout = st.session_state.get('user_data', {}).get('email')
         if _email_for_logout:
-            supabase.table('users').update({'session_token': None}).eq('email', _email_for_logout).execute()
+            supabase.table('users').update({
+                'session_token': None,
+                'session_token_created_at': None,
+                'last_seen_at': None,
+            }).eq('email', _email_for_logout).execute()
     except Exception:
         pass
     st.session_state.clear()
@@ -234,7 +244,9 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
             _resp_cookie = supabase.table("users").select("*").eq("session_token", _token_cookie).eq("attivo", True).execute()
             if _resp_cookie and _resp_cookie.data:
                 _u = _resp_cookie.data[0]
-                # Verifica scadenza token sessione (30 giorni)
+                _now_utc = datetime.now(timezone.utc)
+
+                # Verifica scadenza token sessione (30 giorni massimi)
                 _token_created = _u.get('session_token_created_at')
                 _token_expired = False
                 if _token_created:
@@ -242,13 +254,34 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
                         _token_dt = datetime.fromisoformat(_token_created.replace('Z', '+00:00'))
                         if _token_dt.tzinfo is None:
                             _token_dt = _token_dt.replace(tzinfo=timezone.utc)
-                        _token_expired = (datetime.now(timezone.utc) - _token_dt).days > 30
+                        _token_expired = (_now_utc - _token_dt) > timedelta(days=_SESSION_MAX_AGE_DAYS)
                     except (ValueError, TypeError):
                         _token_expired = True
-                if _token_expired:
+                else:
+                    _token_expired = True
+
+                # Verifica inattivita': se last_seen_at e' NULL usa fallback su session_token_created_at
+                _last_seen_raw = _u.get('last_seen_at') or _token_created
+                _inactive_expired = False
+                if _last_seen_raw:
+                    try:
+                        _last_seen_dt = datetime.fromisoformat(_last_seen_raw.replace('Z', '+00:00'))
+                        if _last_seen_dt.tzinfo is None:
+                            _last_seen_dt = _last_seen_dt.replace(tzinfo=timezone.utc)
+                        _inactive_expired = (_now_utc - _last_seen_dt) > timedelta(hours=_SESSION_INACTIVITY_HOURS)
+                    except (ValueError, TypeError):
+                        _inactive_expired = True
+                else:
+                    _inactive_expired = True
+
+                if _token_expired or _inactive_expired:
                     # Token scaduto → invalida e richiedi login
-                    supabase.table("users").update({"session_token": None, "session_token_created_at": None}).eq("id", _u.get("id")).execute()
-                    logger.info("🔒 Session token scaduto (>30gg) - richiesto login")
+                    supabase.table("users").update({
+                        "session_token": None,
+                        "session_token_created_at": None,
+                        "last_seen_at": None,
+                    }).eq("id", _u.get("id")).execute()
+                    logger.info("🔒 Sessione scaduta (30gg o inattivita' 8h) - richiesto login")
                     st.session_state._cookie_checked = True
                 else:
                     _u.pop('password_hash', None)  # Non esporre hash in session
@@ -277,6 +310,30 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
         # else: nessun token e già controllato → login normale
     except Exception as _re:
         logger.warning(f"Errore ripristino sessione da cookie: {_re}")
+
+
+# Aggiorna last_seen_at con throttling: massimo 1 scrittura ogni 5 minuti per sessione Streamlit
+if st.session_state.get('logged_in', False):
+    _active_user_id = st.session_state.get('user_data', {}).get('id')
+    if _active_user_id:
+        _now_utc = datetime.now(timezone.utc)
+        _last_seen_write_raw = st.session_state.get('_last_seen_write_at')
+        _should_write_last_seen = False
+
+        if not _last_seen_write_raw:
+            _should_write_last_seen = True
+        else:
+            try:
+                _last_write_dt = datetime.fromisoformat(str(_last_seen_write_raw).replace('Z', '+00:00'))
+                if _last_write_dt.tzinfo is None:
+                    _last_write_dt = _last_write_dt.replace(tzinfo=timezone.utc)
+                _should_write_last_seen = (_now_utc - _last_write_dt).total_seconds() >= _LAST_SEEN_WRITE_THROTTLE_SECONDS
+            except (ValueError, TypeError):
+                _should_write_last_seen = True
+
+        if _should_write_last_seen:
+            if aggiorna_last_seen(_active_user_id, supabase):
+                st.session_state._last_seen_write_at = _now_utc.isoformat()
 
 
 # ============================================================
@@ -588,13 +645,16 @@ def mostra_pagina_login():
                             # 🍪 Genera e salva session_token nel DB + cookie (30 giorni)
                             if _cookie_manager is not None:
                                 try:
+                                    _now_utc = datetime.now(timezone.utc)
                                     _s_token = str(_uuid.uuid4())
                                     supabase.table('users').update({
                                         'session_token': _s_token,
-                                        'session_token_created_at': datetime.now(timezone.utc).isoformat()
+                                        'session_token_created_at': _now_utc.isoformat(),
+                                        'last_seen_at': _now_utc.isoformat(),
                                     }).eq('id', user.get('id')).execute()
                                     _cookie_manager.set("session_token", _s_token,
                                                         expires_at=datetime.now() + timedelta(days=30))
+                                    st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception as _ce:
                                     logger.warning(f"Errore salvataggio session token: {_ce}")
                             

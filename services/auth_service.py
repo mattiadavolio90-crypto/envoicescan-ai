@@ -522,7 +522,7 @@ def verify_and_migrate_password(user_record: dict, password: str) -> bool:
 
 def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tuple[Optional[Dict], Optional[str]]:
     """
-    Verifica credenziali utente e aggiorna last_login.
+    Verifica credenziali utente e aggiorna last_login / last_seen_at.
     
     Args:
         email: Email utente
@@ -536,7 +536,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         
     Note:
         - Verifica account attivo (attivo=True)
-        - Aggiorna automaticamente last_login su successo
+        - Aggiorna automaticamente last_login e last_seen_at su successo
         - Supporta sia Argon2 che SHA256 legacy
     """
     try:
@@ -564,13 +564,14 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         # Verifica password
         if verify_and_migrate_password(user, password):
             _clear_login_failures(email)
-            # Aggiorna last_login
+            # Aggiorna last_login e last_seen_at
             try:
                 supabase_client.table('users').update({
-                    'last_login': datetime.now(timezone.utc).isoformat()
+                    'last_login': datetime.now(timezone.utc).isoformat(),
+                    'last_seen_at': datetime.now(timezone.utc).isoformat(),
                 }).eq('id', user['id']).execute()
             except Exception:
-                logger.exception('Errore aggiornamento last_login')
+                logger.exception('Errore aggiornamento last_login/last_seen_at')
             
             return user, None
         else:
@@ -580,6 +581,26 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
     except Exception as e:
         logger.exception("Errore verifica credenziali")
         return None, f"Errore: {str(e)}"
+
+
+def aggiorna_last_seen(user_id: str, supabase_client=None) -> bool:
+    """Aggiorna last_seen_at per l'utente indicato. Ritorna True se ok, False se errore."""
+    try:
+        from services import get_supabase_client
+
+        if not user_id:
+            return False
+
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
+
+        supabase_client.table('users').update({
+            'last_seen_at': datetime.now(timezone.utc).isoformat(),
+        }).eq('id', user_id).execute()
+        return True
+    except Exception:
+        logger.exception('Errore aggiornamento last_seen_at')
+        return False
 
 
 def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:

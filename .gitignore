@@ -158,3 +158,8 @@ htmlcov/
 # Backup
 *.backup
 app.py.backup
+backup-*.sql
+pre-ripristino-*.sql
+
+# Script con credenziali
+comandi.ps1
