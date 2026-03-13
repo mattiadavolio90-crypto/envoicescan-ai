@@ -2980,6 +2980,11 @@ if not df_cache.empty:
             logger.error(f"Errore get_fatture_stats: {e}")
             st.error("❌ Errore caricamento statistiche")
             stats_db = {'num_uniche': 0, 'num_righe': 0, 'success': False}
+        # Conta note di credito (TD04) dai file unici in df_cache
+        num_note_credito = 0
+        if 'TipoDocumento' in df_cache.columns and 'FileOrigine' in df_cache.columns:
+            num_note_credito = df_cache[df_cache['TipoDocumento'].str.upper().str.strip() == 'TD04']['FileOrigine'].nunique()
+        note_credito_html = f' | 📝 Note di Credito: <strong style="font-size: 1.2em; color: #FF5500;">{num_note_credito:,}</strong>' if num_note_credito > 0 else ' | 📝 Note di Credito: <strong style="font-size: 1.2em; color: #FF5500;">0</strong>'
         st.markdown(f"""
 <div style="
     background: linear-gradient(135deg, rgba(255, 140, 0, 0.15) 0%, rgba(255, 165, 0, 0.20) 100%);
@@ -2993,7 +2998,7 @@ if not df_cache.empty:
     backdrop-filter: blur(10px);
 ">
     <span style="color: #FF6B00; font-size: 1.05em; font-weight: 700;">
-        📊 Fatture: <strong style="font-size: 1.2em; color: #FF5500;">{stats_db["num_uniche"]:,}</strong> | 
+        📊 Fatture: <strong style="font-size: 1.2em; color: #FF5500;">{stats_db["num_uniche"]:,}</strong>{note_credito_html} | 
         📋 Righe Totali: <strong style="font-size: 1.2em; color: #FF5500;">{stats_db["num_righe"]:,}</strong>
     </span>
 </div>
