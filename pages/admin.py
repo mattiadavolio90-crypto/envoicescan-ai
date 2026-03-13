@@ -12,6 +12,7 @@ Pannello admin con 6 TAB:
 
 import streamlit as st
 import pandas as pd
+import json
 import re
 import html as _html
 from datetime import datetime, timezone, timedelta
@@ -170,6 +171,39 @@ def invalida_cache_memoria():
     except ImportError:
         pass
     logger.info("✅ Cache memoria invalidata (Streamlit + in-memory)")
+
+
+def _merge_and_save_pagina_abilitata(user_id: str, page_key: str, enabled: bool) -> dict:
+    """
+    Aggiorna una singola chiave in users.pagine_abilitate facendo merge con il JSONB esistente.
+    Non sovrascrive le altre chiavi già presenti.
+    """
+    current_resp = supabase.table('users').select('pagine_abilitate').eq('id', user_id).execute()
+    current_raw = current_resp.data[0].get('pagine_abilitate') if current_resp.data else {}
+
+    if isinstance(current_raw, str):
+        try:
+            current_raw = json.loads(current_raw)
+        except Exception:
+            current_raw = {}
+
+    current_pagine = current_raw if isinstance(current_raw, dict) else {}
+    merged_pagine = dict(current_pagine)
+    merged_pagine[page_key] = enabled
+
+    supabase.table('users')\
+        .update({'pagine_abilitate': merged_pagine})\
+        .eq('id', user_id)\
+        .execute()
+
+    # Invalida cache globale + cache specifica della lista clienti admin.
+    st.cache_data.clear()
+    try:
+        _carica_stats_clienti_admin.clear()
+    except Exception:
+        pass
+
+    return merged_pagine
 
 
 # ──────────────────────────────────────────────────────────
@@ -1137,19 +1171,16 @@ if tab1:
                             new_workspace = st.checkbox(
                                 "Abilita Workspace",
                                 value=pagine.get('workspace', True),
-                                key=f"page_ws_{row_key}"
+                                key=f"workspace_toggle_{row['user_id']}"
                             )
                             
                             if new_workspace != pagine.get('workspace', True):
                                 try:
-                                    new_pagine = {
-                                        'workspace': new_workspace,
-                                        'blocco_anno_precedente': pagine.get('blocco_anno_precedente', True)
-                                    }
-                                    _upd_result = supabase.table('users')\
-                                        .update({'pagine_abilitate': new_pagine})\
-                                        .eq('id', row['user_id'])\
-                                        .execute()
+                                    new_pagine = _merge_and_save_pagina_abilitata(
+                                        user_id=row['user_id'],
+                                        page_key='workspace',
+                                        enabled=new_workspace
+                                    )
                                     
                                     # Verifica che il salvataggio sia andato a buon fine
                                     _verify = supabase.table('users').select('pagine_abilitate').eq('id', row['user_id']).execute()
@@ -1157,7 +1188,6 @@ if tab1:
                                     
                                     logger.info(f"📄 Pagine aggiornate per {row['email']} (user_id={row['user_id']}): salvato={new_pagine}, verifica_db={_verify_val}")
                                     st.success(f"✅ Workspace {'attivato' if new_workspace else 'disattivato'} per {row['email']}")
-                                    _carica_stats_clienti_admin.clear()
                                     time.sleep(2)
                                     st.rerun()
                                 except Exception as e:
@@ -1183,20 +1213,15 @@ if tab1:
                             
                             if new_blocco != blocco_attivo:
                                 try:
-                                    updated_pagine = {
-                                        'marginalita': pagine.get('marginalita', True),
-                                        'workspace': pagine.get('workspace', True),
-                                        'blocco_anno_precedente': new_blocco
-                                    }
-                                    supabase.table('users')\
-                                        .update({'pagine_abilitate': updated_pagine})\
-                                        .eq('id', row['user_id'])\
-                                        .execute()
+                                    _merge_and_save_pagina_abilitata(
+                                        user_id=row['user_id'],
+                                        page_key='blocco_anno_precedente',
+                                        enabled=new_blocco
+                                    )
                                     
                                     stato = "ATTIVATO" if new_blocco else "DISATTIVATO"
                                     logger.info(f"📅 Blocco anno precedente {stato} per {row['email']}")
                                     st.success(f"✅ Blocco fatture anno precedente {stato.lower()}")
-                                    _carica_stats_clienti_admin.clear()
                                     time.sleep(1)
                                     st.rerun()
                                 except Exception as e:
