@@ -57,6 +57,12 @@ if not current_ristorante:
     st.stop()
 
 # ============================================
+# CONTROLLO PAGINA ABILITATA (legge sempre dal DB per riflettere modifiche admin)
+# ============================================
+from utils.page_setup import check_page_enabled
+check_page_enabled('controllo_prezzi', user_id)
+
+# ============================================
 # SIDEBAR CONDIVISA
 # ============================================
 render_sidebar(user)

@@ -26,10 +26,6 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.switch_page("app.py")
 
-# Admin puro (non impersonificato) → redirect a pannello admin
-if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
-    st.switch_page("pages/admin.py")
-
 user = st.session_state.user_data
 is_admin = st.session_state.get('user_is_admin', False)
 

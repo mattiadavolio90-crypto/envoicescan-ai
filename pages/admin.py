@@ -26,7 +26,7 @@ from utils.formatters import carica_categorie_da_db
 from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria, pulisci_caratteri_corrotti
 from utils.validation import is_dicitura_sicura, is_sconto_omaggio_sicuro
 from utils.piva_validator import valida_formato_piva, normalizza_piva
-from services.auth_service import crea_cliente_con_token
+from services.auth_service import crea_cliente_con_token, verifica_sessione_da_cookie
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 
 # Importa costanti per filtri e admin
@@ -65,7 +65,7 @@ except Exception as _ce_adm:
     logger.warning(f"CookieManager non disponibile in admin: {_ce_adm}")
 
 # ============================================================
-# RIPRISTINO SESSIONE DA COOKIE (session_token, come in app.py)
+# RIPRISTINO SESSIONE DA COOKIE (session_token + timeout inattività)
 # ============================================================
 try:
     # Inizializza logged_in se non esiste
@@ -77,14 +77,13 @@ try:
         _token_admin = _cookie_manager_admin.get("session_token")
         
         if _token_admin:
-            try:
-                response = supabase.table("users").select("*").eq("session_token", _token_admin).eq("attivo", True).execute()
-                if response and getattr(response, 'data', None) and len(response.data) > 0:
-                    st.session_state.logged_in = True
-                    st.session_state.user_data = response.data[0]
-                    logger.info(f"✅ Sessione admin ripristinata da session_token")
-            except Exception as e:
-                logger.error(f"Errore recupero utente da session_token: {e}")
+            _u_admin = verifica_sessione_da_cookie(_token_admin, inactivity_hours=8)
+            if _u_admin:
+                st.session_state.logged_in = True
+                st.session_state.user_data = _u_admin
+                logger.info(f"✅ Sessione admin ripristinata da session_token")
+            else:
+                logger.info("🔒 Session token admin non valido o scaduto")
 except Exception as e:
     logger.error(f'Errore controllo cookie sessione: {e}')
 
@@ -204,6 +203,36 @@ def _merge_and_save_pagina_abilitata(user_id: str, page_key: str, enabled: bool)
         pass
 
     return merged_pagine
+
+
+def _is_valid_email_format(email: str) -> bool:
+    """Validazione base formato email."""
+    if not email:
+        return False
+    pattern = r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+    return re.fullmatch(pattern, email) is not None
+
+
+def _email_exists_for_other_user(email: str, user_id: str) -> bool:
+    """Ritorna True se l'email esiste gia' per un altro utente."""
+    try:
+        resp = supabase.table('users')\
+            .select('id, email')\
+            .ilike('email', email)\
+            .limit(1)\
+            .execute()
+    except Exception:
+        # Fallback se ilike non e' supportato dal client in uso.
+        resp = supabase.table('users')\
+            .select('id, email')\
+            .eq('email', email)\
+            .limit(1)\
+            .execute()
+
+    if not resp.data:
+        return False
+
+    return str(resp.data[0].get('id')) != str(user_id)
 
 
 # ──────────────────────────────────────────────────────────
@@ -1162,6 +1191,70 @@ if tab1:
                                         logger.exception(f"Errore invio email reset: {e}")
                             
                             st.markdown("---")
+
+                            # AZIONE 2a: Cambio Email Cliente (solo admin)
+                            with st.expander("✉️ Cambia Email", expanded=False):
+                                st.caption("Aggiorna l'email di login del cliente e invalida la sua sessione corrente")
+
+                                with st.form(key=f"change_email_form_{row['user_id']}"):
+                                    nuova_email_input = st.text_input(
+                                        "Nuova email",
+                                        value="",
+                                        placeholder="cliente@dominio.it",
+                                        key=f"new_email_input_{row['user_id']}"
+                                    )
+                                    submit_cambio_email = st.form_submit_button(
+                                        "✅ Conferma Cambio Email",
+                                        use_container_width=True,
+                                        type="primary"
+                                    )
+
+                                if submit_cambio_email:
+                                    old_email = (row.get('email') or '').strip()
+                                    new_email = (nuova_email_input or '').strip().lower()
+
+                                    if not _is_valid_email_format(new_email):
+                                        st.error("⚠️ Inserisci un'email valida")
+                                    elif new_email == old_email.strip().lower():
+                                        st.error("⚠️ La nuova email deve essere diversa da quella attuale")
+                                    else:
+                                        try:
+                                            if _email_exists_for_other_user(new_email, row['user_id']):
+                                                st.error("⚠️ Questa email esiste gia' nel sistema")
+                                            else:
+                                                # Step 1: aggiorna SOLO email per lo user_id target.
+                                                supabase.table('users')\
+                                                    .update({'email': new_email})\
+                                                    .eq('id', row['user_id'])\
+                                                    .execute()
+
+                                                # Step 2: invalida token sessione del cliente.
+                                                supabase.table('users')\
+                                                    .update({
+                                                        'session_token': None,
+                                                        'session_token_created_at': None
+                                                    })\
+                                                    .eq('id', row['user_id'])\
+                                                    .execute()
+
+                                                st.cache_data.clear()
+                                                try:
+                                                    _carica_stats_clienti_admin.clear()
+                                                except Exception:
+                                                    pass
+
+                                                logger.info(
+                                                    f"✉️ Cambio email cliente eseguito da admin: user_id={row['user_id']}, "
+                                                    f"old_email={old_email}, new_email={new_email}, session_token_invalidato=True"
+                                                )
+                                                st.success(f"✅ Email aggiornata: {old_email} → {new_email}")
+                                                time.sleep(1)
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Errore cambio email: {e}")
+                                            logger.exception(f"Errore cambio email cliente {row.get('user_id')}: {e}")
+
+                            st.markdown("---")
                             
                             # AZIONE 2b: Gestione Pagine Abilitate
                             pagine = row.get('pagine_abilitate') or {'workspace': True}
@@ -1188,6 +1281,60 @@ if tab1:
                                     
                                     logger.info(f"📄 Pagine aggiornate per {row['email']} (user_id={row['user_id']}): salvato={new_pagine}, verifica_db={_verify_val}")
                                     st.success(f"✅ Workspace {'attivato' if new_workspace else 'disattivato'} per {row['email']}")
+                                    time.sleep(2)
+                                    st.rerun()
+                                except Exception as e:
+                                    if 'pagine_abilitate' in str(e) or 'PGRST204' in str(e):
+                                        st.error("⚠️ Esegui migrazione 038_add_pagine_abilitate.sql su Supabase per abilitare questa funzionalità")
+                                    else:
+                                        st.error(f"Errore: {e}")
+                                        logger.exception(f"Errore aggiornamento pagine_abilitate per {row.get('email')}")
+                            
+                            # Toggle Calcolo Margine
+                            _cm_stato = "✅ attivo" if pagine.get('calcolo_margine', True) else "❌ disattivo"
+                            st.markdown(f"**📊 Calcolo Margine: {_cm_stato}**")
+                            new_calcolo_margine = st.checkbox(
+                                "Abilita Calcolo Margine",
+                                value=pagine.get('calcolo_margine', True),
+                                key=f"calcolo_margine_toggle_{row['user_id']}"
+                            )
+                            
+                            if new_calcolo_margine != pagine.get('calcolo_margine', True):
+                                try:
+                                    _merge_and_save_pagina_abilitata(
+                                        user_id=row['user_id'],
+                                        page_key='calcolo_margine',
+                                        enabled=new_calcolo_margine
+                                    )
+                                    logger.info(f"📊 Calcolo Margine {'attivato' if new_calcolo_margine else 'disattivato'} per {row['email']}")
+                                    st.success(f"✅ Calcolo Margine {'attivato' if new_calcolo_margine else 'disattivato'} per {row['email']}")
+                                    time.sleep(2)
+                                    st.rerun()
+                                except Exception as e:
+                                    if 'pagine_abilitate' in str(e) or 'PGRST204' in str(e):
+                                        st.error("⚠️ Esegui migrazione 038_add_pagine_abilitate.sql su Supabase per abilitare questa funzionalità")
+                                    else:
+                                        st.error(f"Errore: {e}")
+                                        logger.exception(f"Errore aggiornamento pagine_abilitate per {row.get('email')}")
+                            
+                            # Toggle Controllo Prezzi
+                            _cp_stato = "✅ attivo" if pagine.get('controllo_prezzi', True) else "❌ disattivo"
+                            st.markdown(f"**💰 Controllo Prezzi: {_cp_stato}**")
+                            new_controllo_prezzi = st.checkbox(
+                                "Abilita Controllo Prezzi",
+                                value=pagine.get('controllo_prezzi', True),
+                                key=f"controllo_prezzi_toggle_{row['user_id']}"
+                            )
+                            
+                            if new_controllo_prezzi != pagine.get('controllo_prezzi', True):
+                                try:
+                                    _merge_and_save_pagina_abilitata(
+                                        user_id=row['user_id'],
+                                        page_key='controllo_prezzi',
+                                        enabled=new_controllo_prezzi
+                                    )
+                                    logger.info(f"💰 Controllo Prezzi {'attivato' if new_controllo_prezzi else 'disattivato'} per {row['email']}")
+                                    st.success(f"✅ Controllo Prezzi {'attivato' if new_controllo_prezzi else 'disattivato'} per {row['email']}")
                                     time.sleep(2)
                                     st.rerun()
                                 except Exception as e:

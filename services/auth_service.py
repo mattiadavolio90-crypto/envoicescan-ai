@@ -462,6 +462,10 @@ def imposta_password_da_token(
         
         logger.info(f"✅ Password impostata per user_id={user_id}")
         
+        # Rimuovi dati sensibili prima di restituire
+        for _sensitive_key in ('password_hash', 'reset_code', 'reset_expires'):
+            user.pop(_sensitive_key, None)
+        
         return True, "🎉 Password impostata con successo!", user
         
     except Exception as e:
@@ -573,6 +577,10 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             except Exception:
                 logger.exception('Errore aggiornamento last_login/last_seen_at')
             
+            # Rimuovi dati sensibili prima di restituire (non devono finire in session_state)
+            for _sensitive_key in ('password_hash', 'reset_code', 'reset_expires'):
+                user.pop(_sensitive_key, None)
+            
             return user, None
         else:
             _record_login_failure(email)
@@ -581,6 +589,77 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
     except Exception as e:
         logger.exception("Errore verifica credenziali")
         return None, f"Errore: {str(e)}"
+
+
+def verifica_sessione_da_cookie(
+    token: str,
+    inactivity_hours: int = 8,
+    supabase_client=None,
+) -> Optional[Dict]:
+    """
+    Verifica un session_token da cookie e controlla timeout inattività.
+
+    Returns:
+        - dict user_data (senza campi sensibili) se valido
+        - None se token non valido, scaduto o inattivo
+
+    Side-effects:
+        - Se la sessione è scaduta per inattività, invalida il token nel DB.
+    """
+    try:
+        from services import get_supabase_client
+
+        if not token:
+            return None
+
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
+
+        response = supabase_client.table('users') \
+            .select('*') \
+            .eq('session_token', token) \
+            .eq('attivo', True) \
+            .execute()
+
+        if not response or not getattr(response, 'data', None) or len(response.data) == 0:
+            return None
+
+        user = response.data[0]
+        now_utc = datetime.now(timezone.utc)
+
+        # Verifica inattività: usa last_seen_at, fallback su session_token_created_at
+        last_seen_raw = user.get('last_seen_at') or user.get('session_token_created_at')
+        inactive_expired = False
+        if last_seen_raw:
+            try:
+                last_seen_dt = datetime.fromisoformat(last_seen_raw.replace('Z', '+00:00'))
+                if last_seen_dt.tzinfo is None:
+                    last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
+                inactive_expired = (now_utc - last_seen_dt) > timedelta(hours=inactivity_hours)
+            except (ValueError, TypeError):
+                inactive_expired = True
+        else:
+            inactive_expired = True
+
+        if inactive_expired:
+            # Sessione inattiva → invalida token nel DB
+            supabase_client.table('users').update({
+                'session_token': None,
+                'session_token_created_at': None,
+                'last_seen_at': None,
+            }).eq('id', user.get('id')).execute()
+            logger.info(f"🔒 Sessione scaduta per inattività (>{inactivity_hours}h) - user_id={user.get('id')}")
+            return None
+
+        # Rimuovi dati sensibili
+        for _sensitive_key in ('password_hash', 'reset_code', 'reset_expires'):
+            user.pop(_sensitive_key, None)
+
+        return user
+
+    except Exception as e:
+        logger.exception('Errore verifica sessione da cookie')
+        return None
 
 
 def aggiorna_last_seen(user_id: str, supabase_client=None) -> bool:

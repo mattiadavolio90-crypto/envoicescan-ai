@@ -1,0 +1,104 @@
+Fai un'analisi completa della funzionalità che abbiamo appena 
+implementato. Controlla:
+
+1. Errori di codice o bug evidenti
+2. Casi limite (cosa succede se l'utente fa qualcosa di inatteso)
+3. Sicurezza (dati esposti, input non validati)
+4. Compatibilità con il resto del progetto esistente
+5. Eventuali migliorie consigliate
+
+Dimmi cosa hai trovato in ordine di priorità: prima i problemi 
+gravi, poi quelli minori.
+
+
+
+
+
+
+Sei un senior software engineer specializzato in Python, Streamlit e Supabase.
+Devi eseguire un audit completo e approfondito dell'intera applicazione OH YEAH!
+
+Analizza TUTTI i file del progetto in questo ordine:
+app.py, pages/admin.py, pages/2workspace.py, pages/1calcolomargine.py,
+pages/3controlloprezzi.py, pages/gestioneaccount.py,
+services/aiservice.py, services/authservice.py, services/invoiceservice.py,
+services/dbservice.py, services/margineservice.py, services/emailservice.py,
+utils/pagesetup.py, utils/sidebarhelper.py, utils/ristorantehelper.py,
+utils/formatters.py, utils/textutils.py, utils/validation.py,
+config/constants.py
+
+Per ogni file analizza questi aspetti:
+
+---
+
+### 1. BUG CRITICI (blocchi funzionali, perdita dati, errori silenziosi)
+- Variabili di sessione non inizializzate che causano KeyError
+- Operazioni Supabase senza gestione eccezioni (try/except mancanti)
+- Race condition su st.session_state in contesti multi-utente
+- JSONB update che sovrascrive invece di fare merge
+- Cache non invalidata dopo write operations
+- Logica booleana invertita (flag che fanno il contrario)
+- Funzioni che restituiscono None silenziosamente invece di sollevare errore
+
+### 2. BUG MINORI (comportamento anomalo, UX degradata)
+- Widget Streamlit con key duplicate o mancanti
+- st.rerun() chiamato in posizioni che causano loop infiniti
+- Filtri temporali che escludono dati per off-by-one su date
+- Formattazione numeri che fallisce con valori None o NaN
+- Messaggi di errore generici che non aiutano il debug
+
+### 3. SICUREZZA
+- Input utente non sanitizzato prima di query Supabase
+- Secrets o API key hardcoded nel codice (anche parzialmente)
+- Controlli di autorizzazione admin bypassabili
+- Session token non invalidato correttamente al logout
+- RLS Supabase: verifica che ogni query abbia il filtro userid
+
+### 4. PERFORMANCE
+- Query N+1: loop che eseguono query DB dentro cicli for
+- Funzioni @st.cache_data con TTL troppo alto o troppo basso
+- DataFrame pandas caricati interamente quando serve solo un subset
+- Chiamate API OpenAI non necessarie (già in memoria/cache)
+- Re-render Streamlit evitabili con uso corretto di session_state
+
+### 5. QUALITÀ DEL CODICE
+- Funzioni troppo lunghe (>100 righe) da spezzare
+- Logica duplicata tra file diversi da centralizzare
+- Costanti hardcoded nel codice invece di usare config/constants.py
+- Type hints mancanti su funzioni critiche
+- Gestione errori asimmetrica (alcuni path gestiti, altri no)
+
+### 6. MIGLIORAMENTI UX/FUNZIONALI
+- Operazioni lente senza feedback visivo (spinner, progress bar)
+- Form che perdono i dati inseriti dopo un errore
+- Messaggi di successo/errore non chiari per l'utente finale
+- Funzionalità mancanti che migliorerebbero il workflow
+
+---
+
+## OUTPUT RICHIESTO
+
+Produci un report strutturato in questo formato per ogni problema trovato:
+
+**[CATEGORIA] - [SEVERITÀ: CRITICO / ALTO / MEDIO / BASSO]**
+- File: nome_file.py, riga approssimativa
+- Problema: descrizione chiara e tecnica
+- Impatto: cosa succede se non corretto
+- Fix proposto: codice o pseudocodice della soluzione
+
+---
+
+Alla fine del report aggiungi:
+
+### PRIORITÀ DI INTERVENTO
+Una lista ordinata dei top 10 fix da fare subito, dal più critico al meno urgente.
+
+### OTTIMIZZAZIONI QUICK WIN
+Lista di miglioramenti implementabili in <30 minuti ciascuno con alto impatto.
+
+### REFACTORING CONSIGLIATO
+Suggerimenti architetturali per rendere il codice più manutenibile a lungo termine.
+
+Non correggere ancora nulla. Prima dammi solo il report completo
+così posso valutare e decidere cosa fixare e in che ordine.
+

@@ -64,6 +64,8 @@ from services.auth_service import (
     verifica_credenziali,
     invia_codice_reset,
     aggiorna_last_seen,
+    imposta_password_da_token,
+    verifica_sessione_da_cookie,
 )
 
 from services.invoice_service import (
@@ -239,47 +241,17 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
     try:
         _token_cookie = _cookie_manager.get("session_token")
         if _token_cookie:
-            # Valida il token contro il DB - se è stato cancellato (logout), la query non trova nulla
-            _resp_cookie = supabase.table("users").select("*").eq("session_token", _token_cookie).eq("attivo", True).execute()
-            if _resp_cookie and _resp_cookie.data:
-                _u = _resp_cookie.data[0]
-                _now_utc = datetime.now(timezone.utc)
-
-                _token_created = _u.get('session_token_created_at')
-                # Verifica inattivita': se last_seen_at e' NULL usa fallback su session_token_created_at
-                _last_seen_raw = _u.get('last_seen_at') or _token_created
-                _inactive_expired = False
-                if _last_seen_raw:
-                    try:
-                        _last_seen_dt = datetime.fromisoformat(_last_seen_raw.replace('Z', '+00:00'))
-                        if _last_seen_dt.tzinfo is None:
-                            _last_seen_dt = _last_seen_dt.replace(tzinfo=timezone.utc)
-                        _inactive_expired = (_now_utc - _last_seen_dt) > timedelta(hours=_SESSION_INACTIVITY_HOURS)
-                    except (ValueError, TypeError):
-                        _inactive_expired = True
-                else:
-                    _inactive_expired = True
-
-                if _inactive_expired:
-                    # Sessione inattiva troppo a lungo -> invalida e richiedi login
-                    supabase.table("users").update({
-                        "session_token": None,
-                        "session_token_created_at": None,
-                        "last_seen_at": None,
-                    }).eq("id", _u.get("id")).execute()
-                    logger.info("🔒 Sessione scaduta per inattivita' (>8h) - richiesto login")
-                    st.session_state._cookie_checked = True
-                else:
-                    _u.pop('password_hash', None)  # Non esporre hash in session
-                    st.session_state.logged_in = True
-                    st.session_state.user_data = _u
-                    st.session_state.partita_iva = _u.get('partita_iva')
-                    st.session_state.created_at = _u.get('created_at')
-                    if _u.get('email') in ADMIN_EMAILS:
-                        st.session_state.user_is_admin = True
-                    logger.info(f"✅ Sessione ripristinata da token per user_id={_u.get('id')}")
+            _u = verifica_sessione_da_cookie(_token_cookie, inactivity_hours=_SESSION_INACTIVITY_HOURS)
+            if _u:
+                st.session_state.logged_in = True
+                st.session_state.user_data = _u
+                st.session_state.partita_iva = _u.get('partita_iva')
+                st.session_state.created_at = _u.get('created_at')
+                if _u.get('email') in ADMIN_EMAILS:
+                    st.session_state.user_is_admin = True
+                logger.info(f"✅ Sessione ripristinata da token per user_id={_u.get('id')}")
             else:
-                # Token non valido (logout effettuato) → vai al login direttamente
+                # Token non valido, scaduto o inattivo → vai al login
                 logger.info("🔒 Session token non valido o scaduto - richiesto login")
                 st.session_state._cookie_checked = True
         elif not st.session_state.get('_cookie_checked', False):
@@ -297,6 +269,10 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
     except Exception as _re:
         logger.warning(f"Errore ripristino sessione da cookie: {_re}")
 
+
+# ✅ Reset contatore anti-loop all'inizio del flow autenticato (prima di qualsiasi rendering)
+if st.session_state.get('logged_in', False):
+    st.session_state._rerun_guard = 0
 
 # Aggiorna last_seen_at con throttling: massimo 1 scrittura ogni 5 minuti per sessione Streamlit
 if st.session_state.get('logged_in', False):
@@ -445,70 +421,6 @@ if st.query_params.get("reset_token"):
         logger.exception("Errore verifica reset_token")
     
     st.stop()  # Non mostrare resto app
-
-
-def verifica_codice_reset(email, code, new_password):
-    """Verifica codice e aggiorna password con validazione compliance"""
-    from argon2 import PasswordHasher
-    from services.auth_service import valida_password_compliance
-    ph = PasswordHasher()
-    
-    try:
-        resp = supabase.table('users').select('id, email, nome_ristorante, reset_code, reset_expires').eq('email', email).limit(1).execute()
-        user = resp.data[0] if resp.data else None
-        
-        valid = False
-        
-        if user:
-            stored_code = user.get('reset_code') or ''
-            if _hmac.compare_digest(str(stored_code), str(code)):
-                # Verifica scadenza
-                expires_str = user.get('reset_expires')
-                if expires_str:
-                    try:
-                        expires = datetime.fromisoformat(expires_str.replace('Z', '+00:00'))
-                        if expires.tzinfo is None:
-                            expires = expires.replace(tzinfo=timezone.utc)
-                        if datetime.now(timezone.utc) > expires:
-                            return None, "Codice scaduto. Richiedi un nuovo reset."
-                    except (ValueError, TypeError):
-                        pass
-                valid = True
-        
-        if not valid:
-            codes = st.session_state.get('reset_codes', {})
-            entry = codes.get(email)
-            if entry and _hmac.compare_digest(str(entry.get('code', '')), str(code)):
-                valid = True
-        
-        if not valid:
-            return None, "Codice errato o scaduto"
-        
-        # Valida password compliance
-        errori = valida_password_compliance(
-            new_password,
-            email,
-            user.get('nome_ristorante', '')
-        )
-        if errori:
-            return None, errori[0]
-        
-        new_hash = ph.hash(new_password)
-        supabase.table('users').update({
-            'password_hash': new_hash,
-            'reset_code': None,
-            'reset_expires': None
-        }).eq('email', email).execute()
-        
-        if 'reset_codes' in st.session_state and email in st.session_state.reset_codes:
-            del st.session_state.reset_codes[email]
-        
-        resp = supabase.table('users').select('*').eq('email', email).execute()
-        return resp.data[0] if resp.data else None, None
-        
-    except Exception as e:
-        logger.exception("Errore reset password")
-        return None, "Errore durante il reset. Riprova."
 
 
 # ============================================================
@@ -711,10 +623,9 @@ def mostra_pagina_login():
                 elif len(new_pwd) < 10:
                     st.error("❌ Password troppo corta (min 10 caratteri)")
                 else:
-                    user, errore = verifica_codice_reset(reset_email, code_input, new_pwd)
+                    successo, messaggio, user = imposta_password_da_token(code_input, new_pwd)
                     
-                    if user:
-                        user.pop('password_hash', None)  # Non esporre hash in session
+                    if successo and user:
                         st.session_state.logged_in = True
                         st.session_state.user_data = user
                         st.session_state.force_logout = False
@@ -736,7 +647,7 @@ def mostra_pagina_login():
                         time.sleep(UI_DELAY_LONG)
                         st.rerun()
                     else:
-                        st.error(f"❌ {errore}")
+                        st.error(f"❌ {messaggio}")
 
 
 # ============================================================
@@ -2219,13 +2130,13 @@ def mostra_statistiche(df_completo):
 
         if search_term:
             if search_type == "Prodotto":
-                mask = df_editor['Descrizione'].str.upper().str.contains(search_term.upper(), na=False)
+                mask = df_editor['Descrizione'].str.upper().str.contains(search_term.upper(), na=False, regex=False)
                 st.info(f"🔍 Trovate {mask.sum()} righe con '{search_term}' nella descrizione")
             elif search_type == "Categoria":
-                mask = df_editor['Categoria'].str.upper().str.contains(search_term.upper(), na=False)
+                mask = df_editor['Categoria'].str.upper().str.contains(search_term.upper(), na=False, regex=False)
                 st.info(f"🔍 Trovate {mask.sum()} righe nella categoria '{search_term}'")
             else:
-                mask = df_editor['Fornitore'].str.upper().str.contains(search_term.upper(), na=False)
+                mask = df_editor['Fornitore'].str.upper().str.contains(search_term.upper(), na=False, regex=False)
                 st.info(f"🔍 Trovate {mask.sum()} righe del fornitore '{search_term}'")
             
             df_editor = df_editor[mask]
@@ -2995,9 +2906,6 @@ if force_refresh:
 
 with st.spinner("⏳ Caricamento dati..."):
     df_cache = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh)
-
-# ✅ Render riuscito: reset contatore anti-loop
-st.session_state._rerun_guard = 0
 
 
 # 🗂️ GESTIONE FATTURE - Eliminazione (prima del file uploader)
