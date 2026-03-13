@@ -89,57 +89,57 @@ with tab1:
                     for err in errori_compliance:
                         st.error(err)
                 elif vecchia_password == nuova_password:
-                st.warning("⚠️ La nuova password deve essere diversa da quella attuale")
-            else:
-                try:
-                    # Verifica password attuale (supporta sia Argon2 che SHA256 legacy)
-                    stored_hash = user.get('password_hash', '').strip()
-                    password_corretta = False
-                    
-                    # Prova prima con Argon2 (formato moderno)
-                    if stored_hash.startswith('$argon2'):
-                        try:
-                            ph.verify(stored_hash, vecchia_password)
-                            password_corretta = True
-                        except Exception:
-                            password_corretta = False
-                    else:
-                        # Fallback SHA256 legacy
-                        sha_hash = hashlib.sha256(vecchia_password.encode()).hexdigest()
-                        password_corretta = (sha_hash == stored_hash)
-                    
-                    if not password_corretta:
-                        st.error("❌ Password attuale errata!")
-                    else:
-                        # Crea nuovo hash con Argon2 (formato moderno)
-                        nuovo_hash = ph.hash(nuova_password)
+                    st.warning("⚠️ La nuova password deve essere diversa da quella attuale")
+                else:
+                    try:
+                        # Verifica password attuale (supporta sia Argon2 che SHA256 legacy)
+                        stored_hash = user.get('password_hash', '').strip()
+                        password_corretta = False
                         
-                        # Aggiorna nel database
-                        response = supabase.table('users').update({
-                            'password_hash': nuovo_hash
-                        }).eq('id', user['id']).execute()
-                        
-                        if not response.data:
-                            st.error("❌ Errore aggiornamento database")
-                            logger.error(f"Update fallito per user_id={user['id']}")
-                        else:
-                            st.success("✅ Password aggiornata con successo!")
-                            logger.info(f"Password modificata per {user.get('email')}")
-                            st.info("🔄 Reindirizzamento al login tra 2 secondi...")
-                            time.sleep(2)
-                            
-                            # Logout automatico + invalida session_token
+                        # Prova prima con Argon2 (formato moderno)
+                        if stored_hash.startswith('$argon2'):
                             try:
-                                supabase.table('users').update({'session_token': None}).eq('id', user['id']).execute()
+                                ph.verify(stored_hash, vecchia_password)
+                                password_corretta = True
                             except Exception:
-                                pass
-                            st.session_state.logged_in = False
-                            st.session_state.user_data = None
-                            st.switch_page("app.py")
+                                password_corretta = False
+                        else:
+                            # Fallback SHA256 legacy
+                            sha_hash = hashlib.sha256(vecchia_password.encode()).hexdigest()
+                            password_corretta = (sha_hash == stored_hash)
                         
-                except Exception as e:
-                    logger.exception(f"Errore cambio password per {user.get('email')}")
-                    st.error(f"❌ Errore: {str(e)}")
+                        if not password_corretta:
+                            st.error("❌ Password attuale errata!")
+                        else:
+                            # Crea nuovo hash con Argon2 (formato moderno)
+                            nuovo_hash = ph.hash(nuova_password)
+                            
+                            # Aggiorna nel database
+                            response = supabase.table('users').update({
+                                'password_hash': nuovo_hash
+                            }).eq('id', user['id']).execute()
+                            
+                            if not response.data:
+                                st.error("❌ Errore aggiornamento database")
+                                logger.error(f"Update fallito per user_id={user['id']}")
+                            else:
+                                st.success("✅ Password aggiornata con successo!")
+                                logger.info(f"Password modificata per {user.get('email')}")
+                                st.info("🔄 Reindirizzamento al login tra 2 secondi...")
+                                time.sleep(2)
+                                
+                                # Logout automatico + invalida session_token
+                                try:
+                                    supabase.table('users').update({'session_token': None}).eq('id', user['id']).execute()
+                                except Exception:
+                                    pass
+                                st.session_state.logged_in = False
+                                st.session_state.user_data = None
+                                st.switch_page("app.py")
+                            
+                    except Exception as e:
+                        logger.exception(f"Errore cambio password per {user.get('email')}")
+                        st.error(f"❌ Errore: {str(e)}")
 
 # ----- TAB 2: EXPORT DATI -----
 with tab2:
