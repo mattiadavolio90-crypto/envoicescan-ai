@@ -93,7 +93,8 @@ _memoria_cache = {
     'prodotti_master': {},      # {descrizione: categoria}
     'classificazioni_manuali': {},  # {descrizione: {categoria, is_dicitura}}
     'version': 0,               # Incrementato ad ogni invalidazione
-    'loaded': False
+    'loaded': False,
+    '_loaded_user_ids': set()   # user_id già caricati (isola dati per utente)
 }
 
 # Flag per disabilitare la memoria globale (solo sessione)
@@ -151,13 +152,12 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
     """
     global _memoria_cache
     
-    # Se già caricata, ritorna cache esistente
-    if _memoria_cache['loaded']:
-        return _memoria_cache
-    
     with _cache_lock:
-        # Double-check dopo acquisizione lock
-        if _memoria_cache['loaded']:
+        # Check se i dati globali E quelli dell'utente sono già caricati
+        global_loaded = _memoria_cache['loaded']
+        user_already_loaded = user_id in _memoria_cache.get('_loaded_user_ids', set())
+        
+        if global_loaded and user_already_loaded:
             return _memoria_cache
     
         # Usa client iniettato o fallback a singleton
@@ -170,50 +170,57 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                 return _memoria_cache
     
         try:
-            # Query 1: Carica TUTTA la memoria locale utente (1 query sola)
-            result_locale = supabase_client.table('prodotti_utente')\
-                .select('descrizione, categoria')\
-                .eq('user_id', user_id)\
-                .execute()
+            # Carica dati LOCALE utente solo se non già caricati per questo user_id
+            if not user_already_loaded:
+                result_locale = supabase_client.table('prodotti_utente')\
+                    .select('descrizione, categoria')\
+                    .eq('user_id', user_id)\
+                    .execute()
         
-            if result_locale.data:
-                _memoria_cache['prodotti_utente'][user_id] = {
-                    row['descrizione']: row['categoria'] 
-                    for row in result_locale.data
-                }
-                logger.info(f"📦 Cache LOCALE caricata: {len(result_locale.data)} prodotti")
-        
-            # Query 2: Carica TUTTA la memoria globale (1 query sola)
-            result_globale = supabase_client.table('prodotti_master')\
-                .select('descrizione, categoria')\
-                .execute()
-        
-            if result_globale.data:
-                _memoria_cache['prodotti_master'] = {
-                    row['descrizione']: row['categoria'] 
-                    for row in result_globale.data
-                }
-                logger.info(f"📦 Cache GLOBALE caricata: {len(result_globale.data)} prodotti")
-        
-            # Query 3: Carica TUTTE le classificazioni manuali admin (1 query sola)
-            result_manuali = supabase_client.table('classificazioni_manuali')\
-                .select('descrizione, categoria_corretta, is_dicitura')\
-                .execute()
-        
-            if result_manuali.data:
-                _memoria_cache['classificazioni_manuali'] = {
-                    row['descrizione']: {
-                        'categoria': row['categoria_corretta'],
-                        'is_dicitura': row.get('is_dicitura', False)
+                if result_locale.data:
+                    _memoria_cache['prodotti_utente'][user_id] = {
+                        row['descrizione']: row['categoria'] 
+                        for row in result_locale.data
                     }
-                    for row in result_manuali.data
-                }
-                logger.info(f"📦 Cache MANUALI caricata: {len(result_manuali.data)} classificazioni")
+                    logger.info(f"📦 Cache LOCALE caricata: {len(result_locale.data)} prodotti per user {user_id[:8]}")
+                else:
+                    _memoria_cache['prodotti_utente'][user_id] = {}
+                
+                _memoria_cache.setdefault('_loaded_user_ids', set()).add(user_id)
+            
+            # Carica dati GLOBALI solo se non già caricati
+            if not global_loaded:
+                # Query 2: Carica TUTTA la memoria globale (1 query sola)
+                result_globale = supabase_client.table('prodotti_master')\
+                    .select('descrizione, categoria')\
+                    .execute()
         
-            _memoria_cache['loaded'] = True
+                if result_globale.data:
+                    _memoria_cache['prodotti_master'] = {
+                        row['descrizione']: row['categoria'] 
+                        for row in result_globale.data
+                    }
+                    logger.info(f"📦 Cache GLOBALE caricata: {len(result_globale.data)} prodotti")
+        
+                # Query 3: Carica TUTTE le classificazioni manuali admin (1 query sola)
+                result_manuali = supabase_client.table('classificazioni_manuali')\
+                    .select('descrizione, categoria_corretta, is_dicitura')\
+                    .execute()
+        
+                if result_manuali.data:
+                    _memoria_cache['classificazioni_manuali'] = {
+                        row['descrizione']: {
+                            'categoria': row['categoria_corretta'],
+                            'is_dicitura': row.get('is_dicitura', False)
+                        }
+                        for row in result_manuali.data
+                    }
+                    logger.info(f"📦 Cache MANUALI caricata: {len(result_manuali.data)} classificazioni")
+        
+                _memoria_cache['loaded'] = True
+            
             _memoria_cache['version'] += 1
-        
-            logger.info(f"✅ Cache completa caricata (v{_memoria_cache['version']})")
+            logger.info(f"✅ Cache caricata (v{_memoria_cache['version']}) per user {user_id[:8]}")
             return _memoria_cache
         
         except Exception as e:
@@ -235,7 +242,8 @@ def invalida_cache_memoria():
             'prodotti_master': {},
             'classificazioni_manuali': {},
             'version': (_memoria_cache.get('version', 0) + 1),
-            'timestamp': None
+            'timestamp': None,
+            '_loaded_user_ids': set()
         }
     logger.info("🔄 Cache memoria invalidata")
 
@@ -252,7 +260,6 @@ def _traccia_memoria_categorizzata(descrizione: str):
             lista.append(descrizione)
         elif len(lista) == _MEMORIA_CAP:
             logger.warning(f"⚠️ Raggiunto limite {_MEMORIA_CAP} righe memoria categorizzate nella sessione")
-            lista.append(descrizione)  # append one extra to avoid re-logging
 
 
 def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
@@ -276,8 +283,8 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
     global _memoria_cache
     
     try:
-        # Carica cache se non già caricata (solo 1 volta per sessione)
-        if not _memoria_cache['loaded']:
+        # Carica cache se non già caricata per questo utente
+        if not _memoria_cache['loaded'] or user_id not in _memoria_cache.get('_loaded_user_ids', set()):
             carica_memoria_completa(user_id)
         
         # Normalizza per matching consistente (stesso trattamento di categorizza_con_memoria)
@@ -646,8 +653,8 @@ def categorizza_con_memoria(
             logger.warning(f"Impossibile inizializzare Supabase client: {e}")
     
     try:
-        # Carica cache se non già caricata
-        if not _memoria_cache['loaded'] and user_id:
+        # Carica cache se non già caricata per questo utente
+        if user_id and (not _memoria_cache['loaded'] or user_id not in _memoria_cache.get('_loaded_user_ids', set())):
             carica_memoria_completa(user_id, supabase_client)
         
         # LIVELLO 1: Check memoria admin (da cache, 0 query!)

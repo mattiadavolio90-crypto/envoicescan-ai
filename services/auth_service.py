@@ -91,8 +91,8 @@ def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
         return False, 0
     except Exception:
         logger.exception('Errore controlla_rate_limit')
-        # In caso di errore DB, non bloccare il login (graceful degradation)
-        return False, 0
+        # In caso di errore DB, blocca temporaneamente per sicurezza
+        return True, 5
 
 
 def registra_tentativo(email: str, success: bool, supabase_client=None):
@@ -641,7 +641,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             
     except Exception as e:
         logger.exception("Errore verifica credenziali")
-        return None, f"Errore: {str(e)}"
+        return None, "Errore durante la verifica delle credenziali. Riprova tra qualche minuto."
 
 
 def verifica_sessione_da_cookie(

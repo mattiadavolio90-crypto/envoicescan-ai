@@ -2,6 +2,7 @@
 Helper per renderizzare sidebar e header condivisi in tutte le pagine
 """
 import streamlit as st
+import html as _html
 import os
 from config.constants import ADMIN_EMAILS
 from config.logger_setup import get_logger
@@ -100,6 +101,10 @@ def render_sidebar(user_data: dict):
         is_admin_impersonating = st.session_state.get('impersonating', False) and admin_original_email in ADMIN_EMAILS
         nome_ristorante = st.session_state.get('nome_ristorante', 'Ristorante')
         
+        # Escape HTML per prevenire XSS
+        user_email_safe = _html.escape(user_email)
+        nome_ristorante_safe = _html.escape(nome_ristorante)
+        
         st.markdown(f"""
         <div style="background: #e0f2fe;
                     padding: clamp(0.75rem, 2vw, 1rem);
@@ -107,8 +112,8 @@ def render_sidebar(user_data: dict):
                     border: 2px solid #0ea5e9;
                     margin-bottom: 1.25rem;">
             <div style="font-size: clamp(0.65rem, 1.5vw, 0.75rem); color: #0369a1; opacity: 0.9; margin-bottom: 0.3rem; font-weight: 600;">👤 Account</div>
-            <div title="{user_email}" style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); font-weight: 700; color: #0c4a6e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{user_email}</div>
-            <div title="{nome_ristorante}" style="font-size: clamp(0.6rem, 1.4vw, 0.7rem); color: #0369a1; opacity: 0.8; margin-top: 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{nome_ristorante}</div>
+            <div title="{user_email_safe}" style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); font-weight: 700; color: #0c4a6e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{user_email_safe}</div>
+            <div title="{nome_ristorante_safe}" style="font-size: clamp(0.6rem, 1.4vw, 0.7rem); color: #0369a1; opacity: 0.8; margin-top: 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{nome_ristorante_safe}</div>
         </div>
         """, unsafe_allow_html=True)
         

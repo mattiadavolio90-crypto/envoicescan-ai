@@ -964,11 +964,8 @@ if st.session_state.margine_tab == "analisi":
 # ============================================
 if st.session_state.margine_tab == "centri":
 
-    from config.constants import CENTRI_DI_PRODUZIONE, CATEGORIE_SPESE_GENERALI
+    from config.constants import CENTRI_DI_PRODUZIONE, CATEGORIE_SPESE_GENERALI, MESI_ITA
     from services.db_service import carica_e_prepara_dataframe
-
-    MESI_ITA = {1: "GENNAIO", 2: "FEBBRAIO", 3: "MARZO", 4: "APRILE", 5: "MAGGIO", 6: "GIUGNO",
-                7: "LUGLIO", 8: "AGOSTO", 9: "SETTEMBRE", 10: "OTTOBRE", 11: "NOVEMBRE", 12: "DICEMBRE"}
 
     st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
 

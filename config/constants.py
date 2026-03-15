@@ -1274,3 +1274,15 @@ UI_DELAY_MEDIUM = 0.3
 UI_DELAY_LONG = 0.5
 BATCH_RATE_LIMIT_DELAY = 0.5
 
+# Dizionario mesi italiani (usato in pivot mensili)
+MESI_ITA = {
+    1: 'GENNAIO', 2: 'FEBBRAIO', 3: 'MARZO', 4: 'APRILE',
+    5: 'MAGGIO', 6: 'GIUGNO', 7: 'LUGLIO', 8: 'AGOSTO',
+    9: 'SETTEMBRE', 10: 'OTTOBRE', 11: 'NOVEMBRE', 12: 'DICEMBRE'
+}
+
+# Limiti upload e database
+MAX_RIGHE_GLOBALE = 100000       # Max righe per utente/ristorante
+MAX_RIGHE_BATCH = 500            # Max righe per singolo batch upload
+BATCH_FILE_SIZE = 20             # Max file per batch
+
