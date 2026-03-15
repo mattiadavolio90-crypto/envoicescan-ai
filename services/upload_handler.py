@@ -39,15 +39,19 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     
     # 🔒 RATE LIMIT UPLOAD: max file e dimensione totale
     if len(uploaded_files) > MAX_FILES_PER_UPLOAD:
-        st.error(f"⚠️ Puoi caricare al massimo **{MAX_FILES_PER_UPLOAD} file** per volta. Hai selezionato {len(uploaded_files)} file.")
-        st.stop()
+        # Reset file uploader per evitare accumulo file tra tentativi
+        st.session_state['uploader_key'] = st.session_state.get('uploader_key', 0) + 1
+        st.session_state['_upload_limit_error'] = f"⚠️ Puoi caricare al massimo **{MAX_FILES_PER_UPLOAD} file** per volta. Hai selezionato {len(uploaded_files)} file."
+        st.rerun()
     
     _total_upload_bytes = sum(f.size for f in uploaded_files)
     _max_upload_bytes = MAX_UPLOAD_TOTAL_MB * 1024 * 1024
     if _total_upload_bytes > _max_upload_bytes:
         _total_mb = _total_upload_bytes / (1024 * 1024)
-        st.error(f"⚠️ Dimensione totale troppo grande: **{_total_mb:.0f} MB** (max {MAX_UPLOAD_TOTAL_MB} MB). Riduci il numero di file.")
-        st.stop()
+        # Reset file uploader per evitare accumulo file tra tentativi
+        st.session_state['uploader_key'] = st.session_state.get('uploader_key', 0) + 1
+        st.session_state['_upload_limit_error'] = f"⚠️ Dimensione totale troppo grande: **{_total_mb:.0f} MB** (max {MAX_UPLOAD_TOTAL_MB} MB). Riduci il numero di file."
+        st.rerun()
     
     # 🚀 PROGRESS BAR IMMEDIATA: Mostra subito che stiamo lavorando
     upload_placeholder = st.empty()

@@ -1704,6 +1704,10 @@ if 'upload_messages' in st.session_state and st.session_state.upload_messages:
         st.session_state.upload_messages = []
 
 
+# 🔥 MOSTRA ERRORE LIMITE UPLOAD (dopo reset widget)
+if '_upload_limit_error' in st.session_state:
+    st.error(st.session_state.pop('_upload_limit_error'))
+
 # 🔥 GESTIONE FILE CARICATI
 if uploaded_files:
     handle_uploaded_files(uploaded_files, supabase, user_id)
