@@ -359,6 +359,12 @@ with tab3:
                         except Exception as table_err:
                             logger.warning(f"Errore pulizia tabella {table_name}: {table_err}")
                     
+                    try:
+                        from services.ai_service import invalida_cache_memoria
+                        invalida_cache_memoria()
+                    except Exception:
+                        pass
+                    
                     # STEP 3: Elimina l'utente dalla tabella users
                     delete_result = supabase.table('users').delete().eq('id', user_id).execute()
                     

@@ -856,6 +856,12 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None) -> Dict[str, Any]:
         except Exception as e_cm:
             logger.warning(f"⚠️ Impossibile resettare classificazioni_manuali: {e_cm}")
         
+        try:
+            from services.ai_service import invalida_cache_memoria
+            invalida_cache_memoria()
+        except Exception:
+            pass  # non bloccare l'eliminazione per un errore di cache
+        
         return {"success": True, "error": None, "righe_eliminate": num_righe, "fatture_eliminate": num_fatture}
         
     except Exception as e:

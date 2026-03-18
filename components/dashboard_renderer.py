@@ -386,8 +386,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     
                     if descrizioni_per_ai:
                         # 🔒 BUDGET GIORNALIERO AI: limita chiamate per sessione/giorno
-                        from datetime import date as _date_cls
-                        _today = _date_cls.today().isoformat()
+                        _today = datetime.now(timezone.utc).date().isoformat()
                         if st.session_state.get('_ai_budget_date') != _today:
                             st.session_state['_ai_budget_date'] = _today
                             st.session_state['_ai_budget_calls'] = 0
