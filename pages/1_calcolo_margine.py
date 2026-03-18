@@ -1057,7 +1057,7 @@ if st.session_state.margine_tab == "centri":
     # ============================================
     # CARICA DATI E FILTRA
     # ============================================
-    df_full = carica_e_prepara_dataframe(user_id)
+    df_full = carica_e_prepara_dataframe(user_id, ristorante_id=st.session_state.get('ristorante_id'))
 
     if df_full is None or df_full.empty:
         st.warning("⚠️ Nessun dato disponibile.")

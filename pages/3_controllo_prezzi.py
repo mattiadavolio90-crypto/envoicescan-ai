@@ -189,7 +189,7 @@ with col_info_periodo:
 # CARICAMENTO DATI
 # ============================================
 with st.spinner("Caricamento dati fatture..."):
-    df_all = carica_e_prepara_dataframe(user_id)
+    df_all = carica_e_prepara_dataframe(user_id, ristorante_id=st.session_state.get('ristorante_id'))
 
 if df_all.empty:
     st.info("📊 Nessuna fattura disponibile. Carica le fatture dalla pagina Analisi Fatture AI.")

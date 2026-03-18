@@ -1180,7 +1180,7 @@ if force_refresh:
     logger.info("🔄 FORCE RELOAD attivato dopo categorizzazione AI")
 
 with st.spinner("⏳ Caricamento dati..."):
-    df_cache = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh)
+    df_cache = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh, ristorante_id=st.session_state.get('ristorante_id'))
 
 
 # 🗂️ GESTIONE FATTURE - Eliminazione (prima del file uploader)

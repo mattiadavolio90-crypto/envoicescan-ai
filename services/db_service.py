@@ -109,7 +109,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         return pd.DataFrame()
 
 
-def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None):
+def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None, ristorante_id=None):
     """
     🔥 SINGLE SOURCE OF TRUTH: Carica fatture SOLO da Supabase
     
@@ -135,9 +135,6 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
             return pd.DataFrame()
     except Exception as e:
         logger.warning(f"⚠️ Impossibile controllare force_empty flag: {e}")
-    
-    # Recupera ristorante_id dalla sessione (per multi-ristorante)
-    ristorante_id = st.session_state.get('ristorante_id') if 'session_state' in dir(st) else None
     
     # Se force_refresh, invalida cache prima di ricaricare
     if force_refresh:
