@@ -212,7 +212,7 @@ if st.session_state.get('_set_impersonation_cookie') and _cookie_manager is not 
         _cookie_manager.set(
             "impersonation_user_id",
             str(st.session_state['_set_impersonation_cookie']),
-            expires_at=datetime.now() + timedelta(minutes=30)
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
         )
     except Exception as _ice:
         logger.warning(f"Errore impostazione cookie impersonazione: {_ice}")
@@ -579,6 +579,9 @@ def mostra_pagina_login():
                             st.session_state.partita_iva = user.get('partita_iva')
                             st.session_state.created_at = user.get('created_at')
                             
+                            # Pulizia chiave login UI
+                            st.session_state.pop('login_tab_attivo', None)
+                            
                             # 🍪 Genera e salva session_token nel DB + cookie persistente
                             if _cookie_manager is not None:
                                 try:
@@ -590,10 +593,16 @@ def mostra_pagina_login():
                                         'last_seen_at': _now_utc.isoformat(),
                                     }).eq('id', user.get('id')).execute()
                                     _cookie_manager.set("session_token", _s_token,
-                                                        expires_at=datetime.now() + timedelta(days=30))
+                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=30))
                                     st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception as _ce:
                                     logger.warning(f"Errore salvataggio session token: {_ce}")
+                            else:
+                                st.warning(
+                                    "⚠️ Sessione non persistente: "
+                                    "verifica che i cookie siano abilitati nel browser. "
+                                    "Verrai disconnesso ad ogni aggiornamento pagina."
+                                )
                             
                             # Verifica se è admin e imposta flag
                             if user.get('email') in ADMIN_EMAILS:
@@ -672,6 +681,7 @@ def mostra_pagina_login():
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
                             st.session_state.force_logout = False
+                            st.session_state.pop('login_tab_attivo', None)
                             if _cookie_manager is not None:
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
@@ -682,10 +692,16 @@ def mostra_pagina_login():
                                         'last_seen_at': _now_utc.isoformat(),
                                     }).eq('id', user.get('id')).execute()
                                     _cookie_manager.set("session_token", _s_token,
-                                                        expires_at=datetime.now() + timedelta(days=30))
+                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=30))
                                     st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception:
                                     pass
+                            else:
+                                st.warning(
+                                    "⚠️ Sessione non persistente: "
+                                    "verifica che i cookie siano abilitati nel browser. "
+                                    "Verrai disconnesso ad ogni aggiornamento pagina."
+                                )
                             st.success("✅ Password aggiornata! Accesso automatico...")
                             time.sleep(UI_DELAY_LONG)
                             st.rerun()
@@ -707,6 +723,7 @@ if st.session_state.get('force_logout', False):
 # Se NON loggato, mostra login e STOP
 if not st.session_state.get('logged_in', False):
     logger.info("👤 Utente non loggato - mostrando pagina login")
+    st.session_state._rerun_guard = 0
     mostra_pagina_login()
     st.stop()
 
@@ -777,8 +794,9 @@ if (st.session_state.get('user_is_admin', False)
                 }
                 st.session_state.user_is_admin = False
                 st.session_state.impersonating = True
-                # NON persistere impersonation_started_at nel cookie: un refresh termina la protezione timeout
-                st.session_state.impersonation_started_at = datetime.now(timezone.utc).isoformat()
+                # Preserva il timestamp originale se già presente (evita reset timer ad ogni F5)
+                if not st.session_state.get('impersonation_started_at'):
+                    st.session_state.impersonation_started_at = datetime.now(timezone.utc).isoformat()
                 # Aggiorna variabile locale user per il resto della pagina
                 user = st.session_state.user_data
                 logger.info(f"✅ Impersonazione ripristinata da cookie dopo refresh: user_id={_imp_customer.get('id')}")
@@ -799,6 +817,8 @@ if (st.session_state.get('user_is_admin', False)
 if not user or not user.get('id'):
     logger.error("❌ ERRORE CRITICO: user non definito in caricamento ristoranti")
     st.session_state.logged_in = False
+    st.session_state.force_logout = True
+    st.session_state._cookie_checked = True
     st.rerun()
 
 if 'ristoranti' not in st.session_state or not st.session_state.get('ristorante_id'):
@@ -1170,6 +1190,8 @@ try:
 except (KeyError, TypeError, AttributeError):
     logger.critical("❌ user_data corrotto o mancante campo 'id' - FORZA LOGOUT")
     st.session_state.logged_in = False
+    st.session_state.force_logout = True
+    st.session_state._cookie_checked = True
     st.error("⚠️ Sessione invalida. Effettua nuovamente il login.")
     st.rerun()
 
