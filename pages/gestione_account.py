@@ -25,6 +25,7 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
 # Verifica autenticazione
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.switch_page("app.py")
+    st.stop()
 
 user = st.session_state.user_data
 is_admin = st.session_state.get('user_is_admin', False)
@@ -55,6 +56,13 @@ tab1, tab2, tab3 = st.tabs(["🔑 Cambio Password", "📥 Scarica Dati", "🗑�
 # ----- TAB 1: CAMBIO PASSWORD -----
 with tab1:
     st.subheader("Modifica Password")
+    
+    stored_hash_check = user.get('password_hash', '').strip()
+    if stored_hash_check and not stored_hash_check.startswith('$argon2'):
+        st.warning(
+            "⚠️ Il tuo account usa una protezione password obsoleta. "
+            "Aggiorna la password per migliorare la sicurezza."
+        )
     
     with st.form("form_cambio_password"):
         vecchia_password = st.text_input("Password Attuale", type="password")
@@ -101,8 +109,9 @@ with tab1:
                                 password_corretta = False
                         else:
                             # Fallback SHA256 legacy
+                            import hmac as _hmac
                             sha_hash = hashlib.sha256(vecchia_password.encode()).hexdigest()
-                            password_corretta = (sha_hash == stored_hash)
+                            password_corretta = _hmac.compare_digest(sha_hash, stored_hash)
                         
                         if not password_corretta:
                             st.error("❌ Password attuale errata!")
@@ -127,8 +136,8 @@ with tab1:
                                 # Logout automatico + invalida session_token
                                 try:
                                     supabase.table('users').update({'session_token': None}).eq('id', user['id']).execute()
-                                except Exception:
-                                    pass
+                                except Exception as e:
+                                    logger.warning(f"Errore invalidazione session token: {e}")
                                 st.session_state.logged_in = False
                                 st.session_state.user_data = None
                                 st.switch_page("app.py")
@@ -362,8 +371,8 @@ with tab3:
                     try:
                         from services.ai_service import invalida_cache_memoria
                         invalida_cache_memoria()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Cache non invalidata post-cambio-password: {e}")
                     
                     # STEP 3: Elimina l'utente dalla tabella users
                     delete_result = supabase.table('users').delete().eq('id', user_id).execute()

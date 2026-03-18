@@ -153,14 +153,16 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
     global _memoria_cache
     
     with _cache_lock:
-        # Check se i dati globali E quelli dell'utente sono già caricati
         global_loaded = _memoria_cache['loaded']
         user_already_loaded = user_id in _memoria_cache.get('_loaded_user_ids', set())
-        
-        if global_loaded and user_already_loaded:
-            return _memoria_cache
-    
-        # Usa client iniettato o fallback a singleton
+
+    # I due stati sono gestiti indipendentemente nel try-block:
+    # – global_loaded=False       → ricarica prodotti_master + classificazioni_manuali
+    # – user_already_loaded=False → ricarica prodotti_utente per questo user_id
+    if user_already_loaded and global_loaded:
+        return _memoria_cache
+
+    # Usa client iniettato o fallback a singleton
         if supabase_client is None:
             try:
                 from services import get_supabase_client
@@ -262,7 +264,7 @@ def _traccia_memoria_categorizzata(descrizione: str):
             logger.warning(f"⚠️ Raggiunto limite {_MEMORIA_CAP} righe memoria categorizzate nella sessione")
 
 
-def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
+def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=None) -> str:
     """
     Ottiene categoria prodotto con priorità IBRIDA usando CACHE IN-MEMORY.
     ELIMINA N+1 QUERY: usa cache invece di query ripetute.
@@ -285,7 +287,7 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str) -> str:
     try:
         # Carica cache se non già caricata per questo utente
         if not _memoria_cache['loaded'] or user_id not in _memoria_cache.get('_loaded_user_ids', set()):
-            carica_memoria_completa(user_id)
+            carica_memoria_completa(user_id, supabase_client=supabase_client)
         
         # Normalizza per matching consistente (stesso trattamento di categorizza_con_memoria)
         desc_stripped = descrizione.strip()
@@ -363,7 +365,11 @@ def _build_compiled_patterns() -> Tuple[list, list]:
     return patterns_alimenti, patterns_contenitori
 
 # Compilati una volta all'avvio (0 overhead nelle chiamate successive)
-_PATTERNS_ALIMENTI, _PATTERNS_CONTENITORI = _build_compiled_patterns()
+try:
+    _PATTERNS_ALIMENTI, _PATTERNS_CONTENITORI = _build_compiled_patterns()
+except Exception as e:
+    logger.error(f"Errore buildcompiledpatterns: {e}")
+    _PATTERNS_ALIMENTI, _PATTERNS_CONTENITORI = [], []
 
 
 def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
@@ -792,6 +798,13 @@ def svuota_memoria_globale(supabase_client=None) -> bool:
 
         # Invalida cache
         invalida_cache_memoria()
+
+        try:
+            supabase_client.table("prodotti_master").delete().neq("id", 0).execute()
+            logger.info("prodotti_master svuotato dal DB")
+        except Exception as e:
+            logger.error(f"Errore svuotamento prodotti_master: {e}")
+            return False
 
         # Cancella file legacy
         try:

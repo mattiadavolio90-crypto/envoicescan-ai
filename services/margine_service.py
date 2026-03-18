@@ -58,7 +58,7 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
                 .eq('user_id', user_id) \
                 .eq('ristorante_id', ristorante_id) \
                 .gte('data_documento', f'{anno}-01-01') \
-                .lte('data_documento', f'{anno}-12-31') \
+                .lt('data_documento', f'{anno + 1}-01-01') \
                 .neq('categoria', 'Da Classificare') \
                 .range(offset, offset + page_size - 1) \
                 .execute()
@@ -372,7 +372,11 @@ def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
     try:
         supabase = get_supabase_client()
         records = []
-        
+
+        if len(df_risultati) < 12:
+            logger.error(f"dfrisultati ha solo {len(df_risultati)} righe, attese 12")
+            return False
+
         for i in range(12):
             mese_num = i + 1
             

@@ -77,7 +77,7 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
                             st.session_state.files_con_errori = {}
                         st.session_state.files_con_errori[nome_file] = errore
                     except Exception:
-                        pass  # Streamlit non disponibile o errore session_state
+                        pass  # intenzionale: Streamlit non disponibile fuori contesto UI
                     
                     pdf_document.close()
                     return None
@@ -108,7 +108,7 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
                         st.session_state.files_con_errori = {}
                     st.session_state.files_con_errori[nome_file] = errore
                 except Exception:
-                    pass
+                    pass  # intenzionale: Streamlit non disponibile fuori contesto UI
                 
                 return None
             
@@ -122,7 +122,7 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
                         st.session_state.files_con_errori = {}
                     st.session_state.files_con_errori[nome_file] = errore
                 except Exception:
-                    pass
+                    pass  # intenzionale: Streamlit non disponibile fuori contesto UI
                 
                 return None
         
@@ -139,7 +139,7 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
                 st.session_state.files_con_errori = {}
             st.session_state.files_con_errori[nome_file] = errore
         except Exception:
-            pass  # Streamlit non disponibile
+            pass  # intenzionale: Streamlit non disponibile fuori contesto UI
         
         return None
 

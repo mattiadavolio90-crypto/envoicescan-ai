@@ -133,8 +133,8 @@ def render_sidebar(user_data: dict):
                     current_script = fname
                     break
                 frame = frame.f_back
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Frame inspection fallita: {e}")
         
         # CSS per forzare colore blu uniforme sui bottoni attivi della sidebar
         # Usa selettore specifico per la sidebar così non tocca il resto dell'app
@@ -178,8 +178,9 @@ def render_sidebar(user_data: dict):
                 import json
                 try:
                     _pagine_raw = json.loads(_pagine_raw)
-                except Exception:
-                    _pagine_raw = None
+                except Exception as e:
+                    logger.warning(f"Errore parsing pagine_abilitate sidebar: {e}")
+                    _pagine_raw = {}
             pagine_abilitate = _pagine_raw if isinstance(_pagine_raw, dict) else {}
             
             if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",

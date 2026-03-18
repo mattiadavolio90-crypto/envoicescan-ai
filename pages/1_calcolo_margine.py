@@ -56,10 +56,12 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
 # ============================================
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.switch_page("app.py")
+    st.stop()
 
 # Admin puro (non impersonificato) → redirect a pannello admin
 if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
     st.switch_page("pages/admin.py")
+    st.stop()
 
 user = st.session_state.user_data
 user_id = user["id"]
@@ -255,7 +257,11 @@ if st.session_state.margine_tab == "analisi":
     # ============================================
     # 1) Fatturato netto dai margini salvati — somma tutti gli anni/mesi nel range
     #    Per semplicità: iteriamo anno per anno
+    if data_inizio_aa is None:
+        st.warning("Seleziona un periodo valido.")
+        st.stop()
     fatturato_netto_periodo = 0.0
+    _mesi_con_fatt_aa = 0  # mesi con fatturato > 0 (usato per medie accurate)
     anno_start = data_inizio_aa.year
     anno_end = data_fine_aa.year
     for a in range(anno_start, anno_end + 1):
@@ -267,7 +273,10 @@ if st.session_state.margine_tab == "analisi":
             fatt10 = float(dati_m.get('fatturato_iva10', 0.0) or 0.0)
             fatt22 = float(dati_m.get('fatturato_iva22', 0.0) or 0.0)
             altri_r = float(dati_m.get('altri_ricavi_noiva', 0.0) or 0.0)
-            fatturato_netto_periodo += (fatt10 / 1.10) + (fatt22 / 1.22) + altri_r
+            fatt_m = (fatt10 / 1.10) + (fatt22 / 1.22) + altri_r
+            fatturato_netto_periodo += fatt_m
+            if fatt_m > 0:
+                _mesi_con_fatt_aa += 1
 
     # 2) Costi per categoria dalle fatture
     df_costi_cat = carica_costi_per_categoria(
@@ -287,6 +296,9 @@ if st.session_state.margine_tab == "analisi":
         st.stop()
     else:
         df_costi_cat['centro'] = df_costi_cat['categoria'].map(cat_to_centro).fillna('Altro')
+        _non_mappate_aa = df_costi_cat[df_costi_cat['centro'] == 'Altro']['categoria'].unique().tolist()
+        if _non_mappate_aa:
+            logger.warning(f"⚠️ Categorie F&B non mappate a nessun centro (escluse dall'analisi avanzate): {_non_mappate_aa}")
         df_costi_cat = df_costi_cat[df_costi_cat['centro'] != 'Altro']
 
         totale_costi_fb = df_costi_cat['totale'].sum()
@@ -731,16 +743,14 @@ if st.session_state.margine_tab == "analisi":
         # ============================================
         st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📊 Riepilogo KPI - Media valori per periodo</h3>', unsafe_allow_html=True)
 
-        # Calcola numero mesi nel periodo
-        _num_mesi_periodo = (data_fine_aa.year - data_inizio_aa.year) * 12 + data_fine_aa.month - data_inizio_aa.month + 1
-        if _num_mesi_periodo < 1:
-            _num_mesi_periodo = 1
+        # Numero mesi con fatturato > 0 (esclude mesi futuri o senza dati inseriti)
+        _num_mesi_attivi_aa = _mesi_con_fatt_aa if _mesi_con_fatt_aa > 0 else 1
 
-        # Medie mensili dai dati già disponibili nel tab
-        _fatt_medio_aa = fatturato_netto_periodo / _num_mesi_periodo
-        _costi_fb_medi_aa = totale_costi_fb / _num_mesi_periodo
+        # Medie mensili calcolate solo sui mesi con dati effettivi
+        _fatt_medio_aa = fatturato_netto_periodo / _num_mesi_attivi_aa
+        _costi_fb_medi_aa = totale_costi_fb / _num_mesi_attivi_aa
         _fc_perc_aa = (totale_costi_fb / fatturato_netto_periodo * 100) if fatturato_netto_periodo > 0 else 0.0
-        _margine_medio_aa = primo_margine / _num_mesi_periodo
+        _margine_medio_aa = primo_margine / _num_mesi_attivi_aa
         _margine_perc_aa = (primo_margine / fatturato_netto_periodo * 100) if fatturato_netto_periodo > 0 else 0.0
 
         if fatturato_netto_periodo > 0 or totale_costi_fb > 0:
@@ -1089,6 +1099,9 @@ if st.session_state.margine_tab == "centri":
 
             df_centri = df_food_cp.copy()
             df_centri['Centro'] = df_centri['Categoria'].map(cat_to_centro).fillna('Da Classificare')
+            _non_mappate_cp = df_centri[df_centri['Centro'] == 'Da Classificare']['Categoria'].unique().tolist()
+            if _non_mappate_cp:
+                logger.warning(f"⚠️ Categorie F&B non mappate a nessun centro (escluse dal tab Centri): {_non_mappate_cp}")
 
             # Filtra solo i centri definiti (escludi "Da Classificare")
             centri_validi = list(CENTRI_DI_PRODUZIONE.keys())
@@ -1113,9 +1126,14 @@ if st.session_state.margine_tab == "centri":
                     fill_value=0
                 )
 
-                # Ordine mesi cronologico
-                mesi_ord = df_centri.drop_duplicates('mese_nome').sort_values('mese_sort')['mese_nome'].tolist()
-                pivot = pivot.reindex(columns=[m for m in mesi_ord if m in pivot.columns])
+                # Ordine mesi cronologico — includi TUTTI i mesi del periodo (mesi senza dati appaiono come 0)
+                mesi_ord = []
+                for _a_cp in range(data_inizio_cp.year, data_fine_cp.year + 1):
+                    _m_from_cp = data_inizio_cp.month if _a_cp == data_inizio_cp.year else 1
+                    _m_to_cp = data_fine_cp.month if _a_cp == data_fine_cp.year else 12
+                    for _m_cp in range(_m_from_cp, _m_to_cp + 1):
+                        mesi_ord.append(f"{MESI_ITA[_m_cp]} {_a_cp}")
+                pivot = pivot.reindex(columns=mesi_ord, fill_value=0)
 
                 # Ordine centri fisso
                 ordine_centri = [c for c in centri_validi if c in pivot.index]

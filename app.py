@@ -81,7 +81,6 @@ from services.invoice_service import (
 
 from services.db_service import (
     carica_e_prepara_dataframe,
-    ricalcola_prezzi_con_sconti,
     elimina_fattura_completa,
     elimina_tutte_fatture,
     get_fatture_stats
@@ -264,8 +263,8 @@ if st.query_params.get("logout") == "1":
                 'session_token_created_at': None,
                 'last_seen_at': None,
             }).eq('email', _email_for_logout).execute()
-    except Exception:
-        pass
+    except Exception as _logout_err:
+        logger.warning(f"⚠️ Impossibile invalidare session_token in DB durante logout: {_logout_err}")
     st.session_state.clear()
     st.session_state.logged_in = False
     st.session_state.force_logout = True
@@ -305,12 +304,13 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
             """, unsafe_allow_html=True)
             st.stop()
         # else: nessun token e già controllato → login normale
-    except Exception as _re:
-        logger.warning(f"Errore ripristino sessione da cookie: {_re}")
+    except Exception as cookie_err:
+        logger.warning(f"Errore ripristino sessione da cookie: {cookie_err}")
 
 
-# ✅ Reset contatore anti-loop all'inizio del flow autenticato (prima di qualsiasi rendering)
-if st.session_state.get('logged_in', False):
+# ✅ Reset contatore anti-loop SOLO nella pagina login (non loggato)
+# Il reset nel flow autenticato avviene DOPO il render completo (vedi fine file)
+if not st.session_state.get('logged_in', False):
     st.session_state._rerun_guard = 0
 
 # Aggiorna last_seen_at con throttling: massimo 1 scrittura ogni 5 minuti per sessione Streamlit
@@ -571,6 +571,7 @@ def mostra_pagina_login():
                         
                         if user:
                             user.pop('password_hash', None)  # Non esporre hash in session
+                            st.session_state.forcelogout = False  # Reset anti-loop prima di aprire la sessione
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
                             st.session_state.force_logout = False  # ← Reset flag logout
@@ -612,6 +613,7 @@ def mostra_pagina_login():
                                 time.sleep(UI_DELAY_SHORT)
                                 # Reindirizza direttamente al pannello admin
                                 st.switch_page("pages/admin.py")
+                                st.stop()
                             else:
                                 st.session_state.user_is_admin = False
                                 logger.info(f"✅ Login cliente: user_id={user.get('id')}")
@@ -949,6 +951,7 @@ if 'ristoranti' not in st.session_state or not st.session_state.get('ristorante_
 if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
     logger.info(f"👨‍💼 Admin user_id={user.get('id')} su app.py → redirect a pannello admin")
     st.switch_page("pages/admin.py")
+    st.stop()
 
 # ============================================
 # BANNER IMPERSONAZIONE (solo per admin che impersonano)
@@ -1033,6 +1036,7 @@ if st.session_state.get('impersonating', False):
                 
                 # Redirect al pannello admin
                 st.switch_page("pages/admin.py")
+                st.stop()
             else:
                 st.error("⚠️ Errore: dati admin originali non trovati")
                 st.session_state.impersonating = False
@@ -1471,7 +1475,7 @@ if st.session_state.get("hide_uploader", False):
             """,
             height=0
         )
-    uploaded_files = None  # Fix NameError: uploaded_files sempre definito
+    uploaded_files = []  # Nessun file da elaborare in questo stato
 else:
     # ============================================================
     # CHECK LIMITE RIGHE GLOBALE (STEP 1 - Performance)
@@ -1763,3 +1767,8 @@ except Exception as e:
     logger.error(f"Errore durante il caricamento: {e}")
     st.error("❌ Errore durante il caricamento del file. Riprova.")
     logger.exception("Errore caricamento dashboard")
+
+# ✅ Reset contatore anti-loop DOPO che il render è completato senza rerun
+# (se siamo arrivati qui, il ciclo corrente è terminato normalmente)
+if st.session_state.get('logged_in', False):
+    st.session_state._rerun_guard = 0

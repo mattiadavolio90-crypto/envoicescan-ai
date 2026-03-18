@@ -222,7 +222,7 @@ def _estrai_xml_con_pattern(contenuto_bytes: bytes) -> bytes | None:
                     end_idx = pos + len(marker)
                     break
 
-            if end_idx > start_idx:
+            if end_idx != -1 and end_idx > start_idx and start_idx >= 0:
                 xml_bytes = contenuto_bytes[start_idx:end_idx]
                 # Verifica qualità: se contiene control chars invalidi per XML
                 # (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F), l'XML è corrotto
@@ -406,8 +406,8 @@ def _pulisci_xml_bytes(xml_bytes: bytes) -> bytes:
             xml_bytes = xml_bytes.replace(b"encoding='ISO-8859-1'", b"encoding='UTF-8'")
             xml_bytes = xml_bytes.replace(b'encoding="iso-8859-1"', b'encoding="UTF-8"')
             logger.info("✅ P7M: corretto encoding Latin-1 → UTF-8")
-        except Exception:
-            pass
+        except Exception as enc_err:
+            logger.warning(f"Conversione Latin-1/UTF-8 fallita: {enc_err}")
     
     return xml_bytes
 
@@ -1116,8 +1116,9 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         return []
 
 
-def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict], 
-                             supabase_client=None, silent: bool = False) -> Dict[str, Any]:
+def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
+                             supabase_client=None, silent: bool = False,
+                             ristoranteid: str = None) -> Dict[str, Any]:
     """
     Salva fatture su Supabase con logging eventi.
     
@@ -1145,7 +1146,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
         return {"success": False, "error": "not_authenticated", "righe": 0, "location": None}
     
     user_id = st.session_state.user_data["id"]
-    ristorante_id = st.session_state.get('ristorante_id')  # Può essere None per utenti legacy
+    ristorante_id = ristoranteid  # Passato esplicitamente dal caller
     
     # ⚠️ VALIDAZIONE: Utenti senza ristorante_id non possono salvare fatture
     if not ristorante_id:

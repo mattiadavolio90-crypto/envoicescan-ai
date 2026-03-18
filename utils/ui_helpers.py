@@ -21,8 +21,12 @@ _STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
 def load_css(filename: str):
     """Carica un file CSS dalla cartella static/ e lo inietta via st.markdown."""
     path = os.path.join(_STATIC_DIR, filename)
-    with open(path, 'r', encoding='utf-8') as f:
-        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    except FileNotFoundError:
+        logger.error(f"File statico non trovato: {filename}")
+        return
 
 
 _HIDE_SIDEBAR_CSS = """
@@ -52,8 +56,12 @@ def hide_sidebar_css():
 def load_js(filename: str):
     """Carica un file JS dalla cartella static/ e lo inietta via st.markdown."""
     path = os.path.join(_STATIC_DIR, filename)
-    with open(path, 'r', encoding='utf-8') as f:
-        st.markdown(f'<script>{f.read()}</script>', unsafe_allow_html=True)
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            st.markdown(f'<script>{f.read()}</script>', unsafe_allow_html=True)
+    except FileNotFoundError:
+        logger.error(f"File statico non trovato: {filename}")
+        return
 
 
 def render_pivot_mensile(

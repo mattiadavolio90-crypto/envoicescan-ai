@@ -43,10 +43,12 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
 # ============================================
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.switch_page("app.py")
+    st.stop()
 
 # Admin puro (non impersonificato) → redirect a pannello admin
 if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
     st.switch_page("pages/admin.py")
+    st.stop()
 
 user = st.session_state.user_data
 user_id = user["id"]
@@ -272,7 +274,8 @@ if st.session_state.cp_tab_attivo == "variazioni":
         )
 
     # Calcola alert (solo F&B)
-    df_alert = calcola_alert(df_filtrato, soglia_aumento, filtro_prodotto)
+    # Usa df_all (storico completo) per non perdere comparazioni tra periodi diversi
+    df_alert = calcola_alert(df_all, soglia_aumento, filtro_prodotto)
 
     # Badge conteggio
     if not df_alert.empty:
@@ -561,7 +564,7 @@ elif st.session_state.cp_tab_attivo == "nc":
     # pre-migrazione il campo esiste ma vale 'TD01'. Serve combinare entrambi i criteri.
     mask_td04 = (df_filtrato['TipoDocumento'] == 'TD04') if 'TipoDocumento' in df_filtrato.columns else pd.Series(False, index=df_filtrato.index)
     mask_negativi = (df_filtrato['TotaleRiga'] < 0)
-    mask_nc = mask_td04 | mask_negativi
+    mask_nc = mask_td04 | (mask_negativi & ~mask_td04)
     
     df_nc = df_filtrato[mask_nc].copy()
 
@@ -585,7 +588,9 @@ elif st.session_state.cp_tab_attivo == "nc":
             )
 
         with col_fornitore_nc:
-            fornitori_nc = ["Tutti"] + sorted(df_nc['Fornitore'].dropna().unique().tolist())
+            # Normalizza case per evitare duplicati (es. "METRO" e "Metro")
+            fornitori_norm = df_nc['Fornitore'].dropna().str.strip().str.title()
+            fornitori_nc = ["Tutti"] + sorted(fornitori_norm.unique().tolist())
             filtro_fornitore_nc = st.selectbox(
                 "🏭 Fornitore",
                 options=fornitori_nc,
@@ -596,10 +601,10 @@ elif st.session_state.cp_tab_attivo == "nc":
         df_nc_view = df_nc.copy()
 
         if search_nc:
-            df_nc_view = df_nc_view[df_nc_view['Descrizione'].str.contains(search_nc, case=False, na=False)]
+            df_nc_view = df_nc_view[df_nc_view['Descrizione'].str.contains(search_nc, case=False, na=False, regex=False)]
 
         if filtro_fornitore_nc != "Tutti":
-            df_nc_view = df_nc_view[df_nc_view['Fornitore'] == filtro_fornitore_nc]
+            df_nc_view = df_nc_view[df_nc_view['Fornitore'].str.strip().str.title() == filtro_fornitore_nc]
 
         # ============================================================
         # TABELLA NOTE DI CREDITO

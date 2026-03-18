@@ -128,8 +128,8 @@ if user.get('email') not in ADMIN_EMAILS:
             try:
                 _cookie_manager_admin.set("impersonation_user_id", "",
                                           expires_at=datetime(1970, 1, 1, tzinfo=timezone.utc))
-            except Exception:
-                pass
+            except Exception as ce:
+                logger.warning(f"Errore reset cookie impersonazione: {ce}")
         logger.info(f"🔙 Ripristino automatico admin da impersonazione: {user.get('email')}")
         st.info("🔙 Sessione admin ripristinata")
     else:
@@ -216,23 +216,27 @@ def _is_valid_email_format(email: str) -> bool:
 def _email_exists_for_other_user(email: str, user_id: str) -> bool:
     """Ritorna True se l'email esiste gia' per un altro utente."""
     try:
-        resp = supabase.table('users')\
-            .select('id, email')\
-            .ilike('email', email)\
-            .limit(1)\
-            .execute()
-    except Exception:
-        # Fallback se ilike non e' supportato dal client in uso.
-        resp = supabase.table('users')\
-            .select('id, email')\
-            .eq('email', email)\
-            .limit(1)\
-            .execute()
+        try:
+            resp = supabase.table('users')\
+                .select('id, email')\
+                .ilike('email', email)\
+                .limit(1)\
+                .execute()
+        except Exception:
+            # Fallback se ilike non e' supportato dal client in uso.
+            resp = supabase.table('users')\
+                .select('id, email')\
+                .eq('email', email)\
+                .limit(1)\
+                .execute()
 
-    if not resp.data:
-        return False
+        if not resp.data:
+            return False
 
-    return str(resp.data[0].get('id')) != str(user_id)
+        return str(resp.data[0].get('id')) != str(user_id)
+    except Exception as e:
+        logger.warning(f"Errore verifica email duplicata: {e}")
+        return True  # fail-safe: block the change if uncertain
 
 
 # ──────────────────────────────────────────────────────────
@@ -887,8 +891,15 @@ if tab1:
                                     if rist_da_eliminare:
                                         st.caption(f"⚠️ Verranno eliminate anche tutte le fatture associate")
                                         
+                                        _confirm_elimina_sede = st.checkbox(
+                                            f"⚠️ Confermo l'eliminazione permanente di "
+                                            f"{rist_da_eliminare['nome_ristorante']} e tutte le sue fatture",
+                                            key=f"confirm_elimina_sede_{rist_da_eliminare['id']}"
+                                        )
+                                        
                                         if st.button(f"🗑️ Elimina {rist_da_eliminare['nome_ristorante']}", 
-                                                    type="secondary", 
+                                                    type="secondary",
+                                                    disabled=not _confirm_elimina_sede,
                                                     key=f"btn_elimina_{rist_da_eliminare['id']}"):
                                             try:
                                                 # Elimina ristorante (cascade elimina anche fatture via FK)
@@ -1107,7 +1118,7 @@ if tab1:
                                             .eq('id', row['user_id'])\
                                             .execute()
                                         
-                                        logger.info(f"🔴 Account disattivato: {row['email']}")
+                                        logger.info(f"🔴 Account disattivato: {row['email']} | admin={user.get('email')}")
                                         st.success(f"Account {row['email']} disattivato")
                                         _carica_stats_clienti_admin.clear()
                                         time.sleep(1)
@@ -1122,7 +1133,7 @@ if tab1:
                                             .eq('id', row['user_id'])\
                                             .execute()
                                         
-                                        logger.info(f"🟢 Account attivato: {row['email']}")
+                                        logger.info(f"🟢 Account attivato: {row['email']} | admin={user.get('email')}")
                                         st.success(f"Account {row['email']} attivato")
                                         _carica_stats_clienti_admin.clear()
                                         time.sleep(1)
@@ -1177,7 +1188,7 @@ if tab1:
                                     )
                                     
                                     if email_inviata:
-                                        logger.info(f"📧 Email reset password inviata a: {row['email']}")
+                                        logger.info(f"📧 Email reset password inviata a: {row['email']} | admin={user.get('email')}")
                                         st.success(f"✅ Email inviata a {row['email']}")
                                     else:
                                         st.warning(f"⚠️ Token generato ma email non inviata. Link: {reset_url}")
@@ -1471,6 +1482,12 @@ if tab1:
                             user_id_to_delete = target_user_id
                             email_deleted = target_email
 
+                            if not user_id_to_delete:
+                                raise ValueError("user_id_to_delete è vuoto!")
+
+                            if email_deleted in ADMIN_EMAILS:
+                                raise ValueError(f"Tentativo di eliminare admin: {email_deleted}")
+
                             deleted = {
                                 'fatture': 0,
                                 'prodotti': 0,
@@ -1529,12 +1546,6 @@ if tab1:
                                     logger.info(f"🗑️ Memoria globale eliminata: {deleted['memoria_globale']} record")
                                 except Exception as e:
                                     logger.warning(f"Errore eliminazione memoria globale: {e}")
-
-                            if not user_id_to_delete:
-                                raise ValueError("user_id_to_delete è vuoto!")
-
-                            if email_deleted in ADMIN_EMAILS:
-                                raise ValueError(f"Tentativo di eliminare admin: {email_deleted}")
 
                             logger.warning(f"🗑️ Eliminazione utente: {email_deleted} (ID: {user_id_to_delete})")
 
@@ -1703,20 +1714,22 @@ if tab2:
             return pd.DataFrame()
 
     def _build_review_update_query(payload: dict, descrizione_target: str, cliente_id_target: str = None):
+        if cliente_id_target is None:
+            raise ValueError("client_id_target required: aggiornamento senza filtro user_id non consentito")
         query = supabase.table('fatture').update(payload)\
             .eq('descrizione', descrizione_target)\
-            .or_('prezzo_unitario.eq.0,needs_review.eq.true')
-        if cliente_id_target:
-            query = query.eq('user_id', cliente_id_target)
+            .or_('prezzo_unitario.eq.0,needs_review.eq.true')\
+            .eq('user_id', cliente_id_target)
         return query
 
     def _build_review_batch_update(payload: dict, descrizioni: list, cliente_id_target: str = None):
         """Aggiorna N descrizioni in una singola query con .in_()"""
+        if cliente_id_target is None:
+            raise ValueError("client_id_target required: aggiornamento senza filtro user_id non consentito")
         query = supabase.table('fatture').update(payload)\
             .in_('descrizione', descrizioni)\
-            .or_('prezzo_unitario.eq.0,needs_review.eq.true')
-        if cliente_id_target:
-            query = query.eq('user_id', cliente_id_target)
+            .or_('prezzo_unitario.eq.0,needs_review.eq.true')\
+            .eq('user_id', cliente_id_target)
         return query
     
     df_zero = carica_righe_zero_con_filtro(filtro_cliente_id)
@@ -1768,7 +1781,12 @@ if tab2:
                 if len(_auto_sconti) > 15:
                     st.caption(f"  ... e altri {len(_auto_sconti) - 15}")
         
-        if st.button("🤖 Esegui Auto-Review", type="primary", key="btn_auto_review"):
+        _confirm_auto_review = st.checkbox(
+            "⚠️ Confermo l'esecuzione su tutti i clienti selezionati",
+            key="confirm_auto_review"
+        )
+        
+        if st.button("🤖 Esegui Auto-Review", type="primary", key="btn_auto_review", disabled=not _confirm_auto_review):
             with st.spinner("Auto-classificazione in corso..."):
                 _auto_ok = 0
                 _auto_err = 0
@@ -1797,8 +1815,9 @@ if tab2:
                                     'ultima_modifica': datetime.now(timezone.utc).isoformat()
                                 }, on_conflict='descrizione').execute()
                                 _auto_mem_ok += 1
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                _auto_err += 1
+                                logger.error(f"Errore salvataggio dicitura {_d[:40]}: {e}")
                     except Exception as _e:
                         _auto_err += 1
                         logger.error(f"Errore auto-review diciture: {_e}")

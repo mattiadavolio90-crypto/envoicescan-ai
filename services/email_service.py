@@ -79,10 +79,10 @@ def invia_email(destinatario: str, oggetto: str, corpo_html: str, reply_to_email
                         "api-key": api_key,
                         "Content-Type": "application/json"
                     },
-                    timeout=15
+                    timeout=[8, 10, 15][attempt]
                 )
                 
-                if response.status_code == 201:
+                if response.status_code in (200, 201, 202):
                     logger.info(f"✅ Email inviata a {destinatario}: {oggetto}")
                     return True
                 elif response.status_code >= 500:

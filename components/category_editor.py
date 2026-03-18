@@ -216,6 +216,8 @@ def render_category_editor(df_completo_filtrato, supabase):
         key="checkbox_raggruppa_prodotti"
     )
 
+    df_editor_paginato = df_editor.copy()  # fallback sicuro (sovrascritto sotto se vista_aggregata)
+
     if vista_aggregata:
         # Prepara dizionario aggregazione (colonne sempre presenti)
         agg_dict = {
@@ -352,6 +354,12 @@ def render_category_editor(df_completo_filtrato, supabase):
     
     # Applica validazione a TUTTE le categorie
     df_editor['Categoria'] = df_editor['Categoria'].apply(valida_categoria)
+    
+    # FIX: applica la stessa validazione anche a df_editor_paginato (già assegnato sopra come copia)
+    if 'Categoria' in df_editor_paginato.columns:
+        df_editor_paginato['Categoria'] = (
+            df_editor_paginato['Categoria'].apply(valida_categoria)
+        )
     
     # Log finale validazione
     vuote_count = df_editor['Categoria'].isna().sum()
@@ -629,7 +637,7 @@ def render_category_editor(df_completo_filtrato, supabase):
             ha_categoria = 'Categoria' in colonne_df
             
             # Se ha colonne tipiche editor fatture (almeno File + Categoria + Descrizione)
-            if (ha_file or ha_numero_riga) and ha_categoria and ha_descrizione and ha_fornitore:
+            if (ha_file or (ha_numero_riga and ha_categoria and ha_descrizione and ha_fornitore)):
                 logger.info("🔄 Rilevato: EDITOR FATTURE CLIENTE - Salvataggio modifiche...")
                 
                 for index, row in edited_df.iterrows():
@@ -657,6 +665,7 @@ def render_category_editor(df_completo_filtrato, supabase):
                         else:
                             vecchia_cat_raw = df_editor.loc[index, 'Categoria'] if index in df_editor.index else None
                         vecchia_cat = estrai_nome_categoria(vecchia_cat_raw) if vecchia_cat_raw else None
+                        vecchia_cat = vecchia_cat or "Da Classificare"
                         
                         # Prepara dati da aggiornare
                         update_data = {
@@ -741,9 +750,11 @@ def render_category_editor(df_completo_filtrato, supabase):
                             result = query_update_batch.select("id").execute()
                             
                             # supabase-py v2: senza .select() result.data è sempre []
-                            righe_aggiornate = len(result.data) if result.data else 1  # assume 1 se nessun errore
-                            logger.info(f"✅ BATCH: {righe_aggiornate} righe aggiornate per '{descrizione[:TRUNCATE_DESC_LOG]}'")
-                            
+                            if result is None:
+                                righe_aggiornate = 0
+                            else:
+                                righe_aggiornate = len(result.data) if result.data else 1
+                            logger.info(f"✅ BATCH: {righe_aggiornate} righe aggiornate per '{descrizione[:TRUNCATE_DESC_LOG]}'")                            
                             # 🔍 DIAGNOSI: Se UPDATE fallisce (0 righe), cerca descrizioni simili nel DB
                             if righe_aggiornate == 0:
                                 logger.error(f"❌ UPDATE FALLITO: 0 righe aggiornate per '{descrizione}'")

@@ -201,6 +201,8 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     return df_result
 
 
+# DEPRECATED: prezzi calcolati direttamente in invoice_service.py
+# Mantenuta per compatibilità, non chiamare.
 def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
     """
     Ricalcola prezzi unitari per fatture già caricate (fix retroattivo sconti).
@@ -353,7 +355,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     # FILTRO 2: SEARCH PRODOTTO (se specificato)
     # ============================================================
     if filtro_prodotto:
-        df_fb = df_fb[df_fb['Descrizione'].str.contains(filtro_prodotto, case=False, na=False)]
+        df_fb = df_fb[df_fb['Descrizione'].str.contains(filtro_prodotto, case=False, na=False, regex=False)]
     
     df = df_fb  # Usa solo prodotti F&B
     
@@ -362,8 +364,16 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     
     alert_list = []
     
-    # Raggruppa per Descrizione + Fornitore
-    for (prodotto, fornitore), group in df.groupby(['Descrizione', 'Fornitore']):
+    # Normalizza chiavi groupby (case-insensitive, strip spazi)
+    df = df.copy()
+    df['_desc_key'] = df['Descrizione'].str.strip().str.upper()
+    df['_forn_key'] = df['Fornitore'].str.strip().str.upper()
+
+    # Raggruppa per Descrizione + Fornitore (case-insensitive)
+    for (_dk, _fk), group in df.groupby(['_desc_key', '_forn_key']):
+        # Usa il valore originale più frequente come etichetta display
+        prodotto = group['Descrizione'].mode()[0]
+        fornitore = group['Fornitore'].mode()[0]
         # Ordina per data
         group = group.sort_values('DataDocumento')
         
@@ -381,14 +391,15 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
         prezzo_ultimo = ultimo['PrezzoUnitario']
         prezzo_penultimo = penultimo['PrezzoUnitario']
         
-        # 🛡️ PROTEZIONE: Ignora se troppo tempo tra ultimo e penultimo (>180 giorni)
+        # 🛡️ Segnala se troppo tempo tra ultimo e penultimo (>180 giorni)
+        nota_stagionale = ""
         try:
             data_penultimo = pd.to_datetime(penultimo['DataDocumento'], utc=True)
             data_ultimo = pd.to_datetime(ultimo['DataDocumento'], utc=True)
             giorni_diff = (data_ultimo - data_penultimo).days
             
             if giorni_diff > 180:
-                continue  # Troppo vecchio, ignora
+                nota_stagionale = " ⚠️ >6m"  # Prodotto stagionale: segnala ma non nascondere
         except (ValueError, TypeError):
             pass  # Se parsing date fallisce, continua comunque
         
@@ -417,7 +428,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
                 media_storico = prezzo_penultimo
             
             alert_list.append({
-                'Prodotto': prodotto[:50],
+                'Prodotto': (prodotto + nota_stagionale)[:50],
                 'Categoria': str(ultimo['Categoria'])[:15],
                 'Fornitore': str(fornitore)[:20],
                 'Storico': storico_str,
@@ -481,6 +492,10 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
         # 🏢 MULTI-RISTORANTE: Recupera ristorante_id dalla sessione
         ristorante_id = st.session_state.get('ristorante_id') if 'session_state' in dir(st) else None
         
+        if not ristorante_id:
+            logger.warning("ristorante_id mancante in carica_sconti_e_omaggi - operazione annullata")
+            return {'sconti': pd.DataFrame(), 'omaggi': pd.DataFrame(), 'totale_risparmiato': 0.0}
+        
         # Query righe del cliente NEL PERIODO SPECIFICATO (con paginazione per >1000 righe)
         all_rows = []
         page = 0
@@ -489,6 +504,7 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
         
         while page < max_pages:
             offset = page * page_size
+            # Usa .lte (<=) per includere le fatture del giorno finale del periodo.
             query = supabase_client.table('fatture')\
                 .select('id, descrizione, categoria, fornitore, prezzo_unitario, quantita, totale_riga, data_documento, file_origine')\
                 .eq('user_id', user_id)\
@@ -594,9 +610,20 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
                     if ristorante_id:
                         hist_query = hist_query.eq('ristorante_id', ristorante_id)
                     
-                    hist_response = hist_query.order('data_documento', desc=True).limit(1000).execute()
-                    if hist_response.data:
-                        all_historical.extend(hist_response.data)
+                    _hist_page, _hist_all = 0, []
+                    while True:
+                        _hr = hist_query.order('data_documento', desc=True)\
+                                        .range(_hist_page * 1000, (_hist_page + 1) * 1000 - 1)\
+                                        .execute()
+                        if not _hr.data:
+                            break
+                        _hist_all.extend(_hr.data)
+                        if len(_hr.data) < 1000:
+                            break
+                        _hist_page += 1
+                    hist_response_data = _hist_all
+                    if hist_response_data:
+                        all_historical.extend(hist_response_data)
                 except Exception as e:
                     logger.warning(f"Errore query storico omaggi batch {i}: {e}")
             
@@ -608,29 +635,30 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
             # Normalizza anche le date degli omaggi per confronto sicuro
             df_omaggi['data_documento'] = pd.to_datetime(df_omaggi['data_documento'], errors='coerce')
             
-            # Per ogni omaggio, trova l'ultimo prezzo d'acquisto
-            # (stesso prodotto + stesso fornitore, data precedente all'omaggio)
-            ultimo_prezzo_list = []
-            valore_stimato_list = []
-            
-            for idx, row in df_omaggi.iterrows():
-                prezzo = None
-                if not df_hist.empty:
-                    mask = (
-                        (df_hist['descrizione'] == row['descrizione']) &
-                        (df_hist['fornitore'] == row['fornitore']) &
-                        (df_hist['data_documento'] < row['data_documento'])
-                    )
-                    matching = df_hist[mask]
-                    if not matching.empty:
-                        prezzo = matching.iloc[0]['prezzo_unitario']
-                
-                ultimo_prezzo_list.append(prezzo)
-                val = abs(prezzo * row['quantita']) if prezzo is not None else None
-                valore_stimato_list.append(val)
-            
-            df_omaggi['ultimo_prezzo'] = ultimo_prezzo_list
-            df_omaggi['valore_stimato'] = valore_stimato_list
+            # Per ogni omaggio, trova l'ultimo prezzo d'acquisto via pandas merge (O(n log n))
+            df_omaggi = df_omaggi.reset_index(drop=True)
+            if not df_hist.empty:
+                _hist = df_hist[['descrizione', 'fornitore', 'data_documento', 'prezzo_unitario']].rename(
+                    columns={'data_documento': '_data_hist', 'prezzo_unitario': '_prezzo_hist'}
+                )
+                _merged = df_omaggi[['descrizione', 'fornitore', 'data_documento', 'quantita']].copy()
+                _merged['_omaggio_idx'] = _merged.index
+                _merged = _merged.merge(_hist, on=['descrizione', 'fornitore'], how='left')
+                # Mantieni solo prezzi storici precedenti alla data dell'omaggio
+                _merged = _merged[_merged['_data_hist'] < _merged['data_documento']]
+                if not _merged.empty:
+                    # Prendi il prezzo più recente per ogni omaggio
+                    _best_idx = _merged.groupby('_omaggio_idx')['_data_hist'].idxmax()
+                    _best = _merged.loc[_best_idx].set_index('_omaggio_idx')['_prezzo_hist']
+                    df_omaggi['ultimo_prezzo'] = df_omaggi.index.map(_best)
+                else:
+                    df_omaggi['ultimo_prezzo'] = None
+            else:
+                df_omaggi['ultimo_prezzo'] = None
+            df_omaggi['valore_stimato'] = df_omaggi.apply(
+                lambda r: abs(r['ultimo_prezzo'] * r['quantita']) if pd.notna(r['ultimo_prezzo']) else None,
+                axis=1
+            )
             
             totale_omaggi = float(df_omaggi['valore_stimato'].sum(min_count=1))
             if pd.isna(totale_omaggi):
@@ -654,7 +682,7 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
         }
 
 
-def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=None) -> Dict[str, Any]:
+def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=None, ristoranteid: str = None) -> Dict[str, Any]:
     """
     Elimina una fattura completa (tutti i prodotti) dal database.
     
@@ -679,7 +707,12 @@ def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=No
             return {"success": False, "error": "not_authenticated", "righe_eliminate": 0}
         
         # Prima conta quante righe verranno eliminate
-        ristorante_id = st.session_state.get('ristorante_id') if 'session_state' in dir(st) else None
+        ristorante_id = ristoranteid
+
+        if not ristorante_id:
+            logger.warning("ristorante_id mancante in elimina_fattura_completa - operazione annullata")
+            return {"success": False, "error": "ristorante_id mancante", "righe_eliminate": 0}
+        
         query_count = supabase_client.table("fatture").select("id", count="exact").eq("user_id", user_id).eq("file_origine", file_origine)
         if ristorante_id:
             query_count = query_count.eq("ristorante_id", ristorante_id)
@@ -727,7 +760,7 @@ def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=No
         return {"success": False, "error": str(e), "righe_eliminate": 0}
 
 
-def elimina_tutte_fatture(user_id: str, supabase_client=None) -> Dict[str, Any]:
+def elimina_tutte_fatture(user_id: str, supabase_client=None, ristoranteid: str = None) -> Dict[str, Any]:
     """
     Elimina TUTTE le fatture dell'utente dal database.
     
@@ -751,7 +784,12 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None) -> Dict[str, Any]:
             return {"success": False, "error": "not_authenticated", "righe_eliminate": 0, "fatture_eliminate": 0}
         
         # Prima conta quante righe e fatture verranno eliminate
-        ristorante_id = st.session_state.get('ristorante_id') if 'session_state' in dir(st) else None
+        ristorante_id = ristoranteid
+
+        if not ristorante_id:
+            logger.warning("ristorante_id mancante in elimina_tutte_fatture - operazione annullata")
+            return {"success": False, "error": "ristorante_id mancante", "righe_eliminate": 0, "fatture_eliminate": 0}
+        
         query_count = supabase_client.table("fatture").select("id, file_origine", count="exact").eq("user_id", user_id)
         if ristorante_id:
             query_count = query_count.eq("ristorante_id", ristorante_id)
@@ -892,6 +930,8 @@ def get_fatture_stats(user_id: str, ristorante_id: str = None) -> Dict[str, Any]
         return {"num_uniche": 0, "num_righe": 0, "success": False}
     
     try:
+        # NOTA: queste due query non sono atomiche, può esserci una lieve
+        # inconsistenza tra numrighe e numuniche in caso di upload concorrenti.
         # Query 1: Conta righe totali con count='exact' senza scaricare dati
         query_count = supabase_client.table("fatture") \
             .select("id", count='exact') \

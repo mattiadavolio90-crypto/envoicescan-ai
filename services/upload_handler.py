@@ -60,7 +60,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     status_text.text(f"🔍 Analisi di {len(uploaded_files)} file in corso...")
     
     # QUERY FILE GIÀ CARICATI SU SUPABASE (con filtro userid obbligatorio)
-    
+    file_su_supabase = set()
+    file_su_supabase_full = set()
     try:
         # Verifica user_id disponibile
         user_data = st.session_state.get('user_data', {})
@@ -163,9 +164,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     # ============================================================
     # FIX: DEDUPLICAZIONE CORRETTA (solo contro DB reale)
     # ============================================================
-    # Assicura che file_su_supabase_full esista (potrebbe mancare se errore prima)
-    if 'file_su_supabase_full' not in locals():
-        file_su_supabase_full = set()
+    # Assicura che file_su_supabase_full esista (già inizializzato prima del try)
     
     file_nuovi = []
     file_gia_processati = []
@@ -422,7 +421,10 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                         pass  # Se la data non è parsabile, lascia passare
                         
                         # Salva in memoria se trovati dati (SILENZIOSO)
-                        result = salva_fattura_processata(file.name, items, silent=True)
+                        result = salva_fattura_processata(
+                            file.name, items, silent=True,
+                            ristoranteid=st.session_state.get('ristorante_id')
+                        )
                         
                         if result["success"]:
                             file_processati += 1
@@ -503,9 +505,9 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                     time.sleep(BATCH_RATE_LIMIT_DELAY)  # Pausa tra batch per evitare rate limit
         
         except Exception as critical_error:
-            # ERRORE CRITICO: ferma tutto ma mostra report
+            # ERRORE CRITICO: logga e aggiunge agli errori invece di fermare tutto
             logger.exception(f"❌ ERRORE CRITICO durante elaborazione batch")
-            st.error(f"⚠️ ERRORE CRITICO: {str(critical_error)[:200]}")
+            errori.append(f"Errore critico durante elaborazione: {str(critical_error)[:200]}")
         
         finally:
             # ============================================================

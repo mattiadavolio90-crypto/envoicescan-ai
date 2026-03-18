@@ -83,8 +83,8 @@ def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
                         oldest_dt = oldest_dt.replace(tzinfo=timezone.utc)
                     expires_at = oldest_dt + timedelta(minutes=_LOCKOUT_MINUTES)
                     remaining = max(1, int((expires_at - datetime.now(timezone.utc)).total_seconds() / 60) + 1)
-            except Exception:
-                pass
+            except Exception as rate_err:
+                logger.warning(f"Errore calcolo minuti lockout: {rate_err}")
             logger.warning(f"⛔ Login bloccato: lockout {remaining} min rimanenti")
             return True, remaining
 
@@ -130,8 +130,8 @@ def registra_tentativo(email: str, success: bool, supabase_client=None):
             .lt('attempted_at', cutoff) \
             .execute()
 
-    except Exception:
-        logger.exception('Errore registra_tentativo')
+    except Exception as reg_err:
+        logger.exception(f"Errore registra_tentativo per {email}: {reg_err}")
 
 
 # ============================================================
@@ -481,6 +481,8 @@ def imposta_password_da_token(
         
         # 2. Verifica scadenza token
         expires_str = user.get('reset_expires')
+        if not expires_str:
+            return False, "Link non valido o scaduto.", {}
         if expires_str:
             expires = datetime.fromisoformat(expires_str.replace('Z', '+00:00'))
             # Timezone-aware comparison
@@ -568,8 +570,8 @@ def verify_and_migrate_password(user_record: dict, password: str) -> bool:
                 supabase = get_supabase_client()
                 supabase.table('users').update({'password_hash': new_hash}).eq('id', user_record.get('id')).execute()
                 logger.info(f"Password migrata ad Argon2 per user_id={user_record.get('id')}")
-            except Exception:
-                logger.exception('Migrazione password fallita')
+            except Exception as mig_err:
+                logger.warning(f"Migrazione Argon2 fallita per user {user_record.get('id')} - hash SHA256 mantenuto: {mig_err}")
             return True
         return False
     except Exception:

@@ -8,6 +8,7 @@ import pandas as pd
 import json
 import html as _html
 import io
+import time
 from datetime import datetime
 from supabase import Client
 from config.logger_setup import get_logger
@@ -49,7 +50,7 @@ def safe_db_execute(operation_fn, description: str = "operazione DB"):
         return operation_fn(supabase)
     except Exception as e:
         if 'disconnect' in str(e).lower() or 'closed' in str(e).lower():
-            logger.warning(f"Riconnessione Supabase per {description}...")
+            logger.warning(f"Retry dopo disconnessione ({description}): {e}")
             supabase = get_fresh_supabase_client()
             return operation_fn(supabase)
         raise
@@ -85,10 +86,12 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
 # ============================================
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.switch_page("app.py")
+    st.stop()
 
 # Admin puro (non impersonificato) → redirect a pannello admin
 if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
     st.switch_page("pages/admin.py")
+    st.stop()
 
 user = st.session_state.user_data
 user_id = user["id"]
@@ -1714,7 +1717,7 @@ Se necessario contattare l'assistenza.
                                 
                                 ingredienti_temp = []
                                 for ing_salvato in ingredienti_raw:
-                                    ing_match = next((x for x in ingredienti_disp_reload if x['data']['nome'] == ing_salvato['nome']), None)
+                                    ing_match = next((x for x in ingredienti_disp_reload if x.get('data', {}).get('nome') == ing_salvato.get('nome')), None)
                                     tipo_riga = 'semilavorato' if ing_salvato.get('is_ricetta', False) else 'normale'
                                     ingredienti_temp.append({
                                         'nome': ing_salvato['nome'],
@@ -1981,27 +1984,35 @@ if selected_tab == "📓 Diario":
                 if not nuova_nota_testo or not nuova_nota_testo.strip():
                     st.error("⚠️ Inserisci del testo per la nota")
                 else:
-                    try:
-                        nota_payload = {
-                            'userid': user_id,
-                            'ristorante_id': current_ristorante,
-                            'testo': nuova_nota_testo.strip()
-                        }
+                    # Debounce: impedisce duplicati da doppio-click
+                    nota_stripped = nuova_nota_testo.strip()
+                    _debounce_key = f"_nota_saved_{current_ristorante}"
+                    _last = st.session_state.get(_debounce_key, (None, 0))
+                    if _last[0] == nota_stripped and (time.time() - _last[1]) < 3:
+                        st.warning("⚠️ Nota già salvata, attendi un momento prima di salvare di nuovo.")
+                    else:
                         try:
-                            supabase.table('note_diario').insert(nota_payload).execute()
-                        except Exception as conn_err:
-                            if 'disconnect' in str(conn_err).lower() or 'closed' in str(conn_err).lower():
-                                logger.warning("Riconnessione Supabase per insert nota...")
-                                fresh = get_fresh_supabase_client()
-                                fresh.table('note_diario').insert(nota_payload).execute()
-                            else:
-                                raise conn_err
-                        
-                        st.success("✅ Nota salvata!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Errore salvataggio: {str(e)}")
-                        logger.exception("Errore salvataggio nota diario")
+                            nota_payload = {
+                                'userid': user_id,
+                                'ristorante_id': current_ristorante,
+                                'testo': nota_stripped
+                            }
+                            try:
+                                supabase.table('note_diario').insert(nota_payload).execute()
+                            except Exception as conn_err:
+                                if 'disconnect' in str(conn_err).lower() or 'closed' in str(conn_err).lower():
+                                    logger.warning("Riconnessione Supabase per insert nota...")
+                                    fresh = get_fresh_supabase_client()
+                                    fresh.table('note_diario').insert(nota_payload).execute()
+                                else:
+                                    raise conn_err
+                            
+                            st.session_state[_debounce_key] = (nota_stripped, time.time())
+                            st.success("✅ Nota salvata!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Errore salvataggio: {str(e)}")
+                            logger.exception("Errore salvataggio nota diario")
     
     # Carica note esistenti in ordine cronologico
     try:

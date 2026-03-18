@@ -43,6 +43,10 @@ def _is_admin_or_impersonating():
 def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     """Mostra grafici, filtri e tabella dati"""
     
+    if df_completo is None or df_completo.empty:
+        st.info("📭 Nessun dato disponibile. Carica le tue prime fatture!")
+        return
+    
     # ===== 🔍 DEBUG CATEGORIZZAZIONE (SOLO ADMIN/IMPERSONIFICATO) =====
     if _is_admin_or_impersonating():
         with st.expander("🔍 DEBUG: Verifica Categorie", expanded=False):
@@ -303,7 +307,8 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             prodotti_elaborati += 1
                             # Aggiorna banner in tempo reale
                             percentuale = (prodotti_elaborati / totale_da_classificare) * 100
-                            progress_placeholder.markdown(f"""
+                            if prodotti_elaborati % 10 == 0 or prodotti_elaborati == totale_da_classificare:
+                                progress_placeholder.markdown(f"""
                             <div class="ai-banner">
                                 <div class="brain-pulse-banner">🧠</div>
                                 <div class="progress-percentage">{int(percentuale)}%</div>
@@ -335,7 +340,8 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             
                             # Aggiorna banner in tempo reale durante dizionario
                             percentuale = (prodotti_elaborati / totale_da_classificare) * 100
-                            progress_placeholder.markdown(f"""
+                            if prodotti_elaborati % 10 == 0 or prodotti_elaborati == totale_da_classificare:
+                                progress_placeholder.markdown(f"""
                             <div class="ai-banner">
                                 <div class="brain-pulse-banner">🧠</div>
                                 <div class="progress-percentage">{int(percentuale)}%</div>
@@ -393,12 +399,12 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         
                         _ai_calls_today = st.session_state.get('_ai_budget_calls', 0)
                         _ai_chunks_needed = (len(descrizioni_per_ai) + chunk_size - 1) // chunk_size
-                        if _ai_calls_today + _ai_chunks_needed > MAX_AI_CALLS_PER_DAY:
+                        if _ai_calls_today + _ai_chunks_needed >= MAX_AI_CALLS_PER_DAY:
                             _remaining = max(0, MAX_AI_CALLS_PER_DAY - _ai_calls_today)
                             st.warning(f"⚠️ Limite giornaliero AI raggiunto ({MAX_AI_CALLS_PER_DAY} chiamate/giorno). "
                                        f"Rimanenti: {_remaining}. Le descrizioni non classificate resteranno 'Da Classificare'.")
                             logger.warning(f"🔒 Budget AI giornaliero esaurito: {_ai_calls_today} chiamate, servirebbero {_ai_chunks_needed}")
-                            descrizioni_per_ai = []  # Skip AI classification
+                            descrizioni_per_ai = []  # svuota lista per saltare il loop AI
                         
                         for i in range(0, len(descrizioni_per_ai), chunk_size):
                             chunk = descrizioni_per_ai[i:i+chunk_size]
@@ -411,7 +417,8 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             
                                 # 🧠 Aggiorna banner orizzontale in tempo reale (REPLACE)
                                 percentuale = (prodotti_elaborati / totale_da_classificare) * 100
-                                progress_placeholder.markdown(f"""
+                                if prodotti_elaborati % 10 == 0 or prodotti_elaborati == totale_da_classificare:
+                                    progress_placeholder.markdown(f"""
                                 <div class="ai-banner">
                                     <div class="brain-pulse-banner">🧠</div>
                                     <div class="progress-percentage">{int(percentuale)}%</div>
@@ -746,6 +753,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                 "📅 Da", 
                 value=st.session_state.data_inizio_filtro,
                 min_value=inizio_anno,
+                max_value=st.session_state.get('data_fine_filtro', oggi_date),
                 key="data_da_custom"
             )
         
@@ -754,6 +762,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                 "📅 A", 
                 value=st.session_state.data_fine_filtro,
                 min_value=inizio_anno,
+                max_value=datetime.now(timezone.utc).date(),
                 key="data_a_custom"
             )
         
