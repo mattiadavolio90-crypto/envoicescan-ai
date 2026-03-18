@@ -310,8 +310,14 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                             _head = file_content[:100].lstrip(b'\xef\xbb\xbf')  # strip BOM
                             _magic_ok = _head.lstrip().startswith((b'<?xml', b'<'))
                         elif _ext == 'p7m':
-                            # P7M (PKCS#7/CMS): ASN.1 DER encoding starts with 0x30
-                            _magic_ok = len(file_content) > 2 and file_content[0:1] == b'\x30'
+                            # P7M: DER binary (0x30) oppure PEM/base64 (testo ASCII)
+                            _raw_start = file_content[:20].decode('ascii', errors='ignore').strip()
+                            _magic_ok = (
+                                len(file_content) > 2 and file_content[0:1] == b'\x30'
+                            ) or (
+                                len(file_content) > 10 and
+                                any(_raw_start.startswith(p) for p in ('MIIF', 'MIIE', 'MIIG', 'MIIB', 'MIIA', '-----'))
+                            )
                         elif _ext == 'pdf':
                             _magic_ok = file_content[:5] == b'%PDF-'
                         elif _ext in ('jpg', 'jpeg'):
