@@ -1006,6 +1006,19 @@ if tab1:
             df_clienti_sorted = df_clienti.sort_values('email', ascending=True)
             
             # ===== LISTA CLIENTI CON EXPANDER =====
+            # --- BATCH pre-fetch pagine_abilitate (N+1 fix) ---
+            _all_user_ids = df_clienti_sorted['user_id'].dropna().unique().tolist()
+            try:
+                _fresh_batch = supabase.table('users') \
+                    .select('id, pagine_abilitate') \
+                    .in_('id', _all_user_ids) \
+                    .execute()
+                _fresh_pagine_map = {
+                    r['id']: r.get('pagine_abilitate')
+                    for r in (_fresh_batch.data or [])
+                }
+            except Exception:
+                _fresh_pagine_map = {}
             for idx, row in df_clienti_sorted.iterrows():
                 row_key = f"{row['user_id']}_{row.get('ristorante_id', idx)}"
                 status_icon = "🟢" if row['attivo'] else "🔴"
@@ -1048,12 +1061,8 @@ if tab1:
                             st.session_state.impersonating = True
                             st.session_state.impersonation_started_at = datetime.now(timezone.utc).isoformat()
                             
-                            # Leggi pagine_abilitate FRESCO dal DB (non dalla cache)
-                            try:
-                                _fresh_user = supabase.table('users').select('pagine_abilitate').eq('id', row['user_id']).execute()
-                                _fresh_pagine = _fresh_user.data[0].get('pagine_abilitate') if _fresh_user.data else row.get('pagine_abilitate')
-                            except Exception:
-                                _fresh_pagine = row.get('pagine_abilitate')
+                            # Leggi pagine_abilitate dal batch pre-caricato (N+1 fix)
+                            _fresh_pagine = _fresh_pagine_map.get(row['user_id'], row.get('pagine_abilitate'))
                             
                             cliente_data = {
                                 'id': row['user_id'],
@@ -2178,6 +2187,7 @@ if tab2:
                         _descs = list(st.session_state.review_zero_selezionate)
                         _ok_count = 0
                         _mem_count = 0
+                        _batch_master = []
                         # Per ogni descrizione selezionata, conferma la SUA categoria corrente
                         for _d in _descs:
                             # Recupera categoria corrente dal df
@@ -2194,17 +2204,22 @@ if tab2:
                             }, _d, filtro_cliente_id).execute()
                             _ok_count += len(result.data) if result.data else 1
                             
-                            # Salva in memoria globale con categoria confermata
+                            # Accumula per batch upsert
+                            _batch_master.append({
+                                'descrizione': _d,
+                                'categoria': _cat_corrente,
+                                'confidence': 'altissima',
+                                'verified': True,
+                                'classificato_da': 'review-admin',
+                                'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                            })
+                        
+                        if _batch_master:
                             try:
-                                supabase.table('prodotti_master').upsert({
-                                    'descrizione': _d,
-                                    'categoria': _cat_corrente,
-                                    'confidence': 'altissima',
-                                    'verified': True,
-                                    'classificato_da': 'review-admin',
-                                    'ultima_modifica': datetime.now(timezone.utc).isoformat()
-                                }, on_conflict='descrizione').execute()
-                                _mem_count += 1
+                                supabase.table('prodotti_master').upsert(
+                                    _batch_master, on_conflict='descrizione'
+                                ).execute()
+                                _mem_count = len(_batch_master)
                             except Exception:
                                 pass
                         
@@ -2230,17 +2245,23 @@ if tab2:
                             'reviewed_by': 'admin'
                         }, _descs, filtro_cliente_id).execute()
                         _ok = len(result.data) if result.data else len(_descs)
-                        # 💾 Salva tutte in memoria globale come diciture
-                        for _d in _descs:
+                        # 💾 Salva tutte in memoria globale come diciture (batch)
+                        _batch_diciture = [
+                            {
+                                'descrizione': _d,
+                                'categoria': '📝 NOTE E DICITURE',
+                                'confidence': 'altissima',
+                                'verified': True,
+                                'classificato_da': 'review-admin',
+                                'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                            }
+                            for _d in _descs
+                        ]
+                        if _batch_diciture:
                             try:
-                                supabase.table('prodotti_master').upsert({
-                                    'descrizione': _d,
-                                    'categoria': '📝 NOTE E DICITURE',
-                                    'confidence': 'altissima',
-                                    'verified': True,
-                                    'classificato_da': 'review-admin',
-                                    'ultima_modifica': datetime.now(timezone.utc).isoformat()
-                                }, on_conflict='descrizione').execute()
+                                supabase.table('prodotti_master').upsert(
+                                    _batch_diciture, on_conflict='descrizione'
+                                ).execute()
                             except Exception:
                                 pass
                         st.success(f"📝 {_ok} righe → NOTE E DICITURE (+ memoria globale)")

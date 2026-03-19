@@ -183,23 +183,33 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
             # 🔧 FIX: Query DIRETTA al DB per evitare problema filtri locali su df_completo
             try:
                 # Query tutte le descrizioni che hanno categoria NULL, "Da Classificare" o stringa vuota
-                ristorante_id = st.session_state.get('ristorante_id')
-                query_null = supabase.table("fatture").select("descrizione, fornitore, prezzo_unitario").eq("user_id", user_id).is_("categoria", "null")
-                query_da_class = supabase.table("fatture").select("descrizione, fornitore, prezzo_unitario").eq("user_id", user_id).eq("categoria", "Da Classificare")
-                query_empty = supabase.table("fatture").select("descrizione, fornitore, prezzo_unitario").eq("user_id", user_id).eq("categoria", "")
-                if ristorante_id:
-                    query_null = query_null.eq("ristorante_id", ristorante_id)
-                    query_da_class = query_da_class.eq("ristorante_id", ristorante_id)
-                    query_empty = query_empty.eq("ristorante_id", ristorante_id)
-                resp_null = query_null.execute()
-                resp_da_class = query_da_class.execute()
-                resp_empty = query_empty.execute()
-                
-                # Combina e rimuovi duplicati (NULL + "Da Classificare" + stringa vuota)
-                dati_null = resp_null.data if resp_null.data else []
-                dati_da_class = resp_da_class.data if resp_da_class.data else []
-                dati_empty = resp_empty.data if resp_empty.data else []
-                tutti_dati = dati_null + dati_da_class + dati_empty
+                _ristorante_id = st.session_state.get('ristorante_id')
+
+                # Query 1: NULL + stringa vuota collassate
+                _q_nullempty = (
+                    supabase.table("fatture")
+                    .select("descrizione, fornitore, prezzo_unitario")
+                    .eq("user_id", user_id)
+                    .or_("categoria.is.null,categoria.eq.")
+                )
+                if _ristorante_id:
+                    _q_nullempty = _q_nullempty.eq("ristorante_id", _ristorante_id)
+                _resp_nullempty = _q_nullempty.execute()
+
+                # Query 2: Da Classificare
+                _q_daclass = (
+                    supabase.table("fatture")
+                    .select("descrizione, fornitore, prezzo_unitario")
+                    .eq("user_id", user_id)
+                    .eq("categoria", "Da Classificare")
+                )
+                if _ristorante_id:
+                    _q_daclass = _q_daclass.eq("ristorante_id", _ristorante_id)
+                _resp_daclass = _q_daclass.execute()
+
+                _dati_nullempty = _resp_nullempty.data or []
+                _dati_daclass   = _resp_daclass.data or []
+                tutti_dati = _dati_nullempty + _dati_daclass
                 
                 descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
                 fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
@@ -214,7 +224,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         _descrizioni_con_prezzo_zero.add(desc)
                 logger.info(f"🛡️ QUARANTENA: {len(_descrizioni_con_prezzo_zero)} descrizioni con righe €0 (escluse da memoria globale)")
                 
-                logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare (NULL: {len(dati_null)}, DaClass: {len(dati_da_class)}, Vuote: {len(dati_empty)})")
+                logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare (NullEmpty: {len(_dati_nullempty)}, DaClass: {len(_dati_daclass)})")
             except Exception as e:
                 logger.error(f"Errore query diretta descrizioni: {e}")
                 # Fallback su df_completo se query fallisce
@@ -660,19 +670,23 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         
                         # 🔍 VERIFICA POST-UPDATE: Conferma che DB è stato aggiornato correttamente
                         try:
-                            ristorante_id = st.session_state.get('ristorante_id')
-                            query_verifica = supabase.table('fatture').select('categoria').eq('user_id', user_id)
-                            if ristorante_id:
-                                query_verifica = query_verifica.eq('ristorante_id', ristorante_id)
-                            verifica_response = query_verifica.execute()
-                            if verifica_response.data:
-                                null_count = sum(1 for row in verifica_response.data if not row.get('categoria') or row['categoria'] == 'Da Classificare')
-                                logger.info(f"🔍 POST-UPDATE VERIFICA: {null_count} righe ancora NULL/Da Classificare su {len(verifica_response.data)} totali")
-                                
-                                if null_count > 0:
-                                    logger.warning(f"⚠️ ATTENZIONE: {null_count} righe non categorizzate dopo AI")
-                                else:
-                                    logger.info(f"✅ VERIFICA OK: Tutte le righe categorizzate correttamente nel DB")
+                            _ristorante_id_v = st.session_state.get('ristorante_id')
+                            _count_q = (
+                                supabase.table('fatture')
+                                .select('id', count='exact')
+                                .eq('user_id', user_id)
+                                .or_('categoria.is.null,categoria.eq.Da Classificare,categoria.eq.')
+                            )
+                            if _ristorante_id_v:
+                                _count_q = _count_q.eq('ristorante_id', _ristorante_id_v)
+                            _count_resp = _count_q.execute()
+                            null_count = _count_resp.count or 0
+                            logger.info(f"🔍 POST-UPDATE VERIFICA: {null_count} righe ancora NULL/Da Classificare")
+                            
+                            if null_count > 0:
+                                logger.warning(f"⚠️ ATTENZIONE: {null_count} righe non categorizzate dopo AI")
+                            else:
+                                logger.info(f"✅ VERIFICA OK: Tutte le righe categorizzate correttamente nel DB")
                         except Exception as e:
                             logger.error(f"❌ Errore verifica post-update: {e}")
                         

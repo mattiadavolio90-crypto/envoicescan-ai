@@ -83,7 +83,8 @@ from services.db_service import (
     carica_e_prepara_dataframe,
     elimina_fattura_completa,
     elimina_tutte_fatture,
-    get_fatture_stats
+    get_fatture_stats,
+    clear_fatture_cache
 )
 
 from components.dashboard_renderer import mostra_statistiche
@@ -781,7 +782,8 @@ if (st.session_state.get('user_is_admin', False)
     try:
         _imp_uid_cookie = _cookie_manager.get("impersonation_user_id")
         if _imp_uid_cookie:
-            _imp_resp = supabase.table("users").select("*")\
+            _imp_resp = supabase.table("users") \
+                .select("id, email, nome_ristorante, attivo, pagine_abilitate") \
                 .eq("id", _imp_uid_cookie).eq("attivo", True).execute()
             if _imp_resp and _imp_resp.data:
                 _imp_customer = _imp_resp.data[0]
@@ -1149,7 +1151,7 @@ if user.get('email') not in ADMIN_EMAILS:
                                'files_errori_report', 'last_upload_summary', 'ultimo_upload_ids',
                                'ingredienti_temp', 'ricetta_edit_mode', 'ricetta_edit_data']:
                 st.session_state.pop(_stale_key, None)
-            st.cache_data.clear()
+            clear_fatture_cache()
             
             # 💾 Salva l'ultimo ristorante usato nel DB per ripristinarlo alla prossima sessione
             try:
@@ -1362,7 +1364,7 @@ if not df_cache.empty:
                                 verify_query = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id)
                                 verify_query = add_ristorante_filter(verify_query)
                                 verify = verify_query.execute()
-                                num_residue = len(verify.data) if verify.data else 0
+                                num_residue = verify.count or 0
                                 if num_residue == 0:
                                     logger.info(f"✅ DELETE VERIFIED: 0 righe rimaste per user_id={user_id}")
                                     st.success(f"✅ Verifica: Database pulito (0 righe)")
@@ -1434,7 +1436,7 @@ if not df_cache.empty:
                             
                             # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
                             invalida_cache_memoria()  # Reset memoria AI
-                            st.cache_data.clear()  # Reset cache Streamlit
+                            clear_fatture_cache()  # Invalida solo cache fatture
                             
                             # 🔥 RESET SESSION: Rimuovi file eliminato dalla lista processati
                             # (rimuovi sia il nome completo che il nome base normalizzato)
@@ -1483,12 +1485,8 @@ else:
     # Configurazione limiti (importati da constants.py)
     
     # user_id già definito sopra (post-login check)
-    try:
-        stats_db = get_fatture_stats(user_id, st.session_state.get('ristorante_id'))
-        righe_totali = stats_db['num_righe']
-    except Exception as e:
-        logger.error(f"Errore stats durante controllo limite: {e}")
-        righe_totali = 0
+    # stats_db già calcolato nel box statistiche sopra (evita doppia query)
+    righe_totali = stats_db.get('num_righe', 0)
     
     # Controllo prima elaborazione
     if righe_totali >= MAX_RIGHE_GLOBALE:

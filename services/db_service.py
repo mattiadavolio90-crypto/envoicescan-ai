@@ -982,6 +982,12 @@ def get_fatture_stats(user_id: str, ristorante_id: str = None) -> Dict[str, Any]
         return {"num_uniche": 0, "num_righe": 0, "success": False}
 
 
+def clear_fatture_cache() -> None:
+    """Invalida solo la cache fatture (non tutte le cache Streamlit)."""
+    _carica_fatture_da_supabase.clear()
+    get_fatture_stats.clear()
+
+
 __all__ = [
     'carica_e_prepara_dataframe',
     'ricalcola_prezzi_con_sconti',
@@ -990,4 +996,5 @@ __all__ = [
     'elimina_fattura_completa',
     'elimina_tutte_fatture',
     'get_fatture_stats',
+    'clear_fatture_cache',
 ]
