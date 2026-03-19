@@ -469,9 +469,10 @@ def imposta_password_da_token(
             supabase_client = get_supabase_client()
         
         # 1. Cerca utente con token valido
-        result = supabase_client.table('users')\
-            .select('*')\
-            .eq('reset_code', token)\
+        result = supabase_client.table('users') \
+            .select("id, email, nome_ristorante, attivo, "
+                    "reset_code, reset_expires, password_hash") \
+            .eq('reset_code', token) \
             .execute()
         
         if not result.data:
@@ -612,7 +613,12 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             return None, f"Troppi tentativi falliti. Riprova tra {minuti} minuti."
         
         # Query utente attivo
-        response = supabase_client.table("users").select("*").eq("email", email).eq("attivo", True).execute()
+        response = supabase_client.table("users") \
+            .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
+                    "password_hash") \
+            .eq("email", email) \
+            .eq("attivo", True) \
+            .execute()
         
         if not response.data:
             registra_tentativo(email, False, supabase_client)
@@ -671,7 +677,8 @@ def verifica_sessione_da_cookie(
             supabase_client = get_supabase_client()
 
         response = supabase_client.table('users') \
-            .select('*') \
+            .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
+                    "session_token, session_token_created_at, last_seen_at") \
             .eq('session_token', token) \
             .eq('attivo', True) \
             .execute()

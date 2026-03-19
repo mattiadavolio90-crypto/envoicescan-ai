@@ -356,7 +356,7 @@ def _get_ingredienti_workspace_cached(user_id: str, ristorante_id: str) -> list:
     """Cache ingredienti workspace per 5 minuti."""
     try:
         workspace_response = supabase.table('ingredienti_workspace')\
-            .select('*')\
+            .select('id, nome, prezzo_per_um, um')\
             .eq('userid', user_id)\
             .eq('ristorante_id', ristorante_id)\
             .order('nome')\
@@ -648,7 +648,7 @@ if selected_tab == "📋 Analisi Ricette e Menù":
     try:
         # Carica ricette da Supabase
         query = supabase.table('ricette')\
-            .select('*')\
+            .select('id, nome, categoria, foodcost_totale, prezzo_vendita_ivainc')\
             .eq('userid', user_id)\
             .order('ordine_visualizzazione', desc=False)
         
@@ -961,7 +961,7 @@ Se necessario contattare l'assistenza.
             # Lista ingredienti workspace esistenti
             try:
                 workspace_ings = supabase.table('ingredienti_workspace')\
-                    .select('*')\
+                    .select('id, nome, prezzo_per_um, um')\
                     .eq('userid', user_id)\
                     .eq('ristorante_id', current_ristorante)\
                     .order('nome')\
@@ -1611,7 +1611,7 @@ Se necessario contattare l'assistenza.
     
     try:
         query_salvate = supabase.table('ricette')\
-            .select('*')\
+            .select('id, nome, categoria, foodcost_totale, ingredienti, prezzo_vendita_ivainc, ordine_visualizzazione, note, created_at')\
             .eq('userid', user_id)\
             .order('ordine_visualizzazione', desc=False)
         
@@ -1788,7 +1788,7 @@ if selected_tab == "📊 Export Excel":
     try:
         # Carica tutte le ricette
         query = supabase.table('ricette')\
-            .select('*')\
+            .select('id, nome, categoria, foodcost_totale, ingredienti, prezzo_vendita_ivainc, created_at')\
             .eq('userid', user_id)\
             .order('categoria', desc=False)\
             .order('nome', desc=False)
@@ -2018,7 +2018,7 @@ if selected_tab == "📓 Diario":
     try:
         try:
             query_note = supabase.table('note_diario')\
-                .select('*')\
+                .select('id, testo, created_at, updated_at')\
                 .eq('userid', user_id)
             if current_ristorante:
                 query_note = query_note.eq('ristorante_id', current_ristorante)
@@ -2028,7 +2028,7 @@ if selected_tab == "📓 Diario":
                 logger.warning("Riconnessione Supabase per select note...")
                 fresh = get_fresh_supabase_client()
                 query_note = fresh.table('note_diario')\
-                    .select('*')\
+                    .select('id, testo, created_at, updated_at')\
                     .eq('userid', user_id)
                 if current_ristorante:
                     query_note = query_note.eq('ristorante_id', current_ristorante)

@@ -186,7 +186,7 @@ with tab2:
                 
                 # Query ristoranti
                 try:
-                    ristoranti_query = supabase.table('ristoranti').select('*').eq('user_id', user_id).execute()
+                    ristoranti_query = supabase.table('ristoranti').select('nome_ristorante, partita_iva, ragione_sociale, attivo').eq('user_id', user_id).execute()
                     if ristoranti_query.data:
                         export_data["ristoranti"] = [
                             {

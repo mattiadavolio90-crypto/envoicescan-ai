@@ -575,7 +575,6 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         st.session_state.files_con_errori = set()
         
         if file_processati > 0 or tutti_problematici:
-            st.cache_data.clear()
             invalida_cache_memoria()
             if 'righe_ai_appena_categorizzate' in st.session_state:
                 st.session_state.righe_ai_appena_categorizzate = []

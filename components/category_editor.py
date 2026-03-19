@@ -838,7 +838,6 @@ def render_category_editor(df_completo_filtrato, supabase):
                     st.toast(f"✅ {categorie_modificate_count} categorie modificate! L'AI imparerà da questo.")
                 
                 time.sleep(0.5)
-                st.cache_data.clear()
                 invalida_cache_memoria()
                 st.session_state.force_reload = True  # ← Forza ricaricamento completo
                 

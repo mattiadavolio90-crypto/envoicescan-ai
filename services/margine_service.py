@@ -192,7 +192,7 @@ def carica_margini_anno(user_id: str, ristorante_id: str, anno: int) -> dict:
         supabase = get_supabase_client()
         
         response = supabase.table('margini_mensili') \
-            .select('*') \
+            .select('mese, fatturato_iva10, fatturato_iva22, altri_ricavi_noiva, altri_costi_fb, altri_costi_spese, costo_dipendenti') \
             .eq('user_id', user_id) \
             .eq('ristorante_id', ristorante_id) \
             .eq('anno', anno) \

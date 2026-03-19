@@ -150,7 +150,7 @@ if 'ristoranti' not in st.session_state:
     try:
         user_id = st.session_state.user_data.get('id')
         if user_id:
-            ristoranti_response = supabase.table('ristoranti').select('*').eq('user_id', user_id).execute()
+            ristoranti_response = supabase.table('ristoranti').select('id, nome_ristorante, partita_iva').eq('user_id', user_id).execute()
             if ristoranti_response.data:
                 st.session_state.ristoranti = ristoranti_response.data
                 logger.info(f"✅ {len(ristoranti_response.data)} ristoranti caricati per admin")
@@ -779,7 +779,7 @@ if tab1:
                     if user_sel:
                         # Carica ristoranti di questo utente
                         ristoranti_query = supabase.table('ristoranti')\
-                            .select('*')\
+                            .select('id, nome_ristorante, partita_iva, ragione_sociale, attivo')\
                             .eq('user_id', user_sel['id'])\
                             .execute()
                         
@@ -1862,7 +1862,6 @@ if tab2:
                             logger.error(f"Errore auto-review sconto '{_d[:40]}': {_e}")
                 
                 invalida_cache_memoria()
-                st.cache_data.clear()
                 st.success(f"🤖 Auto-Review completata: {_auto_ok} righe classificate, {_auto_mem_ok} salvate in memoria globale")
                 if _auto_err > 0:
                     st.warning(f"⚠️ {_auto_err} errori durante auto-review")
@@ -2136,7 +2135,6 @@ if tab2:
                         }, on_conflict='descrizione').execute()
                         st.success(f"✅ {len(result.data) if result.data else occorrenze} righe → {nuova_categoria} (+ memoria globale)")
                         invalida_cache_memoria()
-                        st.cache_data.clear()
                         time.sleep(0.5)
                         st.rerun()
                     except Exception as e:
@@ -2162,7 +2160,6 @@ if tab2:
                         }, on_conflict='descrizione').execute()
                         st.success(f"📝 {len(result.data) if result.data else occorrenze} righe → NOTE E DICITURE (+ memoria globale)")
                         invalida_cache_memoria()
-                        st.cache_data.clear()
                         time.sleep(0.5)
                         st.rerun()
                     except Exception as e:
@@ -2229,7 +2226,6 @@ if tab2:
                 st.session_state.review_zero_selezionate = set()
                 st.session_state.review_zero_cb_counter += 1
                 invalida_cache_memoria()
-                st.cache_data.clear()
                 time.sleep(0.8)
                 st.rerun()
 
@@ -2270,7 +2266,6 @@ if tab2:
                 st.session_state.review_zero_selezionate = set()
                 st.session_state.review_zero_cb_counter += 1
                 invalida_cache_memoria()
-                st.cache_data.clear()
                 time.sleep(0.8)
                 st.rerun()
 

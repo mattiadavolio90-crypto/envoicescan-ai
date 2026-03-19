@@ -3,6 +3,7 @@ conftest.py — Mock moduli pesanti non disponibili nell'ambiente test puro.
 Questo file viene eseguito PRIMA di qualsiasi import dei test.
 """
 import sys
+import importlib
 from unittest.mock import MagicMock
 
 # Lista moduli che richiedono l'app runtime (Streamlit, PyMuPDF, Supabase, ecc.)
@@ -22,10 +23,12 @@ _MODULI_DA_MOCKARE = [
     "tenacity",
     "argon2",
     "argon2.exceptions",
-    "pandas",
     "xmltodict",
     "requests",
 ]
+
+# NOTA: pandas NON è nella lista di mock — è installato nel venv ed è necessario
+# per i test che usano DataFrame reali (test_db_service.py, test_invoice_service.py).
 
 for mod in _MODULI_DA_MOCKARE:
     if mod not in sys.modules:

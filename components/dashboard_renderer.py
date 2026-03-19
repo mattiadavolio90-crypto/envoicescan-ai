@@ -70,7 +70,6 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
             
             # Test query diretta Supabase
             if st.button("🔄 Ricarica da Supabase (bypass cache)", key="debug_reload"):
-                st.cache_data.clear()
                 invalida_cache_memoria()
                 st.success("Cache invalidata. Dati ricaricati al prossimo accesso.")
 
@@ -296,7 +295,6 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     
                     # � PRE-STEP: Controlla memoria (admin > locale > globale) PRIMA di keyword/AI
                     # Invalida cache per avere dati aggiornati (altri utenti potrebbero aver categorizzato)
-                    st.cache_data.clear()
                     invalida_cache_memoria()
                     carica_memoria_completa(user_id)
                     
@@ -461,7 +459,6 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                     logger.error(f"Errore batch salvataggio memoria AI: {e}")
                         
                         # Invalida cache una sola volta dopo tutti i chunk
-                        st.cache_data.clear()
                         invalida_cache_memoria()
 
 
@@ -691,7 +688,6 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             logger.error(f"❌ Errore verifica post-update: {e}")
                         
                         # Pulisci cache PRIMA del delay per garantire ricaricamento
-                        st.cache_data.clear()
                         invalida_cache_memoria()
                         
                         # ⭐ FIX CRITICO: Imposta flag per forzare reload completo al prossimo caricamento
