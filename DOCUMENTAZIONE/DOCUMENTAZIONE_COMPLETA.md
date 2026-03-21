@@ -2,7 +2,7 @@
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 4.0  
+Versione: 4.1  
 Ultimo aggiornamento: Marzo 2026  
 Autore: Mattia D'Avolio  
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato)  
@@ -87,7 +87,7 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 | Keyword nel dizionario | 600+ regole deterministiche |
 | Formati fattura supportati | XML, P7M, PDF, JPG, PNG |
 | Modello AI | OpenAI GPT-4o-mini |
-| Copertura test automatici | 149 test, 8 module di test |
+| Copertura test automatici | 172 test, 10 moduli di test |
 | Tempo medio classificazione | < 5 secondi per 50 prodotti (batch) |
 
 ---
@@ -135,7 +135,7 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 | **3-tier Memory** | `ai_service.py` | Admin > Locale > Globale per classificazione |
 | **Thread-safe Lock** | `_cache_lock`, `_login_attempts_lock` | `threading.Lock()` per dati condivisi |
 | **Batch Processing** | Classificazione AI | 50 articoli per chiamata API |
-| **Rate Limiting** | Login + Reset + Upload + AI | Limiti in-memory con TTL |
+| **Rate Limiting** | Login + Reset + Upload + AI | Login: persistente su DB (`login_attempts`); Reset: in-memory thread-safe |
 
 ---
 
@@ -198,7 +198,7 @@ toolbarMode = "viewer"       # Nasconde developer toolbar
 ```
 FCI_PROJECT/
 │
-├── app.py                          # Entry point principale (4.080 righe)
+├── app.py                          # Entry point principale (~1.651 righe)
 │                                   # - Autenticazione e gestione sessioni
 │                                   # - Dashboard con KPI, grafici, pivot
 │                                   # - Pipeline classificazione AI
@@ -207,21 +207,22 @@ FCI_PROJECT/
 │                                   # - Gestione fatture (elimina, export)
 │
 ├── pages/                          # Pagine multi-page Streamlit
-│   ├── admin.py                    # Pannello admin (6 tab)
-│   ├── 1_calcolo_margine.py        # Calcolo MOL e centri di produzione
-│   ├── 2_workspace.py              # Workspace multi-ristorante
-│   ├── 3_controllo_prezzi.py       # Confronto prezzi fornitori
-│   ├── gestione_account.py         # Cambio password e impostazioni
+│   ├── admin.py                    # Pannello admin (6 tab, ~3.650 righe)
+│   ├── 1_calcolo_margine.py        # Calcolo MOL e centri di produzione (~1.546 righe)
+│   ├── 2_workspace.py              # Workspace ricette, ingredienti, diario (~2.125 righe)
+│   ├── 3_controllo_prezzi.py       # Variazioni prezzi, sconti, note di credito (~584 righe)
+│   ├── gestione_account.py         # Cambio password e impostazioni (~384 righe)
 │   └── privacy_policy.py           # Privacy Policy + Terms of Service
 │
 ├── services/                       # Business logic layer
 │   ├── __init__.py                 # get_supabase_client() singleton
-│   ├── ai_service.py              # Classificazione AI + memoria 3 livelli (~550 righe)
-│   ├── auth_service.py            # Login, password, reset, GDPR (~450 righe)
-│   ├── invoice_service.py         # Parsing XML/P7M/PDF/Vision (~400 righe)
-│   ├── db_service.py              # Query Supabase + cache + paginazione (~350 righe)
-│   ├── margine_service.py         # Calcoli MOL + export Excel (~400 righe)
-│   └── email_service.py           # Brevo SMTP API con retry (~100 righe)
+│   ├── ai_service.py              # Classificazione AI + memoria 3 livelli (~980 righe)
+│   ├── auth_service.py            # Login, password, reset, GDPR, rate limiting DB (~841 righe)
+│   ├── invoice_service.py         # Parsing XML/P7M/PDF/Vision (~1.246 righe)
+│   ├── db_service.py              # Query Supabase + cache + paginazione (~972 righe)
+│   ├── margine_service.py         # Calcoli MOL + export Excel (~1.126 righe)
+│   ├── upload_handler.py          # Gestione upload file, batch, deduplicazione (~620 righe)
+│   └── email_service.py           # Brevo SMTP API con retry (~106 righe)
 │
 ├── utils/                          # Utility e helper functions
 │   ├── formatters.py              # Formattazione numeri, base64, categorie DB
@@ -255,10 +256,10 @@ FCI_PROJECT/
 │   ├── test_text_utils.py         # Test normalizzazione testo
 │   └── test_validation.py         # Test validazione diciture
 │
-├── migrations/                     # SQL migrations manuali (42 file)
+├── migrations/                     # SQL migrations manuali (44 file)
 │   ├── 001_add_reset_columns.sql
 │   ├── ...
-│   └── 042_allow_duplicate_piva_ristoranti.sql
+│   └── 044_create_login_attempts.sql
 │
 ├── .github/workflows/
 │   └── uptime_check.yml           # Uptime monitoring ogni 5 minuti
@@ -349,6 +350,18 @@ Il bottone triggerà la pipeline completa di classificazione AI:
 7. **Verifica Post-Update**: Count righe ancora "Da Classificare"
 
 Banner orizzontale animato con cervello pulsante 🧠 e percentuale in tempo reale.
+
+### 6.3 Upload Handler (services/upload_handler.py)
+
+Gestisce l'intero flusso di upload file (`handle_uploaded_files()`):
+
+1. **Rate limiting upload**: max 100 file per volta, max 200 MB → blocco con messaggio errore
+2. **Blocco post-delete**: se `force_empty_until_upload` in session_state → `st.stop()`
+3. **Deduplicazione**: confronto nome file completo (con estensione) + nome base (senza, per match XML/PDF/P7M) vs DB e sessione corrente
+4. **Elaborazione batch**: `BATCH_FILE_SIZE=20` file per batch con delay rate-limiting tra batch
+5. **Delega parsing**: per ogni file → `invoice_service.py` (XML/P7M/PDF/Vision)
+6. **Log eventi**: ogni file genera un record in `upload_events` con status/rows_parsed/rows_saved
+7. **Progressbar**: aggiornata in tempo reale con nome file corrente e contatore
 
 ---
 
@@ -653,8 +666,10 @@ Se un utente pre-migrazione non ha record in `ristoranti`, il sistema tenta la c
 | created_at | TIMESTAMPTZ | Data creazione |
 | reset_code | TEXT | Codice reset password temporaneo |
 | reset_expires | TIMESTAMPTZ | Scadenza codice reset |
-| login_attempts | INT | Contatore tentativi login (legacy) |
+| login_attempts | INT | Contatore tentativi login (**legacy** — sostituito da tabella `login_attempts`) |
 | password_changed_at | TIMESTAMPTZ | Ultima modifica password |
+| last_login | TIMESTAMPTZ | Timestamp ultimo login riuscito |
+| last_logout | TIMESTAMPTZ | Timestamp ultimo logout (invalida sessioni) |
 | session_token | TEXT | Token sessione cookie |
 | session_token_created_at | TIMESTAMPTZ | Creazione token sessione |
 | ultimo_ristorante_id | UUID (FK) | Ultimo ristorante usato |
@@ -735,61 +750,93 @@ Se un utente pre-migrazione non ha record in `ristoranti`, il sistema tenta la c
 
 | Colonna | Tipo | Note |
 |---------|------|------|
-| id | BIGINT (PK) | Auto-increment |
+| id | UUID (PK) | Generato automaticamente |
 | user_id | UUID (FK) | Proprietario |
 | ristorante_id | UUID (FK) | Ristorante |
 | anno | INT | Anno |
-| mese | INT | Mese (1-12) |
-| fatturato | NUMERIC | Fatturato totale lordo |
-| fatturato_netto_iva | NUMERIC | Fatturato netto IVA |
-| costi_fb | NUMERIC | Costi Food & Beverage |
-| costi_spese | NUMERIC | Costi Spese Generali |
-| costi_personale | NUMERIC | Costo personale |
-| altri_ricavi | NUMERIC | Altri ricavi |
-| altri_ricavi_noiva | NUMERIC | Altri ricavi non soggetti IVA |
-| fatturato_food | NUMERIC | Fatturato centro FOOD |
-| fatturato_bar | NUMERIC | Fatturato centro BAR |
-| fatturato_alcolici | NUMERIC | Fatturato centro ALCOLICI |
-| fatturato_dolci | NUMERIC | Fatturato centro DOLCI |
-| updated_at | TIMESTAMPTZ | Ultimo salvataggio |
+| mese | INT CHECK(1-12) | Mese |
+| **INPUT MANUALE** | | |
+| fatturato_iva10 | NUMERIC(10,2) | Fatturato soggetto IVA 10% |
+| fatturato_iva22 | NUMERIC(10,2) | Fatturato soggetto IVA 22% |
+| altri_ricavi_noiva | NUMERIC(10,2) | Altri ricavi non soggetti IVA |
+| altri_costi_fb | NUMERIC(10,2) | Costi F&B extra non in fatture |
+| altri_costi_spese | NUMERIC(10,2) | Spese extra non in fatture |
+| costo_dipendenti | NUMERIC(10,2) | Costo personale lordo mensile |
+| **SNAPSHOT AUTOMATICI** (da fatture) | | |
+| costi_fb_auto | NUMERIC(10,2) | Costi F&B da `fatture` (ricalcolati) |
+| costi_spese_auto | NUMERIC(10,2) | Costi Spese da `fatture` (ricalcolati) |
+| **SNAPSHOT CALCOLATI** (ricalcolati on-the-fly) | | |
+| fatturato_netto | NUMERIC(10,2) | Fatturato netto IVA |
+| costi_fb_totali | NUMERIC(10,2) | F&B auto + altri_costi_fb |
+| primo_margine | NUMERIC(10,2) | Fatturato netto - costi F&B totali |
+| mol | NUMERIC(10,2) | Margine Operativo Lordo |
+| food_cost_perc | NUMERIC(5,2) | Food Cost % |
+| spese_perc | NUMERIC(5,2) | Spese Generali % |
+| personale_perc | NUMERIC(5,2) | Costo personale % |
+| mol_perc | NUMERIC(5,2) | MOL % |
+| **CENTRI DI PRODUZIONE** | | |
+| fatturato_food | NUMERIC(12,2) | Fatturato centro FOOD |
+| fatturato_bar | NUMERIC(12,2) | Fatturato centro BAR |
+| fatturato_alcolici | NUMERIC(12,2) | Fatturato centro ALCOLICI |
+| fatturato_dolci | NUMERIC(12,2) | Fatturato centro DOLCI |
+| created_at | TIMESTAMP | Data creazione |
+| updated_at | TIMESTAMP | Ultimo salvataggio |
 | UNIQUE(ristorante_id, anno, mese) | | Constraint |
 
 #### `upload_events` — Log upload fatture
 
 | Colonna | Tipo | Note |
 |---------|------|------|
-| id | BIGINT (PK) | Auto-increment |
-| user_id | UUID (FK) | Chi ha caricato |
-| ristorante_id | UUID (FK) | Ristorante destinatario |
+| id | BIGSERIAL (PK) | Auto-increment |
+| user_id | UUID | Chi ha caricato |
+| user_email | TEXT | Email dell'utente |
 | file_name | TEXT | Nome file |
-| file_type | TEXT | xml, p7m, pdf, jpg |
-| righe_inserite | INT | Numero righe processate |
-| status | TEXT | success, error, skipped |
-| error_message | TEXT | Dettaglio errore |
+| file_type | TEXT | `xml` \| `pdf` \| `image` \| `unknown` |
+| status | TEXT | `SAVED_OK` \| `SAVED_PARTIAL` \| `FAILED` |
+| rows_parsed | INT | Righe estratte dal file |
+| rows_saved | INT | Righe salvate con successo |
+| rows_excluded | INT | Righe escluse (diciture, duplicati) |
+| error_stage | TEXT | `PARSING` \| `VISION` \| `SUPABASE_INSERT` \| `POSTCHECK` |
+| error_message | TEXT | Dettaglio errore (max 500 char) |
+| details | JSONB | Info aggiuntive strutturate |
 | created_at | TIMESTAMPTZ | Timestamp upload |
+
+#### `login_attempts` — Tentativi di login (rate limiting persistente)
+
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | BIGINT IDENTITY (PK) | Auto-increment |
+| email | TEXT NOT NULL | Email tentativo |
+| attempted_at | TIMESTAMPTZ | Timestamp tentativo |
+| success | BOOLEAN | Successo o fallimento |
+
+Indice su `(email, attempted_at DESC)` per query veloci. Solo `service_role` può scrivere (RLS, nessuna policy per anon/authenticated).
 
 ### Altre Tabelle
 
 | Tabella | Scopo |
 |---------|-------|
-| `ricette` | Ricette con ingredienti e costi |
-| `ingredienti_utente` | Ingredienti personalizzati |
-| `note_diario` | Diario operativo |
+| `ricette` | Ricette con ingredienti (JSON), foodcost, prezzo vendita |
+| `ingredienti_utente` | Ingredienti personalizzati legacy |
+| `ingredienti_workspace` | Ingredienti manuali del Workspace (nome, prezzo_per_um, um) |
+| `note_diario` | Diario operativo per ristorante |
 | `review_confirmed` | Righe confermate dopo review admin |
 | `review_ignored` | Righe ignorate in review admin |
+| `login_attempts` | Tentativi login per rate limiting persistente su DB |
 
-### Migrazioni SQL (42 file)
+### Migrazioni SQL (44 file)
 
-Le migrazioni sono numerate progressivamente da `001` a `042` e gestiscono:
+Le migrazioni sono numerate progressivamente da `001` a `044` e gestiscono:
 
-- Aggiunta colonne incrementali (reset, sconto, needs_review, verified, P.IVA)
-- Creazione tabelle (categorie, prodotti_master, prodotti_utente, ristoranti, ricette)
-- Policy RLS per multi-tenancy
+- Aggiunta colonne incrementali (reset, sconto, needs_review, verified, P.IVA, altri_ricavi_noiva, tipo_documento)
+- Creazione tabelle (categorie, prodotti_master, prodotti_utente, ristoranti, ricette, ingredienti_workspace, note_diario, margini_mensili, login_attempts)
+- Policy RLS per multi-tenancy e autenticazione custom
 - Stored procedure RPC (create_ristorante, get_distinct_files)
 - Indici di performance
 - Fix retroattivi (diciture corrotte, permessi RLS, foreign key)
 - Tracking costi AI
 - Sessioni e token
+- Rate limiting persistente su DB
 
 ---
 
@@ -845,28 +892,28 @@ Il pannello admin (`pages/admin.py`) è accessibile solo agli utenti con email i
 
 ## 13. Calcolo Marginalità e KPI
 
-### Pagina Calcolo Margine (pages/1_calcolo_margine.py)
+### Pagina Calcolo Margine (pages/1_calcolo_margine.py, ~1.546 righe)
 
 3 sotto-tab:
 
 #### 📊 Calcolo Ricavi-Costi-Margini
 
-Tabella trasposta 12 mesi con voci:
+Tabella trasposta 12 mesi. Le voci di input si dividono in **manuali** (fatturato, costi extra, personale) e **automatici** (costi da fatture):
 
 | Voce | Fonte | Formula |
 |------|-------|---------|
-| Fatturato Lordo | Input manuale | — |
-| IVA Media % | Input manuale | — |
-| Fatturato Netto IVA | Calcolato | Lordo × (1 - IVA%) |
-| Costi F&B | Auto da fatture | Somma categorie Food |
-| Costi Spese Generali | Auto da fatture | Somma 3 categorie spese |
-| Costo Personale | Input manuale | — |
-| Altri Ricavi | Input manuale | — |
-| **Food Cost %** | **Calcolato** | **(Costi F&B / Fatturato Netto) × 100** |
-| **1° Margine** | **Calcolato** | **Fatturato Netto - Costi F&B** |
+| Fatturato IVA 10% | Input manuale | su `margini_mensili.fatturato_iva10` |
+| Fatturato IVA 22% | Input manuale | su `margini_mensili.fatturato_iva22` |
+| Altri Ricavi (no IVA) | Input manuale | su `margini_mensili.altri_ricavi_noiva` |
+| Costi F&B | Auto da fatture + manuale | `costi_fb_auto` + `altri_costi_fb` |
+| Costi Spese Generali | Auto da fatture + manuale | `costi_spese_auto` + `altri_costi_spese` |
+| Costo Personale | Input manuale | su `margini_mensili.costo_dipendenti` |
+| **Fatturato Netto** | **Calcolato** | **(IVA10 / 1.10) + (IVA22 / 1.22) + altri_ricavi** |
+| **Food Cost %** | **Calcolato** | **(Costi F&B Totali / Fatturato Netto) × 100** |
+| **1° Margine** | **Calcolato** | **Fatturato Netto - Costi F&B Totali** |
 | **1° Margine %** | **Calcolato** | **1° Margine / Fatturato Netto × 100** |
 | **Spese Gen. %** | **Calcolato** | **Spese / Fatturato Netto × 100** |
-| **MOL** | **Calcolato** | **Fatturato Netto - F&B - Spese - Personale + AltriRicavi** |
+| **MOL** | **Calcolato** | **Fatturato Netto - F&B - Spese - Personale** |
 | **MOL %** | **Calcolato** | **MOL / Fatturato Netto × 100** |
 
 #### Soglie KPI con Commenti Automatici
@@ -880,32 +927,76 @@ Tabella trasposta 12 mesi con voci:
 
 #### 🏭 Centri di Produzione
 
-- Suddivisione fatturato per centro (FOOD, BAR, ALCOLICI, DOLCI)
-- Calcolo Food Cost e margine per singolo centro
-- Grafici a barre comparativi
+- Suddivisione fatturato mensile per centro: FOOD, BAR, ALCOLICI, DOLCI
+- Input per mese selezionato, salvato su `margini_mensili.fatturato_food/bar/alcolici/dolci`
+- Analisi aggregata su range di periodo via `carica_fatturato_centri_periodo()`
+- Calcolo Food Cost % e margine per singolo centro
+- Grafici a barre comparativi per centro
 
 #### 🔬 Analisi Avanzate
 
-- Breakdown costi per categoria nel periodo selezionato
-- Pivot mese × categoria con totali e percentuali
+- Trend temporale costi per categoria F&B via `carica_costi_per_categoria()`
+- Breakdown mensile con grafici Plotly interattivi
 - Export Excel formattato
 
 ---
 
 ## 14. Pagine Secondarie
 
-### 2_workspace.py — Workspace Multi-Ristorante
+### 2_workspace.py — Workspace Ricette e Diario (~2.125 righe)
 
-- Overview di tutti i ristoranti dell'utente
-- Note diario per ristorante (con sanitizzazione XSS via `html.escape()`)
-- Statistiche aggregate per locale
+**4 Tab con navigazione a bottoni:**
 
-### 3_controllo_prezzi.py — Confronto Prezzi
+**Tab 1 — 📋 Analisi Ricette e Menù:**
+- KPI globali menù: numero ricette, foodcost totale, costo medio, margine medio, incidenza foodcost %
+- Tabella riepilogativa per categoria con emoji mapping
+- Grafici Plotly: distribuzione categorie, margine netto per piatto
 
-- Ricerca prodotto per descrizione
-- Confronto prezzi tra fornitori diversi per lo stesso prodotto
-- Storico prezzi nel tempo
-- Alert variazioni significative
+**Tab 2 — 🧪 Lab Ricette (CRUD completo):**
+- Form inserimento/modifica ricetta: nome, categoria, note, prezzo vendita IVA inc.
+- Ingredienti con selezione da 3 fonti: 🟢 da fatture, 📝 ingredienti workspace, 🥘 semilavorati
+- Calcolo foodcost per ingrediente: gestione grammatura confezione, conversione UM
+- Ricette annidate (semilavorati come ingredienti di altre ricette)
+- Calcolo automatico foodcost totale e margine
+- Logica `estrai_grammatura_da_nome()`: regex per KG/GR/LT/ML/CL da descrizione
+
+**Tab 3 — 📓 Diario:**
+- Note operative giornaliere salvate su tabella `note_diario`
+- CRUD: crea, modifica, elimina note per data
+- Sanitizzazione XSS via `html.escape()`
+
+**Tab 4 — 📊 Export Excel:**
+- Export ricette con ingredienti e foodcost in formato strutturato
+- Include: nome, categoria, ingredienti (espansi), foodcost, prezzo vendita, margine
+
+**Ingredienti Workspace:**
+- Tabella `ingredienti_workspace` per ingredienti non presenti nelle fatture
+- Campi: nome, prezzo_per_um, um (unità di misura)
+- Cache `_get_ingredienti_workspace_cached()` con TTL=300s
+
+### 3_controllo_prezzi.py — Controllo Prezzi (~584 righe)
+
+**3 Tab con navigazione a bottoni:**
+
+**Tab 1 — 📈 Variazioni Prezzo:**
+- Chiama `calcola_alert(df, soglia_aumento, filtro_prodotto)` da `db_service.py`
+- Soglia minima alert configurabile (default 5%)
+- Ricerca per nome prodotto
+- Tabella con: storico ultimi 5 prezzi, media storica, ultimo prezzo, variazione %
+- Formattazione: 🔴 aumento, 🟢 ribasso
+- Export Excel
+
+**Tab 2 — 🎁 Sconti e Omaggi:**
+- KPI: 💸 Sconti Applicati (righe con totale negativo), 🎁 Omaggi Ricevuti (prezzo =€0), ✅ Totale Risparmiato
+- Dettaglio sconti in expander
+- Omaggi con ultimo prezzo storico e valore stimato calcolato
+- Export Excel separato per sconti e omaggi
+
+**Tab 3 — 📋 Note di Credito:**
+- Filtra per `tipo_documento == 'TD04'` oppure `totale_riga < 0` (retrocompatibilità)
+- Search descrizione + filtro fornitore
+- KPI: totale importo NC, numero documenti, numero righe
+- Export Excel
 
 ### gestione_account.py — Gestione Account
 
@@ -934,18 +1025,21 @@ python_functions = test_*
 addopts = -v --tb=short
 ```
 
-### Suite di Test (149 test totali)
+### Suite di Test (172 test totali, confermati da pytest)
 
-| File | Test | Copertura |
-|------|------|-----------|
-| `test_ai_service.py` | ~20 | Classificazione AI, memoria 3 livelli, quarantena |
-| `test_auth_service.py` | ~25 | Login, rate limiting, GDPR password, reset |
-| `test_constants.py` | ~15 | Integrità categorie, regex compilate, KPI soglie |
-| `test_formatters.py` | ~15 | Formattazione numeri, base64, prezzo standard |
-| `test_invoice_service.py` | ~20 | Parsing XML, P7M, encoding, tipo documento |
-| `test_piva_validator.py` | ~15 | Validazione P.IVA (Luhn), normalizzazione |
-| `test_text_utils.py` | ~20 | Normalizzazione, estrazione fornitore, pulizia |
-| `test_validation.py` | ~19 | Diciture, sconti, integrità fattura |
+| File | Test approx. | Copertura |
+|------|------|-----------| 
+| `test_text_utils.py` | 30 | Normalizzazione, estrazione fornitore, pulizia |
+| `test_piva_validator.py` | 18 | Validazione P.IVA (Luhn), normalizzazione |
+| `test_ai_service.py` | 15 | Classificazione AI, memoria 3 livelli, quarantena |
+| `test_validation.py` | 14 | Diciture, sconti, integrità fattura |
+| `test_constants.py` | 13 | Integrità categorie, regex compilate, KPI soglie |
+| `test_db_service.py` | 12 | Alert variazioni prezzo, normalizzazione categorie |
+| `test_invoice_service.py` | 11 | Parsing XML, P7M, encoding, tipo documento |
+| `test_formatters.py` | 11 | Formattazione numeri, base64, prezzo standard |
+| `test_auth_service.py` | 11 | Login, rate limiting, GDPR password, reset |
+
+> I conteggi per file sono basati su funzioni `test_*`; il totale di 172 include test parametrizzati espansi da pytest.
 
 ### Fixtures (conftest.py)
 
@@ -967,7 +1061,7 @@ pytest tests/test_ai_service.py -v
 pytest tests/ --cov=services --cov=utils --cov-report=html
 ```
 
-Ultimo risultato: **149/149 PASSED** (0.62s)
+Ultimo risultato: **172/172 PASSED** (~1.46s)
 
 ---
 
@@ -1086,7 +1180,7 @@ jobs:
 |-----------|--------|-----------|
 | **Autenticazione** | Argon2id | m=65536, t=3, p=4 (OWASP 2026) |
 | **Sessioni** | Token UUID4 + Cookie 30gg | Invalidazione esplicita su logout |
-| **Rate Limiting** | Login: 5/15min, Reset: 1/5min | In-memory thread-safe |
+| **Rate Limiting** | Login: DB persistente; Reset: in-memory | Login usa tabella `login_attempts` su Supabase; Reset usa dict in-memory thread-safe |
 | **Input Validation** | Sanitizzazione AI | Control char removal + 300 char truncation |
 | **XSS Prevention** | `html.escape()` | Su tutti gli output user-generated |
 | **CSRF Protection** | `enableXsrfProtection = true` | Streamlit nativo |

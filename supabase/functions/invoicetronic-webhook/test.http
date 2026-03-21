@@ -1,0 +1,138 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# File HTTP per VS Code REST Client (estensione "REST Client" di Huachao Mao)
+# Estensione: https://marketplace.visualstudio.com/items?itemName=humao.rest-client
+#
+# NOTA: La firma HMAC non può essere calcolata dinamicamente in questo formato.
+#       Usa test.ts per test completi con firma valida.
+#       Questo file è utile per:
+#         - Test rapidi di health check e errori
+#         - Ispezionare response headers
+#         - Condividere esempi di payload col team
+#
+# Per generare una firma valida da usare in questo file, esegui:
+#   $env:WEBHOOK_SECRET="wh_sec_xxx"
+#   deno run --allow-net --allow-env test.ts
+# e copia la firma dai log (o scrivi uno script PowerShell qui sotto).
+#
+# Script PowerShell per generare firma al volo:
+#   $secret    = "wh_sec_IL_TUO_SECRET"
+#   $timestamp = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+#   $body      = '{"id":12345,...}' # stesso body qui sotto
+#   $hmac      = New-Object System.Security.Cryptography.HMACSHA256
+#   $hmac.Key  = [System.Text.Encoding]::UTF8.GetBytes($secret)
+#   $hash      = $hmac.ComputeHash([System.Text.Encoding]::UTF8.GetBytes("$timestamp.$body"))
+#   $sig       = -join ($hash | ForEach-Object { '{0:x2}' -f $_ })
+#   Write-Host "t=$timestamp,v1=$sig"
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@localUrl  = http://localhost:54321/functions/v1/invoicetronic-webhook
+@remoteUrl = https://vthikmfpywilukizputn.supabase.co/functions/v1/invoicetronic-webhook
+
+# Imposta @baseUrl = @localUrl per test locali, @remoteUrl per produzione
+@baseUrl = {{localUrl}}
+
+###
+# ─── T0: Health check GET ──────────────────────────────────────────────────────
+# Atteso: 200 OK
+# Non richiede firma
+GET {{baseUrl}}
+
+###
+# ─── T1a: Firma ASSENTE → 401 ─────────────────────────────────────────────────
+# Atteso: 401 Unauthorized
+POST {{baseUrl}}
+Content-Type: application/json
+X-Request-ID: test-no-sig-001
+
+{
+  "id": 11111,
+  "user_id": 100,
+  "company_id": 42,
+  "resource_id": 999999,
+  "endpoint": "receive",
+  "method": "POST",
+  "status_code": 201,
+  "success": true,
+  "date_time": "2026-03-20T10:00:00Z",
+  "api_version": 1
+}
+
+###
+# ─── T1b: Firma ERRATA → 401 ──────────────────────────────────────────────────
+# Atteso: 401 Unauthorized
+# La firma è un valore hex fittizio (64 chars ma non valido)
+POST {{baseUrl}}
+Content-Type: application/json
+Invoicetronic-Signature: t=1742464800,v1=aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899
+X-Request-ID: test-bad-sig-001
+
+{
+  "id": 22222,
+  "user_id": 100,
+  "company_id": 42,
+  "resource_id": 999999,
+  "endpoint": "receive",
+  "method": "POST",
+  "status_code": 201,
+  "success": true,
+  "date_time": "2026-03-20T10:00:00Z",
+  "api_version": 1
+}
+
+###
+# ─── T2: Evento "send" ignorato → 200 ─────────────────────────────────────────
+# Atteso: 200 OK (silenzioso — la funzione ignora eventi non-receive)
+# NOTA: Anche qui la firma è necessaria per passare step 2.
+#       Usa test.ts per verificare il comportamento completo.
+#       Questo test mostra solo la struttura del payload per eventi "send".
+POST {{baseUrl}}
+Content-Type: application/json
+Invoicetronic-Signature: t=INSERISCI_TIMESTAMP,v1=INSERISCI_FIRMA_VALIDA
+X-Request-ID: test-send-event-001
+
+{
+  "id": 33333,
+  "user_id": 100,
+  "company_id": 42,
+  "resource_id": 999999,
+  "endpoint": "send",
+  "method": "POST",
+  "status_code": 201,
+  "success": true,
+  "date_time": "2026-03-20T10:00:00Z",
+  "api_version": 1
+}
+
+###
+# ─── T3: Evento completo con firma valida (da generare con script PowerShell) ──
+# ISTRUZIONI:
+#   1. Esegui lo script PowerShell in testa a questo file
+#   2. Sostituisci INSERISCI_TIMESTAMP e INSERISCI_FIRMA_VALIDA
+#   3. Usa lo stesso body JSON esatto (whitespace incluso) usato per la firma
+#
+# Atteso: 200 OK + record in fatture_queue con status="failed"
+#         (resource_id 999999 non esiste → API Invoicetronic → errore → failed)
+POST {{baseUrl}}
+Content-Type: application/json
+Invoicetronic-Signature: t=INSERISCI_TIMESTAMP,v1=INSERISCI_FIRMA_VALIDA
+X-Request-ID: test-valid-sig-001
+
+{"id":44444,"user_id":100,"company_id":42,"resource_id":999999,"endpoint":"receive","method":"POST","status_code":201,"success":true,"date_time":"2026-03-20T10:00:00Z","api_version":1}
+
+###
+# ─── T4: JSON malformato con firma valida del body rotto → 400 ────────────────
+# Per testare questo caso: genera la firma del body "{ INVALID" con lo script PS
+POST {{baseUrl}}
+Content-Type: application/json
+Invoicetronic-Signature: t=INSERISCI_TIMESTAMP,v1=INSERISCI_FIRMA_DEL_BODY_ROTTO
+X-Request-ID: test-bad-json-001
+
+{ INVALID JSON !!!
+
+###
+# ─── Metodo non consentito → 405 ─────────────────────────────────────────────
+# Atteso: 405 Method Not Allowed
+PUT {{baseUrl}}
+Content-Type: application/json
+
+{}

@@ -71,16 +71,49 @@ __all__ = [
 # ============================================
 # SUPABASE SINGLETON (Cached Resource)
 # ============================================
-import streamlit as st
+import os
 from supabase import create_client
 from supabase.lib.client_options import SyncClientOptions
 
-@st.cache_resource(ttl=3600)
+def _get_supabase_credentials() -> tuple[str, str]:
+    """
+    Risolve URL e key Supabase con doppio fallback:
+      1. st.secrets (Streamlit Cloud / app UI)
+      2. variabili d'ambiente (worker CLI, GitHub Actions, test locali)
+    Questo permette di usare get_supabase_client() sia dall'UI che dal worker.
+    """
+    # --- Tentativo 1: st.secrets (presente solo quando gira dentro Streamlit) ---
+    try:
+        import streamlit as st
+        url = st.secrets["supabase"]["url"]
+        key = st.secrets["supabase"]["key"]
+        return url, key
+    except Exception:
+        pass
+
+    # --- Tentativo 2: env vars (worker / GitHub Actions / test locali) ---
+    url = os.environ.get("SUPABASE_URL", "")
+    # Il worker usa la service_role key per bypassare RLS;
+    # se non presente, cade sulla anon key per retrocompatibilità.
+    key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("SUPABASE_KEY", "")
+    )
+    if url and key:
+        return url, key
+
+    raise RuntimeError(
+        "Credenziali Supabase non trovate. "
+        "Imposta SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY nelle env vars."
+    )
+
+
 def get_supabase_client():
     """
-    Restituisce istanza singleton del client Supabase.
-    Cached per tutta la sessione dell'app per evitare ricreare connessioni.
-    
+    Restituisce un client Supabase.
+    - Dentro Streamlit: usa st.secrets + cache @st.cache_resource.
+    - Fuori Streamlit (worker CLI): crea client diretto da env vars.
+
     Returns:
         Client Supabase configurato
     """
@@ -88,9 +121,21 @@ def get_supabase_client():
         postgrest_client_timeout=30,
         storage_client_timeout=30,
     )
-    return create_client(
-        st.secrets["supabase"]["url"],
-        st.secrets["supabase"]["key"],
-        options=options,
-    )
+    # Usa cache Streamlit solo quando Streamlit è in esecuzione
+    try:
+        import streamlit as st
+        # Verifica che lo script context sia attivo (non solo il modulo importato)
+        _ = st.secrets["supabase"]["url"]
+
+        # Definizione locale della versione cached — eseguita solo in contesto Streamlit
+        @st.cache_resource(ttl=3600)
+        def _cached_client():
+            url, key = _get_supabase_credentials()
+            return create_client(url, key, options=options)
+
+        return _cached_client()
+    except Exception:
+        # Fuori Streamlit: client senza cache (worker gestisce il proprio ciclo di vita)
+        url, key = _get_supabase_credentials()
+        return create_client(url, key, options=options)
 

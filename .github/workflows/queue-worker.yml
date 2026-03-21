@@ -1,0 +1,80 @@
+name: Worker — fatture_queue processor
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Elabora in modo asincrono le fatture ricevute dal webhook Invoicetronic.
+#
+# Flusso:
+#   Invoicetronic → webhook → public.fatture_queue (status=pending)
+#     → QUESTO WORKER ogni 5 min → public.fatture (righe parsate)
+#
+# GITHUB SECRETS richiesti (Settings → Secrets → Actions):
+#   SUPABASE_URL                URL del progetto Supabase
+#   SUPABASE_SERVICE_ROLE_KEY   service_role key (bypassa RLS)
+#   INVOICETRONIC_API_KEY       opzionale — solo per fallback download XML
+#
+# COSTO: ~8.640 run/mese. Ogni run dura < 60s se la coda è vuota.
+# GitHub Actions free tier: 2.000 min/mese (repo privato).
+# Per ridurre usage: aumentare il cron a '*/10 * * * *' (ogni 10 min).
+# ═══════════════════════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    # Ogni 5 minuti — bilanciamento latenza/costo GitHub Actions
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    # Permette avvio manuale per test o drain forzato della coda
+    inputs:
+      batch_size:
+        description: 'Numero di record da processare per ciclo (default: 10)'
+        required: false
+        default: '10'
+
+jobs:
+  process-queue:
+    name: Process fatture_queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 10   # Safeguard: kill dopo 10 min (non deve mai succedere)
+
+    steps:
+      # ── 1. Checkout ─────────────────────────────────────────────────────────
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      # ── 2. Setup Python ──────────────────────────────────────────────────────
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      # ── 3. Installa dipendenze ───────────────────────────────────────────────
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # ── 4. Esegui worker ─────────────────────────────────────────────────────
+      - name: Run queue worker
+        env:
+          # Credenziali Supabase (dalla GitHub Secrets)
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Invoicetronic (per fallback download XML se xml_content=NULL)
+          INVOICETRONIC_API_KEY:     ${{ secrets.INVOICETRONIC_API_KEY }}
+          # Configurazione worker
+          WORKER_BATCH_SIZE:         ${{ github.event.inputs.batch_size || '10' }}
+          WORKER_XML_RETENTION_HOURS: '24'
+          WORKER_STALE_LOCK_MINUTES:  '10'
+          WORKER_ID_PREFIX:           'gh-action'
+          # OpenAI per categorizzazione AI (usata da estrai_dati_da_xml)
+          OPENAI_API_KEY:            ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          python worker/run.py
+
+      # ── 5. Esponi summary nel log GitHub Actions ─────────────────────────────
+      - name: Log summary
+        if: always()
+        run: |
+          echo "### Worker fatture_queue" >> $GITHUB_STEP_SUMMARY
+          echo "- Run ID: ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Trigger: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Batch size: ${{ github.event.inputs.batch_size || '10' }}" >> $GITHUB_STEP_SUMMARY

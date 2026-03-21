@@ -22,6 +22,22 @@ import streamlit as st
 import xmltodict
 from typing import List, Dict, Any, Optional
 
+
+def _ui_msg(level: str, msg: str) -> None:
+    """
+    Invia un messaggio all'UI Streamlit se disponibile,
+    altrimenti lo logga (contesto worker/CLI).
+    """
+    try:
+        fn = getattr(st, level, None)
+        if fn:
+            fn(msg)
+            return
+    except Exception:
+        pass
+    logger.info("[UI %s] %s", level, msg)
+
+
 # Import utilities
 from utils.formatters import (
     safe_get,
@@ -1118,19 +1134,22 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
 
 def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                              supabase_client=None, silent: bool = False,
-                             ristoranteid: str = None) -> Dict[str, Any]:
+                             ristoranteid: str = None,
+                             user_id: str = None) -> Dict[str, Any]:
     """
     Salva fatture su Supabase con logging eventi.
-    
+
     Args:
         nome_file: Nome file fattura
         dati_prodotti: Lista dizionari con dati prodotti
-        supabase_client: Client Supabase (opzionale, usa st.secrets se None)
-        silent: Se True, nasconde messaggi UI (per batch)
-        
+        supabase_client: Client Supabase (opzionale, auto-fetch se None)
+        silent: Se True, nasconde messaggi UI Streamlit (obbligatorio fuori Streamlit)
+        ristoranteid: UUID ristorante (obbligatorio)
+        user_id: UUID utente — se None, tenta st.session_state (solo in UI Streamlit)
+
     Returns:
         Dict con: success, error, righe, location
-        
+
     Note:
         - Priorità: Supabase SEMPRE (no fallback JSON)
         - Forza categoria valida (mai NULL/vuoto → "Da Classificare")
@@ -1138,14 +1157,17 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
         - Logging automatico su tabella upload_events
     """
     from services import get_supabase_client
-    
-    # Verifica autenticazione
-    if "user_data" not in st.session_state or "id" not in st.session_state.user_data:
-        if not silent:
-            st.error("❌ Errore: Utente non autenticato. Effettua il login.")
-        return {"success": False, "error": "not_authenticated", "righe": 0, "location": None}
-    
-    user_id = st.session_state.user_data["id"]
+
+    # ── Risoluzione user_id ────────────────────────────────────────────────────
+    # Accetta user_id esplicito (worker) o lo legge da session_state (UI Streamlit)
+    if user_id is None:
+        try:
+            user_id = st.session_state.user_data["id"]
+        except Exception:
+            if not silent:
+                _ui_msg("error", "❌ Errore: Utente non autenticato. Effettua il login.")
+            return {"success": False, "error": "not_authenticated", "righe": 0, "location": None}
+
     ristorante_id = ristoranteid  # Passato esplicitamente dal caller
     
     # ⚠️ VALIDAZIONE: Utenti senza ristorante_id non possono salvare fatture
@@ -1153,8 +1175,8 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
         logger.error(f"❌ ERRORE CRITICO: ristorante_id mancante per user_id={user_id}")
         logger.error(f"   File: {nome_file}, Righe: {len(dati_prodotti)}")
         if not silent:
-            st.error("⚠️ Configurazione account incompleta. Impossibile salvare fatture.")
-            st.info("💡 Contatta l'assistenza per completare la configurazione del tuo account.")
+            _ui_msg("error", "⚠️ Configurazione account incompleta. Impossibile salvare fatture.")
+            _ui_msg("info", "💡 Contatta l'assistenza per completare la configurazione del tuo account.")
         return {"success": False, "error": "missing_ristorante_id", "righe": 0, "location": None}
     
     num_righe = len(dati_prodotti)
@@ -1213,8 +1235,11 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             
             # Log upload event
             try:
-                user_email = st.session_state.user_data.get("email", "unknown")
-                
+                try:
+                    user_email = st.session_state.user_data.get("email", "unknown")
+                except Exception:
+                    user_email = "worker"
+
                 if verifica and verifica["integrita_ok"]:
                     log_upload_event(
                         user_id=user_id,
@@ -1250,12 +1275,15 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             if verifica and not verifica["integrita_ok"]:
                 logger.error(f"🚨 DISCREPANZA {nome_file}: parsed={verifica['righe_parsed']} vs db={verifica['righe_db']}")
                 if not silent:
-                    if 'verifica_integrita' not in st.session_state:
-                        st.session_state.verifica_integrita = []
-                    st.session_state.verifica_integrita.append(verifica)
-            
+                    try:
+                        if 'verifica_integrita' not in st.session_state:
+                            st.session_state.verifica_integrita = []
+                        st.session_state.verifica_integrita.append(verifica)
+                    except Exception:
+                        pass  # fuori Streamlit: ignorato
+
             if not silent:
-                st.success(f"✅ {nome_file}: {num_righe} righe salvate su Supabase")
+                _ui_msg("success", f"✅ {nome_file}: {num_righe} righe salvate su Supabase")
             
             return {
                 "success": True,
@@ -1269,7 +1297,10 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             
             # Log failed event
             try:
-                user_email = st.session_state.user_data.get("email", "unknown")
+                try:
+                    user_email = st.session_state.user_data.get("email", "unknown")
+                except Exception:
+                    user_email = "worker"
                 log_upload_event(
                     user_id=user_id,
                     user_email=user_email,
@@ -1285,8 +1316,8 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 logger.error(f"Errore logging failed event: {log_error}")
             
             if not silent:
-                st.error(f"❌ Errore salvataggio {nome_file}. Riprova.")
-            
+                _ui_msg("error", f"❌ Errore salvataggio {nome_file}. Riprova.")
+
             return {
                 "success": False,
                 "error": str(e),
@@ -1295,7 +1326,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             }
     else:
         if not silent:
-            st.error("❌ Supabase non disponibile")
+            _ui_msg("error", "❌ Supabase non disponibile")
         return {"success": False, "error": "no_supabase", "righe": 0, "location": None}
 
 

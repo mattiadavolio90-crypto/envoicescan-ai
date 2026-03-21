@@ -6,6 +6,15 @@ secrets.toml*
 *.toml.backup
 *.toml.example
 
+# Edge Function env files (contengono service_role key e API secrets)
+supabase/functions/.env
+supabase/functions/.env.local
+supabase/**/.env*
+!supabase/functions/.env.local.template
+
+# Binari strumenti locali (supabase.exe ~97MB, deno cache, ecc.)
+tools/
+
 # File con secrets nelle conversazioni
 FILE/CONVERSAZIONI PERPLEXITY/
 FILE/KEYS*
