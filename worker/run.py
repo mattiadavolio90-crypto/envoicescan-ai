@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""
+r"""
 worker/run.py — Entry point del worker fatture_queue
 ═════════════════════════════════════════════════════════════════════════════
 Usato da GitHub Actions e opzionalmente da terminale locale.
