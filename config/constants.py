@@ -1244,6 +1244,12 @@ import os as _os
 # Configurare: ADMIN_EMAILS=email1@example.com,email2@example.com
 _admin_env = _os.environ.get("ADMIN_EMAILS", "").strip()
 ADMIN_EMAILS = [e.strip().lower() for e in _admin_env.split(",") if e.strip()] if _admin_env else ["mattiadavolio90@gmail.com"]
+if not _admin_env:
+    import logging as _logging
+    _logging.getLogger("config").warning(
+        "⚠️  ADMIN_EMAILS env var non impostata — fallback a mattiadavolio90@gmail.com. "
+        "In produzione configurare: ADMIN_EMAILS=email1,email2"
+    )
 
 
 # ============================================================

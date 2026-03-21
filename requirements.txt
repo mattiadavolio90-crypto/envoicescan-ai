@@ -14,3 +14,7 @@ Pillow>=10.0.0
 requests>=2.31.0
 tenacity>=8.2.3
 asn1crypto>=1.5.1
+# Security: fixes CVE-2026-26007
+cryptography>=46.0.5
+# Security: fixes CVE-2026-32597
+PyJWT>=2.12.0

@@ -34,8 +34,8 @@ is_admin = st.session_state.get('user_is_admin', False)
 try:
     supabase = get_supabase_client()
 except Exception as e:
-    st.error(f"⛔ Errore connessione database: {e}")
-    logger.exception("Errore connessione Supabase")
+    st.error("⛔ Errore di connessione al database. Riprova tra qualche minuto.")
+    logger.exception("Errore connessione Supabase: %s", e)
     st.stop()
 
 # Hasher password

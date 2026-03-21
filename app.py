@@ -413,12 +413,24 @@ if st.query_params.get("reset_token"):
             - ❌ Non usare email o nome ristorante
             - ❌ Non usare password comuni
             """)
+
+            # GDPR Art.6 — consenso esplicito al trattamento dati (solo primo accesso)
+            gdpr_accepted = True  # default per reset password (utente già registrato)
+            if is_nuovo_cliente:
+                gdpr_accepted = st.checkbox(
+                    "✅ Ho letto e accetto l'[Informativa Privacy](/?page=privacy) "
+                    "(D.lgs. 196/2003 e GDPR UE 2016/679). "
+                    "Acconsento al trattamento dei miei dati per l'erogazione del servizio.",
+                    key="gdpr_consent_activation"
+                )
             
             submitted = st.form_submit_button("✅ Conferma Password", type="primary", use_container_width=True)
             
             if submitted:
                 # Validazioni
-                if not nuova_password or not conferma_password:
+                if is_nuovo_cliente and not gdpr_accepted:
+                    st.error("⚠️ Devi accettare l'Informativa Privacy per continuare.")
+                elif not nuova_password or not conferma_password:
                     st.error("⚠️ Compila entrambi i campi password")
                 elif nuova_password != conferma_password:
                     st.error("❌ Le password non coincidono")
@@ -508,6 +520,18 @@ def mostra_pagina_login():
 <p style="font-size: clamp(0.7rem, 1.6vw, 0.82rem); color: #1e3a8a; margin: 0.75rem 0 1.25rem 0; line-height: 1.6;">
     📄 <strong>Nota Legale:</strong> Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.
 </p>
+""", unsafe_allow_html=True)
+
+    # ── Informativa cookie (Garante Privacy IT — cookie tecnici strettamente necessari) ──
+    # I cookie tecnici di sessione non richiedono consenso preventivo ma l'utente va informato.
+    st.markdown("""
+<div style="background:#f0f7ff;border:1px solid #bdd7f5;border-radius:6px;padding:8px 12px;
+            font-size:0.75rem;color:#1e3a8a;margin-bottom:0.8rem;line-height:1.5;">
+    🍪 <strong>Cookie tecnici:</strong> Questo sito utilizza esclusivamente cookie tecnici di sessione,
+    necessari al funzionamento del servizio. Non vengono usati cookie di profilazione o tracciamento.
+    Per maggiori informazioni consulta la
+    <a href="?page=privacy" style="color:#2563eb;">Informativa Privacy</a>.
+</div>
 """, unsafe_allow_html=True)
     
     # Tab navigazione stile bottoni (stesso stile dell'app)

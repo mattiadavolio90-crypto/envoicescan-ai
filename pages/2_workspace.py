@@ -817,8 +817,8 @@ if selected_tab == "📋 Analisi Ricette e Menù":
             )
     
     except Exception as e:
-        st.error(f"❌ Errore caricamento ricette: {e}")
-        logger.exception("Errore tab ricette salvate")
+        st.error("❌ Errore nel caricamento delle ricette. Riprova.")
+        logger.exception("Errore tab ricette salvate: %s", e)
 
 
 # ============================================
@@ -1683,7 +1683,8 @@ Se necessario contattare l'assistenza.
                                     invalidate_workspace_cache()
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Errore: {e}")
+                                    logger.exception("Errore swap order ricetta: %s", e)
+                                    st.error("❌ Operazione non riuscita. Riprova.")
                     
                     with col_a2:
                         if idx < len(ricette_vis) - 1:
@@ -1697,7 +1698,8 @@ Se necessario contattare l'assistenza.
                                     invalidate_workspace_cache()
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Errore: {e}")
+                                    logger.exception("Errore swap order ricetta: %s", e)
+                                    st.error("❌ Operazione non riuscita. Riprova.")
                     
                     with col_a3:
                         if st.button("✏️ Modifica", key=f"s_edit_{ricetta['id']}", use_container_width=True):
@@ -1735,7 +1737,8 @@ Se necessario contattare l'assistenza.
                                 st.session_state.ingredienti_temp = ingredienti_temp
                                 st.rerun()
                             except Exception as e:
-                                st.error(f"❌ Errore: {e}")
+                                logger.exception("Errore modifica ricetta: %s", e)
+                                st.error("❌ Impossibile aprire la ricetta in modifica. Riprova.")
                     
                     with col_a4:
                         if st.button("🗑️ Elimina", key=f"s_del_{ricetta['id']}", use_container_width=True):
@@ -1758,15 +1761,16 @@ Se necessario contattare l'assistenza.
                                     del st.session_state[f's_confirm_del_{ricetta["id"]}']
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Errore: {e}")
+                                    logger.exception("Errore eliminazione ricetta: %s", e)
+                                    st.error("❌ Eliminazione non riuscita. Riprova.")
                         with col_c2:
                             if st.button("❌ Annulla", key=f"s_cno_{ricetta['id']}"):
                                 del st.session_state[f's_confirm_del_{ricetta["id"]}']
                                 st.rerun()
     
     except Exception as e:
-        st.error(f"❌ Errore caricamento ricette salvate: {e}")
-        logger.exception("Errore ricette salvate in tab2")
+        st.error("❌ Errore nel caricamento delle ricette salvate. Riprova.")
+        logger.exception("Errore ricette salvate in tab2: %s", e)
 
 
 # ============================================
@@ -1954,12 +1958,12 @@ if selected_tab == "📊 Export Excel":
                     )
             
             except Exception as e:
-                st.error(f"❌ Errore generazione Excel: {e}")
-                logger.exception("Errore export Excel")
+                st.error("❌ Errore nella generazione del file Excel. Riprova.")
+                logger.exception("Errore export Excel: %s", e)
     
     except Exception as e:
-        st.error(f"❌ Errore caricamento dati: {e}")
-        logger.exception("Errore tab export")
+        st.error("❌ Errore nel caricamento dei dati. Riprova.")
+        logger.exception("Errore tab export: %s", e)
 
 
 # ============================================

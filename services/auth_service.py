@@ -22,7 +22,6 @@ import hashlib
 import logging
 import re
 import uuid
-import threading
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict, Any, List
 
@@ -135,32 +134,57 @@ def registra_tentativo(email: str, success: bool, supabase_client=None):
 
 
 # ============================================================
-# RATE LIMITING RESET PASSWORD (in-memory, thread-safe)
+# RATE LIMITING RESET PASSWORD (persistente su DB — colonna users.last_reset_requested_at)
+# Non usa più dict in-memory: sopravvive ai restart di Streamlit Cloud.
+# Migration richiesta: 046_add_reset_rate_limit_column.sql
 # ============================================================
-_reset_attempts_lock = threading.Lock()
-_reset_attempts: Dict[str, datetime] = {}  # {email: last_request_time}
 _RESET_COOLDOWN_SECONDS = 300  # 5 minuti tra una richiesta e l'altra
 
 
-def _check_reset_rate_limit(email: str) -> Optional[str]:
-    """Controlla se l'email può richiedere un nuovo reset. Ritorna messaggio errore o None se OK."""
-    email_lower = email.lower().strip()
-    with _reset_attempts_lock:
-        last_request = _reset_attempts.get(email_lower)
-        if last_request:
-            elapsed = (datetime.now(timezone.utc) - last_request).total_seconds()
+def _check_reset_rate_limit(email: str, supabase_client=None) -> Optional[str]:
+    """
+    Controlla se l'email può richiedere un nuovo reset leggendo dal DB.
+    Ritorna messaggio errore (str) se in cooldown, oppure None se OK.
+    Persiste attraverso i restart di Streamlit Cloud.
+    """
+    try:
+        from services import get_supabase_client
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
+        email_lower = email.lower().strip()
+        resp = supabase_client.table('users') \
+            .select('last_reset_requested_at') \
+            .eq('email', email_lower) \
+            .maybe_single() \
+            .execute()
+        if resp.data and resp.data.get('last_reset_requested_at'):
+            last_str = resp.data['last_reset_requested_at']
+            last = datetime.fromisoformat(last_str.replace('Z', '+00:00'))
+            if last.tzinfo is None:
+                last = last.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - last).total_seconds()
             if elapsed < _RESET_COOLDOWN_SECONDS:
                 remaining = int((_RESET_COOLDOWN_SECONDS - elapsed) / 60) + 1
-                logger.warning("⛔ Reset password bloccato: cooldown attivo")
+                logger.warning("⛔ Reset password bloccato: cooldown DB attivo")
                 return f"Attendi {remaining} minuti prima di richiedere un altro reset."
+    except Exception as e:
+        logger.warning(f"Errore check_reset_rate_limit DB: {e} — permesso passare")
+        # Fallback permissivo: se il DB non risponde non blocchiamo l'utente
     return None
 
 
-def _record_reset_request(email: str):
-    """Registra una richiesta di reset password."""
-    email_lower = email.lower().strip()
-    with _reset_attempts_lock:
-        _reset_attempts[email_lower] = datetime.now(timezone.utc)
+def _record_reset_request(email: str, supabase_client=None):
+    """Registra la timestamp dell'ultima richiesta di reset nel DB (non in memoria)."""
+    try:
+        from services import get_supabase_client
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
+        email_lower = email.lower().strip()
+        supabase_client.table('users').update({
+            'last_reset_requested_at': datetime.now(timezone.utc).isoformat()
+        }).eq('email', email_lower).execute()
+    except Exception as e:
+        logger.warning(f"Errore record_reset_request DB: {e}")
 
 
 # ============================================================
@@ -773,8 +797,8 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         import streamlit as st
         from services import get_supabase_client
         
-        # Rate limiting: max 1 richiesta reset ogni 5 minuti per email
-        rate_limit_msg = _check_reset_rate_limit(email)
+        # Rate limiting: max 1 richiesta reset ogni 5 minuti per email (DB-backed)
+        rate_limit_msg = _check_reset_rate_limit(email, supabase_client)
         if rate_limit_msg:
             return False, rate_limit_msg
         
@@ -855,12 +879,13 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         )
         
         if response.status_code in (200, 201):
-            _record_reset_request(email)
+            _record_reset_request(email, supabase_client)
             logger.info("Email reset inviata con successo")
             return True, "Email inviata con successo"
         else:
-            logger.error(f"Brevo API error: {response.status_code} - {response.text}")
-            return False, f"Errore Brevo [{response.status_code}]: {response.text}"
+            # Log solo status code, non il body completo (potrebbe contenere headers/token)
+            logger.error(f"Brevo API error: {response.status_code} (body omesso per sicurezza)")
+            return False, "Errore nell'invio email. Riprova o contatta il supporto."
             
     except requests.exceptions.Timeout:
         logger.error("Timeout invio email Brevo")
