@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<!-- saved from url=(0083)file:///C:/Users/matti/Desktop/FCI_PROJECT/DOCUMENTAZIONE/Presentazione_OhYeah.html -->
+<html lang="it"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>OH YEAH! — Presentazione</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --b9:#0f2a5e;--b7:#1e3a8a;--b5:#3b82f6;--b1:#dbeafe;--b0:#eff6ff;
+    --g7:#15803d;--g5:#22c55e;--g1:#dcfce7;
+    --r5:#ef4444;--r1:#fee2e2;
+    --gray:#64748b;--light:#f8fafc;--border:#e2e8f0;
+  }
+  html{font-size:10.5pt;}
+  body{font-family:'Inter',sans-serif;background:#fff;color:#1e293b;line-height:1.6;}
+  .page{max-width:860px;margin:0 auto;}
+
+  /* HERO */
+  .hero{background:linear-gradient(140deg,var(--b9) 0%,var(--b7) 55%,#1d4ed8 100%);padding:34px 56px 30px;position:relative;overflow:hidden;}
+  .hero::after{content:'';position:absolute;bottom:-80px;right:-80px;width:300px;height:300px;border-radius:50%;background:rgba(255,255,255,.05);}
+  .hero-inner{display:flex;align-items:center;gap:32px;position:relative;z-index:1;}
+  .hero-left{flex:1;}
+  .hero-logo{display:flex;align-items:center;gap:10px;margin-bottom:22px;}
+  .logo-app-name{font-size:22pt;font-weight:900;color:#fff;letter-spacing:-0.5px;line-height:1;}
+  .logo-app-name em{font-style:normal;color:#cbd5e1;}
+  .logo-app-tag{font-size:7.5pt;color:rgba(255,255,255,.45);font-weight:500;letter-spacing:.5px;margin-top:2px;}
+  .hero h1{font-size:28pt;font-weight:900;color:#fff;line-height:1.1;letter-spacing:-1px;margin-bottom:12px;}
+  .hero h1 em{font-style:normal;background:linear-gradient(90deg,#f1f5f9,#bfdbfe);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+  .hero p{font-size:10pt;color:rgba(255,255,255,.72);max-width:480px;margin-bottom:0;}
+  .hero-stats{display:flex;flex-direction:column;gap:12px;border-left:1px solid rgba(255,255,255,.18);padding-left:26px;min-width:185px;flex-shrink:0;}
+  .stat-item{display:flex;flex-direction:column;}
+  .stat-n{display:block;font-size:11pt;font-weight:800;color:#e2e8f0;line-height:1.2;}
+  .stat-l{font-size:7pt;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.7px;margin-top:2px;}
+
+  /* SECTIONS */
+  .section{padding:24px 56px;}
+  .eyebrow{font-size:8pt;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--b5);margin-bottom:14px;}
+  hr{border:none;border-top:1px solid var(--border);margin:0;}
+
+  /* PAIN/SOL */
+  .ps-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:0;align-items:center;}
+  .ps-col{display:flex;flex-direction:column;gap:10px;}
+  .pain-item{background:var(--r1);border-radius:10px;padding:13px 16px;display:flex;align-items:center;gap:10px;}
+  .pain-item .ico{font-size:18px;flex-shrink:0;}
+  .pain-item p{font-size:9pt;color:#7f1d1d;line-height:1.4;}
+  .pain-item strong{color:#991b1b;}
+  .sol-item{background:var(--g1);border-radius:10px;padding:13px 16px;display:flex;align-items:center;gap:10px;}
+  .sol-item .ico{font-size:18px;flex-shrink:0;}
+  .sol-item p{font-size:9pt;color:#14532d;line-height:1.4;}
+  .sol-item strong{color:#15803d;}
+  .arrow-col{display:flex;flex-direction:column;align-items:center;justify-content:space-around;gap:10px;padding:0 10px;height:100%;}
+  .arrow{width:30px;height:30px;background:var(--b5);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-weight:700;}
+
+  /* FEATURES */
+  .feat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;}
+  .feat{background:var(--light);border:1.5px solid var(--border);border-radius:12px;padding:14px 13px;}
+  .feat-icon{font-size:22px;margin-bottom:6px;}
+  .feat h3{font-size:9pt;font-weight:700;color:var(--b9);margin-bottom:3px;}
+  .feat p{font-size:7.5pt;color:var(--gray);line-height:1.45;}
+  .feat.highlight{border-color:#6366f1;background:#f5f3ff;}
+  .feat.highlight h3{color:#4338ca;}
+  /* incidenze mini-bar */
+  .inc-bars{margin-top:8px;display:flex;flex-direction:column;gap:4px;}
+  .inc-row{display:flex;align-items:center;gap:5px;font-size:6pt;}
+  .inc-label{width:52px;color:#64748b;flex-shrink:0;}
+  .inc-track{flex:1;background:#e0e7ff;border-radius:3px;height:6px;overflow:hidden;}
+  .inc-fill{height:100%;border-radius:3px;}
+  .inc-val{width:26px;text-align:right;font-weight:700;color:#4338ca;flex-shrink:0;}
+
+  /* STEPS */
+  .steps{display:flex;gap:0;}
+  .step{flex:1;display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;padding:0 8px;}
+  .step:not(:last-child)::after{content:'→';position:absolute;right:-8px;top:12px;font-size:14pt;color:var(--b5);font-weight:700;}
+  .step-num{width:34px;height:34px;background:linear-gradient(135deg,var(--b7),var(--b5));border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11pt;font-weight:900;color:#fff;margin-bottom:8px;box-shadow:0 4px 12px rgba(59,130,246,.3);}
+  .step-emoji{font-size:22px;margin-bottom:6px;}
+  .step h4{font-size:9pt;font-weight:700;color:var(--b9);margin-bottom:3px;}
+  .step p{font-size:7.5pt;color:var(--gray);}
+
+  /* CTA */
+  .cta-gdpr{font-size:8pt;color:rgba(255,255,255,.6);margin-top:8px;}
+  .cta{margin:0 56px 30px;background:linear-gradient(135deg,var(--b7) 0%,#1d4ed8 100%);border-radius:16px;padding:26px 36px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap;box-shadow:0 16px 48px rgba(29,78,216,.2);}
+  .cta-left .cta-eyebrow{font-size:8pt;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#cbd5e1;margin-bottom:8px;}
+  .cta-left h2{font-size:18pt;font-weight:900;color:#fff;line-height:1.2;}
+  .cta-left p{font-size:9pt;color:rgba(255,255,255,.65);margin-top:6px;}
+  .btn{background:linear-gradient(135deg,var(--g5),#16a34a);color:#fff;font-size:11pt;font-weight:800;padding:14px 32px;border-radius:10px;text-decoration:none;box-shadow:0 8px 24px rgba(34,197,94,.35);white-space:nowrap;display:inline-block;}
+  .btn-note{font-size:7.5pt;color:rgba(255,255,255,.5);text-align:center;margin-top:6px;}
+  .btn-note strong{color:#e2e8f0;}
+
+  /* FOOTER */
+  .footer{padding:14px 56px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;font-size:7.5pt;color:#94a3b8;flex-wrap:wrap;gap:6px;}
+
+  /* APP MOCKUP */
+  .mockup-wrap{padding:22px 56px;background:linear-gradient(160deg,#f0f6ff 0%,#e8f2ff 100%);border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+  .mockup-title{font-size:8pt;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--b5);margin-bottom:18px;}
+  .mockup-title span{color:#64748b;font-weight:400;text-transform:none;letter-spacing:0;}
+  .browser{background:#fff;border-radius:12px;box-shadow:0 8px 40px rgba(15,42,94,.15);overflow:hidden;border:1px solid #c7d4e8;}
+  .browser-bar{background:#f1f5f9;padding:8px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #dde4ee;}
+  .b-dots{display:flex;gap:5px;}
+  .b-dot{width:9px;height:9px;border-radius:50%;}
+  .b-dot.r{background:#fc5f57;}.b-dot.y{background:#febc2e;}.b-dot.g{background:#27c840;}
+  .b-url{flex:1;background:#e2e8f0;border-radius:5px;padding:3px 10px;font-size:7pt;color:#64748b;font-family:monospace;}
+  .app-body{padding:14px 18px;font-size:7.5pt;color:#1e293b;}
+  /* period bar */
+  .app-period-title{font-weight:700;font-size:9pt;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+  .period-row{display:flex;gap:8px;align-items:center;margin-bottom:12px;}
+  .period-select{background:#fff;border:1.5px solid #3b82f6;border-radius:6px;padding:4px 10px;font-size:7pt;color:#1e3a8a;font-weight:600;}
+  .period-info{background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:4px 10px;font-size:6.5pt;color:#1e40af;flex:1;}
+  /* KPI cards */
+  .kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:12px;}
+  .kpi{background:#fff;border:1.5px solid var(--border);border-radius:8px;padding:8px 10px;text-align:center;}
+  .kpi-label{font-size:6pt;color:#64748b;margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:3px;}
+  .kpi-val{font-size:10pt;font-weight:800;color:#1e3a8a;line-height:1;}
+  /* nav tabs */
+  .nav-tabs{display:flex;gap:6px;margin-bottom:10px;}
+  .nav-tab{padding:5px 14px;border-radius:6px;font-size:7.5pt;font-weight:600;border:1.5px solid var(--border);background:#f8fafc;color:#64748b;cursor:pointer;}
+  .nav-tab.active{background:linear-gradient(90deg,#0ea5e9,#3b82f6);color:#fff;border-color:transparent;}
+  /* filters */
+  .filter-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .filter-label{font-size:6.5pt;color:#64748b;}
+  .filter-drop{background:#fff;border:1.5px solid var(--border);border-radius:5px;padding:3px 8px;font-size:7pt;color:#1e293b;}
+  .filter-search{flex:1;background:#fff;border:1.5px solid var(--border);border-radius:5px;padding:3px 10px;font-size:7pt;color:#94a3b8;}
+  .filter-btn{background:linear-gradient(90deg,#0ea5e9,#3b82f6);color:#fff;border:none;border-radius:5px;padding:4px 12px;font-size:7pt;font-weight:700;margin-left:auto;}
+  /* table */
+  .app-table{width:100%;border-collapse:collapse;font-size:7pt;}
+  .app-table th{background:#f1f5f9;padding:5px 8px;text-align:left;color:#64748b;font-weight:600;border-bottom:1.5px solid #dde4ee;white-space:nowrap;}
+  .app-table td{padding:5px 8px;border-bottom:1px solid #f1f5f9;color:#334155;}
+  .app-table tr:last-child td{border-bottom:none;}
+  .badge{display:inline-block;padding:1px 7px;border-radius:4px;font-size:6pt;font-weight:600;}
+  .badge.carne{background:#fef2f2;color:#b91c1c;}
+  .badge.birre{background:#eff6ff;color:#1d4ed8;}
+  .badge.salumi{background:#fefce8;color:#a16207;}
+  .badge.consumo{background:#f0fdf4;color:#15803d;}
+  .badge.shop{background:#faf5ff;color:#7e22ce;}
+  .total-bar{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;padding:5px 10px;font-size:7pt;color:#15803d;font-weight:600;margin-bottom:8px;}
+
+  @media print{
+    .hero,.cta,.step-num,.logo-box{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="hero">
+    <div class="hero-inner">
+      <div class="hero-left">
+        <div class="hero-logo">
+          <div>
+            <div class="logo-app-name">Oh <em>Yeah!</em> App</div>
+            <div class="logo-app-tag">L'app che fa le cose che contano davvero</div>
+          </div>
+        </div>
+        <h1>I tuoi costi, i tuoi margini.<br><em>Sempre aggiornati. In automatico.</em></h1>
+        <p>Oh Yeah! legge le fatture al posto tuo, le classifica e ti mostra dove spendi, se è variato il prezzo e dove puoi migliorare per aumentare i margini.</p>
+      </div>
+      <div class="hero-stats">
+        <div class="stat-item"><span class="stat-n">🔒 Privacy</span><span class="stat-l">GDPR compliant · no tracking</span></div>
+        <div class="stat-item"><span class="stat-n">AI</span><span class="stat-l">Classificazione fatture</span></div>
+        <div class="stat-item"><span class="stat-n">Cloud</span><span class="stat-l">Funziona dal browser</span></div>
+        <div class="stat-item"><span class="stat-n">🇩🇪 EU</span><span class="stat-l">Dati in Europa</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="eyebrow">Prima e dopo OH YEAH!</div>
+    <div class="ps-grid">
+      <div class="ps-col">
+        <div class="pain-item"><span class="ico">😤</span><p><strong>Ore perse</strong> ad inserire fatture su Excel ogni mese</p></div>
+        <div class="pain-item"><span class="ico">🤷</span><p><strong>Zero visibilità</strong> su quali fornitori erodono il margine</p></div>
+        <div class="pain-item"><span class="ico">📉</span><p><strong>Rincari nascosti</strong> che scopri quando è troppo tardi</p></div>
+        <div class="pain-item"><span class="ico">😱</span><p><strong>Fine mese:</strong> incassi, ma non sai se stai guadagnando davvero</p></div>
+      </div>
+      <div class="arrow-col">
+        <div class="arrow">→</div>
+        <div class="arrow">→</div>
+        <div class="arrow">→</div>
+        <div class="arrow">→</div>
+      </div>
+      <div class="ps-col">
+        <div class="sol-item"><span class="ico">⚡</span><p><strong>Carica e dimentica.</strong> L'AI fa tutto in secondi</p></div>
+        <div class="sol-item"><span class="ico">📊</span><p><strong>Dashboard chiara</strong> con costi e margini per fornitore</p></div>
+        <div class="sol-item"><span class="ico">🎯</span><p><strong>Decidi con i numeri.</strong> Tratta con i fornitori da una posizione di forza</p></div>
+        <div class="sol-item"><span class="ico">📈</span><p><strong>Margine reale sempre visible.</strong> Incidenze dei costi sul fatturato in un colpo d'occhio</p></div>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section">
+    <div class="eyebrow">Cosa fa OH YEAH!</div>
+    <div class="feat-grid">
+      <div class="feat"><div class="feat-icon">🧾</div><h3>Caricamento e Lettura fatture automatica</h3><p>XML, P7M, PDF e foto scontrini — carica e l'AI estrae tutto da sola. <span style="color:#7c3aed;font-weight:600;">Anche ricezione automatica con codice SDI.</span></p></div>
+      <div class="feat"><div class="feat-icon">📈</div><h3>Calcolo margini reale</h3><p>Inserisci il fatturato e scopri in un click quanto ti rimane davvero dopo le spese. Per categoria, per fornitore, per periodo.</p></div>
+      <div class="feat"><div class="feat-icon">🔍</div><h3>Controllo prezzi fornitori</h3><p>Confronta fornitori e i prezzi nel tempo. Controlla omaggi e sconti accordati e scopri subito i rincari.</p></div>
+      <div class="feat highlight">
+        <div class="feat-icon">🏑</div>
+        <h3>Marginalità &amp; Incidenze</h3>
+        <p>Vedi il peso % di ogni categoria di costo sul fatturato.</p>
+        <div class="inc-bars">
+          <div class="inc-row"><span class="inc-label">Food &amp; Bev</span><div class="inc-track"><div class="inc-fill" style="width:68%;background:linear-gradient(90deg,#6366f1,#818cf8)"></div></div><span class="inc-val">31,2%</span></div>
+          <div class="inc-row"><span class="inc-label">Personale</span><div class="inc-track"><div class="inc-fill" style="width:52%;background:linear-gradient(90deg,#8b5cf6,#a78bfa)"></div></div><span class="inc-val">24,1%</span></div>
+          <div class="inc-row"><span class="inc-label">Affitto</span><div class="inc-track"><div class="inc-fill" style="width:26%;background:linear-gradient(90deg,#a855f7,#c084fc)"></div></div><span class="inc-val">12,0%</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mockup-wrap">
+    <div class="mockup-title">L'app — <span>ecco com'è davvero</span></div>
+    <div class="browser">
+      <div class="browser-bar">
+        <div class="b-dots"><span class="b-dot r"></span><span class="b-dot y"></span><span class="b-dot g"></span></div>
+        <div class="b-url">app.ohhyeah.it &nbsp;🔒</div>
+      </div>
+      <div class="app-body">
+        <!-- Period -->
+        <div class="app-period-title">📅 Filtra per Periodo</div>
+        <div class="period-row">
+          <div class="period-select">📅 Anno in Corso &nbsp;▼</div>
+          <div class="period-info">📅 Anno in corso (01/01/2026 → 20/03/2026) (79 giorni) &nbsp;|&nbsp; 🍔 Righe F&amp;B: 1.154 &nbsp;|&nbsp; 📊 Righe Totali: 2.860 &nbsp;|&nbsp; Fatture: 131 di 333</div>
+        </div>
+        <!-- KPI -->
+        <div class="kpi-row">
+          <div class="kpi"><div class="kpi-label">🔥 Spesa Totale</div><div class="kpi-val">€52.123</div></div>
+          <div class="kpi"><div class="kpi-label">🔥 Spesa F&amp;B</div><div class="kpi-val">€39.530</div></div>
+          <div class="kpi"><div class="kpi-label">🍔 Fornit. F&amp;B</div><div class="kpi-val">38</div></div>
+          <div class="kpi"><div class="kpi-label">📜 Fornit. Sp.Gen.</div><div class="kpi-val">22</div></div>
+          <div class="kpi"><div class="kpi-label">💰 Spesa Generale</div><div class="kpi-val">€12.593</div></div>
+          <div class="kpi"><div class="kpi-label">📈 Media Mensile</div><div class="kpi-val">€6.515</div></div>
+        </div>
+        <!-- Nav -->
+        <div class="nav-tabs">
+          <div class="nav-tab active">🔥 DETTAGLIO ARTICOLI</div>
+          <div class="nav-tab">✏️ CATEGORIE</div>
+          <div class="nav-tab">🏠 FORNITORI</div>
+        </div>
+        <!-- Filters -->
+        <div class="filter-row">
+          <span class="filter-label">Tipo Prodotti:</span>
+          <div class="filter-drop">Food &amp; Beverage &nbsp;▼</div>
+          <span class="filter-label">Cerca per:</span>
+          <div class="filter-drop">Prodotto &nbsp;▼</div>
+          <div class="filter-search">🔍 Es: pollo, salmone, caffè...</div>
+          <div class="filter-btn">💾 Salva Modifiche Categorie</div>
+        </div>
+        <div class="total-bar">🍺 Totale: 1.154 righe &nbsp;•&nbsp; 🟩 481 prodotti unici</div>
+        <!-- Table -->
+        <table class="app-table">
+          <thead><tr>
+            <th>N.Fatt</th><th>N.Righe</th><th>Data</th><th>Descrizione</th><th>Categoria</th><th>Fornitore</th><th>Qtà TOT</th><th>€ TOTALE</th><th>Prezzo MEDIO</th><th>U.M.</th><th>IVA%</th>
+          </tr></thead>
+          <tbody>
+            <tr><td>3</td><td>4</td><td>2026-02-28</td><td>GUANCIALE PEPE STAG KG0,6/1,2 S/V TRINIT</td><td><span class="badge salumi">SALUMI</span></td><td>PREGIS S.P.A</td><td>7.32</td><td>€69.62</td><td>€9.50</td><td>KG</td><td>10%</td></tr>
+            <tr><td>2</td><td>2</td><td>2026-02-28</td><td>HAMBURGER BOV ADULTO FASS GR200 KG5 C BS</td><td><span class="badge carne">CARNE</span></td><td>PREGIS S.P.A</td><td>10.98</td><td>€153.62</td><td>€13.99</td><td>KG</td><td>10%</td></tr>
+            <tr><td>2</td><td>2</td><td>2026-02-18</td><td>HAPPYDENT WHITE COMPLETE ASTX20</td><td><span class="badge shop">SHOP</span></td><td>PERFETTI VAN MELLE S.P.A</td><td>3</td><td>€81.58</td><td>€27.19</td><td>CT</td><td>10%</td></tr>
+            <tr><td>1</td><td>1</td><td>2026-01-06</td><td>HEINEKEN BIRRA 330ML</td><td><span class="badge birre">BIRRE</span></td><td>SHUNTOR SRL</td><td>1</td><td>€17.52</td><td>€17.52</td><td>CT</td><td>22%</td></tr>
+            <tr><td>1</td><td>1</td><td>2026-01-31</td><td>GUANCE SUINO KG1/1,5 S/V C</td><td><span class="badge carne">CARNE</span></td><td>PREGIS S.P.A</td><td>3.08</td><td>€35.46</td><td>€11.52</td><td>KG</td><td>10%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <hr>
+
+  <div class="section">
+    <div class="eyebrow">Come funziona — 4 passi</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-emoji">📂</div>
+        <h4>Carica le fatture</h4>
+        <p>Trascina i file. Anche 100 alla volta.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-emoji">🤖</div>
+        <h4>L'AI classifica</h4>
+        <p>Ogni voce viene letta e categorizzata.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-emoji">📊</div>
+        <h4>Vedi i numeri</h4>
+        <p>Dashboard con costi e margini aggiornati.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-emoji">💰</div>
+        <h4>Risparmi</h4>
+        <p>Tratta con i fornitori. Aumenta il margine.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta">
+    <div class="cta-left">
+      <div class="cta-eyebrow">🔥 Offerta tempo limitato</div>
+      <h2>Prova gratis<br>fino a fine mese.</h2>
+      <div class="cta-gdpr">🔒 GDPR compliant &nbsp;·&nbsp; Dati in EU 🇩🇪 &nbsp;·&nbsp; Nessun dato condiviso</div>
+    </div>
+    <div>
+      <a href="mailto:mattiadavolio90@gmail.com?subject=Voglio%20provare%20OH%20YEAH!" class="btn">→ Inizia Gratis Ora</a>
+      <div class="btn-note">Scrivi a <strong>mattiadavolio90@gmail.com</strong></div>
+    </div>
+  </div>
+
+</div>
+
+</body></html>

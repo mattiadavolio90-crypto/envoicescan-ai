@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<!-- saved from url=(0093)file:///C:/Users/matti/Desktop/FCI_PROJECT/DOCUMENTAZIONE/DueDiligence_Sicurezza_OHHYEAH.html -->
+<html lang="it"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OH YEAH! — Due Diligence Sicurezza</title>
+  <style>
+    /* ─── RESET & BASE ─────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue-900: #0f2a5e;
+      --blue-700: #1e3a8a;
+      --blue-500: #3b82f6;
+      --blue-300: #93c5fd;
+      --blue-100: #dbeafe;
+      --blue-50:  #eff6ff;
+      --green-700: #15803d;
+      --green-500: #22c55e;
+      --green-100: #dcfce7;
+      --amber-500: #f59e0b;
+      --amber-100: #fef3c7;
+      --red-500:   #ef4444;
+      --red-100:   #fee2e2;
+      --gray-800:  #1e293b;
+      --gray-600:  #475569;
+      --gray-300:  #cbd5e1;
+      --gray-100:  #f1f5f9;
+      --white:     #ffffff;
+    }
+
+    html { font-size: 10.5pt; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      color: var(--gray-800);
+      background: #f8fafc;
+      line-height: 1.65;
+    }
+
+    /* ─── LAYOUT ───────────────────────────────────────── */
+    .page {
+      max-width: 210mm;
+      margin: 0 auto;
+      background: var(--white);
+      box-shadow: 0 4px 32px rgba(0,0,0,.12);
+    }
+
+    /* ─── COVER (Page 1) ───────────────────────────────── */
+    .cover {
+      background: linear-gradient(160deg, var(--blue-900) 0%, var(--blue-700) 55%, #1d4ed8 100%);
+      color: var(--white);
+      padding: 52px 52px 40px;
+      position: relative;
+      overflow: hidden;
+      min-height: 320px;
+    }
+    .cover::before {
+      content: '';
+      position: absolute;
+      top: -80px; right: -80px;
+      width: 340px; height: 340px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.04);
+    }
+    .cover::after {
+      content: '';
+      position: absolute;
+      bottom: -60px; left: -60px;
+      width: 260px; height: 260px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.04);
+    }
+
+    .cover-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 36px;
+    }
+    .logo-icon {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, var(--green-500), #16a34a);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+      font-weight: 900;
+      color: var(--white);
+      box-shadow: 0 4px 12px rgba(34,197,94,.4);
+      flex-shrink: 0;
+    }
+    .logo-text { font-size: 13pt; font-weight: 700; letter-spacing: .5px; opacity: .9; }
+    .logo-sub  { font-size: 8.5pt; opacity: .6; margin-top: 1px; }
+
+    .cover-badge {
+      display: inline-block;
+      background: rgba(34,197,94,.2);
+      border: 1px solid rgba(34,197,94,.5);
+      color: #86efac;
+      font-size: 7.5pt;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 20px;
+      margin-bottom: 14px;
+    }
+    .cover h1 {
+      font-size: 28pt;
+      font-weight: 800;
+      line-height: 1.2;
+      margin-bottom: 10px;
+      letter-spacing: -.5px;
+    }
+    .cover h1 span { color: #86efac; }
+    .cover-subtitle {
+      font-size: 11pt;
+      opacity: .75;
+      margin-bottom: 32px;
+      max-width: 480px;
+    }
+
+    .cover-meta {
+      display: flex;
+      gap: 32px;
+      border-top: 1px solid rgba(255,255,255,.15);
+      padding-top: 18px;
+      flex-wrap: wrap;
+    }
+    .cover-meta-item label {
+      display: block;
+      font-size: 7pt;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      opacity: .55;
+      margin-bottom: 2px;
+    }
+    .cover-meta-item span {
+      font-size: 9pt;
+      font-weight: 600;
+    }
+
+    /* ─── CONTENT AREA ─────────────────────────────────── */
+    .content { padding: 40px 52px 48px; }
+
+    /* ─── SECTION HEADERS ──────────────────────────────── */
+    .section {
+      margin-bottom: 32px;
+      break-inside: avoid;
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--blue-100);
+    }
+    .section-number {
+      width: 28px; height: 28px;
+      background: linear-gradient(135deg, var(--blue-700), var(--blue-500));
+      color: var(--white);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9pt;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+    .section-title {
+      font-size: 12pt;
+      font-weight: 700;
+      color: var(--blue-900);
+    }
+
+    /* ─── CARDS / GRID ─────────────────────────────────── */
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    .card-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .card {
+      background: var(--blue-50);
+      border: 1px solid var(--blue-100);
+      border-radius: 10px;
+      padding: 14px 16px;
+    }
+    .card-label {
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--blue-500);
+      margin-bottom: 4px;
+    }
+    .card-value {
+      font-size: 9pt;
+      color: var(--gray-800);
+      line-height: 1.55;
+    }
+    .card-value strong { color: var(--blue-900); }
+
+    /* ─── LIST ITEMS ───────────────────────────────────── */
+    .check-list { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .check-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 9pt;
+      line-height: 1.5;
+    }
+    .check-list li .icon {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .icon-ok  { background: var(--green-100); color: var(--green-700); }
+    .icon-warn { background: var(--amber-100); color: #b45309; }
+    .icon-na  { background: var(--gray-100); color: var(--gray-600); }
+
+    /* ─── TWO-COL LAYOUT ────────────────────────────────── */
+    .two-col { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+
+    /* ─── OWASP TABLE ───────────────────────────────────── */
+    table.owasp {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.5pt;
+    }
+    table.owasp thead tr {
+      background: var(--blue-700);
+      color: var(--white);
+    }
+    table.owasp thead th {
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 700;
+      letter-spacing: .3px;
+    }
+    table.owasp tbody tr:nth-child(even) { background: var(--blue-50); }
+    table.owasp tbody tr:nth-child(odd)  { background: var(--white); }
+    table.owasp tbody td {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--gray-100);
+      vertical-align: top;
+      line-height: 1.4;
+    }
+    table.owasp tbody td:first-child { font-weight: 600; color: var(--blue-900); white-space: nowrap; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 7.5pt;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge-green  { background: var(--green-100); color: var(--green-700); }
+    .badge-amber  { background: var(--amber-100); color: #92400e; }
+    .badge-gray   { background: var(--gray-100);  color: var(--gray-600); }
+
+    /* ─── HIGHLIGHT BOX ─────────────────────────────────── */
+    .highlight-box {
+      background: linear-gradient(135deg, #0f2a5e 0%, #1e3a8a 100%);
+      color: var(--white);
+      border-radius: 12px;
+      padding: 20px 24px;
+      margin-bottom: 28px;
+    }
+    .highlight-box h3 {
+      font-size: 10.5pt;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #93c5fd;
+    }
+    .highlight-box p { font-size: 9pt; opacity: .85; line-height: 1.6; }
+
+    /* ─── METRICS ROW ───────────────────────────────────── */
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 28px; }
+    .metric {
+      background: var(--white);
+      border: 1px solid var(--gray-300);
+      border-radius: 10px;
+      padding: 12px 10px;
+      text-align: center;
+    }
+    .metric-value {
+      font-size: 18pt;
+      font-weight: 800;
+      color: var(--blue-700);
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .metric-value.green { color: var(--green-700); }
+    .metric-label { font-size: 7.5pt; color: var(--gray-600); font-weight: 600; }
+
+    /* ─── CONTACT CARD ──────────────────────────────────── */
+    .contact-card {
+      border: 2px solid var(--blue-100);
+      border-radius: 12px;
+      padding: 18px 24px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      background: var(--blue-50);
+    }
+    .contact-avatar {
+      width: 52px; height: 52px;
+      background: linear-gradient(135deg, var(--blue-700), var(--blue-500));
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+      color: var(--white);
+    }
+    .contact-name  { font-size: 11pt; font-weight: 700; color: var(--blue-900); }
+    .contact-role  { font-size: 8.5pt; color: var(--gray-600); margin-top: 2px; }
+    .contact-email { font-size: 9pt; color: var(--blue-500); margin-top: 4px; font-weight: 600; }
+
+    /* ─── FOOTER ────────────────────────────────────────── */
+    .doc-footer {
+      background: var(--gray-100);
+      padding: 12px 52px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 7.5pt;
+      color: var(--gray-600);
+      border-top: 1px solid var(--gray-300);
+    }
+    .doc-footer strong { color: var(--blue-700); }
+
+    /* ─── PAGE BREAK ────────────────────────────────────── */
+    .page-break { page-break-after: always; }
+
+    /* ─── PRINT ─────────────────────────────────────────── */
+    @media print {
+      body { background: var(--white); font-size: 9.5pt; }
+      .page { box-shadow: none; max-width: 100%; }
+      .cover { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .section-number,
+      .highlight-box,
+      table.owasp thead tr,
+      .badge-green, .badge-amber, .badge-gray,
+      .icon-ok, .icon-warn,
+      .logo-icon,
+      .metric,
+      .card,
+      .contact-card,
+      .metrics { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ═══════════════════════════════════════════════════════
+       COPERTINA
+  ════════════════════════════════════════════════════════ -->
+  <div class="cover">
+    <div class="cover-logo">
+      <div class="logo-icon">✓</div>
+      <div>
+        <div class="logo-text">OH YEAH! — Invoice Intelligence</div>
+        <div class="logo-sub">by Recoma System S.r.l.</div>
+      </div>
+    </div>
+
+    <div class="cover-badge">Documento Riservato — Confidenziale</div>
+    <h1>Due Diligence<br><span>Sicurezza &amp; Compliance</span></h1>
+    <p class="cover-subtitle">
+      Report tecnico a supporto delle trattative commerciali.<br>
+      Architettura, sicurezza applicativa, GDPR e conformità normativa italiana.
+    </p>
+
+    <div class="cover-meta">
+      <div class="cover-meta-item">
+        <label>Data emissione</label>
+        <span>21 Marzo 2026</span>
+      </div>
+      <div class="cover-meta-item">
+        <label>Versione documento</label>
+        <span>v1.0 — Release</span>
+      </div>
+      <div class="cover-meta-item">
+        <label>Applicativo</label>
+        <span>OH YEAH! v2.x</span>
+      </div>
+      <div class="cover-meta-item">
+        <label>Classificazione</label>
+        <span>Pre-vendita / NDA</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       METRICHE CHIAVE
+  ════════════════════════════════════════════════════════ -->
+  <div class="content">
+
+    <div class="metrics">
+      <div class="metric">
+        <div class="metric-value green">172</div>
+        <div class="metric-label">Test automatici</div>
+      </div>
+      <div class="metric">
+        <div class="metric-value">Argon2id</div>
+        <div class="metric-label">Hashing password</div>
+      </div>
+      <div class="metric">
+        <div class="metric-value green">EU 🇩🇪</div>
+        <div class="metric-label">Region dati</div>
+      </div>
+      <div class="metric">
+        <div class="metric-value">GDPR</div>
+        <div class="metric-label">Art. 6 + Art. 17</div>
+      </div>
+    </div>
+
+    <!-- ══ 1. ARCHITETTURA E INFRASTRUTTURA ══ -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">1</div>
+        <div class="section-title">ARCHITETTURA E INFRASTRUTTURA</div>
+      </div>
+
+      <div class="card-grid" style="margin-bottom:12px">
+        <div class="card">
+          <div class="card-label">Stack applicativo</div>
+          <div class="card-value">
+            <strong>Python 3.12</strong> + Streamlit Cloud<br>
+            <strong>Supabase</strong> (PostgreSQL 15, pgvector)<br>
+            <strong>OpenAI GPT-4o</strong> (AI categorizzazione) — dato elaborato on-the-fly, non archiviato<br>
+            <strong>Brevo</strong> (SMTP transazionale)
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Region &amp; Sovranità del dato</div>
+          <div class="card-value">
+            <strong>Database:</strong> Supabase EU — Frankfurt, DE 🇩🇪<br>
+            Persiste solo all'interno dello Spazio Economico Europeo<br>
+            <strong>Compute:</strong> Streamlit Cloud (US) — nessun dato persistito<br>
+            <strong>Brevo:</strong> EU (SMTP, nessun archivio contenuti)
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Backup e ripristino</div>
+          <div class="card-value">
+            Backup giornalieri automatici Supabase<br>
+            Retention: <strong>7 giorni</strong> su pool gestito<br>
+            Point-in-time recovery disponibile su piano Pro<br>
+            Migrations versionate in repository Git
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Multi-tenancy / Isolamento clienti</div>
+          <div class="card-value">
+            Row-Level Security PostgreSQL su tutte le tabelle<br>
+            Filtro applicativo <strong>user_id + ristorante_id</strong> su ogni query<br>
+            Session token UUID4 a TTL — nessuna condivisione tra tenant<br>
+            Accesso DB con <em>service role key</em> lato server (non esposta al client)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 2. SICUREZZA APPLICATIVA ══ -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">2</div>
+        <div class="section-title">SICUREZZA APPLICATIVA</div>
+      </div>
+
+      <div class="two-col">
+        <ul class="check-list">
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Autenticazione:</strong> Argon2id m=65536, t=2, p=1 (OWASP raccomandato). Password policy: min. 10 car., maiuscola + minuscola + numero. Test contro dizionario (nome ristorante, email).</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Session token:</strong> UUID4, stored in Supabase, TTL 30 giorni, invalidazione esplicita al logout. Cookie HttpOnly via <em>extra-streamlit-components</em>.</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Rate limiting login:</strong> 5 tentativi / 15 minuti per IP+email. Implementato DB-backed (persistente across restart).</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Rate limiting reset password:</strong> 1 richiesta / 5 minuti per email — DB-backed (migrazione 046).</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>File upload:</strong> validazione magic bytes (non solo estensione), limite 100 file / 200 MB per sessione. Formati accettati: .xml, .p7m, .zip.</span>
+          </li>
+        </ul>
+        <ul class="check-list">
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Error handling:</strong> nessun stack trace esposto in UI. Eccezioni loggati server-side, messaggi utente generici.</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Iniezione SQL:</strong> ZERO query raw — 100% Supabase SDK con parametri tipizzati.</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>XSS:</strong> output HTML tramite <code>unsafe_allow_html</code> solo per componenti interni; input utente non riflesso in HTML non sanificato.</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Webhook (Supabase → App):</strong> HMAC-SHA256, anti-replay 5 minuti, whitelist CIDR Supabase, idempotenza tramite hash payload.</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Segreti:</strong> zero credenziali nel codice sorgente. Audit git history pulito. <em>secrets.toml</em> e <em>.env</em> in <code>.gitignore</code>.</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ══ 3. GDPR E COMPLIANCE ══ -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">3</div>
+        <div class="section-title">GDPR E COMPLIANCE (D.lgs. 196/2003 + Reg. UE 2016/679)</div>
+      </div>
+
+      <div class="card-grid-3" style="margin-bottom:12px">
+        <div class="card">
+          <div class="card-label">Base giuridica trattamento</div>
+          <div class="card-value">Art. 6.1.b GDPR<br><strong>Esecuzione contratto</strong><br>Consenso esplicito al primo accesso (checkbox attivazione account)</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Diritto all'oblio (Art. 17)</div>
+          <div class="card-value">Eliminazione a cascata completa:<br>fatture, ricette, diario, margini, sessioni<br><strong>Irreversibile su richiesta utente</strong></div>
+        </div>
+        <div class="card">
+          <div class="card-label">Data retention</div>
+          <div class="card-value">Fatture trattenute <strong>solo per scelta utente</strong><br>File XML purgati dopo processing<br>Log rotanti: 50 MB × 10 backup</div>
+        </div>
+      </div>
+
+      <ul class="check-list">
+        <li>
+          <span class="icon icon-ok">✓</span>
+          <span><strong>Privacy Policy:</strong> pagina dedicata in-app, conforme al Regolamento UE 2016/679, redatta per utenti B2B (ristoratori italiani).</span>
+        </li>
+        <li>
+          <span class="icon icon-ok">✓</span>
+          <span><strong>Termini di Servizio:</strong> pagina dedicata in-app con clausole di utilizzo accettabile e limitazione di responsabilità.</span>
+        </li>
+        <li>
+          <span class="icon icon-ok">✓</span>
+          <span><strong>Cookie informativa:</strong> banner in-app sui cookie tecnici di sessione (Garante Privacy IT — strettamente necessari, nessun consenso preventivo richiesto, informativa presente).</span>
+        </li>
+        <li>
+          <span class="icon icon-ok">✓</span>
+          <span><strong>Nota fiscale:</strong> il servizio offre strumenti di analisi gestionale e <strong>non costituisce sistema di Conservazione Sostitutiva</strong> ai sensi del D.M. 17 giugno 2014. La conservazione decennale delle fatture elettroniche rimane in capo all'utente tramite i canali certificati (SDI/Conservatorio accreditato).</span>
+        </li>
+        <li>
+          <span class="icon icon-ok">✓</span>
+          <span><strong>AI &amp; dati sensibili:</strong> i contenuti delle fatture (fornitori, importi) vengono elaborati da OpenAI GPT-4o esclusivamente on-the-fly per la categorizzazione automatica. Non vengono archiviati da OpenAI in modalità training.</span>
+        </li>
+      </ul>
+    </div>
+
+  </div><!-- /content page 1 -->
+
+  <!-- PAGE BREAK per stampa PDF -->
+  <div class="page-break"></div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       PAGINA 2
+  ════════════════════════════════════════════════════════ -->
+  <div style="background: var(--blue-700); height: 6px;"></div>
+  <div class="content" style="padding-top:36px">
+
+    <!-- ══ 4. MONITORAGGIO E AUDIT ══ -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">4</div>
+        <div class="section-title">MONITORAGGIO E AUDIT</div>
+      </div>
+
+      <div class="card-grid">
+        <div class="card">
+          <div class="card-label">Test automatici CI/CD</div>
+          <div class="card-value">
+            <strong>172 test pytest</strong> — copertura 100% percorsi critici<br>
+            Eseguiti ad ogni push su GitHub Actions<br>
+            Pipeline bloccante: merge rifiutato se test falliscono<br>
+            Test unitari + integrazione su auth, parsing fatture, webhook
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Uptime &amp; Disponibilità</div>
+          <div class="card-value">
+            GitHub Actions cron <strong>ogni 5 minuti</strong><br>
+            Health-check endpoint con alert email automatico (Brevo)<br>
+            Worker fatture con retry esponenziale + dead-letter queue<br>
+            SLA target: &gt;99.5% mensile
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Logging strutturato</div>
+          <div class="card-value">
+            RotatingFileHandler: <strong>50 MB × 10 backup</strong><br>
+            Log separati per modulo (auth, invoice, workspace, admin)<br>
+            Stack trace completo lato server, messaggi generici in UI<br>
+            Nessun dato PII nei log (email troncate, importi nascosti)
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-label">Dipendenze &amp; CVE</div>
+          <div class="card-value">
+            <strong>requirements-lock.txt</strong> con hash SHA256 pinned<br>
+            CVE scanner GitHub Actions (Dependabot alerts)<br>
+            Aggiornamenti di sicurezza: <em>cryptography ≥ 46.0.5</em>, <em>PyJWT ≥ 2.12.0</em><br>
+            Zero dipendenze con CVE attive note al 21/03/2026
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ 5. WEBHOOK + WORKER AUTOMATICO ══ -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">5</div>
+        <div class="section-title">WEBHOOK E WORKER AUTOMATICO</div>
+      </div>
+
+      <ul class="check-list" style="margin-bottom:10px">
+        <li>
+          <span class="icon icon-ok">✓</span>
+          <span><strong>Autenticità:</strong> ogni evento Supabase → App firmato con HMAC-SHA256. Firma verificata prima di qualsiasi elaborazione.</span>
+        </li>
+        <li>
+          <span class="icon icon-ok">✓</span>
+          <span><strong>Anti-replay:</strong> timestamp nell'header, rifiuto richieste con delta &gt; 5 minuti. Idempotenza tramite hash SHA256 del payload (duplicati ignorati).</span>
+        </li>
+        <li>
+          <span class="icon icon-ok">✓</span>
+          <span><strong>SSRF protection:</strong> whitelist CIDR degli indirizzi Supabase. Richieste da IP non autorizzati rifiutate con HTTP 403.</span>
+        </li>
+        <li>
+          <span class="icon icon-ok">✓</span>
+          <span><strong>GDPR &amp; Pulizia dati:</strong> file XML delle fatture purgati automaticamente dopo il processing. Nessuna copia residua su disco.</span>
+        </li>
+        <li>
+          <span class="icon icon-ok">✓</span>
+          <span><strong>Worker:</strong> GitHub Actions cron ogni 5 min. Retry esponenziale (3 tentativi). Fatture non elaborate → coda <em>fatture_queue</em> con stato tracciabile.</span>
+        </li>
+      </ul>
+    </div>
+
+    <!-- ══ 6. OWASP TOP 10 ══ -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">6</div>
+        <div class="section-title">OWASP TOP 10 — STATO MITIGAZIONE</div>
+      </div>
+
+      <table class="owasp">
+        <thead>
+          <tr>
+            <th style="width:32%">Vulnerabilità OWASP 2021</th>
+            <th style="width:20%">Stato</th>
+            <th>Misure implementate</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>A01 — Broken Access Control</td>
+            <td><span class="badge badge-green">✓ Mitigato</span></td>
+            <td>RLS PostgreSQL + filtro user_id+ristorante_id applicativo. Admin route con verifica ruolo server-side.</td>
+          </tr>
+          <tr>
+            <td>A02 — Cryptographic Failures</td>
+            <td><span class="badge badge-green">✓ Mitigato</span></td>
+            <td>Argon2id per password, HMAC-SHA256 per webhook, TLS 1.3 in transito (Supabase/Streamlit), AES-256 a riposo (Supabase).</td>
+          </tr>
+          <tr>
+            <td>A03 — Injection (SQL, XSS)</td>
+            <td><span class="badge badge-green">✓ Mitigato</span></td>
+            <td>100% Supabase SDK parametrizzato. Input utente non riflesso in HTML non sanificato. Nessuna query concatenata.</td>
+          </tr>
+          <tr>
+            <td>A04 — Insecure Design</td>
+            <td><span class="badge badge-green">✓ Mitigato</span></td>
+            <td>Multi-tenancy by design (ristorante_id obbligatorio in ogni tabella). Rate limiting DB-backed. Separazione ruoli admin/utente.</td>
+          </tr>
+          <tr>
+            <td>A05 — Security Misconfiguration</td>
+            <td><span class="badge badge-green">✓ Mitigato</span></td>
+            <td>Zero credenziali nel codice. secrets.toml gitignored. ENV vars per tutti i segreti. Warning se ADMIN_EMAILS non configurata.</td>
+          </tr>
+          <tr>
+            <td>A06 — Vulnerable Components</td>
+            <td><span class="badge badge-green">✓ Mitigato</span></td>
+            <td>requirements-lock.txt con hash pinned. Dependabot attivo. CVE cryptography + PyJWT risolti al 21/03/2026.</td>
+          </tr>
+          <tr>
+            <td>A07 — Auth Failures</td>
+            <td><span class="badge badge-green">✓ Mitigato</span></td>
+            <td>Argon2id, rate limiting login+reset DB-backed, session UUID4 con TTL, invalidazione al logout, password policy.</td>
+          </tr>
+          <tr>
+            <td>A08 — Data Integrity Failures</td>
+            <td><span class="badge badge-green">✓ Mitigato</span></td>
+            <td>HMAC-SHA256 su webhook, idempotenza, requirements-lock.txt con hash SHA256, pipeline CI bloccante.</td>
+          </tr>
+          <tr>
+            <td>A09 — Logging &amp; Monitoring</td>
+            <td><span class="badge badge-green">✓ Mitigato</span></td>
+            <td>Log strutturati rotating 50 MB×10, separati per modulo. Uptime check ogni 5 min con alert email. 172 test CI.</td>
+          </tr>
+          <tr>
+            <td>A10 — SSRF</td>
+            <td><span class="badge badge-green">✓ Mitigato</span></td>
+            <td>Whitelist CIDR Supabase sul webhook. Nessuna fetch di URL arbitrari da input utente. OpenAI SDK (no URL custom).</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ══ 7. RESPONSABILE SICUREZZA ══ -->
+    <div class="section">
+      <div class="section-header">
+        <div class="section-number">7</div>
+        <div class="section-title">RESPONSABILE SICUREZZA E CONTATTI</div>
+      </div>
+
+      <div class="contact-card">
+        <div class="contact-avatar">👤</div>
+        <div>
+          <div class="contact-name">Mattia D'Avolio</div>
+          <div class="contact-role">Sviluppatore Software &amp; Responsabile Sicurezza — Recoma System S.r.l.</div>
+          <div class="contact-email">mattiadavolio90@gmail.com</div>
+        </div>
+        <div style="margin-left:auto; text-align:right; font-size:8.5pt; color:var(--gray-600)">
+          Segnalazione vulnerabilità<br>
+          <strong style="color:var(--blue-700)">Responsible Disclosure</strong><br>
+          <span style="font-size:8pt">Risposta entro 5 giorni lavorativi</span>
+        </div>
+      </div>
+
+      <div style="margin-top:14px; padding:12px 16px; background:var(--amber-100); border:1px solid #fcd34d; border-radius:8px; font-size:8.5pt; color:#92400e; line-height:1.6;">
+        <strong>⚠️ Nota importante — Conservazione Sostitutiva:</strong>
+        OH YEAH! è un sistema di analisi gestionale e non sostituisce né integra il sistema di Conservazione Sostitutiva delle fatture elettroniche ai sensi del D.M. 17/06/2014.
+        L'utente rimane responsabile della conservazione decennale obbligatoria delle proprie fatture elettroniche tramite un conservatore accreditato AgID.
+      </div>
+    </div>
+
+  </div><!-- /content page 2 -->
+
+  <!-- ═══════════════════════════════════════════════════════
+       FOOTER
+  ════════════════════════════════════════════════════════ -->
+  <div class="doc-footer">
+    <span><strong>OH YEAH!</strong> — Due Diligence Sicurezza v1.0 — 21 Marzo 2026</span>
+    <span>Recoma System S.r.l. — Documento riservato, distribuzione limitata ai destinatari autorizzati</span>
+    <span>Pag. 1–2 / 2</span>
+  </div>
+
+</div><!-- /page -->
+
+
+</body></html>
