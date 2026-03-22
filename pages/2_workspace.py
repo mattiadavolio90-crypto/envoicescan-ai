@@ -240,39 +240,49 @@ def get_articoli_da_fatture(user_id: str, ristorante_id: str = None) -> tuple:
     try:
         debug_msgs.append(f"🔍 Cerco fatture per user_id: {user_id}")
         
-        # Query articoli escludendo spese operative (servizi, utenze, manutenzione)
-        query_fatture = supabase.table('fatture')\
-            .select('descrizione, prezzo_unitario, unita_misura, data_documento, categoria')\
-            .eq('user_id', user_id)\
-            .not_.in_('categoria', CATEGORIE_SPESE_OPERATIVE)
-        
-        if ristorante_id:
-            query_fatture = query_fatture.eq('ristorante_id', ristorante_id)
-        
-        response = query_fatture.order('data_documento', desc=True).execute()
-        
-        debug_msgs.append(f"📊 Query eseguita. Response.data type: {type(response.data)}")
-        
-        if not response.data:
+        # Query articoli con paginazione (pattern comune in tutta l'app per >1000 righe)
+        all_rows = []
+        page_size = 1000
+        offset = 0
+        while True:
+            q = supabase.table('fatture')\
+                .select('descrizione, prezzo_unitario, unita_misura, data_documento, categoria')\
+                .eq('user_id', user_id)\
+                .not_.in_('categoria', CATEGORIE_SPESE_OPERATIVE)\
+                .order('data_documento', desc=True)\
+                .range(offset, offset + page_size - 1)
+            if ristorante_id:
+                q = q.eq('ristorante_id', ristorante_id)
+            response = q.execute()
+            if not response.data:
+                break
+            all_rows.extend(response.data)
+            if len(response.data) < page_size:
+                break
+            offset += page_size
+
+        debug_msgs.append(f"📊 Query eseguita: {len(all_rows)} righe totali caricate")
+
+        if not all_rows:
             debug_msgs.append("⚠️ response.data è vuoto/None")
             return [], debug_msgs
-        
-        debug_msgs.append(f"✅ Trovate {len(response.data)} righe fatture")
-        
+
+        debug_msgs.append(f"✅ Trovate {len(all_rows)} righe fatture")
+
         # Mostra prime 5 per debug
         debug_msgs.append("📋 Prime 5 righe:")
-        for i, row in enumerate(response.data[:5]):
+        for i, row in enumerate(all_rows[:5]):
             desc = row.get('descrizione', 'N/A')
             prezzo = row.get('prezzo_unitario', 0)
             um = row.get('unita_misura', 'N/A')
             debug_msgs.append(f"  {i+1}. '{desc}' | €{prezzo} | {um}")
-        
+
         # Raggruppa per descrizione (prendi primo = più recente)
         articoli_map = {}
         righe_saltate = 0
         grammature_rilevate = 0
-        
-        for row in response.data:
+
+        for row in all_rows:
             desc = (row.get('descrizione') or '').strip()
             if desc and desc not in articoli_map:
                 # Estrai grammatura dal nome

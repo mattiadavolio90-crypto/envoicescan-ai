@@ -217,6 +217,7 @@ def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
     Returns:
         int: Numero di righe aggiornate
     """
+    logger.warning("DEPRECATED: ricalcola_prezzi_con_sconti non dovrebbe essere chiamata. I prezzi vengono calcolati in invoice_service.py.")
     # Inizializza client Supabase (singleton)
     if supabase_client is None:
         try:
@@ -449,7 +450,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     return df_alert
 
 
-def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client=None) -> Dict[str, Any]:
+def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: str = None, supabase_client=None) -> Dict[str, Any]:
     """
     Carica sconti e omaggi ricevuti dal cliente nel periodo specificato.
     
@@ -489,9 +490,7 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, supabase_client
         if hasattr(data_fine, 'isoformat'):
             data_fine = data_fine.isoformat()
         
-        # 🏢 MULTI-RISTORANTE: Recupera ristorante_id dalla sessione
-        ristorante_id = st.session_state.get('ristorante_id') if 'session_state' in dir(st) else None
-        
+        # 🏢 MULTI-RISTORANTE: ristorante_id passato come parametro (non da session_state)
         if not ristorante_id:
             logger.warning("ristorante_id mancante in carica_sconti_e_omaggi - operazione annullata")
             return {'sconti': pd.DataFrame(), 'omaggi': pd.DataFrame(), 'totale_risparmiato': 0.0}

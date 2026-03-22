@@ -351,8 +351,13 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         # ═══════════════════════════════════════════════════════════════
                         # ⚠️ SKIP anche per immagini JPG/PNG (solo XML e PDF)
                         is_image = nome_file.endswith(('.jpg', '.jpeg', '.png'))
+                        # Admin PURO (non in impersonificazione) salta il check P.IVA
+                        # perché opera sul proprio pannello e non su un profilo cliente.
+                        # Admin in IMPERSONIFICAZIONE deve rispettare la P.IVA del cliente
+                        # (carica sul suo profilo → stesse regole del cliente).
+                        is_admin_puro = st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False)
                         
-                        if not is_admin and not is_image:
+                        if not is_admin_puro and not is_image:
                             # Estrai P.IVA dal cessionario (dalla prima riga - items è lista di dict)
                             piva_cessionario = None
                             if isinstance(items, list) and len(items) > 0:
@@ -362,9 +367,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                             
                             # P.IVA ristorante ATTUALMENTE SELEZIONATO (multi-ristorante aware)
                             piva_attiva = st.session_state.get('partita_iva')
-                            nome_ristorante_attivo = st.session_state.get('nome_ristorante', 'N/A')
                             
-                            logger.info(f"🔍 Validazione P.IVA {file.name} - rist_id={st.session_state.get('ristorante_id')}")
+                            logger.info(f"🔍 Validazione P.IVA {file.name} - rist_id={st.session_state.get('ristorante_id')}{' [impersonating]' if st.session_state.get('impersonating') else ''}")
                             
                             # ✅ CASO 2: P.IVA presente → VALIDAZIONE STRICT MULTI-RISTORANTE
                             if piva_attiva and piva_cessionario:
@@ -373,10 +377,10 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                 
                                 if piva_cessionario_norm != piva_attiva_norm:
                                     # 🚫 BLOCCO: P.IVA non corrisponde al ristorante selezionato
-                                    
                                     logger.warning(
                                         f"⚠️ UPLOAD BLOCCATO {file.name} - user_id={st.session_state.get('user_data', {}).get('id')} "
                                         f"P.IVA mismatch (rist_id={st.session_state.get('ristorante_id')})"
+                                        f"{' [impersonating]' if st.session_state.get('impersonating') else ''}"
                                     )
                                     raise ValueError("🚫 FATTURA NON VALIDA - P.IVA FATTURA DIVERSA DA P.IVA AZIENDA")
                                 else:
@@ -384,11 +388,11 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                     logger.info(f"✅ Validazione OK: P.IVA match per rist_id={st.session_state.get('ristorante_id')}")
                         
                         else:
-                            # Admin/Impersonazione: log per debug (bypass validazione)
+                            # Admin PURO (non in impersonificazione): log per debug, bypass validazione
                             piva_cessionario = None
                             if isinstance(items, list) and len(items) > 0:
                                 piva_cessionario = items[0].get('piva_cessionario')
-                            logger.debug(f"👨‍💼 Admin upload {file.name} - P.IVA fattura: {piva_cessionario} (validazione bypassata)")
+                            logger.debug(f"👨‍💼 Admin puro upload {file.name} - P.IVA fattura: {piva_cessionario} (validazione bypassata)")
                         
                         # ============================================================
                         # BLOCCO FATTURE ANNO PRECEDENTE (per clienti non-admin)

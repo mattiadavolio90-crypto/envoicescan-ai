@@ -345,7 +345,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
 
     # Carica dati
     with st.spinner("Caricamento sconti e omaggi..."):
-        dati_sconti = carica_sconti_e_omaggi(user_id, data_inizio_filtro, data_fine_filtro)
+        dati_sconti = carica_sconti_e_omaggi(user_id, data_inizio_filtro, data_fine_filtro, ristorante_id=get_current_ristorante_id())
 
     df_sconti = dati_sconti['sconti']
     df_omaggi = dati_sconti['omaggi']

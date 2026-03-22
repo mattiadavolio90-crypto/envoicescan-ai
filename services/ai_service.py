@@ -163,71 +163,71 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
         return _memoria_cache
 
     # Usa client iniettato o fallback a singleton
-        if supabase_client is None:
-            try:
-                from services import get_supabase_client
-                supabase_client = get_supabase_client()
-            except Exception as e:
-                logger.error(f"Impossibile creare client Supabase: {e}")
-                return _memoria_cache
-    
+    if supabase_client is None:
         try:
-            # Carica dati LOCALE utente solo se non già caricati per questo user_id
-            if not user_already_loaded:
-                result_locale = supabase_client.table('prodotti_utente')\
-                    .select('descrizione, categoria')\
-                    .eq('user_id', user_id)\
-                    .execute()
-        
-                if result_locale.data:
-                    _memoria_cache['prodotti_utente'][user_id] = {
-                        row['descrizione']: row['categoria'] 
-                        for row in result_locale.data
-                    }
-                    logger.info(f"📦 Cache LOCALE caricata: {len(result_locale.data)} prodotti per user {user_id[:8]}")
-                else:
-                    _memoria_cache['prodotti_utente'][user_id] = {}
-                
-                _memoria_cache.setdefault('_loaded_user_ids', set()).add(user_id)
-            
-            # Carica dati GLOBALI solo se non già caricati
-            if not global_loaded:
-                # Query 2: Carica TUTTA la memoria globale (1 query sola)
-                result_globale = supabase_client.table('prodotti_master')\
-                    .select('descrizione, categoria')\
-                    .execute()
-        
-                if result_globale.data:
-                    _memoria_cache['prodotti_master'] = {
-                        row['descrizione']: row['categoria'] 
-                        for row in result_globale.data
-                    }
-                    logger.info(f"📦 Cache GLOBALE caricata: {len(result_globale.data)} prodotti")
-        
-                # Query 3: Carica TUTTE le classificazioni manuali admin (1 query sola)
-                result_manuali = supabase_client.table('classificazioni_manuali')\
-                    .select('descrizione, categoria_corretta, is_dicitura')\
-                    .execute()
-        
-                if result_manuali.data:
-                    _memoria_cache['classificazioni_manuali'] = {
-                        row['descrizione']: {
-                            'categoria': row['categoria_corretta'],
-                            'is_dicitura': row.get('is_dicitura', False)
-                        }
-                        for row in result_manuali.data
-                    }
-                    logger.info(f"📦 Cache MANUALI caricata: {len(result_manuali.data)} classificazioni")
-        
-                _memoria_cache['loaded'] = True
-            
-            _memoria_cache['version'] += 1
-            logger.info(f"✅ Cache caricata (v{_memoria_cache['version']}) per user {user_id[:8]}")
-            return _memoria_cache
-        
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
         except Exception as e:
-            logger.error(f"Errore caricamento cache completa: {e}")
+            logger.error(f"Impossibile creare client Supabase: {e}")
             return _memoria_cache
+
+    try:
+        # Carica dati LOCALE utente solo se non già caricati per questo user_id
+        if not user_already_loaded:
+            result_locale = supabase_client.table('prodotti_utente')\
+                .select('descrizione, categoria')\
+                .eq('user_id', user_id)\
+                .execute()
+
+            if result_locale.data:
+                _memoria_cache['prodotti_utente'][user_id] = {
+                    row['descrizione']: row['categoria']
+                    for row in result_locale.data
+                }
+                logger.info(f"📦 Cache LOCALE caricata: {len(result_locale.data)} prodotti per user {user_id[:8]}")
+            else:
+                _memoria_cache['prodotti_utente'][user_id] = {}
+
+            _memoria_cache.setdefault('_loaded_user_ids', set()).add(user_id)
+
+        # Carica dati GLOBALI solo se non già caricati
+        if not global_loaded:
+            # Query 2: Carica TUTTA la memoria globale (1 query sola)
+            result_globale = supabase_client.table('prodotti_master')\
+                .select('descrizione, categoria')\
+                .execute()
+
+            if result_globale.data:
+                _memoria_cache['prodotti_master'] = {
+                    row['descrizione']: row['categoria']
+                    for row in result_globale.data
+                }
+                logger.info(f"📦 Cache GLOBALE caricata: {len(result_globale.data)} prodotti")
+
+            # Query 3: Carica TUTTE le classificazioni manuali admin (1 query sola)
+            result_manuali = supabase_client.table('classificazioni_manuali')\
+                .select('descrizione, categoria_corretta, is_dicitura')\
+                .execute()
+
+            if result_manuali.data:
+                _memoria_cache['classificazioni_manuali'] = {
+                    row['descrizione']: {
+                        'categoria': row['categoria_corretta'],
+                        'is_dicitura': row.get('is_dicitura', False)
+                    }
+                    for row in result_manuali.data
+                }
+                logger.info(f"📦 Cache MANUALI caricata: {len(result_manuali.data)} classificazioni")
+
+            _memoria_cache['loaded'] = True
+
+        _memoria_cache['version'] += 1
+        logger.info(f"✅ Cache caricata (v{_memoria_cache['version']}) per user {user_id[:8]}")
+        return _memoria_cache
+
+    except Exception as e:
+        logger.error(f"Errore caricamento cache completa: {e}")
+        return _memoria_cache
 
 
 def invalida_cache_memoria():
@@ -283,18 +283,23 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
         str: categoria trovata
     """
     global _memoria_cache
-    
+
     try:
         # Carica cache se non già caricata per questo utente
         if not _memoria_cache['loaded'] or user_id not in _memoria_cache.get('_loaded_user_ids', set()):
             carica_memoria_completa(user_id, supabase_client=supabase_client)
-        
+
+        # Snapshot locale: protegge da invalidazioni parallele durante la lettura.
+        # Se un altro thread chiama invalida_cache_memoria() ora, _memoria_cache viene
+        # sostituito ma questo thread continua a lavorare sul riferimento stabile.
+        cache = _memoria_cache
+
         # Normalizza per matching consistente (stesso trattamento di categorizza_con_memoria)
         desc_stripped = descrizione.strip()
-        
+
         # 0️⃣ Check memoria ADMIN (classificazioni_manuali) - PRIORITÀ ASSOLUTA
-        if desc_stripped in _memoria_cache['classificazioni_manuali']:
-            record = _memoria_cache['classificazioni_manuali'][desc_stripped]
+        if desc_stripped in cache['classificazioni_manuali']:
+            record = cache['classificazioni_manuali'][desc_stripped]
             if record.get('is_dicitura'):
                 logger.info(f"📋 Memoria Admin (cache/ottieni): '{descrizione[:40]}' → DICITURA")
                 return "📝 NOTE E DICITURE"
@@ -303,8 +308,8 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
                 return record['categoria']
         
         # 1️⃣ Check memoria LOCALE utente (da cache, 0 query!)
-        if user_id in _memoria_cache['prodotti_utente']:
-            locale_dict = _memoria_cache['prodotti_utente'][user_id]
+        if user_id in cache['prodotti_utente']:
+            locale_dict = cache['prodotti_utente'][user_id]
             if descrizione in locale_dict:
                 categoria = locale_dict[descrizione]
                 _traccia_memoria_categorizzata(descrizione)
@@ -313,15 +318,15 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
         # 2️⃣ Check memoria GLOBALE (da cache, 0 query!) se abilitata
         if not _disable_global_memory:
             # Prova con descrizione esatta
-            if descrizione in _memoria_cache['prodotti_master']:
-                categoria = _memoria_cache['prodotti_master'][descrizione]
+            if descrizione in cache['prodotti_master']:
+                categoria = cache['prodotti_master'][descrizione]
                 _traccia_memoria_categorizzata(descrizione)
                 return categoria
-            
+
             # Prova anche con descrizione normalizzata (per matching consistente)
             desc_normalized, _ = get_descrizione_normalizzata_e_originale(descrizione)
-            if desc_normalized != descrizione and desc_normalized in _memoria_cache['prodotti_master']:
-                categoria = _memoria_cache['prodotti_master'][desc_normalized]
+            if desc_normalized != descrizione and desc_normalized in cache['prodotti_master']:
+                categoria = cache['prodotti_master'][desc_normalized]
                 _traccia_memoria_categorizzata(descrizione)
                 return categoria
         
@@ -649,7 +654,7 @@ def categorizza_con_memoria(
         str: categoria finale
     """
     global _memoria_cache
-    
+
     # Usa client iniettato o fallback
     if supabase_client is None:
         try:
@@ -657,16 +662,21 @@ def categorizza_con_memoria(
             supabase_client = get_supabase_client()
         except Exception as e:
             logger.warning(f"Impossibile inizializzare Supabase client: {e}")
-    
+
     try:
         # Carica cache se non già caricata per questo utente
         if user_id and (not _memoria_cache['loaded'] or user_id not in _memoria_cache.get('_loaded_user_ids', set())):
             carica_memoria_completa(user_id, supabase_client)
-        
+
+        # Snapshot locale: protegge da invalidazioni parallele durante la lettura.
+        # Con integrazione invoicetronic (flusso multi-client parallelo), senza snapshot
+        # un thread potrebbe leggere la cache già svuotata da un altro thread.
+        cache = _memoria_cache
+
         # LIVELLO 1: Check memoria admin (da cache, 0 query!)
         desc_stripped = descrizione.strip()
-        if desc_stripped in _memoria_cache['classificazioni_manuali']:
-            record = _memoria_cache['classificazioni_manuali'][desc_stripped]
+        if desc_stripped in cache['classificazioni_manuali']:
+            record = cache['classificazioni_manuali'][desc_stripped]
             if record.get('is_dicitura'):
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → DICITURA (validata admin)")
                 return "📝 NOTE E DICITURE"
@@ -679,8 +689,8 @@ def categorizza_con_memoria(
     
     # LIVELLO 2: Check memoria LOCALE utente (personalizzazioni cliente - priorità alta)
     try:
-        if user_id and user_id in _memoria_cache['prodotti_utente']:
-            locale_dict = _memoria_cache['prodotti_utente'][user_id]
+        if user_id and user_id in cache['prodotti_utente']:
+            locale_dict = cache['prodotti_utente'][user_id]
             if descrizione in locale_dict:
                 categoria = locale_dict[descrizione]
                 logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
@@ -695,8 +705,8 @@ def categorizza_con_memoria(
         desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
         
         if not _disable_global_memory:
-            if desc_normalized in _memoria_cache['prodotti_master']:
-                categoria = _memoria_cache['prodotti_master'][desc_normalized]
+            if desc_normalized in cache['prodotti_master']:
+                categoria = cache['prodotti_master'][desc_normalized]
                 logger.info(f"🟢 MEMORIA GLOBALE (cache): '{descrizione}' → {categoria} (norm: '{desc_normalized}')")
                 return categoria
     
