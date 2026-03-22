@@ -14,24 +14,60 @@ jobs:
       - name: Controlla se l'app è online
         id: ping
         run: |
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://ohyeah.streamlit.app/)
+          # || echo "000" evita che un timeout (curl exit 28) faccia crashare lo step
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -L \
+            --max-time 60 \
+            --connect-timeout 15 \
+            https://ohyeah.streamlit.app/ || echo "000")
           echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
-          echo "Risposta HTTP: $HTTP_CODE"
-          if [ "$HTTP_CODE" != "200" ]; then
-            echo "down=true" >> $GITHUB_OUTPUT
-          else
+          if [ "$HTTP_CODE" = "200" ]; then
             echo "down=false" >> $GITHUB_OUTPUT
+            echo "✅ App online (HTTP 200)"
+          elif [ "$HTTP_CODE" = "000" ]; then
+            echo "down=true" >> $GITHUB_OUTPUT
+            echo "❌ Timeout o connessione rifiutata (nessuna risposta entro 60s)"
+          else
+            echo "down=true" >> $GITHUB_OUTPUT
+            echo "❌ App offline (HTTP $HTTP_CODE)"
           fi
 
-      - name: Invia email di allerta via Brevo
+      - name: Tenta wake-up automatico (se ibernata)
         if: steps.ping.outputs.down == 'true'
         run: |
+          echo "🔄 Invio richiesta di wake-up con timeout 120s..."
+          # Streamlit si sveglia ricevendo una richiesta HTTP. Usiamo timeout lungo.
+          # || true: non fallisce se anche questo va in timeout
+          WAKE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -L \
+            --max-time 120 \
+            --connect-timeout 20 \
+            https://ohyeah.streamlit.app/ || echo "000")
+          echo "Risposta dopo wake-up: $WAKE_CODE"
+          if [ "$WAKE_CODE" = "200" ]; then
+            echo "woke_up=true" >> $GITHUB_OUTPUT
+            echo "✅ App si è svegliata con successo!"
+          else
+            echo "woke_up=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Ancora non risponde dopo il wake-up (HTTP $WAKE_CODE)"
+          fi
+        id: wakeup
+
+      - name: Invia email di allerta via Brevo
+        if: steps.ping.outputs.down == 'true' && steps.wakeup.outputs.woke_up != 'true'
+        run: |
+          HTTP_CODE="${{ steps.ping.outputs.http_code }}"
+          if [ "$HTTP_CODE" = "000" ]; then
+            DETAIL="Timeout: nessuna risposta entro 60 secondi (probabile ibernazione Streamlit)"
+          else
+            DETAIL="Codice HTTP ricevuto: <strong>$HTTP_CODE</strong>"
+          fi
           curl -s -X POST https://api.brevo.com/v3/smtp/email \
             -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
             -H "Content-Type: application/json" \
-            -d '{
-              "sender": {"name": "OH YEAH! Monitor", "email": "noreply@ohyeah.it"},
-              "to": [{"email": "mattiadavolio90@gmail.com", "name": "Mattia"}],
-              "subject": "🚨 OH YEAH! è offline",
-              "htmlContent": "<h2>⚠️ Attenzione</h2><p>L'\''app <strong>OH YEAH!</strong> non risponde.</p><p>Codice HTTP ricevuto: <strong>${{ steps.ping.outputs.http_code }}</strong></p><p>URL: <a href=\"https://ohyeah.streamlit.app/\">https://ohyeah.streamlit.app/</a></p><p>Controlla subito su <a href=\"https://share.streamlit.io\">Streamlit Cloud</a>.</p>"
-            }'
+            -d "{
+              \"sender\": {\"name\": \"OH YEAH! Monitor\", \"email\": \"noreply@ohyeah.it\"},
+              \"to\": [{\"email\": \"mattiadavolio90@gmail.com\", \"name\": \"Mattia\"}],
+              \"subject\": \"🚨 OH YEAH! è offline\",
+              \"htmlContent\": \"<h2>⚠️ Attenzione</h2><p>L'app <strong>OH YEAH!</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://ohyeah.streamlit.app/'>https://ohyeah.streamlit.app/</a></p><p>Controlla su <a href='https://share.streamlit.io'>Streamlit Cloud</a> se l'app è ibernata o in errore.</p>\"
+            }"
