@@ -529,8 +529,7 @@ def mostra_pagina_login():
             font-size:0.75rem;color:#1e3a8a;margin-bottom:0.8rem;line-height:1.5;">
     🍪 <strong>Cookie tecnici:</strong> Questo sito utilizza esclusivamente cookie tecnici di sessione,
     necessari al funzionamento del servizio. Non vengono usati cookie di profilazione o tracciamento.
-    Per maggiori informazioni consulta la
-    <a href="?page=privacy" style="color:#2563eb;">Informativa Privacy</a>.
+    Per maggiori informazioni consulta la pagina dedicata dopo il login.
 </div>
 """, unsafe_allow_html=True)
     
