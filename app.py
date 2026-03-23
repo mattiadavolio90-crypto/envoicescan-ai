@@ -1178,11 +1178,6 @@ st.markdown("""
 _tb = st.session_state.get('trial_info', {})
 if _tb.get('is_trial') and not st.session_state.get('impersonating', False):
     _tb_days = _tb.get('days_left', 0)
-    # Mese/anno sempre dal momento attuale: immune alla cache stantia in session_state
-    _tb_now = datetime.now(timezone.utc)
-    _tb_month = _tb_now.month
-    _tb_year = _tb_now.year
-    _tb_mname = MESI_ITA[_tb_month - 1]
     _tb_color = '#dc2626' if _tb_days <= 2 else '#d97706'
     st.markdown(f"""
 <div style="background:linear-gradient(135deg,#fef9c3,#fef08a);border:2px solid {_tb_color};
@@ -1194,7 +1189,7 @@ if _tb.get('is_trial') and not st.session_state.get('impersonating', False):
             Prova gratuita attiva &mdash; Rimangono {_tb_days} giorni
         </strong><br>
         <span style="color:#92400e;font-size:0.85rem;">
-            Accesso limitato alle fatture di <strong>{_tb_mname} {_tb_year}</strong>.
+            Accesso limitato alle fatture del mese in corso.
             Upload: max 50 file, solo XML/P7M. Export Excel non disponibile durante la prova.
         </span>
     </div>
