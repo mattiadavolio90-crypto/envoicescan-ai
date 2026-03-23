@@ -503,7 +503,14 @@ def mostra_pagina_login():
         }
         </style>
     """, unsafe_allow_html=True)
-    
+
+    # Messaggio scadenza trial (mostrato dopo logout automatico da app.py)
+    if st.session_state.pop('_trial_expired_msg', False):
+        st.error(
+            "⏰ **Prova gratuita scaduta.** Il tuo account è stato disattivato. "
+            "Contatta il supporto per attivare un abbonamento."
+        )
+
     render_oh_yeah_header()
     
     st.markdown("""
@@ -979,6 +986,71 @@ if st.session_state.get('user_is_admin', False) and not st.session_state.get('im
     st.stop()
 
 # ============================================
+# TRIAL: VERIFICA SCADENZA + CARICA INFO
+# ============================================
+# Solo per utenti normali (non admin, non impersonazione da admin)
+if (
+    not st.session_state.get('user_is_admin', False)
+    and not st.session_state.get('impersonating', False)
+    and user.get('id')
+):
+    _t_uid = user['id']
+    _t_now = datetime.now(timezone.utc)
+    _t_last_raw = st.session_state.get('_trial_check_at')
+
+    # Forza refresh anche se il TTL non è scaduto ma il mese in cache
+    # non corrisponde al mese corrente (es. cache rimasta da sessione precedente).
+    _cached_ti = st.session_state.get('trial_info', {})
+    _cached_month = _cached_ti.get('trial_month')
+    _current_month = _t_now.month
+    _month_mismatch = (
+        _cached_ti.get('is_trial') and
+        _cached_month is not None and
+        _cached_month != _current_month
+    )
+
+    _t_needs_refresh = (
+        'trial_info' not in st.session_state
+        or not _t_last_raw
+        or _month_mismatch
+        or (_t_now - datetime.fromisoformat(
+            str(_t_last_raw).replace('Z', '+00:00')
+        )).total_seconds() > 300
+    )
+    if _t_needs_refresh:
+        from services.auth_service import get_trial_info as _get_ti, disattiva_trial_scaduta as _dis_ti
+        _fresh_ti = _get_ti(_t_uid, supabase)
+        st.session_state.trial_info = _fresh_ti
+        st.session_state._trial_check_at = _t_now.isoformat()
+        if _fresh_ti.get('expired'):
+            _ok_dis = _dis_ti(_t_uid, supabase)
+            if not _ok_dis:
+                logger.error(
+                    f"⚠️ disattiva_trial_scaduta FALLITA per user_id={_t_uid} "
+                    f"— logout forzato comunque, il DB verrà aggiornato al prossimo tentativo"
+                )
+            try:
+                supabase.table('users').update({
+                    'session_token': None,
+                    'session_token_created_at': None,
+                }).eq('id', _t_uid).execute()
+            except Exception as _tok_err:
+                logger.error(f"Errore invalidazione session_token per trial scaduta: {_tok_err}")
+            st.session_state.clear()
+            st.session_state.logged_in = False
+            st.session_state._trial_expired_msg = True
+            logger.warning(f"⏰ Trial scaduta → logout forzato: user_id={_t_uid} (disattivazione_ok={_ok_dis})")
+            st.rerun()
+else:
+    # Admin o sessione impersonazione: nessuna restrizione trial.
+    # Sovrascriviamo SEMPRE (non solo se assente) per evitare che un trial_info
+    # residuo da una sessione precedente appaia su un nuovo giro di impersonazione.
+    st.session_state.trial_info = {
+        'is_trial': False, 'days_left': 0,
+        'trial_month': None, 'trial_year': None, 'expired': False,
+    }
+
+# ============================================
 # BANNER IMPERSONAZIONE (solo per admin che impersonano)
 # ============================================
 
@@ -1097,6 +1169,35 @@ st.markdown("""
 </h2>
 <div style='padding: 4px 14px 0; font-size: 0.88rem; color: #1e2a4a; font-weight: 500; margin-bottom: 1.5rem;'>
     📄 <strong>Nota Legale:</strong> Questo servizio offre strumenti di analisi gestionale e non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente resta responsabile della conservazione fiscale delle fatture elettroniche per 10 anni presso i canali certificati.
+</div>
+""", unsafe_allow_html=True)
+
+# ============================================
+# TRIAL BANNER
+# ============================================
+_tb = st.session_state.get('trial_info', {})
+if _tb.get('is_trial') and not st.session_state.get('impersonating', False):
+    _tb_days = _tb.get('days_left', 0)
+    # Mese/anno sempre dal momento attuale: immune alla cache stantia in session_state
+    _tb_now = datetime.now(timezone.utc)
+    _tb_month = _tb_now.month
+    _tb_year = _tb_now.year
+    _tb_mname = MESI_ITA[_tb_month - 1]
+    _tb_color = '#dc2626' if _tb_days <= 2 else '#d97706'
+    st.markdown(f"""
+<div style="background:linear-gradient(135deg,#fef9c3,#fef08a);border:2px solid {_tb_color};
+            border-radius:10px;padding:12px 18px;margin-bottom:1rem;
+            display:flex;align-items:center;gap:12px;">
+    <span style="font-size:1.6rem;">⏳</span>
+    <div>
+        <strong style="color:{_tb_color};font-size:1rem;">
+            Prova gratuita attiva &mdash; Rimangono {_tb_days} giorni
+        </strong><br>
+        <span style="color:#92400e;font-size:0.85rem;">
+            Accesso limitato alle fatture di <strong>{_tb_mname} {_tb_year}</strong>.
+            Upload: max 50 file, solo XML/P7M. Export Excel non disponibile durante la prova.
+        </span>
+    </div>
 </div>
 """, unsafe_allow_html=True)
 
@@ -1233,6 +1334,9 @@ if force_refresh:
 with st.spinner("⏳ Caricamento dati..."):
     df_cache = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh, ristorante_id=st.session_state.get('ristorante_id'))
 
+# Inizializzazione safe: get_fatture_stats viene ridefinito dentro l'expander
+# ma potrebbe non essere raggiunto se df_cache è vuoto.
+stats_db = {'num_uniche': 0, 'num_righe': 0, 'success': False}
 
 # 🗂️ GESTIONE FATTURE - Eliminazione (prima del file uploader)
 if not df_cache.empty:

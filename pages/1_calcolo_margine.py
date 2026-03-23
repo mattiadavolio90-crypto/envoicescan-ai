@@ -728,14 +728,16 @@ if st.session_state.margine_tab == "analisi":
                     sheet_name = centro_n[:31]
                     df_c_agg_exp.to_excel(writer, index=False, sheet_name=sheet_name)
             excel_buf_c.seek(0)
+            _is_trial_cm = st.session_state.get('trial_info', {}).get('is_trial', False)
             st.download_button(
-                label="Excel",
+                label="Excel" if not _is_trial_cm else "🔒 Excel (non disponibile in prova)",
                 data=excel_buf_c.getvalue(),
                 file_name=f"analisi_centri_categorie_{anno_aa}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="aa_download_centri",
                 type="primary",
-                use_container_width=False
+                use_container_width=False,
+                disabled=_is_trial_cm,
             )
 
         # ============================================
@@ -1245,14 +1247,16 @@ if st.session_state.margine_tab == "centri":
 
                 with _col_centri_right:
                     st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
+                    _is_trial_centri = st.session_state.get('trial_info', {}).get('is_trial', False)
                     st.download_button(
-                        label="Excel",
+                        label="Excel" if not _is_trial_centri else "🔒 Excel (non disponibile in prova)",
                         data=excel_data_centri,
                         file_name=f"centri_produzione_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="cm_download_excel_centri",
                         type="primary",
-                        use_container_width=False
+                        use_container_width=False,
+                        disabled=_is_trial_centri,
                     )
 
 if st.session_state.margine_tab == "calcolo":
@@ -1725,13 +1729,15 @@ if st.session_state.margine_tab == "calcolo":
         excel_data = export_excel_margini(df_risultati, anno, nome_rist, kpi_data)
         _col_excel_empty_t1, col_excel_t1 = st.columns([5, 1])
         with col_excel_t1:
+            _is_trial_mg = st.session_state.get('trial_info', {}).get('is_trial', False)
             st.download_button(
-                "Excel",
+                "🔒 Excel (prova)" if _is_trial_mg else "Excel",
                 data=excel_data,
                 file_name=f"Margini_{anno}_{nome_rist.replace(' ', '_')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="margine_download",
                 use_container_width=False,
+                disabled=_is_trial_mg,
             )
 
 

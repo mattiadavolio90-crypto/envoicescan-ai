@@ -935,4 +935,163 @@ __all__ = [
     'valida_e_mostra_errori_password',
     'crea_cliente_con_token',
     'imposta_password_da_token',
+    # Trial 7 giorni
+    'get_trial_info',
+    'attiva_trial',
+    'disattiva_trial_scaduta',
 ]
+
+
+# ============================================================
+# TRIAL 7 GIORNI GRATUITI
+# ============================================================
+
+_TRIAL_DURATION_DAYS = 7
+
+
+def get_trial_info(user_id: str, supabase_client=None) -> Dict[str, Any]:
+    """
+    Legge lo stato trial dell'utente da DB.
+
+    Returns dict:
+        is_trial (bool): trial attiva e non ancora scaduta
+        days_left (int): giorni interi rimanenti (0 se scaduta o non trial)
+        trial_month (int|None): mese numerico corrente durante il trial (1-12)
+        trial_year (int|None): anno attivazione trial
+        expired (bool): True se trial era attiva ma è scaduta (account da disattivare)
+    """
+    _default: Dict[str, Any] = {
+        'is_trial': False, 'days_left': 0,
+        'trial_month': None, 'trial_year': None, 'expired': False,
+    }
+    try:
+        from services import get_supabase_client
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
+
+        resp = supabase_client.table('users') \
+            .select('trial_active, trial_activated_at') \
+            .eq('id', user_id) \
+            .limit(1) \
+            .execute()
+
+        if not resp.data:
+            return _default
+
+        row = resp.data[0]
+        trial_active = row.get('trial_active', False)
+        activated_raw = row.get('trial_activated_at')
+
+        if not trial_active or not activated_raw:
+            return _default
+
+        activated_at = datetime.fromisoformat(activated_raw.replace('Z', '+00:00'))
+        if activated_at.tzinfo is None:
+            activated_at = activated_at.replace(tzinfo=timezone.utc)
+
+        now_utc = datetime.now(timezone.utc)
+        expires_at = activated_at + timedelta(days=_TRIAL_DURATION_DAYS)
+
+        # Mese/anno in orario italiano (Europa/Roma) per coerenza con l'utente.
+        # Evita il boundary fine mese dove UTC è già nel mese successivo (23:30 CEST = 01:30 UTC+1).
+        try:
+            from zoneinfo import ZoneInfo as _ZI
+            _now_it = datetime.now(_ZI('Europe/Rome'))
+        except Exception:
+            _now_it = datetime.now(timezone.utc)  # fallback Python < 3.9
+
+        if now_utc >= expires_at:
+            return {
+                'is_trial': False,
+                'days_left': 0,
+                'trial_month': activated_at.month,
+                'trial_year': activated_at.year,
+                'expired': True,
+            }
+
+        return {
+            'is_trial': True,
+            'days_left': max(0, (expires_at - now_utc).days),
+            'trial_month': _now_it.month,
+            'trial_year': _now_it.year,
+            'expired': False,
+        }
+    except Exception:
+        logger.exception(f'Errore get_trial_info user_id={user_id}')
+        return _default
+
+
+def attiva_trial(user_id: str, admin_email: str, supabase_client=None) -> Tuple[bool, str]:
+    """
+    Attiva la trial 7 giorni per un utente (chiamabile solo da admin).
+
+    Returns (True, msg) se ok, (False, errore) altrimenti.
+    Non sovrascrive una trial già attiva.
+    """
+    try:
+        from services import get_supabase_client
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
+
+        resp = supabase_client.table('users') \
+            .select('email, attivo') \
+            .eq('id', user_id) \
+            .limit(1) \
+            .execute()
+
+        if not resp.data:
+            return False, 'Utente non trovato'
+
+        u = resp.data[0]
+
+        if not u.get('attivo'):
+            return False, f'Account {u["email"]} disattivato — riattivarlo prima di attivare la trial'
+
+        now_utc = datetime.now(timezone.utc)
+
+        # UPDATE ATOMICO: aggiorna SOLO se trial_active è ancora FALSE.
+        # Previene doppia attivazione in caso di click concorrenti da più admin.
+        result = supabase_client.table('users').update({
+            'trial_active': True,
+            'trial_activated_at': now_utc.isoformat(),
+        }).eq('id', user_id).eq('trial_active', False).execute()
+
+        if not result.data:
+            # 0 righe aggiornate: trial già attiva (race condition o doppio click)
+            return False, f'Trial già attiva per {u["email"]} (attivata nel frattempo)'
+
+        logger.info(
+            f"🎟️ Trial attivata: user={u['email']} | admin={admin_email} | at={now_utc.isoformat()}"
+        )
+        return True, f"Trial 7 giorni attivata per {u['email']}"
+
+    except Exception as e:
+        logger.exception(f'Errore attiva_trial user_id={user_id}')
+        return False, f'Errore: {e}'
+
+
+def disattiva_trial_scaduta(user_id: str, supabase_client=None) -> bool:
+    """
+    Disattiva account di un utente la cui trial è scaduta.
+    Imposta attivo=False e trial_active=False.
+    Chiamata automaticamente nel page-load di app.py quando get_trial_info() ritorna expired=True.
+    """
+    try:
+        from services import get_supabase_client
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
+
+        result = supabase_client.table('users').update({
+            'trial_active': False,
+            'attivo': False,
+        }).eq('id', user_id).execute()
+
+        if not result.data:
+            logger.warning(f"⚠️ disattiva_trial_scaduta: nessuna riga aggiornata per user_id={user_id}")
+            return False
+
+        logger.info(f"🔒 Account disattivato per trial scaduta: user_id={user_id}")
+        return True
+    except Exception:
+        logger.exception(f'Errore disattiva_trial_scaduta user_id={user_id}')
+        return False

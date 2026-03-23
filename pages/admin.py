@@ -1010,15 +1010,23 @@ if tab1:
             _all_user_ids = df_clienti_sorted['user_id'].dropna().unique().tolist()
             try:
                 _fresh_batch = supabase.table('users') \
-                    .select('id, pagine_abilitate') \
+                    .select('id, pagine_abilitate, trial_active, trial_activated_at') \
                     .in_('id', _all_user_ids) \
                     .execute()
                 _fresh_pagine_map = {
                     r['id']: r.get('pagine_abilitate')
                     for r in (_fresh_batch.data or [])
                 }
+                _fresh_trial_map = {
+                    r['id']: {
+                        'trial_active': r.get('trial_active', False),
+                        'trial_activated_at': r.get('trial_activated_at'),
+                    }
+                    for r in (_fresh_batch.data or [])
+                }
             except Exception:
                 _fresh_pagine_map = {}
+                _fresh_trial_map = {}
             for idx, row in df_clienti_sorted.iterrows():
                 row_key = f"{row['user_id']}_{row.get('ristorante_id', idx)}"
                 status_icon = "🟢" if row['attivo'] else "🔴"
@@ -1370,11 +1378,11 @@ if tab1:
                             # AZIONE 2c: Blocco Fatture Anno Precedente
                             st.markdown("**📅 Restrizione Periodo Fatture**")
                             anno_corrente = datetime.now().year
-                            st.caption(f"Se attivo, il cliente può caricare solo fatture dal 1 Gennaio {anno_corrente}")
+                            st.caption(f"Se attivo, il cliente può caricare solo fatture dall'1 Gennaio dell'anno in corso ({anno_corrente}). Si aggiorna automaticamente ogni anno.")
                             
                             blocco_attivo = pagine.get('blocco_anno_precedente', True)
                             new_blocco = st.checkbox(
-                                f"🔒 Blocca fatture precedenti al {anno_corrente}",
+                                "🔒 Blocca fatture precedenti all'anno in corso",
                                 value=blocco_attivo,
                                 key=f"blocco_anno_{row_key}"
                             )
@@ -1397,7 +1405,58 @@ if tab1:
                                     logger.exception(f"Errore aggiornamento blocco_anno per {row.get('email')}")
                             
                             st.markdown("---")
-                            
+
+                            # AZIONE 2d: Trial 7 Giorni Gratuiti
+                            st.markdown("**🎟️ Prova Gratuita 7 Giorni**")
+                            st.caption("Attiva accesso trial limitato al mese corrente (no export Excel)")
+
+                            _trial_data = _fresh_trial_map.get(row['user_id'], {})
+                            _has_active_trial = _trial_data.get('trial_active', False)
+                            _trial_act_raw = _trial_data.get('trial_activated_at')
+
+                            if _has_active_trial and _trial_act_raw:
+                                try:
+                                    _trial_act_dt = datetime.fromisoformat(
+                                        _trial_act_raw.replace('Z', '+00:00')
+                                    )
+                                    _trial_exp_dt = _trial_act_dt + timedelta(days=7)
+                                    _trial_days_rem = max(
+                                        0,
+                                        (_trial_exp_dt - datetime.now(timezone.utc)).days
+                                    )
+                                    st.info(
+                                        f"🎟️ Trial attiva — scade tra **{_trial_days_rem} giorni** "
+                                        f"({_trial_exp_dt.strftime('%d/%m/%Y')})"
+                                    )
+                                except Exception:
+                                    st.info("🎟️ Trial attiva")
+                            else:
+                                if st.button(
+                                    "🎟️ Attiva Trial 7 Giorni",
+                                    key=f"trial_{row_key}",
+                                    type="primary",
+                                    use_container_width=True,
+                                ):
+                                    from services.auth_service import attiva_trial as _at
+                                    _ok, _msg = _at(
+                                        row['user_id'],
+                                        user.get('email', ''),
+                                        supabase
+                                    )
+                                    if _ok:
+                                        st.success(f"✅ {_msg}")
+                                        logger.info(
+                                            f"🎟️ Trial attivata da admin: "
+                                            f"{user.get('email')} → {row['email']}"
+                                        )
+                                        _carica_stats_clienti_admin.clear()
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ {_msg}")
+
+                            st.markdown("---")
+
                             # AZIONE 3: Elimina Account Completo (2 click)
                             # FIX CRITICO: salviamo i dati del cliente in session_state
                             # perché @st.dialog esegue fragment-rerun e la closure su 'row'

@@ -218,7 +218,58 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     
     # Messaggio SOLO per ADMIN (interfaccia pulita per clienti)
     is_admin = st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False)
-    
+
+    # ============================================================
+    # LIMITI TRIAL: max 50 file, solo XML/P7M
+    # ============================================================
+    if not is_admin:
+        _trial_limits = st.session_state.get('trial_info', {})
+        if _trial_limits.get('is_trial'):
+            _TRIAL_MAX_FILES = 50
+            _TRIAL_ALLOWED_EXT = ('.xml', '.p7m')
+
+            # 1) Filtra e rimuovi PDF / immagini dalla lista dei file nuovi
+            _file_nuovi_bloccati = [
+                f for f in file_nuovi
+                if not f.name.lower().endswith(_TRIAL_ALLOWED_EXT)
+            ]
+            if _file_nuovi_bloccati:
+                _uid_tl = st.session_state.get('user_data', {}).get('id', '')
+                _email_tl = st.session_state.get('user_data', {}).get('email', 'unknown')
+                for _bf in _file_nuovi_bloccati:
+                    logger.warning(
+                        f"🎟️ TRIAL BLOCCO FORMATO {_bf.name} — "
+                        f"user={_email_tl} (solo XML/P7M consentiti)"
+                    )
+                    log_upload_event(
+                        user_id=_uid_tl, user_email=_email_tl,
+                        file_name=_bf.name, status='TRIAL_FORMAT_BLOCKED',
+                        supabase_client=supabase
+                    )
+                file_nuovi = [
+                    f for f in file_nuovi
+                    if f.name.lower().endswith(_TRIAL_ALLOWED_EXT)
+                ]
+                _bloccati_nomi = ', '.join(f.name for f in _file_nuovi_bloccati)
+                st.warning(
+                    f"🎟️ **Prova gratuita — Solo XML/P7M consentiti.** "
+                    f"File ignorati: {_bloccati_nomi}"
+                )
+
+            # 2) Blocca se superano il limite di 50 file
+            if len(file_nuovi) > _TRIAL_MAX_FILES:
+                _uid_tl = st.session_state.get('user_data', {}).get('id', '')
+                _email_tl = st.session_state.get('user_data', {}).get('email', 'unknown')
+                logger.warning(
+                    f"🎟️ TRIAL BLOCCO LIMITE {len(file_nuovi)} file — user={_email_tl}"
+                )
+                st.session_state['uploader_key'] = st.session_state.get('uploader_key', 0) + 1
+                st.session_state['_upload_limit_error'] = (
+                    f"⏳ **Prova gratuita: massimo {_TRIAL_MAX_FILES} file per volta.** "
+                    f"Hai selezionato {len(file_nuovi)} file XML/P7M validi."
+                )
+                st.rerun()
+
     # Salva riferimento a just_uploaded PRIMA di pulirlo
     erano_just_uploaded = just_uploaded.copy() if just_uploaded else set()
     
@@ -257,6 +308,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         file_ok = []
         file_note_credito = []
         file_errore = {}
+        file_blocchi_trial = []  # file bloccati per mese errato (non errori tecnici)
         
         try:
             # Mostra animazione AI
@@ -423,6 +475,43 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                         raise
                                     except Exception:
                                         pass  # Se la data non è parsabile, lascia passare
+
+                        # ============================================================
+                        # BLOCCO TRIAL: solo fatture del mese di attivazione trial
+                        # ============================================================
+                        _trial_upload = st.session_state.get('trial_info', {})
+                        if not is_admin and _trial_upload.get('is_trial'):
+                            # Mese/anno sempre dal momento attuale: immune alla cache stantia
+                            _t_now_trial = pd.Timestamp.now()
+                            _t_month = _t_now_trial.month
+                            _t_year = _t_now_trial.year
+                            if _t_month and _t_year:
+                                _data_trial = None
+                                if isinstance(items, list) and len(items) > 0:
+                                    _data_trial = (
+                                        items[0].get('Data_Documento')
+                                        or items[0].get('data_documento')
+                                    )
+                                if _data_trial and _data_trial != 'N/A':
+                                    try:
+                                        _dt_trial = pd.to_datetime(_data_trial)
+                                        if _dt_trial.month != _t_month or _dt_trial.year != _t_year:
+                                            from config.constants import MESI_ITA as _MESI
+                                            _mn = _MESI[_t_month - 1]
+                                            logger.warning(
+                                                f"🎟️ UPLOAD BLOCCATO TRIAL {file.name} - "
+                                                f"Data {_data_trial} fuori dal mese trial {_mn} {_t_year} "
+                                                f"(user: {st.session_state.get('user_data', {}).get('email')})"
+                                            )
+                                            raise ValueError(
+                                                f"BLOCCO TRIAL \u2014 Durante la prova gratuita puoi caricare solo "
+                                                f"fatture di {_mn} {_t_year}. "
+                                                f"La fattura ha data {_data_trial}."
+                                            )
+                                    except ValueError:
+                                        raise
+                                    except Exception:
+                                        pass  # Data non parsabile: lascia passare
                         
                         # Salva in memoria se trovati dati (SILENZIOSO)
                         result = salva_fattura_processata(
@@ -460,6 +549,20 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                     except Exception as e:
                         # TRACCIA ERRORE DETTAGLIATO (silenzioso - solo log)
                         full_error = str(e)
+
+                        # ============================================================
+                        # Blocchi trial (mese errato, anno precedente) NON sono errori
+                        # tecnici: vanno in un bucket separato per non inquinare il
+                        # report upload con messaggi intenzionali.
+                        # ============================================================
+                        _is_policy_block = (
+                            full_error.startswith('BLOCCO TRIAL')
+                            or full_error.startswith('ANNO PRECEDENTE')
+                        )
+                        if _is_policy_block:
+                            file_blocchi_trial.append(file.name)
+                            continue  # Non aggiungere a file_errore né a files_con_errori
+
                         error_msg = full_error[:TRUNCATE_ERROR_DISPLAY] + ("..." if len(full_error) > TRUNCATE_ERROR_DISPLAY else "")
                         logger.exception(f"❌ Errore elaborazione {file.name}: {full_error}")
                         file_errore[file.name] = error_msg
@@ -534,6 +637,25 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         
         # === SALVA MESSAGGI IN SESSION_STATE (persistono fino al prossimo upload) ===
         _messages = []
+        if file_blocchi_trial:
+            _bt_n = len(file_blocchi_trial)
+            _bt_lbl = "file ignorato" if _bt_n == 1 else "file ignorati"
+            _trial_month_label = st.session_state.get('trial_info', {}).get('trial_month')
+            _trial_year_label = st.session_state.get('trial_info', {}).get('trial_year')
+            _mn_label = ''
+            if _trial_month_label:
+                try:
+                    from config.constants import MESI_ITA as _M
+                    _mn_label = f" ({_M[_trial_month_label - 1]} {_trial_year_label})"
+                except Exception:
+                    pass
+            _messages.append(
+                f'<div style="padding:10px 16px;background:#fef9c3;border-left:5px solid #d97706;'
+                f'border-radius:6px;margin-bottom:8px;">'
+                f'<span style="font-size:0.88rem;font-weight:600;color:#92400e;">'
+                f'🎟️ {_bt_n} {_bt_lbl} per mese errato{_mn_label} — solo fatture del mese corrente durante la prova gratuita.'
+                f'</span></div>'
+            )
         if file_processati > 0:
             msg_ok = f"1 fattura caricata" if file_processati == 1 else f"{file_processati} fatture caricate"
             _messages.append(f'<div style="padding:10px 16px;background:#d4edda;border-left:5px solid #28a745;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#155724;">✅ {msg_ok} con successo!</span></div>')
