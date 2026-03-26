@@ -168,7 +168,7 @@ def render_sidebar(user_data: dict):
         # SEZIONE OPERATIVO
         # ============================================
         # Admin puro (non impersonificato) vede SOLO pannello admin
-        _is_pure_admin = user_email in ADMIN_EMAILS and not is_admin_impersonating
+        _is_pure_admin = user_email in ADMIN_EMAILS and not st.session_state.get('impersonating', False)
         
         if not _is_pure_admin:
             st.markdown("### 📋 Sezioni e Funzioni")
