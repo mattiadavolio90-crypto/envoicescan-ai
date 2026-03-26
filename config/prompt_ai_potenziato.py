@@ -182,6 +182,15 @@ Usa esattamente i nomi categoria sopra (26 food + MATERIALE DI CONSUMO + 3 spese
 🎯 ARTICOLI DA CLASSIFICARE
 ═══════════════════════════════════════════════════════════════════
 
+Gli articoli sono forniti in formato JSON. Può essere:
+- Lista semplice: ["descrizione1", "descrizione2", ...]
+- Lista arricchita: [{"articolo": "descrizione", "fornitore": "METRO", "iva": 10}, ...]
+
+Quando presenti, usa i metadati come CONTESTO di supporto:
+- **fornitore**: aiuta a identificare tipologia prodotti (es: SAMMONTANA → gelati, METRO → GDO generico)
+- **iva**: aliquota IVA come indizio di categoria (4% = prodotti freschi/base, 10% = trasformati/lavorati, 22% = non-alimentari/servizi)
+  ⚠️ L'IVA è solo un indizio — la descrizione rimane il dato principale. Non classificare MAI un alimento come MATERIALE DI CONSUMO solo perché IVA=22%.
+
 {ARTICOLI}
 """
 

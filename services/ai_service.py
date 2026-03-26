@@ -843,22 +843,59 @@ def svuota_memoria_globale(supabase_client=None) -> bool:
 def _chiama_gpt_classificazione(
     da_chiedere_gpt: List[str],
     openai_client,
-    max_tokens: int = 4096
+    max_tokens: int = 4096,
+    lista_fornitori: Optional[List[str]] = None,
+    lista_iva: Optional[List[int]] = None,
 ) -> List[str]:
     """
     Singola chiamata GPT per classificazione. Ritorna lista categorie (stesso ordine input).
     Se GPT ritorna meno categorie del previsto, le mancanti saranno "Da Classificare".
+
+    Quando lista_fornitori e/o lista_iva sono fornite (allineate con da_chiedere_gpt),
+    il payload inviato a GPT è arricchito: {articolo, fornitore, iva} invece di semplici stringhe.
+    Le descrizioni vengono inoltre normalizzate (rimozione prefissi peso GDO, espansione
+    abbreviazioni) prima di essere inviate, per migliorare l'accuratezza.
     """
     from config.prompt_ai_potenziato import get_prompt_classificazione
-    
+    from utils.text_utils import normalizza_descrizione
+
     # 🔒 Sanitizza input: rimuovi caratteri di controllo, limita lunghezza per descrizione
     _MAX_DESC_LEN = 300
     _CTRL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
     da_chiedere_sanitized = [
         _CTRL_RE.sub('', desc)[:_MAX_DESC_LEN] for desc in da_chiedere_gpt
     ]
-    
-    prompt = get_prompt_classificazione(json.dumps(da_chiedere_sanitized, ensure_ascii=False))
+
+    # 🧹 Normalizza descrizioni per rimuovere prefissi GDO (es: "G100 PANBURGER" → "PANBURGER")
+    # ed espandere abbreviazioni (es: "INS.NOVELLA" → "INSALATA NOVELLA").
+    # Usiamo la versione normalizzata SOLO nel payload inviato a GPT; la mappatura risultati
+    # avviene per indice, quindi il cambio di testo non crea disallineamenti.
+    da_chiedere_normalizzate = [
+        normalizza_descrizione(desc) or desc  # fallback a originale se normalizzazione svuota
+        for desc in da_chiedere_sanitized
+    ]
+
+    # 📦 Costruisci payload: arricchito (dict) se i metadati sono disponibili, altrimenti plain list
+    _ha_fornitori = lista_fornitori and len(lista_fornitori) == len(da_chiedere_gpt)
+    _ha_iva = lista_iva and len(lista_iva) == len(da_chiedere_gpt)
+    if _ha_fornitori or _ha_iva:
+        payload = []
+        for idx, desc_norm in enumerate(da_chiedere_normalizzate):
+            item: Dict[str, Any] = {"articolo": desc_norm}
+            if _ha_fornitori:
+                forn = (lista_fornitori[idx] or "").strip()
+                if forn:
+                    item["fornitore"] = forn
+            if _ha_iva:
+                iva_val = lista_iva[idx]
+                if iva_val:
+                    item["iva"] = iva_val
+            payload.append(item)
+        articoli_json = json.dumps(payload, ensure_ascii=False)
+    else:
+        articoli_json = json.dumps(da_chiedere_normalizzate, ensure_ascii=False)
+
+    prompt = get_prompt_classificazione(articoli_json)
     
     response = openai_client.chat.completions.create(
         model="gpt-4o-mini",
@@ -925,6 +962,7 @@ def _chiama_gpt_classificazione(
 def classifica_con_ai(
     lista_descrizioni: List[str],
     lista_fornitori: Optional[List[str]] = None,
+    lista_iva: Optional[List[int]] = None,
     openai_client: Optional[OpenAI] = None
 ) -> List[str]:
     """
@@ -936,7 +974,8 @@ def classifica_con_ai(
     
     Args:
         lista_descrizioni: Lista descrizioni prodotti da classificare
-        lista_fornitori: Lista fornitori (opzionale, per contesto)
+        lista_fornitori: Lista fornitori ALLINEATA con lista_descrizioni (opzionale)
+        lista_iva: Lista IVA% ALLINEATA con lista_descrizioni (es: 4, 10, 22) (opzionale)
         openai_client: Client OpenAI (opzionale, crea nuovo se None)
     
     Returns:
@@ -953,7 +992,20 @@ def classifica_con_ai(
     # La priorità è ora gestita da carica_memoria_completa() (classificazioni_manuali > locale > globale)
     risultati = {}
     da_chiedere_gpt = list(lista_descrizioni)  # Tutte da classificare via GPT
-    
+
+    # Costruisci indici posizionali per fornitori e IVA (allineati con da_chiedere_gpt)
+    _idx_map = {desc: i for i, desc in enumerate(lista_descrizioni)}
+
+    def _get_fornitori_aligned(descs: List[str]) -> Optional[List[str]]:
+        if not lista_fornitori or len(lista_fornitori) != len(lista_descrizioni):
+            return None
+        return [lista_fornitori[_idx_map[d]] for d in descs if d in _idx_map]
+
+    def _get_iva_aligned(descs: List[str]) -> Optional[List[int]]:
+        if not lista_iva or len(lista_iva) != len(lista_descrizioni):
+            return None
+        return [lista_iva[_idx_map[d]] for d in descs if d in _idx_map]
+
     if not da_chiedere_gpt:
         return [
             risultati[d] if d in risultati 
@@ -963,7 +1015,11 @@ def classifica_con_ai(
 
     try:
         # 🧠 PRIMA CHIAMATA GPT (max_tokens=4096 per evitare troncamenti)
-        cats_prima = _chiama_gpt_classificazione(da_chiedere_gpt, openai_client, max_tokens=4096)
+        cats_prima = _chiama_gpt_classificazione(
+            da_chiedere_gpt, openai_client, max_tokens=4096,
+            lista_fornitori=_get_fornitori_aligned(da_chiedere_gpt),
+            lista_iva=_get_iva_aligned(da_chiedere_gpt),
+        )
         
         for desc, cat in zip(da_chiedere_gpt, cats_prima):
             risultati[desc] = cat
@@ -984,7 +1040,11 @@ def classifica_con_ai(
                 retry_chunk_size = min(20, len(da_ritentare))
                 for i in range(0, len(da_ritentare), retry_chunk_size):
                     chunk_retry = da_ritentare[i:i+retry_chunk_size]
-                    cats_retry = _chiama_gpt_classificazione(chunk_retry, openai_client, max_tokens=4096)
+                    cats_retry = _chiama_gpt_classificazione(
+                        chunk_retry, openai_client, max_tokens=4096,
+                        lista_fornitori=_get_fornitori_aligned(chunk_retry),
+                        lista_iva=_get_iva_aligned(chunk_retry),
+                    )
                     
                     for desc, cat in zip(chunk_retry, cats_retry):
                         if cat and cat != "Da Classificare":

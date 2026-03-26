@@ -187,7 +187,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                 # Query 1: NULL + stringa vuota collassate
                 _q_nullempty = (
                     supabase.table("fatture")
-                    .select("descrizione, fornitore, prezzo_unitario")
+                    .select("descrizione, fornitore, prezzo_unitario, iva_percentuale")
                     .eq("user_id", user_id)
                     .or_("categoria.is.null,categoria.eq.")
                 )
@@ -198,7 +198,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                 # Query 2: Da Classificare
                 _q_daclass = (
                     supabase.table("fatture")
-                    .select("descrizione, fornitore, prezzo_unitario")
+                    .select("descrizione, fornitore, prezzo_unitario, iva_percentuale")
                     .eq("user_id", user_id)
                     .eq("categoria", "Da Classificare")
                 )
@@ -212,6 +212,21 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                 
                 descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
                 fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
+
+                # Mapping per-descrizione: mantiene fornitore e IVA allineati con la descrizione
+                # (una stessa descrizione può venire da più righe; scegliamo l'ultima occorrenza non-nulla)
+                desc_to_fornitore: dict = {}
+                desc_to_iva: dict = {}
+                for _row in tutti_dati:
+                    _d = _row.get('descrizione')
+                    if not _d:
+                        continue
+                    _forn = _row.get('fornitore') or ''
+                    _iva = int(_row.get('iva_percentuale') or 0)
+                    if _forn and _d not in desc_to_fornitore:
+                        desc_to_fornitore[_d] = _forn
+                    if _iva and _d not in desc_to_iva:
+                        desc_to_iva[_d] = _iva
                 
                 # 🛡️ QUARANTENA: Identifica descrizioni che hanno ALMENO una riga €0
                 # Queste NON andranno in memoria globale (restano in attesa di review admin)
@@ -229,6 +244,18 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                 # Fallback su df_completo se query fallisce
                 descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
                 fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
+                # Fallback mapping per-descrizione da DataFrame
+                desc_to_fornitore = {}
+                desc_to_iva = {}
+                if 'Fornitore' in df_completo.columns:
+                    for _, _r in df_completo[maschera_ai].iterrows():
+                        _d = _r.get('Descrizione')
+                        if _d and _d not in desc_to_fornitore:
+                            desc_to_fornitore[_d] = str(_r.get('Fornitore') or '')
+                        if _d and _d not in desc_to_iva and 'IVAPercentuale' in df_completo.columns:
+                            _iva = int(_r.get('IVAPercentuale') or 0)
+                            if _iva:
+                                desc_to_iva[_d] = _iva
                 # Fallback quarantena: usa TotaleRiga dal DataFrame locale
                 _descrizioni_con_prezzo_zero = set()
                 if 'TotaleRiga' in df_completo.columns:
@@ -427,7 +454,11 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 <div class="progress-status">⏳ AI in elaborazione batch {_chunk_num}/{_num_chunks} ({len(chunk)} prodotti)…</div>
                             </div>
                             """, unsafe_allow_html=True)
-                            cats = classifica_con_ai(chunk, fornitori_da_classificare)
+                            cats = classifica_con_ai(
+                                chunk,
+                                lista_fornitori=[desc_to_fornitore.get(d, '') for d in chunk],
+                                lista_iva=[desc_to_iva.get(d, 0) for d in chunk],
+                            )
                             st.session_state['_ai_budget_calls'] = st.session_state.get('_ai_budget_calls', 0) + 1
                             ai_batch_upsert = []
                             for desc, cat in zip(chunk, cats):

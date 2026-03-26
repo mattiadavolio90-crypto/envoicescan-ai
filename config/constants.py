@@ -20,6 +20,9 @@ import re
 
 # Normalizzazione descrizioni
 REGEX_UNITA_MISURA = [
+    # Prefissi peso GDO attaccati a cifre (es: "G100", "KG1", "GR.80") ---
+    # DEVE stare PRIMA dei pattern singola-lettera (\bG\b non cattura G100 perché G-1 non ha word-boundary)
+    re.compile(r'\b(?:KG|GR|G|ML|LT|L)\s*\d+(?:[.,]\d+)?\b', re.IGNORECASE),
     re.compile(r'\bKG\b', re.IGNORECASE),
     re.compile(r'\bG\b', re.IGNORECASE),
     re.compile(r'\bGR\b', re.IGNORECASE),
@@ -54,6 +57,13 @@ REGEX_UNITA_MISURA = [
 REGEX_NUMERI_UNITA = re.compile(r'\b\d+[.,]?\d*\s*(?:KG|G|L|ML|PZ|%|EUR|â‚¬)?\b', re.IGNORECASE)
 
 REGEX_SOSTITUZIONI = {
+    # Abbreviazioni GDO (Metro, Esselunga, ecc.) ---
+    re.compile(r'\bINS\.?\b', re.IGNORECASE): 'INSALATA',
+    re.compile(r'\bCIP\.?\b', re.IGNORECASE): 'CIPOLLA',
+    re.compile(r'\bPOM\.?\b', re.IGNORECASE): 'POMODORO',
+    re.compile(r'\bPETT\.?\b', re.IGNORECASE): 'PETTO',
+    re.compile(r'\bFIL\.?\b', re.IGNORECASE): 'FILETTO',
+    re.compile(r'\bSPALL\.?\b', re.IGNORECASE): 'SPALLA',
     re.compile(r'\bINT\.?\b', re.IGNORECASE): 'INTERO',
     re.compile(r'\bCONF\.?\b', re.IGNORECASE): 'CONFEZIONE',
     re.compile(r'\bPZ\.?\b', re.IGNORECASE): 'PEZZO',
@@ -216,6 +226,7 @@ FORNITORI_SPESE_GENERALI_KEYWORDS = [
 CATEGORIA_PER_FORNITORE = {
     "CP S.P.A": "UTENZE E LOCALI",          # Bollette energia/gas
     "M&M SRL": "GELATI",                    # Fornitore gelati
+    "SAMMONTANA": "GELATI",                 # Produttore gelati industriali
 }
 
 
