@@ -97,10 +97,14 @@ def render_sidebar(user_data: dict):
         
         # Info utente
         user_email = user_data.get('email', 'Utente')
-        admin_original_email = st.session_state.get('admin_original_user', {}).get('email')
-        is_admin_impersonating = st.session_state.get('impersonating', False) and admin_original_email in ADMIN_EMAILS
-        _is_pure_admin_sidebar = user_email in ADMIN_EMAILS and not is_admin_impersonating
-        nome_ristorante = "Amministratore" if _is_pure_admin_sidebar else st.session_state.get('nome_ristorante', 'Ristorante')
+        _is_pure_admin_sidebar = (
+            user_email.lower() in [e.lower() for e in ADMIN_EMAILS]
+            and not st.session_state.get('impersonating', False)
+        )
+        if _is_pure_admin_sidebar:
+            nome_ristorante = "Amministratore"
+        else:
+            nome_ristorante = st.session_state.get('nome_ristorante') or user_data.get('nome_ristorante') or 'Ristorante'
         
         # Escape HTML per prevenire XSS
         user_email_safe = _html.escape(user_email)

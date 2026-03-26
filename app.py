@@ -1770,10 +1770,12 @@ else:
                 border-radius: 4px;
                 margin-bottom: 8px;
             ">
-                <span style="color: #155724; font-weight: 600; font-size: 0.85rem;">✅ Nessun prodotto da categorizzare</span>
+                <span style="color: #155724; font-weight: 600; font-size: 0.85rem;">✅ Tutti i prodotti categorizzati</span>
             </div>
             """, unsafe_allow_html=True)
         else:
+            # 🧠 Recovery: bottone visibile SOLO se ci sono righe Da Classificare
+            # (dopo auto-trigger AI, rimangono solo i casi non risolti)
             st.markdown(f"""
             <div style="
                 padding: 10px 14px;
@@ -1783,15 +1785,14 @@ else:
             </div>
             """, unsafe_allow_html=True)
 
-        if st.button(
-            "🧠 Avvia AI per Categorizzare",
-            use_container_width=True,
-            type="primary",
-            key="btn_ai_categorizza_upload",
-            disabled=(_righe_da_class_ui == 0)
-        ):
-            st.session_state.trigger_ai_categorize = True
-            st.rerun()
+            if st.button(
+                "🧠 Riprova AI per Categorizzare",
+                use_container_width=True,
+                type="primary",
+                key="btn_ai_categorizza_upload"
+            ):
+                st.session_state.trigger_ai_categorize = True
+                st.rerun()
     
     # 🧠 RESET ICONE AI al nuovo caricamento (solo session_state, niente DB)
     if uploaded_files and len(uploaded_files) > 0:

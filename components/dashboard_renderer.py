@@ -361,69 +361,10 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     if prodotti_elaborati > 0:
                         logger.info(f"📦 PRE-STEP MEMORIA: {prodotti_elaborati} descrizioni risolte dalla memoria globale")
                     
-                    # 📖 STEP 1: Dizionario keyword (più veloce, più preciso) sulle rimanenti
-                    descrizioni_per_ai = []  # Solo quelle che dizionario non risolve
-                    
-                    # Tracking keyword (già resettato sopra, init set per O(1) lookup)
-                    _tracking_keyword_set = set(st.session_state.righe_keyword_appena_categorizzate)
-                    
-                    for desc in descrizioni_dopo_memoria:
-                        cat_dizionario = applica_correzioni_dizionario(desc, "Da Classificare")
-                        if cat_dizionario and cat_dizionario != 'Da Classificare':
-                            mappa_categorie[desc] = cat_dizionario
-                            prodotti_elaborati += 1
-                            
-                            # Aggiorna banner in tempo reale durante dizionario
-                            percentuale = (prodotti_elaborati / totale_da_classificare) * 100
-                            if prodotti_elaborati % 5 == 0 or prodotti_elaborati == totale_da_classificare:
-                                progress_placeholder.markdown(f"""
-                            <div class="ai-banner">
-                                <div class="brain-pulse-banner">🧠</div>
-                                <div class="progress-percentage">{int(percentuale)}%</div>
-                                <div class="progress-status">Categorizzando: {prodotti_elaborati} di {totale_da_classificare}</div>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            # Traccia righe keyword per colonna Fonte
-                            if desc not in _tracking_keyword_set:
-                                _tracking_keyword_set.add(desc)
-                                st.session_state.righe_keyword_appena_categorizzate.append(desc)
-                            
-                            logger.debug(f"📖 DIZIONARIO: '{desc[:TRUNCATE_DESC_LOG]}' → {cat_dizionario}")
-                        else:
-                            descrizioni_per_ai.append(desc)
-                    
-                    # 💾 Batch upsert memoria GLOBALE per keyword (singola query)
-                    # 🛡️ QUARANTENA: Escludi descrizioni con righe €0 dalla memoria globale
-                    keyword_upsert_data = [
-                        {
-                            'descrizione': desc,
-                            'categoria': mappa_categorie[desc],
-                            'confidence': 'media',
-                            'verified': False,
-                            'volte_visto': 1,
-                            'classificato_da': 'keyword',
-                            'created_at': datetime.now(timezone.utc).isoformat(),
-                            'ultima_modifica': datetime.now(timezone.utc).isoformat()
-                        }
-                        for desc in _tracking_keyword_set if desc in mappa_categorie and desc not in _descrizioni_con_prezzo_zero
-                    ]
-                    _kw_quarantined = len([d for d in _tracking_keyword_set if d in mappa_categorie and d in _descrizioni_con_prezzo_zero])
-                    if _kw_quarantined > 0:
-                        logger.info(f"🛡️ QUARANTENA keyword: {_kw_quarantined} descrizioni €0 escluse da memoria globale")
-                    if keyword_upsert_data:
-                        try:
-                            _kw_result = supabase.table('prodotti_master').upsert(
-                                keyword_upsert_data, on_conflict='descrizione'
-                            ).execute()
-                            _kw_saved = len(_kw_result.data) if _kw_result.data else 0
-                            logger.info(f"💾 BATCH keyword: {_kw_saved}/{len(keyword_upsert_data)} prodotti salvati in memoria globale")
-                        except Exception as e:
-                            logger.warning(f"Errore batch salvataggio memoria keyword: {e}")
-                    
-                    # 🧠 STEP 2: Invia all'AI solo quelli che dizionario non ha risolto
+                    # 🧠 STEP 1: Invia all'AI tutte le descrizioni non risolte dalla memoria
+                    # Il dizionario interviene SOLO come fallback post-AI per i "Da Classificare" rimasti
+                    descrizioni_per_ai = list(descrizioni_dopo_memoria)
                     chunk_size = 50
-                    # prodotti_elaborati già inizializzato sopra e aggiornato durante STEP 1
                     
                     if descrizioni_per_ai:
                         # 🔒 BUDGET GIORNALIERO AI: limita chiamate per sessione/giorno

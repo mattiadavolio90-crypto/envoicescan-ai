@@ -728,6 +728,11 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             upload_summary['caricate_successo'] = file_processati
             upload_summary['errori'] = len(tutti_problematici)
             st.session_state.last_upload_summary = upload_summary
+            # 🧠 AUTO-TRIGGER AI: avvia categorizzazione automatica dopo upload riuscito
+            if file_processati > 0:
+                st.session_state.trigger_ai_categorize = True
+                st.session_state.pop('_fonte_pm_cache', None)  # Invalida cache Fonte
+                logger.info(f"🧠 Auto-trigger AI: {file_processati} file caricati → categorizzazione automatica")
             # [DEBUG]
             logger.debug(f"[TIMING] handle_uploaded_files completato in {time.perf_counter()-t0_upload:.2f}s")
             st.rerun()

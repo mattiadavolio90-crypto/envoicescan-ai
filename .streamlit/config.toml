@@ -1,9 +1,7 @@
 [server]
-port = 8501
+port = 8502
 maxUploadSize = 200
-enableCORS = false
-enableXsrfProtection = true
-maxConcurrentUsers = 100
+enableXsrfProtection = false
 
 [browser]
 gatherUsageStats = false

@@ -7,5 +7,11 @@ echo ========================================
 echo.
 echo Attendere l'avvio dell'applicazione...
 echo.
-streamlit run app.py
+
+REM Attiva virtual environment
+call .venv\Scripts\activate.bat
+
+echo Avvio su porta 8502...
+echo.
+streamlit run app.py --server.port 8502
 pause
