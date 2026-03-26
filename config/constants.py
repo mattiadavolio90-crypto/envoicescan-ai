@@ -223,10 +223,14 @@ FORNITORI_SPESE_GENERALI_KEYWORDS = [
 # ============================================
 # Fornitore specifico → Categoria automatica (priorità ALTA)
 # Applicate PRIMA del dizionario keyword
+#
+# ATTENZIONE: inserire SOLO fornitori mono-categoria (es. enoteche, macellerie,
+# fornitori acqua minerale, fornitori energy). Brand multi-categoria (es. Sammontana
+# che produce gelati, brioche, succhi) vanno in BRAND_AMBIGUI_NO_DICT e devono
+# passare dall'AI per una classificazione per-prodotto.
 CATEGORIA_PER_FORNITORE = {
     "CP S.P.A": "UTENZE E LOCALI",          # Bollette energia/gas
-    "M&M SRL": "GELATI",                    # Fornitore gelati
-    "SAMMONTANA": "GELATI",                 # Produttore gelati industriali
+    "M&M SRL": "GELATI",                    # Fornitore gelati (solo gelati)
 }
 
 
@@ -241,6 +245,22 @@ UNITA_MISURA_CATEGORIA = {
     "KW": "UTENZE E LOCALI",      # Kilowatt (potenza elettrica)
     "NREE": "UTENZE E LOCALI",    # Numero (quota fissa bollette)
     "GGQFD": "UTENZE E LOCALI",   # Giorni quota fissa distribuzione
+}
+
+
+# ============================================
+# BRAND AMBIGUI — NO DIZIONARIO
+# ============================================
+# Brand multi-categoria: NON classificati dal dizionario keyword.
+# Se la descrizione contiene uno di questi brand, il dizionario viene bypassato
+# e il prodotto va all’AI per classificazione per-prodotto.
+#
+# Regola: un brand va qui se produce prodotti di CATEGORIE DIVERSE.
+# Brand mono-prodotto (es. Schweppes, Baileys) restano nel dizionario.
+BRAND_AMBIGUI_NO_DICT = {
+    'SAMMONTANA',   # Gelati + brioche + merendine + succhi
+    'FABBRI',       # Sciroppi + variegati gelato + creme + Amarena
+    'RISTORA',      # Zucchero bar + capsule caffe + latte polvere
 }
 
 
@@ -548,14 +568,12 @@ DIZIONARIO_CORREZIONI = {
     # ===== PROBLEMI AI: Aggiunti al dizionario =====
     # Prodotti che l'AI non riesce a classificare correttamente
     "MIXYBAR": "BEVANDE",
-    "FABBRI": "BEVANDE",
     "GRANATINA": "BEVANDE",
     "SCHWEPPES": "BEVANDE",
     "CRODINO": "BEVANDE",
     "HENDRICKS": "DISTILLATI",
     "HENDRICK": "DISTILLATI",
     "DOLCIFICANTE": "VARIE BAR",
-    "RISTORA": "VARIE BAR",
     "SERVIZIO DI PRODUZIONE": "SERVIZI E CONSULENZE",
     "INVIO FATTURA": "SERVIZI E CONSULENZE",
     "MUSICA D'AMBIENTE": "SERVIZI E CONSULENZE",

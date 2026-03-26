@@ -190,6 +190,8 @@ Quando presenti, usa i metadati come CONTESTO di supporto:
 - **fornitore**: aiuta a identificare tipologia prodotti (es: SAMMONTANA → gelati, METRO → GDO generico)
 - **iva**: aliquota IVA come indizio di categoria (4% = prodotti freschi/base, 10% = trasformati/lavorati, 22% = non-alimentari/servizi)
   ⚠️ L'IVA è solo un indizio — la descrizione rimane il dato principale. Non classificare MAI un alimento come MATERIALE DI CONSUMO solo perché IVA=22%.
+- **hint**: categoria suggerita da una classificazione precedente con confidenza media.
+  ⚠️ L'hint è un suggerimento debole — usalo come punto di partenza, ma se il contesto dell'articolo lo contraddice, ignoralo e scegli la categoria corretta.
 
 {ARTICOLI}
 """

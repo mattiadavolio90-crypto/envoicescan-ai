@@ -27,6 +27,7 @@ from services.ai_service import (
     svuota_memoria_globale,
     set_global_memory_enabled,
     ottieni_categoria_prodotto,
+    ottieni_hint_per_ai,
 )
 
 from components.category_editor import render_category_editor
@@ -273,7 +274,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     <div class="ai-banner">
                         <div class="brain-pulse-banner">🧠</div>
                         <div class="progress-percentage">0%</div>
-                        <div class="progress-status">Avvio categorizzazione: 0 di {totale_da_classificare}</div>
+                        <div class="progress-status">0 di {totale_da_classificare} prodotti</div>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -328,6 +329,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     mappa_categorie = {}  # desc -> categoria
                     prodotti_elaborati = 0  # Contatore per banner
                     descrizioni_dopo_memoria = []  # Quelle NON risolte dalla memoria
+                    desc_to_hint: dict = {}  # desc -> hint categoria (confidence 'media')
                     
                     # Resetta tracking Fonte per il nuovo run AI
                     st.session_state.righe_memoria_appena_categorizzate = []
@@ -347,7 +349,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             <div class="ai-banner">
                                 <div class="brain-pulse-banner">🧠</div>
                                 <div class="progress-percentage">{int(percentuale)}%</div>
-                                <div class="progress-status">Memoria: {prodotti_elaborati} di {totale_da_classificare}</div>
+                                <div class="progress-status">{prodotti_elaborati} di {totale_da_classificare} prodotti</div>
                             </div>
                             """, unsafe_allow_html=True)
                             # Traccia per colonna Fonte 📚
@@ -356,6 +358,11 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 st.session_state.righe_memoria_appena_categorizzate.append(desc)
                             logger.info(f"📦 MEMORIA: '{desc[:TRUNCATE_DESC_LOG]}' → {cat_memoria}")
                         else:
+                            # Controlla se c'è un hint da confidence 'media' in prodotti_master
+                            hint = ottieni_hint_per_ai(desc, user_id)
+                            if hint:
+                                desc_to_hint[desc] = hint
+                                logger.info(f"💡 HINT: '{desc[:TRUNCATE_DESC_LOG]}' → suggerisco '{hint}' all'AI")
                             descrizioni_dopo_memoria.append(desc)
                     
                     if prodotti_elaborati > 0:
@@ -392,13 +399,14 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             <div class="ai-banner">
                                 <div class="brain-pulse-banner">🧠</div>
                                 <div class="progress-percentage">{_perc_attesa}%</div>
-                                <div class="progress-status">⏳ AI in elaborazione batch {_chunk_num}/{_num_chunks} ({len(chunk)} prodotti)…</div>
+                                <div class="progress-status">{prodotti_elaborati} di {totale_da_classificare} prodotti</div>
                             </div>
                             """, unsafe_allow_html=True)
                             cats = classifica_con_ai(
                                 chunk,
                                 lista_fornitori=[desc_to_fornitore.get(d, '') for d in chunk],
                                 lista_iva=[desc_to_iva.get(d, 0) for d in chunk],
+                                lista_hint=[desc_to_hint.get(d) for d in chunk],
                             )
                             st.session_state['_ai_budget_calls'] = st.session_state.get('_ai_budget_calls', 0) + 1
                             ai_batch_upsert = []
@@ -412,7 +420,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 <div class="ai-banner">
                                     <div class="brain-pulse-banner">🧠</div>
                                     <div class="progress-percentage">{int(percentuale)}%</div>
-                                    <div class="progress-status">Categorizzando: {prodotti_elaborati} di {totale_da_classificare}</div>
+                                    <div class="progress-status">{prodotti_elaborati} di {totale_da_classificare} prodotti</div>
                                 </div>
                                 """, unsafe_allow_html=True)
                                 
@@ -424,6 +432,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                             'categoria': cat,
                                             'volte_visto': 1,
                                             'verified': False,
+                                            'confidence': 'media',
                                             'classificato_da': 'AI'
                                         })
                                     else:

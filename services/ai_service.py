@@ -69,7 +69,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError, APIError
 
 # Import da moduli interni
-from config.constants import DIZIONARIO_CORREZIONI, TUTTE_LE_CATEGORIE, MEMORIA_SESSION_CAP, MAX_DESC_LENGTH_DB
+from config.constants import DIZIONARIO_CORREZIONI, BRAND_AMBIGUI_NO_DICT, TUTTE_LE_CATEGORIE, MEMORIA_SESSION_CAP, MAX_DESC_LENGTH_DB
 from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizza_stringa
 from utils.validation import is_dicitura_sicura
 
@@ -89,9 +89,11 @@ MAX_TOKENS_PER_BATCH = 12000  # Limite sicuro per evitare timeout
 # ============================================================
 _cache_lock = threading.Lock()
 _memoria_cache = {
-    'prodotti_utente': {},      # {user_id: {descrizione: categoria}}
-    'prodotti_master': {},      # {descrizione: categoria}
+    'prodotti_utente': {},         # {user_id: {descrizione: categoria}}
+    'prodotti_master': {},         # {descrizione: categoria} — solo confidence alta/altissima → bypass AI
+    'prodotti_master_hint': {},    # {descrizione: categoria} — confidence media/None → hint per AI
     'classificazioni_manuali': {},  # {descrizione: {categoria, is_dicitura}}
+    'brand_ambigui': set(),        # set di brand dinamici da Supabase (UNION con BRAND_AMBIGUI_NO_DICT)
     'version': 0,               # Incrementato ad ogni invalidazione
     'loaded': False,
     '_loaded_user_ids': set()   # user_id già caricati (isola dati per utente)
@@ -194,15 +196,23 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
         if not global_loaded:
             # Query 2: Carica TUTTA la memoria globale (1 query sola)
             result_globale = supabase_client.table('prodotti_master')\
-                .select('descrizione, categoria')\
+                .select('descrizione, categoria, confidence')\
                 .execute()
 
             if result_globale.data:
-                _memoria_cache['prodotti_master'] = {
-                    row['descrizione']: row['categoria']
-                    for row in result_globale.data
-                }
-                logger.info(f"📦 Cache GLOBALE caricata: {len(result_globale.data)} prodotti")
+                _bypass = {}   # alta/altissima → skip AI direttamente
+                _hint = {}     # media/None → passa come hint, AI ha l'ultima parola
+                for row in result_globale.data:
+                    desc = row['descrizione']
+                    cat = row['categoria']
+                    conf = row.get('confidence')
+                    if conf in ('alta', 'altissima'):
+                        _bypass[desc] = cat
+                    else:
+                        _hint[desc] = cat
+                _memoria_cache['prodotti_master'] = _bypass
+                _memoria_cache['prodotti_master_hint'] = _hint
+                logger.info(f"📦 Cache GLOBALE caricata: {len(_bypass)} bypass (alta/altissima), {len(_hint)} hint (media/None)")
 
             # Query 3: Carica TUTTE le classificazioni manuali admin (1 query sola)
             result_manuali = supabase_client.table('classificazioni_manuali')\
@@ -218,6 +228,21 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                     for row in result_manuali.data
                 }
                 logger.info(f"📦 Cache MANUALI caricata: {len(result_manuali.data)} classificazioni")
+
+            # Query 4: Carica brand ambigui dinamici da Supabase
+            try:
+                result_brand = supabase_client.table('brand_ambigui')\
+                    .select('brand')\
+                    .eq('aggiunto_automaticamente', True)\
+                    .execute()
+                brand_dinamici = {row['brand'] for row in result_brand.data} if result_brand.data else set()
+                _memoria_cache['brand_ambigui'] = brand_dinamici
+                if brand_dinamici:
+                    logger.info(f"📦 Cache BRAND AMBIGUI caricata: {len(brand_dinamici)} brand dinamici")
+            except Exception as brand_err:
+                # Tabella potrebbe non esistere ancora (migration non eseguita)
+                logger.warning(f"⚠️ brand_ambigui non caricati (tabella assente?): {brand_err}")
+                _memoria_cache['brand_ambigui'] = set()
 
             _memoria_cache['loaded'] = True
 
@@ -242,7 +267,9 @@ def invalida_cache_memoria():
             'loaded': False,
             'prodotti_utente': {},
             'prodotti_master': {},
+            'prodotti_master_hint': {},
             'classificazioni_manuali': {},
+            'brand_ambigui': set(),
             'version': (_memoria_cache.get('version', 0) + 1),
             'timestamp': None,
             '_loaded_user_ids': set()
@@ -251,6 +278,159 @@ def invalida_cache_memoria():
 
 
 _MEMORIA_CAP = MEMORIA_SESSION_CAP
+
+# Stop-word per estrazione brand (non sono brand)
+_STOP_WORDS_BRAND = frozenset({
+    'KG', 'GR', 'LT', 'ML', 'PZ', 'CF', 'CT', 'NR', 'X',
+    'DI', 'DA', 'DEL', 'DELLA', 'DELLO', 'DEGLI', 'DELLE',
+    'AL', 'ALLO', 'ALLA', 'AI', 'ALLE', 'IL', 'LO', 'LA',
+    'I', 'GLI', 'LE', 'UN', 'UNA', 'CON', 'PER', 'IN',
+    'CONF', 'CONFEZIONE', 'SURG', 'SURGELATO', 'BIO', 'BIOLOGICO',
+    'FRESCO', 'FRESCA', 'INTERO', 'INTERA', 'LIGHT', 'ZERO',
+    'CLASSIC', 'ORIGINAL', 'PREMIUM', 'SPECIALE', 'SPECIALI',
+})
+
+
+def estrai_brand_da_descrizione(descrizione: str) -> Optional[str]:
+    """
+    Estrae il brand (prima parola significativa) da una descrizione prodotto.
+    Restituisce None se non riesce a identificare un brand attendibile.
+
+    Criteri brand valido:
+    - Almeno 3 caratteri alfabetici
+    - Non è un numero o codice numerico
+    - Non è una stop-word generica (KG, LT, DI, CONF...)
+    """
+    if not descrizione or not isinstance(descrizione, str):
+        return None
+    tokens = descrizione.upper().split()
+    for token in tokens:
+        # Rimuovi punteggiatura attaccata
+        cleaned = re.sub(r'[^A-Z]', '', token)
+        if (
+            len(cleaned) >= 3
+            and cleaned.isalpha()
+            and cleaned not in _STOP_WORDS_BRAND
+        ):
+            return cleaned
+    return None
+
+
+def _aggiorna_brand_tracking(
+    descrizione: str,
+    vecchia_categoria: str,
+    nuova_categoria: str,
+    supabase_client=None
+) -> None:
+    """
+    Traccia la correzione manuale nella tabella brand_ambigui.
+    Se il brand raggiunge le soglie (>= 3 correzioni, >= 2 categorie, tasso > 20%)
+    viene marcato aggiunto_automaticamente=TRUE e la cache brand viene invalidata.
+
+    Chiamata in modo silenzioso (try/except totale) — non blocca mai il flusso principale.
+    """
+    if vecchia_categoria == nuova_categoria:
+        return  # Correzione no-op, non tracciare
+
+    brand = estrai_brand_da_descrizione(descrizione)
+    if not brand:
+        return
+
+    # Non tracciare brand già nel set statico (già noti)
+    if brand in BRAND_AMBIGUI_NO_DICT:
+        return
+
+    if supabase_client is None:
+        try:
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
+        except Exception:
+            return
+
+    try:
+        # Leggi record attuale (se esiste)
+        existing = supabase_client.table('brand_ambigui')\
+            .select('id, num_correzioni, categorie_viste, aggiunto_automaticamente')\
+            .eq('brand', brand)\
+            .limit(1)\
+            .execute()
+
+        if existing.data:
+            rec = existing.data[0]
+            num_corr = rec['num_correzioni'] + 1
+            cat_viste = list(set(rec.get('categorie_viste') or []) | {vecchia_categoria, nuova_categoria})
+        else:
+            num_corr = 1
+            cat_viste = list({vecchia_categoria, nuova_categoria})
+
+        # Calcola tasso: num_correzioni / prodotti in prodotti_master con questo brand
+        try:
+            count_res = supabase_client.table('prodotti_master')\
+                .select('id', count='exact', head=True)\
+                .ilike('descrizione', f'{brand}%')\
+                .execute()
+            totale = count_res.count or 1
+        except Exception:
+            totale = max(num_corr, 1)
+
+        tasso = round(num_corr / totale, 4)
+
+        # Criteri per promozione automatica
+        soglia_raggiunta = (
+            not (existing.data and existing.data[0].get('aggiunto_automaticamente'))
+            and num_corr >= 3
+            and len(cat_viste) >= 2
+            and tasso > 0.20
+        )
+        auto = soglia_raggiunta or (existing.data and existing.data[0].get('aggiunto_automaticamente', False))
+
+        upsert_data = {
+            'brand': brand,
+            'num_correzioni': num_corr,
+            'categorie_viste': cat_viste,
+            'tasso_correzione': tasso,
+            'aggiunto_automaticamente': auto,
+            'ultima_modifica': datetime.now(timezone.utc).isoformat(),
+        }
+        if not existing.data:
+            upsert_data['prima_vista'] = datetime.now(timezone.utc).isoformat()
+
+        supabase_client.table('brand_ambigui').upsert(
+            upsert_data, on_conflict='brand'
+        ).execute()
+
+        if soglia_raggiunta:
+            # Invalida SOLO brand_ambigui nella cache (ottimizzazione: evita full reload)
+            with _cache_lock:
+                _memoria_cache['brand_ambigui'].add(brand)
+            logger.warning(
+                f"🚨 AUTO-BRAND: '{brand}' aggiunto a brand_ambigui "
+                f"({num_corr} correzioni, {len(cat_viste)} categorie, tasso={tasso:.0%})"
+            )
+        else:
+            logger.debug(
+                f"📊 Brand tracking: '{brand}' — {num_corr} corr., "
+                f"{len(cat_viste)} cat., tasso={tasso:.0%}"
+            )
+
+    except Exception as e:
+        # Mai bloccare il flusso principale per un errore di tracking
+        logger.debug(f"Brand tracking silenzioso fallito per '{brand}': {e}")
+
+
+def ottieni_hint_per_ai(descrizione: str, user_id: str) -> Optional[str]:
+    """
+    Restituisce la categoria hint per l'AI (prodotti_master con confidence 'media' o NULL).
+    Se trovato, l'AI usa questa come suggerimento debole nel payload.
+    Restituisce None se il prodotto non è in memoria o ha confidence alta/altissima
+    (in quel caso viene già bypassata l'AI completamente da categorizza_con_memoria).
+    """
+    try:
+        desc_normalized, _ = get_descrizione_normalizzata_e_originale(descrizione)
+        return _memoria_cache.get('prodotti_master_hint', {}).get(desc_normalized)
+    except Exception:
+        return None
+
 
 def _traccia_memoria_categorizzata(descrizione: str):
     """Traccia descrizione come categorizzata da memoria (icona 🧠), cap a _MEMORIA_CAP."""
@@ -397,10 +577,17 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     """
     if not descrizione or not isinstance(descrizione, str):
         return categoria_ai
-    
+
+    # Brand multi-categoria → bypass dizionario, forza AI per classificazione per-prodotto.
+    # Check ibrido: set statico (constants.py) UNION set dinamico (Supabase brand_ambigui).
+    desc_upper = descrizione.upper()
+    _brand_set = BRAND_AMBIGUI_NO_DICT | _memoria_cache.get('brand_ambigui', set())
+    if any(brand in desc_upper for brand in _brand_set):
+        return categoria_ai
+
     # Padding per garantire match ai bordi (i pattern usano boundary [\s\W])
-    desc_padded = ' ' + descrizione.upper() + ' '
-    
+    desc_padded = ' ' + desc_upper + ' '
+
     # STEP 1: Cerca ALIMENTI (priorità alta) - se trovi uno, ritorna subito
     for pattern, categoria in _PATTERNS_ALIMENTI:
         if pattern.search(desc_padded):
@@ -419,7 +606,8 @@ def salva_correzione_in_memoria_locale(
     nuova_categoria: str,
     user_id: str,
     user_email: str,
-    supabase_client=None
+    supabase_client=None,
+    vecchia_categoria: Optional[str] = None
 ) -> bool:
     """
     Salva correzione MANUALE del cliente in memoria LOCALE (solo per lui).
@@ -510,7 +698,16 @@ def salva_correzione_in_memoria_locale(
         
         # Invalida cache per forzare ricaricamento
         invalida_cache_memoria()
-        
+
+        # Tracking brand ambigui (silenzioso, non blocca il return)
+        if vecchia_categoria:
+            _aggiorna_brand_tracking(
+                descrizione=descrizione,
+                vecchia_categoria=vecchia_categoria,
+                nuova_categoria=nuova_categoria,
+                supabase_client=supabase_client
+            )
+
         return True
     
     except Exception as e:
@@ -587,7 +784,10 @@ def salva_correzione_in_memoria_globale(
             
             # Invalida cache per forzare ricaricamento
             invalida_cache_memoria()
-            
+
+            # Tracking brand ambigui
+            _aggiorna_brand_tracking(descrizione, vecchia_categoria, nuova_categoria, supabase_client)
+
             # Log con prefisso corretto
             prefisso = "🔧 ADMIN" if is_admin else "🟢 GLOBALE"
             logger.info(f"{prefisso}: '{desc_normalized}' {vecchia_categoria} → {nuova_categoria} (by {user_email})")
@@ -607,7 +807,10 @@ def salva_correzione_in_memoria_globale(
             
             # Invalida cache per forzare ricaricamento
             invalida_cache_memoria()
-            
+
+            # Tracking brand ambigui
+            _aggiorna_brand_tracking(descrizione, vecchia_categoria, nuova_categoria, supabase_client)
+
             # Log con prefisso corretto
             prefisso = "🔧 ADMIN" if is_admin else "🟢 GLOBALE"
             logger.info(f"{prefisso}: '{desc_normalized}' → {nuova_categoria} (by {user_email})")
@@ -846,6 +1049,7 @@ def _chiama_gpt_classificazione(
     max_tokens: int = 4096,
     lista_fornitori: Optional[List[str]] = None,
     lista_iva: Optional[List[int]] = None,
+    lista_hint: Optional[List[Optional[str]]] = None,
 ) -> List[str]:
     """
     Singola chiamata GPT per classificazione. Ritorna lista categorie (stesso ordine input).
@@ -878,7 +1082,8 @@ def _chiama_gpt_classificazione(
     # 📦 Costruisci payload: arricchito (dict) se i metadati sono disponibili, altrimenti plain list
     _ha_fornitori = lista_fornitori and len(lista_fornitori) == len(da_chiedere_gpt)
     _ha_iva = lista_iva and len(lista_iva) == len(da_chiedere_gpt)
-    if _ha_fornitori or _ha_iva:
+    _ha_hint = lista_hint and len(lista_hint) == len(da_chiedere_gpt)
+    if _ha_fornitori or _ha_iva or _ha_hint:
         payload = []
         for idx, desc_norm in enumerate(da_chiedere_normalizzate):
             item: Dict[str, Any] = {"articolo": desc_norm}
@@ -890,6 +1095,10 @@ def _chiama_gpt_classificazione(
                 iva_val = lista_iva[idx]
                 if iva_val:
                     item["iva"] = iva_val
+            if _ha_hint:
+                hint_val = lista_hint[idx]
+                if hint_val:
+                    item["hint"] = hint_val
             payload.append(item)
         articoli_json = json.dumps(payload, ensure_ascii=False)
     else:
@@ -963,6 +1172,7 @@ def classifica_con_ai(
     lista_descrizioni: List[str],
     lista_fornitori: Optional[List[str]] = None,
     lista_iva: Optional[List[int]] = None,
+    lista_hint: Optional[List[Optional[str]]] = None,
     openai_client: Optional[OpenAI] = None
 ) -> List[str]:
     """
@@ -976,6 +1186,8 @@ def classifica_con_ai(
         lista_descrizioni: Lista descrizioni prodotti da classificare
         lista_fornitori: Lista fornitori ALLINEATA con lista_descrizioni (opzionale)
         lista_iva: Lista IVA% ALLINEATA con lista_descrizioni (es: 4, 10, 22) (opzionale)
+        lista_hint: Lista hint categoria ALLINEATA con lista_descrizioni (opzionale).
+                    Ogni elemento è una categoria suggerita (confidence 'media') o None.
         openai_client: Client OpenAI (opzionale, crea nuovo se None)
     
     Returns:
@@ -1006,6 +1218,11 @@ def classifica_con_ai(
             return None
         return [lista_iva[_idx_map[d]] for d in descs if d in _idx_map]
 
+    def _get_hint_aligned(descs: List[str]) -> Optional[List[Optional[str]]]:
+        if not lista_hint or len(lista_hint) != len(lista_descrizioni):
+            return None
+        return [lista_hint[_idx_map[d]] for d in descs if d in _idx_map]
+
     if not da_chiedere_gpt:
         return [
             risultati[d] if d in risultati 
@@ -1019,6 +1236,7 @@ def classifica_con_ai(
             da_chiedere_gpt, openai_client, max_tokens=4096,
             lista_fornitori=_get_fornitori_aligned(da_chiedere_gpt),
             lista_iva=_get_iva_aligned(da_chiedere_gpt),
+            lista_hint=_get_hint_aligned(da_chiedere_gpt),
         )
         
         for desc, cat in zip(da_chiedere_gpt, cats_prima):
@@ -1044,6 +1262,7 @@ def classifica_con_ai(
                         chunk_retry, openai_client, max_tokens=4096,
                         lista_fornitori=_get_fornitori_aligned(chunk_retry),
                         lista_iva=_get_iva_aligned(chunk_retry),
+                        lista_hint=_get_hint_aligned(chunk_retry),
                     )
                     
                     for desc, cat in zip(chunk_retry, cats_retry):

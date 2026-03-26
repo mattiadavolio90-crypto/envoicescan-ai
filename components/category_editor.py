@@ -116,24 +116,25 @@ def render_category_editor(df_completo_filtrato, supabase):
     df_editor = df_base[cols_base].copy()
     
     # ⭐ COLONNA FONTE - Origine categorizzazione (UI-only, NON salvata in DB)
-    # 3 stati: 📚 Memoria Globale | 🧠 AI Batch | ✋ Modifica Manuale
+    # 2 stati: 🧠 Automatico (dizionario, AI, memoria) | ✏️ Modifica Manuale
     if 'Descrizione' in df_editor.columns:
-        # MEMORIA GLOBALE 📚 (dizionario + memoria prodotti già visti)
+        # AUTOMATICO 🧠: qualsiasi fonte automatica (keyword, AI, memoria locale/globale)
         righe_diz = st.session_state.get('righe_keyword_appena_categorizzate', [])
         righe_mem = st.session_state.get('righe_memoria_appena_categorizzate', [])
-        globale_set = set(str(d).strip() for d in righe_diz) | set(str(d).strip() for d in righe_mem)
-        
-        # AI BATCH 🧠 (solo AI pura, escludi keyword/dizionario)
-        righe_ai = st.session_state.get('righe_ai_appena_categorizzate', [])
-        ai_set = set(str(d).strip() for d in righe_ai) - globale_set  # Rimuovi overlap con keyword
-        
-        # MODIFICA MANUALE ✋
+        righe_ai  = st.session_state.get('righe_ai_appena_categorizzate', [])
+        auto_set = (
+            set(str(d).strip() for d in righe_diz)
+            | set(str(d).strip() for d in righe_mem)
+            | set(str(d).strip() for d in righe_ai)
+        )
+
+        # MANUALE ✏️
         righe_man = st.session_state.get('righe_modificate_manualmente', [])
         man_set = set(str(d).strip() for d in righe_man)
-        
+
         # 🔄 FALLBACK: Se session state vuote (es. dopo upload via worker o reload pagina),
-        # ricostruisce 📚 interrogando prodotti_master per le descrizioni nel DataFrame
-        if not globale_set and not ai_set and not man_set:
+        # ricostruisce 🧠 interrogando prodotti_master per le descrizioni nel DataFrame
+        if not auto_set and not man_set:
             try:
                 _fonte_cache_key = '_fonte_pm_cache'
                 if _fonte_cache_key not in st.session_state:
@@ -145,17 +146,16 @@ def render_category_editor(df_completo_filtrato, supabase):
                         }
                     else:
                         st.session_state[_fonte_cache_key] = set()
-                globale_set = st.session_state[_fonte_cache_key]
+                auto_set = st.session_state[_fonte_cache_key]
             except Exception as _fe:
                 logger.warning(f"Fonte fallback prodotti_master: {_fe}")
-        
-        # Priorità: ✋ > 🧠 > 📚 > vuoto
+
+        # Priorità: ✏️ > 🧠 > '' (vuoto = nessuna fonte tracciata)
         df_editor['Fonte'] = df_editor['Descrizione'].apply(
-            lambda d: ' ✋ ' if str(d).strip() in man_set else
-                      ' 🧠 ' if str(d).strip() in ai_set else
-                      ' 📚 ' if str(d).strip() in globale_set else ''
+            lambda d: ' ✏️ ' if str(d).strip() in man_set else
+                      ' 🧠 ' if str(d).strip() in auto_set else ''
         )
-        logger.info(f"✅ Colonna Fonte: {len(man_set)} manuali, {len(ai_set)} AI, {len(globale_set)} memoria globale")
+        logger.info(f"✅ Colonna Fonte: {len(man_set)} manuali, {len(auto_set)} automatici")
     
     # 🧪 TEST AGGREGAZIONE (diagnostico - zero impatto UI)
     if 'Descrizione' in df_editor.columns:
@@ -432,7 +432,7 @@ def render_category_editor(df_completo_filtrato, supabase):
         ),
         "Fonte": st.column_config.TextColumn(
             "Fonte",
-            help="📚 Memoria Globale | 🧠 AI Batch | ✋ Modifica Manuale",
+            help="🧠 Categoria assegnata automaticamente (dizionario, AI, memoria) | ✏️ Corretta manualmente",
             disabled=True,
             width="small"
         )
@@ -759,7 +759,8 @@ def render_category_editor(df_completo_filtrato, supabase):
                                     descrizione=descrizione,
                                     nuova_categoria=nuova_cat,
                                     user_id=user_id,
-                                    user_email=user_email
+                                    user_email=user_email,
+                                    vecchia_categoria=vecchia_cat
                                 )
                                 
                                 if successo:

@@ -1761,30 +1761,8 @@ else:
     with col_ai_right:
         # Spazio per allinearsi con la dropzone (file_uploader collapsed label riserva ~22px)
         st.markdown("<div style='margin-top: 34px;'></div>", unsafe_allow_html=True)
-        if _righe_da_class_ui == 0:
-            st.markdown("""
-            <div style="
-                background-color: #d4edda;
-                border-left: 4px solid #28a745;
-                padding: 10px 14px;
-                border-radius: 4px;
-                margin-bottom: 8px;
-            ">
-                <span style="color: #155724; font-weight: 600; font-size: 0.85rem;">✅ Tutti i prodotti categorizzati</span>
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            # 🧠 Recovery: bottone visibile SOLO se ci sono righe Da Classificare
-            # (dopo auto-trigger AI, rimangono solo i casi non risolti)
-            st.markdown(f"""
-            <div style="
-                padding: 10px 14px;
-                margin-bottom: 8px;
-            ">
-                <span style="color: #1e40af; font-weight: 600; font-size: 1rem;">⚠️ {_righe_da_class_ui} righe da categorizzare ({_prodotti_unici_ui} prodotti unici)</span>
-            </div>
-            """, unsafe_allow_html=True)
-
+        if _righe_da_class_ui > 0:
+            # 🧠 Recovery: bottone visibile SOLO se rimangono righe Da Classificare dopo l'AI
             if st.button(
                 "🧠 Riprova AI per Categorizzare",
                 use_container_width=True,
