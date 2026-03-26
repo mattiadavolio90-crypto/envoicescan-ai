@@ -22,6 +22,7 @@ from utils.ristorante_helper import add_ristorante_filter
 
 from services.ai_service import invalida_cache_memoria, mostra_loading_ai
 from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, estrai_dati_da_scontrino_vision, salva_fattura_processata
+from services.db_service import clear_fatture_cache
 
 
 logger = logging.getLogger("fci_app")
@@ -702,6 +703,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         
         if file_processati > 0 or tutti_problematici:
             invalida_cache_memoria()
+            # Invalida la cache fatture prima del rerun per mostrare subito i nuovi dati.
+            clear_fatture_cache()
             if 'righe_ai_appena_categorizzate' in st.session_state:
                 st.session_state.righe_ai_appena_categorizzate = []
             if 'uploader_key' not in st.session_state:

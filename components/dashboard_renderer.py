@@ -315,7 +315,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             prodotti_elaborati += 1
                             # Aggiorna banner in tempo reale
                             percentuale = (prodotti_elaborati / totale_da_classificare) * 100
-                            if prodotti_elaborati % 10 == 0 or prodotti_elaborati == totale_da_classificare:
+                            if prodotti_elaborati % 5 == 0 or prodotti_elaborati == totale_da_classificare:
                                 progress_placeholder.markdown(f"""
                             <div class="ai-banner">
                                 <div class="brain-pulse-banner">🧠</div>
@@ -348,7 +348,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             
                             # Aggiorna banner in tempo reale durante dizionario
                             percentuale = (prodotti_elaborati / totale_da_classificare) * 100
-                            if prodotti_elaborati % 10 == 0 or prodotti_elaborati == totale_da_classificare:
+                            if prodotti_elaborati % 5 == 0 or prodotti_elaborati == totale_da_classificare:
                                 progress_placeholder.markdown(f"""
                             <div class="ai-banner">
                                 <div class="brain-pulse-banner">🧠</div>
@@ -414,8 +414,19 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             logger.warning(f"🔒 Budget AI giornaliero esaurito: {_ai_calls_today} chiamate, servirebbero {_ai_chunks_needed}")
                             descrizioni_per_ai = []  # svuota lista per saltare il loop AI
                         
+                        _num_chunks = (len(descrizioni_per_ai) + chunk_size - 1) // chunk_size
                         for i in range(0, len(descrizioni_per_ai), chunk_size):
                             chunk = descrizioni_per_ai[i:i+chunk_size]
+                            _chunk_num = i // chunk_size + 1
+                            # ⏳ Mostra banner ATTESA prima della chiamata bloccante a OpenAI
+                            _perc_attesa = int((prodotti_elaborati / totale_da_classificare) * 100)
+                            progress_placeholder.markdown(f"""
+                            <div class="ai-banner">
+                                <div class="brain-pulse-banner">🧠</div>
+                                <div class="progress-percentage">{_perc_attesa}%</div>
+                                <div class="progress-status">⏳ AI in elaborazione batch {_chunk_num}/{_num_chunks} ({len(chunk)} prodotti)…</div>
+                            </div>
+                            """, unsafe_allow_html=True)
                             cats = classifica_con_ai(chunk, fornitori_da_classificare)
                             st.session_state['_ai_budget_calls'] = st.session_state.get('_ai_budget_calls', 0) + 1
                             ai_batch_upsert = []
@@ -423,10 +434,9 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 mappa_categorie[desc] = cat
                                 prodotti_elaborati += 1
                             
-                                # 🧠 Aggiorna banner orizzontale in tempo reale (REPLACE)
+                                # 🧠 Aggiorna banner dopo ogni prodotto (AI step: nessuna soglia)
                                 percentuale = (prodotti_elaborati / totale_da_classificare) * 100
-                                if prodotti_elaborati % 10 == 0 or prodotti_elaborati == totale_da_classificare:
-                                    progress_placeholder.markdown(f"""
+                                progress_placeholder.markdown(f"""
                                 <div class="ai-banner">
                                     <div class="brain-pulse-banner">🧠</div>
                                     <div class="progress-percentage">{int(percentuale)}%</div>
