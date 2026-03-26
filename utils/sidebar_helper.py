@@ -219,7 +219,7 @@ def render_sidebar(user_data: dict):
         # ============================================
         # SEZIONE AMMINISTRAZIONE (solo per admin)
         # ============================================
-        if user_email in ADMIN_EMAILS or is_admin_impersonating:
+        if user_email in ADMIN_EMAILS or st.session_state.get('impersonating', False):
             st.markdown("---")
             st.markdown("### 👨‍💼 Amministrazione")
             if st.button("🔑 Pannello Admin", use_container_width=True, key="sidebar_admin",
