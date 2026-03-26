@@ -714,8 +714,7 @@ def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=No
         ristorante_id = ristoranteid
 
         if not ristorante_id:
-            logger.warning("ristorante_id mancante in elimina_fattura_completa - operazione annullata")
-            return {"success": False, "error": "ristorante_id mancante", "righe_eliminate": 0}
+            logger.warning("ristorante_id mancante in elimina_fattura_completa - filtro solo per user_id")
         
         query_count = supabase_client.table("fatture").select("id", count="exact").eq("user_id", user_id).eq("file_origine", file_origine)
         if ristorante_id:
@@ -791,8 +790,7 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None, ristoranteid: str 
         ristorante_id = ristoranteid
 
         if not ristorante_id:
-            logger.warning("ristorante_id mancante in elimina_tutte_fatture - operazione annullata")
-            return {"success": False, "error": "ristorante_id mancante", "righe_eliminate": 0, "fatture_eliminate": 0}
+            logger.warning("ristorante_id mancante in elimina_tutte_fatture - filtro solo per user_id")
         
         query_count = supabase_client.table("fatture").select("id, file_origine", count="exact").eq("user_id", user_id)
         if ristorante_id:

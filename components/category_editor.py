@@ -618,6 +618,20 @@ def render_category_editor(df_completo_filtrato, supabase):
             if 'PrezzoStandard' in df_export.columns:
                 df_export = df_export.drop(columns=['PrezzoStandard'])
             
+            # Rimuovi colonna Fonte (emoji, non utile in Excel)
+            if 'Fonte' in df_export.columns:
+                df_export = df_export.drop(columns=['Fonte'])
+            
+            # Rimuovi timezone da colonne datetime (openpyxl non supporta tz-aware)
+            for col in df_export.select_dtypes(include=['datetimetz', 'datetime64[ns, UTC]']).columns:
+                df_export[col] = df_export[col].dt.tz_localize(None)
+            # Gestisci anche colonne object con date tz-aware
+            if 'DataDocumento' in df_export.columns:
+                try:
+                    df_export['DataDocumento'] = pd.to_datetime(df_export['DataDocumento'], errors='coerce').dt.tz_localize(None)
+                except TypeError:
+                    df_export['DataDocumento'] = pd.to_datetime(df_export['DataDocumento'], errors='coerce').dt.tz_convert(None)
+            
             excel_buffer = io.BytesIO()
             with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
                 df_export.to_excel(writer, index=False, sheet_name='Articoli')
@@ -632,7 +646,7 @@ def render_category_editor(df_completo_filtrato, supabase):
                 use_container_width=False
             )
         except Exception as e:
-            logger.error(f"Errore esportazione Excel: {e}")
+            logger.exception(f"Errore esportazione Excel: {e}")
             st.error("❌ Errore nell'esportazione. Riprova.")
         
         st.markdown('</div>', unsafe_allow_html=True)
