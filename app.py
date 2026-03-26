@@ -1440,7 +1440,7 @@ if not df_cache.empty:
                         progress = st.progress(0)
                         progress.progress(20, text="Eliminazione da Supabase...")
                         
-                        result = elimina_tutte_fatture(user_id)
+                        result = elimina_tutte_fatture(user_id, ristoranteid=st.session_state.get('ristorante_id'))
                         
                         # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
                         invalida_cache_memoria()  # Reset memoria AI
@@ -1531,17 +1531,18 @@ if not df_cache.empty:
         
         # Usa fatture_summary già creato sopra
         if len(fatture_summary) > 0:
-            # 🔍 FILTRO FORNITORE
-            filtro_fornitore = st.text_input(
+            # 🔍 FILTRO FORNITORE — selectbox con lista fornitori disponibili
+            fornitori_disponibili = sorted(fatture_summary['Fornitore'].dropna().unique().tolist())
+            opzioni_fornitore = ["— Tutti i fornitori —"] + fornitori_disponibili
+            filtro_fornitore_sel = st.selectbox(
                 "🔍 Filtra per Fornitore:",
-                placeholder="Scrivi il nome del fornitore...",
+                options=opzioni_fornitore,
                 key="filtro_fornitore_gestione"
             )
-            fatture_filtrate = fatture_summary
-            if filtro_fornitore.strip():
-                fatture_filtrate = fatture_summary[
-                    fatture_summary['Fornitore'].str.contains(filtro_fornitore.strip(), case=False, na=False)
-                ]
+            if filtro_fornitore_sel == "— Tutti i fornitori —":
+                fatture_filtrate = fatture_summary
+            else:
+                fatture_filtrate = fatture_summary[fatture_summary['Fornitore'] == filtro_fornitore_sel]
             
             # Crea opzioni dropdown con dict per passare tutti i dati
             fatture_options = []
@@ -1568,7 +1569,7 @@ if not df_cache.empty:
                 with col_btn:
                     if st.button("🗑️ Elimina Fattura", type="secondary", use_container_width=True):
                         with st.spinner(f"🗑️ Eliminazione in corso..."):
-                            result = elimina_fattura_completa(fattura_selezionata['File'], user_id)
+                            result = elimina_fattura_completa(fattura_selezionata['File'], user_id, ristoranteid=st.session_state.get('ristorante_id'))
                             
                             # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
                             invalida_cache_memoria()  # Reset memoria AI

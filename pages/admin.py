@@ -1782,22 +1782,20 @@ if tab2:
             return pd.DataFrame()
 
     def _build_review_update_query(payload: dict, descrizione_target: str, cliente_id_target: str = None):
-        if cliente_id_target is None:
-            raise ValueError("client_id_target required: aggiornamento senza filtro user_id non consentito")
         query = supabase.table('fatture').update(payload)\
             .eq('descrizione', descrizione_target)\
-            .or_('prezzo_unitario.eq.0,needs_review.eq.true')\
-            .eq('user_id', cliente_id_target)
+            .or_('prezzo_unitario.eq.0,needs_review.eq.true')
+        if cliente_id_target:
+            query = query.eq('user_id', cliente_id_target)
         return query
 
     def _build_review_batch_update(payload: dict, descrizioni: list, cliente_id_target: str = None):
         """Aggiorna N descrizioni in una singola query con .in_()"""
-        if cliente_id_target is None:
-            raise ValueError("client_id_target required: aggiornamento senza filtro user_id non consentito")
         query = supabase.table('fatture').update(payload)\
             .in_('descrizione', descrizioni)\
-            .or_('prezzo_unitario.eq.0,needs_review.eq.true')\
-            .eq('user_id', cliente_id_target)
+            .or_('prezzo_unitario.eq.0,needs_review.eq.true')
+        if cliente_id_target:
+            query = query.eq('user_id', cliente_id_target)
         return query
     
     df_zero = carica_righe_zero_con_filtro(filtro_cliente_id)
@@ -2192,7 +2190,9 @@ if tab2:
                             'classificato_da': 'review-admin',
                             'ultima_modifica': datetime.now(timezone.utc).isoformat()
                         }, on_conflict='descrizione').execute()
-                        st.success(f"✅ {len(result.data) if result.data else occorrenze} righe → {nuova_categoria} (+ memoria globale)")
+                        _n = len(result.data) if result.data else occorrenze
+                        logger.info(f"✅ REVIEW singola: '{descrizione[:60]}' → {nuova_categoria} ({_n} righe, cliente={filtro_cliente_id or 'TUTTI'})")  
+                        st.success(f"✅ {_n} righe → {nuova_categoria} (+ memoria globale)")
                         invalida_cache_memoria()
                         time.sleep(0.5)
                         st.rerun()
@@ -2217,7 +2217,9 @@ if tab2:
                             'classificato_da': 'review-admin',
                             'ultima_modifica': datetime.now(timezone.utc).isoformat()
                         }, on_conflict='descrizione').execute()
-                        st.success(f"📝 {len(result.data) if result.data else occorrenze} righe → NOTE E DICITURE (+ memoria globale)")
+                        _n = len(result.data) if result.data else occorrenze
+                        logger.info(f"📝 REVIEW singola: '{descrizione[:60]}' → NOTE E DICITURE ({_n} righe, cliente={filtro_cliente_id or 'TUTTI'})")
+                        st.success(f"📝 {_n} righe → NOTE E DICITURE (+ memoria globale)")
                         invalida_cache_memoria()
                         time.sleep(0.5)
                         st.rerun()
@@ -2279,8 +2281,10 @@ if tab2:
                             except Exception:
                                 pass
                         
+                        logger.info(f"✅ REVIEW batch conferma: {_ok_count} righe aggiornate, {_mem_count} in memoria globale, cliente={filtro_cliente_id or 'TUTTI'}, categorie={list(set(x['categoria'] for x in _batch_master))}")
                         st.success(f"✅ {_ok_count} righe confermate + {_mem_count} salvate in memoria globale")
                     except Exception as _e:
+                        logger.error(f"❌ REVIEW batch conferma fallita: {_e}")
                         st.error(f"Errore batch: {_e}")
                 st.session_state.review_zero_selezionate = set()
                 st.session_state.review_zero_cb_counter += 1
@@ -2319,8 +2323,10 @@ if tab2:
                                 ).execute()
                             except Exception:
                                 pass
+                        logger.info(f"📝 REVIEW batch diciture: {_ok} righe → NOTE E DICITURE, cliente={filtro_cliente_id or 'TUTTI'}")
                         st.success(f"📝 {_ok} righe → NOTE E DICITURE (+ memoria globale)")
                     except Exception as _e:
+                        logger.error(f"❌ REVIEW batch diciture fallita: {_e}")
                         st.error(f"Errore batch: {_e}")
                 st.session_state.review_zero_selezionate = set()
                 st.session_state.review_zero_cb_counter += 1
@@ -2914,6 +2920,7 @@ def tab_memoria_globale_unificata():
                                 except Exception as e:
                                     logger.error(f"Errore salvataggio '{descrizione}': {e}")
                             
+                            logger.info(f"✅ MEMORIA GLOBALE: {success_count} categorie modificate, {total_rows} righe fatture aggiornate")
                             success_messages.append(f"✅ {success_count} modifiche salvate ({total_rows} righe aggiornate)")
                             
                             # Reset modifiche
@@ -2928,6 +2935,7 @@ def tab_memoria_globale_unificata():
                                 .in_('id', righe_ids)\
                                 .execute()
                             
+                            logger.info(f"✅ MEMORIA GLOBALE: {num_selezionate} prodotti verificati (checkbox)")
                             success_messages.append(f"✅ {num_selezionate} verifiche confermate")
                             
                             # Reset selezione
@@ -3558,13 +3566,20 @@ if tab5:
                     
                     problemi = {
                         'date_invalide': [],
-                        'prezzi_anomali': [],
-                        'quantita_anomale': [],
+                        'righe_fantasma': [],
+                        'dati_incompleti': [],
+                        'importi_estremi': [],
+                        'quantita_negative': [],
                         'descrizioni_vuote': [],
                         'totali_errati': []
                     }
                     
-                    # 1-5. Controlli principali in singolo pass (più veloce su dataset grandi)
+                    # Soglie per check reali (non falsi positivi da business normale)
+                    SOGLIA_IMPORTO_ESTREMO = 50000.0   # €50.000 per singola riga → possibile errore parsing
+                    SOGLIA_QTA_NEGATIVA = 0.0           # quantità negativa → sempre bug
+                    SOGLIA_TOTALE_DIFF_ABS = 1.0        # differenza assoluta > €1.00 (non arrotondamento)
+                    SOGLIA_TOTALE_DIFF_PCT = 0.05        # E differenza % > 5% del totale atteso
+
                     oggi = datetime.now().date()
                     for _, row in df.iterrows():
                         fornitore = row.get('fornitore', 'N/A')
@@ -3572,7 +3587,27 @@ if tab5:
                         descrizione = str(row.get('descrizione', 'N/A') or 'N/A')
                         desc_short = descrizione[:50]
 
-                        # 1) Date invalide
+                        # Normalizzazioni numeriche
+                        prezzo_raw = row.get('prezzo_unitario', None)
+                        quantita_raw = row.get('quantita', None)
+                        totale_raw = row.get('totale_riga', None)
+
+                        try:
+                            prezzo = float(prezzo_raw or 0)
+                        except Exception:
+                            prezzo = None
+
+                        try:
+                            quantita = float(quantita_raw or 0)
+                        except Exception:
+                            quantita = None
+
+                        try:
+                            totale = float(totale_raw or 0)
+                        except Exception:
+                            totale = None
+
+                        # 1) Date invalide (future o non parsabili)
                         try:
                             data_fattura = pd.to_datetime(data_doc).date()
                             if data_fattura > oggi:
@@ -3587,62 +3622,55 @@ if tab5:
                                 'fornitore': fornitore,
                                 'data': data_doc,
                                 'descrizione': desc_short,
-                                'problema': "Data non valida"
+                                'problema': "Data non valida / non parsabile"
                             })
 
-                        # Normalizzazioni numeriche
-                        try:
-                            prezzo = float(row.get('prezzo_unitario', 0) or 0)
-                        except Exception:
-                            prezzo = 0.0
+                        # 2) Righe fantasma: prezzo=0, quantità=0, totale=0
+                        #    Indicano bug nell'import (riga vuota salvata per errore)
+                        if prezzo == 0 and quantita == 0 and totale == 0:
+                            desc_trim_f = descrizione.strip()
+                            if len(desc_trim_f) >= 3:  # ha una descrizione ma tutti valori zero
+                                problemi['righe_fantasma'].append({
+                                    'fornitore': fornitore,
+                                    'data': data_doc,
+                                    'descrizione': desc_short,
+                                    'problema': "Riga con prezzo=0, quantità=0, totale=0 (possibile bug import)"
+                                })
 
-                        try:
-                            quantita = float(row.get('quantita', 0) or 0)
-                        except Exception:
-                            quantita = 0.0
-
-                        try:
-                            totale = float(row.get('totale_riga', 0) or 0)
-                        except Exception:
-                            totale = 0.0
-
-                        # 2) Prezzi anomali
-                        if prezzo < 0:
-                            problemi['prezzi_anomali'].append({
+                        # 3) Dati incompleti: prezzo e quantità valorizzati ma totale_riga null
+                        #    Bug nel pipeline di salvataggio
+                        if totale_raw is None and prezzo_raw is not None and quantita_raw is not None:
+                            problemi['dati_incompleti'].append({
                                 'fornitore': fornitore,
                                 'data': data_doc,
                                 'descrizione': desc_short,
-                                'valore': f"€ {prezzo:.2f}",
-                                'problema': "Prezzo negativo"
-                            })
-                        elif prezzo > 10000:
-                            problemi['prezzi_anomali'].append({
-                                'fornitore': fornitore,
-                                'data': data_doc,
-                                'descrizione': desc_short,
-                                'valore': f"€ {prezzo:.2f}",
-                                'problema': "Prezzo molto alto (> €10.000)"
+                                'prezzo': f"€ {prezzo:.2f}" if prezzo is not None else 'N/A',
+                                'quantita': quantita,
+                                'problema': "totale_riga NULL con prezzo e quantità valorizzati (bug salvataggio)"
                             })
 
-                        # 3) Quantità anomale
-                        if quantita < 0:
-                            problemi['quantita_anomale'].append({
+                        # 4) Importo riga estremo: |totale| > €50.000
+                        #    Quasi certamente errore di parsing (es. cifre attaccate)
+                        if totale is not None and abs(totale) > SOGLIA_IMPORTO_ESTREMO:
+                            problemi['importi_estremi'].append({
                                 'fornitore': fornitore,
                                 'data': data_doc,
                                 'descrizione': desc_short,
-                                'valore': quantita,
-                                'problema': "Quantità negativa"
+                                'totale_riga': f"€ {totale:,.2f}",
+                                'problema': f"Importo singola riga > €{SOGLIA_IMPORTO_ESTREMO:,.0f} (possibile errore parsing)"
                             })
-                        elif quantita > 10000:
-                            problemi['quantita_anomale'].append({
+
+                        # 5) Quantità negativa (mai legittima — le note di credito hanno prezzo negativo, non quantità)
+                        if quantita is not None and quantita < SOGLIA_QTA_NEGATIVA:
+                            problemi['quantita_negative'].append({
                                 'fornitore': fornitore,
                                 'data': data_doc,
                                 'descrizione': desc_short,
                                 'valore': quantita,
-                                'problema': "Quantità molto alta (> 10.000)"
+                                'problema': "Quantità negativa (bug nel parser PDF)"
                             })
 
-                        # 4) Descrizioni vuote o troppo corte
+                        # 6) Descrizioni vuote o troppo corte
                         desc_trim = descrizione.strip()
                         if len(desc_trim) < 3:
                             problemi['descrizioni_vuote'].append({
@@ -3652,17 +3680,23 @@ if tab5:
                                 'problema': "Descrizione mancante o troppo corta"
                             })
 
-                        # 5) Totali non corrispondenti (prezzo × quantità ≠ totale)
-                        calcolato = prezzo * quantita
-                        if abs(calcolato - totale) > 0.02:
-                            problemi['totali_errati'].append({
-                                'fornitore': fornitore,
-                                'data': data_doc,
-                                'descrizione': desc_short,
-                                'calcolato': f"€ {calcolato:.2f}",
-                                'salvato': f"€ {totale:.2f}",
-                                'problema': f"Differenza: € {abs(calcolato - totale):.2f}"
-                            })
+                        # 7) Totali non corrispondenti: differenza > €1.00 E > 5%
+                        #    Filtra il rumore da arrotondamento float (diff 1-20 cent)
+                        #    Intercetta veri errori: IVA sbagliata, riga sommata male, ecc.
+                        if prezzo is not None and quantita is not None and totale is not None:
+                            calcolato = prezzo * quantita
+                            diff_abs = abs(calcolato - totale)
+                            base = abs(calcolato) if abs(calcolato) > 0.01 else abs(totale)
+                            diff_pct = (diff_abs / base) if base > 0.01 else 0
+                            if diff_abs > SOGLIA_TOTALE_DIFF_ABS and diff_pct > SOGLIA_TOTALE_DIFF_PCT:
+                                problemi['totali_errati'].append({
+                                    'fornitore': fornitore,
+                                    'data': data_doc,
+                                    'descrizione': desc_short,
+                                    'calcolato': f"€ {calcolato:.2f}",
+                                    'salvato': f"€ {totale:.2f}",
+                                    'problema': f"Differenza: € {diff_abs:.2f} ({diff_pct*100:.1f}%)"
+                                })
                     
                     # ============================================================
                     # RISULTATI
@@ -3678,57 +3712,77 @@ if tab5:
                         
                         with st.expander(f"📊 Riepilogo Problemi ({totale_problemi})", expanded=True):
                             _n_date = len(problemi['date_invalide'])
-                            _n_prezzi = len(problemi['prezzi_anomali'])
-                            _n_qta = len(problemi['quantita_anomale'])
+                            _n_fantasma = len(problemi['righe_fantasma'])
+                            _n_incompleti = len(problemi['dati_incompleti'])
+                            _n_estremi = len(problemi['importi_estremi'])
+                            _n_qta_neg = len(problemi['quantita_negative'])
                             _n_desc = len(problemi['descrizioni_vuote'])
                             _n_totali = len(problemi['totali_errati'])
                             
                             st.markdown(f"""
-                            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
-                                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:14px 16px; text-align:center;">
-                                    <div style="font-size:0.8rem; color:#e65100; font-weight:600;">📅 Date Invalide</div>
-                                    <div style="font-size:1.6rem; color:#e65100; font-weight:bold;">{_n_date}</div>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
+                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:12px; text-align:center;">
+                                    <div style="font-size:0.75rem; color:#e65100; font-weight:600;">📅 Date Invalide</div>
+                                    <div style="font-size:1.5rem; color:#e65100; font-weight:bold;">{_n_date}</div>
                                 </div>
-                                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63; border-radius:12px; padding:14px 16px; text-align:center;">
-                                    <div style="font-size:0.8rem; color:#c2185b; font-weight:600;">💰 Prezzi Anomali</div>
-                                    <div style="font-size:1.6rem; color:#880e4f; font-weight:bold;">{_n_prezzi}</div>
+                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63; border-radius:12px; padding:12px; text-align:center;">
+                                    <div style="font-size:0.75rem; color:#c2185b; font-weight:600;">👻 Righe Fantasma</div>
+                                    <div style="font-size:1.5rem; color:#880e4f; font-weight:bold;">{_n_fantasma}</div>
                                 </div>
-                                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0; border-radius:12px; padding:14px 16px; text-align:center;">
-                                    <div style="font-size:0.8rem; color:#7b1fa2; font-weight:600;">📦 Quantità Anomale</div>
-                                    <div style="font-size:1.6rem; color:#6a1b9a; font-weight:bold;">{_n_qta}</div>
+                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0; border-radius:12px; padding:12px; text-align:center;">
+                                    <div style="font-size:0.75rem; color:#7b1fa2; font-weight:600;">⚠️ Dati Incompleti</div>
+                                    <div style="font-size:1.5rem; color:#6a1b9a; font-weight:bold;">{_n_incompleti}</div>
                                 </div>
-                                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
-                                    <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">📝 Descrizioni Vuote</div>
-                                    <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{_n_desc}</div>
+                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#ffebee,#ffcdd2); border:2px solid #f44336; border-radius:12px; padding:12px; text-align:center;">
+                                    <div style="font-size:0.75rem; color:#b71c1c; font-weight:600;">💸 Importi Estremi</div>
+                                    <div style="font-size:1.5rem; color:#b71c1c; font-weight:bold;">{_n_estremi}</div>
                                 </div>
-                                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e0f7fa,#b2ebf2); border:2px solid #00bcd4; border-radius:12px; padding:14px 16px; text-align:center;">
-                                    <div style="font-size:0.8rem; color:#006064; font-weight:600;">🧮 Totali Errati</div>
-                                    <div style="font-size:1.6rem; color:#00838f; font-weight:bold;">{_n_totali}</div>
+                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:12px; text-align:center;">
+                                    <div style="font-size:0.75rem; color:#1b5e20; font-weight:600;">📦 Qtà Negative</div>
+                                    <div style="font-size:1.5rem; color:#1b5e20; font-weight:bold;">{_n_qta_neg}</div>
                                 </div>
+                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:12px; text-align:center;">
+                                    <div style="font-size:0.75rem; color:#1976d2; font-weight:600;">📝 Desc. Vuote</div>
+                                    <div style="font-size:1.5rem; color:#1565c0; font-weight:bold;">{_n_desc}</div>
+                                </div>
+                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#e0f7fa,#b2ebf2); border:2px solid #00bcd4; border-radius:12px; padding:12px; text-align:center;">
+                                    <div style="font-size:0.75rem; color:#006064; font-weight:600;">🧮 Totali Errati</div>
+                                    <div style="font-size:1.5rem; color:#00838f; font-weight:bold;">{_n_totali}</div>
+                                </div>
+                            </div>
+                            <div style="font-size:0.75rem; color:#888; margin-top:4px;">
+                                ℹ️ Check attivi: date future/invalide · righe fantasma (tutto a zero) · totale_riga NULL · importo singola riga &gt;€50.000 · quantità negative · descrizioni vuote · totale diverge &gt;€1 e &gt;5%
                             </div>
                             """, unsafe_allow_html=True)
                             
                             st.markdown("---")
                             
-                            # Mostra dettagli per ogni categoria
-                            if len(problemi['date_invalide']) > 0:
-                                st.markdown("**📅 Date Invalide**")
+                            if _n_date > 0:
+                                st.markdown("**📅 Date Invalide** — data futura o non parsabile")
                                 st.dataframe(pd.DataFrame(problemi['date_invalide']), use_container_width=True, hide_index=True)
                             
-                            if len(problemi['prezzi_anomali']) > 0:
-                                st.markdown("**💰 Prezzi Anomali**")
-                                st.dataframe(pd.DataFrame(problemi['prezzi_anomali']), use_container_width=True, hide_index=True)
+                            if _n_fantasma > 0:
+                                st.markdown("**👻 Righe Fantasma** — prezzo=0, quantità=0, totale=0 (bug import)")
+                                st.dataframe(pd.DataFrame(problemi['righe_fantasma']), use_container_width=True, hide_index=True)
                             
-                            if len(problemi['quantita_anomale']) > 0:
-                                st.markdown("**📦 Quantità Anomale**")
-                                st.dataframe(pd.DataFrame(problemi['quantita_anomale']), use_container_width=True, hide_index=True)
+                            if _n_incompleti > 0:
+                                st.markdown("**⚠️ Dati Incompleti** — totale_riga NULL con prezzo e quantità valorizzati (bug salvataggio)")
+                                st.dataframe(pd.DataFrame(problemi['dati_incompleti']), use_container_width=True, hide_index=True)
                             
-                            if len(problemi['descrizioni_vuote']) > 0:
-                                st.markdown("**📝 Descrizioni Vuote**")
+                            if _n_estremi > 0:
+                                st.markdown("**💸 Importi Estremi** — singola riga >€50.000 (possibile errore parsing)")
+                                st.dataframe(pd.DataFrame(problemi['importi_estremi']), use_container_width=True, hide_index=True)
+                            
+                            if _n_qta_neg > 0:
+                                st.markdown("**📦 Quantità Negative** — bug nel parser PDF")
+                                st.dataframe(pd.DataFrame(problemi['quantita_negative']), use_container_width=True, hide_index=True)
+                            
+                            if _n_desc > 0:
+                                st.markdown("**📝 Descrizioni Vuote** — descrizione mancante o troppo corta")
                                 st.dataframe(pd.DataFrame(problemi['descrizioni_vuote']), use_container_width=True, hide_index=True)
                             
-                            if len(problemi['totali_errati']) > 0:
-                                st.markdown("**🧮 Totali Errati**")
+                            if _n_totali > 0:
+                                st.markdown("**🧮 Totali Errati** — differenza >€1 e >5% (esclude arrotondamento float)")
                                 st.dataframe(pd.DataFrame(problemi['totali_errati']), use_container_width=True, hide_index=True)
                         
 

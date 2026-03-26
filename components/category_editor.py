@@ -48,20 +48,33 @@ def render_category_editor(df_completo_filtrato, supabase):
 
     with col_search:
         if search_type == "Prodotto":
-            placeholder_text = "Es: pollo, salmone, caffè..."
-            label_text = "🔍 Cerca nella descrizione:"
+            search_term = st.text_input(
+                "🔍 Cerca nella descrizione:",
+                placeholder="Es: pollo, salmone, caffè...",
+                key="search_prodotto_text"
+            )
         elif search_type == "Categoria":
-            placeholder_text = "Es: CARNE, PESCE, CAFFÈ..."
-            label_text = "🔍 Cerca per categoria:"
-        else:
-            placeholder_text = "Es: EKAF, PREGIS..."
-            label_text = "🔍 Cerca per fornitore:"
-        
-        search_term = st.text_input(
-            label_text,
-            placeholder=placeholder_text,
-            key="search_prodotto"
-        )
+            # Lista categorie disponibili filtrate per tipo_filtro
+            if tipo_filtro == "Food & Beverage":
+                _df_opt = df_completo_filtrato[~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
+            elif tipo_filtro == "Spese Generali":
+                _df_opt = df_completo_filtrato[df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
+            else:
+                _df_opt = df_completo_filtrato
+            _cat_opts = ["— Tutte le categorie —"] + sorted(_df_opt['Categoria'].dropna().unique().tolist())
+            _cat_sel = st.selectbox("🔍 Cerca per categoria:", options=_cat_opts, key="search_prodotto_cat")
+            search_term = "" if _cat_sel == "— Tutte le categorie —" else _cat_sel
+        else:  # Fornitore
+            # Lista fornitori disponibili filtrati per tipo_filtro
+            if tipo_filtro == "Food & Beverage":
+                _df_opt = df_completo_filtrato[~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
+            elif tipo_filtro == "Spese Generali":
+                _df_opt = df_completo_filtrato[df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
+            else:
+                _df_opt = df_completo_filtrato
+            _forn_opts = ["— Tutti i fornitori —"] + sorted(_df_opt['Fornitore'].dropna().unique().tolist())
+            _forn_sel = st.selectbox("🔍 Cerca per fornitore:", options=_forn_opts, key="search_prodotto_forn")
+            search_term = "" if _forn_sel == "— Tutti i fornitori —" else _forn_sel
 
 
     with col_save:
@@ -117,6 +130,24 @@ def render_category_editor(df_completo_filtrato, supabase):
         # MODIFICA MANUALE ✋
         righe_man = st.session_state.get('righe_modificate_manualmente', [])
         man_set = set(str(d).strip() for d in righe_man)
+        
+        # 🔄 FALLBACK: Se session state vuote (es. dopo upload via worker o reload pagina),
+        # ricostruisce 📚 interrogando prodotti_master per le descrizioni nel DataFrame
+        if not globale_set and not ai_set and not man_set:
+            try:
+                _fonte_cache_key = '_fonte_pm_cache'
+                if _fonte_cache_key not in st.session_state:
+                    descs_da_cercare = df_editor['Descrizione'].dropna().unique().tolist()[:500]
+                    if descs_da_cercare:
+                        _pm_resp = supabase.table('prodotti_master').select('descrizione').in_('descrizione', descs_da_cercare).execute()
+                        st.session_state[_fonte_cache_key] = {
+                            row['descrizione'].strip() for row in (_pm_resp.data or []) if row.get('descrizione')
+                        }
+                    else:
+                        st.session_state[_fonte_cache_key] = set()
+                globale_set = st.session_state[_fonte_cache_key]
+            except Exception as _fe:
+                logger.warning(f"Fonte fallback prodotti_master: {_fe}")
         
         # Priorità: ✋ > 🧠 > 📚 > vuoto
         df_editor['Fonte'] = df_editor['Descrizione'].apply(
@@ -839,6 +870,8 @@ def render_category_editor(df_completo_filtrato, supabase):
                 
                 time.sleep(0.5)
                 invalida_cache_memoria()
+                # Invalida anche la cache Fonte (prodotti_master) per forzare rilettura
+                st.session_state.pop('_fonte_pm_cache', None)
                 st.session_state.force_reload = True  # ← Forza ricaricamento completo
                 
                 # ⭐ Incrementa counter per forzare refresh del data_editor
