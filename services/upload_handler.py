@@ -30,6 +30,8 @@ logger = logging.getLogger("fci_app")
 
 def handle_uploaded_files(uploaded_files, supabase, user_id):
     """Gestisce l'elaborazione completa dei file caricati: deduplicazione, validazione, salvataggio."""
+    # [DEBUG]
+    t0_upload = time.perf_counter()
     # Pulisci messaggi precedenti all'inizio di un nuovo caricamento
     st.session_state.upload_messages = []
     # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
@@ -703,6 +705,16 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         
         if file_processati > 0 or tutti_problematici:
             invalida_cache_memoria()
+            # [DEBUG]
+            try:
+                verify = supabase.table("fatture") \
+                    .select("id", count="exact") \
+                    .eq("user_id", user_id) \
+                    .execute()
+                righe_db = verify.count or 0
+                logger.debug(f"[UPLOAD VERIFY] Righe presenti in DB post-upload: {righe_db}")
+            except Exception as ve:
+                logger.warning(f"[UPLOAD VERIFY] Verifica post-upload fallita: {ve}")
             # Invalida la cache fatture prima del rerun per mostrare subito i nuovi dati.
             clear_fatture_cache()
             if 'righe_ai_appena_categorizzate' in st.session_state:
@@ -716,6 +728,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             upload_summary['caricate_successo'] = file_processati
             upload_summary['errori'] = len(tutti_problematici)
             st.session_state.last_upload_summary = upload_summary
+            # [DEBUG]
+            logger.debug(f"[TIMING] handle_uploaded_files completato in {time.perf_counter()-t0_upload:.2f}s")
             st.rerun()
         else:
             upload_summary['caricate_successo'] = 0
@@ -758,5 +772,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             st.session_state.uploader_key = 0
         st.session_state.uploader_key += 1
         logger.info(f"⚠️ {len(file_gia_processati)} fatture duplicate - stato pulito automaticamente")
+        # [DEBUG]
+        logger.debug(f"[TIMING] handle_uploaded_files completato in {time.perf_counter()-t0_upload:.2f}s")
         st.rerun()
 

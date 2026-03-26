@@ -11,6 +11,7 @@ Pattern: Dependency Injection per Supabase client
 """
 
 import logging
+import time
 from typing import Dict, Any
 import pandas as pd
 import streamlit as st
@@ -29,6 +30,8 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
     Funzione interna cached: carica fatture da Supabase.
     Parametri hashable per @st.cache_data.
     """
+    # [DEBUG]
+    logger.debug(f"[CACHE MISS] Query reale DB — user_id={user_id} ristorante_id={ristorante_id} ts={time.time():.3f}")
     from services import get_supabase_client
     supabase_client = get_supabase_client()
     
@@ -93,6 +96,8 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
                 
             page += 1
         
+        # [DEBUG]
+        logger.debug(f"[CACHE MISS] Risultato: {len(dati)} righe restituite")
         if len(dati) > 0:
             logger.info(f"✅ LOAD SUCCESS: {len(dati)} righe caricate da Supabase per user_id={user_id}")
             return pd.DataFrame(dati)
@@ -983,6 +988,8 @@ def get_fatture_stats(user_id: str, ristorante_id: str = None) -> Dict[str, Any]
 
 def clear_fatture_cache() -> None:
     """Invalida solo la cache fatture (non tutte le cache Streamlit)."""
+    # [DEBUG]
+    logger.debug(f"[CACHE] clear_fatture_cache() chiamata — ts={time.time():.3f}")
     _carica_fatture_da_supabase.clear()
     get_fatture_stats.clear()
 

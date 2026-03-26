@@ -91,8 +91,17 @@ from components.dashboard_renderer import mostra_statistiche
 from services.upload_handler import handle_uploaded_files
 
 
-# ============================================================
-# 🧠 OH YEAH! - VERSIONE 3.2 FINAL
+# [DEBUG] Helper snapshot session_state — attivo solo con DEBUG_MODE=1
+def _debug_session_snap(label: str) -> None:
+    if os.getenv("DEBUG_MODE") != "1":
+        return
+    keys_of_interest = [
+        "force_reload", "rerun_guard", "ristorante_id",
+        "files_processati_sessione", "hide_uploader",
+        "ultimo_upload_ids", "last_upload_summary"
+    ]
+    snap = {k: st.session_state.get(k) for k in keys_of_interest}
+    logger.debug(f"[SESSION SNAP — {label}] {snap}")
 # ============================================================
 
 
@@ -1281,6 +1290,8 @@ if user.get('email') not in ADMIN_EMAILS:
                 logger.warning(f"Errore salvataggio ultimo_ristorante_id: {_e}")
             
             logger.info(f"🔄 Ristorante cambiato: rist_id={selected_ristorante['id']}")
+            # [DEBUG]
+            _debug_session_snap("CAMBIO_RISTORANTE")
             st.rerun()
         
         st.markdown("---")
@@ -1325,6 +1336,9 @@ force_refresh = st.session_state.get('force_reload', False)
 if force_refresh:
     st.session_state.force_reload = False
     logger.info("🔄 FORCE RELOAD attivato dopo categorizzazione AI")
+
+# [DEBUG]
+_debug_session_snap("PRE_LOAD")
 
 with st.spinner("⏳ Caricamento dati..."):
     df_cache = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh, ristorante_id=st.session_state.get('ristorante_id'))
@@ -1857,6 +1871,8 @@ if '_upload_limit_error' in st.session_state:
 # 🔥 GESTIONE FILE CARICATI
 if uploaded_files:
     handle_uploaded_files(uploaded_files, supabase, user_id)
+    # [DEBUG]
+    _debug_session_snap("POST_UPLOAD")
 
 # 🔥 CARICA E MOSTRA STATISTICHE SEMPRE (da Supabase)
 # ⚡ RIUSA df_cache caricato sopra (evita doppia query DB)
