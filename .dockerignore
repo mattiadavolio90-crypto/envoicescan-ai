@@ -1,0 +1,79 @@
+# ============================================
+# OH YEAH! — Docker Ignore
+# Esclude file non necessari dall'immagine
+# ============================================
+
+# Git
+.git
+.gitignore
+
+# Ambiente virtuale locale
+.venv/
+venv/
+env/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Secrets (MAI nell'immagine)
+.streamlit/secrets.toml
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Docker (evita ricorsione)
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Documentazione e presentazioni
+DOCUMENTAZIONE/
+PRESENTAZIONE OH YEAH/
+OH YEAH!*.html
+README.md
+*.md
+
+# File SQL di backup/migrazione
+backup-*.sql
+*.backup
+*.bak
+
+# Test
+tests/
+pytest.ini
+run-tests.ps1
+
+# Script Windows
+*.bat
+*.ps1
+
+# Tools e file di sviluppo
+tools/
+prompt vscode/
+FILE/
+__test_archive__/
+
+# Dati locali
+dati_input/
+dati_processati/
+*.xlsx
+*.log
+memoria_ai_correzioni.json
+
+# Supabase CLI locale
+supabase/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini

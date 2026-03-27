@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>OH YEAH! — Smetti di perdere soldi senza saperlo</title>
+<title>OH YEAH! HUB — Analizza · Controlla · Margina</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -98,7 +98,7 @@
   .sdi-add{background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:8px 12px;font-size:8pt;color:#92400e;text-align:center;margin-top:auto;width:100%;}
   .sdi-add strong{display:block;color:#78350f;}
 
-  /* BOX GARANZIA E ROI */
+  /* BOX GARANZIA */
   .box-info-wrap { 
     display: flex; 
     flex-direction: column; 
@@ -108,11 +108,19 @@
   
   .box-garanzia { background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; padding: 14px 18px; font-size: 8.5pt; color: #1e40af; line-height: 1.4; }
   .box-garanzia strong { color: #1e3a8a; font-size: 9pt; display: block; margin-bottom: 4px; }
-  
-  .box-roi { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px; padding: 14px 18px; font-size: 8.5pt; color: #14532d; line-height: 1.4; }
-  .box-roi strong { color: #15803d; }
 
   /* CTA */
+  .cta-bonus{
+    display:inline-block;
+    color:#fff;
+    font-size:9pt;
+    font-weight:700;
+    margin:6px 0 10px;
+    background:rgba(255,255,255,0.13);
+    border:1px solid rgba(255,255,255,0.25);
+    border-radius:8px;
+    padding:6px 14px;
+  }
   .cta-gdpr{font-size:8pt;color:rgba(255,255,255,.6);margin-top:8px;}
   .cta{margin:20px 50px 30px; background:linear-gradient(135deg,var(--blu) 0%,#1d4ed8 100%);border-radius:16px;padding:24px 36px;display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;box-shadow:0 12px 36px rgba(29,78,216,.2); flex-shrink: 0;}
   .cta-left .cta-eyebrow{font-size:8pt;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#cbd5e1;margin-bottom:8px;}
@@ -141,7 +149,7 @@
     /* Struttura base A4 */
     .page {
       max-width: 100%;
-      height: 286mm; /* Altezza quasi totale per far funzionare il flexbox */
+      height: 290mm; 
       display: flex;
       flex-direction: column;
     }
@@ -150,8 +158,8 @@
 
     /* --- HERO --- */
     .hero { 
-      margin: 0 0 28px 0; /* Aumentato lo spazio sotto la Hero */
-      padding: 32px 30px; /* Aumentate le dimensioni interne per rendere il blocco più alto e meno schiacciato */
+      margin: 0 0 28px 0; 
+      padding: 32px 30px; 
       border-radius: 12px; 
     } 
     .logo { font-size: 18pt; margin-bottom: 4px; }
@@ -163,11 +171,11 @@
     .stat-n { font-size: 8.5pt; }
     .stat-l { font-size: 6pt; margin-top: 0; white-space: normal; } 
 
-    /* IL WRAPPER CENTRALE: Aumentata la distanza tra le due sezioni principali */
+    /* IL WRAPPER CENTRALE */
     .middle-content { 
       display: flex; 
       flex-direction: column; 
-      gap: 24px; /* Distanza tra "Come funziona" e "Quanto costa" fortemente aumentata */
+      gap: 24px; 
       margin: 0; 
     }
 
@@ -210,31 +218,34 @@
     .piano-fatture { font-size: 7.5pt; margin-bottom: 10px; }
     .sdi-add { padding: 6px; font-size: 7pt; border-radius: 6px; }
     
-    /* BOX AZZURRO E VERDE: LA MAGIA DEL CENTRAGGIO */
+    /* BOX AZZURRO: LA MAGIA DEL CENTRAGGIO */
     .box-info-wrap { 
       margin: auto 10px; 
       gap: 6px; 
       page-break-inside: avoid; break-inside: avoid; 
     }
-    .box-garanzia, .box-roi { padding: 8px 14px; font-size: 7.5pt; line-height: 1.3; }
+    .box-garanzia { padding: 8px 14px; font-size: 7.5pt; line-height: 1.3; }
     .box-garanzia strong { font-size: 8pt; margin-bottom: 2px; }
 
     /* --- CTA A FINE FLUSSO --- */
     .cta { 
       margin: 0; 
-      padding: 22px 26px; 
+      padding: 14px 20px; 
       border-radius: 12px; 
-      gap: 16px; 
-      align-items: center; 
+      gap: 12px; 
+      align-items: center;
+      flex-wrap: nowrap;
     }
-    .cta-left h2 { font-size: 15pt; margin: 4px 0; white-space: nowrap; } 
-    .cta-left .cta-eyebrow { font-size: 7.5pt; margin-bottom: 6px; } 
-    .cta-gdpr { font-size: 7pt; margin-top: 8px; } 
-    
-    .cta-right { gap: 16px; }
-    .btn { font-size: 10pt; padding: 12px 22px; border-radius: 8px; } 
-    .btn-note { font-size: 7pt; margin-top: 8px; } 
-    .qr-code { width: 76px; height: 76px; padding: 4px; border-radius: 8px; } 
+    .cta-left { flex: 1; min-width: 0; }
+    .cta-left h2 { font-size: 13pt; margin: 2px 0; white-space: nowrap; } 
+    .cta-left .cta-eyebrow { font-size: 7pt; margin-bottom: 4px; } 
+    .cta-bonus { font-size: 7.5pt; padding: 4px 10px; margin: 4px 0 6px; color: #fff !important; }
+    .cta-gdpr { font-size: 6.5pt; margin-top: 6px; } 
+    .cta-right { gap: 12px; flex-wrap: nowrap; flex-shrink: 0; align-items: center; }
+    .cta-right-text { text-align: right; }
+    .btn { font-size: 9pt; padding: 10px 18px; border-radius: 8px; white-space: nowrap; } 
+    .btn-note { font-size: 6.5pt; margin-top: 6px; } 
+    .qr-code { width: 68px; height: 68px; padding: 3px; border-radius: 8px; flex-shrink: 0; } 
   }
 </style>
 </head>
@@ -244,10 +255,10 @@
   <div class="hero">
     <div class="hero-inner">
       <div class="hero-left">
-        <div class="logo">Oh <span>Yeah!</span></div>
-        <div class="hero-tag">L'app che fa davvero ciò che ti serve</div>
+        <div class="logo">OH YEAH! <span>HUB</span></div>
+        <div class="hero-tag">Analizza · Controlla · Margina</div>
         <h1>Sai davvero dove vanno<br>i tuoi <em>soldi</em>?</h1>
-        <p class="hero-sub">OH YEAH! è l'app essenziale che legge le tue fatture, le classifica da sola e ti dice dove vanno i tuoi soldi — senza data entry, magazzino e senza passare ore al pc.</p>
+        <p class="hero-sub">OH YEAH! HUB legge le tue fatture, le classifica con l'AI e ti mostra dove stai perdendo soldi. Senza data entry e senza dover passare ore al pc. Solo funzioni essenziali, abbonamento contenuto — solo quello che ti serve davvero.</p>
       </div>
       <div class="hero-stats">
         <div class="stat-item"><span class="stat-n">🔒 Privacy</span><span class="stat-l">GDPR compliant · no tracking</span></div>
@@ -374,29 +385,29 @@
       </div>
     </div>
 
-  </div> <div class="box-info-wrap">
+  </div> 
+  
+  <div class="box-info-wrap">
     <div class="box-garanzia">
       <strong>🛡️ Prova senza pensieri. Il controllo torna nelle tue mani.</strong>
-      Puoi iniziare gratis oggi stesso, senza inserire carte e senza stipulare contratti. Non devi essere un contabile né cambiare commercialista: OH YEAH! è un'app indipendente, creata per darti il pieno controllo sui tuoi numeri in modo semplice e immediato.
-    </div>
-    <div class="box-roi">
-      <strong>💡 Ti costa meno di due coperti al mese.</strong> Ti basta intercettare un solo rincaro o tagliare una spesa superflua, già con il risparmio di tempo l'abbonamento è ripagato da solo.
+      Puoi iniziare gratis oggi stesso, senza inserire carte e senza stipulare contratti. Non devi essere un contabile né cambiare commercialista: OH YEAH! HUB è un'app indipendente, creata per darti il pieno controllo sui tuoi numeri in modo semplice e immediato.
     </div>
   </div>
 
   <div class="cta">
     <div class="cta-left">
-      <div class="cta-eyebrow">🔥 Offerta tempo limitato</div>
+      
       <h2>Prova gratis per 7 giorni.</h2>
+      <div class="cta-bonus">🎁 In omaggio: 1 ora di consulenza sul controllo di gestione</div>
       <div class="cta-gdpr">🔒 GDPR compliant &nbsp;·&nbsp; Dati in EU 🇪🇺 &nbsp;·&nbsp; Nessun dato condiviso</div>
     </div>
     
     <div class="cta-right">
       <div class="cta-right-text">
-        <a href="https://wa.me/393488014534?text=Voglio%20provare%20OH%20YEAH!" class="btn" target="_blank">💬 Scrivimi su WhatsApp</a>
-        <div class="btn-note">Oppure via email: <strong>mattiadavolio90@gmail.com</strong></div>
+        <a href="https://wa.me/393488014534?text=Voglio%20provare%20OH%20YEAH!%20HUB" class="btn" target="_blank">💬 Scrivimi su WhatsApp</a>
+        <div class="btn-note">Oppure via email: <strong>mattia.davolio@recomasystem.it</strong></div>
       </div>
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://wa.me/393488014534?text=Voglio%20provare%20OH%20YEAH!" alt="QR Code WhatsApp" class="qr-code">
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=https://wa.me/393488014534?text=Voglio%20provare%20OH%20YEAH!%20HUB" alt="QR Code WhatsApp" class="qr-code">
     </div>
   </div>
 
