@@ -62,7 +62,7 @@ supabase = get_supabase_client()
 # CONFIGURAZIONE PAGINA
 # ============================================
 st.set_page_config(
-    page_title="Workspace - OH YEAH!",
+    page_title="Workspace - OH YEAH! Hub",
     page_icon="🛠️",
     layout="wide",
     initial_sidebar_state="expanded"

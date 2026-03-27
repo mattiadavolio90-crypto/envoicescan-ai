@@ -155,7 +155,7 @@ with tab_tos:
 
     st.markdown("""
     ### 1. Oggetto del Servizio
-    Il servizio **OH YEAH!** (di seguito "Servizio") è una piattaforma SaaS di analisi e gestione dei costi per attività di ristorazione, fornita da **Recoma System S.r.l.** (P.IVA: IT09599210961, referente: Mattia D'Avolio).
+    Il servizio **OH YEAH! Hub** (di seguito "Servizio") è una piattaforma SaaS di analisi e gestione dei costi per attività di ristorazione, fornita da **Recoma System S.r.l.** (P.IVA: IT09599210961, referente: Mattia D'Avolio).
 
     Il Servizio include:
     - Caricamento e analisi automatica di fatture elettroniche (XML, P7M, PDF)

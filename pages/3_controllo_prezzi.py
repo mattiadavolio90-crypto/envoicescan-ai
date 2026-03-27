@@ -25,7 +25,7 @@ logger = get_logger('controllo_prezzi')
 # CONFIGURAZIONE PAGINA
 # ============================================
 st.set_page_config(
-    page_title="Controllo Prezzi - OH YEAH!",
+    page_title="Controllo Prezzi - OH YEAH! Hub",
     page_icon="🔍",
     layout="wide",
     initial_sidebar_state="expanded"

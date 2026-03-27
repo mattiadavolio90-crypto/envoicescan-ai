@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 echo.
 echo ========================================
-echo   AVVIO OH YEAH!
+echo   AVVIO OH YEAH! Hub
 echo ========================================
 echo.
 echo Attendere l'avvio dell'applicazione...

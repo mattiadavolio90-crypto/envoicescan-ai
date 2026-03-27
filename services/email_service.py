@@ -46,7 +46,7 @@ def invia_email(destinatario: str, oggetto: str, corpo_html: str, reply_to_email
             return False
         
         sender_email = brevo_cfg.get('sender_email', 'noreply@example.com')
-        sender_name = brevo_cfg.get('sender_name', 'OH YEAH!')
+        sender_name = brevo_cfg.get('sender_name', 'OH YEAH! Hub')
         
         # Default reply-to da secrets (no PII hardcoded)
         if not reply_to_email:

@@ -1,4 +1,4 @@
-# OH YEAH! — Documentazione Completa
+# OH YEAH! Hub — Documentazione Completa
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
@@ -36,9 +36,9 @@ URL Produzione: https://ohyeah.streamlit.app/
 
 ## 1. Panoramica del Progetto
 
-### Cos'è OH YEAH!
+### Cos'è OH YEAH! Hub
 
-OH YEAH! è una piattaforma SaaS web-based progettata specificamente per ristoratori italiani che necessitano di analizzare, categorizzare e controllare i costi derivanti dalle fatture elettroniche dei propri fornitori.
+OH YEAH! Hub è una piattaforma SaaS web-based progettata specificamente per ristoratori italiani che necessitano di analizzare, categorizzare e controllare i costi derivanti dalle fatture elettroniche dei propri fornitori.
 
 L'applicazione consente di:
 
@@ -60,7 +60,7 @@ L'applicazione consente di:
 
 ### Problema Risolto
 
-I ristoratori italiani ricevono decine/centinaia di fatture elettroniche XML al mese dai fornitori. Queste fatture contengono righe di prodotti con descrizioni spesso abbreviate, non standardizzate e difficili da classificare. OH YEAH! automatizza completamente l'analisi di queste fatture, trasformando dati grezzi XML in informazioni azionabili per il controllo dei costi.
+I ristoratori italiani ricevono decine/centinaia di fatture elettroniche XML al mese dai fornitori. Queste fatture contengono righe di prodotti con descrizioni spesso abbreviate, non standardizzate e difficili da classificare. OH YEAH! Hub automatizza completamente l'analisi di queste fatture, trasformando dati grezzi XML in informazioni azionabili per il controllo dei costi.
 
 ---
 
@@ -229,7 +229,7 @@ FCI_PROJECT/
 │   ├── text_utils.py              # Normalizzazione testo, estrazione fornitore
 │   ├── validation.py              # Validazione diciture, integrità fatture
 │   ├── piva_validator.py          # Validazione P.IVA italiana (algoritmo Luhn)
-│   ├── sidebar_helper.py          # Sidebar condivisa + header OH YEAH!
+│   ├── sidebar_helper.py          # Sidebar condivisa + header OH YEAH! Hub
 │   ├── ristorante_helper.py       # Helper multi-ristorante
 │   ├── period_helper.py           # Filtri temporali (mese, trimestre, anno)
 │   ├── ui_helpers.py              # CSS loader, hide sidebar
@@ -241,7 +241,7 @@ FCI_PROJECT/
 │   └── prompt_ai_potenziato.py    # Prompt GPT per classificazione (con esempi)
 │
 ├── static/                         # Asset statici
-│   ├── branding.css               # Logo e branding OH YEAH!
+│   ├── branding.css               # Logo e branding OH YEAH! Hub
 │   ├── common.css                 # Stili condivisi (bottoni, KPI card)
 │   └── layout.css                 # Layout responsive
 │
@@ -1091,9 +1091,9 @@ OPENAI_API_KEY = "sk-..."
 [brevo]
 api_key = "xkeysib-..."
 sender_email = "noreply@ohyeah.app"
-sender_name = "OH YEAH!"
+sender_name = "OH YEAH! Hub"
 reply_to_email = "support@ohyeah.app"
-reply_to_name = "Support OH YEAH!"
+reply_to_name = "Support OH YEAH! Hub"
 ```
 
 ### Dipendenze Lockate
@@ -1150,9 +1150,9 @@ jobs:
             curl -X POST "https://api.brevo.com/v3/smtp/email" \
               -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
               -H "Content-Type: application/json" \
-              -d '{"sender":{"email":"alerts@ohyeah.app","name":"OH YEAH! Monitor"},
+              -d '{"sender":{"email":"alerts@ohyeah.app","name":"OH YEAH! Hub Monitor"},
                    "to":[{"email":"mattiadavolio90@gmail.com"}],
-                   "subject":"🚨 OH YEAH! DOWN",
+                   "subject":"🚨 OH YEAH! Hub DOWN",
                    "htmlContent":"<p>Status: '$STATUS'</p>"}'
             exit 1
           fi

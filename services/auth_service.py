@@ -839,18 +839,18 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
             return False, "Errore nell'invio email"
         
         sender_email = brevo_cfg.get('sender_email', 'contact@updates.brevo.com')
-        sender_name = brevo_cfg.get('sender_name', 'OH YEAH!')
+        sender_name = brevo_cfg.get('sender_name', 'OH YEAH! Hub')
         
         # Payload email
         payload = {
             "sender": {"name": sender_name, "email": sender_email},
             "to": [{"email": email}],
-            "subject": "🔑 Codice Recupero Password - OH YEAH!",
+            "subject": "🔑 Codice Recupero Password - OH YEAH! Hub",
             "htmlContent": f"""
             <html>
             <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                 <h2 style="color: #2c5aa0;">🔑 Recupero Password</h2>
-                <p>Hai richiesto di reimpostare la password per il tuo account <strong>OH YEAH!</strong>.</p>
+                <p>Hai richiesto di reimpostare la password per il tuo account <strong>OH YEAH! Hub</strong>.</p>
                 <p>Il tuo codice di reset è:</p>
                 <div style="text-align: center; margin: 20px 0;">
                     <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #1e3a8a; background: #f0f4ff; padding: 12px 24px; border-radius: 8px; display: inline-block;">{code}</span>
@@ -858,7 +858,7 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
                 <p>Il codice scadrà tra <strong>1 ora</strong>.</p>
                 <p style="color: #888; font-size: 13px;">Se non hai richiesto questo reset, ignora questa email.</p>
                 <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
-                <p style="color: #666; font-size: 13px;">---<br><strong>OH YEAH! Team</strong><br>📧 Support: mattiadavolio90@gmail.com</p>
+                <p style="color: #666; font-size: 13px;">---<br><strong>OH YEAH! Hub Team</strong><br>📧 Support: mattiadavolio90@gmail.com</p>
             </body>
             </html>
             """

@@ -1,4 +1,4 @@
-name: Uptime Check - OH YEAH!
+name: Uptime Check - OH YEAH! Hub
 
 on:
   schedule:
@@ -66,8 +66,8 @@ jobs:
             -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
             -H "Content-Type: application/json" \
             -d "{
-              \"sender\": {\"name\": \"OH YEAH! Monitor\", \"email\": \"noreply@ohyeah.it\"},
+              \"sender\": {\"name\": \"OH YEAH! Hub Monitor\", \"email\": \"noreply@ohyeah.it\"},
               \"to\": [{\"email\": \"mattiadavolio90@gmail.com\", \"name\": \"Mattia\"}],
-              \"subject\": \"🚨 OH YEAH! è offline\",
-              \"htmlContent\": \"<h2>⚠️ Attenzione</h2><p>L'app <strong>OH YEAH!</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://ohyeah.streamlit.app/'>https://ohyeah.streamlit.app/</a></p><p>Controlla su <a href='https://share.streamlit.io'>Streamlit Cloud</a> se l'app è ibernata o in errore.</p>\"
+              \"subject\": \"🚨 OH YEAH! Hub è offline\",
+              \"htmlContent\": \"<h2>⚠️ Attenzione</h2><p>L'app <strong>OH YEAH! Hub</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://ohyeah.streamlit.app/'>https://ohyeah.streamlit.app/</a></p><p>Controlla su <a href='https://share.streamlit.io'>Streamlit Cloud</a> se l'app è ibernata o in errore.</p>\"
             }"

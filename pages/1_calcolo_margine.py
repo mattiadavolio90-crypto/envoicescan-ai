@@ -38,7 +38,7 @@ logger = get_logger('calcolo_margine')
 # CONFIGURAZIONE PAGINA
 # ============================================
 st.set_page_config(
-    page_title="Calcolo Marginalità - OH YEAH!",
+    page_title="Calcolo Marginalità - OH YEAH! Hub",
     page_icon="💰",
     layout="wide",
     initial_sidebar_state="expanded"

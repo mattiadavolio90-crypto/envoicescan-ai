@@ -1,4 +1,4 @@
-﻿#  OH YEAH! - Gestione Costi Ristorante
+﻿#  OH YEAH! Hub - Gestione Costi Ristorante
 
 **Versione:** 4.0  
 **Status:**  Produzione  
@@ -89,4 +89,4 @@ python -m pytest tests/ -v
 
 ##  Licenza
 
-Tutti i diritti riservati  OH YEAH!  2026
+Tutti i diritti riservati  OH YEAH! Hub  2026

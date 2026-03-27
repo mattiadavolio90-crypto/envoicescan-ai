@@ -12,7 +12,7 @@ logger = get_logger('sidebar_helper')
 
 def render_oh_yeah_header():
     """
-    Renderizza il titolo 'OH YEAH!' centrato in alto, 
+    Renderizza il titolo 'OH YEAH! Hub' centrato in alto, 
     un po' più grande dei titoli di pagina ma non troppo.
     Da richiamare in ogni pagina PRIMA del contenuto.
     """
@@ -22,9 +22,9 @@ def render_oh_yeah_header():
         <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        background-clip: text;">OH YEAH!</span>
-        <span style="font-size: clamp(1rem, 2vw, 1.5rem); font-weight: 700; color: #1e3a8a; letter-spacing: 2px; margin-bottom: 0.8rem;">app</span>
+        background-clip: text;">OH YEAH! Hub</span>
     </h1>
+    <p style="font-size: clamp(0.9rem, 1.8vw, 1.15rem); font-weight: 600; color: #1e3a8a; letter-spacing: 1.5px; margin-top: 0.2rem;">Analizza. Controlla. Margina.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -89,8 +89,7 @@ def render_sidebar(user_data: dict):
                     background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
                     -webkit-background-clip: text;
                     -webkit-text-fill-color: transparent;
-                    background-clip: text;">OH YEAH!</span>
-                <span style="font-size: 0.7rem; font-weight: 700; color: #1e3a8a; letter-spacing: 1px; margin-bottom: 0.3rem;">app</span>
+                    background-clip: text;">OH YEAH! Hub</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
