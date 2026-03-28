@@ -21,7 +21,8 @@ from utils.formatters import log_upload_event, get_nome_base_file
 from utils.ristorante_helper import add_ristorante_filter
 
 from services.ai_service import invalida_cache_memoria, mostra_loading_ai
-from services.invoice_service import estrai_dati_da_xml, estrai_xml_da_p7m, estrai_dati_da_scontrino_vision, salva_fattura_processata
+from services.invoice_service import estrai_dati_da_scontrino_vision, salva_fattura_processata
+from services.worker_client import parse_file_via_worker
 from services.db_service import clear_fatture_cache
 
 
@@ -382,11 +383,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         if not _magic_ok:
                             raise ValueError(f"Il contenuto del file non corrisponde all'estensione .{_ext}")
                         
-                        if nome_file.endswith('.xml'):
-                            items = estrai_dati_da_xml(file)
-                        elif nome_file.endswith('.p7m'):
-                            xml_stream = estrai_xml_da_p7m(file)
-                            items = estrai_dati_da_xml(xml_stream)
+                        if nome_file.endswith(('.xml', '.p7m')):
+                            items = parse_file_via_worker(file, nome_file, user_id=user_id)
                         elif nome_file.endswith(('.pdf', '.jpg', '.jpeg', '.png')):
                             items = estrai_dati_da_scontrino_vision(file)
                         else:

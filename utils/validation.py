@@ -1,5 +1,5 @@
 """
-Modulo validation per FCI_PROJECT.
+Modulo validation per OH YEAH! Hub.
 
 Funzioni per:
 - Validazione diciture vs prodotti

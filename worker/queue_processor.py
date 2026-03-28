@@ -200,7 +200,7 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
 
     # ── Parsing XML ───────────────────────────────────────────────────────────
     try:
-        dati_prodotti = estrai_dati_da_xml(xml_io)
+        dati_prodotti = estrai_dati_da_xml(xml_io, user_id=user_id)
     except Exception as exc:
         msg = f"Parsing XML fallito: {exc}"
         logger.error("[item=%d] %s", queue_id, msg)

@@ -1,5 +1,5 @@
 """
-Modulo text_utils per FCI_PROJECT.
+Modulo text_utils per OH YEAH! Hub.
 
 Funzioni per:
 - Normalizzazione descrizioni (memoria globale)

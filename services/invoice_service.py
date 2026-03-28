@@ -505,12 +505,15 @@ def estrai_xml_da_p7m(file_caricato):
     return xml_stream
 
 
-def estrai_dati_da_xml(file_caricato):
+def estrai_dati_da_xml(file_caricato, user_id: str = None):
     """
     Estrae dati da fatture XML elettroniche italiane.
     
     Args:
-        file_caricato: File XML caricato
+        file_caricato: File XML caricato (st.UploadedFile, BytesIO, o file-like con .name)
+        user_id:       ID utente per precarico memoria classificazioni.
+                       Se None, tenta di leggerlo da st.session_state (retrocompatibilità
+                       con path Streamlit). Passare esplicitamente dal worker FastAPI.
         
     Returns:
         List[Dict]: Lista di righe prodotto estratte
@@ -528,8 +531,16 @@ def estrai_dati_da_xml(file_caricato):
             categorizza_con_memoria
         )
         
+        # Risolvi user_id: parametro esplicito ha priorità su session_state
+        # Il fallback su session_state garantisce retrocompatibilità con Streamlit.
+        current_user_id = user_id
+        if current_user_id is None:
+            try:
+                current_user_id = st.session_state.get('user_data', {}).get('id')
+            except Exception:
+                pass  # Fuori contesto Streamlit (worker, test) — nessun session_state
+        
         # Carica cache memoria globale SUBITO
-        current_user_id = st.session_state.get('user_data', {}).get('id')
         if current_user_id:
             carica_memoria_completa(current_user_id)
             logger.info("✅ Cache memoria precaricata per elaborazione XML")
@@ -825,7 +836,11 @@ def estrai_dati_da_xml(file_caricato):
         
     except Exception as e:
         logger.exception(f"Errore lettura XML: {getattr(file_caricato, 'name', 'sconosciuto')}")
-        st.warning(f"⚠️ File {file_caricato.name}: impossibile leggere")
+        # Mostra warning solo se Streamlit è attivo (non dal worker)
+        try:
+            st.warning(f"⚠️ File {getattr(file_caricato, 'name', '?')}: impossibile leggere")
+        except Exception:
+            pass
         return []
 
 

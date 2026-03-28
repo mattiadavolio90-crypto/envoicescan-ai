@@ -1,5 +1,5 @@
 """
-Modulo ui_helpers per FCI_PROJECT.
+Modulo ui_helpers per OH YEAH! Hub.
 
 Funzioni condivise per:
 - Caricamento CSS/JS da file statici

@@ -1,0 +1,111 @@
+# ============================================================
+# OH YEAH! — Docker Compose PRODUZIONE (Railway / VPS)
+# ============================================================
+# Differenze rispetto a docker-compose.yml:
+#   - Niente volumi hot-reload (immagine già compilata)
+#   - WORKER_RELOAD=false
+#   - Healthcheck più conservativo
+#   - Worker sempre attivo (no profiles)
+#   - Variables da Railway env (non da file .env)
+#
+# Deploy Railway:
+#   1. Collega repo GitHub a Railway
+#   2. Aggiungi servizio ohyeah e worker come due Railway services
+#   3. Imposta le env vars sul dashboard Railway (non committare .env)
+#
+# Deploy VPS manuale:
+#   docker-compose -f docker-compose.prod.yml up -d
+# ============================================================
+
+name: ohyeah-hub-prod
+
+services:
+  # ──────────────────────────────────────────
+  # STREAMLIT FRONTEND
+  # ──────────────────────────────────────────
+  ohyeah:
+    image: ${DOCKER_IMAGE:-ohyeah-hub}:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ohyeah-app-prod
+    ports:
+      - "8501:8501"
+    environment:
+      # Supabase
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Notifiche
+      - SENDINBLUE_API_KEY=${SENDINBLUE_API_KEY}
+      # Worker endpoint (Streamlit chiama questo URL per classify/parse)
+      - WORKER_BASE_URL=${WORKER_BASE_URL:-http://worker:8000}
+      # App
+      - REGENERATE_SECRETS=1
+    restart: unless-stopped
+    depends_on:
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ──────────────────────────────────────────
+  # FASTAPI WORKER (AI + parsing)
+  # ──────────────────────────────────────────
+  worker:
+    image: ${DOCKER_IMAGE:-ohyeah-hub}:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ohyeah-worker-prod
+    command: >
+      uvicorn services.fastapi_worker:app
+      --host 0.0.0.0
+      --port 8000
+      --workers 2
+      --log-level warning
+    ports:
+      - "8000:8000"
+    environment:
+      # Supabase (service_role per operazioni backend)
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # Rate limiting
+      - WORKER_RATE_LIMIT=${WORKER_RATE_LIMIT:-60}
+      - WORKER_RATE_WINDOW_SEC=${WORKER_RATE_WINDOW_SEC:-60}
+      # Uvicorn
+      - WORKER_RELOAD=false
+      - WORKER_PORT=8000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ──────────────────────────────────────────
+  # NGINX REVERSE PROXY (opzionale — VPS only)
+  # Commenta o rimuovi se usi Railway/Render
+  # ──────────────────────────────────────────
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: ohyeah-nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+  #     - /etc/letsencrypt:/etc/letsencrypt:ro
+  #   depends_on:
+  #     - ohyeah
+  #     - worker
+  #   restart: unless-stopped

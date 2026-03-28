@@ -3,6 +3,8 @@
 # Ambiente sviluppo locale + produzione
 # ============================================
 
+name: ohyeah-hub
+
 services:
   ohyeah:
     build:
@@ -15,6 +17,9 @@ services:
       - .env
     environment:
       - REGENERATE_SECRETS=1
+      # WORKER_BASE_URL: imposta solo se avvii il profilo worker (--profile worker)
+      # Commentato: Streamlit usa le funzioni locali (nessun worker esterno)
+      # - WORKER_BASE_URL=http://worker:8000
     volumes:
       # Hot-reload: monta il codice sorgente per sviluppo locale
       - ./app.py:/app/app.py:ro
@@ -32,3 +37,41 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
+
+  # ============================================
+  # FASTAPI WORKER (Fase 3 — AI/parsing separato)
+  # Scala orizzontalmente indipendente da Streamlit.
+  # Attiva solo se necessario: docker-compose up worker
+  # ============================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ohyeah-worker
+    command: >
+      uvicorn services.fastapi_worker:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --log-level info
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      - WORKER_RELOAD=true
+      - WORKER_RATE_LIMIT=30
+      - WORKER_RATE_WINDOW_SEC=60
+    volumes:
+      - ./services:/app/services:ro
+      - ./utils:/app/utils:ro
+      - ./config:/app/config:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    profiles:
+      - worker   # avvio esplicito: docker-compose --profile worker up

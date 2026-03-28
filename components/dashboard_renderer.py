@@ -23,12 +23,12 @@ from services.ai_service import (
     carica_memoria_completa,
     invalida_cache_memoria,
     applica_correzioni_dizionario,
-    classifica_con_ai,
     svuota_memoria_globale,
     set_global_memory_enabled,
     ottieni_categoria_prodotto,
     ottieni_hint_per_ai,
 )
+from services.worker_client import classifica_via_worker
 
 from components.category_editor import render_category_editor
 
@@ -402,11 +402,12 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 <div class="progress-status">{prodotti_elaborati} di {totale_da_classificare} prodotti</div>
                             </div>
                             """, unsafe_allow_html=True)
-                            cats = classifica_con_ai(
+                            cats = classifica_via_worker(
                                 chunk,
-                                lista_fornitori=[desc_to_fornitore.get(d, '') for d in chunk],
-                                lista_iva=[desc_to_iva.get(d, 0) for d in chunk],
-                                lista_hint=[desc_to_hint.get(d) for d in chunk],
+                                fornitori=[desc_to_fornitore.get(d, '') for d in chunk],
+                                iva=[desc_to_iva.get(d, 0) for d in chunk],
+                                hint=[desc_to_hint.get(d) for d in chunk],
+                                user_id=user_id,
                             )
                             st.session_state['_ai_budget_calls'] = st.session_state.get('_ai_budget_calls', 0) + 1
                             ai_batch_upsert = []

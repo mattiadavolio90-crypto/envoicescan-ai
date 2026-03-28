@@ -1,5 +1,5 @@
 ﻿"""
-Costanti, categorie e regex precompilate per FCI_PROJECT.
+Costanti, categorie e regex precompilate per OH YEAH! Hub.
 
 Questo modulo contiene:
 - Regex precompilate per parsing e normalizzazione

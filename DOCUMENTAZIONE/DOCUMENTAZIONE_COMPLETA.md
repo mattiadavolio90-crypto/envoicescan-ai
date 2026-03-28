@@ -196,7 +196,7 @@ toolbarMode = "viewer"       # Nasconde developer toolbar
 ## 5. Struttura del Codice Sorgente
 
 ```
-FCI_PROJECT/
+Oh Yeah! Hub/
 │
 ├── app.py                          # Entry point principale (~1.651 righe)
 │                                   # - Autenticazione e gestione sessioni

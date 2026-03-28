@@ -1,4 +1,4 @@
-# Procedura di Migrazione FCI_PROJECT su Nuovo PC
+# Procedura di Migrazione Oh Yeah! Hub su Nuovo PC
 
 > **Documento operativo** — Segui i passi nell'ordine indicato.  
 > Tempo stimato: 15–30 minuti (escluso download Python/VS Code).
@@ -21,7 +21,7 @@
 
 ### Cosa copiare (USB / Google Drive / altro)
 
-Copia l'intera cartella `FCI_PROJECT` **escludendo** le seguenti cartelle inutili:
+Copia l'intera cartella `Oh Yeah! Hub` **escludendo** le seguenti cartelle inutili:
 
 | Cartella da ESCLUDERE | Motivo |
 |-----------------------|--------|
@@ -33,7 +33,7 @@ Copia l'intera cartella `FCI_PROJECT` **escludendo** le seguenti cartelle inutil
 ### Struttura minima da copiare
 
 ```
-FCI_PROJECT/
+Oh Yeah! Hub/
 ├── app.py
 ├── requirements.txt
 ├── pytest.ini
@@ -74,7 +74,7 @@ FCI_PROJECT/
 Apri PowerShell nella cartella del progetto:
 
 ```powershell
-cd C:\Users\<TUO_UTENTE>\Desktop\FCI_PROJECT
+cd "C:\Users\<TUO_UTENTE>\Desktop\Oh Yeah! Hub"
 
 # Crea ambiente virtuale
 python -m venv .venv
@@ -151,7 +151,7 @@ url = "http://localhost:8501"
 2. Installa le estensioni consigliate:
    - **Python** (Microsoft)
    - **GitHub Copilot** (se disponibile)
-3. Apri la cartella del progetto: `File → Open Folder → FCI_PROJECT`
+3. Apri la cartella del progetto: `File → Open Folder → Oh Yeah! Hub`
 4. Seleziona l'interprete Python: `Ctrl+Shift+P` → "Python: Select Interpreter" → scegli `.venv`
 
 ---
@@ -160,7 +160,7 @@ url = "http://localhost:8501"
 
 ```powershell
 # Assicurati di essere nella cartella giusta con .venv attivo
-cd C:\Users\<TUO_UTENTE>\Desktop\FCI_PROJECT
+cd "C:\Users\<TUO_UTENTE>\Desktop\Oh Yeah! Hub"
 .\.venv\Scripts\Activate.ps1
 
 # Avvia l'app

@@ -35,9 +35,16 @@ else
     echo "ℹ️  secrets.toml già presente (montato esternamente), skip generazione"
 fi
 
-echo "🚀 Avvio Streamlit..."
-exec streamlit run app.py \
-    --server.port=8501 \
-    --server.address=0.0.0.0 \
-    --server.headless=true \
-    --browser.gatherUsageStats=false
+# Se sono stati passati argomenti (es. da docker-compose command:), esegui quelli.
+# Altrimenti avvia Streamlit (comportamento default).
+if [ "$#" -gt 0 ]; then
+    echo "🚀 Avvio: $*"
+    exec "$@"
+else
+    echo "🚀 Avvio Streamlit..."
+    exec streamlit run app.py \
+        --server.port=8501 \
+        --server.address=0.0.0.0 \
+        --server.headless=true \
+        --browser.gatherUsageStats=false
+fi

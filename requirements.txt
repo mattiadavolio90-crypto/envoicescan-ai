@@ -18,3 +18,7 @@ asn1crypto>=1.5.1
 cryptography>=46.0.5
 # Security: fixes CVE-2026-32597
 PyJWT>=2.12.0
+# FastAPI worker (Fase 3 — AI/parsing separato da Streamlit)
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.12

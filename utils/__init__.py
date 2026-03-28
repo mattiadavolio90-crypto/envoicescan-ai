@@ -1,5 +1,5 @@
 """
-Utils package per FCI_PROJECT.
+Utils package per OH YEAH! Hub.
 
 Moduli:
 - text_utils: Normalizzazione e manipolazione testo

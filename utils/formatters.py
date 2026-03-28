@@ -1,5 +1,5 @@
 """
-Modulo formatters per FCI_PROJECT.
+Modulo formatters per OH YEAH! Hub.
 
 Funzioni per:
 - Conversione file (PDF/IMG → base64)

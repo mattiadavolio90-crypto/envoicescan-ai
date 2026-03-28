@@ -340,14 +340,14 @@ if st.session_state.margine_tab == "analisi":
             font-weight: 600 !important;
         }
         div.st-key-expander_fatturato_centri div[data-testid="stExpander"] > details[open] > div {
-            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%) !important;
+            background: #ffffff !important;
             border-radius: 0 0 8px 8px !important;
             padding: 12px !important;
         }
         </style>
         """, unsafe_allow_html=True)
         with st.container(key="expander_fatturato_centri"):
-          with st.expander("📌 Apri per suddividere il Fatturato per Centro di Produzione", expanded=False):
+          with st.expander("📌 Fatturato per Centro di Produzione", expanded=True):
             st.markdown("""
             <div style='color: #1e3a5f; font-size: 0.875rem; line-height: 1.6; margin-bottom: 12px;'>
             Ripartisci il Fatturato Netto tra i centri di produzione <strong>mese per mese</strong>.
@@ -1423,10 +1423,37 @@ if st.session_state.margine_tab == "calcolo":
     # Build transposed display from df_input
     df_display = build_transposed_df(df_input)
 
+    # ============================================
+    # NASCONDI MESI PRECEDENTI SENZA DATI
+    # Solo per anno corrente: i mesi prima del mese corrente vengono nascosti
+    # se non contengono alcun valore (né fatture né inserimento manuale).
+    # ============================================
+    mese_corrente = datetime.now().month
+    mesi_nascosti = []
+    if anno == anno_corrente:
+        _COLONNE_DATI = ['Fatt_IVA10', 'Fatt_IVA22', 'Altri_Ricavi_NoIVA',
+                         'Costi_FB_Auto', 'Altri_FB', 'Costi_Spese_Auto',
+                         'Altri_Spese', 'Costo_Dipendenti']
+        for _m_idx in range(mese_corrente - 1):  # mesi 0..mese_corrente-2
+            _riga = df_input[df_input['MeseNum'] == _m_idx + 1]
+            if not _riga.empty:
+                _valori = [float(_riga.iloc[0][c]) for c in _COLONNE_DATI if c in _riga.columns]
+                if not any(v != 0 for v in _valori):
+                    mesi_nascosti.append(MESI_NOMI[_m_idx])
+
+    # Rimuovi colonne dei mesi vuoti precedenti dalla vista
+    if mesi_nascosti:
+        _cols_hide = [f'{m} €' for m in mesi_nascosti] + [f'{m} %' for m in mesi_nascosti]
+        df_display = df_display.drop(columns=[c for c in _cols_hide if c in df_display.columns])
+        st.caption(f"ℹ️ {len(mesi_nascosti)} mesi senza dati nascosti: {', '.join(mesi_nascosti)}")
+
     # Se il flag è disattivato, rimuovi le colonne %
     if not mostra_pct:
         pct_cols = [c for c in df_display.columns if c.endswith(' %')]
         df_display = df_display.drop(columns=pct_cols)
+
+    # Mesi visibili dopo i filtri
+    mesi_visibili = [m for m in MESI_NOMI if m not in mesi_nascosti]
 
     # Column config for data_editor
     column_config = {
@@ -1435,8 +1462,8 @@ if st.session_state.margine_tab == "calcolo":
         ),
     }
 
-    # Add € (NumberColumn) and % (ProgressColumn with colored bar) for each month
-    for mese in MESI_NOMI:
+    # Add € (NumberColumn) and % (ProgressColumn with colored bar) for each visible month
+    for mese in mesi_visibili:
         column_config[f'{mese} €'] = st.column_config.NumberColumn(
             f'{mese} €', format="%.2f",
         )
@@ -1447,7 +1474,7 @@ if st.session_state.margine_tab == "calcolo":
 
     # Disabled columns: Voce + all % columns (text, readonly)
     disabled_cols = ['Voce']
-    for mese in MESI_NOMI:
+    for mese in mesi_visibili:
         disabled_cols.append(f'{mese} %')
 
     edited_display = st.data_editor(
@@ -1505,8 +1532,17 @@ if st.session_state.margine_tab == "calcolo":
     # ============================================
     # EXTRACT INPUT & DETECT CHANGES
     # ============================================
+    # Ricostruisci le colonne dei mesi nascosti (tutti a zero) prima dell'estrazione,
+    # così extract_input_from_transposed riceve sempre tutti e 12 i mesi.
+    _df_edited_full = edited_display.copy()
+    for _m in mesi_nascosti:
+        if f'{_m} €' not in _df_edited_full.columns:
+            _df_edited_full[f'{_m} €'] = 0.0
+        if f'{_m} %' not in _df_edited_full.columns:
+            _df_edited_full[f'{_m} %'] = None
+
     df_input_new = extract_input_from_transposed(
-        edited_display, costi_fb_mensili, costi_spese_mensili
+        _df_edited_full, costi_fb_mensili, costi_spese_mensili
     )
 
     rerun_flag_key = f"{work_key}_rerun_done"
