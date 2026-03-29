@@ -140,6 +140,27 @@ def _get_openai_client() -> OpenAI:
 # FUNZIONI MEMORIA CACHE
 # ============================================================
 
+_PAGE_SIZE = 1000  # Supabase default limit
+
+
+def _fetch_all_rows(supabase_client, table: str, select: str, filters: dict | None = None) -> list:
+    """Paginazione generica per superare il limite di 1000 righe di Supabase."""
+    all_rows = []
+    offset = 0
+    while True:
+        q = supabase_client.table(table).select(select)
+        if filters:
+            for col, val in filters.items():
+                q = q.eq(col, val)
+        result = q.range(offset, offset + _PAGE_SIZE - 1).execute()
+        batch = result.data or []
+        all_rows.extend(batch)
+        if len(batch) < _PAGE_SIZE:
+            break
+        offset += _PAGE_SIZE
+    return all_rows
+
+
 def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any]:
     """
     Carica TUTTE le memorie in una volta sola (1 query per tabella invece di N query).
@@ -176,17 +197,18 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
     try:
         # Carica dati LOCALE utente solo se non già caricati per questo user_id
         if not user_already_loaded:
-            result_locale = supabase_client.table('prodotti_utente')\
-                .select('descrizione, categoria')\
-                .eq('user_id', user_id)\
-                .execute()
+            rows_locale = _fetch_all_rows(
+                supabase_client, 'prodotti_utente',
+                'descrizione, categoria',
+                filters={'user_id': user_id}
+            )
 
-            if result_locale.data:
+            if rows_locale:
                 _memoria_cache['prodotti_utente'][user_id] = {
                     row['descrizione']: row['categoria']
-                    for row in result_locale.data
+                    for row in rows_locale
                 }
-                logger.info(f"📦 Cache LOCALE caricata: {len(result_locale.data)} prodotti per user {user_id[:8]}")
+                logger.info(f"📦 Cache LOCALE caricata: {len(rows_locale)} prodotti per user {user_id[:8]}")
             else:
                 _memoria_cache['prodotti_utente'][user_id] = {}
 
@@ -194,15 +216,16 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
 
         # Carica dati GLOBALI solo se non già caricati
         if not global_loaded:
-            # Query 2: Carica TUTTA la memoria globale (1 query sola)
-            result_globale = supabase_client.table('prodotti_master')\
-                .select('descrizione, categoria, confidence')\
-                .execute()
+            # Query 2: Carica TUTTA la memoria globale (paginata)
+            rows_globale = _fetch_all_rows(
+                supabase_client, 'prodotti_master',
+                'descrizione, categoria, confidence'
+            )
 
-            if result_globale.data:
+            if rows_globale:
                 _bypass = {}   # alta/altissima → skip AI direttamente
                 _hint = {}     # media/None → passa come hint, AI ha l'ultima parola
-                for row in result_globale.data:
+                for row in rows_globale:
                     desc = row['descrizione']
                     cat = row['categoria']
                     conf = row.get('confidence')
@@ -214,20 +237,21 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                 _memoria_cache['prodotti_master_hint'] = _hint
                 logger.info(f"📦 Cache GLOBALE caricata: {len(_bypass)} bypass (alta/altissima), {len(_hint)} hint (media/None)")
 
-            # Query 3: Carica TUTTE le classificazioni manuali admin (1 query sola)
-            result_manuali = supabase_client.table('classificazioni_manuali')\
-                .select('descrizione, categoria_corretta, is_dicitura')\
-                .execute()
+            # Query 3: Carica TUTTE le classificazioni manuali admin (paginata)
+            rows_manuali = _fetch_all_rows(
+                supabase_client, 'classificazioni_manuali',
+                'descrizione, categoria_corretta, is_dicitura'
+            )
 
-            if result_manuali.data:
+            if rows_manuali:
                 _memoria_cache['classificazioni_manuali'] = {
                     row['descrizione']: {
                         'categoria': row['categoria_corretta'],
                         'is_dicitura': row.get('is_dicitura', False)
                     }
-                    for row in result_manuali.data
+                    for row in rows_manuali
                 }
-                logger.info(f"📦 Cache MANUALI caricata: {len(result_manuali.data)} classificazioni")
+                logger.info(f"📦 Cache MANUALI caricata: {len(rows_manuali)} classificazioni")
 
             # Query 4: Carica brand ambigui dinamici da Supabase
             try:

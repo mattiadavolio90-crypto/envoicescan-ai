@@ -2,8 +2,8 @@ name: Uptime Check - OH YEAH! Hub
 
 on:
   schedule:
-    # Ogni 5 minuti
-    - cron: '*/5 * * * *'
+    # Ogni 15 minuti
+    - cron: '*/15 * * * *'
   workflow_dispatch: # Permette di avviarlo manuale per testarlo
 
 jobs:

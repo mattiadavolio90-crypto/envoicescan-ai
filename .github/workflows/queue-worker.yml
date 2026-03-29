@@ -19,8 +19,8 @@ name: Worker — fatture_queue processor
 
 on:
   schedule:
-    # Ogni 5 minuti — bilanciamento latenza/costo GitHub Actions
-    - cron: '*/5 * * * *'
+    # Ogni 15 minuti — bilanciamento latenza/costo GitHub Actions
+    - cron: '*/15 * * * *'
   workflow_dispatch:
     # Permette avvio manuale per test o drain forzato della coda
     inputs:

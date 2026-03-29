@@ -94,7 +94,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      # Restringi a dominio Streamlit in produzione
+    allow_origins=["https://envoicescan-ai-production.up.railway.app"],
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )

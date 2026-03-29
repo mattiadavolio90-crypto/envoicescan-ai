@@ -153,6 +153,7 @@ load_js('branding.js')
 from supabase import Client
 from datetime import datetime, timedelta, timezone
 import uuid as _uuid
+import secrets as _secrets
 import logging
 import sys
 
@@ -488,15 +489,7 @@ if st.query_params.get("reset_token"):
 # HELPER FUNCTIONS
 # ============================================================
 
-def is_admin_or_impersonating() -> bool:
-    """
-    Helper per verificare se l'utente corrente è admin o in impersonificazione.
-    Riduce codice duplicato in tutta l'app.
-    
-    Returns:
-        bool: True se admin o impersonating, False altrimenti
-    """
-    return st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False)
+# is_admin_or_impersonating() → unica definizione in utils.app_controllers
 
 
 def mostra_pagina_login():
@@ -627,7 +620,7 @@ def mostra_pagina_login():
                             if _cookie_manager is not None:
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
-                                    _s_token = str(_uuid.uuid4())
+                                    _s_token = _secrets.token_urlsafe(32)
                                     supabase.table('users').update({
                                         'session_token': _s_token,
                                         'session_token_created_at': _now_utc.isoformat(),
@@ -727,7 +720,7 @@ def mostra_pagina_login():
                             if _cookie_manager is not None:
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
-                                    _s_token = str(_uuid.uuid4())
+                                    _s_token = _secrets.token_urlsafe(32)
                                     supabase.table('users').update({
                                         'session_token': _s_token,
                                         'session_token_created_at': _now_utc.isoformat(),

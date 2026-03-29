@@ -6,6 +6,11 @@ set -e
 # Genera secrets.toml dalle variabili d'ambiente
 # ============================================
 
+# Validazione variabili d'ambiente obbligatorie
+if [ -z "$SUPABASE_URL" ]; then echo "FATAL: SUPABASE_URL not set"; exit 1; fi
+if [ -z "$SUPABASE_KEY" ]; then echo "FATAL: SUPABASE_KEY not set"; exit 1; fi
+if [ -z "$OPENAI_API_KEY" ]; then echo "FATAL: OPENAI_API_KEY not set"; exit 1; fi
+
 SECRETS_FILE="/app/.streamlit/secrets.toml"
 
 echo "🔧 Generazione secrets.toml da variabili d'ambiente..."

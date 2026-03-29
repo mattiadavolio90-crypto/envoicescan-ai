@@ -31,14 +31,10 @@ from services.ai_service import (
 from services.worker_client import classifica_via_worker
 
 from components.category_editor import render_category_editor
+from utils.app_controllers import is_admin_or_impersonating as _is_admin_or_impersonating
 
 
 logger = logging.getLogger("fci_app")
-
-
-def _is_admin_or_impersonating():
-    """Helper: verifica se utente corrente e' admin o in impersonificazione."""
-    return st.session_state.get("user_is_admin", False) or st.session_state.get("impersonating", False)
 
 
 def mostra_statistiche(df_completo, supabase, uploaded_files=None):
