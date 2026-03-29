@@ -793,13 +793,65 @@ def render_category_editor(df_completo_filtrato, supabase):
                             ).eq(
                                 "descrizione", descrizione
                             )
-                            result = query_update_batch.select("id").execute()
+                            query_update_batch = add_ristorante_filter(query_update_batch)
+                            result = query_update_batch.execute()
                             
-                            # supabase-py v2: senza .select() result.data è sempre []
-                            if result is None:
+                            # Conteggio affidabile: se data è vuota, nessuna riga è stata aggiornata.
+                            if result is None or not result.data:
                                 righe_aggiornate = 0
                             else:
-                                righe_aggiornate = len(result.data) if result.data else 1
+                                righe_aggiornate = len(result.data)
+
+                            # Fallback 1: trim descrizione (spazi iniziali/finali)
+                            if righe_aggiornate == 0 and descrizione and descrizione.strip() != descrizione:
+                                query_update_trim = supabase.table("fatture").update(update_data).eq(
+                                    "user_id", user_id
+                                ).eq(
+                                    "descrizione", descrizione.strip()
+                                )
+                                query_update_trim = add_ristorante_filter(query_update_trim)
+                                result_trim = query_update_trim.execute()
+                                if result_trim is not None and result_trim.data:
+                                    righe_aggiornate = len(result_trim.data)
+                                    logger.info(
+                                        f"✅ FALLBACK TRIM: {righe_aggiornate} righe aggiornate per '{descrizione[:TRUNCATE_DESC_LOG]}'"
+                                    )
+
+                            # Fallback 2: match case-insensitive (stessa stringa)
+                            if righe_aggiornate == 0 and descrizione and descrizione.strip():
+                                query_update_ilike = supabase.table("fatture").update(update_data).eq(
+                                    "user_id", user_id
+                                ).ilike(
+                                    "descrizione", descrizione.strip()
+                                )
+                                query_update_ilike = add_ristorante_filter(query_update_ilike)
+                                result_ilike = query_update_ilike.execute()
+                                if result_ilike is not None and result_ilike.data:
+                                    righe_aggiornate = len(result_ilike.data)
+                                    logger.info(
+                                        f"✅ FALLBACK ILIKE: {righe_aggiornate} righe aggiornate per '{descrizione[:TRUNCATE_DESC_LOG]}'"
+                                    )
+
+                            # Fallback robusto: se il batch per descrizione non trova match,
+                            # aggiorna almeno la riga selezionata dall'utente.
+                            if righe_aggiornate == 0 and f_name and riga_idx is not None:
+                                ristorante_id = st.session_state.get('ristorante_id')
+                                query_update_fallback = supabase.table("fatture").update(update_data).eq(
+                                    "user_id", user_id
+                                ).eq(
+                                    "file_origine", f_name
+                                ).eq(
+                                    "numero_riga", riga_idx
+                                )
+                                if ristorante_id:
+                                    query_update_fallback = query_update_fallback.eq("ristorante_id", ristorante_id)
+
+                                result_fallback = query_update_fallback.execute()
+                                if result_fallback is not None and result_fallback.data:
+                                    righe_aggiornate = len(result_fallback.data)
+                                    logger.info(
+                                        f"✅ FALLBACK SINGOLA RIGA: {righe_aggiornate} riga aggiornata per '{descrizione[:TRUNCATE_DESC_LOG]}'"
+                                    )
                             logger.info(f"✅ BATCH: {righe_aggiornate} righe aggiornate per '{descrizione[:TRUNCATE_DESC_LOG]}'")                            
                             # 🔍 DIAGNOSI: Se UPDATE fallisce (0 righe), cerca descrizioni simili nel DB
                             if righe_aggiornate == 0:
@@ -850,10 +902,10 @@ def render_category_editor(df_completo_filtrato, supabase):
                             )
                             if ristorante_id:
                                 query_update_single = query_update_single.eq("ristorante_id", ristorante_id)
-                            result = query_update_single.select("id").execute()
-                            
-                            # supabase-py v2: senza .select() result.data è sempre []
-                            modifiche_effettuate += 1  # assume successo se nessun errore
+                            result = query_update_single.execute()
+
+                            if result is not None and result.data:
+                                modifiche_effettuate += len(result.data)
                             
                     except Exception as e_single:
                         logger.exception(f"Errore aggiornamento singola riga {f_name}:{riga_idx}")
@@ -872,7 +924,7 @@ def render_category_editor(df_completo_filtrato, supabase):
                 logger.warning(f"Tentativo salvataggio su tabella non riconosciuta. Colonne: {colonne_df}")
 
 
-            if modifiche_effettuate > 0 or categorie_modificate_count > 0:
+            if modifiche_effettuate > 0:
                 # Conta quanti prodotti saranno rimossi dalla vista (categorie spese generali)
                 prodotti_spostati = edited_df[edited_df['Categoria'].apply(
                     lambda cat: estrai_nome_categoria(cat) in CATEGORIE_SPESE_GENERALI
@@ -901,7 +953,10 @@ def render_category_editor(df_completo_filtrato, supabase):
                 st.rerun()
             elif (ha_file or ha_numero_riga) and ha_categoria and ha_descrizione:
                 # Solo se era davvero l'editor fatture
-                if skip_da_classificare_count > 0:
+                if categorie_modificate_count > 0:
+                    st.error("❌ Modifiche manuali rilevate ma nessuna riga aggiornata su database.")
+                    st.info("💡 Possibile mismatch sulla descrizione tra tabella e DB. Ho aggiunto fallback robusti: riprova il salvataggio.")
+                elif skip_da_classificare_count > 0:
                     st.toast(f"⚠️ {skip_da_classificare_count} prodotti 'Da Classificare' saltati. Assegna una categoria prima di salvare.")
                 else:
                     st.toast("⚠️ Nessuna modifica rilevata.")
