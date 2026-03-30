@@ -63,8 +63,6 @@ from services.db_service import (
     get_fatture_stats,
 )
 from services.ai_service import invalida_cache_memoria, mostra_loading_ai
-from components.dashboard_renderer import mostra_statistiche
-from services.upload_handler import handle_uploaded_files
 
 
 # ============================================================
@@ -1669,6 +1667,10 @@ def handle_upload_and_ai(supabase, logger, user_id, uploaded_files, df_cache):
         uploaded_files: lista file da st.file_uploader
         df_cache     : DataFrame già caricato da render_dashboard_ui
     """
+    # Lazy import per evitare l'import circolare con dashboard_renderer
+    from components.dashboard_renderer import mostra_statistiche  # noqa: PLC0415
+    from services.upload_handler import handle_uploaded_files      # noqa: PLC0415
+
     # ============================================================
     # SESSION STATE: Tracking file elaborati/errori
     # ============================================================
