@@ -8,13 +8,13 @@ name: ohyeah-hub
 services:
   ohyeah:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: ohyeah-app
     ports:
       - "8501:8501"
     env_file:
-      - .env
+      - ../.env
     environment:
       - REGENERATE_SECRETS=1
       # WORKER_BASE_URL: imposta solo se avvii il profilo worker (--profile worker)
@@ -22,14 +22,14 @@ services:
       # - WORKER_BASE_URL=http://worker:8000
     volumes:
       # Hot-reload: monta il codice sorgente per sviluppo locale
-      - ./app.py:/app/app.py:ro
-      - ./pages:/app/pages:ro
-      - ./services:/app/services:ro
-      - ./utils:/app/utils:ro
-      - ./config:/app/config:ro
-      - ./components:/app/components:ro
-      - ./static:/app/static:ro
-      - ./.streamlit/config.toml:/app/.streamlit/config.toml:ro
+      - ../app.py:/app/app.py:ro
+      - ../pages:/app/pages:ro
+      - ../services:/app/services:ro
+      - ../utils:/app/utils:ro
+      - ../config:/app/config:ro
+      - ../components:/app/components:ro
+      - ../static:/app/static:ro
+      - ../.streamlit/config.toml:/app/.streamlit/config.toml:ro
     restart: unless-stopped
     deploy:
       resources:
@@ -55,8 +55,8 @@ services:
   # ============================================
   worker:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: ohyeah-worker
     command: >
       uvicorn services.fastapi_worker:app
@@ -67,15 +67,15 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - ../.env
     environment:
       - WORKER_RELOAD=true
       - WORKER_RATE_LIMIT=30
       - WORKER_RATE_WINDOW_SEC=60
     volumes:
-      - ./services:/app/services:ro
-      - ./utils:/app/utils:ro
-      - ./config:/app/config:ro
+      - ../services:/app/services:ro
+      - ../utils:/app/utils:ro
+      - ../config:/app/config:ro
     restart: unless-stopped
     deploy:
       resources:

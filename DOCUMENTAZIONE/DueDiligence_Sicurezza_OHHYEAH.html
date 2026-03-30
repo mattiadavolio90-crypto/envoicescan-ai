@@ -385,15 +385,15 @@
     <div class="cover-meta">
       <div class="cover-meta-item">
         <label>Data emissione</label>
-        <span>21 Marzo 2026</span>
+        <span>30 Marzo 2026</span>
       </div>
       <div class="cover-meta-item">
         <label>Versione documento</label>
-        <span>v1.0 — Release</span>
+        <span>v2.0 — Aggiornamento Sicurezza</span>
       </div>
       <div class="cover-meta-item">
         <label>Applicativo</label>
-        <span>OH YEAH! v2.x</span>
+        <span>OH YEAH! v3.0</span>
       </div>
       <div class="cover-meta-item">
         <label>Classificazione</label>
@@ -488,7 +488,7 @@
           </li>
           <li>
             <span class="icon icon-ok">✓</span>
-            <span><strong>Session token:</strong> UUID4, stored in Supabase, TTL 30 giorni, invalidazione esplicita al logout. Cookie HttpOnly via <em>extra-streamlit-components</em>.</span>
+            <span><strong>Session token:</strong> UUID4, stored in Supabase, TTL 30 giorni, scadenza automatica per inattività 8h, invalidazione esplicita al logout e su token non valido (cookie browser cancellato). Cookie <strong>Secure + SameSite=Strict</strong>. <em>(Streamlit CookieManager non supporta HttpOnly — mitigato con SameSite=Strict + HTTPS obbligatorio.)</em></span>
           </li>
           <li>
             <span class="icon icon-ok">✓</span>
@@ -514,7 +514,7 @@
           </li>
           <li>
             <span class="icon icon-ok">✓</span>
-            <span><strong>XSS:</strong> output HTML tramite <code>unsafe_allow_html</code> solo per componenti interni; input utente non riflesso in HTML non sanificato.</span>
+            <span><strong>XSS:</strong> tutti i valori dal DB interpolati in HTML con <code>unsafe_allow_html=True</code> passano per <code>html.escape()</code> — sidebar (email, nome ristorante), admin panel (P.IVA, nome cliente), categorie in calcolo margine. Nessun input riflesso senza escape.</span>
           </li>
           <li>
             <span class="icon icon-ok">✓</span>
@@ -523,6 +523,22 @@
           <li>
             <span class="icon icon-ok">✓</span>
             <span><strong>Segreti:</strong> zero credenziali nel codice sorgente. Audit git history pulito. <em>secrets.toml</em> e <em>.env</em> in <code>.gitignore</code>.</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>IDOR:</strong> filtro <code>.eq('userid', user_id)</code> su tutte le operazioni UPDATE/DELETE su <em>ingredienti_workspace</em>, <em>ricette</em>, <em>note_diario</em> — nessuna modifica possibile su record altrui anche con RLS permissivo (<code>USING (true)</code>).</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Path Traversal:</strong> <code>nome_file</code> e <code>File_Origine</code> sanitizzati (strip <code>../</code> e path separator) prima della persistenza su DB.</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Worker API:</strong> porta 8000 FastAPI worker <strong>non esposta</strong> in produzione (<code>docker-compose.prod.yml</code>). Raggiungibile esclusivamente dalla rete Docker interna.</span>
+          </li>
+          <li>
+            <span class="icon icon-ok">✓</span>
+            <span><strong>Reset token entropy:</strong> generato con <code>secrets.token_urlsafe(32)</code> — 256 bit di entropia crittografica.</span>
           </li>
         </ul>
       </div>
@@ -626,7 +642,7 @@
             <strong>requirements-lock.txt</strong> con hash SHA256 pinned<br>
             CVE scanner GitHub Actions (Dependabot alerts)<br>
             Aggiornamenti di sicurezza: <em>cryptography ≥ 46.0.5</em>, <em>PyJWT ≥ 2.12.0</em><br>
-            Zero dipendenze con CVE attive note al 21/03/2026
+            Zero dipendenze con CVE attive note al 30/03/2026
           </div>
         </div>
       </div>
@@ -682,7 +698,7 @@
           <tr>
             <td>A01 — Broken Access Control</td>
             <td><span class="badge badge-green">✓ Mitigato</span></td>
-            <td>RLS PostgreSQL + filtro user_id+ristorante_id applicativo. Admin route con verifica ruolo server-side.</td>
+            <td>RLS PostgreSQL + filtro user_id+ristorante_id applicativo. Filtro <code>.eq('userid', user_id)</code> su tutte le operazioni UPDATE/DELETE (IDOR prevention). Admin route con verifica ruolo server-side.</td>
           </tr>
           <tr>
             <td>A02 — Cryptographic Failures</td>
@@ -692,7 +708,7 @@
           <tr>
             <td>A03 — Injection (SQL, XSS)</td>
             <td><span class="badge badge-green">✓ Mitigato</span></td>
-            <td>100% Supabase SDK parametrizzato. Input utente non riflesso in HTML non sanificato. Nessuna query concatenata.</td>
+            <td>100% Supabase SDK parametrizzato (zero SQLi). <code>html.escape()</code> su tutti i valori DB interpolati in HTML con <code>unsafe_allow_html</code>. Nessuna concatenazione di query.</td>
           </tr>
           <tr>
             <td>A04 — Insecure Design</td>
@@ -767,7 +783,7 @@
        FOOTER
   ════════════════════════════════════════════════════════ -->
   <div class="doc-footer">
-    <span><strong>OH YEAH!</strong> — Due Diligence Sicurezza v1.0 — 21 Marzo 2026</span>
+    <span><strong>OH YEAH!</strong> — Due Diligence Sicurezza v2.0 — 30 Marzo 2026</span>
     <span>Recoma System S.r.l. — Documento riservato, distribuzione limitata ai destinatari autorizzati</span>
     <span>Pag. 1–2 / 2</span>
   </div>

@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 
 # Carica WEBHOOK_SECRET dal .env
-$lines = Get-Content "supabase\functions\.env"
+$lines = Get-Content "$PSScriptRoot\..\supabase\functions\.env"
 foreach ($l in $lines) {
     if ($l -match "^INVOICETRONIC_WEBHOOK_SECRET=(.+)$") {
         $env:WEBHOOK_SECRET = $Matches[1]
@@ -18,5 +18,5 @@ Write-Host "Secret caricato (len=$($env:WEBHOOK_SECRET.Length))" -ForegroundColo
 
 # Esegui i test con Deno
 $denoExe = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\DenoLand.Deno_Microsoft.Winget.Source_8wekyb3d8bbwe\deno.exe"
-& $denoExe run --allow-net --allow-env "supabase\functions\invoicetronic-webhook\test.ts"
+& $denoExe run --allow-net --allow-env "$PSScriptRoot\..\supabase\functions\invoicetronic-webhook\test.ts"
 exit $LASTEXITCODE

@@ -26,8 +26,8 @@ services:
   ohyeah:
     image: ${DOCKER_IMAGE:-ohyeah-hub}:${IMAGE_TAG:-latest}
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: ohyeah-app-prod
     ports:
       - "8501:8501"
@@ -61,8 +61,8 @@ services:
   worker:
     image: ${DOCKER_IMAGE:-ohyeah-hub}:${IMAGE_TAG:-latest}
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: ohyeah-worker-prod
     command: >
       uvicorn services.fastapi_worker:app

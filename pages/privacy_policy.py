@@ -96,7 +96,7 @@ with tab_privacy:
     - Tipo: cookie tecnico di sessione (strettamente necessario)
     - Scadenza: 30 giorni
     - Contenuto: token UUID4 opaco, senza dati personali in chiaro
-    - Scope: `SameSite=Lax`, trasmesso solo su HTTPS
+    - Scope: `SameSite=Strict`, flag `Secure` — trasmesso solo su HTTPS
 
     **NON utilizziamo:**
     - Cookie di profilazione o marketing
@@ -122,7 +122,10 @@ with tab_privacy:
     - **Cifratura a riposo:** AES-256 (gestita da Supabase)
     - **Controllo accessi:** Multi-tenancy con Row-Level Security PostgreSQL + filtri applicativi per utente e ristorante
     - **Rate limiting:** protezione brute-force su login (5 tentativi/15 min) e reset password (1/5 min), persistente su database
-    - **Gestione sessioni:** invalidazione esplicita al logout, scadenza automatica a 30 giorni
+    - **Gestione sessioni:** invalidazione esplicita al logout e su token non valido, scadenza automatica a 30 giorni, inattività automatica dopo 8h. Cookie Secure + SameSite=Strict
+    - **IDOR protection:** filtro .eq('userid', user_id) su tutte le operazioni UPDATE/DELETE — nessuna modifica possibile su record di altri utenti
+    - **Path traversal:** sanitizzazione nome file prima della persistenza su DB
+    - **XSS output:** html.escape() su tutti i valori dinamici interpolati in HTML
     - **Test di sicurezza:** 172 test automatizzati, pipeline CI/CD con verifica ad ogni rilascio
 
     ---
@@ -144,7 +147,7 @@ with tab_privacy:
     ---
 
     ### Modifiche alla Privacy Policy
-    Ultimo aggiornamento: **21 Marzo 2026**
+    Ultimo aggiornamento: **30 Marzo 2026**
 
     Ci riserviamo il diritto di modificare questa informativa. Gli utenti registrati verranno informati tramite notifica nell'applicazione in caso di modifiche sostanziali, con preavviso di almeno 15 giorni.
 
@@ -246,7 +249,7 @@ with tab_tos:
     ---
 
     ### 11. Modifiche ai Termini
-    Ultimo aggiornamento: **21 Marzo 2026**
+    Ultimo aggiornamento: **30 Marzo 2026**
 
     Il Titolare si riserva il diritto di modificare i presenti Termini. Le modifiche sostanziali saranno comunicate tramite notifica nell'applicazione con almeno 15 giorni di preavviso. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione delle modifiche.
 
@@ -336,7 +339,7 @@ with tab_tos:
     ---
 
     ### 10. Modifiche ai Termini
-    Ultimo aggiornamento: **10 Marzo 2026**
+    Ultimo aggiornamento: **30 Marzo 2026**
 
     Il Titolare si riserva il diritto di modificare i presenti Termini. Le modifiche sostanziali saranno comunicate tramite notifica nell'applicazione con almeno 15 giorni di preavviso. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione delle modifiche.
 

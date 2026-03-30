@@ -45,7 +45,7 @@ RUN apt-get purge -y build-essential && \
 COPY . .
 
 # Copia entrypoint e rendi eseguibile
-COPY docker-entrypoint.sh /docker-entrypoint.sh
+COPY docker/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
 
 # Crea directory per secrets runtime (non versionata)

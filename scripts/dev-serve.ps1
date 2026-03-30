@@ -18,10 +18,10 @@ param(
 
 # ─── Percorsi strumenti (installati nella sessione precedente) ─────────────────
 $DENO      = "$env:LOCALAPPDATA\Microsoft\WinGet\Packages\DenoLand.Deno_Microsoft.Winget.Source_8wekyb3d8bbwe\deno.exe"
-$SUPABASE  = "$PSScriptRoot\tools\supabase.exe"
-$ENV_FILE  = "$PSScriptRoot\supabase\functions\.env"
-$FUNC_FILE = "$PSScriptRoot\supabase\functions\invoicetronic-webhook\index.ts"
-$TEST_FILE = "$PSScriptRoot\supabase\functions\invoicetronic-webhook\test.ts"
+$SUPABASE  = "$PSScriptRoot\..\tools\supabase.exe"
+$ENV_FILE  = "$PSScriptRoot\..\supabase\functions\.env"
+$FUNC_FILE = "$PSScriptRoot\..\supabase\functions\invoicetronic-webhook\index.ts"
+$TEST_FILE = "$PSScriptRoot\..\supabase\functions\invoicetronic-webhook\test.ts"
 
 # ─── Verifica strumenti ────────────────────────────────────────────────────────
 if (-not (Test-Path $DENO)) {
