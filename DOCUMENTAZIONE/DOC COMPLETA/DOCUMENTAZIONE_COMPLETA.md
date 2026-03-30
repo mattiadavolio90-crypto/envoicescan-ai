@@ -2,8 +2,8 @@
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 4.1  
-Ultimo aggiornamento: Marzo 2026  
+Versione: 4.2  
+Ultimo aggiornamento: 30 Marzo 2026  
 Autore: Mattia D'Avolio  
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato)  
 URL Produzione: https://ohyeah.streamlit.app/
@@ -260,6 +260,19 @@ Oh Yeah! Hub/
 │   ├── 001_add_reset_columns.sql
 │   ├── ...
 │   └── 044_create_login_attempts.sql
+│
+├── docker/                         # Immagini e orchestrazione Docker
+│   ├── Dockerfile                 # Build immagine app e worker
+│   ├── docker-compose.yml         # Stack completo (sviluppo locale)
+│   ├── docker-compose.prod.yml    # Stack produzione (porta worker 8000 non esposta)
+│   └── docker-entrypoint.sh       # Script avvio container
+│
+├── scripts/                        # Script sviluppo e operazioni
+│   ├── comandi.ps1                # Comandi rapidi sviluppo
+│   ├── dev-serve.ps1              # Avvia Streamlit in locale
+│   └── run-tests.ps1              # Esegue suite test
+│
+├── dev-notes/                      # Note sviluppo e prompt AI (ex "prompt vscode/")
 │
 ├── .github/workflows/
 │   └── uptime_check.yml           # Uptime monitoring ogni 5 minuti
@@ -536,17 +549,20 @@ UTENTE → Cookie session_token (30 giorni)
 
 ### Reset Password via Email
 
-1. Utente inserisce email → sistema genera codice 6 cifre con `secrets.randbelow()`
+1. Utente inserisce email → sistema genera token sicuro con `secrets.token_urlsafe(32)` (256 bit di entropia) + codice 6 cifre con `secrets.randbelow()`
 2. Email inviata via Brevo SMTP API con codice e scadenza 15 minuti
-3. Utente inserisce codice + nuova password → verifica HMAC constant-time
+3. Utente inserisce codice + nuova password → verifica HMAC constant-time (confronto timing-safe)
 4. Password validata secondo compliance GDPR → hash Argon2id salvato atomicamente
-5. Token reset invalidato → login automatico
+5. Token reset invalidato immediatamente → login automatico
 
 ### Gestione Cookie di Sessione
 
 - **session_token**: UUID4, salvato in DB + cookie browser (30 giorni)
 - **impersonation_user_id**: Solo per admin che impersonano clienti
+- Cookie impostato con `Secure=True` e `SameSite=strict` (la libreria `extra-streamlit-components` **non supporta** `HttpOnly`)
 - Verifica TTL 30 giorni al ripristino sessione
+- **Auto-logout per inattività**: dopo 8 ore di inattività la sessione viene invalidata (`SESSION_INACTIVITY_HOURS = 8`)
+- Invalidazione immediata se il token non è trovato in DB (sessione già revocata o token manomesso)
 - Invalidazione cookie su logout esplicito (cookie impostato con expiry 1970)
 
 ---
@@ -1120,6 +1136,19 @@ pandas==2.x.x
 | Backup | Automatici giornalieri (piano free) |
 | Limite | 500 MB storage, 2 GB transfer, pausa dopo 7 giorni inattività |
 
+### Struttura Docker
+
+I file Docker sono organizzati nella cartella `docker/` (spostati dalla root per pulizia del progetto):
+
+| File | Descrizione |
+|------|-------------|
+| `docker/Dockerfile` | Build immagine app Streamlit e worker FastAPI |
+| `docker/docker-compose.yml` | Stack completo per sviluppo locale |
+| `docker/docker-compose.prod.yml` | Stack produzione — porta worker 8000 **non esposta** pubblicamente |
+| `docker/docker-entrypoint.sh` | Script avvio container |
+
+Tutti i `context: ..` e `dockerfile: docker/Dockerfile` sono aggiornati. I volumi usano percorsi relativi `../` rispetto alla cartella `docker/`.
+
 ---
 
 ## 17. Monitoraggio e Alerting
@@ -1191,7 +1220,12 @@ jobs:
 | **Password** | GDPR Art.32 compliance | 10+ char, 3/4 complessità, blacklist |
 | **Logging** | No PII nei log | Email troncate, password mai loggate |
 | **CORS** | `enableCORS = false` | Disabilitato (non necessario per SPA) |
-| **Cookie** | HttpOnly session token | Non accessibile da JavaScript |
+| **Cookie** | Secure + SameSite=Strict | `extra-streamlit-components` non supporta HttpOnly; protetti da interception (Secure) e CSRF (SameSite=Strict) |
+| **Inattività sessione** | Auto-logout 8 ore | `SESSION_INACTIVITY_HOURS = 8`; sessione invalida anche se il token non esiste in DB |
+| **IDOR** | `.eq('userid', user_id)` su UPDATE/DELETE | Ogni scrittura workspace include filtro owner; previene accesso ai dati altrui |
+| **Path Traversal** | Sanitizzazione percorsi | `nome_file` e `File_Origine` sanificati prima dell'utilizzo nel file system |
+| **Worker API** | Porta 8000 interna | In produzione il worker FastAPI non espone la porta 8000 all'esterno; accesso solo via rete Docker interna |
+| **Reset Token** | `secrets.token_urlsafe(32)` | 256 bit di entropia; verifica constant-time (HMAC) |
 | **Secrets** | Streamlit Secrets | Variables d'ambiente, mai hardcoded |
 | **Dependencies** | `requirements-lock.txt` | 91 pacchetti freezati per supply chain security |
 
@@ -1233,6 +1267,7 @@ jobs:
 
 #### Sessione scaduta (login ripetuto)
 - Il token sessione dura 30 giorni. Se scade, il cookie viene invalidato
+- L'auto-logout per inattività scatta dopo 8 ore senza interazioni
 - Svuotare cache browser per problemi persistenti
 
 ### Comandi Utili per Sviluppatori
@@ -1240,9 +1275,13 @@ jobs:
 ```bash
 # Avviare l'app in locale
 streamlit run app.py
+# oppure tramite script dedicato
+.\scripts\dev-serve.ps1
 
 # Eseguire i test
 pytest tests/ -v --tb=short
+# oppure tramite script dedicato
+.\scripts\run-tests.ps1
 
 # Controllare errori di import
 python -c "import app"
