@@ -664,7 +664,7 @@ def render_category_editor(df_completo_filtrato, supabase):
             skip_da_classificare_count = 0  # Conta righe "Da Classificare" saltate
             
             logger.info(f"💾 INIZIO SALVATAGGIO: user_id={user_id}, righe_edited={len(edited_df)}, vista_aggregata={vista_aggregata}")
-            st.toast("💾 Salvataggio in corso...", icon="💾")
+            st.toast("Salvataggio in corso...", icon="💾")
             
             # ⚠️ NOTA PAGINAZIONE: Il salvataggio riguarda SOLO le righe della pagina corrente
             righe_salvate = len(edited_df)
@@ -776,8 +776,10 @@ def render_category_editor(df_completo_filtrato, supabase):
                         # In vista normale: batch update solo se categoria diversa dalla precedente
                         esegui_batch_update = vista_aggregata or (vecchia_cat and vecchia_cat != nuova_cat)
                         
-                        # ⚡ PERFORMANCE: Se non c'è modifica, SKIP (evita query DB inutili)
-                        if not esegui_batch_update and not categoria_modificata:
+                        # ⚡ PERFORMANCE: Se categoria non cambiata, SKIP sempre (evita query DB inutili)
+                        # Nota: in vista aggregata esegui_batch_update è sempre True,
+                        # quindi il vecchio check non saltava mai le righe invariate.
+                        if not categoria_modificata:
                             continue
                         
                         if esegui_batch_update:
@@ -938,7 +940,6 @@ def render_category_editor(df_completo_filtrato, supabase):
                 else:
                     st.toast(f"✅ {categorie_modificate_count} categorie modificate! L'AI imparerà da questo.")
                 
-                time.sleep(0.5)
                 invalida_cache_memoria()
                 # Invalida anche la cache Fonte (prodotti_master) per forzare rilettura
                 st.session_state.pop('_fonte_pm_cache', None)
