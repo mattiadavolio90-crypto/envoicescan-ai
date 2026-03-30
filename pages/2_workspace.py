@@ -97,6 +97,10 @@ user = st.session_state.user_data
 user_id = user["id"]
 current_ristorante = get_current_ristorante_id()
 
+if not current_ristorante:
+    st.error("⚠️ Nessun ristorante selezionato. Torna alla Dashboard per selezionare un ristorante.")
+    st.stop()
+
 # ============================================
 # CONTROLLO PAGINA ABILITATA (legge sempre dal DB per riflettere modifiche admin)
 # ============================================
@@ -965,7 +969,7 @@ Se necessario contattare l'assistenza.
                                 st.error("❌ Errore permessi database (RLS). Esegui la migrazione `024_fix_rls_custom_auth.sql` nel SQL Editor di Supabase.")
                                 logger.error(f"RLS error ingredienti_workspace: {e}")
                             else:
-                                st.error(f"❌ Errore: {str(e)}")
+                                st.error("❌ Errore durante la creazione dell'ingrediente. Riprova.")
                                 logger.exception("Errore creazione ingrediente workspace")
         
             # Lista ingredienti workspace esistenti
@@ -1063,7 +1067,7 @@ Se necessario contattare l'assistenza.
                                             }
                                             upd_id = ing['id']
                                             safe_db_execute(
-                                                lambda db, _p=upd_payload, _id=upd_id: db.table('ingredienti_workspace').update(_p).eq('id', _id).execute(),
+                                                lambda db, _p=upd_payload, _id=upd_id, _uid=user_id: db.table('ingredienti_workspace').update(_p).eq('id', _id).eq('userid', _uid).execute(),
                                                 "update ingrediente workspace"
                                             )
                                         
@@ -1075,7 +1079,7 @@ Se necessario contattare l'assistenza.
                                             if 'duplicate' in str(e).lower() or 'unique' in str(e).lower():
                                                 st.error(f"⚠️ Nome '{edit_nome}' già esistente")
                                             else:
-                                                st.error(f"❌ Errore: {str(e)}")
+                                                st.error("❌ Errore durante il salvataggio. Riprova.")
                         
                             with cols[4]:
                                 if st.button("❌", key=f"cancel_ing_{ing['id']}", help="Annulla"):
@@ -1098,16 +1102,17 @@ Se necessario contattare l'assistenza.
                                     try:
                                         del_id = ing['id']
                                         safe_db_execute(
-                                            lambda db, _id=del_id: db.table('ingredienti_workspace').delete().eq('id', _id).execute(),
+                                            lambda db, _id=del_id, _uid=user_id: db.table('ingredienti_workspace').delete().eq('id', _id).eq('userid', _uid).execute(),
                                             "delete ingrediente workspace"
                                         )
                                         st.success("✅ Ingrediente eliminato")
                                         invalidate_workspace_cache()
                                         st.rerun()
                                     except Exception as e:
-                                        st.error(f"❌ Errore eliminazione: {str(e)}")
+                                        st.error("❌ Errore eliminazione. Riprova.")
             except Exception as e:
-                st.warning(f"⚠️ Impossibile caricare ingredienti workspace: {str(e)}")
+                st.warning("⚠️ Impossibile caricare gli ingredienti workspace. Riprova tra qualche secondo.")
+                logger.warning(f"Errore caricamento ingredienti workspace: {e}")
     
     st.divider()
     
@@ -1561,7 +1566,7 @@ Se necessario contattare l'assistenza.
                                 # UPDATE
                                 ricetta_id = st.session_state.ricetta_edit_data['id']
                                 safe_db_execute(
-                                    lambda db, _d=ricetta_data, _id=ricetta_id: db.table('ricette').update(_d).eq('id', _id).execute(),
+                                    lambda db, _d=ricetta_data, _id=ricetta_id, _uid=user_id: db.table('ricette').update(_d).eq('id', _id).eq('userid', _uid).execute(),
                                     "update ricetta"
                                 )
                                 
@@ -1608,8 +1613,8 @@ Se necessario contattare l'assistenza.
                                 st.error("❌ Errore permessi database (RLS). Esegui la migrazione `024_fix_rls_custom_auth.sql` nel SQL Editor di Supabase.")
                                 logger.error(f"RLS error ricette: {e}")
                             else:
-                                st.error(f"❌ **Errore durante il salvataggio:**")
-                                st.error(f"Dettagli: {str(e)}")
+                                st.error("❌ Errore durante il salvataggio della ricetta. Riprova.")
+                                st.error("Dettagli disponibili nei log di sistema.")
                             logger.exception("Errore salvataggio ricetta")
 
     # ============================================
@@ -1763,7 +1768,7 @@ Se necessario contattare l'assistenza.
                                 try:
                                     del_ricetta_id = ricetta['id']
                                     safe_db_execute(
-                                        lambda db, _id=del_ricetta_id: db.table('ricette').delete().eq('id', _id).execute(),
+                                        lambda db, _id=del_ricetta_id, _uid=user_id: db.table('ricette').delete().eq('id', _id).eq('userid', _uid).execute(),
                                         "delete ricetta"
                                     )
                                     st.success("Ricetta eliminata")
@@ -2025,7 +2030,7 @@ if selected_tab == "📓 Diario":
                             st.success("✅ Nota salvata!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"❌ Errore salvataggio: {str(e)}")
+                            st.error("❌ Errore salvataggio nota. Riprova.")
                             logger.exception("Errore salvataggio nota diario")
     
     # Carica note esistenti in ordine cronologico
@@ -2118,6 +2123,7 @@ if selected_tab == "📓 Diario":
                                                     supabase.table('note_diario')\
                                                         .update({'testo': edit_testo.strip()})\
                                                         .eq('id', nota['id'])\
+                                                        .eq('userid', user_id)\
                                                         .execute()
                                                 except Exception as conn_err:
                                                     if 'disconnect' in str(conn_err).lower() or 'closed' in str(conn_err).lower():
@@ -2125,13 +2131,14 @@ if selected_tab == "📓 Diario":
                                                         fresh.table('note_diario')\
                                                             .update({'testo': edit_testo.strip()})\
                                                             .eq('id', nota['id'])\
+                                                            .eq('userid', user_id)\
                                                             .execute()
                                                     else:
                                                         raise conn_err
                                                 st.session_state[f"edit_nota_{nota['id']}"] = False
                                                 st.rerun()
                                             except Exception as e:
-                                                st.error(f"❌ {str(e)}")
+                                                st.error("❌ Errore durante il salvataggio della nota. Riprova.")
                                 
                                 with col_cancel:
                                     if st.button("❌", key=f"cancel_{nota['id']}", use_container_width=True, help="Annulla"):
@@ -2178,16 +2185,16 @@ if selected_tab == "📓 Diario":
                                     if st.button("🗑️", key=f"del_{nota['id']}", use_container_width=True, help="Elimina"):
                                         try:
                                             try:
-                                                supabase.table('note_diario').delete().eq('id', nota['id']).execute()
+                                                supabase.table('note_diario').delete().eq('id', nota['id']).eq('userid', user_id).execute()
                                             except Exception as conn_err:
                                                 if 'disconnect' in str(conn_err).lower() or 'closed' in str(conn_err).lower():
                                                     fresh = get_fresh_supabase_client()
-                                                    fresh.table('note_diario').delete().eq('id', nota['id']).execute()
+                                                    fresh.table('note_diario').delete().eq('id', nota['id']).eq('userid', user_id).execute()
                                                 else:
                                                     raise conn_err
                                             st.rerun()
                                         except Exception as e:
-                                            st.error(f"❌ {str(e)}")
+                                            st.error("❌ Errore durante l'eliminazione. Riprova.")
                 
                 # Spaziatura tra righe
                 st.markdown("<br>", unsafe_allow_html=True)
@@ -2195,5 +2202,5 @@ if selected_tab == "📓 Diario":
             st.info("📝 Non hai ancora creato nessuna nota. Clicca su 'Crea Nuova Nota' per iniziare!")
     
     except Exception as e:
-        st.error(f"❌ Errore caricamento note: {str(e)}")
+        st.error("❌ Errore nel caricamento delle note. Riprova tra qualche secondo.")
         logger.exception("Errore caricamento note diario")

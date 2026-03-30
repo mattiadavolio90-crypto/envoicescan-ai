@@ -70,8 +70,10 @@ services:
       --port 8000
       --workers 2
       --log-level warning
-    ports:
-      - "8000:8000"
+    # SICUREZZA: nessun port mapping — il worker è raggiungibile SOLO
+    # dall'interno della rete Docker (dal container ohyeah via http://worker:8000).
+    # Non esporre porta 8000 su internet: il worker usa service_role key e
+    # non ha autenticazione JWT sulle route /api/*.
     environment:
       # Supabase (service_role per operazioni backend)
       - SUPABASE_URL=${SUPABASE_URL}

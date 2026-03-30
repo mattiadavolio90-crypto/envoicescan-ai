@@ -62,6 +62,7 @@ import json
 import os
 import re
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any, Tuple
 import streamlit as st
@@ -88,6 +89,7 @@ MAX_TOKENS_PER_BATCH = 12000  # Limite sicuro per evitare timeout
 # CACHE GLOBALE IN-MEMORY (ELIMINA N+1 QUERY)
 # ============================================================
 _cache_lock = threading.Lock()
+_CACHE_TTL_SECONDS = 3600  # Ricarica la cache globale dopo 1 ora (evita memory leak a lungo termine)
 _memoria_cache = {
     'prodotti_utente': {},         # {user_id: {descrizione: categoria}}
     'prodotti_master': {},         # {descrizione: categoria} — solo confidence alta/altissima → bypass AI
@@ -96,6 +98,7 @@ _memoria_cache = {
     'brand_ambigui': set(),        # set di brand dinamici da Supabase (UNION con BRAND_AMBIGUI_NO_DICT)
     'version': 0,               # Incrementato ad ogni invalidazione
     'loaded': False,
+    '_loaded_at': 0.0,          # Timestamp ultimo caricamento globale (TTL eviction)
     '_loaded_user_ids': set()   # user_id già caricati (isola dati per utente)
 }
 
@@ -177,6 +180,12 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
     
     with _cache_lock:
         global_loaded = _memoria_cache['loaded']
+        # TTL eviction: se la cache globale è scaduta, forza ricaricamento
+        if global_loaded and (time.time() - _memoria_cache.get('_loaded_at', 0.0)) > _CACHE_TTL_SECONDS:
+            logger.info("Cache globale scaduta (TTL 1h), forzo ricaricamento")
+            _memoria_cache['loaded'] = False
+            _memoria_cache['_loaded_at'] = 0.0
+            global_loaded = False
         user_already_loaded = user_id in _memoria_cache.get('_loaded_user_ids', set())
 
     # I due stati sono gestiti indipendentemente nel try-block:
@@ -269,6 +278,7 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                 _memoria_cache['brand_ambigui'] = set()
 
             _memoria_cache['loaded'] = True
+            _memoria_cache['_loaded_at'] = time.time()
 
         _memoria_cache['version'] += 1
         logger.info(f"✅ Cache caricata (v{_memoria_cache['version']}) per user {user_id[:8]}")
@@ -296,6 +306,7 @@ def invalida_cache_memoria():
             'brand_ambigui': set(),
             'version': (_memoria_cache.get('version', 0) + 1),
             'timestamp': None,
+            '_loaded_at': 0.0,
             '_loaded_user_ids': set()
         }
     logger.info("🔄 Cache memoria invalidata")
@@ -579,6 +590,9 @@ try:
 except Exception as e:
     logger.error(f"Errore buildcompiledpatterns: {e}")
     _PATTERNS_ALIMENTI, _PATTERNS_CONTENITORI = [], []
+
+# Regex controllo caratteri (compilata a livello modulo, non ad ogni chiamata)
+_CTRL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
 
 
 def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
@@ -1036,13 +1050,6 @@ def svuota_memoria_globale(supabase_client=None) -> bool:
         # Invalida cache
         invalida_cache_memoria()
 
-        try:
-            supabase_client.table("prodotti_master").delete().neq("id", 0).execute()
-            logger.info("prodotti_master svuotato dal DB")
-        except Exception as e:
-            logger.error(f"Errore svuotamento prodotti_master: {e}")
-            return False
-
         # Cancella file legacy
         try:
             if os.path.exists(MEMORIA_AI_FILE):
@@ -1089,7 +1096,6 @@ def _chiama_gpt_classificazione(
 
     # 🔒 Sanitizza input: rimuovi caratteri di controllo, limita lunghezza per descrizione
     _MAX_DESC_LEN = 300
-    _CTRL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
     da_chiedere_sanitized = [
         _CTRL_RE.sub('', desc)[:_MAX_DESC_LEN] for desc in da_chiedere_gpt
     ]

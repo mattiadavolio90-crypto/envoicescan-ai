@@ -67,9 +67,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     file_su_supabase = set()
     file_su_supabase_full = set()
     try:
-        # Verifica user_id disponibile
+        # Verifica user_id disponibile (usa il parametro passato, non rileggere da session)
         user_data = st.session_state.get('user_data', {})
-        user_id = user_data.get('id')
         if not user_id:
             logger.error("❌ user_id mancante in session_state durante query file")
             file_su_supabase = set()
@@ -145,7 +144,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             st.session_state.files_con_errori = set()
         
     except Exception as e:
-        logger.exception(f"Errore caricamento file da DB per user_id={st.session_state.user_data.get('id')}")
+        logger.exception(f"Errore caricamento file da DB per user_id={user_id}")
         logger.error(f"Errore caricamento file da DB: {e}")
         st.error("❌ Errore nel caricamento dei dati. Riprova.")
         file_su_supabase = set()

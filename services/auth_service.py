@@ -639,7 +639,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         # Query utente attivo
         response = supabase_client.table("users") \
             .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
-                    "password_hash") \
+                    "password_hash, partita_iva, created_at") \
             .eq("email", email) \
             .eq("attivo", True) \
             .execute()
@@ -890,9 +890,9 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
     except requests.exceptions.Timeout:
         logger.error("Timeout invio email Brevo")
         return False, "Errore: timeout connessione a Brevo"
-    except Exception as e:
+    except Exception:
         logger.exception("Errore invio codice reset")
-        return False, f"Errore: {str(e)}"
+        return False, "Errore nell'invio email. Riprova o contatta il supporto."
 
 
 def hash_password(password: str) -> str:
@@ -912,9 +912,11 @@ def registra_logout_utente(email: str) -> bool:
         if not supabase:
             return False
             
-        # Aggiorna campo last_logout nella tabella users
+        # Aggiorna last_logout e invalida session_token per sicurezza
         result = supabase.table('users').update({
-            'last_logout': datetime.now(timezone.utc).isoformat()
+            'last_logout': datetime.now(timezone.utc).isoformat(),
+            'session_token': None,
+            'session_token_created_at': None,
         }).eq('email', email).execute()
         
         logger.info(f"✅ Logout registrato per {email}")

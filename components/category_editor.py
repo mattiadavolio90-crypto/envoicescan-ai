@@ -132,9 +132,12 @@ def render_category_editor(df_completo_filtrato, supabase):
         righe_man = st.session_state.get('righe_modificate_manualmente', [])
         man_set = set(str(d).strip() for d in righe_man)
 
-        # 🔄 FALLBACK: Se session state vuote (es. dopo upload via worker o reload pagina),
-        # ricostruisce 🧠 interrogando prodotti_master per le descrizioni nel DataFrame
-        if not auto_set and not man_set:
+        # 🔄 FALLBACK: Se session state vuote (es. reload pagina DOPO upload),
+        # ricostruisce 🧠 interrogando prodotti_master per le descrizioni nel DataFrame.
+        # ⚠️ Attivo SOLO se c'è stato almeno un upload in questa sessione:
+        # evita icone fantasma a login fresco (nessun upload → nessuna icona).
+        _had_upload = bool(st.session_state.get('files_processati_sessione'))
+        if not auto_set and not man_set and _had_upload:
             try:
                 _fonte_cache_key = '_fonte_pm_cache'
                 if _fonte_cache_key not in st.session_state:

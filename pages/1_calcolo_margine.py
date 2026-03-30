@@ -9,6 +9,7 @@ import pandas as pd
 from datetime import datetime
 import time
 import io
+import html as _html
 
 from config.logger_setup import get_logger
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
@@ -643,10 +644,11 @@ if st.session_state.margine_tab == "analisi":
             _fatt_denom_centro = fatturato_per_centro.get(centro_nome, 0.0) if fatturato_split_attivo else fatturato_netto_periodo
             for _, row_cat in df_cat_agg.iterrows():
                 cat_nome = row_cat['Categoria']
+                cat_nome_safe = _html.escape(str(cat_nome))
                 spesa_cat = row_cat['Spesa']
                 pct_cat_fatt = (spesa_cat / _fatt_denom_centro * 100) if _fatt_denom_centro > 0 else 0.0
                 pct_cat_centro = (spesa_cat / spesa_c * 100) if spesa_c > 0 else 0.0
-                h.append(f'<div class="aa-cat"><div class="aa-row"><div>↳ {cat_nome}</div>')
+                h.append(f'<div class="aa-cat"><div class="aa-row"><div>↳ {cat_nome_safe}</div>')
                 h.append(f'<div style="color:#94a3b8;">—</div>')
                 h.append(f'<div>€ {spesa_cat:,.2f}</div>')
                 h.append(f'<div>{_bar_html(pct_cat_fatt, "#94a3b8")}</div>')

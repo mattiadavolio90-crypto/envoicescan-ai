@@ -144,7 +144,7 @@ with tab1:
                             
                     except Exception as e:
                         logger.exception(f"Errore cambio password per {user.get('email')}")
-                        st.error(f"❌ Errore: {str(e)}")
+                        st.error("❌ Operazione non riuscita. Riprova o contatta il supporto.")
 
 # ----- TAB 2: EXPORT DATI -----
 with tab2:
@@ -286,7 +286,7 @@ with tab2:
                 
             except Exception as e:
                 logger.exception(f"Errore export dati: {e}")
-                st.error(f"❌ Errore durante la generazione: {str(e)}")
+                st.error("❌ Errore durante la generazione. Riprova o contatta il supporto.")
     
     st.markdown("---")
     st.caption("🔒 I dati esportati sono in formato JSON leggibile. Non contengono informazioni sensibili come password (che sono sempre cifrate).")
@@ -393,7 +393,7 @@ with tab3:
                     
                 except Exception as e:
                     logger.exception(f"Errore eliminazione account: {e}")
-                    st.error(f"❌ Errore durante l'eliminazione: {str(e)}")
+                    st.error("❌ Errore durante l'eliminazione. Riprova o contatta il supporto.")
                     st.warning("Se il problema persiste, contatta il supporto.")
 
 

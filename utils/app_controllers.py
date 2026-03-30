@@ -30,6 +30,7 @@ Come usarli in app.py (dopo l'inizializzazione di supabase/logger/_cookie_manage
 import streamlit as st
 import html as _html
 import uuid as _uuid
+import secrets as _secrets
 import time
 import os
 from datetime import datetime, timedelta, timezone
@@ -40,6 +41,8 @@ from config.constants import (
     UI_DELAY_MEDIUM,
     UI_DELAY_LONG,
     MAX_RIGHE_GLOBALE,
+    SESSION_INACTIVITY_HOURS as _SESSION_INACTIVITY_HOURS,
+    LAST_SEEN_WRITE_THROTTLE_SECONDS as _LAST_SEEN_WRITE_THROTTLE_SECONDS,
 )
 from utils.ui_helpers import hide_sidebar_css
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
@@ -212,14 +215,15 @@ def mostra_pagina_login(supabase, cookie_manager):
                             if cookie_manager is not None:
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
-                                    _s_token = str(_uuid.uuid4())
+                                    _s_token = _secrets.token_urlsafe(32)
                                     supabase.table('users').update({
                                         'session_token': _s_token,
                                         'session_token_created_at': _now_utc.isoformat(),
                                         'last_seen_at': _now_utc.isoformat(),
                                     }).eq('id', user.get('id')).execute()
                                     cookie_manager.set("session_token", _s_token,
-                                                       expires_at=datetime.now(timezone.utc) + timedelta(days=30))
+                                                       expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+                                                       secure=True, same_site="strict")
                                     st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception as _ce:
                                     import logging as _lg
@@ -312,14 +316,15 @@ def mostra_pagina_login(supabase, cookie_manager):
                             if cookie_manager is not None:
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
-                                    _s_token = str(_uuid.uuid4())
+                                    _s_token = _secrets.token_urlsafe(32)
                                     supabase.table('users').update({
                                         'session_token': _s_token,
                                         'session_token_created_at': _now_utc.isoformat(),
                                         'last_seen_at': _now_utc.isoformat(),
                                     }).eq('id', user.get('id')).execute()
                                     cookie_manager.set("session_token", _s_token,
-                                                       expires_at=datetime.now(timezone.utc) + timedelta(days=30))
+                                                       expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+                                                       secure=True, same_site="strict")
                                     st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception:
                                     pass
@@ -354,9 +359,6 @@ def load_and_setup_session(supabase, logger, cookie_manager):
     (es. primo caricamento cookie, reset password).
     Non restituisce nulla — modifica st.session_state direttamente.
     """
-    _SESSION_INACTIVITY_HOURS = 8
-    _LAST_SEEN_WRITE_THROTTLE_SECONDS = 300
-
     # ============================================
     # IMPOSTA COOKIE IMPERSONAZIONE (richiesto da admin.py via session_state)
     # ============================================
@@ -367,7 +369,8 @@ def load_and_setup_session(supabase, logger, cookie_manager):
             cookie_manager.set(
                 "impersonation_user_id",
                 str(st.session_state['_set_impersonation_cookie']),
-                expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+                secure=True, same_site="strict"
             )
         except Exception as _ice:
             logger.warning(f"Errore impostazione cookie impersonazione: {_ice}")
@@ -445,7 +448,12 @@ def load_and_setup_session(supabase, logger, cookie_manager):
                         st.session_state.user_is_admin = True
                     logger.info(f"✅ Sessione ripristinata da token per user_id={_u.get('id')}")
                 else:
-                    # Token non valido, scaduto o inattivo → vai al login
+                    # Token non valido, scaduto o inattivo → pulisci cookie e vai al login
+                    try:
+                        cookie_manager.set("session_token", "",
+                                           expires_at=datetime(1970, 1, 1, tzinfo=timezone.utc))
+                    except Exception:
+                        pass
                     logger.info("🔒 Session token non valido o scaduto - richiesto login")
                     st.session_state._cookie_checked = True
             elif not st.session_state.get('_cookie_checked', False):
@@ -1129,9 +1137,11 @@ def render_sidebar_and_header(supabase, logger, cookie_manager):
                     st.session_state.files_con_errori = set()
                 # 🧹 Pulizia chiavi stale da ristorante precedente
                 for _stale_key in ['righe_ai_appena_categorizzate', 'righe_keyword_appena_categorizzate',
-                                   'righe_modificate_manualmente', 'force_reload', 'force_empty_until_upload',
+                                   'righe_memoria_appena_categorizzate', 'righe_modificate_manualmente',
+                                   'force_reload', 'force_empty_until_upload',
                                    'files_errori_report', 'last_upload_summary', 'ultimo_upload_ids',
-                                   'ingredienti_temp', 'ricetta_edit_mode', 'ricetta_edit_data']:
+                                   'ingredienti_temp', 'ricetta_edit_mode', 'ricetta_edit_data',
+                                   '_fonte_pm_cache']:
                     st.session_state.pop(_stale_key, None)
                 clear_fatture_cache()
 

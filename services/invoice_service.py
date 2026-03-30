@@ -1090,12 +1090,13 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 'Fornitore': fornitore,
                 'Categoria': categoria_iniziale,
                 'Data_Documento': data_documento,
-                'File_Origine': file_caricato.name,
+                'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', ''),
                 'Prezzo_Standard': prezzo_std,
                 'needs_review': needs_review,
                 'piva_cessionario': piva_cessionario  # P.IVA destinatario per validazione
             })
-                # ============================================================
+
+        # ============================================================
         # TRACKING COSTI AI
         # ============================================================
         # Traccia utilizzo e costo AI per il ristorante
@@ -1172,6 +1173,9 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
         - Logging automatico su tabella upload_events
     """
     from services import get_supabase_client
+
+    # Sanitizza nome file: previene path traversal nel campo file_origine del DB
+    nome_file = nome_file.replace('..', '').replace('/', '').replace('\\', '')
 
     # ── Risoluzione user_id ────────────────────────────────────────────────────
     # Accetta user_id esplicito (worker) o lo legge da session_state (UI Streamlit)

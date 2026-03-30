@@ -12,6 +12,10 @@ Tutte le regex sono precompilate all'avvio per ottimizzazione performance.
 """
 import re
 
+# Costanti sessione (timeout e throttling) — fonte unica di verità
+SESSION_INACTIVITY_HOURS = 8        # Ore: sessione scade dopo inattività prolungata
+LAST_SEEN_WRITE_THROTTLE_SECONDS = 300  # Secondi minimi tra due scritture di last_seen_at
+
 
 # ============================================================
 # REGEX PRECOMPILATE (OTTIMIZZAZIONE PERFORMANCE)

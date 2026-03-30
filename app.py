@@ -27,6 +27,8 @@ from config.constants import (
     MAX_RIGHE_GLOBALE,
     MAX_RIGHE_BATCH,
     BATCH_FILE_SIZE,
+    SESSION_INACTIVITY_HOURS as _SESSION_INACTIVITY_HOURS,
+    LAST_SEEN_WRITE_THROTTLE_SECONDS as _LAST_SEEN_WRITE_THROTTLE_SECONDS,
 )
 
 # Import utilities da moduli separati
@@ -198,10 +200,6 @@ except Exception as e:
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
-# Regole sessione
-_SESSION_INACTIVITY_HOURS = 8
-_LAST_SEEN_WRITE_THROTTLE_SECONDS = 300
-
 # ============================================================
 # COOKIE MANAGER - SESSIONE PERSISTENTE
 # ============================================================
@@ -222,7 +220,8 @@ if st.session_state.get('_set_impersonation_cookie') and _cookie_manager is not 
         _cookie_manager.set(
             "impersonation_user_id",
             str(st.session_state['_set_impersonation_cookie']),
-            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30)
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+            secure=True, same_site="strict"
         )
     except Exception as _ice:
         logger.warning(f"Errore impostazione cookie impersonazione: {_ice}")
@@ -300,7 +299,12 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
                     st.session_state.user_is_admin = True
                 logger.info(f"✅ Sessione ripristinata da token per user_id={_u.get('id')}")
             else:
-                # Token non valido, scaduto o inattivo → vai al login
+                # Token non valido, scaduto o inattivo → pulisci cookie e vai al login
+                try:
+                    _cookie_manager.set("session_token", "",
+                                        expires_at=datetime(1970, 1, 1, tzinfo=timezone.utc))
+                except Exception:
+                    pass
                 logger.info("🔒 Session token non valido o scaduto - richiesto login")
                 st.session_state._cookie_checked = True
         elif not st.session_state.get('_cookie_checked', False):
@@ -604,7 +608,7 @@ def mostra_pagina_login():
                         
                         if user:
                             user.pop('password_hash', None)  # Non esporre hash in session
-                            st.session_state.forcelogout = False  # Reset anti-loop prima di aprire la sessione
+                            st.session_state.force_logout = False  # Reset anti-loop prima di aprire la sessione
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
                             st.session_state.force_logout = False  # ← Reset flag logout
@@ -627,7 +631,8 @@ def mostra_pagina_login():
                                         'last_seen_at': _now_utc.isoformat(),
                                     }).eq('id', user.get('id')).execute()
                                     _cookie_manager.set("session_token", _s_token,
-                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=30))
+                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+                                                        secure=True, same_site="strict")
                                     st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception as _ce:
                                     logger.warning(f"Errore salvataggio session token: {_ce}")
@@ -727,7 +732,8 @@ def mostra_pagina_login():
                                         'last_seen_at': _now_utc.isoformat(),
                                     }).eq('id', user.get('id')).execute()
                                     _cookie_manager.set("session_token", _s_token,
-                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=30))
+                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+                                                        secure=True, same_site="strict")
                                     st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception:
                                     pass
@@ -1268,9 +1274,11 @@ if user.get('email') not in ADMIN_EMAILS:
                 st.session_state.files_con_errori = set()
             # 🧹 Pulizia chiavi stale da ristorante precedente
             for _stale_key in ['righe_ai_appena_categorizzate', 'righe_keyword_appena_categorizzate',
-                               'righe_modificate_manualmente', 'force_reload', 'force_empty_until_upload',
+                               'righe_memoria_appena_categorizzate', 'righe_modificate_manualmente',
+                               'force_reload', 'force_empty_until_upload',
                                'files_errori_report', 'last_upload_summary', 'ultimo_upload_ids',
-                               'ingredienti_temp', 'ricetta_edit_mode', 'ricetta_edit_data']:
+                               'ingredienti_temp', 'ricetta_edit_mode', 'ricetta_edit_data',
+                               '_fonte_pm_cache']:
                 st.session_state.pop(_stale_key, None)
             clear_fatture_cache()
             

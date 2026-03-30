@@ -18,6 +18,7 @@ import html as _html
 from datetime import datetime, timezone, timedelta
 import time
 import traceback
+import plotly.express as px
 import extra_streamlit_components as stx
 import requests
 
@@ -631,6 +632,7 @@ if tab1:
                             st.warning(messaggio)
                         # Invia email con link attivazione
                         email_inviata = False
+                        link_attivazione = ""
                         try:
                             brevo_api_key = st.secrets["brevo"]["api_key"]
                             sender_email = st.secrets["brevo"]["sender_email"]
@@ -1050,7 +1052,7 @@ if tab1:
                 with st.expander(_exp_label, expanded=False):
                     # Box blu con statistiche (stile app principale)
                     _costi_fmt = f"€{row.get('totale_costi', 0):,.2f}"
-                    _piva_str = row.get('partita_iva', '') or '—'
+                    _piva_str = _html.escape(str(row.get('partita_iva', '') or '—'))
                     st.markdown(f"""
                     <div style="background-color:#E3F2FD; padding:12px 18px; border-radius:8px; border:2px solid #2196F3; margin-bottom:12px;">
                         <p style="color:#1565C0; font-size:0.95rem; font-weight:bold; margin:0; line-height:1.5;">
@@ -1932,7 +1934,7 @@ if tab2:
     # STATISTICHE (CARD STILIZZATE)
     # ============================================================
     cat_sospette = df_zero[~df_zero['categoria'].isin(['NOTE E DICITURE', 'Da Classificare'])]
-    _cliente_label = cliente_selezionato['nome_ristorante'][:20] if filtro_cliente_id else "Tutti"
+    _cliente_label = _html.escape(cliente_selezionato['nome_ristorante'][:20]) if filtro_cliente_id else "Tutti"
     
     st.markdown(f"""
     <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
@@ -3787,7 +3789,8 @@ if tab5:
 
             
             except Exception as e:
-                st.error(f"❌ Errore durante la verifica: {str(e)}")
+                st.error("❌ Errore durante la verifica del database.")
+                logger.exception("Errore verifica integrità DB")
                 with st.expander("🔍 Dettagli Tecnici"):
                     st.code(traceback.format_exc())
 
@@ -3936,7 +3939,7 @@ if tab6:
                 st.warning("Nessun cliente ha ancora utilizzato funzioni AI")
     
     except Exception as e:
-        st.error(f"❌ Errore caricamento dati: {str(e)}")
+        st.error("❌ Errore caricamento dati Costi AI.")
         logger.exception("Errore nel tab Costi AI")
         with st.expander("🔍 Dettagli Errore"):
-            st.code(str(e))
+            st.code(traceback.format_exc())
