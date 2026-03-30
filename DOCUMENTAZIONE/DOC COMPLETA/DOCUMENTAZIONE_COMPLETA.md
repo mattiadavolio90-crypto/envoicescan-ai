@@ -2,11 +2,13 @@
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 4.2  
+Versione: 5.0  
 Ultimo aggiornamento: 30 Marzo 2026  
 Autore: Mattia D'Avolio  
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato)  
 URL Produzione: https://ohyeah.streamlit.app/
+
+> **Novità v5.0**: Integrazione Invoicetronic (ricezione automatica fatture SDI), FastAPI Worker per classificazione AI scalabile, deploy Railway, nuova tabella `fatture_queue` con worker asincrono GitHub Actions, tabella `brand_ambigui` per apprendimento automatico.
 
 ---
 
@@ -31,6 +33,8 @@ URL Produzione: https://ohyeah.streamlit.app/
 17. [Monitoraggio e Alerting](#17-monitoraggio-e-alerting)
 18. [Sicurezza e Compliance GDPR](#18-sicurezza-e-compliance-gdpr)
 19. [Troubleshooting e FAQ Tecniche](#19-troubleshooting-e-faq-tecniche)
+20. [Integrazione Invoicetronic — Ricezione Automatica SDI](#20-integrazione-invoicetronic--ricezione-automatica-sdi)
+21. [FastAPI Worker — Classificazione AI Scalabile](#21-fastapi-worker--classificazione-ai-scalabile)
 
 ---
 
@@ -43,6 +47,7 @@ OH YEAH! Hub è una piattaforma SaaS web-based progettata specificamente per ris
 L'applicazione consente di:
 
 - **Caricare fatture elettroniche** nei formati XML (FatturaPA), P7M (firma digitale CAdES), PDF e immagini (JPG/PNG)
+- **Ricevere fatture automaticamente** tramite integrazione Invoicetronic (codice dest. `7HD37X0`) — nessun upload manuale richiesto
 - **Classificare automaticamente** ogni riga di fattura in una delle 29 categorie merceologiche tramite AI + regole deterministiche
 - **Visualizzare dashboard interattive** con KPI, grafici a torta, pivot mensili e confronti tra fornitori
 - **Calcolare il Margine Operativo Lordo (MOL)** con tabelle ricavi/costi mensili e analisi centri di produzione
@@ -86,9 +91,12 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 | Categorie merceologiche | 29 (25 F&B + 1 Materiali + 3 Spese) |
 | Keyword nel dizionario | 600+ regole deterministiche |
 | Formati fattura supportati | XML, P7M, PDF, JPG, PNG |
+| Ricezione automatica SDI | Invoicetronic — codice dest. `7HD37X0` |
 | Modello AI | OpenAI GPT-4o-mini |
 | Copertura test automatici | 172 test, 10 moduli di test |
 | Tempo medio classificazione | < 5 secondi per 50 prodotti (batch) |
+| Migrazioni DB | 48 file SQL |
+| Ritardo ricezione fattura automatica | ≤ 15 minuti (ciclo worker) |
 
 ---
 
@@ -97,31 +105,50 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 ### Diagramma di Flusso Generale
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     UTENTE (Browser)                     │
-│                  https://ohyeah.streamlit.app            │
-└──────────────────────┬──────────────────────────────────┘
-                       │ HTTPS
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│               STREAMLIT CLOUD (Frontend + Backend)       │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐  │
-│  │  app.py   │ │ admin.py │ │calcolo_  │ │workspace │  │
-│  │  (4080L)  │ │  (6 tab) │ │margine   │ │  .py     │  │
-│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘  │
-│       │             │            │             │         │
-│  ┌────▼─────────────▼────────────▼─────────────▼────┐   │
-│  │              Service Layer                        │   │
-│  │  ai_service │ auth_service │ invoice │ db │ email │   │
-│  └────┬────────────┬───────────────┬────────────────┘   │
-└───────┼────────────┼───────────────┼────────────────────┘
-        │            │               │
-        ▼            ▼               ▼
-┌──────────┐  ┌──────────┐   ┌──────────┐
-│ OpenAI   │  │ Supabase │   │  Brevo   │
-│ GPT-4o-  │  │ PostgreSQL│   │  SMTP    │
-│  mini    │  │  + RLS   │   │  API v3  │
-└──────────┘  └──────────┘   └──────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                         UTENTE (Browser)                              │
+│                    https://ohyeah.streamlit.app                       │
+└─────────────────────────────┬────────────────────────────────────────┘
+                              │ HTTPS
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│              STREAMLIT CLOUD (Frontend + Backend)                     │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐               │
+│  │  app.py   │ │ admin.py │ │calcolo_  │ │workspace │               │
+│  │           │ │  (6 tab) │ │margine   │ │  .py     │               │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘               │
+│       │             │            │             │                      │
+│  ┌────▼─────────────▼────────────▼─────────────▼────┐                │
+│  │              Service Layer                        │                │
+│  │  ai_service │ auth_service │ invoice │ db │ email │                │
+│  │  worker_client (proxy → FastAPI Worker)           │                │
+│  └────┬────────────┬───────────────┬────────────────┘                │
+└───────┼────────────┼───────────────┼────────────────────────────────┘
+        │            │               │         │
+        ▼            ▼               ▼         ▼
+┌──────────┐  ┌──────────┐   ┌──────────┐  ┌──────────────────────────┐
+│ OpenAI   │  │ Supabase │   │  Brevo   │  │  FastAPI Worker           │
+│ GPT-4o-  │  │ PostgreSQL│  │  SMTP    │  │  (Railway / Docker)       │
+│  mini    │  │  + RLS   │   │  API v3  │  │  POST /api/classify       │
+└──────────┘  └──────┬───┘   └──────────┘  │  POST /api/parse         │
+                     │                      └──────────────────────────┘
+                     │
+         ┌───────────▼───────────────────────────────────┐
+         │           FLUSSO INVOICETRONIC (nuovo)         │
+         │                                               │
+         │  SDI → Invoicetronic → POST webhook           │
+         │    → Supabase Edge Function (Deno/TypeScript) │
+         │      verifica HMAC-SHA256 + anti-replay       │
+         │      GET api.invoicetronic.com/receive/{id}   │
+         │      lookup P.IVA → ristoranti                │
+         │      INSERT fatture_queue (pending)           │
+         │           │                                   │
+         │  GitHub Actions (ogni 15 min)                 │
+         │    → worker/run.py → queue_processor.py       │
+         │      claim_batch_for_processing()             │
+         │      estrai_dati_da_xml() → salva_fattura()   │
+         │      mark_queue_item_done() (purge XML GDPR)  │
+         └───────────────────────────────────────────────┘
 ```
 
 ### Pattern Architetturali
@@ -146,19 +173,25 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 | Componente | Tecnologia | Versione | Note |
 |-----------|-----------|---------|------|
 | Linguaggio | Python | 3.12.8 | Type hints, f-strings, walrus operator |
-| Framework Web | Streamlit | latest | SPA con auto-reload |
+| Framework Web | Streamlit | latest | SPA con auto-reload (frontend) |
+| Framework API | FastAPI + Uvicorn | latest | Worker REST API AI/parsing |
+| Runtime Edge | Deno (TypeScript) | latest | Supabase Edge Function webhook |
 | Database | Supabase (PostgreSQL 15) | Free tier | EU region, Row Level Security |
+| Edge Functions | Supabase Edge Functions | Deno | invoicetronic-webhook (TypeScript) |
 | AI/ML | OpenAI API | GPT-4o-mini | Batch classification, ~0.15$/1M token |
 | Email | Brevo SMTP API v3 | Free tier | 300 email/giorno |
 | Hashing | Argon2id | m=65536, t=3, p=4 | OWASP raccomandato 2026 |
-| CI/CD | GitHub Actions | — | Uptime check ogni 5 minuti |
-| Deploy | Streamlit Community Cloud | Free tier | Auto-deploy da branch main |
+| CI/CD | GitHub Actions | — | Uptime check + queue worker ogni 15 minuti |
+| Deploy Frontend | Streamlit Community Cloud | Free tier | Auto-deploy da branch main |
+| Deploy Worker | Railway | Hobby/Pro | Docker image da `docker/Dockerfile` |
+| SDI Intermediario | Invoicetronic | SaaS | Ricezione fatture SDI, codice dest. `7HD37X0` |
 
 ### Dipendenze Python Principali (91 pacchetti lockati)
 
 | Pacchetto | Uso |
 |-----------|-----|
 | `streamlit` | Framework web UI |
+| `fastapi` + `uvicorn` | Worker REST API |
 | `supabase` | Client PostgreSQL managed |
 | `openai` | Client API GPT-4o-mini |
 | `argon2-cffi` | Password hashing sicuro |
@@ -171,7 +204,8 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 | `tenacity` | Retry logic per API OpenAI |
 | `extra-streamlit-components` | Cookie manager per sessioni |
 | `charset-normalizer` | Rilevamento encoding file XML |
-| `requests` | HTTP client per Brevo API |
+| `requests` | HTTP client per Brevo API e worker_client |
+| `pydantic` | Validazione modelli dati FastAPI |
 
 ### Configurazione Streamlit (.streamlit/config.toml)
 
@@ -198,93 +232,109 @@ toolbarMode = "viewer"       # Nasconde developer toolbar
 ```
 Oh Yeah! Hub/
 │
-├── app.py                          # Entry point principale (~1.651 righe)
+├── app.py                          # Entry point principale
 │                                   # - Autenticazione e gestione sessioni
 │                                   # - Dashboard con KPI, grafici, pivot
-│                                   # - Pipeline classificazione AI
 │                                   # - Upload e parsing fatture
 │                                   # - Data editor con salvataggio
 │                                   # - Gestione fatture (elimina, export)
 │
 ├── pages/                          # Pagine multi-page Streamlit
-│   ├── admin.py                    # Pannello admin (6 tab, ~3.650 righe)
-│   ├── 1_calcolo_margine.py        # Calcolo MOL e centri di produzione (~1.546 righe)
-│   ├── 2_workspace.py              # Workspace ricette, ingredienti, diario (~2.125 righe)
-│   ├── 3_controllo_prezzi.py       # Variazioni prezzi, sconti, note di credito (~584 righe)
-│   ├── gestione_account.py         # Cambio password e impostazioni (~384 righe)
+│   ├── admin.py                    # Pannello admin (6 tab)
+│   ├── 1_calcolo_margine.py        # Calcolo MOL e centri di produzione
+│   ├── 2_workspace.py              # Workspace ricette, ingredienti, diario
+│   ├── 3_controllo_prezzi.py       # Variazioni prezzi, sconti, note di credito
+│   ├── gestione_account.py         # Cambio password e impostazioni
 │   └── privacy_policy.py           # Privacy Policy + Terms of Service
 │
 ├── services/                       # Business logic layer
 │   ├── __init__.py                 # get_supabase_client() singleton
-│   ├── ai_service.py              # Classificazione AI + memoria 3 livelli (~980 righe)
-│   ├── auth_service.py            # Login, password, reset, GDPR, rate limiting DB (~841 righe)
-│   ├── invoice_service.py         # Parsing XML/P7M/PDF/Vision (~1.246 righe)
-│   ├── db_service.py              # Query Supabase + cache + paginazione (~972 righe)
-│   ├── margine_service.py         # Calcoli MOL + export Excel (~1.126 righe)
-│   ├── upload_handler.py          # Gestione upload file, batch, deduplicazione (~620 righe)
-│   └── email_service.py           # Brevo SMTP API con retry (~106 righe)
+│   ├── ai_service.py              # Classificazione AI + memoria 3 livelli
+│   ├── auth_service.py            # Login, password, reset, GDPR, rate limiting DB
+│   ├── invoice_service.py         # Parsing XML/P7M/PDF/Vision
+│   ├── db_service.py              # Query Supabase + cache + paginazione
+│   ├── margine_service.py         # Calcoli MOL + export Excel
+│   ├── upload_handler.py          # Gestione upload file, batch, deduplicazione
+│   ├── email_service.py           # Brevo SMTP API con retry
+│   ├── fastapi_worker.py          # FastAPI Worker REST API (AI + parsing)
+│   │                              # - POST /api/classify
+│   │                              # - POST /api/parse
+│   │                              # - GET  /health
+│   │                              # Avvio: uvicorn services.fastapi_worker:app
+│   └── worker_client.py           # Proxy Streamlit → FastAPI Worker
+│                                   # Fallback automatico su funzioni locali
+│
+├── worker/                         # Worker asincrono fatture_queue (NUOVO)
+│   ├── __init__.py
+│   ├── run.py                      # Entry point GitHub Actions / terminale
+│   └── queue_processor.py          # Logica elaborazione coda Invoicetronic
+│                                   # - run_cycle(): ciclo completo con stats
+│                                   # - claim_batch_for_processing() via RPC
+│                                   # - GDPR purge xml_content dopo 24h
+│
+├── supabase/                       # Configurazione e funzioni Supabase
+│   ├── config.toml                 # Configurazione locale Supabase
+│   └── functions/
+│       ├── .env                    # Secrets locali (non versionato)
+│       ├── .env.local.template     # Template secrets
+│       └── invoicetronic-webhook/  # Edge Function (Deno/TypeScript) (NUOVO)
+│           ├── index.ts            # Handler webhook: HMAC, lookup P.IVA, queue insert
+│           ├── test.ts             # Test automatici
+│           └── test.http           # Test HTTP manuale
 │
 ├── utils/                          # Utility e helper functions
-│   ├── formatters.py              # Formattazione numeri, base64, categorie DB
-│   ├── text_utils.py              # Normalizzazione testo, estrazione fornitore
-│   ├── validation.py              # Validazione diciture, integrità fatture
-│   ├── piva_validator.py          # Validazione P.IVA italiana (algoritmo Luhn)
-│   ├── sidebar_helper.py          # Sidebar condivisa + header OH YEAH! Hub
-│   ├── ristorante_helper.py       # Helper multi-ristorante
-│   ├── period_helper.py           # Filtri temporali (mese, trimestre, anno)
-│   ├── ui_helpers.py              # CSS loader, hide sidebar
-│   └── page_setup.py             # Check pagine abilitate per utente
+│   ├── formatters.py
+│   ├── text_utils.py
+│   ├── validation.py
+│   ├── piva_validator.py
+│   ├── sidebar_helper.py
+│   ├── ristorante_helper.py
+│   ├── period_helper.py
+│   ├── ui_helpers.py
+│   └── page_setup.py
 │
 ├── config/                         # Configurazione centralizzata
 │   ├── constants.py               # 29 categorie, 600+ keyword, regex, KPI soglie
 │   ├── logger_setup.py            # RotatingFileHandler (50MB, 10 backup)
 │   └── prompt_ai_potenziato.py    # Prompt GPT per classificazione (con esempi)
 │
-├── static/                         # Asset statici
-│   ├── branding.css               # Logo e branding OH YEAH! Hub
-│   ├── common.css                 # Stili condivisi (bottoni, KPI card)
-│   └── layout.css                 # Layout responsive
+├── static/                         # Asset statici CSS
 │
 ├── tests/                          # Test automatici (pytest)
-│   ├── conftest.py                # Fixtures condivise (mock Supabase, OpenAI)
-│   ├── test_ai_service.py         # Test classificazione AI
-│   ├── test_auth_service.py       # Test autenticazione e rate limiting
-│   ├── test_constants.py          # Test integrità categorie
-│   ├── test_formatters.py         # Test formattazione
-│   ├── test_invoice_service.py    # Test parsing fatture
-│   ├── test_piva_validator.py     # Test validazione P.IVA
-│   ├── test_text_utils.py         # Test normalizzazione testo
-│   └── test_validation.py         # Test validazione diciture
 │
-├── migrations/                     # SQL migrations manuali (44 file)
-│   ├── 001_add_reset_columns.sql
-│   ├── ...
-│   └── 044_create_login_attempts.sql
+├── migrations/                     # SQL migrations manuali (48 file)
+│   ├── 001_add_reset_columns.sql ... 044_create_login_attempts.sql
+│   ├── 045_create_fatture_queue.sql      # Tabella buffer Invoicetronic
+│   ├── 046_add_reset_rate_limit_column.sql
+│   ├── 047_fix_null_confidence_prodotti_master.sql
+│   └── 048_create_brand_ambigui.sql      # Tracking brand multi-categoria
 │
-├── docker/                         # Immagini e orchestrazione Docker
-│   ├── Dockerfile                 # Build immagine app e worker
-│   ├── docker-compose.yml         # Stack completo (sviluppo locale)
-│   ├── docker-compose.prod.yml    # Stack produzione (porta worker 8000 non esposta)
-│   └── docker-entrypoint.sh       # Script avvio container
+├── docker/                         # Docker
+│   ├── Dockerfile                 # Build app Streamlit + FastAPI worker
+│   ├── docker-compose.yml         # Stack sviluppo locale
+│   ├── docker-compose.prod.yml    # Stack produzione (Railway / VPS)
+│   └── docker-entrypoint.sh
 │
-├── scripts/                        # Script sviluppo e operazioni
-│   ├── comandi.ps1                # Comandi rapidi sviluppo
-│   ├── dev-serve.ps1              # Avvia Streamlit in locale
-│   └── run-tests.ps1              # Esegue suite test
-│
-├── dev-notes/                      # Note sviluppo e prompt AI (ex "prompt vscode/")
+├── scripts/
+│   ├── comandi.ps1
+│   ├── dev-serve.ps1              # Avvia Edge Function localmente (Deno)
+│   └── run-tests.ps1              # Esegue suite test + test Edge Function
 │
 ├── .github/workflows/
-│   └── uptime_check.yml           # Uptime monitoring ogni 5 minuti
+│   ├── uptime_check.yml           # Uptime monitoring ogni 5 minuti
+│   └── queue-worker.yml           # Worker fatture_queue ogni 15 minuti (NUOVO)
 │
 ├── .streamlit/
-│   ├── config.toml                # Configurazione server Streamlit
+│   ├── config.toml
 │   └── secrets.toml               # Secrets (non versionato)
 │
-├── requirements.txt               # Dipendenze principali
-├── requirements-lock.txt          # 91 pacchetti con versioni freezate
-├── pytest.ini                     # Configurazione pytest
-└── README.md                      # README sintetico
+├── railway.toml                    # Configurazione deploy Railway (NUOVO)
+│                                   # build.dockerfilePath = "docker/Dockerfile"
+│
+├── requirements.txt
+├── requirements-lock.txt          # 91 pacchetti lockati
+├── pytest.ini
+└── README.md
 ```
 
 ---
@@ -350,19 +400,38 @@ La dashboard è il cuore dell'applicazione. Dopo l'autenticazione, l'utente acce
   - Eliminazione massiva "ELIMINA TUTTO" (solo admin)
   - Verifica post-eliminazione (count righe residue)
 
-### 6.2 Bottone "🧠 Avvia AI per Categorizzare"
+### 6.2 Classificazione AI Automatica e Recovery
 
-Il bottone triggerà la pipeline completa di classificazione AI:
+#### Comportamento default: AI integrata nell'upload
+
+A partire dalla versione corrente, **la classificazione AI è integrata direttamente nel flusso di upload**. Non esiste più un bottone separato "Avvia AI" da premere manualmente: ogni file caricato viene classificato automaticamente al momento del parsing, combinando la pipeline memoria → dizionario → GPT-4o-mini.
+
+Il vecchio bottone "🧠 Avvia AI per Categorizzare" è stato ritirato.
+
+#### Bottone Recovery "🧠 Riprova AI per Categorizzare"
+
+Compare **esclusivamente come opzione di ripristino**: viene mostrato accanto al file uploader soltanto se, dopo l'upload e la classificazione automatica, rimangono righe con categoria "Da Classificare" (ad esempio per timeout OpenAI, rate limit o errori di rete).
+
+```
+┌──────────────────────────────┐  ┌────────────────────────────────┐
+│  📂 Trascina file qui...      │  │  🧠 Riprova AI per Categorizzare│
+│     XML, P7M, PDF, JPG, PNG  │  │   (visibile SOLO se rimangono   │
+│     Max 200MB                │  │    righe "Da Classificare")     │
+└──────────────────────────────┘  └────────────────────────────────┘
+```
+
+Quando premuto, setta `st.session_state.trigger_ai_categorize = True` e fa `st.rerun()`, ri-eseguendo la pipeline di classificazione solo sulle righe non ancora classificate.
+
+#### Pipeline classificazione durante l'upload
 
 1. **Pre-step Memoria**: Check cache in-memory (admin > locale > globale)
 2. **Step 1 Dizionario**: 600+ keyword matches deterministici
-3. **Step 2 AI Batch**: OpenAI GPT-4o-mini per i restanti (50 articoli/call)
+3. **Step 2 AI Batch via worker_client**: Prova prima il FastAPI Worker (se `WORKER_BASE_URL` configurato), con fallback automatico su `classifica_con_ai()` locale
 4. **Salvataggio Batch**: Upsert memoria globale per keyword e AI
-5. **Update DB**: Batch UPDATE per categoria su fatture Supabase
+5. **Update DB**: Batch UPDATE categorie su `fatture`
 6. **Fallback**: Secondo tentativo dizionario per articoli rimasti
-7. **Verifica Post-Update**: Count righe ancora "Da Classificare"
 
-Banner orizzontale animato con cervello pulsante 🧠 e percentuale in tempo reale.
+Banner orizzontale animato con percentuale in tempo reale visibile durante la riclassificazione da recovery.
 
 ### 6.3 Upload Handler (services/upload_handler.py)
 
@@ -839,20 +908,70 @@ Indice su `(email, attempted_at DESC)` per query veloci. Solo `service_role` pu�
 | `review_confirmed` | Righe confermate dopo review admin |
 | `review_ignored` | Righe ignorate in review admin |
 | `login_attempts` | Tentativi login per rate limiting persistente su DB |
+| `fatture_queue` | Buffer webhook Invoicetronic — vedere Sezione 20 |
+| `brand_ambigui` | Tracking automatico brand multi-categoria (machine learning) |
 
-### Migrazioni SQL (44 file)
+#### `fatture_queue` — Buffer webhook Invoicetronic (migration 045)
 
-Le migrazioni sono numerate progressivamente da `001` a `044` e gestiscono:
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | BIGINT IDENTITY (PK) | Auto-increment |
+| event_id | TEXT NOT NULL UNIQUE | ID evento da Invoicetronic (idempotenza) |
+| user_id | UUID (nullable) | FK logica → users; NULL se P.IVA non trovata |
+| ristorante_id | UUID (nullable) | FK logica → ristoranti; NULL se P.IVA non trovata |
+| piva_raw | TEXT NOT NULL | P.IVA destinatario estratta dall'XML |
+| xml_content | TEXT (nullable) | XML grezzo FatturaPA; nullificato dopo 24h (GDPR) |
+| xml_url | TEXT (nullable) | URL download su Invoicetronic (fallback) |
+| xml_hash | TEXT (nullable) | SHA-256 dell'xml_content (deduplicazione) |
+| payload_meta | JSONB | Metadati non-PII (tipo_doc, data, importo, piva_cedente) |
+| status | TEXT CHECK | `pending` \| `processing` \| `done` \| `retry` \| `dead` \| `unknown_tenant` |
+| attempt_count | INT DEFAULT 1 | Numero tentativi elaborazione |
+| worker_id | TEXT (nullable) | ID worker che ha acquisito il record (lock pessimistico) |
+| locked_at | TIMESTAMPTZ (nullable) | Timestamp acquisizione lock |
+| error_message | TEXT (nullable) | Dettaglio ultimo errore |
+| created_at | TIMESTAMPTZ | Ricezione webhook |
+| processed_at | TIMESTAMPTZ (nullable) | Completamento elaborazione |
+
+**RLS**: Attiva, nessuna policy per anon/authenticated — solo `service_role` accede.
+
+**Stored Procedure RPC associate**:
+- `claim_batch_for_processing(p_worker_id, p_batch_size)` — atomico con `SELECT FOR UPDATE SKIP LOCKED`
+- `mark_queue_item_done(p_queue_id, p_purge_xml)` — aggiorna status + nullifica XML
+- `schedule_retry(p_queue_id, p_error_msg)` — backoff esponenziale
+- `purge_processed_xml_content(p_retention_hours)` — GDPR cleanup
+- `release_stale_locks(p_timeout_minutes)` — recovery worker crashati
+- `resolve_unknown_tenant(p_piva)` — ri-mette in pending i record con P.IVA non ancora registrata
+
+#### `brand_ambigui` — Brand multi-categoria (migration 048)
+
+Tabella di machine learning: traccia automaticamente i brand che vengono spesso corretti dall'utente in categorie diverse (es. un fornitore che vende sia carne che verdure).
+
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | BIGSERIAL (PK) | Auto-increment |
+| brand | TEXT NOT NULL UNIQUE | Nome brand estratto dalla descrizione |
+| num_correzioni | INTEGER | Numero totale correzioni ricevute |
+| categorie_viste | TEXT[] | Array categorie in cui il brand è stato classificato |
+| tasso_correzione | NUMERIC(6,4) | Percentuale di correzioni manuale (0.0-1.0) |
+| aggiunto_automaticamente | BOOLEAN | Se `TRUE`: il dizionario viene bypassato per questo brand |
+| prima_vista | TIMESTAMPTZ | Prima occorrenza nelle fatture |
+| ultima_modifica | TIMESTAMPTZ | Ultimo aggiornamento contatori |
+
+**Logica**: Quando un brand accumula ≥ 3 correzioni su ≥ 2 categorie diverse con tasso > 20%, `aggiunto_automaticamente` diventa `TRUE` e il brand viene escluso dal matching deterministico del dizionario (passa direttamente al GPT-4o-mini per massima flessibilità).
+
+### Migrazioni SQL (48 file)
+
+Le migrazioni sono numerate progressivamente da `001` a `048` e gestiscono:
 
 - Aggiunta colonne incrementali (reset, sconto, needs_review, verified, P.IVA, altri_ricavi_noiva, tipo_documento)
-- Creazione tabelle (categorie, prodotti_master, prodotti_utente, ristoranti, ricette, ingredienti_workspace, note_diario, margini_mensili, login_attempts)
+- Creazione tabelle (categorie, prodotti_master, prodotti_utente, ristoranti, ricette, ingredienti_workspace, note_diario, margini_mensili, login_attempts, fatture_queue, brand_ambigui)
 - Policy RLS per multi-tenancy e autenticazione custom
-- Stored procedure RPC (create_ristorante, get_distinct_files)
+- Stored procedure RPC (create_ristorante, get_distinct_files, claim_batch_for_processing, mark_queue_item_done, schedule_retry, purge_processed_xml_content, release_stale_locks, resolve_unknown_tenant)
 - Indici di performance
-- Fix retroattivi (diciture corrotte, permessi RLS, foreign key)
-- Tracking costi AI
-- Sessioni e token
-- Rate limiting persistente su DB
+- Fix retroattivi (diciture corrotte, permessi RLS, foreign key, duplicate P.IVA ristoranti)
+- Tracking costi AI, sessioni, token, rate limiting
+- Fix confidenza nulla su prodotti_master (migration 047)
+- Colonna reset rate limit separata da login rate limit (migration 046)
 
 ---
 
@@ -1094,15 +1213,49 @@ Ultimo risultato: **172/172 PASSED** (~1.46s)
 | Region | US (default Streamlit) |
 | Python version | 3.12 |
 
+### Railway — Deploy Worker FastAPI
+
+Railway è la piattaforma utilizzata per deployare il **FastAPI Worker** come servizio Docker separato dal frontend Streamlit. Il worker gestisce le richieste AI pesanti (classificazione batch, parsing XML) evitando di sovraccaricare l'istanza Streamlit.
+
+| Parametro | Valore |
+|-----------|--------|
+| Piattaforma | Railway (Hobby o Pro plan) |
+| Build | `docker/Dockerfile` (percorso configurato in `railway.toml`) |
+| Servizi | Due servizi separati: `ohyeah` (Streamlit) + `worker` (FastAPI) |
+| Comunicazione interna | `WORKER_BASE_URL` → `http://worker:8000` (rete privata Railway) |
+| URL worker esterno | `https://envoicescan-ai-production.up.railway.app` (CORS configurato) |
+| Configurazione | `railway.toml`: `build.dockerfilePath = "docker/Dockerfile"` |
+
+**Setup Railway**:
+1. Collega repo GitHub a Railway
+2. Crea due service: uno per app Streamlit, uno per worker FastAPI
+3. Imposta le env vars nel dashboard Railway (NON committare `.env`)
+4. Il worker non espone la porta 8000 esternamente — accesso solo via rete interna Railway
+
+### Supabase Edge Functions — invoicetronic-webhook
+
+La Edge Function è scritta in **TypeScript/Deno** e gira sull'infrastruttura serverless di Supabase (regione EU). Viene innescata da ogni POST webhook proveniente da Invoicetronic.
+
+| Parametro | Valore |
+|-----------|--------|
+| Runtime | Deno (Supabase Edge Functions) |
+| File | `supabase/functions/invoicetronic-webhook/index.ts` |
+| Deploy | `supabase functions deploy invoicetronic-webhook --no-verify-jwt` |
+| Sviluppo locale | `.\scripts\dev-serve.ps1` (porta 54321) |
+| Test | `.\scripts\dev-serve.ps1 -Test` (esegue `test.ts` con Deno) |
+| Secrets richiesti | `SUPABASE_SERVICE_ROLE_KEY`, `INVOICETRONIC_WEBHOOK_SECRET`, `INVOICETRONIC_API_KEY` |
+
 ### Secrets Management
 
-I secrets sono gestiti tramite Streamlit Secrets (`st.secrets`), configurati nell'interfaccia Streamlit Cloud:
+I secrets sono gestiti su due livelli:
 
+**Streamlit Cloud** (`st.secrets`):
 ```toml
 # .streamlit/secrets.toml (NON versionato)
 SUPABASE_URL = "https://xxxxx.supabase.co"
 SUPABASE_KEY = "eyJhbG..."
 OPENAI_API_KEY = "sk-..."
+WORKER_BASE_URL = "http://worker:8000"   # oppure URL Railway
 
 [brevo]
 api_key = "xkeysib-..."
@@ -1112,18 +1265,25 @@ reply_to_email = "support@ohyeah.app"
 reply_to_name = "Support OH YEAH! Hub"
 ```
 
+**Supabase Edge Function** (via `supabase secrets set`):
+```
+SUPABASE_URL                    → iniettato automaticamente
+SUPABASE_SERVICE_ROLE_KEY       → Supabase Dashboard → Settings → API
+INVOICETRONIC_WEBHOOK_SECRET    → Dashboard Invoicetronic → Webhook
+INVOICETRONIC_API_KEY           → Dashboard Invoicetronic → API Keys
+```
+
+**GitHub Actions** (Settings → Secrets → Actions):
+```
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+INVOICETRONIC_API_KEY
+OPENAI_API_KEY
+```
+
 ### Dipendenze Lockate
 
-Il file `requirements-lock.txt` contiene 91 pacchetti con versioni esatte per build riproducibili:
-
-```
-argon2-cffi==25.1.0
-openai==1.x.x
-streamlit==1.x.x
-supabase==2.x.x
-pandas==2.x.x
-...
-```
+Il file `requirements-lock.txt` contiene 91 pacchetti con versioni esatte per build riproducibili.
 
 ### Supabase
 
@@ -1138,16 +1298,20 @@ pandas==2.x.x
 
 ### Struttura Docker
 
-I file Docker sono organizzati nella cartella `docker/` (spostati dalla root per pulizia del progetto):
+I file Docker sono organizzati nella cartella `docker/`:
 
 | File | Descrizione |
 |------|-------------|
-| `docker/Dockerfile` | Build immagine app Streamlit e worker FastAPI |
+| `docker/Dockerfile` | Build immagine unica per app Streamlit e worker FastAPI |
 | `docker/docker-compose.yml` | Stack completo per sviluppo locale |
-| `docker/docker-compose.prod.yml` | Stack produzione — porta worker 8000 **non esposta** pubblicamente |
+| `docker/docker-compose.prod.yml` | Stack produzione Railway/VPS — porta worker 8000 **non esposta** |
 | `docker/docker-entrypoint.sh` | Script avvio container |
 
-Tutti i `context: ..` e `dockerfile: docker/Dockerfile` sono aggiornati. I volumi usano percorsi relativi `../` rispetto alla cartella `docker/`.
+Il `docker-compose.prod.yml` definisce due servizi:
+- `ohyeah`: Streamlit su porta 8501 (esposta)
+- `worker`: FastAPI su porta 8000 (**non esposta** — solo rete Docker interna)
+
+La comunicazione avviene via `WORKER_BASE_URL=http://worker:8000`, garantendo che le route `/api/classify` e `/api/parse` siano raggiungibili solo dall'interno della rete privata.
 
 ---
 
@@ -1188,6 +1352,44 @@ jobs:
           echo "Site OK - Status: $STATUS"
 ```
 
+### GitHub Actions — Worker fatture_queue
+
+File: `.github/workflows/queue-worker.yml`
+
+Questo workflow elabora in modo asincrono le fatture ricevute dal webhook Invoicetronic. Esegue automaticamente ogni 15 minuti processando la coda `fatture_queue`.
+
+```yaml
+name: Worker — fatture_queue processor
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # Ogni 15 minuti
+  workflow_dispatch:          # Trigger manuale con parametro batch_size
+
+jobs:
+  process-queue:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10       # Safeguard: kill dopo 10 minuti
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11', cache: 'pip' }
+      - run: pip install -r requirements.txt
+      - name: Run queue worker
+        env:
+          SUPABASE_URL:              ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          INVOICETRONIC_API_KEY:     ${{ secrets.INVOICETRONIC_API_KEY }}
+          OPENAI_API_KEY:            ${{ secrets.OPENAI_API_KEY }}
+          WORKER_BATCH_SIZE:         ${{ github.event.inputs.batch_size || '10' }}
+          WORKER_XML_RETENTION_HOURS: '24'
+          WORKER_STALE_LOCK_MINUTES:  '10'
+        run: python worker/run.py
+```
+
+**Costo stimato GitHub Actions**: circa 720 run/mese (ogni 15 min, 24h). Ogni run dura < 60s se la coda è vuota → entro i 2.000 min/mese del free tier per repo privati.
+
+**Trigger manuale**: dal tab "Actions" su GitHub è possibile avviare il worker manualmente, specificando un `batch_size` personalizzato per drain forzato della coda.
+
 ### Logging Applicativo
 
 | Componente | Configurazione |
@@ -1197,7 +1399,7 @@ jobs:
 | Backup files | 10 (totale max ~550 MB) |
 | Livello | INFO in produzione |
 | Format | `%(asctime)s [%(name)s] %(levelname)s %(message)s` |
-| Logger modulari | `app`, `ai`, `auth`, `invoice`, `db`, `admin`, `email`, `margine_service` |
+| Logger modulari | `app`, `ai`, `auth`, `invoice`, `db`, `admin`, `email`, `margine_service`, `fastapi_worker`, `worker.queue_processor` |
 
 ---
 
@@ -1270,6 +1472,22 @@ jobs:
 - L'auto-logout per inattività scatta dopo 8 ore senza interazioni
 - Svuotare cache browser per problemi persistenti
 
+#### Fatture Invoicetronic non appaiono in dashboard
+1. Verificare status `fatture_queue`: record con `status=pending` → non ancora processati
+2. Il worker GitHub Actions gira ogni 15 minuti → attendere il ciclo
+3. `status=failed` o `status=dead` → vedere `error_message` nella tabella
+4. `status=unknown_tenant` → P.IVA del ristorante non ancora registrata su OH YEAH! Hub; aggiungere il ristorante con la P.IVA corretta, poi chiamare la RPC `resolve_unknown_tenant(piva)` per rimettere in `pending`
+5. Verificare che la Edge Function `invoicetronic-webhook` risponda (GET `/functions/v1/invoicetronic-webhook` → `200 OK`)
+
+#### Firma webhook Invoicetronic non valida
+- Verificare che `INVOICETRONIC_WEBHOOK_SECRET` nella Edge Function Supabase corrisponda a quello configurato nel dashboard Invoicetronic → Webhooks
+- Anti-replay: se il timestamp del webhook è più vecchio di 5 minuti, viene rifiutato (protocollo normale → Invoicetronic ri-invia)
+
+#### FastAPI Worker non raggiungibile
+- Se `WORKER_BASE_URL` è impostato ma il worker non risponde, `worker_client.py` fa fallback automatico sulle funzioni Python locali
+- Verificare `GET /health` sul worker → `{"status": "ok"}`
+- In Docker: verificare che il servizio `worker` sia `healthy` prima di avviare `ohyeah`
+
 ### Comandi Utili per Sviluppatori
 
 ```bash
@@ -1278,16 +1496,32 @@ streamlit run app.py
 # oppure tramite script dedicato
 .\scripts\dev-serve.ps1
 
+# Avviare la Edge Function localmente (Deno)
+.\scripts\dev-serve.ps1              # Terminale 1 — avvia webhook handler
+.\scripts\dev-serve.ps1 -Test        # Terminale 2 — esegue test.ts
+.\scripts\dev-serve.ps1 -Deploy      # Deploy su Supabase Cloud
+
 # Eseguire i test
 pytest tests/ -v --tb=short
 # oppure tramite script dedicato
 .\scripts\run-tests.ps1
 
+# Avviare il FastAPI Worker in locale
+uvicorn services.fastapi_worker:app --host 0.0.0.0 --port 8000 --reload
+
+# Avviare il worker coda manualmente (test locale)
+$env:SUPABASE_URL = "..."
+$env:SUPABASE_SERVICE_ROLE_KEY = "..."
+python worker/run.py
+
+# Docker compose sviluppo
+docker-compose -f docker/docker-compose.yml up
+
+# Docker compose produzione
+docker-compose -f docker/docker-compose.prod.yml up -d
+
 # Controllare errori di import
 python -c "import app"
-
-# Contare righe di codice
-find . -name "*.py" -not -path "./.venv/*" -not -path "./__pycache__/*" | xargs wc -l
 
 # Verificare dipendenze
 pip freeze > requirements-lock.txt
@@ -1299,8 +1533,16 @@ pip freeze > requirements-lock.txt
 |-----------|-------------|---------|
 | `ADMIN_EMAILS` | Lista email admin (separati da virgola) | `mattiadavolio90@gmail.com` |
 | `SUPABASE_URL` | URL progetto Supabase | In `st.secrets` |
-| `SUPABASE_KEY` | Chiave API Supabase | In `st.secrets` |
+| `SUPABASE_KEY` | Chiave API Supabase (anon) | In `st.secrets` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (worker + Edge Function) | In secrets Railway / GitHub |
 | `OPENAI_API_KEY` | Chiave API OpenAI | In `st.secrets` |
+| `WORKER_BASE_URL` | URL FastAPI Worker | `http://worker:8000` (Docker) |
+| `INVOICETRONIC_API_KEY` | API Key Invoicetronic (fallback download XML) | In GitHub Secrets / Supabase Secrets |
+| `INVOICETRONIC_WEBHOOK_SECRET` | Segreto firma HMAC webhook | In Supabase Secrets (Edge Function) |
+| `WORKER_BATCH_SIZE` | Record da processare per ciclo worker queue | `10` |
+| `WORKER_XML_RETENTION_HOURS` | Ore prima del purge GDPR dei contenuti XML | `24` |
+| `WORKER_RATE_LIMIT` | Max richieste/minuto per IP al FastAPI Worker | `30` |
+| `WORKER_RATE_WINDOW_SEC` | Finestra rate limit FastAPI Worker (secondi) | `60` |
 
 ### Limiti dell'Applicazione
 
@@ -1322,6 +1564,271 @@ pip freeze > requirements-lock.txt
 | Batch AI | 50 articoli per chiamata | `app.py` |
 | Paginazione DB | 1.000 righe per pagina | `db_service.py` |
 | Log file rotation | 50 MB × 10 backup | `logger_setup.py` |
+
+---
+
+*Documento generato automaticamente dall'analisi completa del codice sorgente.*
+*Per aggiornamenti, modifiche o domande: mattiadavolio90@gmail.com*
+
+---
+
+## 20. Integrazione Invoicetronic — Ricezione Automatica SDI
+
+### Cos'è Invoicetronic
+
+Invoicetronic è un servizio SaaS italiano che funge da **intermediario SDI** (Sistema di Interscambio): riceve le fatture elettroniche indirizzate al codice destinatario `7HD37X0` e le notifica via webhook HTTPS firmato.
+
+Grazie a questa integrazione, i ristoratori che comunicano ai propri fornitori il codice destinatario `7HD37X0` **ricevono le fatture automaticamente** in OH YEAH! Hub senza dover caricare manualmente i file XML.
+
+### Flusso Completo
+
+```
+Fornitore → SDI → Invoicetronic (codice dest. 7HD37X0)
+                       │
+                       │ POST HTTPS firmato (HMAC-SHA256)
+                       ▼
+          Supabase Edge Function: invoicetronic-webhook
+          ┌────────────────────────────────────────────┐
+          │ 1. Legge body RAW (necesssario per HMAC)   │
+          │ 2. Verifica HMAC-SHA256 + anti-replay 5min │
+          │ 3. Filtra: solo endpoint="receive"+success  │
+          │ 4. GET api.invoicetronic.com/receive/{id}  │
+          │    (SSRF whitelist: solo *.invoicetronic.com│
+          │     redirect: 'error', timeout 3s)         │
+          │ 5. Ottieni xml_file (base64) o xml_url     │
+          │ 6. Estrai P.IVA destinatario dall'XML      │
+          │    (CessionarioCommittente → IdCodice/CF)  │
+          │ 7. Lookup P.IVA → tabella ristoranti       │
+          │    → se trovata: user_id + ristorante_id   │
+          │    → se non trovata: status=unknown_tenant │
+          │ 8. INSERT fatture_queue (idempotente)       │
+          │    ON CONFLICT (event_id) DO NOTHING       │
+          │ 9. Risponde 200 SEMPRE (evita retry Storm) │
+          └────────────────────────────────────────────┘
+                       │ (ogni 15 minuti)
+                       ▼
+          GitHub Actions: queue-worker.yml
+          ┌────────────────────────────────────────────┐
+          │ python worker/run.py                       │
+          │ → purge_processed_xml_content() GDPR       │
+          │ → release_stale_locks() recovery           │
+          │ → claim_batch_for_processing()             │
+          │   (SELECT FOR UPDATE SKIP LOCKED)          │
+          │ Per ogni record:                           │
+          │   → estrai_dati_da_xml() — parser esistente│
+          │   → salva_fattura_processata()             │
+          │   → mark_queue_item_done() + purge XML     │
+          │   → se errore: schedule_retry() backoff    │
+          └────────────────────────────────────────────┘
+                       │
+                       ▼
+          public.fatture (visibile in dashboard utente)
+```
+
+### Edge Function — Sicurezza
+
+La Edge Function implementa le seguenti misure di sicurezza OWASP:
+
+| Misura | Implementazione |
+|--------|----------------|
+| **Autenticità webhook** | HMAC-SHA256 con segreto condiviso; comparazione timing-safe (`timingSafeEqual`) |
+| **Anti-replay** | Rifiuta eventi con timestamp > 5 minuti dalla ricezione |
+| **SSRF Prevention** | Whitelist host `*.invoicetronic.com` HTTPS only; `redirect: 'error'` su tutti i fetch |
+| **DoS Protection** | XML max 10 MB; timeout API 3s; timeout download XML 2s |
+| **Idempotenza** | `ON CONFLICT (event_id) DO NOTHING` — ri-invii multipli non causano duplicati |
+| **Risposta neutrale** | Risponde sempre 200 dopo INSERT (evita retry aggressivi da Invoicetronic) |
+| **Zero PII nei log** | Mai loggare XML, nomi, IBAN, codici fiscali o API keys |
+| **Service role isolato** | Il client Supabase usa `service_role` — mai `anon key` in contesto server |
+
+### Worker Python — Elaborazione Asincrona
+
+Il worker (`worker/queue_processor.py`) è progettato per operare in modo robusto in ambienti multi-istanza:
+
+#### Lock Pessimistico
+```sql
+-- claim_batch_for_processing() usa:
+SELECT ... FOR UPDATE SKIP LOCKED
+```
+Più istanze del worker (es. multiple run GitHub Actions sovrapposti) non processano mai lo stesso record.
+
+#### Retry con Backoff Esponenziale
+I record falliti vengono ri-schedulati con `schedule_retry()`. Il numero di tentativi è tracciato in `attempt_count`. Dopo N tentativi massimi il record diventa `dead` (non viene perso, è ancora consultabile in DB).
+
+#### GDPR Purge
+Dopo 24 ore dall'elaborazione, `purge_processed_xml_content()` nullifica il campo `xml_content` (dati sensibili). L'`xml_url` viene conservata per eventuale re-download, ma l'XML grezzo non resta in DB.
+
+#### Recovery Tenant Sconosciuto
+Se una fattura arriva per una P.IVA non ancora registrata in OH YEAH! Hub, il record viene salvato con `status=unknown_tenant`. Quando il ristorante si registra con quella P.IVA, l'admin può chiamare:
+```sql
+SELECT resolve_unknown_tenant('01234567890');
+-- Aggiorna user_id/ristorante_id e rimette in pending per rielaborazione
+```
+
+### Configurazione Invoicetronic
+
+1. Accedere al dashboard Invoicetronic
+2. **Webhooks** → aggiungi webhook URL: `https://<project>.supabase.co/functions/v1/invoicetronic-webhook`
+3. Copiare il **Webhook Secret** → salvare in Supabase come `INVOICETRONIC_WEBHOOK_SECRET`
+4. **API Keys** → copiare API Key → salvare in Supabase come `INVOICETRONIC_API_KEY` e in GitHub Secrets
+5. Comunicare il **codice destinatario `7HD37X0`** ai fornitori del ristorante
+
+### Test Locale Edge Function
+
+```powershell
+# Terminale 1: avvia la funzione
+.\scripts\dev-serve.ps1
+
+# Terminale 2: esegui i test automatici
+.\scripts\dev-serve.ps1 -Test
+
+# Deploy su Supabase Cloud
+.\scripts\dev-serve.ps1 -Deploy
+```
+
+---
+
+## 21. FastAPI Worker — Classificazione AI Scalabile
+
+### Scopo
+
+Il FastAPI Worker (`services/fastapi_worker.py`) separa la logica di classificazione AI e parsing XML dal frontend Streamlit. Questo consente di:
+
+- **Scalare indipendentemente** il layer AI dal frontend
+- **Isolare il carico** OpenAI/parsing in un container dedicato
+- **Evitare timeout** di Streamlit su classificazioni batch grandi
+- **Riutilizzare** il worker per il flusso Invoicetronic (webhook + coda)
+
+### Modalità Operativa
+
+```
+┌─────────────────┐     WORKER_BASE_URL impostata     ┌─────────────────┐
+│  Streamlit UI   │ ──── POST /api/classify ─────────▶ │  FastAPI Worker │
+│ worker_client.py│ ──── POST /api/parse ────────────▶ │  (porta 8000)   │
+└─────────────────┘                                    └─────────────────┘
+
+              WORKER_BASE_URL NON impostata (sviluppo locale)
+┌─────────────────┐
+│  Streamlit UI   │ ──── classifica_con_ai() locale ── (nessun worker)
+│ worker_client.py│       fallback automatico
+└─────────────────┘
+```
+
+### Endpoints REST
+
+#### `GET /health`
+```json
+{"status": "ok", "version": "1.0.0"}
+```
+Usato da Docker healthcheck e load balancer.
+
+#### `POST /api/classify`
+
+Classifica una lista di descrizioni prodotti con la pipeline memoria + GPT-4o-mini.
+
+**Request body (JSON)**:
+```json
+{
+  "descrizioni": ["FARINA 00 KG 25", "VINO CHIANTI 0.75L"],
+  "fornitori":   ["MOLINO SPADONI", "ANTINORI"],
+  "iva":         [10, 22],
+  "hint":        [null, "BEVANDE"],
+  "user_id":     "abc-123-uuid"
+}
+```
+
+**Response**:
+```json
+{
+  "categorie": ["SECCO", "VINI"],
+  "count": 2,
+  "elapsed_ms": 342
+}
+```
+
+- `user_id` opzionale: se fornito, precarica la memoria classificazioni dell'utente (prodotti_utente + classificazioni_manuali)
+- Restituisce le categorie nello stesso ordine dell'input
+
+#### `POST /api/parse`
+
+Estrae le righe prodotto da una fattura XML o P7M.
+
+**Request**: `multipart/form-data`
+- `file`: file XML o P7M (max 50 MB)
+- `user_id`: opzionale, per precarico memoria
+
+**Response**:
+```json
+{
+  "fatture": [{"descrizione": "OLIO EVO LT 5", "categoria": "OLIO E CONDIMENTI", ...}],
+  "count": 12,
+  "elapsed_ms": 890
+}
+```
+
+### Rate Limiting Worker
+
+Il worker implementa rate limiting in-memory per IP:
+
+| Parametro | Default | Env Var |
+|-----------|---------|---------|
+| Max richieste | 30 | `WORKER_RATE_LIMIT` |
+| Finestra (sec) | 60 | `WORKER_RATE_WINDOW_SEC` |
+
+Superato il limite: risponde `HTTP 429 Too Many Requests`.
+
+**Nota**: in Fase 4 (high-availability) il rate limiter va sostituito con Redis per supportare worker distribuiti.
+
+### worker_client.py — Proxy con Fallback
+
+`services/worker_client.py` è il punto di accesso unico dal frontend. Implementa:
+
+1. **Routing condizionale**: se `WORKER_BASE_URL` è impostata, usa il worker HTTP; altrimenti usa le funzioni locali
+2. **Fallback automatico**: qualsiasi errore HTTP 5xx o timeout → esegue localmente senza interrompere il flusso
+3. **Non fa fallback su 4xx**: errori client (422, 429) vengono propagati
+4. **Timeout configurati**: 90s per `/classify` (OpenAI può richiedere 30-60s), 30s per `/parse`
+
+```python
+# Uso in app.py (via worker_client):
+from services.worker_client import classifica_via_worker, parsa_via_worker
+
+categorie = classifica_via_worker(
+    descrizioni=["PARMIGIANO 1KG"],
+    user_id=st.session_state["user_data"]["id"]
+)
+```
+
+### Avvio Locale (senza Docker)
+
+```bash
+# Attiva venv
+.venv\Scripts\Activate.ps1
+
+# Avvia worker
+uvicorn services.fastapi_worker:app --host 0.0.0.0 --port 8000 --reload
+
+# Documentazione interattiva Swagger UI
+http://localhost:8000/docs
+http://localhost:8000/redoc
+```
+
+### Avvio con Docker Compose
+
+```bash
+# Sviluppo (con hot-reload)
+docker-compose -f docker/docker-compose.yml up
+
+# Produzione
+docker-compose -f docker/docker-compose.prod.yml up -d
+```
+
+Il container worker viene definito con `command: uvicorn services.fastapi_worker:app --host 0.0.0.0 --port 8000 --workers 2` nel `docker-compose.prod.yml`.
+
+### Sicurezza Worker
+
+- **Porta 8000 non esposta in produzione**: inaccessibile dall'esterno; comunicazione solo via rete Docker interna
+- **CORS ristretto**: origins whitelist configurata su `https://envoicescan-ai-production.up.railway.app`
+- **Nessuna autenticazione JWT sulle route**: il worker si fida della rete interna Docker (non esposto)
+- **Service role key**: usa `SUPABASE_SERVICE_ROLE_KEY` (non anon key) per caricare la memoria classificazioni
 
 ---
 

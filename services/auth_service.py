@@ -639,7 +639,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         # Query utente attivo
         response = supabase_client.table("users") \
             .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
-                    "password_hash, partita_iva, created_at") \
+                "password_hash, partita_iva, created_at, last_login") \
             .eq("email", email) \
             .eq("attivo", True) \
             .execute()
@@ -653,14 +653,20 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         # Verifica password
         if verify_and_migrate_password(user, password):
             registra_tentativo(email, True, supabase_client)
+            previous_last_login = user.get('last_login')
+            login_now_iso = datetime.now(timezone.utc).isoformat()
             # Aggiorna last_login e last_seen_at
             try:
                 supabase_client.table('users').update({
-                    'last_login': datetime.now(timezone.utc).isoformat(),
-                    'last_seen_at': datetime.now(timezone.utc).isoformat(),
+                    'last_login': login_now_iso,
+                    'last_seen_at': login_now_iso,
                 }).eq('id', user['id']).execute()
             except Exception:
                 logger.exception('Errore aggiornamento last_login/last_seen_at')
+
+            user['last_login_precedente'] = previous_last_login
+            user['last_login'] = login_now_iso
+            user['login_at'] = login_now_iso
             
             # Rimuovi dati sensibili prima di restituire (non devono finire in session_state)
             for _sensitive_key in ('password_hash', 'reset_code', 'reset_expires'):
@@ -674,6 +680,101 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
     except Exception as e:
         logger.exception("Errore verifica credenziali")
         return None, "Errore durante la verifica delle credenziali. Riprova tra qualche minuto."
+
+
+def riepilogo_fatture_auto_da_ultimo_login(
+    user_id: str,
+    last_login_precedente: Optional[str],
+    login_at: Optional[str] = None,
+    supabase_client=None,
+) -> Dict[str, Any]:
+    """
+    Restituisce il riepilogo delle fatture auto-ricevute (Invoicetronic)
+    tra l'ultimo login precedente e il login corrente.
+    """
+    riepilogo: Dict[str, Any] = {
+        'has_new': False,
+        'file_count': 0,
+        'row_count': 0,
+        'event_count': 0,
+        'recent_files': [],
+        'window_start': last_login_precedente,
+        'window_end': login_at,
+    }
+
+    if not user_id or not last_login_precedente:
+        return riepilogo
+
+    try:
+        from services import get_supabase_client
+
+        if supabase_client is None:
+            supabase_client = get_supabase_client()
+
+        window_start_dt = datetime.fromisoformat(last_login_precedente.replace('Z', '+00:00'))
+        if window_start_dt.tzinfo is None:
+            window_start_dt = window_start_dt.replace(tzinfo=timezone.utc)
+
+        if login_at:
+            window_end_dt = datetime.fromisoformat(login_at.replace('Z', '+00:00'))
+            if window_end_dt.tzinfo is None:
+                window_end_dt = window_end_dt.replace(tzinfo=timezone.utc)
+        else:
+            window_end_dt = datetime.now(timezone.utc)
+
+        if window_end_dt <= window_start_dt:
+            return riepilogo
+
+        res = supabase_client.table('upload_events') \
+            .select('file_name, rows_saved, created_at, details, status') \
+            .eq('user_id', user_id) \
+            .in_('status', ['SAVED_OK', 'SAVED_PARTIAL']) \
+            .gte('created_at', window_start_dt.isoformat()) \
+            .lte('created_at', window_end_dt.isoformat()) \
+            .order('created_at', desc=True) \
+            .limit(500) \
+            .execute()
+
+        rows = res.data or []
+        auto_events = []
+        for row in rows:
+            details = row.get('details') if isinstance(row.get('details'), dict) else {}
+            source = str(details.get('source', '')).strip().lower()
+            if source != 'invoicetronic':
+                continue
+            auto_events.append(row)
+
+        if not auto_events:
+            return riepilogo
+
+        unique_files = []
+        seen = set()
+        row_count = 0
+
+        for row in auto_events:
+            fname = str(row.get('file_name') or '').strip()
+            if fname and fname not in seen:
+                seen.add(fname)
+                unique_files.append(fname)
+            try:
+                row_count += int(row.get('rows_saved') or 0)
+            except (TypeError, ValueError):
+                pass
+
+        riepilogo.update({
+            'has_new': len(unique_files) > 0,
+            'file_count': len(unique_files),
+            'row_count': row_count,
+            'event_count': len(auto_events),
+            'recent_files': unique_files[:3],
+            'window_start': window_start_dt.isoformat(),
+            'window_end': window_end_dt.isoformat(),
+        })
+        return riepilogo
+
+    except Exception:
+        logger.exception('Errore calcolo riepilogo fatture auto da ultimo login')
+        return riepilogo
 
 
 def verifica_sessione_da_cookie(
@@ -930,6 +1031,7 @@ __all__ = [
     'verify_and_migrate_password',
     'verifica_credenziali',
     'invia_codice_reset',
+    'riepilogo_fatture_auto_da_ultimo_login',
     'hash_password',
     'registra_logout_utente',
     # Nuove funzioni GDPR password + P.IVA

@@ -1151,7 +1151,8 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
 def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                              supabase_client=None, silent: bool = False,
                              ristoranteid: str = None,
-                             user_id: str = None) -> Dict[str, Any]:
+                             user_id: str = None,
+                             ingestion_source: str = "manual_upload") -> Dict[str, Any]:
     """
     Salva fatture su Supabase con logging eventi.
 
@@ -1162,6 +1163,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
         silent: Se True, nasconde messaggi UI Streamlit (obbligatorio fuori Streamlit)
         ristoranteid: UUID ristorante (obbligatorio)
         user_id: UUID utente — se None, tenta st.session_state (solo in UI Streamlit)
+        ingestion_source: Origine ingestione (es. manual_upload, invoicetronic)
 
     Returns:
         Dict con: success, error, righe, location
@@ -1176,6 +1178,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
 
     # Sanitizza nome file: previene path traversal nel campo file_origine del DB
     nome_file = nome_file.replace('..', '').replace('/', '').replace('\\', '')
+    event_source = (ingestion_source or "manual_upload").strip().lower()
 
     # ── Risoluzione user_id ────────────────────────────────────────────────────
     # Accetta user_id esplicito (worker) o lo legge da session_state (UI Streamlit)
@@ -1269,7 +1272,8 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                         rows_saved=verifica["righe_db"],
                         error_stage=None,
                         error_message=None,
-                        details=None
+                        details={"source": event_source},
+                        supabase_client=supabase_client
                     )
                 elif verifica:
                     log_upload_event(
@@ -1282,10 +1286,12 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                         error_stage="POSTCHECK",
                         error_message=f"Perdita dati: {verifica['perdite']} righe mancanti",
                         details={
+                            "source": event_source,
                             "righe_parsed": verifica["righe_parsed"],
                             "righe_db": verifica["righe_db"],
                             "perdite": verifica["perdite"]
-                        }
+                        },
+                        supabase_client=supabase_client
                     )
             except Exception as log_error:
                 logger.error(f"Errore logging upload event: {log_error}")
@@ -1329,7 +1335,8 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     rows_saved=0,
                     error_stage="SUPABASE_INSERT",
                     error_message=str(e)[:500],
-                    details={"exception_type": type(e).__name__}
+                    details={"source": event_source, "exception_type": type(e).__name__},
+                    supabase_client=supabase_client
                 )
             except Exception as log_error:
                 logger.error(f"Errore logging failed event: {log_error}")

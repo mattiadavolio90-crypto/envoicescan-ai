@@ -225,6 +225,7 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
             silent=True,          # fuori Streamlit: no st.error/st.success
             ristoranteid=ristorante_id,
             user_id=user_id,      # passato esplicitamente (non via session_state)
+            ingestion_source=item.get("source", "invoicetronic"),
         )
     except Exception as exc:
         msg = f"salva_fattura_processata eccezione: {exc}"

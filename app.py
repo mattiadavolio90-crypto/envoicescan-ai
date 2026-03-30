@@ -74,6 +74,20 @@ from services.auth_service import (
     verifica_sessione_da_cookie,
 )
 
+try:
+    from services.auth_service import riepilogo_fatture_auto_da_ultimo_login
+except ImportError:
+    def riepilogo_fatture_auto_da_ultimo_login(*args, **kwargs):
+        return {
+            'has_new': False,
+            'file_count': 0,
+            'row_count': 0,
+            'event_count': 0,
+            'recent_files': [],
+            'window_start': None,
+            'window_end': None,
+        }
+
 from services.invoice_service import (
     estrai_dati_da_xml,
     estrai_xml_da_p7m,
@@ -619,6 +633,25 @@ def mostra_pagina_login():
                             
                             # Pulizia chiave login UI
                             st.session_state.pop('login_tab_attivo', None)
+
+                            # Notifica fatture automatiche ricevute tra login precedente e corrente
+                            try:
+                                summary_auto = riepilogo_fatture_auto_da_ultimo_login(
+                                    user_id=user.get('id'),
+                                    last_login_precedente=user.get('last_login_precedente'),
+                                    login_at=user.get('login_at'),
+                                    supabase_client=supabase,
+                                )
+                                if summary_auto.get('has_new') and user.get('email') not in ADMIN_EMAILS:
+                                    st.session_state.auto_invoice_notice = summary_auto
+                                    st.session_state.auto_invoice_notice_toast_shown = False
+                                    st.session_state.auto_invoice_notice_dismissed = False
+                                else:
+                                    st.session_state.pop('auto_invoice_notice', None)
+                                    st.session_state.pop('auto_invoice_notice_toast_shown', None)
+                                    st.session_state.pop('auto_invoice_notice_dismissed', None)
+                            except Exception as _notice_err:
+                                logger.warning(f"Errore preparazione notifica fatture automatiche: {_notice_err}")
                             
                             # 🍪 Genera e salva session_token nel DB + cookie persistente
                             if _cookie_manager is not None:
@@ -1167,6 +1200,40 @@ render_sidebar(user)
 # ============================================
 
 render_oh_yeah_header()
+
+auto_notice = st.session_state.get('auto_invoice_notice')
+if auto_notice and not st.session_state.get('auto_invoice_notice_dismissed', False):
+    file_count = int(auto_notice.get('file_count', 0) or 0)
+    row_count = int(auto_notice.get('row_count', 0) or 0)
+    recent_files = auto_notice.get('recent_files', []) or []
+
+    if file_count > 0:
+        if not st.session_state.get('auto_invoice_notice_toast_shown', False):
+            fatture_label = 'fattura' if file_count == 1 else 'fatture'
+            st.toast(f"📬 Hai ricevuto {file_count} nuove {fatture_label} automatiche", icon="📥")
+            st.session_state.auto_invoice_notice_toast_shown = True
+
+        fatture_label = 'fattura' if file_count == 1 else 'fatture'
+        righe_label = 'riga' if row_count == 1 else 'righe'
+        extra = f"File recenti: {', '.join(recent_files)}" if recent_files else ""
+
+        col_notice, col_actions = st.columns([5, 2])
+        with col_notice:
+            st.info(
+                f"📥 Nuove fatture automatiche dall'ultimo accesso: "
+                f"{file_count} {fatture_label}, {row_count} {righe_label}. {extra}"
+            )
+        with col_actions:
+            btn_col1, btn_col2 = st.columns(2)
+            with btn_col1:
+                if st.button("Apri", key="auto_notice_open", use_container_width=True):
+                    st.session_state.sezione_attiva = "dettaglio"
+                    st.session_state.auto_invoice_notice_dismissed = True
+                    st.rerun()
+            with btn_col2:
+                if st.button("Chiudi", key="auto_notice_close", use_container_width=True):
+                    st.session_state.auto_invoice_notice_dismissed = True
+                    st.rerun()
 
 st.markdown("""
 <h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-top: 0.5rem;">

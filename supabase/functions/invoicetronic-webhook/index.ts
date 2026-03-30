@@ -36,7 +36,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
-const INVOICETRONIC_API_BASE = 'https://api.invoicetronic.com'
+const INVOICETRONIC_API_BASE = 'https://api.invoicetronic.com/v1'
 
 // SSRF whitelist: unici host da cui questo servizio può fare fetch
 const ALLOWED_HOST_EXACT  = 'invoicetronic.com'
@@ -49,23 +49,46 @@ const XML_TIMEOUT_MS     = 2_000           // timeout download XML da URL
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
-/** Payload inviato via webhook da Invoicetronic per ogni evento */
+/** Payload inviato via webhook da Invoicetronic per ogni evento.
+ *  In produzione sono comparsi payload con naming diverso da quello usato
+ *  nei test locali (`event=receive.add`, `resourceId`, `statusCode`).
+ */
 interface WebhookEvent {
-  id:          number  // event_id da salvare in fatture_queue
-  user_id:     number  // ID utente Invoicetronic (NON il nostro)
-  company_id:  number  // ID azienda Invoicetronic
-  resource_id: number  // ID fattura ricevuta — usato per GET /receive/{id}
-  endpoint:    string  // "receive" | "send" | ...
-  method:      string
-  status_code: number
-  success:     boolean
-  date_time:   string
-  api_version: number
+  id?:          number | string
+  user_id?:     number | string
+  company_id?:  number | string
+  resource_id?: number | string
+  resourceId?:  number | string
+  endpoint?:    string
+  event?:       string
+  method?:      string
+  status_code?: number | string
+  statusCode?:  number | string
+  success?:     boolean | string
+  date_time?:   string
+  dateTime?:    string
+  api_version?: number | string
+}
+
+interface NormalizedWebhookEvent {
+  eventId: number | null
+  userId: number | null
+  companyId: number | null
+  resourceId: number | null
+  endpoint: string | null
+  eventName: string | null
+  method: string | null
+  statusCode: number | null
+  success: boolean
+  dateTime: string | null
+  apiVersion: number | null
 }
 
 /** Risposta da GET https://api.invoicetronic.com/receive/{resource_id} */
 interface ReceiveApiRecord {
   id:         number
+  payload?:   string
+  encoding?:  'Xml' | 'Base64' | string
   xml_file?:  string   // XML FatturaPA in base64 (preferito)
   xml_url?:   string   // URL alternativo per download XML
   file_name?: string   // nome file originale (non-PII, utile per debug)
@@ -193,6 +216,44 @@ function base64ToUtf8(b64: string): string {
   return new TextDecoder('utf-8').decode(buf)
 }
 
+function toNumberOrNull(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    if (Number.isFinite(parsed)) return parsed
+  }
+  return null
+}
+
+function toBool(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true') return true
+    if (normalized === 'false') return false
+  }
+  return null
+}
+
+function normalizeWebhookEvent(ev: WebhookEvent): NormalizedWebhookEvent {
+  const statusCode = toNumberOrNull(ev.status_code ?? ev.statusCode)
+  const explicitSuccess = toBool(ev.success)
+
+  return {
+    eventId:   toNumberOrNull(ev.id),
+    userId:    toNumberOrNull(ev.user_id),
+    companyId: toNumberOrNull(ev.company_id),
+    resourceId: toNumberOrNull(ev.resource_id ?? ev.resourceId),
+    endpoint:  typeof ev.endpoint === 'string' ? ev.endpoint.trim().toLowerCase() : null,
+    eventName: typeof ev.event === 'string' ? ev.event.trim().toLowerCase() : null,
+    method:    typeof ev.method === 'string' ? ev.method.trim().toUpperCase() : null,
+    statusCode,
+    success: explicitSuccess ?? (statusCode != null && statusCode >= 200 && statusCode < 300),
+    dateTime: typeof ev.date_time === 'string' ? ev.date_time : (typeof ev.dateTime === 'string' ? ev.dateTime : null),
+    apiVersion: toNumberOrNull(ev.api_version),
+  }
+}
+
 // ─── Utility: estrazione P.IVA del destinatario da XML FatturaPA ──────────────
 // Cerca nel blocco <CessionarioCommittente> (destinatario della fattura):
 //   1° tentativo: <IdCodice>  → P.IVA italiana (11 cifre) o estera
@@ -284,21 +345,30 @@ Deno.serve({ port: _servePort }, async (req: Request): Promise<Response> => {
   }
 
   // ── 3. Deserializza JSON ───────────────────────────────────────────────────
-  let ev: WebhookEvent
+  let parsedEvent: WebhookEvent
   try {
-    ev = JSON.parse(rawBody) as WebhookEvent
+    parsedEvent = JSON.parse(rawBody) as WebhookEvent
   } catch {
     return new Response('Bad Request: JSON non valido', { status: 400 })
   }
 
+  const ev = normalizeWebhookEvent(parsedEvent)
+
   // ── 4. Filtra: processa solo "receive" con successo ────────────────────────
-  // Altri eventi (send, status, ecc.) → ignora silenziosamente → 200
-  if (ev.endpoint !== 'receive' || ev.success !== true) {
+  // Altri eventi (send, status, ecc.) → ignora silenziosamente → 200.
+  // Alcuni webhook usano `event=receive.add` invece di `endpoint=receive`.
+  const isReceiveEvent = ev.endpoint === 'receive' || ev.eventName === 'receive.add'
+  if (!isReceiveEvent || ev.success !== true) {
     return new Response('OK', { status: 200 })
   }
 
-  const eventId       = String(ev.id)
-  const resourceId    = ev.resource_id
+  if (ev.eventId == null || ev.resourceId == null) {
+    console.warn('[wh] Webhook firmato ma senza event_id/resource_id validi')
+    return new Response('OK', { status: 200 })
+  }
+
+  const eventId       = String(ev.eventId)
+  const resourceId    = ev.resourceId
   const correlationId = (
     req.headers.get('X-Request-ID') ??
     req.headers.get('X-Correlation-ID') ??
@@ -322,14 +392,16 @@ Deno.serve({ port: _servePort }, async (req: Request): Promise<Response> => {
   // Metadati non-PII da salvare in payload_meta (per query/debug senza XML)
   const meta: Record<string, unknown> = {
     resource_id:              resourceId,
-    invoicetronic_event_id:   ev.id,
-    invoicetronic_company_id: ev.company_id,
-    date_time:                ev.date_time,
+    invoicetronic_event_id:   ev.eventId,
+    invoicetronic_company_id: ev.companyId,
+    date_time:                ev.dateTime,
+    webhook_event:            ev.eventName,
+    webhook_endpoint:         ev.endpoint,
   }
 
   // ── 5. Recupera dettaglio fattura da API Invoicetronic ─────────────────────
   try {
-    const apiUrl  = `${INVOICETRONIC_API_BASE}/receive/${resourceId}`
+    const apiUrl  = `${INVOICETRONIC_API_BASE}/receive/${resourceId}?include_payload=true`
     // Basic auth: username=apiKey, password='' → base64("apiKey:")
     const authHdr = `Basic ${btoa(`${apiKey}:`)}`
 
@@ -351,7 +423,17 @@ Deno.serve({ port: _servePort }, async (req: Request): Promise<Response> => {
       if (typeof data.file_name === 'string') meta.nome_file = data.file_name
 
       // ── 6. Ottieni XML (base64 inline o URL remoto) ──────────────────────
-      if (typeof data.xml_file === 'string' && data.xml_file.length > 0) {
+      if (typeof data.payload === 'string' && data.payload.length > 0) {
+        // API v1 corrente: l'XML arriva in `payload`, plain text o base64.
+        const normalizedPayload = data.payload.trim()
+        const encoding = typeof data.encoding === 'string' ? data.encoding : 'Xml'
+        const decoded = encoding === 'Base64'
+          ? base64ToUtf8(normalizedPayload)
+          : normalizedPayload
+        if (decoded.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
+        xmlContent = decoded
+
+      } else if (typeof data.xml_file === 'string' && data.xml_file.length > 0) {
         // Caso A: XML in base64 direttamente nel response JSON
         const decoded = base64ToUtf8(data.xml_file)
         if (decoded.length > MAX_XML_BYTES) throw new Error('XML supera limite 10 MB')
@@ -370,7 +452,7 @@ Deno.serve({ port: _servePort }, async (req: Request): Promise<Response> => {
 
       } else {
         // API risponde OK ma senza XML (caso anomalo, loggare per debug)
-        meta.api_warning = 'API ok ma né xml_file né xml_url presenti nel response'
+        meta.api_warning = 'API ok ma payload/xml_file/xml_url assenti nel response'
       }
 
       // ── 7. Estrazione dati dall'XML ────────────────────────────────────────

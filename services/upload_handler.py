@@ -214,6 +214,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         user_email=_email,
                         file_name=_fname,
                         status='DUPLICATE_SKIPPED',
+                        details={'source': 'manual_upload'},
                         supabase_client=supabase
                     )
         except Exception as _log_ex:
@@ -247,6 +248,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                     log_upload_event(
                         user_id=_uid_tl, user_email=_email_tl,
                         file_name=_bf.name, status='TRIAL_FORMAT_BLOCKED',
+                        details={'source': 'manual_upload'},
                         supabase_client=supabase
                     )
                 file_nuovi = [
@@ -596,7 +598,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                 rows_saved=0,
                                 error_stage=error_stage,
                                 error_message=error_msg,
-                                details={"exception_type": type(e).__name__},
+                                details={"source": "manual_upload", "exception_type": type(e).__name__},
                                 supabase_client=supabase
                             )
                         except Exception as log_error:
