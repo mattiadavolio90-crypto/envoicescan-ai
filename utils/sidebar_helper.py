@@ -24,7 +24,7 @@ def render_oh_yeah_header():
         -webkit-text-fill-color: transparent;
         background-clip: text;">OH YEAH! Hub</span>
     </h1>
-    <p style="font-size: clamp(1.1rem, 2.2vw, 1.45rem); font-weight: 600; color: #1e3a8a; letter-spacing: 1.5px; margin-top: 0.2rem;">Analizza. Controlla. Margina.</p>
+    <p style="font-size: clamp(1.2rem, 2.5vw, 1.65rem); font-weight: 800; color: #1e3a8a; letter-spacing: 1.5px; margin-top: 0.2rem;">Analizza Controlla Margina</p>
 </div>
 """, unsafe_allow_html=True)
 

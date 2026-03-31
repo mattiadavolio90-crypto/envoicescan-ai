@@ -228,23 +228,27 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
             # Query 2: Carica TUTTA la memoria globale (paginata)
             rows_globale = _fetch_all_rows(
                 supabase_client, 'prodotti_master',
-                'descrizione, categoria, confidence'
+                'descrizione, categoria, confidence, consecutive_correct_classifications'
             )
 
             if rows_globale:
-                _bypass = {}   # alta/altissima → skip AI direttamente
+                _bypass = {}   # alta/altissima o streak>=3 → skip AI direttamente
                 _hint = {}     # media/None → passa come hint, AI ha l'ultima parola
+                _streak_promo = 0
                 for row in rows_globale:
                     desc = row['descrizione']
                     cat = row['categoria']
                     conf = row.get('confidence')
-                    if conf in ('alta', 'altissima'):
+                    streak = row.get('consecutive_correct_classifications', 0) or 0
+                    if conf in ('alta', 'altissima') or streak >= 3:
                         _bypass[desc] = cat
+                        if streak >= 3 and conf not in ('alta', 'altissima'):
+                            _streak_promo += 1
                     else:
                         _hint[desc] = cat
                 _memoria_cache['prodotti_master'] = _bypass
                 _memoria_cache['prodotti_master_hint'] = _hint
-                logger.info(f"📦 Cache GLOBALE caricata: {len(_bypass)} bypass (alta/altissima), {len(_hint)} hint (media/None)")
+                logger.info(f"📦 Cache GLOBALE caricata: {len(_bypass)} bypass (alta/altissima + {_streak_promo} streak>=3), {len(_hint)} hint (media/None)")
 
             # Query 3: Carica TUTTE le classificazioni manuali admin (paginata)
             rows_manuali = _fetch_all_rows(
@@ -310,6 +314,99 @@ def invalida_cache_memoria():
             '_loaded_user_ids': set()
         }
     logger.info("🔄 Cache memoria invalidata")
+
+
+def aggiorna_streak_classificazione(
+    descrizione: str,
+    categoria_gpt: str,
+    supabase_client,
+) -> None:
+    """Dopo che il GPT classifica una descrizione, incrementa (o resetta) lo streak
+    su prodotti_master. Quando lo streak raggiunge 3, il prodotto viene auto-promosso
+    a confidence='alta', entrando nel bypass cache e riducendo le chiamate GPT future.
+
+    Logica:
+    - Se la categoria GPT coincide con quella già in prodotti_master → streak +1
+    - Se la categoria è diversa → streak reset a 1 (nuova categoria)
+    - Se il prodotto non esiste → inserimento con streak=1
+    - A streak >= 3 → confidence impostata ad 'alta' + cache invalidata
+    """
+    if not categoria_gpt or categoria_gpt.strip() in ('', 'Da Classificare'):
+        return
+    if not descrizione or not supabase_client:
+        return
+
+    try:
+        # Leggi lo stato attuale del prodotto
+        res = supabase_client.table('prodotti_master') \
+            .select('id, categoria, confidence, consecutive_correct_classifications, verified') \
+            .eq('descrizione', descrizione) \
+            .limit(1) \
+            .execute()
+
+        now_streak = 0
+        new_confidence = None
+
+        if res.data:
+            row = res.data[0]
+            # Non toccare prodotti verificati manualmente dall'admin
+            if row.get('verified'):
+                return
+
+            current_cat = row.get('categoria', '')
+            current_streak = row.get('consecutive_correct_classifications', 0) or 0
+            current_conf = row.get('confidence')
+
+            # Non degradare prodotti già alta/altissima (sono già al massimo)
+            if current_conf in ('alta', 'altissima'):
+                return
+
+            if current_cat == categoria_gpt:
+                now_streak = current_streak + 1
+            else:
+                # Categoria cambiata: nuovo ciclo di streak con la nuova categoria
+                now_streak = 1
+
+            update_data: dict = {
+                'categoria': categoria_gpt,
+                'consecutive_correct_classifications': now_streak,
+            }
+            if now_streak >= 3:
+                update_data['confidence'] = 'alta'
+                new_confidence = 'alta'
+
+            supabase_client.table('prodotti_master') \
+                .update(update_data) \
+                .eq('id', row['id']) \
+                .execute()
+
+        else:
+            # Prodotto non presente: upsert con streak=1 e confidence='media'
+            supabase_client.table('prodotti_master') \
+                .upsert({
+                    'descrizione': descrizione,
+                    'categoria': categoria_gpt,
+                    'confidence': 'media',
+                    'consecutive_correct_classifications': 1,
+                }, on_conflict='descrizione') \
+                .execute()
+            now_streak = 1
+
+        if new_confidence == 'alta':
+            logger.info(
+                f"🚀 STREAK PROMO: '{descrizione[:60]}' → '{categoria_gpt}' "
+                f"(streak={now_streak}) promosso a bypass!"
+            )
+            invalida_cache_memoria()
+        else:
+            logger.debug(
+                f"📈 Streak '{descrizione[:60]}': {now_streak} "
+                f"→ '{categoria_gpt}'"
+            )
+
+    except Exception as e:
+        # Non bloccare mai la classificazione principale per un errore di streak
+        logger.warning(f"⚠️ aggiorna_streak_classificazione errore: {e}")
 
 
 _MEMORIA_CAP = MEMORIA_SESSION_CAP

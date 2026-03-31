@@ -689,8 +689,9 @@ def riepilogo_fatture_auto_da_ultimo_login(
     supabase_client=None,
 ) -> Dict[str, Any]:
     """
-    Restituisce il riepilogo delle fatture auto-ricevute (Invoicetronic)
-    tra l'ultimo login precedente e il login corrente.
+    Restituisce le fatture auto-ricevute (Invoicetronic) non ancora confermate
+    dall'utente (needs_ack=true). Non usa finestre temporali: le fatture appaiono
+    finché l'utente non fa Salva/Rifiuta/Salva tutte.
     """
     riepilogo: Dict[str, Any] = {
         'has_new': False,
@@ -698,11 +699,12 @@ def riepilogo_fatture_auto_da_ultimo_login(
         'row_count': 0,
         'event_count': 0,
         'recent_files': [],
+        'files_detail': [],
         'window_start': last_login_precedente,
         'window_end': login_at,
     }
 
-    if not user_id or not last_login_precedente:
+    if not user_id:
         return riepilogo
 
     try:
@@ -711,55 +713,78 @@ def riepilogo_fatture_auto_da_ultimo_login(
         if supabase_client is None:
             supabase_client = get_supabase_client()
 
-        window_start_dt = datetime.fromisoformat(last_login_precedente.replace('Z', '+00:00'))
-        if window_start_dt.tzinfo is None:
-            window_start_dt = window_start_dt.replace(tzinfo=timezone.utc)
-
-        if login_at:
-            window_end_dt = datetime.fromisoformat(login_at.replace('Z', '+00:00'))
-            if window_end_dt.tzinfo is None:
-                window_end_dt = window_end_dt.replace(tzinfo=timezone.utc)
-        else:
-            window_end_dt = datetime.now(timezone.utc)
-
-        if window_end_dt <= window_start_dt:
-            return riepilogo
-
+        # Query per needs_ack=true — nessuna finestra temporale.
+        # Questo risolve il bug: dopo "Elimina Tutto" + re-run worker,
+        # i nuovi record hanno created_at > login_at ma needs_ack=true,
+        # quindi compaiono comunque.
         res = supabase_client.table('upload_events') \
             .select('file_name, rows_saved, created_at, details, status') \
             .eq('user_id', user_id) \
+            .eq('needs_ack', True) \
             .in_('status', ['SAVED_OK', 'SAVED_PARTIAL']) \
-            .gte('created_at', window_start_dt.isoformat()) \
-            .lte('created_at', window_end_dt.isoformat()) \
             .order('created_at', desc=True) \
             .limit(500) \
             .execute()
 
         rows = res.data or []
+        # Deduplicazione per file_name (possono esserci più eventi per stesso file)
         auto_events = []
+        seen_for_dedup: set = set()
         for row in rows:
-            details = row.get('details') if isinstance(row.get('details'), dict) else {}
-            source = str(details.get('source', '')).strip().lower()
-            if source != 'invoicetronic':
+            fname = str(row.get('file_name') or '').strip()
+            if not fname or fname in seen_for_dedup:
                 continue
+            seen_for_dedup.add(fname)
             auto_events.append(row)
 
         if not auto_events:
             return riepilogo
 
         unique_files = []
-        seen = set()
         row_count = 0
 
         for row in auto_events:
             fname = str(row.get('file_name') or '').strip()
-            if fname and fname not in seen:
-                seen.add(fname)
+            if fname:
                 unique_files.append(fname)
             try:
                 row_count += int(row.get('rows_saved') or 0)
             except (TypeError, ValueError):
                 pass
+
+        # Carica dettagli per-file dalla tabella fatture (singola query batch)
+        files_detail = []
+        if unique_files:
+            try:
+                fres = supabase_client.table('fatture') \
+                    .select('file_origine, fornitore, data_documento, totale_riga, created_at') \
+                    .eq('user_id', user_id) \
+                    .in_('file_origine', unique_files) \
+                    .order('created_at', desc=True) \
+                    .execute()
+                all_rows = fres.data or []
+                # Raggruppa per file_origine
+                from collections import defaultdict
+                grouped = defaultdict(list)
+                for r in all_rows:
+                    grouped[r.get('file_origine', '')].append(r)
+                for fname in unique_files:
+                    frows = grouped.get(fname, [])
+                    if frows:
+                        fornitore = frows[0].get('fornitore', 'Sconosciuto')
+                        data_doc = frows[0].get('data_documento', '')
+                        created = frows[0].get('created_at', '')
+                        totale = sum(float(r.get('totale_riga') or 0) for r in frows)
+                        files_detail.append({
+                            'file_name': fname,
+                            'fornitore': fornitore,
+                            'data_documento': data_doc,
+                            'created_at': created,
+                            'num_righe': len(frows),
+                            'totale': round(totale, 2),
+                        })
+            except Exception:
+                logger.exception('Errore caricamento dettagli per-file fatture auto')
 
         riepilogo.update({
             'has_new': len(unique_files) > 0,
@@ -767,8 +792,7 @@ def riepilogo_fatture_auto_da_ultimo_login(
             'row_count': row_count,
             'event_count': len(auto_events),
             'recent_files': unique_files[:3],
-            'window_start': window_start_dt.isoformat(),
-            'window_end': window_end_dt.isoformat(),
+            'files_detail': files_detail,
         })
         return riepilogo
 
@@ -922,11 +946,9 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
             logger.exception(f"Errore salvataggio codice per {email}")
             stored_in_db = False
         
-        # Fallback: salva in session state
         if not stored_in_db:
-            if 'reset_codes' not in st.session_state:
-                st.session_state.reset_codes = {}
-            st.session_state.reset_codes[email] = {'code': code, 'expires': expires}
+            logger.error(f"Impossibile salvare codice reset per {email} — né DB né alternativa disponibile")
+            return False, "Errore temporaneo, riprova tra qualche minuto"
         
         # Configurazione Brevo
         brevo_cfg = st.secrets.get('brevo')

@@ -35,7 +35,8 @@ from config.constants import (
 from utils.text_utils import (
     normalizza_stringa,
     estrai_nome_categoria,
-    escape_ilike as _escape_ilike
+    escape_ilike as _escape_ilike,
+    format_fattura_label,
 )
 
 from utils.piva_validator import normalizza_piva
@@ -84,6 +85,7 @@ except ImportError:
             'row_count': 0,
             'event_count': 0,
             'recent_files': [],
+            'files_detail': [],
             'window_start': None,
             'window_end': None,
         }
@@ -311,7 +313,10 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
                 st.session_state.created_at = _u.get('created_at')
                 if _u.get('email') in ADMIN_EMAILS:
                     st.session_state.user_is_admin = True
-                logger.info(f"✅ Sessione ripristinata da token per user_id={_u.get('id')}")
+                # Force refresh dati da DB (la cache potrebbe essere stale)
+                clear_fatture_cache()
+                st.session_state.force_reload = True
+                logger.info(f"✅ Sessione ripristinata da token per user_id={_u.get('id')} — fatture cache cleared")
             else:
                 # Token non valido, scaduto o inattivo → pulisci cookie e vai al login
                 try:
@@ -646,10 +651,15 @@ def mostra_pagina_login():
                                     st.session_state.auto_invoice_notice = summary_auto
                                     st.session_state.auto_invoice_notice_toast_shown = False
                                     st.session_state.auto_invoice_notice_dismissed = False
+                                    # Badge 🧠 nel category_editor per righe inserite via worker
+                                    st.session_state.auto_received_file_origini = {
+                                        f['file_name'] for f in summary_auto.get('files_detail', [])
+                                    }
                                 else:
                                     st.session_state.pop('auto_invoice_notice', None)
                                     st.session_state.pop('auto_invoice_notice_toast_shown', None)
                                     st.session_state.pop('auto_invoice_notice_dismissed', None)
+                                    st.session_state.pop('auto_received_file_origini', None)
                             except Exception as _notice_err:
                                 logger.warning(f"Errore preparazione notifica fatture automatiche: {_notice_err}")
                             
@@ -664,7 +674,7 @@ def mostra_pagina_login():
                                         'last_seen_at': _now_utc.isoformat(),
                                     }).eq('id', user.get('id')).execute()
                                     _cookie_manager.set("session_token", _s_token,
-                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
                                                         secure=True, same_site="strict")
                                     st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception as _ce:
@@ -688,6 +698,11 @@ def mostra_pagina_login():
                             else:
                                 st.session_state.user_is_admin = False
                                 logger.info(f"✅ Login cliente: user_id={user.get('id')}")
+                                # Force refresh dati post-login (invalida cache stale)
+                                clear_fatture_cache()
+                                st.session_state.force_reload = True
+                                st.session_state.show_welcome = True
+                                logger.info(f"[LOGIN] Fatture cache cleared + force_reload per user_id={user.get('id')}")
                                 st.success("✅ Accesso effettuato!")
                                 time.sleep(UI_DELAY_MEDIUM)
                                 st.rerun()
@@ -765,7 +780,7 @@ def mostra_pagina_login():
                                         'last_seen_at': _now_utc.isoformat(),
                                     }).eq('id', user.get('id')).execute()
                                     _cookie_manager.set("session_token", _s_token,
-                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
                                                         secure=True, same_site="strict")
                                     st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception:
@@ -1201,39 +1216,182 @@ render_sidebar(user)
 
 render_oh_yeah_header()
 
-auto_notice = st.session_state.get('auto_invoice_notice')
-if auto_notice and not st.session_state.get('auto_invoice_notice_dismissed', False):
-    file_count = int(auto_notice.get('file_count', 0) or 0)
-    row_count = int(auto_notice.get('row_count', 0) or 0)
-    recent_files = auto_notice.get('recent_files', []) or []
+# ============================================
+# DEBUG LOGGING: session user_id vs DB
+# ============================================
+_sess_uid = st.session_state.get('user_data', {}).get('id', 'N/A')
+_sess_rid = st.session_state.get('ristorante_id', 'N/A')
+_sess_email = st.session_state.get('user_data', {}).get('email', 'N/A')
+logger.debug(
+    f"[SESSION DEBUG] email={_sess_email} user_id={_sess_uid} "
+    f"ristorante_id={_sess_rid} force_reload={st.session_state.get('force_reload')}"
+)
 
-    if file_count > 0:
+# ============================================
+# MESSAGGIO DI BENVENUTO POST-LOGIN
+# ============================================
+if st.session_state.pop('show_welcome', False):
+    _nome_rist = st.session_state.get('nome_ristorante', '')
+    _welcome_nome = _html.escape(_nome_rist if _nome_rist else _sess_email)
+    st.markdown(f"""
+<div style="background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
+            border: 2px solid #3b82f6; border-radius: 12px;
+            padding: 16px 24px; margin-bottom: 1rem;
+            text-align: center;">
+    <span style="font-size: 1.3rem; font-weight: 700; color: #1e3a8a;">
+        👋 Bentornato, {_welcome_nome}!
+    </span>
+    <p style="font-size: 0.9rem; color: #1e40af; margin: 6px 0 0 0;">
+        I tuoi dati sono stati aggiornati. Controlla le statistiche e le nuove fatture qui sotto.
+    </p>
+</div>
+""", unsafe_allow_html=True)
+    # Log evento dashboard_welcome in upload_events
+    try:
+        supabase.table('upload_events').insert({
+            'user_id': _sess_uid,
+            'user_email': _sess_email,
+            'file_name': '_dashboard_welcome',
+            'file_type': 'event',
+            'status': 'WELCOME',
+            'rows_parsed': 0,
+            'rows_saved': 0,
+            'details': {'source': 'dashboard_welcome', 'ristorante_id': str(_sess_rid)},
+        }).execute()
+    except Exception as _we:
+        logger.warning(f"Errore log evento dashboard_welcome: {_we}")
+
+auto_notice = st.session_state.get('auto_invoice_notice')
+# Stato file gestiti (salvati/rifiutati) — persistente durante la sessione
+if 'auto_invoice_handled' not in st.session_state:
+    st.session_state.auto_invoice_handled = set()
+
+if auto_notice and not st.session_state.get('auto_invoice_notice_dismissed', False):
+    files_detail = auto_notice.get('files_detail', []) or []
+    # Filtra file già gestiti (salvati o rifiutati)
+    pending_files = [f for f in files_detail if f.get('file_name') not in st.session_state.auto_invoice_handled]
+
+    if pending_files:
         if not st.session_state.get('auto_invoice_notice_toast_shown', False):
-            fatture_label = 'fattura' if file_count == 1 else 'fatture'
-            st.toast(f"📬 Hai ricevuto {file_count} nuove {fatture_label} automatiche", icon="📥")
+            fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
+            st.toast(f"\U0001f4ec Hai ricevuto {len(pending_files)} {fatture_label} automatiche", icon="\U0001f4e5")
             st.session_state.auto_invoice_notice_toast_shown = True
 
-        fatture_label = 'fattura' if file_count == 1 else 'fatture'
-        righe_label = 'riga' if row_count == 1 else 'righe'
-        extra = f"File recenti: {', '.join(recent_files)}" if recent_files else ""
+        # CSS expander notifica
+        st.markdown("""
+        <style>
+        div.st-key-expander_auto_invoices [data-testid="stExpander"] details summary {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            border-radius: 10px;
+            padding: 8px 16px;
+            font-weight: 700;
+            color: #1e3a8a;
+        }
+        div.st-key-expander_auto_invoices [data-testid="stExpander"] details {
+            border: 2px solid #3b82f6;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+        }
+        div.st-key-expander_auto_invoices [data-testid="stExpander"] details[open] summary {
+            border-bottom: 1px solid #93c5fd;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
-        col_notice, col_actions = st.columns([5, 2])
-        with col_notice:
-            st.info(
-                f"📥 Nuove fatture automatiche dall'ultimo accesso: "
-                f"{file_count} {fatture_label}, {row_count} {righe_label}. {extra}"
-            )
-        with col_actions:
-            btn_col1, btn_col2 = st.columns(2)
-            with btn_col1:
-                if st.button("Apri", key="auto_notice_open", use_container_width=True):
-                    st.session_state.sezione_attiva = "dettaglio"
+        with st.container(key="expander_auto_invoices"):
+            fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
+
+            # Titolo + "Salva tutte" FUORI dall'expander — sempre visibili senza espandere
+            _hdr_col, _save_all_col = st.columns([5, 1])
+            with _hdr_col:
+                st.markdown(
+                    f"<span style='font-size:1.05rem; font-weight:700; color:#1e3a8a;'>"
+                    f"🔔 Sono arrivate {len(pending_files)} nuove {fatture_label} dall'ultimo tuo accesso"
+                    f"</span>",
+                    unsafe_allow_html=True
+                )
+            with _save_all_col:
+                if st.button("✅ Salva tutte", key="auto_notice_save_all", use_container_width=True, type="primary"):
+                    _ack_uid = st.session_state.user_data.get('id')
+                    _ack_fnames = [f['file_name'] for f in pending_files]
+                    if _ack_uid and _ack_fnames:
+                        try:
+                            supabase.table('upload_events') \
+                                .update({'needs_ack': False}) \
+                                .eq('user_id', _ack_uid) \
+                                .in_('file_name', _ack_fnames) \
+                                .execute()
+                        except Exception as _ack_err:
+                            logger.error(f"Errore ack needs_ack Salva tutte: {_ack_err}")
+                    for f in pending_files:
+                        st.session_state.auto_invoice_handled.add(f['file_name'])
+                    clear_fatture_cache()
                     st.session_state.auto_invoice_notice_dismissed = True
                     st.rerun()
-            with btn_col2:
-                if st.button("Chiudi", key="auto_notice_close", use_container_width=True):
-                    st.session_state.auto_invoice_notice_dismissed = True
-                    st.rerun()
+
+            with st.expander(f"📄 Dettaglio {fatture_label}", expanded=False):
+                # Righe per-file
+                for idx, finfo in enumerate(pending_files):
+                    fname = finfo.get('file_name', 'file sconosciuto')
+                    fornitore = finfo.get('fornitore', 'Sconosciuto')
+                    data_doc = finfo.get('data_documento', '')
+                    num_righe = finfo.get('num_righe', 0)
+                    totale = finfo.get('totale', 0)
+                    _r_label = 'riga' if num_righe == 1 else 'righe'
+
+                    col_detail, col_btns = st.columns([5, 2])
+                    with col_detail:
+                        _short_fname = fname if len(fname) <= 12 else fname[:8] + '\u2026' + fname[fname.rfind('.'):] if '.' in fname else fname[:12] + '\u2026'
+                        st.markdown(
+                            f"📄 **{fornitore.upper()}** &mdash; "
+                            f"€{totale:,.2f} &middot; "
+                            f"{num_righe} {_r_label} &middot; "
+                            f"{data_doc or 'N/D'} &middot; "
+                            f"`{_short_fname}`",
+                            help=f"File completo: {fname}"
+                        )
+                    with col_btns:
+                        bc1, bc2 = st.columns(2)
+                        with bc1:
+                            if st.button("\U0001f4be Salva", key=f"auto_save_{idx}", use_container_width=True):
+                                _ack_uid = st.session_state.user_data.get('id')
+                                if _ack_uid:
+                                    try:
+                                        supabase.table('upload_events') \
+                                            .update({'needs_ack': False}) \
+                                            .eq('user_id', _ack_uid) \
+                                            .eq('file_name', fname) \
+                                            .execute()
+                                    except Exception as _ack_err:
+                                        logger.error(f"Errore ack needs_ack Salva {fname}: {_ack_err}")
+                                st.session_state.auto_invoice_handled.add(fname)
+                                clear_fatture_cache()
+                                st.rerun()
+                        with bc2:
+                            if st.button("\u274c Rifiuta", key=f"auto_reject_{idx}", use_container_width=True):
+                                _ack_uid = st.session_state.user_data.get('id')
+                                if _ack_uid:
+                                    try:
+                                        supabase.table('upload_events') \
+                                            .update({'needs_ack': False}) \
+                                            .eq('user_id', _ack_uid) \
+                                            .eq('file_name', fname) \
+                                            .execute()
+                                    except Exception as _ack_err:
+                                        logger.error(f"Errore ack needs_ack Rifiuta {fname}: {_ack_err}")
+                                try:
+                                    _reject_uid = st.session_state.user_data.get('id')
+                                    _reject_rid = st.session_state.get('ristorante_id')
+                                    elimina_fattura_completa(fname, _reject_uid, ristoranteid=_reject_rid)
+                                    invalida_cache_memoria()
+                                    clear_fatture_cache()
+                                except Exception as _rej_err:
+                                    logger.error(f"Errore rifiuto fattura auto {fname}: {_rej_err}")
+                                st.session_state.auto_invoice_handled.add(fname)
+                                st.rerun()
+    else:
+        # Tutti i file sono stati gestiti — nascondi tutto
+        st.session_state.auto_invoice_notice_dismissed = True
 
 st.markdown("""
 <h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-top: 0.5rem;">
@@ -1478,18 +1636,25 @@ if not df_cache.empty:
         st.markdown("---")
         
         # Raggruppa per file origine per creare summary
-        fatture_summary = df_cache.groupby('FileOrigine').agg({
+        _agg_dict = {
             'Fornitore': lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[0],
             'TotaleRiga': 'sum',
             'NumeroRiga': 'count',
             'DataDocumento': 'first'
-        }).reset_index()
+        }
+        if 'CreatedAt' in df_cache.columns:
+            _agg_dict['CreatedAt'] = 'max'
+        fatture_summary = df_cache.groupby('FileOrigine').agg(_agg_dict).reset_index()
         
         # 🔧 FIX: Reset index prima di rinominare (già fatto ma assicuriamo drop=True)
         fatture_summary = fatture_summary.reset_index(drop=True)
         
-        fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data']
-        fatture_summary = fatture_summary.sort_values('Data', ascending=False)
+        if 'CreatedAt' in fatture_summary.columns:
+            fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data', 'CreatedAt']
+            fatture_summary = fatture_summary.sort_values('CreatedAt', ascending=False)
+        else:
+            fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data']
+            fatture_summary = fatture_summary.sort_values('Data', ascending=False)
         
         # 🔍 DEBUG TOOL: Rimosso - Usa Upload Events in Admin Panel per diagnostica
         
@@ -1629,7 +1794,14 @@ if not df_cache.empty:
                 fattura_selezionata = st.selectbox(
                     "Seleziona fattura da eliminare:",
                     options=fatture_options,
-                    format_func=lambda x: f"📄 {x['File']} - {x['Fornitore']} (📅 {x['Data']}, 📦 {x['NumProdotti']} prodotti, 💰 €{x['Totale']:.2f})",
+                    format_func=lambda x: format_fattura_label(
+                        file_name=x['File'],
+                        fornitore=x['Fornitore'],
+                        totale=x['Totale'],
+                        num_righe=x['NumProdotti'],
+                        data=x['Data'],
+                    ),
+                    help="Il nome file viene mostrato completo e si adatta allo spazio disponibile",
                     key="select_fattura_elimina"
                 )
                 

@@ -16,6 +16,46 @@ from services.ai_service import invalida_cache_memoria, salva_correzione_in_memo
 
 logger = logging.getLogger("fci_app")
 
+# ─── Emoji per categoria merceologica (statico, no query DB) ─────────────────
+# Usato per la colonna CatIcon nel dettaglio articoli.
+CATEGORIA_ICONS: dict[str, str] = {
+    # Food
+    "CARNE":                   "🥩",
+    "PESCE":                   "🐠",
+    "LATTICINI":               "🧀",
+    "SALUMI":                  "🥓",
+    "UOVA":                    "🥚",
+    "SCATOLAME E CONSERVE":    "🥫",
+    "OLIO E CONDIMENTI":       "🫙",
+    "SECCO":                   "🌾",
+    "VERDURE":                 "🥦",
+    "FRUTTA":                  "🍓",
+    "SALSE E CREME":           "🥣",
+    "PRODOTTI DA FORNO":       "🍞",
+    "SPEZIE E AROMI":          "🌿",
+    "PASTICCERIA":             "🍰",
+    "GELATI":                  "🍦",
+    "SUSHI VARIE":             "🍣",
+    "SHOP":                    "🛍️",
+    # Bevande
+    "ACQUA":                   "💧",
+    "BEVANDE":                 "🥤",
+    "CAFFE E THE":             "☕",
+    "BIRRE":                   "🍺",
+    "VINI":                    "🍷",
+    "DISTILLATI":              "🥃",
+    "AMARI/LIQUORI":           "🍸",
+    "VARIE BAR":               "🍹",
+    # Materiali
+    "MATERIALE DI CONSUMO":    "📦",
+    # Spese operative
+    "SERVIZI E CONSULENZE":    "📋",
+    "UTENZE E LOCALI":         "🔌",
+    "MANUTENZIONE E ATTREZZATURE": "🔧",
+    # Fallback
+    "Da Classificare":         "❓",
+}
+
 
 def render_category_editor(df_completo_filtrato, supabase):
     """Renderizza la sezione Dettaglio Articoli con data editor e logica di salvataggio."""
@@ -154,11 +194,21 @@ def render_category_editor(df_completo_filtrato, supabase):
                 logger.warning(f"Fonte fallback prodotti_master: {_fe}")
 
         # Priorità: ✏️ > 🧠 > '' (vuoto = nessuna fonte tracciata)
-        df_editor['Fonte'] = df_editor['Descrizione'].apply(
-            lambda d: ' ✏️ ' if str(d).strip() in man_set else
-                      ' 🧠 ' if str(d).strip() in auto_set else ''
-        )
-        logger.info(f"✅ Colonna Fonte: {len(man_set)} manuali, {len(auto_set)} automatici")
+        # Righe auto-ricevute via worker/webhook → 🧠 per FileOrigine
+        _auto_file_origini = set(st.session_state.get('auto_received_file_origini', set()))
+        if _auto_file_origini:
+            df_editor['Fonte'] = df_editor.apply(
+                lambda row: ' ✏️ ' if str(row['Descrizione']).strip() in man_set else
+                            ' 🧠 ' if (str(row['Descrizione']).strip() in auto_set or
+                                       str(row['FileOrigine'] or '').strip() in _auto_file_origini) else '',
+                axis=1
+            )
+        else:
+            df_editor['Fonte'] = df_editor['Descrizione'].apply(
+                lambda d: ' ✏️ ' if str(d).strip() in man_set else
+                          ' 🧠 ' if str(d).strip() in auto_set else ''
+            )
+        logger.info(f"✅ Colonna Fonte: {len(man_set)} manuali, {len(auto_set)} automatici, {len(_auto_file_origini)} file auto")
     
     # 🧪 TEST AGGREGAZIONE (diagnostico - zero impatto UI)
     if 'Descrizione' in df_editor.columns:
@@ -198,13 +248,13 @@ def render_category_editor(df_completo_filtrato, supabase):
     if search_term:
         if search_type == "Prodotto":
             mask = df_editor['Descrizione'].str.upper().str.contains(search_term.upper(), na=False, regex=False)
-            st.info(f"🔍 Trovate {mask.sum()} righe con '{search_term}' nella descrizione")
+            _n = mask.sum(); st.info(f"🔍 {'Trovata' if _n == 1 else 'Trovate'} {_n} {'riga' if _n == 1 else 'righe'} con '{search_term}' nella descrizione")
         elif search_type == "Categoria":
             mask = df_editor['Categoria'].str.upper().str.contains(search_term.upper(), na=False, regex=False)
-            st.info(f"🔍 Trovate {mask.sum()} righe nella categoria '{search_term}'")
+            _n = mask.sum(); st.info(f"🔍 {'Trovata' if _n == 1 else 'Trovate'} {_n} {'riga' if _n == 1 else 'righe'} nella categoria '{search_term}'")
         else:
             mask = df_editor['Fornitore'].str.upper().str.contains(search_term.upper(), na=False, regex=False)
-            st.info(f"🔍 Trovate {mask.sum()} righe del fornitore '{search_term}'")
+            _n = mask.sum(); st.info(f"🔍 {'Trovata' if _n == 1 else 'Trovate'} {_n} {'riga' if _n == 1 else 'righe'} del fornitore '{search_term}'")
         
         df_editor = df_editor[mask]
     
@@ -311,7 +361,7 @@ def render_category_editor(df_completo_filtrato, supabase):
     st.markdown(f"""
     <div style="background-color: #E8F5E9; padding: 12px 15px; border-radius: 8px; border-left: 4px solid #4CAF50; margin-bottom: 15px;">
         <p style="margin: 0; font-size: 14px; color: #2E7D32; font-weight: 500;">
-            📄 <strong>Totale: {num_righe:,} righe</strong> • 🏷️ <strong>{num_prodotti_unici:,} prodotti unici</strong>
+            📄 <strong>Totale: {num_righe:,} {'riga' if num_righe == 1 else 'righe'}</strong> • 🏷️ <strong>{num_prodotti_unici:,} prodotti unici</strong>
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -408,12 +458,33 @@ def render_category_editor(df_completo_filtrato, supabase):
     if cols_to_drop:
         df_editor_paginato = df_editor_paginato.drop(columns=cols_to_drop)
 
+    # ── Colonna CatIcon: emoji categoria per riga (read-only, statica) ────────
+    # Non usa SelectboxColumn → nessun rischio blank-cell.
+    for _target_df in [df_editor, df_editor_paginato]:
+        if 'Categoria' in _target_df.columns:
+            _target_df['CatIcon'] = _target_df['Categoria'].apply(
+                lambda c: CATEGORIA_ICONS.get(str(c).strip(), '🏷️')
+            )
+
+    # Riordina: metti CatIcon subito prima di Categoria nel df da visualizzare
+    if 'CatIcon' in df_editor_paginato.columns and 'Categoria' in df_editor_paginato.columns:
+        _cols = list(df_editor_paginato.columns)
+        _cols.remove('CatIcon')
+        _cols.insert(_cols.index('Categoria'), 'CatIcon')
+        df_editor_paginato = df_editor_paginato[_cols]
+
     # Configurazione colonne (ordine allineato tra vista normale e aggregata)
     column_config_dict = {
-        "FileOrigine": st.column_config.TextColumn("File", disabled=True),
-        "NumeroRiga": st.column_config.NumberColumn("N.Riga", disabled=True, width="small"),
-        "DataDocumento": st.column_config.TextColumn("Data", disabled=True),
-        "Descrizione": st.column_config.TextColumn("Descrizione", disabled=True),
+        "FileOrigine": st.column_config.TextColumn("📄 File", disabled=True),
+        "NumeroRiga": st.column_config.NumberColumn("🔢 N.Riga", disabled=True, width="small"),
+        "DataDocumento": st.column_config.TextColumn("🗓️ Data", disabled=True),
+        "Descrizione": st.column_config.TextColumn("📝 Descrizione", disabled=True),
+        "CatIcon": st.column_config.TextColumn(
+            "🏷️",
+            help="Emoji categoria merceologica",
+            disabled=True,
+            width="small",
+        ),
         "Categoria": st.column_config.SelectboxColumn(
             "Categoria",
             help="Seleziona la categoria corretta (le celle 'Da Classificare' devono essere categorizzate)",
@@ -421,20 +492,19 @@ def render_category_editor(df_completo_filtrato, supabase):
             options=categorie_disponibili,
             required=True
         ),
-        "Fornitore": st.column_config.TextColumn("Fornitore", disabled=True),
-        "Quantita": st.column_config.NumberColumn("Q.tà", disabled=True),
-        "TotaleRiga": st.column_config.NumberColumn("Totale (€)", format="€ %.2f", disabled=True),
-        "PrezzoUnitario": st.column_config.NumberColumn("Prezzo Unit.", format="€ %.2f", disabled=True),
-        "UnitaMisura": st.column_config.TextColumn("U.M.", disabled=True, width="small"),
-        # ⭐ NUOVO: Colonna Fonte (dopo IVA)
+        "Fornitore": st.column_config.TextColumn("🏭 Fornitore", disabled=True),
+        "Quantita": st.column_config.NumberColumn("📦 Q.tà", disabled=True),
+        "TotaleRiga": st.column_config.NumberColumn("💶 Totale (€)", format="€ %.2f", disabled=True),
+        "PrezzoUnitario": st.column_config.NumberColumn("💰 Prezzo Unit.", format="€ %.2f", disabled=True),
+        "UnitaMisura": st.column_config.TextColumn("📏 U.M.", disabled=True, width="small"),
         "IVAPercentuale": st.column_config.NumberColumn(
-            "IVA %",
+            "🧾 IVA %",
             format="%.0f%%",
             disabled=True,
             width="small"
         ),
         "Fonte": st.column_config.TextColumn(
-            "Fonte",
+            "⭐ Fonte",
             help="🧠 Categoria assegnata automaticamente (dizionario, AI, memoria) | ✏️ Corretta manualmente",
             disabled=True,
             width="small"
@@ -448,7 +518,7 @@ def render_category_editor(df_completo_filtrato, supabase):
         # Colonna NumFatture (solo in aggregata)
         if 'NumFatture' in df_editor_paginato.columns:
             column_config_dict["NumFatture"] = st.column_config.NumberColumn(
-                "N.Fatt", 
+                "📄 N.Fatt",
                 help="Numero fatture con questo prodotto",
                 disabled=True,
                 width="small"
@@ -457,7 +527,7 @@ def render_category_editor(df_completo_filtrato, supabase):
         # Colonna NumRighe (solo in aggregata)
         if 'NumRighe' in df_editor_paginato.columns:
             column_config_dict["NumRighe"] = st.column_config.NumberColumn(
-                "N.Righe", 
+                "📊 N.Righe",
                 help="Numero righe fattura aggregate per questo prodotto",
                 disabled=True,
                 width="small"
@@ -465,19 +535,19 @@ def render_category_editor(df_completo_filtrato, supabase):
         
         # Adatta etichette colonne esistenti
         column_config_dict["Quantita"] = st.column_config.NumberColumn(
-            "Q.tà TOT",  # ← Sottolinea che è somma
+            "📦 Q.tà TOT",
             help="Quantità totale da tutte le fatture",
             disabled=True
         )
         
         column_config_dict["PrezzoUnitario"] = st.column_config.NumberColumn(
-            "Prezzo MEDIO",  # ← Chiarisce che è media
+            "💰 Prezzo MEDIO",
             format="€ %.2f",
             disabled=True
         )
         
         column_config_dict["TotaleRiga"] = st.column_config.NumberColumn(
-            "€ TOTALE",  # ← Enfatizza somma
+            "💶 € TOTALE",
             format="€ %.2f",
             disabled=True
         )
@@ -625,6 +695,10 @@ def render_category_editor(df_completo_filtrato, supabase):
             if 'Fonte' in df_export.columns:
                 df_export = df_export.drop(columns=['Fonte'])
             
+            # Rimuovi colonna CatIcon (solo decorativa nella UI)
+            if 'CatIcon' in df_export.columns:
+                df_export = df_export.drop(columns=['CatIcon'])
+            
             # Rimuovi timezone da colonne datetime (openpyxl non supporta tz-aware)
             for col in df_export.select_dtypes(include=['datetimetz', 'datetime64[ns, UTC]']).columns:
                 df_export[col] = df_export[col].dt.tz_localize(None)
@@ -670,7 +744,7 @@ def render_category_editor(df_completo_filtrato, supabase):
             righe_salvate = len(edited_df)
             righe_totali_tabella = num_righe
             if righe_salvate < righe_totali_tabella:
-                st.info(f"💾 Stai salvando {righe_salvate} righe della pagina corrente. Verifica altre pagine per modifiche aggiuntive.")
+                st.info(f"💾 Stai salvando {righe_salvate} {'riga' if righe_salvate == 1 else 'righe'} della pagina corrente. Verifica altre pagine per modifiche aggiuntive.")
             
             # ========================================
             # ✅ CHECK: Quale tabella stiamo modificando?

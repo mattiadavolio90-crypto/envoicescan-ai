@@ -330,6 +330,34 @@ def estrai_fornitore_xml(fattura: dict) -> str:
         return 'Fornitore Sconosciuto'
 
 
+def format_fattura_label(
+    file_name: str,
+    fornitore: str = 'Sconosciuto',
+    totale: float = 0.0,
+    num_righe: int = 0,
+    data: str = '',
+    max_file_chars: int = 0,
+) -> str:
+    """Formato label fattura: FORNITORE — €123,00 · 6 righe · 2026-03-19 · nome_file.xml"""
+    fornitore_upper = (fornitore or 'Sconosciuto').strip().upper()
+    # Mostra filename completo; eventuale ellissi visiva viene gestita dal componente UI.
+    fname = str(file_name or '').strip()
+    if max_file_chars and len(fname) > max_file_chars:
+        ext = ''
+        if '.' in fname:
+            ext = fname[fname.rfind('.'):]
+        chars_for_name = max(3, max_file_chars - len(ext))
+        fname_short = fname[:chars_for_name] + '\u2026' + ext
+    else:
+        fname_short = fname
+    righe_label = 'riga' if num_righe == 1 else 'righe'
+    data_str = str(data or 'N/D').strip()
+    return (
+        f"🏭 {fornitore_upper} \u2014 💶 \u20ac{totale:,.2f} \u00b7 "
+        f"📦 {num_righe} {righe_label} \u00b7 📅 {data_str} \u00b7 📄 {fname_short}"
+    )
+
+
 def aggiungi_icona_categoria(
     nome_categoria: str,
     supabase_client=None

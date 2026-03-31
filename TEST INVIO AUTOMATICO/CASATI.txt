@@ -1,0 +1,5 @@
+python tools/simulate_invoicetronic_from_xml.py "C:\Users\matti\Desktop\FATTURE CASATI\*.xml"
+
+python worker/run.py
+
+SE ALTRO UTENTE CAMBIARE PERCORSO DOVE SI TROVANO I FILE: C:\Users\matti\Desktop\FATTURE CASATI\*.xml

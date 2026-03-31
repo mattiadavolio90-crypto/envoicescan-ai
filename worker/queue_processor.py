@@ -34,6 +34,16 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
+try:
+    from supabase import create_client
+except Exception:  # pragma: no cover - compat con versioni precedenti
+    from supabase.client import create_client
+
+try:
+    from supabase.lib.client_options import SyncClientOptions
+except Exception:  # pragma: no cover - supabase v1
+    SyncClientOptions = None
+
 # ─── Assicura che la root del progetto sia in sys.path ───────────────────────
 # Necessario quando lo script viene eseguito da GitHub Actions (cwd = repo root)
 # o da un percorso diverso.
@@ -41,10 +51,122 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from services import get_supabase_client
 from services.invoice_service import estrai_dati_da_xml, salva_fattura_processata
+from services.worker_client import classifica_via_worker
+
+try:
+    from services.ai_service import aggiorna_streak_classificazione
+except Exception:  # pragma: no cover - fallback per worker CLI senza dipendenze UI
+    def aggiorna_streak_classificazione(*_args, **_kwargs):
+        return None
 
 logger = logging.getLogger(__name__)
+
+
+def get_supabase_client():
+    """Client Supabase per worker CLI, senza dipendenze da Streamlit UI."""
+    url = os.environ.get("SUPABASE_URL", "")
+    key = (
+        os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+        or os.environ.get("SUPABASE_KEY", "")
+    )
+    if not url or not key:
+        raise RuntimeError(
+            "Credenziali Supabase non trovate. "
+            "Imposta SUPABASE_URL e SUPABASE_SERVICE_ROLE_KEY nelle env vars."
+        )
+
+    if SyncClientOptions is None:
+        return create_client(url, key)
+
+    options = SyncClientOptions(
+        postgrest_client_timeout=30,
+        storage_client_timeout=30,
+    )
+    return create_client(url, key, options=options)
+
+
+def _auto_classify_saved_rows(
+    *,
+    supabase,
+    user_id: str,
+    ristorante_id: str,
+    nome_file: str,
+) -> int:
+    """Classifica automaticamente le righe appena salvate dal worker.
+
+    Replica il comportamento dell'upload manuale: prende le righe con categoria
+    vuota/NULL/"Da Classificare", invia le descrizioni all'AI e aggiorna subito
+    la colonna categoria nel DB.
+
+    Returns:
+        Numero di righe aggiornate con categoria diversa da "Da Classificare".
+    """
+    unresolved = (
+        supabase.table("fatture")
+        .select("descrizione, fornitore, iva_percentuale")
+        .eq("user_id", user_id)
+        .eq("ristorante_id", ristorante_id)
+        .eq("file_origine", nome_file)
+        .or_("categoria.is.null,categoria.eq.Da Classificare,categoria.eq.")
+        .execute()
+    )
+
+    rows = unresolved.data or []
+    if not rows:
+        return 0
+
+    # Dedupe per descrizione mantenendo allineati fornitore/IVA.
+    desc_map: dict[str, tuple[str, int]] = {}
+    for row in rows:
+        desc = str(row.get("descrizione") or "").strip()
+        if not desc or desc in desc_map:
+            continue
+        fornitore = str(row.get("fornitore") or "")
+        try:
+            iva = int(row.get("iva_percentuale") or 0)
+        except (TypeError, ValueError):
+            iva = 0
+        desc_map[desc] = (fornitore, iva)
+
+    descrizioni = list(desc_map.keys())
+    if not descrizioni:
+        return 0
+
+    updated_rows = 0
+    chunk_size = 50
+    for i in range(0, len(descrizioni), chunk_size):
+        chunk = descrizioni[i:i + chunk_size]
+        fornitori = [desc_map[d][0] for d in chunk]
+        iva_list = [desc_map[d][1] for d in chunk]
+        categorie = classifica_via_worker(
+            chunk,
+            fornitori=fornitori,
+            iva=iva_list,
+            hint=None,
+            user_id=user_id,
+        )
+
+        for desc, cat in zip(chunk, categorie):
+            categoria = str(cat or "").strip()
+            if not categoria or categoria == "Da Classificare":
+                continue
+            resp = (
+                supabase.table("fatture")
+                .update({"categoria": categoria})
+                .eq("user_id", user_id)
+                .eq("ristorante_id", ristorante_id)
+                .eq("file_origine", nome_file)
+                .eq("descrizione", desc)
+                .or_("categoria.is.null,categoria.eq.Da Classificare,categoria.eq.")
+                .execute()
+            )
+            n = len(resp.data or [])
+            updated_rows += n
+            if n > 0:
+                aggiorna_streak_classificazione(desc, categoria, supabase)
+
+    return updated_rows
 
 # ─── Configurazione ───────────────────────────────────────────────────────────
 
@@ -81,7 +203,7 @@ class CycleStats:
 
     def log_summary(self) -> None:
         logger.info(
-            "[worker=%s] Ciclo completato — claimed=%d done=%d retry=%d dead=%d skip=%d",
+            "[worker=%s] Ciclo completato - claimed=%d done=%d retry=%d dead=%d skip=%d",
             self.worker_id,
             self.batch_claimed,
             self.done,
@@ -208,7 +330,7 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
 
     if not dati_prodotti:
         # XML valido ma nessuna riga estratta (es. fattura senza DettaglioLinee)
-        logger.warning("[item=%d] estrai_dati_da_xml ha restituito 0 righe — segno come done", queue_id)
+        logger.warning("[item=%d] estrai_dati_da_xml ha restituito 0 righe - segno come done", queue_id)
         return ItemResult(queue_id=queue_id, event_id=event_id, status="done", righe=0)
 
     # ── Salva in public.fatture ───────────────────────────────────────────────
@@ -238,6 +360,19 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
             queue_id=queue_id, event_id=event_id, status="retry",
             error=f"salva_fattura_processata error={err}",
         )
+
+    # Auto-classificazione post-salvataggio: stesso comportamento atteso del flusso manuale.
+    try:
+        classified_rows = _auto_classify_saved_rows(
+            supabase=supabase,
+            user_id=user_id,
+            ristorante_id=ristorante_id,
+            nome_file=nome_file,
+        )
+        logger.info("[item=%d] auto-classificazione completata: %d righe", queue_id, classified_rows)
+    except Exception as exc:
+        # Non ritentare l'intero item dopo save OK: eviterebbe duplicazioni in fatture.
+        logger.warning("[item=%d] auto-classificazione fallita: %s", queue_id, exc)
 
     return ItemResult(
         queue_id=queue_id,
@@ -315,7 +450,7 @@ def run_cycle() -> CycleStats:
     stats.batch_claimed = len(batch)
 
     if not batch:
-        logger.info("[worker=%s] Coda vuota — nessun record da elaborare", worker_id)
+        logger.info("[worker=%s] Coda vuota - nessun record da elaborare", worker_id)
         return stats
 
     logger.info("[worker=%s] Claimati %d record", worker_id, len(batch))
@@ -345,7 +480,7 @@ def run_cycle() -> CycleStats:
                 _mark_done(supabase, queue_id, purge_xml=True)
                 stats.done += 1
                 logger.info(
-                    "[item=%d event=%s] Done — %d righe in %.1fs",
+                    "[item=%d event=%s] Done - %d righe in %.1fs",
                     queue_id, result.event_id, result.righe, elapsed,
                 )
             except Exception as exc:
@@ -367,13 +502,13 @@ def run_cycle() -> CycleStats:
                 if final_status == "dead":
                     stats.dead += 1
                     logger.warning(
-                        "[item=%d event=%s] DEAD — max tentativi raggiunto: %s",
+                        "[item=%d event=%s] DEAD - max tentativi raggiunto: %s",
                         queue_id, result.event_id, result.error,
                     )
                 else:
                     stats.retry_scheduled += 1
                     logger.warning(
-                        "[item=%d event=%s] Retry schedulato — %s",
+                        "[item=%d event=%s] Retry schedulato - %s",
                         queue_id, result.event_id, result.error,
                     )
             except Exception as exc:

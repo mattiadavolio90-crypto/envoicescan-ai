@@ -27,6 +27,7 @@ from services.ai_service import (
     set_global_memory_enabled,
     ottieni_categoria_prodotto,
     ottieni_hint_per_ai,
+    aggiorna_streak_classificazione,
 )
 from services.worker_client import classifica_via_worker
 
@@ -635,7 +636,13 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         descrizioni_solo_ai = [d for d in descrizioni_aggiornate if d in set(descrizioni_per_ai)] if descrizioni_aggiornate else list(set(descrizioni_per_ai) & set(mappa_categorie.keys()))
                         st.session_state.righe_ai_appena_categorizzate = descrizioni_solo_ai
                         logger.info(f"🧠 Fonte tracking: {len(descrizioni_solo_ai)} AI, {len(st.session_state.get('righe_keyword_appena_categorizzate', []))} keyword")
-                        
+
+                        # 📈 STREAK: Aggiorna contatore per ogni descrizione classificata dal GPT
+                        for _desc_ai in descrizioni_solo_ai:
+                            _cat_ai = mappa_categorie.get(_desc_ai)
+                            if _cat_ai:
+                                aggiorna_streak_classificazione(_desc_ai, _cat_ai, supabase)
+
                         # DEBUG: Log per admin
                         logger.info(f"📊 RISULTATO FINALE: {righe_aggiornate_totali} righe aggiornate, {len(descrizioni_non_trovate)} non trovate")
                         

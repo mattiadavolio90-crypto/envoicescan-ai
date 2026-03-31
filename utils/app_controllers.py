@@ -47,6 +47,7 @@ from config.constants import (
 from utils.ui_helpers import hide_sidebar_css
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 from utils.ristorante_helper import add_ristorante_filter
+from utils.text_utils import format_fattura_label
 
 from services.auth_service import (
     verifica_credenziali,
@@ -199,7 +200,7 @@ def mostra_pagina_login(supabase, cookie_manager):
 
                         if user:
                             user.pop('password_hash', None)  # Non esporre hash in session
-                            st.session_state.forcelogout = False
+                            st.session_state.force_logout = False
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
                             st.session_state.force_logout = False  # ← Reset flag logout
@@ -1293,15 +1294,22 @@ def render_dashboard_ui(supabase, logger, user):
                 st.markdown("---")
 
                 # Raggruppa per file origine per creare summary
-                fatture_summary = df_cache.groupby('FileOrigine').agg({
+                _agg_dict = {
                     'Fornitore': lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[0],
                     'TotaleRiga': 'sum',
                     'NumeroRiga': 'count',
                     'DataDocumento': 'first'
-                }).reset_index()
+                }
+                if 'CreatedAt' in df_cache.columns:
+                    _agg_dict['CreatedAt'] = 'max'
+                fatture_summary = df_cache.groupby('FileOrigine').agg(_agg_dict).reset_index()
                 fatture_summary = fatture_summary.reset_index(drop=True)
-                fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data']
-                fatture_summary = fatture_summary.sort_values('Data', ascending=False)
+                if 'CreatedAt' in fatture_summary.columns:
+                    fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data', 'CreatedAt']
+                    fatture_summary = fatture_summary.sort_values('CreatedAt', ascending=False)
+                else:
+                    fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data']
+                    fatture_summary = fatture_summary.sort_values('Data', ascending=False)
 
                 # 🗑️ PULSANTE SVUOTA TUTTO (solo admin/impersonificati)
                 if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
@@ -1430,7 +1438,14 @@ def render_dashboard_ui(supabase, logger, user):
                         fattura_selezionata = st.selectbox(
                             "Seleziona fattura da eliminare:",
                             options=fatture_options,
-                            format_func=lambda x: f"📄 {x['File']} - {x['Fornitore']} (📅 {x['Data']}, 📦 {x['NumProdotti']} prodotti, 💰 €{x['Totale']:.2f})",
+                            format_func=lambda x: format_fattura_label(
+                                file_name=x['File'],
+                                fornitore=x['Fornitore'],
+                                totale=x['Totale'],
+                                num_righe=x['NumProdotti'],
+                                data=x['Data'],
+                            ),
+                            help="Il nome file viene mostrato completo e si adatta allo spazio disponibile",
                             key="select_fattura_elimina"
                         )
 

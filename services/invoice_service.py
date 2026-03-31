@@ -1262,6 +1262,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 except Exception:
                     user_email = "worker"
 
+                _is_invoicetronic = event_source == 'invoicetronic'
                 if verifica and verifica["integrita_ok"]:
                     log_upload_event(
                         user_id=user_id,
@@ -1273,7 +1274,8 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                         error_stage=None,
                         error_message=None,
                         details={"source": event_source},
-                        supabase_client=supabase_client
+                        supabase_client=supabase_client,
+                        needs_ack=_is_invoicetronic,
                     )
                 elif verifica:
                     log_upload_event(
@@ -1291,7 +1293,8 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                             "righe_db": verifica["righe_db"],
                             "perdite": verifica["perdite"]
                         },
-                        supabase_client=supabase_client
+                        supabase_client=supabase_client,
+                        needs_ack=_is_invoicetronic,
                     )
             except Exception as log_error:
                 logger.error(f"Errore logging upload event: {log_error}")

@@ -464,7 +464,8 @@ def log_upload_event(
     error_stage: Optional[str] = None,
     error_message: Optional[str] = None,
     details: Optional[dict] = None,
-    supabase_client = None
+    supabase_client = None,
+    needs_ack: bool = False,
 ) -> None:
     """
     Logga evento di upload su Supabase per supporto tecnico.
@@ -513,7 +514,8 @@ def log_upload_event(
             'rows_excluded': rows_excluded,
             'error_stage': error_stage,
             'error_message': error_message,
-            'details': details
+            'details': details,
+            'needs_ack': needs_ack,
         }
         
         supabase_client.table('upload_events').insert(event_data).execute()

@@ -57,7 +57,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         max_pages = 200  # Safety guard: max 200k righe
         
         # 🚀 OTTIMIZZAZIONE: Select solo colonne necessarie (non "*")
-        columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id,needs_review,tipo_documento,sconto_percentuale"
+        columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id,needs_review,tipo_documento,sconto_percentuale,created_at"
         
         while page < max_pages:
             offset = page * page_size
@@ -87,7 +87,8 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
                     "NeedsReview": row.get("needs_review", False),
                     "RistoranteId": row.get("ristorante_id"),
                     "TipoDocumento": row.get("tipo_documento", "TD01"),
-                    "ScontoPercentuale": row.get("sconto_percentuale", 0.0)
+                    "ScontoPercentuale": row.get("sconto_percentuale", 0.0),
+                    "CreatedAt": row.get("created_at", "")
                 })
             
             # Se questa pagina ha meno di page_size record, abbiamo finito

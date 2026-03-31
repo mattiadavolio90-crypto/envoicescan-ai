@@ -34,19 +34,38 @@ import os
 import sys
 import time
 
+# Root progetto (usato per sys.path e .env)
+_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ─── Carica variabili da .env (se presente) ──────────────────────────────────
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(_ROOT, ".env"))
+except ImportError:
+    pass  # python-dotenv non installato: usa solo variabili di sistema
+
 # ─── Logging ─────────────────────────────────────────────────────────────────
+# Forza UTF-8 su Windows per evitare UnicodeEncodeError con cp1252
+if sys.platform == "win32" and hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)-8s %(name)s — %(message)s",
+    format="%(asctime)s %(levelname)-8s %(name)s - %(message)s",
     datefmt="%Y-%m-%dT%H:%M:%S",
     stream=sys.stdout,
 )
 logger = logging.getLogger("worker.run")
 
 # ─── Assicura PROJECT_ROOT in sys.path ────────────────────────────────────────
-_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
+
+
+# ─── Compatibilità SUPABASE_KEY → SUPABASE_SERVICE_ROLE_KEY ─────────────────
+# Il .env usa SUPABASE_KEY; il worker usa SUPABASE_SERVICE_ROLE_KEY
+if not os.environ.get("SUPABASE_SERVICE_ROLE_KEY") and os.environ.get("SUPABASE_KEY"):
+    os.environ["SUPABASE_SERVICE_ROLE_KEY"] = os.environ["SUPABASE_KEY"]
 
 
 def _check_env() -> bool:
@@ -67,15 +86,40 @@ def _check_env() -> bool:
     return True
 
 
+def _ensure_streamlit_available() -> bool:
+    """Garantisce import streamlit in contesto worker CLI.
+
+    Se streamlit non e' installato nella venv locale, installa uno stub minimale
+    solo per consentire import dei moduli condivisi con l'app UI.
+    """
+    try:
+        import streamlit  # noqa: F401
+        return True
+    except Exception:
+        try:
+            from worker.streamlit_stub import install_streamlit_stub
+            install_streamlit_stub()
+            logger.warning(
+                "streamlit non disponibile: attivato stub compatibile per worker CLI"
+            )
+            return True
+        except Exception as exc:
+            logger.exception("Impossibile attivare fallback streamlit stub: %s", exc)
+            return False
+
+
 def main() -> int:
     t_start = time.monotonic()
-    logger.info("════ worker fatture_queue — avvio ════")
+    logger.info("==== worker fatture_queue - avvio ====")
 
     # ── Validazione env vars ──────────────────────────────────────────────────
     if not _check_env():
         return 1
 
     # ── Import qui (dopo sys.path setup) ─────────────────────────────────────
+    if not _ensure_streamlit_available():
+        return 1
+
     try:
         from worker.queue_processor import run_cycle
     except Exception as exc:
@@ -93,7 +137,7 @@ def main() -> int:
     stats.log_summary()
 
     logger.info(
-        "════ worker completato in %.1fs — done=%d retry=%d dead=%d skip=%d ════",
+        "==== worker completato in %.1fs - done=%d retry=%d dead=%d skip=%d ====",
         elapsed,
         stats.done,
         stats.retry_scheduled,
