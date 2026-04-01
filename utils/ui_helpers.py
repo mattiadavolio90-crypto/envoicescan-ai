@@ -176,8 +176,8 @@ def render_pivot_mensile(
 
         with col_left:
             st.markdown(f"""
-            <div style="background-color: #E3F2FD; padding: 15px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content;">
-                <p style="color: #1565C0; font-size: 16px; font-weight: bold; margin: 0; white-space: nowrap;">
+            <div style="background-color: #E3F2FD; padding: clamp(0.75rem, 1.5vw, 0.95rem) clamp(0.9rem, 2vw, 1.25rem); border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: min(100%, fit-content); max-width: 100%; box-sizing: border-box;">
+                <p style="color: #1565C0; font-size: clamp(0.85rem, 1.4vw, 1rem); font-weight: bold; margin: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.4;">
                     📋 N. Righe: {num_righe:,} | 💰 Totale: € {totale:,.0f} | 📊 Media mensile: € {media:,.0f}
                 </p>
             </div>

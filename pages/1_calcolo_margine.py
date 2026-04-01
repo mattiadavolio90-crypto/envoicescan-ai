@@ -1240,8 +1240,8 @@ if st.session_state.margine_tab == "centri":
                 _col_centri_left, _col_centri_right = st.columns([5, 1])
                 with _col_centri_left:
                     st.markdown(f"""
-                    <div style="background-color: #E3F2FD; padding: 12px 20px; border-radius: 8px; border: 2px solid #2196F3; margin-top: 8px; width: fit-content;">
-                        <span style="color: #1565C0; font-weight: bold; font-size: clamp(0.85rem, 2vw, 1rem); white-space: nowrap;">
+                    <div style="background-color: #E3F2FD; padding: clamp(0.75rem, 1.5vw, 0.9rem) clamp(0.9rem, 2vw, 1.25rem); border-radius: 8px; border: 2px solid #2196F3; margin-top: 8px; width: min(100%, fit-content); max-width: 100%; box-sizing: border-box;">
+                        <span style="color: #1565C0; font-weight: bold; font-size: clamp(0.85rem, 2vw, 1rem); white-space: normal; overflow-wrap: anywhere; line-height: 1.4;">
                             📊 N. Centri: {n_centri} | 💰 Totale: € {tot_centri:,.0f} | 📊 Media mensile: € {media_centri:,.0f}
                         </span>
                     </div>
@@ -1639,13 +1639,34 @@ if st.session_state.margine_tab == "calcolo":
         "H2 (Lug-Dic)": list(range(7, 13)),
     }
 
-    periodo_sel = st.selectbox(
-        "📅 Periodo di riferimento KPI",
-        options=list(periodi_kpi.keys()),
-        index=0,
-        key="kpi_periodo_select"
-    )
+    col_periodo_kpi, col_info_kpi = st.columns([1.5, 4.5])
+
+    with col_periodo_kpi:
+        st.markdown('<p style="color:#1e3a5f;font-weight:600;font-size:0.9rem;margin:0 0 4px 0;">📅 Periodo di riferimento KPI</p>', unsafe_allow_html=True)
+        periodo_sel = st.selectbox(
+            "📅 Periodo di riferimento KPI",
+            options=list(periodi_kpi.keys()),
+            index=0,
+            key="kpi_periodo_select",
+            label_visibility="collapsed"
+        )
+
     mesi_filtro = periodi_kpi[periodo_sel]
+    with col_info_kpi:
+        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
+                    padding: 10px 16px;
+                    border-radius: 8px;
+                    border: 1px solid #93c5fd;
+                    color: #1e3a8a;
+                    font-size: clamp(0.78rem, 1.8vw, 0.88rem);
+                    font-weight: 500;
+                    line-height: 1.5;">
+            📊 {periodo_sel} ({len(mesi_filtro)} mesi)
+        </div>
+        """, unsafe_allow_html=True)
+
     kpi = calcola_kpi_anno(df_risultati, mesi_filtro=mesi_filtro)
     num_mesi = kpi['num_mesi']
 

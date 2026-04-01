@@ -873,6 +873,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     with col6:
         st.markdown(_kpi_html("📊 Media Mensile", _fmt_kpi_main(spesa_media)), unsafe_allow_html=True)
 
+    st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
     st.markdown("---")
     
     # 🎨 NAVIGAZIONE CON BOTTONI COLORATI (invece di tab)

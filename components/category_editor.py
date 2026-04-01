@@ -360,7 +360,7 @@ def render_category_editor(df_completo_filtrato, supabase):
     
     st.markdown(f"""
     <div style="background-color: #E8F5E9; padding: 12px 15px; border-radius: 8px; border-left: 4px solid #4CAF50; margin-bottom: 15px;">
-        <p style="margin: 0; font-size: 14px; color: #2E7D32; font-weight: 500;">
+        <p style="margin: 0; font-size: clamp(0.85rem, 1.2vw, 0.95rem); color: #2E7D32; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere;">
             📄 <strong>Totale: {num_righe:,} {'riga' if num_righe == 1 else 'righe'}</strong> • 🏷️ <strong>{num_prodotti_unici:,} prodotti unici</strong>
         </p>
     </div>
@@ -577,13 +577,13 @@ def render_category_editor(df_completo_filtrato, supabase):
         /* Approccio 1: Targetta tutte le celle dell'ultima colonna */
         div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(1),
         div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(2):has(:only-child) {
-            font-size: 26px !important;
+            font-size: clamp(1.1rem, 1vw + 0.8rem, 1.625rem) !important;
             text-align: center !important;
             line-height: 1.5 !important;
         }
         /* Approccio 2: Aumenta font per colonne con width="small" (Fonte e U.M.) */
         div[data-testid="stDataFrame"] [data-baseweb="cell"]:has(span:only-child) {
-            font-size: 24px !important;
+            font-size: clamp(1rem, 0.9vw + 0.8rem, 1.5rem) !important;
         }
         /* Approccio 3: Centra e ingrandisci celle contenenti solo emoji singole */
         div[data-testid="stDataFrame"] div[role="gridcell"] > div:only-child {

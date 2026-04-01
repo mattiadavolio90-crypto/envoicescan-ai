@@ -175,10 +175,11 @@ if data_inizio_filtro is None:
 
 with col_info_periodo:
     st.markdown(f"""
-    <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
+    <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
                 padding: 10px 16px;
                 border-radius: 8px;
-                border: 1px solid #fde047;
+                border: 1px solid #93c5fd;
+                color: #1e3a8a;
                 font-size: clamp(0.78rem, 1.8vw, 0.88rem);
                 font-weight: 500;
                 line-height: 1.5;
@@ -382,7 +383,8 @@ elif st.session_state.cp_tab_attivo == "sconti":
         color: #1e40af;
         font-size: clamp(1.3rem, 3.5vw, 1.75rem);
         font-weight: 700;
-        white-space: nowrap;
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -667,9 +669,9 @@ elif st.session_state.cp_tab_attivo == "nc":
             col_riep_nc, col_btn_nc = st.columns([7, 3])
             with col_riep_nc:
                 st.markdown("""
-                <div style="background-color: #E3F2FD; padding: 12px 20px; border-radius: 8px;
-                            border: 2px solid #2196F3; margin-top: 8px; width: fit-content;">
-                    <span style="color: #1565C0; font-weight: bold; font-size: clamp(0.85rem, 2vw, 1rem); white-space: nowrap;">
+                <div style="background-color: #E3F2FD; padding: clamp(0.75rem, 1.5vw, 0.9rem) clamp(0.9rem, 2vw, 1.25rem); border-radius: 8px;
+                            border: 2px solid #2196F3; margin-top: 8px; width: min(100%, fit-content); max-width: 100%; box-sizing: border-box;">
+                    <span style="color: #1565C0; font-weight: bold; font-size: clamp(0.85rem, 2vw, 1rem); white-space: normal; overflow-wrap: anywhere; line-height: 1.4;">
                         📋 N. Documenti: {} &nbsp;|&nbsp; N. Righe: {} &nbsp;|&nbsp; 💰 Totale Note di Credito: €{:.2f}
                     </span>
                 </div>

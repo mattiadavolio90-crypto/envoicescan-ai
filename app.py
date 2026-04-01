@@ -164,6 +164,239 @@ load_css('branding.css')
 load_css('layout.css')
 load_js('branding.js')
 
+st.markdown("""
+<style>
+/* =========================================================
+   RESPONSIVE GLOBAL - Desktop invariato, tablet e mobile
+   ========================================================= */
+
+html, body, .stApp {
+    overflow-x: hidden !important;
+}
+
+.main .block-container,
+.block-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+[data-testid="stVerticalBlock"],
+[data-testid="stHorizontalBlock"],
+[data-testid="column"],
+[data-testid="stExpander"],
+[data-testid="stExpander"] details {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+/* Tabelle e data editor: mai fuori schermo */
+[data-testid="stDataFrame"],
+div[data-testid="stDataFrameGlideDataEditor"],
+.stDataFrame,
+.file-status-table,
+[data-testid="stTable"] {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+}
+
+[data-testid="stDataFrame"] > div,
+div[data-testid="stDataFrameGlideDataEditor"] > div,
+.file-status-table table {
+    min-width: max-content !important;
+}
+
+/* Plotly full width */
+[data-testid="stPlotlyChart"],
+[data-testid="stPlotlyChart"] > div,
+.js-plotly-plot,
+.plot-container,
+.plotly {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Bottoni più robusti anche fuori mobile */
+button,
+[data-testid="baseButton-primary"],
+[data-testid="baseButton-secondary"],
+[data-testid="stDownloadButton"] button,
+[data-testid="stFileUploaderDropzone"] button {
+    min-height: 2.75rem !important;
+}
+
+/* Tablet */
+@media (min-width: 768px) and (max-width: 1024px) {
+    html {
+        font-size: 15px !important;
+    }
+
+    .main .block-container,
+    .block-container {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+
+    [data-testid="column"] {
+        margin-bottom: 1rem !important;
+    }
+
+    [data-testid="stMetric"] {
+        padding: 1rem 0.9rem !important;
+        border-width: 3px !important;
+    }
+
+    .kpi-card,
+    .kpi-card-cp,
+    .admin-metric-card {
+        padding: 0.9rem !important;
+    }
+
+    /* KPI principali: 2 per riga */
+    [data-testid="stHorizontalBlock"]:has(.kpi-card),
+    [data-testid="stHorizontalBlock"]:has(.kpi-card-cp),
+    [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) {
+        flex-wrap: wrap !important;
+        gap: 0.75rem !important;
+    }
+
+    [data-testid="stHorizontalBlock"]:has(.kpi-card) > div[data-testid="column"],
+    [data-testid="stHorizontalBlock"]:has(.kpi-card-cp) > div[data-testid="column"],
+    [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > div[data-testid="column"] {
+        flex: 1 1 calc(50% - 0.75rem) !important;
+        max-width: calc(50% - 0.75rem) !important;
+    }
+
+    section[data-testid="stSidebar"],
+    [data-testid="stSidebar"] {
+        width: 230px !important;
+        min-width: 230px !important;
+        max-width: 230px !important;
+    }
+}
+
+/* Mobile */
+@media (max-width: 767px) {
+    html {
+        font-size: 16px !important;
+    }
+
+    .main .block-container,
+    .block-container {
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+        padding-top: 1rem !important;
+        padding-bottom: 4rem !important;
+    }
+
+    /* Tutto in colonna singola */
+    [data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        gap: 0.75rem !important;
+    }
+
+    [data-testid="stHorizontalBlock"] > div[data-testid="column"] {
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        flex: 1 1 100% !important;
+        margin-bottom: 0.75rem !important;
+    }
+
+    /* KPI e card singole */
+    [data-testid="stHorizontalBlock"]:has(.kpi-card) > div[data-testid="column"],
+    [data-testid="stHorizontalBlock"]:has(.kpi-card-cp) > div[data-testid="column"],
+    [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > div[data-testid="column"] {
+        flex: 1 1 100% !important;
+        max-width: 100% !important;
+    }
+
+    [data-testid="stMetric"] {
+        padding: 1rem !important;
+        border-width: 2px !important;
+    }
+
+    [data-testid="stMetricValue"] > div {
+        font-size: 1.8rem !important;
+    }
+
+    [data-testid="stMetricLabel"] > div,
+    .kpi-card .kpi-label,
+    .kpi-card-cp .kpi-label,
+    .admin-metric-label {
+        font-size: 1rem !important;
+    }
+
+    .kpi-card .kpi-value,
+    .kpi-card-cp .kpi-value,
+    .admin-metric-value {
+        font-size: 1.4rem !important;
+    }
+
+    /* Font minimo leggibile */
+    p, li, label, span, div,
+    [data-testid="stMarkdownContainer"],
+    [data-testid="stCaptionContainer"] {
+        font-size: max(16px, 1rem);
+    }
+
+    /* Bottoni touch-friendly */
+    button,
+    [data-testid="stDownloadButton"] button,
+    [data-testid="stFileUploaderDropzone"] button,
+    div[data-testid="stFormSubmitButton"] button {
+        min-height: 44px !important;
+        padding-top: 0.8rem !important;
+        padding-bottom: 0.8rem !important;
+    }
+
+    button p {
+        font-size: 1rem !important;
+        white-space: normal !important;
+        line-height: 1.25 !important;
+    }
+
+    [data-testid="stSelectbox"] div[data-baseweb="select"] > div,
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input,
+    textarea {
+        min-height: 44px !important;
+        font-size: 16px !important;
+    }
+
+    [data-testid="stDataFrame"],
+    div[data-testid="stDataFrameGlideDataEditor"],
+    .file-status-table,
+    [data-testid="stPlotlyChart"] {
+        overflow-x: auto !important;
+    }
+
+    [data-testid="stFileUploader"] > div,
+    [data-testid="stExpander"] {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"] {
+        gap: 0.6rem !important;
+    }
+
+    [data-testid="stFileUploaderDropzone"]::after {
+        flex: 1 1 100% !important;
+    }
+
+    section[data-testid="stSidebar"],
+    [data-testid="stSidebar"] {
+        width: min(85vw, 320px) !important;
+        min-width: min(85vw, 320px) !important;
+        max-width: min(85vw, 320px) !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
+
 
 # ============================================================
 # 🔒 SISTEMA AUTENTICAZIONE CON RECUPERO PASSWORD
@@ -1524,7 +1757,7 @@ if user.get('email') not in ADMIN_EMAILS:
     
     elif len(ristoranti) == 1:
         # Singolo ristorante: mostra solo info compatta
-        st.success(f"🏪 **Ristorante:** {ristoranti[0]['nome_ristorante']} | 📋 **P.IVA:** `IT{ristoranti[0]['partita_iva']}`")
+        st.info(f"🏪 **Ristorante:** {ristoranti[0]['nome_ristorante']} | 📋 **P.IVA:** `IT{ristoranti[0]['partita_iva']}`")
         st.markdown("---")
 
 # ============================================================
@@ -1573,273 +1806,6 @@ with st.spinner("⏳ Caricamento dati..."):
 # ma potrebbe non essere raggiunto se df_cache è vuoto.
 stats_db = {'num_uniche': 0, 'num_righe': 0, 'success': False}
 
-# 🗂️ GESTIONE FATTURE - Eliminazione (prima del file uploader)
-if not df_cache.empty:
-    st.markdown("""
-    <style>
-    /* Expander Gestione Fatture - sfondo arancione chiaro */
-    div.st-key-expander_gestione_fatture [data-testid="stExpander"] details summary {
-        background: linear-gradient(135deg, rgba(255, 237, 213, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%) !important;
-        border-radius: 8px !important;
-        padding: 10px 14px !important;
-        color: #9a3412 !important;
-        font-weight: 600 !important;
-        border: 1px solid #fdba74 !important;
-    }
-    div.st-key-expander_gestione_fatture [data-testid="stExpander"] details {
-        background: rgba(255, 247, 237, 0.9) !important;
-        border: 1px solid #fdba74 !important;
-        border-radius: 8px !important;
-    }
-    div.st-key-expander_gestione_fatture [data-testid="stExpander"] details[open] summary {
-        border-bottom: 1px solid #fdba74 !important;
-        border-radius: 8px 8px 0 0 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    with st.container(key="expander_gestione_fatture"):
-      with st.expander("🗂️ Apri per gestire le Fatture Caricate (Elimina)", expanded=False):
-        
-        # ========================================
-        # BOX STATISTICHE
-        # ========================================
-        try:
-            stats_db = get_fatture_stats(user_id, st.session_state.get('ristorante_id'))
-        except Exception as e:
-            logger.error(f"Errore get_fatture_stats: {e}")
-            st.error("❌ Errore caricamento statistiche")
-            stats_db = {'num_uniche': 0, 'num_righe': 0, 'success': False}
-        # Conta note di credito (TD04) dai file unici in df_cache
-        num_note_credito = 0
-        if 'TipoDocumento' in df_cache.columns and 'FileOrigine' in df_cache.columns:
-            num_note_credito = df_cache[df_cache['TipoDocumento'].str.upper().str.strip() == 'TD04']['FileOrigine'].nunique()
-        note_credito_html = f' | 📝 Note di Credito: <strong style="font-size: 1.2em; color: #FF5500;">{num_note_credito:,}</strong>' if num_note_credito > 0 else ' | 📝 Note di Credito: <strong style="font-size: 1.2em; color: #FF5500;">0</strong>'
-        st.markdown(f"""
-<div style="
-    background: linear-gradient(135deg, rgba(255, 140, 0, 0.15) 0%, rgba(255, 165, 0, 0.20) 100%);
-    padding: 14px 22px;
-    border-radius: 10px;
-    border-left: 5px solid rgba(255, 107, 0, 0.6);
-    box-shadow: 0 3px 6px rgba(255, 140, 0, 0.15);
-    margin: 0 0 20px 0;
-    display: inline-block;
-    min-width: 400px;
-    backdrop-filter: blur(10px);
-">
-    <span style="color: #FF6B00; font-size: 1.05em; font-weight: 700;">
-        📊 Fatture: <strong style="font-size: 1.2em; color: #FF5500;">{stats_db["num_uniche"]:,}</strong>{note_credito_html} | 
-        📋 Righe Totali: <strong style="font-size: 1.2em; color: #FF5500;">{stats_db["num_righe"]:,}</strong>
-    </span>
-</div>
-""", unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        # Raggruppa per file origine per creare summary
-        _agg_dict = {
-            'Fornitore': lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[0],
-            'TotaleRiga': 'sum',
-            'NumeroRiga': 'count',
-            'DataDocumento': 'first'
-        }
-        if 'CreatedAt' in df_cache.columns:
-            _agg_dict['CreatedAt'] = 'max'
-        fatture_summary = df_cache.groupby('FileOrigine').agg(_agg_dict).reset_index()
-        
-        # 🔧 FIX: Reset index prima di rinominare (già fatto ma assicuriamo drop=True)
-        fatture_summary = fatture_summary.reset_index(drop=True)
-        
-        if 'CreatedAt' in fatture_summary.columns:
-            fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data', 'CreatedAt']
-            fatture_summary = fatture_summary.sort_values('CreatedAt', ascending=False)
-        else:
-            fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data']
-            fatture_summary = fatture_summary.sort_values('Data', ascending=False)
-        
-        # 🔍 DEBUG TOOL: Rimosso - Usa Upload Events in Admin Panel per diagnostica
-        
-        # 🗑️ PULSANTE SVUOTA TUTTO (solo admin/impersonificati - nessuna conferma richiesta)
-        if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-            st.markdown("### 🗑️ Eliminazione Massiva")
-            
-            if st.button(
-                "🗑️ ELIMINA TUTTO",
-                type="primary",
-                use_container_width=True,
-                key="btn_svuota_definitivo"
-            ):
-                    with st.spinner("🗑️ Eliminazione in corso..."):
-                        # Progress bar per UX
-                        progress = st.progress(0)
-                        progress.progress(20, text="Eliminazione da Supabase...")
-                        
-                        result = elimina_tutte_fatture(user_id, ristoranteid=st.session_state.get('ristorante_id'))
-                        
-                        # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
-                        invalida_cache_memoria()  # Reset memoria AI
-                        
-                        # 🔥 RESET SESSION: Reinizializza set vuoti (non solo clear)
-                        st.session_state.files_processati_sessione = set()
-                        st.session_state.files_con_errori = set()
-                        
-                        progress.progress(40, text="Pulizia file JSON locali...")
-                        
-                        # HARD RESET: Elimina file JSON obsoleti
-                        json_files = ['fattureprocessate.json', 'fatture.json', 'data.json']
-                        for json_file in json_files:
-                            if os.path.exists(json_file):
-                                try:
-                                    os.remove(json_file)
-                                    logger.info(f"🗑️ Rimosso file JSON obsoleto: {json_file}")
-                                except Exception as e:
-                                    logger.warning(f"⚠️ Impossibile rimuovere {json_file}: {e}")
-                        
-                        progress.progress(60, text="Pulizia cache Streamlit...")
-                        
-                        # HARD RESET: Pulisci TUTTE le cache
-                        st.cache_data.clear()
-                        try:
-                            st.cache_resource.clear()
-                        except Exception as e:
-                            logger.warning(f"⚠️ Errore clear cache_resource durante hard reset: {e}")
-                        
-                        progress.progress(80, text="Ripristino sessione...")
-                        
-                        # HARD RESET: Rimuovi session state specifici
-                        # 🔧 FIX: Preserva chiavi impersonazione e contesto ristorante
-                        #          per evitare che l'admin perda i poteri dopo delete
-                        keys_to_preserve = {
-                            'user_data', 'logged_in',
-                            # Impersonazione admin
-                            'impersonating', 'admin_original_user', 'user_is_admin',
-                            # Contesto ristorante attivo
-                            'ristorante_id', 'ristoranti', 'partita_iva', 'nome_ristorante',
-                        }
-                        keys_to_remove = [k for k in st.session_state.keys() 
-                                         if k not in keys_to_preserve]
-                        for key in keys_to_remove:
-                            st.session_state.pop(key, None)  # Sicuro: niente errore se non esiste
-                        
-                        progress.progress(100, text="Completato!")
-                        time.sleep(0.1)
-                        
-                        # Mostra risultato DENTRO lo spinner (indentazione corretta)
-                        if result["success"]:
-                            st.success(f"✅ **{result['fatture_eliminate']} fatture** eliminate! ({result['righe_eliminate']} prodotti)")
-                            st.info("🧹 **Ripristino completo**: Cache, JSON locali e stato sessione puliti")
-                            
-                            # LOG AUDIT: Verifica immediata post-delete
-                            try:
-                                verify_query = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id)
-                                verify_query = add_ristorante_filter(verify_query)
-                                verify = verify_query.execute()
-                                num_residue = verify.count or 0
-                                if num_residue == 0:
-                                    logger.info(f"✅ DELETE VERIFIED: 0 righe rimaste per user_id={user_id}")
-                                    st.success(f"✅ Verifica: Database pulito (0 righe)")
-                                else:
-                                    logger.error(f"⚠️ DELETE INCOMPLETE: {num_residue} righe ancora presenti per user_id={user_id}")
-                                    st.error(f"⚠️ Attenzione: {num_residue} righe ancora presenti (possibile problema RLS)")
-                            except Exception as e:
-                                logger.exception("Errore verifica post-delete")
-                            
-                            # Reset checkbox
-                            if 'check_conferma_svuota' in st.session_state:
-                                del st.session_state.check_conferma_svuota
-                            
-                            # 🔥 FLAG HIDE UPLOADER: Nascondi uploader dopo eliminazione totale
-                            st.session_state.hide_uploader = True
-                            st.session_state.files_processati_sessione = set()
-                            st.cache_data.clear()
-                            invalida_cache_memoria()
-                            st.success("✅ Eliminato tutto!")
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Errore: {result['error']}")
-            
-            st.markdown("---")
-        
-        # ========== ELIMINA SINGOLA FATTURA ==========
-        st.markdown("### 🗑️ Elimina Fattura Singola")
-        
-        # Usa fatture_summary già creato sopra
-        if len(fatture_summary) > 0:
-            # 🔍 FILTRO FORNITORE — selectbox con lista fornitori disponibili
-            fornitori_disponibili = sorted(fatture_summary['Fornitore'].dropna().unique().tolist())
-            opzioni_fornitore = ["— Tutti i fornitori —"] + fornitori_disponibili
-            filtro_fornitore_sel = st.selectbox(
-                "🔍 Filtra per Fornitore:",
-                options=opzioni_fornitore,
-                key="filtro_fornitore_gestione"
-            )
-            if filtro_fornitore_sel == "— Tutti i fornitori —":
-                fatture_filtrate = fatture_summary
-            else:
-                fatture_filtrate = fatture_summary[fatture_summary['Fornitore'] == filtro_fornitore_sel]
-            
-            # Crea opzioni dropdown con dict per passare tutti i dati
-            fatture_options = []
-            for idx, row in fatture_filtrate.iterrows():
-                fatture_options.append({
-                    'File': row['File'],
-                    'Fornitore': row['Fornitore'],
-                    'NumProdotti': int(row['NumProdotti']),
-                    'Totale': row['Totale'],
-                    'Data': row['Data']
-                })
-            
-            if not fatture_options:
-                st.info("🔭 Nessuna fattura trovata per il fornitore cercato.")
-            else:
-                fattura_selezionata = st.selectbox(
-                    "Seleziona fattura da eliminare:",
-                    options=fatture_options,
-                    format_func=lambda x: format_fattura_label(
-                        file_name=x['File'],
-                        fornitore=x['Fornitore'],
-                        totale=x['Totale'],
-                        num_righe=x['NumProdotti'],
-                        data=x['Data'],
-                    ),
-                    help="Il nome file viene mostrato completo e si adatta allo spazio disponibile",
-                    key="select_fattura_elimina"
-                )
-                
-                col_btn, col_spacer = st.columns([1, 3])
-                with col_btn:
-                    if st.button("🗑️ Elimina Fattura", type="secondary", use_container_width=True):
-                        with st.spinner(f"🗑️ Eliminazione in corso..."):
-                            result = elimina_fattura_completa(fattura_selezionata['File'], user_id, ristoranteid=st.session_state.get('ristorante_id'))
-                            
-                            # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
-                            invalida_cache_memoria()  # Reset memoria AI
-                            clear_fatture_cache()  # Invalida solo cache fatture
-                            
-                            # 🔥 RESET SESSION: Rimuovi file eliminato dalla lista processati
-                            # (rimuovi sia il nome completo che il nome base normalizzato)
-                            if 'files_processati_sessione' in st.session_state:
-                                file_eliminato = fattura_selezionata['File']
-                                st.session_state.files_processati_sessione.discard(file_eliminato)
-                                st.session_state.files_processati_sessione.discard(os.path.splitext(file_eliminato)[0].lower())
-                            
-                            if result["success"]:
-                                st.success(f"✅ Fattura **{fattura_selezionata['File']}** eliminata! ({result['righe_eliminate']} prodotti)")
-                                time.sleep(0.3)
-                                st.rerun()
-                            else:
-                                st.error(f"❌ Errore: {result['error']}")
-        else:
-            st.info("🔭 Nessuna fattura da eliminare.")
-        
-        st.caption("⚠️ L'eliminazione è immediata e irreversibile")
-
-    st.markdown("""
-    <div style='padding: 8px 14px; font-size: 0.88rem; color: #9a3412; font-weight: 500;'>
-        ⚠️ <strong>IMPORTANTE:</strong> Le fatture caricate devono corrispondere alla P.IVA del ristorante mostrato sopra! <strong>Altrimenti verranno scartate</strong>
-    </div>
-    """, unsafe_allow_html=True)
-
-
 # === GESTIONE VISIBILITÀ UPLOADER ===
 if st.session_state.get("hide_uploader", False):
     st.warning("⚠️ Hai eliminato tutte le fatture.")
@@ -1856,6 +1822,13 @@ if st.session_state.get("hide_uploader", False):
         )
     uploaded_files = []  # Nessun file da elaborare in questo stato
 else:
+    if not df_cache.empty:
+        try:
+            stats_db = get_fatture_stats(user_id, st.session_state.get('ristorante_id'))
+        except Exception as e:
+            logger.error(f"Errore get_fatture_stats: {e}")
+            stats_db = {'num_uniche': 0, 'num_righe': 0, 'success': False}
+
     # ============================================================
     # CHECK LIMITE RIGHE GLOBALE (STEP 1 - Performance)
     # ============================================================
@@ -1946,19 +1919,44 @@ else:
     # ============================================================
     # LAYOUT: FILE UPLOADER + AI INFO/BUTTON AFFIANCATI
     # ============================================================
+    st.markdown("""
+    <div style='display:flex; flex-wrap:wrap; align-items:baseline; gap:0.5rem 1rem; padding: 0 0 12px 0;'>
+        <div style='font-size: 2.25rem; font-weight: 700; color: #1f4e8c; line-height: 1.2;'>📄 Documenti</div>
+        <div style='font-size: 0.88rem; color: #166534; font-weight: 500; line-height: 1.4;'>
+            ⚠️ <strong>IMPORTANTE:</strong> Le fatture caricate devono corrispondere alla P.IVA del ristorante mostrato sopra! <strong>Altrimenti verranno scartate</strong>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
-    # CSS globale per compattare il file uploader e inserire testo italiano
+    # CSS globale per restyling minimalista del file uploader
     st.markdown("""
     <style>
-    /* Compatta altezza drop zone */
+    [data-testid="stFileUploader"] {
+        margin: 0 !important;
+    }
+    [data-testid="stFileUploader"] > div {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    [data-testid="stFileUploader"] section {
+        padding: 0 !important;
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+    }
     [data-testid="stFileUploaderDropzone"] {
-        padding: 8px 15px !important;
-        min-height: 0 !important;
+        padding: 0 !important;
+        min-height: auto !important;
         display: flex !important;
         align-items: center !important;
-        gap: 12px !important;
+        gap: 0.75rem !important;
+        background: transparent !important;
+        justify-content: flex-start !important;
+        flex-wrap: wrap !important;
+        border: none !important;
+        border-radius: 0 !important;
     }
-    /* Nascondi testo originale inglese "Drag and drop" + limit */
     [data-testid="stFileUploaderDropzoneInstructions"] {
         visibility: hidden !important;
         position: absolute !important;
@@ -1966,23 +1964,65 @@ else:
         height: 0 !important;
         overflow: hidden !important;
     }
-    /* Traduci bottone Browse files → Sfoglia */
+    [data-testid="stFileUploaderDropzone"] section,
+    [data-testid="stFileUploaderDropzone"] > div {
+        width: 100% !important;
+    }
     [data-testid="stFileUploaderDropzone"] button {
         font-size: 0 !important;
-        padding: 6px 16px !important;
-        min-height: 0 !important;
+        padding: 0.72rem 1.05rem !important;
+        min-height: auto !important;
         flex-shrink: 0 !important;
+        border-radius: 10px !important;
+        border: 1px solid #2d6a4f !important;
+        background-color: #2d6a4f !important;
+        color: transparent !important;
+        box-shadow: none !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        text-align: center !important;
+        position: relative !important;
+        overflow: hidden !important;
+        min-width: 12.5rem !important;
+    }
+    [data-testid="stFileUploaderDropzone"] button > * {
+        opacity: 0 !important;
     }
     [data-testid="stFileUploaderDropzone"] button::after {
-        content: "Sfoglia" !important;
-        font-size: 0.85rem !important;
-    }
-    /* Testo italiano dentro la dropzone via ::after */
-    [data-testid="stFileUploaderDropzone"]::after {
-        content: "📂 Trascina file qui o clicca Sfoglia  ·  XML, P7M, PDF, JPG, JPEG, PNG · Max 200MB" !important;
-        font-size: 0.78rem !important;
-        color: #666 !important;
+        content: "📄 Carica Documenti" !important;
+        position: absolute !important;
+        left: 50% !important;
+        top: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: max-content !important;
+        text-align: center !important;
+        font-size: clamp(0.85rem, 0.4vw + 0.75rem, 1rem) !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
         white-space: nowrap !important;
+        pointer-events: none !important;
+    }
+    [data-testid="stFileUploaderDropzone"]::after {
+        content: "Formati accettati: XML, P7M, PDF, PNG, JPG, JPEG · Max 200MB" !important;
+        font-size: clamp(0.8rem, 0.3vw + 0.74rem, 0.9rem) !important;
+        color: #2d6a4f !important;
+        line-height: 1.4 !important;
+        font-weight: 600 !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        flex: 1 1 20rem !important;
+        min-width: 0 !important;
+    }
+    [data-testid="stFileUploaderDropzone"] button:hover {
+        border-color: #1f513b !important;
+        background-color: #1f513b !important;
+    }
+    [data-testid="stFileUploaderDropzone"] button:focus,
+    [data-testid="stFileUploaderDropzone"] button:active {
+        border-color: #1f513b !important;
+        background-color: #1f513b !important;
+        color: transparent !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -2045,6 +2085,285 @@ else:
                 del st.session_state.force_empty_until_upload
             st.success("✅ Cache pulita! Puoi ricaricare i file.")
             st.rerun()
+
+    if not df_cache.empty:
+        st.markdown("""
+        <style>
+        /* Expander Gestione Fatture - sfondo verde chiaro */
+        div.st-key-expander_gestione_fatture [data-testid="stExpander"] details summary {
+            background: linear-gradient(135deg, rgba(220, 252, 231, 0.96) 0%, rgba(187, 247, 208, 0.96) 100%) !important;
+            border-radius: 8px !important;
+            padding: 10px 14px !important;
+            color: #166534 !important;
+            font-weight: 600 !important;
+            border: 1px solid #86efac !important;
+        }
+        div.st-key-expander_gestione_fatture [data-testid="stExpander"] details {
+            background: rgba(240, 253, 244, 0.95) !important;
+            border: 1px solid #86efac !important;
+            border-radius: 8px !important;
+        }
+        div.st-key-expander_gestione_fatture [data-testid="stExpander"] details[open] summary {
+            border-bottom: 1px solid #86efac !important;
+            border-radius: 8px 8px 0 0 !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        with st.container(key="expander_gestione_fatture"):
+          with st.expander("🗂️ Apri per gestire le Fatture Caricate (Elimina)", expanded=False):
+            
+            # ========================================
+            # BOX STATISTICHE
+            # ========================================
+            try:
+                stats_db = get_fatture_stats(user_id, st.session_state.get('ristorante_id'))
+            except Exception as e:
+                logger.error(f"Errore get_fatture_stats: {e}")
+                st.error("❌ Errore caricamento statistiche")
+                stats_db = {'num_uniche': 0, 'num_righe': 0, 'success': False}
+
+            num_fatture_xml_p7m = 0
+            num_altri_documenti = 0
+            if 'FileOrigine' in df_cache.columns:
+                file_unici = {
+                    str(file_name).strip()
+                    for file_name in df_cache['FileOrigine'].dropna().unique().tolist()
+                    if str(file_name).strip()
+                }
+                estensioni_fatture = {'.xml', '.p7m'}
+                num_fatture_xml_p7m = sum(
+                    1 for file_name in file_unici
+                    if os.path.splitext(file_name)[1].lower() in estensioni_fatture
+                )
+                num_altri_documenti = len(file_unici) - num_fatture_xml_p7m
+
+            # Conta note di credito (TD04) dai file unici in df_cache
+            num_note_credito = 0
+            if 'TipoDocumento' in df_cache.columns and 'FileOrigine' in df_cache.columns:
+                num_note_credito = df_cache[df_cache['TipoDocumento'].str.upper().str.strip() == 'TD04']['FileOrigine'].nunique()
+            note_credito_html = f' | 📝 Note di Credito: <strong style="font-size: 1.2em; color: #FF5500;">{num_note_credito:,}</strong>' if num_note_credito > 0 else ' | 📝 Note di Credito: <strong style="font-size: 1.2em; color: #FF5500;">0</strong>'
+            altri_documenti_html = f' | 📎 Altri Documenti: <strong style="font-size: 1.2em; color: #FF5500;">{num_altri_documenti:,}</strong>'
+            st.markdown(f"""
+    <div style="
+        background: linear-gradient(135deg, rgba(22, 101, 52, 0.18) 0%, rgba(21, 128, 61, 0.24) 100%);
+        padding: clamp(0.75rem, 1.8vw, 0.9rem) clamp(0.9rem, 2.5vw, 1.4rem);
+        border-radius: 10px;
+        border-left: 5px solid rgba(21, 128, 61, 0.55);
+        box-shadow: 0 3px 6px rgba(22, 101, 52, 0.16);
+        margin: 0 0 20px 0;
+        display: block;
+        width: min(100%, 44rem);
+        min-width: 0;
+        box-sizing: border-box;
+        backdrop-filter: blur(10px);
+    ">
+        <span style="color: #14532d; font-size: clamp(0.95rem, 1.3vw, 1.05rem); font-weight: 700; line-height: 1.45; overflow-wrap: anywhere;">
+            📊 Fatture: <strong style="font-size: 1.2em; color: #166534;">{num_fatture_xml_p7m:,}</strong>{note_credito_html}{altri_documenti_html} | 
+            📋 Righe Totali: <strong style="font-size: 1.2em; color: #166534;">{stats_db["num_righe"]:,}</strong>
+        </span>
+    </div>
+    """, unsafe_allow_html=True)
+            
+            st.markdown("---")
+            
+            # Raggruppa per file origine per creare summary
+            _agg_dict = {
+                'Fornitore': lambda x: x.mode()[0] if len(x.mode()) > 0 else x.iloc[0],
+                'TotaleRiga': 'sum',
+                'NumeroRiga': 'count',
+                'DataDocumento': 'first'
+            }
+            if 'CreatedAt' in df_cache.columns:
+                _agg_dict['CreatedAt'] = 'max'
+            fatture_summary = df_cache.groupby('FileOrigine').agg(_agg_dict).reset_index()
+            
+            # 🔧 FIX: Reset index prima di rinominare (già fatto ma assicuriamo drop=True)
+            fatture_summary = fatture_summary.reset_index(drop=True)
+            
+            if 'CreatedAt' in fatture_summary.columns:
+                fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data', 'CreatedAt']
+                fatture_summary = fatture_summary.sort_values('CreatedAt', ascending=False)
+            else:
+                fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data']
+                fatture_summary = fatture_summary.sort_values('Data', ascending=False)
+            
+            # 🔍 DEBUG TOOL: Rimosso - Usa Upload Events in Admin Panel per diagnostica
+            
+            # 🗑️ PULSANTE SVUOTA TUTTO (solo admin/impersonificati - nessuna conferma richiesta)
+            if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+                st.markdown("### 🗑️ Eliminazione Massiva")
+                
+                if st.button(
+                    "🗑️ ELIMINA TUTTO",
+                    type="primary",
+                    use_container_width=True,
+                    key="btn_svuota_definitivo"
+                ):
+                        with st.spinner("🗑️ Eliminazione in corso..."):
+                            # Progress bar per UX
+                            progress = st.progress(0)
+                            progress.progress(20, text="Eliminazione da Supabase...")
+                            
+                            result = elimina_tutte_fatture(user_id, ristoranteid=st.session_state.get('ristorante_id'))
+                            
+                            # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
+                            invalida_cache_memoria()  # Reset memoria AI
+                            
+                            # 🔥 RESET SESSION: Reinizializza set vuoti (non solo clear)
+                            st.session_state.files_processati_sessione = set()
+                            st.session_state.files_con_errori = set()
+                            
+                            progress.progress(40, text="Pulizia file JSON locali...")
+                            
+                            # HARD RESET: Elimina file JSON obsoleti
+                            json_files = ['fattureprocessate.json', 'fatture.json', 'data.json']
+                            for json_file in json_files:
+                                if os.path.exists(json_file):
+                                    try:
+                                        os.remove(json_file)
+                                        logger.info(f"🗑️ Rimosso file JSON obsoleto: {json_file}")
+                                    except Exception as e:
+                                        logger.warning(f"⚠️ Impossibile rimuovere {json_file}: {e}")
+                            
+                            progress.progress(60, text="Pulizia cache Streamlit...")
+                            
+                            # HARD RESET: Pulisci TUTTE le cache
+                            st.cache_data.clear()
+                            try:
+                                st.cache_resource.clear()
+                            except Exception as e:
+                                logger.warning(f"⚠️ Errore clear cache_resource durante hard reset: {e}")
+                            
+                            progress.progress(80, text="Ripristino sessione...")
+                            
+                            # HARD RESET: Rimuovi session state specifici
+                            # 🔧 FIX: Preserva chiavi impersonazione e contesto ristorante
+                            #          per evitare che l'admin perda i poteri dopo delete
+                            keys_to_preserve = {
+                                'user_data', 'logged_in',
+                                # Impersonazione admin
+                                'impersonating', 'admin_original_user', 'user_is_admin',
+                                # Contesto ristorante attivo
+                                'ristorante_id', 'ristoranti', 'partita_iva', 'nome_ristorante',
+                            }
+                            keys_to_remove = [k for k in st.session_state.keys() 
+                                             if k not in keys_to_preserve]
+                            for key in keys_to_remove:
+                                st.session_state.pop(key, None)  # Sicuro: niente errore se non esiste
+                            
+                            progress.progress(100, text="Completato!")
+                            time.sleep(0.1)
+                            
+                            # Mostra risultato DENTRO lo spinner (indentazione corretta)
+                            if result["success"]:
+                                st.success(f"✅ **{result['fatture_eliminate']} fatture** eliminate! ({result['righe_eliminate']} prodotti)")
+                                st.info("🧹 **Ripristino completo**: Cache, JSON locali e stato sessione puliti")
+                                
+                                # LOG AUDIT: Verifica immediata post-delete
+                                try:
+                                    verify_query = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id)
+                                    verify_query = add_ristorante_filter(verify_query)
+                                    verify = verify_query.execute()
+                                    num_residue = verify.count or 0
+                                    if num_residue == 0:
+                                        logger.info(f"✅ DELETE VERIFIED: 0 righe rimaste per user_id={user_id}")
+                                        st.success(f"✅ Verifica: Database pulito (0 righe)")
+                                    else:
+                                        logger.error(f"⚠️ DELETE INCOMPLETE: {num_residue} righe ancora presenti per user_id={user_id}")
+                                        st.error(f"⚠️ Attenzione: {num_residue} righe ancora presenti (possibile problema RLS)")
+                                except Exception as e:
+                                    logger.exception("Errore verifica post-delete")
+                                
+                                # Reset checkbox
+                                if 'check_conferma_svuota' in st.session_state:
+                                    del st.session_state.check_conferma_svuota
+                                
+                                # 🔥 FLAG HIDE UPLOADER: Nascondi uploader dopo eliminazione totale
+                                st.session_state.hide_uploader = True
+                                st.session_state.files_processati_sessione = set()
+                                st.cache_data.clear()
+                                invalida_cache_memoria()
+                                st.success("✅ Eliminato tutto!")
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Errore: {result['error']}")
+                
+                st.markdown("---")
+            
+            # ========== ELIMINA SINGOLA FATTURA ==========
+            st.markdown("### 🗑️ Elimina Fattura Singola")
+            
+            # Usa fatture_summary già creato sopra
+            if len(fatture_summary) > 0:
+                # 🔍 FILTRO FORNITORE — selectbox con lista fornitori disponibili
+                fornitori_disponibili = sorted(fatture_summary['Fornitore'].dropna().unique().tolist())
+                opzioni_fornitore = ["— Tutti i fornitori —"] + fornitori_disponibili
+                filtro_fornitore_sel = st.selectbox(
+                    "🔍 Filtra per Fornitore:",
+                    options=opzioni_fornitore,
+                    key="filtro_fornitore_gestione"
+                )
+                if filtro_fornitore_sel == "— Tutti i fornitori —":
+                    fatture_filtrate = fatture_summary
+                else:
+                    fatture_filtrate = fatture_summary[fatture_summary['Fornitore'] == filtro_fornitore_sel]
+                
+                # Crea opzioni dropdown con dict per passare tutti i dati
+                fatture_options = []
+                for idx, row in fatture_filtrate.iterrows():
+                    fatture_options.append({
+                        'File': row['File'],
+                        'Fornitore': row['Fornitore'],
+                        'NumProdotti': int(row['NumProdotti']),
+                        'Totale': row['Totale'],
+                        'Data': row['Data']
+                    })
+                
+                if not fatture_options:
+                    st.info("🔭 Nessuna fattura trovata per il fornitore cercato.")
+                else:
+                    fattura_selezionata = st.selectbox(
+                        "Seleziona fattura da eliminare:",
+                        options=fatture_options,
+                        format_func=lambda x: format_fattura_label(
+                            file_name=x['File'],
+                            fornitore=x['Fornitore'],
+                            totale=x['Totale'],
+                            num_righe=x['NumProdotti'],
+                            data=x['Data'],
+                        ),
+                        help="Il nome file viene mostrato completo e si adatta allo spazio disponibile",
+                        key="select_fattura_elimina"
+                    )
+                    
+                    col_btn, col_spacer = st.columns([1, 3])
+                    with col_btn:
+                        if st.button("🗑️ Elimina Fattura", type="secondary", use_container_width=True):
+                            with st.spinner(f"🗑️ Eliminazione in corso..."):
+                                result = elimina_fattura_completa(fattura_selezionata['File'], user_id, ristoranteid=st.session_state.get('ristorante_id'))
+                                
+                                # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
+                                invalida_cache_memoria()  # Reset memoria AI
+                                clear_fatture_cache()  # Invalida solo cache fatture
+                                
+                                # 🔥 RESET SESSION: Rimuovi file eliminato dalla lista processati
+                                # (rimuovi sia il nome completo che il nome base normalizzato)
+                                if 'files_processati_sessione' in st.session_state:
+                                    file_eliminato = fattura_selezionata['File']
+                                    st.session_state.files_processati_sessione.discard(file_eliminato)
+                                    st.session_state.files_processati_sessione.discard(os.path.splitext(file_eliminato)[0].lower())
+                                
+                                if result["success"]:
+                                    st.success(f"✅ Fattura **{fattura_selezionata['File']}** eliminata! ({result['righe_eliminate']} prodotti)")
+                                    time.sleep(0.3)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Errore: {result['error']}")
+            else:
+                st.info("🔭 Nessuna fattura da eliminare.")
+            
+            st.caption("⚠️ L'eliminazione è immediata e irreversibile")
+
 
 
 # ============================================================

@@ -39,6 +39,33 @@ _MAX_LOGIN_ATTEMPTS = 5
 _LOCKOUT_MINUTES = 15
 
 
+class AuthServiceUnavailableError(RuntimeError):
+    """Errore funzionale quando il servizio auth non e' raggiungibile."""
+
+
+def _is_connectivity_error(error: Exception) -> bool:
+    """Riconosce errori di rete o timeout dai client HTTP/DB."""
+    if isinstance(error, (requests.ConnectionError, requests.Timeout, ConnectionError, TimeoutError)):
+        return True
+
+    message = f"{type(error).__name__}: {error}".lower()
+    connectivity_markers = (
+        'connection',
+        'connecterror',
+        'network',
+        'timeout',
+        'timed out',
+        'getaddrinfo',
+        'name or service not known',
+        'temporary failure in name resolution',
+        'failed to establish a new connection',
+        'server disconnected',
+        'dns',
+        'nodename nor servname',
+    )
+    return any(marker in message for marker in connectivity_markers)
+
+
 def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
     """
     Controlla se l'email è in lockout interrogando la tabella login_attempts.
@@ -88,10 +115,15 @@ def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
             return True, remaining
 
         return False, 0
-    except Exception:
+    except Exception as exc:
         logger.exception('Errore controlla_rate_limit')
-        # In caso di errore DB, blocca temporaneamente per sicurezza
-        return True, 5
+        if _is_connectivity_error(exc):
+            raise AuthServiceUnavailableError(
+                "Connessione internet assente o server di autenticazione non raggiungibile."
+            ) from exc
+        raise AuthServiceUnavailableError(
+            "Servizio di autenticazione temporaneamente non disponibile."
+        ) from exc
 
 
 def registra_tentativo(email: str, success: bool, supabase_client=None):
@@ -677,8 +709,13 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             registra_tentativo(email, False, supabase_client)
             return None, "Credenziali errate"
             
+    except AuthServiceUnavailableError as e:
+        logger.warning(f"Login non disponibile: {e}")
+        return None, str(e)
     except Exception as e:
         logger.exception("Errore verifica credenziali")
+        if _is_connectivity_error(e):
+            return None, "Connessione internet assente o server non raggiungibile. Verifica la connessione e riprova."
         return None, "Errore durante la verifica delle credenziali. Riprova tra qualche minuto."
 
 

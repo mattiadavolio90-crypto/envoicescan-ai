@@ -1235,7 +1235,7 @@ Se necessario contattare l'assistenza.
         <div style="display: flex; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
                     color: white; padding: clamp(0.5rem, 1.5vw, 0.625rem) clamp(0.4rem, 1.2vw, 0.5rem); border-radius: 8px; font-weight: 600; 
                     font-size: clamp(0.7rem, 1.6vw, 0.8rem); margin-bottom: 0.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.15); 
-                    white-space: nowrap; overflow-x: auto;">
+                white-space: normal; overflow-x: auto; flex-wrap: wrap; gap: 0.35rem;">
             <div style="flex: 2.5;">🍽️ Ingrediente</div>
             <div style="flex: 1.2;">💰 Prezzo</div>
             <div style="flex: 1;">⚙️ Gram.Conf.</div>

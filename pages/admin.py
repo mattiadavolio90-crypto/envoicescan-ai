@@ -51,6 +51,50 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+st.markdown("""
+<style>
+.admin-metrics-grid {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+.admin-metric-card {
+    flex: 1 1 clamp(9.5rem, 18vw, 13rem);
+    min-width: min(100%, clamp(9.5rem, 18vw, 13rem));
+    max-width: 100%;
+    border-radius: 12px;
+    padding: clamp(0.7rem, 1.4vw, 0.9rem) clamp(0.8rem, 1.8vw, 1rem);
+    text-align: center;
+    box-sizing: border-box;
+}
+.admin-metric-card--compact {
+    flex-basis: clamp(8.5rem, 16vw, 11rem);
+    min-width: min(100%, clamp(8.5rem, 16vw, 11rem));
+    padding: clamp(0.65rem, 1.2vw, 0.8rem);
+}
+.admin-metric-label {
+    font-size: clamp(0.72rem, 0.55vw + 0.58rem, 0.82rem);
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+.admin-metric-value {
+    font-size: clamp(1.1rem, 1vw + 0.85rem, 1.6rem);
+    font-weight: 700;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+.admin-note-inline {
+    font-size: clamp(0.72rem, 0.45vw + 0.62rem, 0.8rem);
+    color: #888;
+    margin-top: 4px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ============================================================
 # CONNESSIONE SUPABASE (usa singleton condiviso)
 # ============================================================
@@ -975,30 +1019,30 @@ if tab1:
             _tot_costi = df_clienti['totale_costi'].sum()
             
             st.markdown(f"""
-            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">👥 Clienti</div>
-                    <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{_n_clienti}</div>
+            <div class="admin-metrics-grid">
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
+                    <div class="admin-metric-label" style="color:#1976d2;">👥 Clienti</div>
+                    <div class="admin-metric-value" style="color:#1565c0;">{_n_clienti}</div>
                 </div>
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#2e7d32; font-weight:600;">✅ Attivi</div>
-                    <div style="font-size:1.6rem; color:#1b5e20; font-weight:bold;">{_n_attivi}</div>
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50;">
+                    <div class="admin-metric-label" style="color:#2e7d32;">✅ Attivi</div>
+                    <div class="admin-metric-value" style="color:#1b5e20;">{_n_attivi}</div>
                 </div>
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#7b1fa2; font-weight:600;">🏢 Sedi</div>
-                    <div style="font-size:1.6rem; color:#6a1b9a; font-weight:bold;">{_n_ristoranti}</div>
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0;">
+                    <div class="admin-metric-label" style="color:#7b1fa2;">🏢 Sedi</div>
+                    <div class="admin-metric-value" style="color:#6a1b9a;">{_n_ristoranti}</div>
                 </div>
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#e65100; font-weight:600;">📄 Fatture</div>
-                    <div style="font-size:1.6rem; color:#e65100; font-weight:bold;">{_n_fatture:,}</div>
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
+                    <div class="admin-metric-label" style="color:#e65100;">📄 Fatture</div>
+                    <div class="admin-metric-value" style="color:#e65100;">{_n_fatture:,}</div>
                 </div>
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e0f7fa,#b2ebf2); border:2px solid #00bcd4; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#006064; font-weight:600;">📊 Righe</div>
-                    <div style="font-size:1.6rem; color:#00838f; font-weight:bold;">{_n_righe:,}</div>
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#e0f7fa,#b2ebf2); border:2px solid #00bcd4;">
+                    <div class="admin-metric-label" style="color:#006064;">📊 Righe</div>
+                    <div class="admin-metric-value" style="color:#00838f;">{_n_righe:,}</div>
                 </div>
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#c2185b; font-weight:600;">💰 Costi</div>
-                    <div style="font-size:1.6rem; color:#880e4f; font-weight:bold;">€{_tot_costi:,.0f}</div>
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63;">
+                    <div class="admin-metric-label" style="color:#c2185b;">💰 Costi</div>
+                    <div class="admin-metric-value" style="color:#880e4f;">€{_tot_costi:,.0f}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -1937,18 +1981,18 @@ if tab2:
     _cliente_label = _html.escape(cliente_selezionato['nome_ristorante'][:20]) if filtro_cliente_id else "Tutti"
     
     st.markdown(f"""
-    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
-        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:14px 16px; text-align:center;">
-            <div style="font-size:0.8rem; color:#e65100; font-weight:600;">📋 Righe Totali €0</div>
-            <div style="font-size:1.6rem; color:#e65100; font-weight:bold;">{len(df_zero)}</div>
+    <div class="admin-metrics-grid">
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
+            <div class="admin-metric-label" style="color:#e65100;">📋 Righe Totali €0</div>
+            <div class="admin-metric-value" style="color:#e65100;">{len(df_zero)}</div>
         </div>
-        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:14px 16px; text-align:center;">
-            <div style="font-size:0.8rem; color:#2e7d32; font-weight:600;">✅ Prodotti Classificati</div>
-            <div style="font-size:1.6rem; color:#1b5e20; font-weight:bold;">{len(cat_sospette)}</div>
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50;">
+            <div class="admin-metric-label" style="color:#2e7d32;">✅ Prodotti Classificati</div>
+            <div class="admin-metric-value" style="color:#1b5e20;">{len(cat_sospette)}</div>
         </div>
-        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
-            <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">👤 Cliente</div>
-            <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{_cliente_label}</div>
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
+            <div class="admin-metric-label" style="color:#1976d2;">👤 Cliente</div>
+            <div class="admin-metric-value" style="color:#1565c0;">{_cliente_label}</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -2461,21 +2505,21 @@ def tab_memoria_globale_unificata():
     _non_verificati_html = ""
     if is_admin and campo_verified_exists:
         non_verificati = int((~df_memoria['verified']).sum())
-        _non_verificati_html = f'<div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63; border-radius:12px; padding:14px 16px; text-align:center;"><div style="font-size:0.8rem; color:#c2185b; font-weight:600;">⚠️ Da Verificare</div><div style="font-size:1.6rem; color:#880e4f; font-weight:bold;">{non_verificati}</div></div>'
+        _non_verificati_html = f'<div class="admin-metric-card" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63;"><div class="admin-metric-label" style="color:#c2185b;">⚠️ Da Verificare</div><div class="admin-metric-value" style="color:#880e4f;">{non_verificati}</div></div>'
     
     st.markdown(f"""
-    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
-        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
-            <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">🧠 Prodotti Totali</div>
-            <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{len(df_memoria):,}</div>
+    <div class="admin-metrics-grid">
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
+            <div class="admin-metric-label" style="color:#1976d2;">🧠 Prodotti Totali</div>
+            <div class="admin-metric-value" style="color:#1565c0;">{len(df_memoria):,}</div>
         </div>
-        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:14px 16px; text-align:center;">
-            <div style="font-size:0.8rem; color:#2e7d32; font-weight:600;">📊 Totale Utilizzi</div>
-            <div style="font-size:1.6rem; color:#1b5e20; font-weight:bold;">{totale_utilizzi:,}</div>
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50;">
+            <div class="admin-metric-label" style="color:#2e7d32;">📊 Totale Utilizzi</div>
+            <div class="admin-metric-value" style="color:#1b5e20;">{totale_utilizzi:,}</div>
         </div>
-        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0; border-radius:12px; padding:14px 16px; text-align:center;">
-            <div style="font-size:0.8rem; color:#7b1fa2; font-weight:600;">💡 API Risparmiate</div>
-            <div style="font-size:1.6rem; color:#6a1b9a; font-weight:bold;">{chiamate_risparmiate:,}</div>
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0;">
+            <div class="admin-metric-label" style="color:#7b1fa2;">💡 API Risparmiate</div>
+            <div class="admin-metric-value" style="color:#6a1b9a;">{chiamate_risparmiate:,}</div>
         </div>
         {_non_verificati_html}
     </div>
@@ -3065,18 +3109,18 @@ def tab_personalizzazioni_clienti():
     _clienti_unici = int(df_personalizzazioni['user_id'].nunique())
     
     st.markdown(f"""
-    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
-        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
-            <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">📝 Voci in Memoria</div>
-            <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{len(df_personalizzazioni):,}</div>
+    <div class="admin-metrics-grid">
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
+            <div class="admin-metric-label" style="color:#1976d2;">📝 Voci in Memoria</div>
+            <div class="admin-metric-value" style="color:#1565c0;">{len(df_personalizzazioni):,}</div>
         </div>
-        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:14px 16px; text-align:center;">
-            <div style="font-size:0.8rem; color:#2e7d32; font-weight:600;">📊 Totale Utilizzi</div>
-            <div style="font-size:1.6rem; color:#1b5e20; font-weight:bold;">{_tot_utilizzi_clienti:,}</div>
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50;">
+            <div class="admin-metric-label" style="color:#2e7d32;">📊 Totale Utilizzi</div>
+            <div class="admin-metric-value" style="color:#1b5e20;">{_tot_utilizzi_clienti:,}</div>
         </div>
-        <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:14px 16px; text-align:center;">
-            <div style="font-size:0.8rem; color:#e65100; font-weight:600;">👥 Clienti Attivi</div>
-            <div style="font-size:1.6rem; color:#e65100; font-weight:bold;">{_clienti_unici}</div>
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
+            <div class="admin-metric-label" style="color:#e65100;">👥 Clienti Attivi</div>
+            <div class="admin-metric-value" style="color:#e65100;">{_clienti_unici}</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -3721,37 +3765,37 @@ if tab5:
                             _n_totali = len(problemi['totali_errati'])
                             
                             st.markdown(f"""
-                            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px;">
-                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:12px; text-align:center;">
-                                    <div style="font-size:0.75rem; color:#e65100; font-weight:600;">📅 Date Invalide</div>
-                                    <div style="font-size:1.5rem; color:#e65100; font-weight:bold;">{_n_date}</div>
+                            <div class="admin-metrics-grid" style="gap:10px;">
+                                <div class="admin-metric-card admin-metric-card--compact" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
+                                    <div class="admin-metric-label" style="color:#e65100;">📅 Date Invalide</div>
+                                    <div class="admin-metric-value" style="color:#e65100;">{_n_date}</div>
                                 </div>
-                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63; border-radius:12px; padding:12px; text-align:center;">
-                                    <div style="font-size:0.75rem; color:#c2185b; font-weight:600;">👻 Righe Fantasma</div>
-                                    <div style="font-size:1.5rem; color:#880e4f; font-weight:bold;">{_n_fantasma}</div>
+                                <div class="admin-metric-card admin-metric-card--compact" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63;">
+                                    <div class="admin-metric-label" style="color:#c2185b;">👻 Righe Fantasma</div>
+                                    <div class="admin-metric-value" style="color:#880e4f;">{_n_fantasma}</div>
                                 </div>
-                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0; border-radius:12px; padding:12px; text-align:center;">
-                                    <div style="font-size:0.75rem; color:#7b1fa2; font-weight:600;">⚠️ Dati Incompleti</div>
-                                    <div style="font-size:1.5rem; color:#6a1b9a; font-weight:bold;">{_n_incompleti}</div>
+                                <div class="admin-metric-card admin-metric-card--compact" style="background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0;">
+                                    <div class="admin-metric-label" style="color:#7b1fa2;">⚠️ Dati Incompleti</div>
+                                    <div class="admin-metric-value" style="color:#6a1b9a;">{_n_incompleti}</div>
                                 </div>
-                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#ffebee,#ffcdd2); border:2px solid #f44336; border-radius:12px; padding:12px; text-align:center;">
-                                    <div style="font-size:0.75rem; color:#b71c1c; font-weight:600;">💸 Importi Estremi</div>
-                                    <div style="font-size:1.5rem; color:#b71c1c; font-weight:bold;">{_n_estremi}</div>
+                                <div class="admin-metric-card admin-metric-card--compact" style="background:linear-gradient(135deg,#ffebee,#ffcdd2); border:2px solid #f44336;">
+                                    <div class="admin-metric-label" style="color:#b71c1c;">💸 Importi Estremi</div>
+                                    <div class="admin-metric-value" style="color:#b71c1c;">{_n_estremi}</div>
                                 </div>
-                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:12px; text-align:center;">
-                                    <div style="font-size:0.75rem; color:#1b5e20; font-weight:600;">📦 Qtà Negative</div>
-                                    <div style="font-size:1.5rem; color:#1b5e20; font-weight:bold;">{_n_qta_neg}</div>
+                                <div class="admin-metric-card admin-metric-card--compact" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50;">
+                                    <div class="admin-metric-label" style="color:#1b5e20;">📦 Qtà Negative</div>
+                                    <div class="admin-metric-value" style="color:#1b5e20;">{_n_qta_neg}</div>
                                 </div>
-                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:12px; text-align:center;">
-                                    <div style="font-size:0.75rem; color:#1976d2; font-weight:600;">📝 Desc. Vuote</div>
-                                    <div style="font-size:1.5rem; color:#1565c0; font-weight:bold;">{_n_desc}</div>
+                                <div class="admin-metric-card admin-metric-card--compact" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
+                                    <div class="admin-metric-label" style="color:#1976d2;">📝 Desc. Vuote</div>
+                                    <div class="admin-metric-value" style="color:#1565c0;">{_n_desc}</div>
                                 </div>
-                                <div style="flex:1; min-width:120px; background:linear-gradient(135deg,#e0f7fa,#b2ebf2); border:2px solid #00bcd4; border-radius:12px; padding:12px; text-align:center;">
-                                    <div style="font-size:0.75rem; color:#006064; font-weight:600;">🧮 Totali Errati</div>
-                                    <div style="font-size:1.5rem; color:#00838f; font-weight:bold;">{_n_totali}</div>
+                                <div class="admin-metric-card admin-metric-card--compact" style="background:linear-gradient(135deg,#e0f7fa,#b2ebf2); border:2px solid #00bcd4;">
+                                    <div class="admin-metric-label" style="color:#006064;">🧮 Totali Errati</div>
+                                    <div class="admin-metric-value" style="color:#00838f;">{_n_totali}</div>
                                 </div>
                             </div>
-                            <div style="font-size:0.75rem; color:#888; margin-top:4px;">
+                            <div class="admin-note-inline">
                                 ℹ️ Check attivi: date future/invalide · righe fantasma (tutto a zero) · totale_riga NULL · importo singola riga &gt;€50.000 · quantità negative · descrizioni vuote · totale diverge &gt;€1 e &gt;5%
                             </div>
                             """, unsafe_allow_html=True)
@@ -3831,26 +3875,26 @@ if tab6:
             clienti_attivi = len(df_costs[(df_costs['ai_pdf_count'] > 0) | (df_costs['ai_categorization_count'] > 0)])
             
             st.markdown(f"""
-            <div style="display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px;">
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#c2185b; font-weight:600;">💰 Totale Costi</div>
-                    <div style="font-size:1.6rem; color:#880e4f; font-weight:bold;">${totale_costi:.2f}</div>
+            <div class="admin-metrics-grid">
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63;">
+                    <div class="admin-metric-label" style="color:#c2185b;">💰 Totale Costi</div>
+                    <div class="admin-metric-value" style="color:#880e4f;">${totale_costi:.2f}</div>
                 </div>
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#1976d2; font-weight:600;">📄 PDF Processati</div>
-                    <div style="font-size:1.6rem; color:#1565c0; font-weight:bold;">{totale_pdf:,}</div>
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
+                    <div class="admin-metric-label" style="color:#1976d2;">📄 PDF Processati</div>
+                    <div class="admin-metric-value" style="color:#1565c0;">{totale_pdf:,}</div>
                 </div>
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#7b1fa2; font-weight:600;">🧠 Categorizzazioni</div>
-                    <div style="font-size:1.6rem; color:#6a1b9a; font-weight:bold;">{totale_categorization:,}</div>
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0;">
+                    <div class="admin-metric-label" style="color:#7b1fa2;">🧠 Categorizzazioni</div>
+                    <div class="admin-metric-value" style="color:#6a1b9a;">{totale_categorization:,}</div>
                 </div>
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#e65100; font-weight:600;">📊 Costo Medio</div>
-                    <div style="font-size:1.6rem; color:#e65100; font-weight:bold;">${costo_medio:.4f}</div>
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
+                    <div class="admin-metric-label" style="color:#e65100;">📊 Costo Medio</div>
+                    <div class="admin-metric-value" style="color:#e65100;">${costo_medio:.4f}</div>
                 </div>
-                <div style="flex:1; min-width:130px; background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50; border-radius:12px; padding:14px 16px; text-align:center;">
-                    <div style="font-size:0.8rem; color:#2e7d32; font-weight:600;">👥 Clienti Attivi</div>
-                    <div style="font-size:1.6rem; color:#1b5e20; font-weight:bold;">{clienti_attivi}</div>
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50;">
+                    <div class="admin-metric-label" style="color:#2e7d32;">👥 Clienti Attivi</div>
+                    <div class="admin-metric-value" style="color:#1b5e20;">{clienti_attivi}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)

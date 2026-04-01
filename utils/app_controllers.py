@@ -1275,16 +1275,18 @@ def render_dashboard_ui(supabase, logger, user):
                 st.markdown(f"""
 <div style="
     background: linear-gradient(135deg, rgba(255, 140, 0, 0.15) 0%, rgba(255, 165, 0, 0.20) 100%);
-    padding: 14px 22px;
+    padding: clamp(0.75rem, 1.8vw, 0.9rem) clamp(0.9rem, 2.5vw, 1.4rem);
     border-radius: 10px;
     border-left: 5px solid rgba(255, 107, 0, 0.6);
     box-shadow: 0 3px 6px rgba(255, 140, 0, 0.15);
     margin: 0 0 20px 0;
-    display: inline-block;
-    min-width: 400px;
+    display: block;
+    width: min(100%, 44rem);
+    min-width: 0;
+    box-sizing: border-box;
     backdrop-filter: blur(10px);
 ">
-    <span style="color: #FF6B00; font-size: 1.05em; font-weight: 700;">
+    <span style="color: #FF6B00; font-size: clamp(0.95rem, 1.3vw, 1.05rem); font-weight: 700; line-height: 1.45; overflow-wrap: anywhere;">
         📊 Fatture: <strong style="font-size: 1.2em; color: #FF5500;">{stats_db["num_uniche"]:,}</strong>{note_credito_html} |
         📋 Righe Totali: <strong style="font-size: 1.2em; color: #FF5500;">{stats_db["num_righe"]:,}</strong>
     </span>
@@ -1579,11 +1581,12 @@ def render_dashboard_ui(supabase, logger, user):
     <style>
     /* Compatta altezza drop zone */
     [data-testid="stFileUploaderDropzone"] {
-        padding: 8px 15px !important;
+        padding: 10px 16px !important;
         min-height: 0 !important;
         display: flex !important;
         align-items: center !important;
         gap: 12px !important;
+        flex-wrap: wrap !important;
     }
     /* Nascondi testo originale inglese "Drag and drop" + limit */
     [data-testid="stFileUploaderDropzoneInstructions"] {
@@ -1596,19 +1599,25 @@ def render_dashboard_ui(supabase, logger, user):
     /* Traduci bottone Browse files → Sfoglia */
     [data-testid="stFileUploaderDropzone"] button {
         font-size: 0 !important;
-        padding: 6px 16px !important;
+        padding: 8px 18px !important;
         min-height: 0 !important;
         flex-shrink: 0 !important;
     }
     [data-testid="stFileUploaderDropzone"] button::after {
-        content: "Sfoglia" !important;
-        font-size: 0.85rem !important;
+        content: "Upload FATTURE" !important;
+        font-size: clamp(0.85rem, 0.4vw + 0.75rem, 1rem) !important;
+        white-space: nowrap !important;
     }
     [data-testid="stFileUploaderDropzone"]::after {
-        content: "📂 Trascina file qui o clicca Sfoglia  ·  XML, P7M, PDF, JPG, JPEG, PNG · Max 200MB" !important;
-        font-size: 0.78rem !important;
+        content: "Carica fatture in formato XML/P7M PDF PNG JPG - Max 200Mb" !important;
+        display: block !important;
+        flex: 1 1 320px !important;
+        min-width: 0 !important;
+        font-size: clamp(0.78rem, 0.35vw + 0.72rem, 0.95rem) !important;
+        line-height: 1.4 !important;
         color: #666 !important;
-        white-space: nowrap !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
     }
     </style>
     """, unsafe_allow_html=True)

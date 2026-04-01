@@ -18,7 +18,7 @@ def render_oh_yeah_header():
     """
     st.markdown("""
 <div style="text-align: center; margin-bottom: 2rem; margin-top: -2rem;">
-    <h1 style="font-size: clamp(3.5rem, 7vw, 5rem); font-weight: 900; margin: 0; letter-spacing: 3px; line-height: 1.1; display: inline-flex; align-items: flex-end; gap: 0.3rem;">
+    <h1 style="font-size: clamp(2.5rem, 6vw, 5rem); font-weight: 900; margin: 0; letter-spacing: clamp(0.04em, 0.25vw, 0.08em); line-height: 1.1; display: inline-flex; align-items: flex-end; gap: 0.3rem; flex-wrap: wrap; justify-content: center;">
         <span style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
@@ -56,9 +56,9 @@ def render_sidebar(user_data: dict):
         section[data-testid="stSidebar"] {
             display: flex !important;
             visibility: visible !important;
-            width: 260px !important;
-            min-width: 260px !important;
-            max-width: 260px !important;
+            width: clamp(220px, 22vw, 260px) !important;
+            min-width: clamp(220px, 22vw, 260px) !important;
+            max-width: clamp(220px, 22vw, 260px) !important;
             opacity: 1 !important;
             transform: none !important;
             position: relative !important;
@@ -85,7 +85,7 @@ def render_sidebar(user_data: dict):
         st.markdown("""
         <div style="text-align: center; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 2px solid #e2e8f0;">
             <div style="display: inline-flex; align-items: flex-end; gap: 0.2rem;">
-                <span style="font-size: 1.4rem; font-weight: 900; letter-spacing: 1px;
+                <span style="font-size: clamp(1rem, 1vw + 0.8rem, 1.4rem); font-weight: 900; letter-spacing: clamp(0.03em, 0.12vw, 0.06em);
                     background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
                     -webkit-background-clip: text;
                     -webkit-text-fill-color: transparent;
@@ -116,8 +116,8 @@ def render_sidebar(user_data: dict):
                     border: 2px solid #0ea5e9;
                     margin-bottom: 1.25rem;">
             <div style="font-size: clamp(0.65rem, 1.5vw, 0.75rem); color: #0369a1; opacity: 0.9; margin-bottom: 0.3rem; font-weight: 600;">👤 Account</div>
-            <div title="{user_email_safe}" style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); font-weight: 700; color: #0c4a6e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{user_email_safe}</div>
-            <div title="{nome_ristorante_safe}" style="font-size: clamp(0.6rem, 1.4vw, 0.7rem); color: #0369a1; opacity: 0.8; margin-top: 0.3rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{nome_ristorante_safe}</div>
+            <div title="{user_email_safe}" style="font-size: clamp(0.75rem, 1.8vw, 0.875rem); font-weight: 700; color: #0c4a6e; white-space: normal; overflow-wrap: anywhere; line-height: 1.35;">{user_email_safe}</div>
+            <div title="{nome_ristorante_safe}" style="font-size: clamp(0.6rem, 1.4vw, 0.7rem); color: #0369a1; opacity: 0.8; margin-top: 0.3rem; white-space: normal; overflow-wrap: anywhere; line-height: 1.35;">{nome_ristorante_safe}</div>
         </div>
         """, unsafe_allow_html=True)
         
@@ -245,7 +245,7 @@ def render_sidebar(user_data: dict):
             </style>
         """, unsafe_allow_html=True)
         
-        if st.button("Logout", use_container_width=True, type="primary", key="sidebar_logout"):
+        if st.button("🚪 Logout", use_container_width=True, type="primary", key="sidebar_logout"):
             # 1. Registra logout nel database
             try:
                 from services.auth_service import registra_logout_utente

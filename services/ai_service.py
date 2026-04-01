@@ -1450,8 +1450,8 @@ def mostra_loading_ai(placeholder, messaggio: str = "Elaborazione in corso"):
         }}
         .loading-ai::before {{
             content: "🧠";
-            font-size: 32px;
-            margin-right: 15px;
+            font-size: clamp(1.4rem, 2vw + 0.8rem, 2rem);
+            margin-right: clamp(0.6rem, 1.6vw, 0.95rem);
         }}
         </style>
         <div class="loading-ai">
