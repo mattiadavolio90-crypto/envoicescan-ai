@@ -148,15 +148,15 @@ user = st.session_state.get('user_data', {})
 
 is_impersonating = st.session_state.get('impersonating', False)
 admin_original_user = st.session_state.get('admin_original_user', {})
-admin_original_email = admin_original_user.get('email')
+admin_original_email = (admin_original_user.get('email') or '').strip().lower()
 is_admin_impersonating = is_impersonating and admin_original_email in ADMIN_EMAILS
 
-if user.get('email') not in ADMIN_EMAILS:
+if (user.get('email') or '').strip().lower() not in ADMIN_EMAILS:
     # Se l'admin sta impersonando un cliente, consenti accesso al pannello
     # ripristinando automaticamente l'utente admin originale.
     if is_admin_impersonating:
         # Verifica integrità dati admin prima del ripristino
-        if not admin_original_user.get('email') or admin_original_user['email'] not in ADMIN_EMAILS:
+        if not admin_original_user.get('email') or (admin_original_user['email'] or '').strip().lower() not in ADMIN_EMAILS:
             logger.critical(f"⛔ Tentativo ripristino admin con email non autorizzata: {admin_original_user.get('email')}")
             st.session_state.clear()
             st.session_state.logged_in = False
@@ -419,7 +419,7 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
     if not query_users.data:
         return [], has_piva_column, has_pagine_column
 
-    clienti_non_admin = [u for u in query_users.data if u.get('email') not in admin_emails_set]
+    clienti_non_admin = [u for u in query_users.data if (u.get('email') or '').strip().lower() not in admin_emails_set]
     if not clienti_non_admin:
         return [], has_piva_column, has_pagine_column
 
@@ -1543,8 +1543,9 @@ if tab1:
             target_num_righe = target['num_righe']
             target_row_key = target['row_key']
 
-            admin_email = st.session_state.user_data.get('email')
-            if target_email == admin_email or target_email in ADMIN_EMAILS:
+            admin_email = (st.session_state.user_data.get('email') or '').strip().lower()
+            target_email_normalized = (target_email or '').strip().lower()
+            if target_email_normalized == admin_email or target_email_normalized in ADMIN_EMAILS:
                 st.error("🚫 **ERRORE**: Non puoi eliminare il tuo account admin o altri account admin!")
                 st.info("Se vuoi rimuovere un amministratore, contatta il supporto tecnico.")
                 if st.button("❌ Chiudi", use_container_width=True):
@@ -1598,7 +1599,7 @@ if tab1:
                             if not user_id_to_delete:
                                 raise ValueError("user_id_to_delete è vuoto!")
 
-                            if email_deleted in ADMIN_EMAILS:
+                            if (email_deleted or '').strip().lower() in ADMIN_EMAILS:
                                 raise ValueError(f"Tentativo di eliminare admin: {email_deleted}")
 
                             deleted = {
@@ -1731,7 +1732,7 @@ if tab2:
                 .order('nome_ristorante', desc=False)\
                 .execute()
             data = resp.data if resp.data else []
-            return [u for u in data if u.get('email') not in ADMIN_EMAILS]
+            return [u for u in data if (u.get('email') or '').strip().lower() not in ADMIN_EMAILS]
         except Exception:
             return []
     
@@ -2414,7 +2415,7 @@ def tab_memoria_globale_unificata():
     # IDENTIFICA RUOLO
     # ============================================================
     user = st.session_state.get('user_data', {})
-    user_email = user.get('email', '')
+    user_email = (user.get('email', '') or '').strip().lower()
     is_admin = user_email in ADMIN_EMAILS
     
     if not is_admin:
@@ -3435,7 +3436,7 @@ if tab5:
                 .order('nome_ristorante')\
                 .execute()
             data = resp.data if resp.data else []
-            return [u for u in data if u.get('email') not in ADMIN_EMAILS]
+            return [u for u in data if (u.get('email') or '').strip().lower() not in ADMIN_EMAILS]
         except Exception:
             return []
 

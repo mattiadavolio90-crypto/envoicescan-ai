@@ -96,8 +96,10 @@ def render_sidebar(user_data: dict):
         
         # Info utente
         user_email = user_data.get('email', 'Utente')
+        user_email_normalized = user_email.strip().lower()
+        admin_emails_normalized = {email.strip().lower() for email in ADMIN_EMAILS}
         _is_pure_admin_sidebar = (
-            user_email.lower() in [e.lower() for e in ADMIN_EMAILS]
+            user_email_normalized in admin_emails_normalized
             and not st.session_state.get('impersonating', False)
         )
         if _is_pure_admin_sidebar:
@@ -167,7 +169,7 @@ def render_sidebar(user_data: dict):
         # SEZIONE OPERATIVO
         # ============================================
         # Admin puro (non impersonificato) vede SOLO pannello admin
-        _is_pure_admin = user_email in ADMIN_EMAILS and not st.session_state.get('impersonating', False)
+        _is_pure_admin = user_email_normalized in admin_emails_normalized and not st.session_state.get('impersonating', False)
         
         if not _is_pure_admin:
             st.markdown("### 📋 Sezioni e Funzioni")
@@ -218,7 +220,7 @@ def render_sidebar(user_data: dict):
         # ============================================
         # SEZIONE AMMINISTRAZIONE (solo per admin)
         # ============================================
-        if user_email in ADMIN_EMAILS or st.session_state.get('impersonating', False):
+        if user_email_normalized in admin_emails_normalized or st.session_state.get('impersonating', False):
             st.markdown("---")
             st.markdown("### 👨‍💼 Amministrazione")
             if st.button("🔑 Pannello Admin", use_container_width=True, key="sidebar_admin",

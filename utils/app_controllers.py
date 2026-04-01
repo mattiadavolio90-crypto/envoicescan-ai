@@ -237,7 +237,7 @@ def mostra_pagina_login(supabase, cookie_manager):
                                 )
 
                             # Verifica se è admin e imposta flag
-                            if user.get('email') in ADMIN_EMAILS:
+                            if (user.get('email') or '').strip().lower() in ADMIN_EMAILS:
                                 st.session_state.user_is_admin = True
                                 import logging as _lg
                                 _lg.getLogger('fci_app').info(f"✅ Login ADMIN: user_id={user.get('id')}")
@@ -445,7 +445,7 @@ def load_and_setup_session(supabase, logger, cookie_manager):
                     st.session_state.user_data = _u
                     st.session_state.partita_iva = _u.get('partita_iva')
                     st.session_state.created_at = _u.get('created_at')
-                    if _u.get('email') in ADMIN_EMAILS:
+                    if (_u.get('email') or '').strip().lower() in ADMIN_EMAILS:
                         st.session_state.user_is_admin = True
                     logger.info(f"✅ Sessione ripristinata da token per user_id={_u.get('id')}")
                 else:
@@ -696,7 +696,7 @@ def render_sidebar_and_header(supabase, logger, cookie_manager):
     # ============================================
     # Ripristina flag admin se l'utente è in ADMIN_EMAILS
     # (necessario perché session_state viene perso al refresh della pagina)
-    if user.get('email') in ADMIN_EMAILS:
+    if (user.get('email') or '').strip().lower() in ADMIN_EMAILS:
         if not st.session_state.get('user_is_admin', False):
             st.session_state.user_is_admin = True
             logger.info(f"✅ Flag admin ripristinato per user_id={user.get('id')}")
@@ -1090,7 +1090,7 @@ def render_sidebar_and_header(supabase, logger, cookie_manager):
     # DROPDOWN MULTI-RISTORANTE
     # ============================================
     # Mostra dropdown per clienti NON admin con più ristoranti
-    if user.get('email') not in ADMIN_EMAILS:
+    if (user.get('email') or '').strip().lower() not in ADMIN_EMAILS:
         ristoranti = st.session_state.get('ristoranti', [])
 
         if len(ristoranti) > 1:

@@ -544,7 +544,7 @@ if not st.session_state.logged_in and not _force_logout_active and _cookie_manag
                 st.session_state.user_data = _u
                 st.session_state.partita_iva = _u.get('partita_iva')
                 st.session_state.created_at = _u.get('created_at')
-                if _u.get('email') in ADMIN_EMAILS:
+                if (_u.get('email') or '').strip().lower() in ADMIN_EMAILS:
                     st.session_state.user_is_admin = True
                 # Force refresh dati da DB (la cache potrebbe essere stale)
                 clear_fatture_cache()
@@ -880,7 +880,7 @@ def mostra_pagina_login():
                                     login_at=user.get('login_at'),
                                     supabase_client=supabase,
                                 )
-                                if summary_auto.get('has_new') and user.get('email') not in ADMIN_EMAILS:
+                                if summary_auto.get('has_new') and (user.get('email') or '').strip().lower() not in ADMIN_EMAILS:
                                     st.session_state.auto_invoice_notice = summary_auto
                                     st.session_state.auto_invoice_notice_toast_shown = False
                                     st.session_state.auto_invoice_notice_dismissed = False
@@ -920,7 +920,7 @@ def mostra_pagina_login():
                                 )
                             
                             # Verifica se è admin e imposta flag
-                            if user.get('email') in ADMIN_EMAILS:
+                            if (user.get('email') or '').strip().lower() in ADMIN_EMAILS:
                                 st.session_state.user_is_admin = True
                                 logger.info(f"✅ Login ADMIN: user_id={user.get('id')}")
                                 st.success("✅ Accesso effettuato come ADMIN!")
@@ -1079,7 +1079,7 @@ if not user or not user.get('email'):
 # ============================================
 # Ripristina flag admin se l'utente è in ADMIN_EMAILS
 # (necessario perché session_state viene perso al refresh della pagina)
-if user.get('email') in ADMIN_EMAILS:
+if (user.get('email') or '').strip().lower() in ADMIN_EMAILS:
     if not st.session_state.get('user_is_admin', False):
         st.session_state.user_is_admin = True
         logger.info(f"✅ Flag admin ripristinato per user_id={user.get('id')}")
@@ -1684,7 +1684,7 @@ else:
 # DROPDOWN MULTI-RISTORANTE
 # ============================================
 # Mostra dropdown per clienti NON admin con più ristoranti
-if user.get('email') not in ADMIN_EMAILS:
+if (user.get('email') or '').strip().lower() not in ADMIN_EMAILS:
     ristoranti = st.session_state.get('ristoranti', [])
     
     if len(ristoranti) > 1:
