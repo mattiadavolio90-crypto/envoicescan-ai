@@ -34,7 +34,7 @@ WORKDIR /app
 
 # --- Layer cache: dipendenze prima del codice ---
 COPY requirements-lock.txt .
-RUN pip install --no-cache-dir -r requirements-lock.txt
+RUN pip install --no-cache-dir -r requirements-lock.txt 'python-dotenv>=1.0.0'
 
 # Rimuovi build tools dopo installazione (immagine più leggera)
 RUN apt-get purge -y build-essential && \
