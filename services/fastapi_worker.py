@@ -22,13 +22,30 @@ ENV VARS richieste:
 """
 
 import io
+import json
 import logging
 import os
 import sys
 import threading
 import time
 from collections import defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from dotenv import load_dotenv
+
+# Carica .env dalla root progetto indipendentemente dalla working directory.
+load_dotenv(Path(__file__).parent.parent / ".env", override=True)
+
+try:
+    from supabase import create_client
+except Exception:  # pragma: no cover - compat con versioni precedenti
+    from supabase.client import create_client
+
+try:
+    from supabase.lib.client_options import SyncClientOptions
+except Exception:  # pragma: no cover - supabase v1
+    SyncClientOptions = None
 
 # ─── Path setup ────────────────────────────────────────────────────────────
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -130,6 +147,13 @@ class ParseResponse(BaseModel):
     fatture: List[Dict[str, Any]]
     count: int
     elapsed_ms: int
+
+
+class WebhookResponse(BaseModel):
+    status: str
+    event_id: str
+    queue_id: Optional[int] = None
+    message: str
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -331,6 +355,295 @@ async def parse_invoice(
     except Exception as exc:
         logger.exception(f"❌ /api/parse errore: {exc}")
         raise HTTPException(status_code=500, detail=f"Errore parsing: {str(exc)}")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# POST /webhook
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _get_supabase_client():
+    """Client Supabase service-role per operazioni backend del worker."""
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY", "")
+    if not url or not key:
+        raise HTTPException(status_code=500, detail="Supabase non configurato (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).")
+
+    if SyncClientOptions is None:
+        return create_client(url, key)
+
+    options = SyncClientOptions(
+        postgrest_client_timeout=30,
+        storage_client_timeout=30,
+    )
+    return create_client(url, key, options=options)
+
+
+def _normalize_piva(value: str) -> str:
+    raw = (value or "").strip().upper().replace(" ", "")
+    if raw.startswith("IT"):
+        raw = raw[2:]
+    return "".join(ch for ch in raw if ch.isalnum())
+
+
+def _extract_piva_from_xml(xml_text: str) -> str:
+    """Estrae P.IVA dal blocco CedentePrestatore, fallback CessionarioCommittente."""
+    import xmltodict
+
+    def _dig(obj: Any, path: List[str]) -> str:
+        cur = obj
+        for key in path:
+            if not isinstance(cur, dict):
+                return ""
+            cur = cur.get(key)
+        return str(cur or "").strip()
+
+    data = xmltodict.parse(xml_text)
+
+    fattura = data.get("FatturaElettronica") or data.get("p:FatturaElettronica") or {}
+    header = (
+        fattura.get("FatturaElettronicaHeader")
+        or fattura.get("p:FatturaElettronicaHeader")
+        or {}
+    )
+
+    piva = _dig(
+        header,
+        [
+            "CedentePrestatore",
+            "DatiAnagrafici",
+            "IdFiscaleIVA",
+            "IdCodice",
+        ],
+    )
+    if piva:
+        return _normalize_piva(piva)
+
+    # Fallback robusto: alcune varianti usano namespace prefix su nodi intermedi.
+    piva = _dig(
+        header,
+        [
+            "p:CedentePrestatore",
+            "p:DatiAnagrafici",
+            "p:IdFiscaleIVA",
+            "p:IdCodice",
+        ],
+    )
+    if piva:
+        return _normalize_piva(piva)
+
+    # Fallback finale su CessionarioCommittente.
+    piva = _dig(
+        header,
+        [
+            "CessionarioCommittente",
+            "DatiAnagrafici",
+            "IdFiscaleIVA",
+            "IdCodice",
+        ],
+    )
+    return _normalize_piva(piva)
+
+
+def _resolve_tenant_by_piva(supabase, piva_raw: str) -> tuple[Optional[str], Optional[str]]:
+    """Risoluzione tenant: prima piva_ristoranti, poi fallback ristoranti."""
+    piva = _normalize_piva(piva_raw)
+    if not piva:
+        return None, None
+
+    try:
+        lookup = (
+            supabase.table("piva_ristoranti")
+            .select("user_id,ristorante_id")
+            .eq("piva", piva)
+            .limit(1)
+            .execute()
+        )
+        rows = lookup.data or []
+        if rows:
+            return rows[0].get("user_id"), rows[0].get("ristorante_id")
+    except Exception:
+        # Fallback su ristoranti se la tabella lookup non e' disponibile.
+        pass
+
+    lookup = (
+        supabase.table("ristoranti")
+        .select("id,user_id")
+        .eq("partita_iva", piva)
+        .eq("attivo", True)
+        .limit(1)
+        .execute()
+    )
+    rows = lookup.data or []
+    if not rows:
+        return None, None
+    return rows[0].get("user_id"), rows[0].get("id")
+
+
+def _verify_webhook_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
+    import hashlib
+    import hmac
+
+    signature = (signature_header or "").strip()
+    if not signature:
+        return False
+    if signature.startswith("sha256="):
+        signature = signature.split("=", 1)[1]
+
+    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(signature, expected)
+
+
+def _load_xml_from_payload(payload: dict[str, Any]) -> str:
+    import base64
+
+    xml_base64 = (
+        payload.get("xml_base64")
+        or payload.get("fattura_b64")
+        or payload.get("xmlContentBase64")
+        or payload.get("xml_content_base64")
+    )
+    if xml_base64:
+        try:
+            xml_bytes = base64.b64decode(str(xml_base64), validate=False)
+            return xml_bytes.decode("utf-8", errors="replace")
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=f"xml base64 non valido: {exc}")
+
+    xml_text = payload.get("xml_content") or payload.get("xml")
+    if xml_text:
+        return str(xml_text)
+
+    raise HTTPException(status_code=422, detail="Payload webhook privo di XML (xml_base64/fattura_b64/xml_content).")
+
+
+def _extract_event_id(payload: dict[str, Any]) -> str:
+    event_id = payload.get("event_id") or payload.get("eventId") or payload.get("id")
+    event_id = str(event_id or "").strip()
+    if not event_id:
+        raise HTTPException(status_code=422, detail="event_id mancante nel payload webhook.")
+    return event_id
+
+
+@app.post(
+    "/webhook",
+    response_model=WebhookResponse,
+    summary="Webhook Invoicetronic",
+    tags=["Webhook"],
+    responses={
+        200: {"description": "Accettato con tenant non risolto (unknown_tenant)"},
+        202: {"description": "Accettato in coda"},
+        401: {"description": "Firma HMAC non valida"},
+        422: {"description": "Payload invalido"},
+        429: {"description": "Rate limit superato"},
+    },
+)
+async def invoicetronic_webhook(request: Request):
+    """Riceve notifiche fatture, valida la firma e inserisce direttamente in fatture_queue."""
+    client_ip = request.client.host if request.client else request.headers.get("X-Forwarded-For", "unknown").split(",")[0].strip()
+    _check_rate_limit(client_ip)
+
+    raw_body = await request.body()
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except Exception:
+        raise HTTPException(status_code=422, detail="Body webhook non e' un JSON valido.")
+
+    SECRET = os.getenv("INVOICETRONIC_WEBHOOK_SECRET", "").strip()
+    if not SECRET:
+        raise HTTPException(status_code=500, detail="INVOICETRONIC_WEBHOOK_SECRET non configurato.")
+
+    signature = request.headers.get("X-Webhook-Signature", "")
+    if not _verify_webhook_signature(raw_body, signature, SECRET):
+        raise HTTPException(status_code=401, detail="Firma webhook non valida.")
+
+    event_id = _extract_event_id(payload)
+    xml_content = _load_xml_from_payload(payload)
+
+    # Vincolo migration 045: piva_raw non puo' essere vuota.
+    piva_raw = _normalize_piva(
+        str(payload.get("piva_raw") or payload.get("piva") or payload.get("partita_iva") or "")
+    )
+    if not piva_raw:
+        piva_raw = _extract_piva_from_xml(xml_content)
+    if not piva_raw:
+        raise HTTPException(status_code=422, detail="Impossibile determinare piva_raw dal payload o dall'XML.")
+
+    supabase = _get_supabase_client()
+    user_id, ristorante_id = _resolve_tenant_by_piva(supabase, piva_raw)
+
+    nome_file = str(payload.get("nome_file") or payload.get("filename") or f"{event_id}.xml")
+    xml_url = payload.get("xml_url")
+    source = str(payload.get("source") or "invoicetronic").strip().lower() or "invoicetronic"
+    correlation_id = str(request.headers.get("X-Request-ID") or payload.get("correlation_id") or "").strip() or None
+
+    queue_status = "pending" if user_id and ristorante_id else "unknown_tenant"
+    insert_payload = {
+        "event_id": event_id,
+        "user_id": user_id,
+        "ristorante_id": ristorante_id,
+        "piva_raw": piva_raw,
+        "xml_content": xml_content,
+        "xml_url": xml_url,
+        "payload_meta": {
+            "nome_file": nome_file,
+            "webhook_received_at": int(time.time()),
+        },
+        "source": source,
+        "correlation_id": correlation_id,
+        "status": queue_status,
+    }
+
+    try:
+        inserted = supabase.table("fatture_queue").insert(insert_payload).execute()
+        row = (inserted.data or [{}])[0]
+        queue_id = row.get("id")
+    except Exception as exc:
+        msg = str(exc)
+        # Idempotenza nativa su UNIQUE(event_id): se duplicato, ritorna successo.
+        if "uq_fatture_queue_event_id" in msg or "duplicate key value" in msg:
+            existing = (
+                supabase.table("fatture_queue")
+                .select("id,status")
+                .eq("event_id", event_id)
+                .limit(1)
+                .execute()
+            )
+            data = existing.data or [{}]
+            existing_id = data[0].get("id")
+            existing_status = data[0].get("status") or "pending"
+            return JSONResponse(
+                status_code=202 if existing_status != "unknown_tenant" else 200,
+                content=WebhookResponse(
+                    status=existing_status,
+                    event_id=event_id,
+                    queue_id=existing_id,
+                    message="Evento gia' presente in coda (idempotenza).",
+                ).model_dump(),
+            )
+        logger.exception("❌ /webhook insert fallita: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Errore inserimento in coda: {exc}")
+
+    # Risposta immediata: nessun processing sincrono nel webhook.
+    if queue_status == "unknown_tenant":
+        return JSONResponse(
+            status_code=200,
+            content=WebhookResponse(
+                status="unknown_tenant",
+                event_id=event_id,
+                queue_id=queue_id,
+                message="Tenant non risolto: evento accodato per riconciliazione.",
+            ).model_dump(),
+        )
+
+    return JSONResponse(
+        status_code=202,
+        content=WebhookResponse(
+            status="pending",
+            event_id=event_id,
+            queue_id=queue_id,
+            message="Evento accettato e accodato.",
+        ).model_dump(),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
