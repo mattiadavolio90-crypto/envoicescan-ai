@@ -21,6 +21,7 @@ ENV VARS richieste:
     WORKER_RATE_WINDOW_SEC  — finestra rate limit in secondi (default: 60)
 """
 
+import asyncio
 import io
 import json
 import logging
@@ -29,6 +30,7 @@ import sys
 import threading
 import time
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -73,6 +75,8 @@ logger = logging.getLogger("fastapi_worker")
 
 _RATE_LIMIT = int(os.getenv("WORKER_RATE_LIMIT", "30"))
 _RATE_WINDOW = int(os.getenv("WORKER_RATE_WINDOW_SEC", "60"))
+_QUEUE_LOOP_INTERVAL_SEC = int(os.getenv("QUEUE_LOOP_INTERVAL_SEC", "30"))
+_ENABLE_INLINE_QUEUE_PROCESSOR = os.getenv("ENABLE_INLINE_QUEUE_PROCESSOR", "1").strip().lower() in {"1", "true", "yes", "on"}
 
 # {ip: [timestamp, timestamp, ...]}
 _rate_buckets: Dict[str, List[float]] = defaultdict(list)
@@ -98,7 +102,44 @@ def _check_rate_limit(ip: str) -> None:
 # APP FASTAPI
 # ═══════════════════════════════════════════════════════════════════════════
 
+async def _queue_loop() -> None:
+    """Esegue ciclicamente il processor coda senza bloccare l'event loop FastAPI."""
+    from worker.queue_processor import run_cycle
+
+    logger.info("🔄 Queue processor background loop avviato (intervallo=%ss)", _QUEUE_LOOP_INTERVAL_SEC)
+    while True:
+        try:
+            stats = await asyncio.to_thread(run_cycle)
+            processed = int(getattr(stats, "done", 0))
+            logger.info("🔄 Queue processor cycle — pending processed: %d", processed)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.exception("❌ Queue processor cycle fallito: %s", exc)
+
+        await asyncio.sleep(_QUEUE_LOOP_INTERVAL_SEC)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    task = None
+    if _ENABLE_INLINE_QUEUE_PROCESSOR:
+        task = asyncio.create_task(_queue_loop(), name="queue-processor-loop")
+    else:
+        logger.info("ℹ️ Inline queue processor disabilitato (ENABLE_INLINE_QUEUE_PROCESSOR=0)")
+
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Oh Yeah! Hub — Worker API",
     description=(
         "Worker API per classificazione AI e parsing fatture. "
@@ -378,6 +419,16 @@ def _get_supabase_client():
     return create_client(url, key, options=options)
 
 
+def _looks_like_supabase_auth_error(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return (
+        "invalid api key" in msg
+        or "401" in msg
+        or "service_role" in msg
+        or "anon" in msg
+    )
+
+
 def _normalize_piva(value: str) -> str:
     raw = (value or "").strip().upper().replace(" ", "")
     if raw.startswith("IT"):
@@ -465,14 +516,22 @@ def _resolve_tenant_by_piva(supabase, piva_raw: str) -> tuple[Optional[str], Opt
         # Fallback su ristoranti se la tabella lookup non e' disponibile.
         pass
 
-    lookup = (
-        supabase.table("ristoranti")
-        .select("id,user_id")
-        .eq("partita_iva", piva)
-        .eq("attivo", True)
-        .limit(1)
-        .execute()
-    )
+    try:
+        lookup = (
+            supabase.table("ristoranti")
+            .select("id,user_id")
+            .eq("partita_iva", piva)
+            .eq("attivo", True)
+            .limit(1)
+            .execute()
+        )
+    except Exception as exc:
+        if _looks_like_supabase_auth_error(exc):
+            raise HTTPException(
+                status_code=500,
+                detail="Supabase auth non valida nel worker (controlla SUPABASE_SERVICE_ROLE_KEY su Railway).",
+            )
+        raise
     rows = lookup.data or []
     if not rows:
         return None, None
@@ -599,6 +658,11 @@ async def invoicetronic_webhook(request: Request):
         queue_id = row.get("id")
     except Exception as exc:
         msg = str(exc)
+        if _looks_like_supabase_auth_error(exc):
+            raise HTTPException(
+                status_code=500,
+                detail="Supabase auth non valida nel worker (controlla SUPABASE_SERVICE_ROLE_KEY su Railway).",
+            )
         # Idempotenza nativa su UNIQUE(event_id): se duplicato, ritorna successo.
         if "uq_fatture_queue_event_id" in msg or "duplicate key value" in msg:
             existing = (
