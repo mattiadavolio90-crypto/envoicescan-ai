@@ -471,13 +471,13 @@ def log_upload_event(
     Logga evento di upload su Supabase per supporto tecnico.
     Non solleva mai eccezioni per non bloccare l'upload principale.
     
-    IMPORTANTE: Non logga duplicati (comportamento corretto).
+    IMPORTANTE: Logga anche eventi di duplicato per supporto tecnico.
     
     Args:
         user_id: UUID utente
         user_email: Email utente
         file_name: Nome file caricato
-        status: SAVED_OK | SAVED_PARTIAL | FAILED (NO DUPLICATE)
+        status: SAVED_OK | SAVED_PARTIAL | FAILED | DUPLICATE_SKIPPED | DUPLICATE_IN_SELECTION
         rows_parsed: Numero righe estratte dal parsing
         rows_saved: Numero righe effettivamente salvate
         rows_excluded: Numero righe escluse per "diciture" (comportamento normale)

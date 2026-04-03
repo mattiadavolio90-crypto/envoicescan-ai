@@ -3520,8 +3520,8 @@ if tab5:
 
     try:
         query_dupl = supabase.table('upload_events')\
-            .select('user_email, file_name, created_at')\
-            .eq('status', 'DUPLICATE_SKIPPED')\
+            .select('user_email, file_name, created_at, status, details')\
+            .in_('status', ['DUPLICATE_SKIPPED', 'DUPLICATE_IN_SELECTION'])\
             .order('created_at', desc=True)
 
         if filtro_email:
@@ -3542,13 +3542,20 @@ if tab5:
         else:
             st.warning(f"⚠️ **{len(dupl_data)} tentativi** di ricaricare file già presenti nel database")
             df_dupl = pd.DataFrame(dupl_data)
+            if 'details' in df_dupl.columns:
+                df_dupl['motivo'] = df_dupl['details'].apply(
+                    lambda d: (d or {}).get('reason', '') if isinstance(d, dict) else ''
+                )
+            else:
+                df_dupl['motivo'] = ''
             df_dupl = df_dupl.rename(columns={
                 'user_email': 'cliente',
                 'file_name': 'file',
-                'created_at': 'data tentativo'
+                'created_at': 'data tentativo',
+                'status': 'stato',
             })
             df_dupl['data tentativo'] = pd.to_datetime(df_dupl['data tentativo']).dt.strftime('%Y-%m-%d %H:%M')
-            st.dataframe(df_dupl, use_container_width=True, hide_index=True)
+            st.dataframe(df_dupl[['cliente', 'file', 'stato', 'motivo', 'data tentativo']], use_container_width=True, hide_index=True)
     except Exception as e:
         st.warning(f"⚠️ Impossibile caricare log duplicati: {e}")
 

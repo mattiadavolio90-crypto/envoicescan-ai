@@ -5,7 +5,7 @@ import pandas as pd
 import time
 import logging
 import html as _html
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 from config.constants import (
     TRUNCATE_DESC_LOG,
@@ -154,6 +154,11 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     # Calcola nomi caricati e duplicati in modo robusto
     uploaded_names = [f.name for f in uploaded_files]
     uploaded_unique = set(uploaded_names)
+    uploaded_name_counts = Counter(uploaded_names)
+    duplicate_in_selection = sorted([
+        fname for fname, count in uploaded_name_counts.items()
+        if count > 1
+    ])
     duplicate_count = max(0, len(uploaded_names) - len(uploaded_unique))
 
     # Ricostruisci liste coerenti con i nomi unici
@@ -171,6 +176,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     
     file_nuovi = []
     file_gia_processati = []
+    file_gia_processati_reason = {}
     
     just_uploaded = st.session_state.get('just_uploaded_files', set())
     
@@ -193,6 +199,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             if is_exact_match: reason.append('nome esatto in DB')
             if is_base_match and not is_exact_match: reason.append(f'nome base "{nome_base}" in DB')
             if is_just_uploaded: reason.append('appena caricato')
+            file_gia_processati_reason[filename] = reason.copy()
             logger.info(f"📋 SKIP '{filename}' → {', '.join(reason)}")
         # Protezione: Salta file che hanno già dato errore in questa sessione
         elif filename in st.session_state.get('files_con_errori', set()):
@@ -200,7 +207,32 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         else:
             file_nuovi.append(file)
     
-    logger.info(f"📊 Dedup risultato: {len(file_nuovi)} nuovi, {len(file_gia_processati)} già presenti, {duplicate_count} duplicati upload")
+    logger.info(
+        f"📊 Dedup risultato: {len(file_nuovi)} nuovi, {len(file_gia_processati)} già presenti, "
+        f"{duplicate_count} duplicati upload ({len(duplicate_in_selection)} nomi duplicati nella selezione)"
+    )
+
+    # Log duplicati intra-selezione (stesso nome file selezionato più volte nello stesso upload)
+    if duplicate_in_selection:
+        try:
+            _uid = st.session_state.user_data.get('id', '')
+            _email = st.session_state.user_data.get('email', 'unknown')
+            for _fname in duplicate_in_selection:
+                _extra_count = max(1, uploaded_name_counts.get(_fname, 1) - 1)
+                log_upload_event(
+                    user_id=_uid,
+                    user_email=_email,
+                    file_name=_fname,
+                    status='DUPLICATE_IN_SELECTION',
+                    details={
+                        'source': 'manual_upload',
+                        'reason': 'in_selection',
+                        'duplicates_extra_count': _extra_count,
+                    },
+                    supabase_client=supabase,
+                )
+        except Exception as _log_ex:
+            logger.warning(f"Errore logging duplicate in selection: {_log_ex}")
     
     # Log file scartati come DUPLICATE_SKIPPED (solo quelli già nel DB, non appena caricati in sessione)
     if file_gia_processati:
@@ -208,13 +240,31 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             _uid = st.session_state.user_data.get('id', '')
             _email = st.session_state.user_data.get('email', 'unknown')
             for _fname in file_gia_processati:
-                if get_nome_base_file(_fname) not in just_uploaded:
+                _is_session_duplicate = get_nome_base_file(_fname) in just_uploaded
+                if not _is_session_duplicate:
                     log_upload_event(
                         user_id=_uid,
                         user_email=_email,
                         file_name=_fname,
                         status='DUPLICATE_SKIPPED',
-                        details={'source': 'manual_upload'},
+                        details={
+                            'source': 'manual_upload',
+                            'reason': 'already_in_db',
+                            'dedup_reason': file_gia_processati_reason.get(_fname, []),
+                        },
+                        supabase_client=supabase
+                    )
+                else:
+                    log_upload_event(
+                        user_id=_uid,
+                        user_email=_email,
+                        file_name=_fname,
+                        status='DUPLICATE_SKIPPED',
+                        details={
+                            'source': 'manual_upload',
+                            'reason': 'already_in_session',
+                            'dedup_reason': file_gia_processati_reason.get(_fname, []),
+                        },
                         supabase_client=supabase
                     )
         except Exception as _log_ex:
@@ -729,6 +779,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             st.session_state.last_upload_summary = upload_summary
             # 🧠 AUTO-TRIGGER AI: avvia categorizzazione automatica dopo upload riuscito
             if file_processati > 0:
+                st.session_state.ai_categorization_in_progress = True
                 st.session_state.trigger_ai_categorize = True
                 st.session_state.pop('_fonte_pm_cache', None)  # Invalida cache Fonte
                 logger.info(f"🧠 Auto-trigger AI: {file_processati} file caricati → categorizzazione automatica")

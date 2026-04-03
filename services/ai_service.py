@@ -105,6 +105,69 @@ _memoria_cache = {
 # Flag per disabilitare la memoria globale (solo sessione)
 _disable_global_memory = False
 
+
+# Regole forti: proteggono da errori grossolani AI/dizionario.
+_CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
+    (
+        "DISTILLATI",
+        r"\b(GIN|VODKA|WHISKY|WHISKEY|RHUM|RUM|TEQUILA|GRAPPA|BOURBON|COGNAC|MEZCAL|CACHACA|CACHAÇA|ASSENZIO|BRANDY)\b",
+    ),
+    (
+        "AMARI/LIQUORI",
+        r"\b(AMARO|LIQUORE|LIMONCELLO|SAMBUCA|JAGERMEISTER|AVERNA|MONTENEGRO|NONINO|KAHLUA|BAILEYS|CYNAR|BRANCAMENTA|FERNET|MIRTO)\b",
+    ),
+    (
+        "VINI",
+        r"\b(VINO|CHIANTI|MONTEPULCIANO|FRANCIACORTA|PROSECCO|MOSCATO|FALANGHINA|GEWURZTRAMINER|VERMOUTH|PINOT|RIESLING|MERLOT|SYRAH|CABERNET)\b",
+    ),
+    (
+        "BEVANDE",
+        r"\b(COCA\-COLA|COCA COLA|FANTA|SPRITE|SCHWEPPES|TONICA|GINGER|CEDRATA|ESTATHE|CRODINO|SIFONE|DERBY|SCIROPPO|ARANCIATA|CHINOTTO|RED BULL)\b",
+    ),
+    (
+        "LATTICINI",
+        r"\b(LATTE|MOZZARELLA|BRIE|EDAMER|FETA|OVOLINE)\b",
+    ),
+    (
+        "PASTICCERIA",
+        r"\b(PASTICCERIA|CORNETTO|CROISSANT|SFOGLIATELLA|BOMBOLONE|CANNONCINO|KRAPFEN|BIGNE|BRIOCHE)\b",
+    ),
+]
+
+_CATEGORIE_PLACEHOLDER = {"", "DA CLASSIFICARE"}
+
+
+def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) -> Tuple[str, Optional[str]]:
+    """
+    Applica regole deterministiche ad alta confidenza per evitare errori grossolani.
+
+    Returns:
+        (categoria_finale, motivo_override)
+    """
+    desc = (descrizione or "").strip()
+    cat = (categoria_predetta or "Da Classificare").strip()
+    desc_u = desc.upper()
+    cat_u = cat.upper()
+
+    if not desc:
+        return cat, None
+
+    if desc_u in {"OMAGGIO", "SPESE FISSE"}:
+        mapped = "SERVIZI E CONSULENZE"
+        if cat != mapped:
+            return mapped, f"termine_ambiguo:{desc_u}"
+        return cat, None
+
+    for expected, pattern in _CATEGORIA_REGEX_FORTI:
+        if not re.search(pattern, desc_u):
+            continue
+
+        if cat_u in _CATEGORIE_PLACEHOLDER or cat_u != expected:
+            return expected, f"regola_forte:{expected}"
+        return cat, None
+
+    return cat, None
+
 def set_global_memory_enabled(enabled: bool):
     """
     Abilita/Disabilita l'uso della memoria globale (prodotti_master) in questa sessione.
@@ -1075,33 +1138,35 @@ def categorizza_con_memoria(
     
     # LIVELLO 7: Dizionario keyword (fallback)
     categoria_keyword = applica_correzioni_dizionario(descrizione, "Da Classificare")
+    categoria_keyword, motivo_override = applica_regole_categoria_forti(descrizione, categoria_keyword)
+    if motivo_override:
+        logger.info(
+            f"🧭 OVERRIDE SICUREZZA (keyword): '{descrizione[:60]}' -> {categoria_keyword} [{motivo_override}]"
+        )
     
-    # 💾 SALVATAGGIO AUTOMATICO IN MEMORIA GLOBALE
-    # Se la categoria è diversa da "Da Classificare", salva in memoria globale per futuri clienti
-    # 🛡️ QUARANTENA: NON salvare righe con prezzo = 0 in memoria globale
-    # Le righe €0 vanno revisionate dall'admin nel tab "Review Righe 0€" prima di entrare in memoria
+    # 💾 SALVATAGGIO AUTOMATICO IN MEMORIA LOCALE UTENTE
+    # Evita contaminazione cross-tenant: i suggerimenti automatici non entrano nella memoria globale.
+    # 🛡️ QUARANTENA: NON salvare righe con prezzo = 0 in memoria locale automatica.
     if categoria_keyword != "Da Classificare" and supabase_client and prezzo != 0:
         try:
-            # Normalizza descrizione per salvataggio
-            desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
-            
-            supabase_client.table('prodotti_master').upsert({
-                'descrizione': desc_normalized,
+            desc_local = descrizione.strip()
+
+            supabase_client.table('prodotti_utente').upsert({
+                'user_id': user_id,
+                'descrizione': desc_local,
                 'categoria': categoria_keyword,
-                'confidence': 'media',
-                'verified': False,  # ⚠️ Da verificare: inserimento automatico
                 'volte_visto': 1,
-                'classificato_da': 'keyword',
+                'classificato_da': 'keyword-auto',
                 'created_at': datetime.now(timezone.utc).isoformat(),
-                'ultima_modifica': datetime.now(timezone.utc).isoformat()
-            }, on_conflict='descrizione').execute()
-            logger.info(f"💾 MEMORIA GLOBALE (auto-save): '{desc_normalized}' (orig: '{desc_original}') → {categoria_keyword} (keyword) - disponibile per TUTTI i clienti")
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }, on_conflict='user_id,descrizione').execute()
+            logger.info(f"💾 MEMORIA LOCALE (auto-save): '{desc_local}' → {categoria_keyword} (keyword-auto)")
         except Exception as e:
-            logger.warning(f"❌ Errore salvataggio memoria globale per '{descrizione[:40]}': {e}")
+            logger.warning(f"❌ Errore salvataggio memoria locale per '{descrizione[:40]}': {e}")
     elif categoria_keyword != "Da Classificare" and prezzo == 0:
-        # 🛡️ QUARANTENA: Riga €0 categorizzata ma NON salvata in memoria globale
+        # 🛡️ QUARANTENA: Riga €0 categorizzata ma NON salvata in memoria automatica
         # Andrà nel tab "Review Righe 0€" per validazione admin
-        logger.info(f"🛡️ QUARANTENA €0: '{descrizione[:60]}' → {categoria_keyword} (NON salvato in memoria globale, in attesa review)")
+        logger.info(f"🛡️ QUARANTENA €0: '{descrizione[:60]}' → {categoria_keyword} (NON salvato in memoria automatica, in attesa review)")
     else:
         # AUTO-CATEGORIZZAZIONE FALLITA: nessun match nel dizionario
         logger.info(f"⚠️ AUTO-CATEGORIZZAZIONE FALLITA: '{descrizione[:60]}' rimasto 'Da Classificare' (NON salvato in memoria globale)")

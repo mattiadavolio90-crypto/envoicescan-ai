@@ -23,6 +23,7 @@ from services.ai_service import (
     carica_memoria_completa,
     invalida_cache_memoria,
     applica_correzioni_dizionario,
+    applica_regole_categoria_forti,
     svuota_memoria_globale,
     set_global_memory_enabled,
     ottieni_categoria_prodotto,
@@ -166,21 +167,23 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     # CATEGORIZZAZIONE AI (triggerata dal bottone nella sezione upload)
     # ============================================================
     if st.session_state.pop('trigger_ai_categorize', False):
-        # Sopprimi i messaggi dell'uploader nel rerun successivo
-        st.session_state.suppress_upload_messages_once = True
-        # ============================================================
-        # VERIFICA FINALE (sicurezza)
-        # ============================================================
-        if righe_da_classificare == 0:
-            st.warning("⚠️ Nessun prodotto da classificare")
-        else:
+        st.session_state.ai_categorization_in_progress = True
+        try:
+            # Sopprimi i messaggi dell'uploader nel rerun successivo
+            st.session_state.suppress_upload_messages_once = True
             # ============================================================
-            # CHIAMATA AI (SOLO DESCRIZIONI DA CLASSIFICARE)
+            # VERIFICA FINALE (sicurezza)
             # ============================================================
-            # 🔧 FIX: Query DIRETTA al DB per evitare problema filtri locali su df_completo
-            try:
-                # Query tutte le descrizioni che hanno categoria NULL, "Da Classificare" o stringa vuota
-                _ristorante_id = st.session_state.get('ristorante_id')
+            if righe_da_classificare == 0:
+                st.warning("⚠️ Nessun prodotto da classificare")
+            else:
+                # ============================================================
+                # CHIAMATA AI (SOLO DESCRIZIONI DA CLASSIFICARE)
+                # ============================================================
+                # 🔧 FIX: Query DIRETTA al DB per evitare problema filtri locali su df_completo
+                try:
+                    # Query tutte le descrizioni che hanno categoria NULL, "Da Classificare" o stringa vuota
+                    _ristorante_id = st.session_state.get('ristorante_id')
 
                 # Query 1: NULL + stringa vuota collassate
                 _q_nullempty = (
@@ -409,43 +412,50 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             st.session_state['_ai_budget_calls'] = st.session_state.get('_ai_budget_calls', 0) + 1
                             ai_batch_upsert = []
                             for desc, cat in zip(chunk, cats):
+                                cat, override_reason = applica_regole_categoria_forti(desc, cat)
+                                if override_reason:
+                                    logger.info(
+                                        f"🧭 OVERRIDE SICUREZZA (AI): '{desc[:TRUNCATE_DESC_LOG]}' -> {cat} [{override_reason}]"
+                                    )
                                 mappa_categorie[desc] = cat
                                 prodotti_elaborati += 1
                             
                                 # 🧠 Aggiorna banner dopo ogni prodotto (AI step: nessuna soglia)
                                 percentuale = (prodotti_elaborati / totale_da_classificare) * 100
-                                progress_placeholder.markdown(f"""
-                                <div class="ai-banner">
-                                    <div class="brain-pulse-banner">🧠</div>
-                                    <div class="progress-percentage">{int(percentuale)}%</div>
-                                    <div class="progress-status">{prodotti_elaborati} di {totale_da_classificare} prodotti</div>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                if prodotti_elaborati % 5 == 0 or prodotti_elaborati == totale_da_classificare:
+                                    progress_placeholder.markdown(f"""
+                                    <div class="ai-banner">
+                                        <div class="brain-pulse-banner">🧠</div>
+                                        <div class="progress-percentage">{int(percentuale)}%</div>
+                                        <div class="progress-status">{prodotti_elaborati} di {totale_da_classificare} prodotti</div>
+                                    </div>
+                                    """, unsafe_allow_html=True)
                                 
                                 if cat and cat != "Da Classificare":
-                                    # 🛡️ QUARANTENA: Escludi descrizioni €0 dalla memoria globale
+                                    # 🛡️ QUARANTENA: Escludi descrizioni €0 dalla memoria locale automatica
                                     if desc not in _descrizioni_con_prezzo_zero:
                                         ai_batch_upsert.append({
+                                            'user_id': user_id,
                                             'descrizione': desc,
                                             'categoria': cat,
                                             'volte_visto': 1,
-                                            'verified': False,
-                                            'confidence': 'media',
-                                            'classificato_da': 'AI'
+                                            'classificato_da': 'AI (auto)',
+                                            'updated_at': datetime.now(timezone.utc).isoformat(),
+                                            'created_at': datetime.now(timezone.utc).isoformat(),
                                         })
                                     else:
-                                        logger.info(f"🛡️ QUARANTENA AI: '{desc[:60]}' → {cat} (€0, escluso da memoria globale)")
+                                        logger.info(f"🛡️ QUARANTENA AI: '{desc[:60]}' → {cat} (€0, escluso da memoria automatica)")
                             
-                            # 💾 Batch upsert memoria GLOBALE per AI (singola query per chunk)
+                            # 💾 Batch upsert memoria LOCALE per AI (singola query per chunk)
                             if ai_batch_upsert:
                                 try:
-                                    _ai_result = supabase.table('prodotti_master').upsert(
-                                        ai_batch_upsert, on_conflict='descrizione'
+                                    _ai_result = supabase.table('prodotti_utente').upsert(
+                                        ai_batch_upsert, on_conflict='user_id,descrizione'
                                     ).execute()
                                     _ai_saved = len(_ai_result.data) if _ai_result.data else 0
-                                    logger.info(f"💾 BATCH AI: {_ai_saved}/{len(ai_batch_upsert)} prodotti salvati in memoria globale")
+                                    logger.info(f"💾 BATCH AI LOCALE: {_ai_saved}/{len(ai_batch_upsert)} prodotti salvati in memoria utente")
                                 except Exception as e:
-                                    logger.error(f"Errore batch salvataggio memoria AI: {e}")
+                                    logger.error(f"Errore batch salvataggio memoria locale AI: {e}")
                         
                         # Invalida cache una sola volta dopo tutti i chunk
                         invalida_cache_memoria()
@@ -701,6 +711,8 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         logger.exception("Errore aggiornamento categorie AI su Supabase")
                         logger.error(f"Errore aggiornamento categorie: {e}")
                         st.error("❌ Errore durante l'aggiornamento delle categorie. Riprova.")
+        finally:
+            st.session_state.ai_categorization_in_progress = False
     
     # Rimuovi il flag automaticamente quando tutti i file sono stati rimossi (dopo aver cliccato la X)
     if not uploaded_files and st.session_state.get("force_empty_until_upload"):

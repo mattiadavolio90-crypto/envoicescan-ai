@@ -2041,7 +2041,8 @@ else:
     with col_ai_right:
         # Spazio per allinearsi con la dropzone (file_uploader collapsed label riserva ~22px)
         st.markdown("<div style='margin-top: 34px;'></div>", unsafe_allow_html=True)
-        if _righe_da_class_ui > 0:
+        _ai_in_progress = st.session_state.get('ai_categorization_in_progress', False)
+        if _righe_da_class_ui > 0 and not _ai_in_progress:
             # 🧠 Recovery: bottone visibile SOLO se rimangono righe Da Classificare dopo l'AI
             if st.button(
                 "🧠 Riprova AI per Categorizzare",
@@ -2049,6 +2050,7 @@ else:
                 type="primary",
                 key="btn_ai_categorizza_upload"
             ):
+                st.session_state.ai_categorization_in_progress = True
                 st.session_state.trigger_ai_categorize = True
                 st.rerun()
     
