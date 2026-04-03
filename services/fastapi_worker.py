@@ -334,6 +334,9 @@ async def parse_invoice(
                 status_code=413,
                 detail="File troppo grande (max 50MB).",
             )
+
+        # Estrai XML da busta P7M (se necessario)
+        if ext == "p7m":
             from services.invoice_service import estrai_xml_da_p7m
 
             xml_bytes = estrai_xml_da_p7m(io.BytesIO(contents))
@@ -342,7 +345,7 @@ async def parse_invoice(
                     status_code=422,
                     detail="Impossibile estrarre XML dal file P7M.",
                 )
-            contents = xml_bytes
+            contents = xml_bytes.read() if hasattr(xml_bytes, "read") else xml_bytes
             filename = filename[:-4]  # rimuove .p7m → .xml
 
         # ── Wrapper senza session_state ───────────────────────────────────
@@ -534,17 +537,37 @@ def _resolve_tenant_by_piva(supabase, piva_raw: str) -> tuple[Optional[str], Opt
 
 
 def _verify_webhook_signature(raw_body: bytes, signature_header: str, secret: str) -> bool:
+    """Verifica HMAC-SHA256 con formato Invoicetronic: t=...,v1=..."""
     import hashlib
-    import hmac
+    import hmac as _hmac
 
-    signature = (signature_header or "").strip()
-    if not signature:
+    header = (signature_header or "").strip()
+    if not header:
         return False
-    if signature.startswith("sha256="):
-        signature = signature.split("=", 1)[1]
 
-    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(signature, expected)
+    parts: dict[str, str] = {}
+    for seg in header.split(","):
+        idx = seg.find("=")
+        if idx > 0:
+            parts[seg[:idx].strip()] = seg[idx + 1:].strip()
+
+    ts = parts.get("t", "")
+    sig = parts.get("v1", "")
+    if not ts or not sig:
+        return False
+
+    # Anti-replay: rifiuta timestamp fuori finestra 5 min
+    try:
+        ts_num = int(ts)
+    except ValueError:
+        return False
+    if abs(time.time() - ts_num) > 300:
+        return False
+
+    # HMAC-SHA256("{ts}.{rawBody}", secret) — formato Invoicetronic
+    message = f"{ts}.".encode("utf-8") + raw_body
+    expected = _hmac.new(secret.encode("utf-8"), message, hashlib.sha256).hexdigest()
+    return _hmac.compare_digest(expected, sig)
 
 
 def _load_xml_from_payload(payload: dict[str, Any]) -> str:
@@ -606,7 +629,7 @@ async def invoicetronic_webhook(request: Request):
     if not SECRET:
         raise HTTPException(status_code=500, detail="INVOICETRONIC_WEBHOOK_SECRET non configurato.")
 
-    signature = request.headers.get("X-Webhook-Signature", "")
+    signature = request.headers.get("Invoicetronic-Signature", "")
     if not _verify_webhook_signature(raw_body, signature, SECRET):
         raise HTTPException(status_code=401, detail="Firma webhook non valida.")
 
@@ -631,6 +654,8 @@ async def invoicetronic_webhook(request: Request):
     correlation_id = str(request.headers.get("X-Request-ID") or payload.get("correlation_id") or "").strip() or None
 
     queue_status = "pending" if user_id and ristorante_id else "unknown_tenant"
+    import hashlib as _hl
+    xml_hash = _hl.sha256(xml_content.encode("utf-8")).hexdigest()
     insert_payload = {
         "event_id": event_id,
         "user_id": user_id,
@@ -638,6 +663,7 @@ async def invoicetronic_webhook(request: Request):
         "piva_raw": piva_raw,
         "xml_content": xml_content,
         "xml_url": xml_url,
+        "xml_hash": xml_hash,
         "payload_meta": {
             "nome_file": nome_file,
             "webhook_received_at": int(time.time()),
