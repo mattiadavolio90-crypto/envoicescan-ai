@@ -294,6 +294,7 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
     ristorante_id = item.get("ristorante_id")
     xml_content   = item.get("xml_content")
     xml_url       = item.get("xml_url")
+    # piva_raw arriva dal webhook ed e' gia' la P.IVA del destinatario usata per il tenant routing.
     piva_raw      = item.get("piva_raw", "UNKNOWN")
     attempt       = item.get("attempt_count", 1)
     payload_meta  = item.get("payload_meta") or {}

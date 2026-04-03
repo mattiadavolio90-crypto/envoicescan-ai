@@ -437,7 +437,7 @@ def _normalize_piva(value: str) -> str:
 
 
 def _extract_piva_from_xml(xml_text: str) -> str:
-    """Estrae P.IVA dal blocco CedentePrestatore, fallback CessionarioCommittente."""
+    """Estrae la P.IVA del destinatario: CessionarioCommittente, con fallback finale sul Cedente."""
     import xmltodict
 
     def _dig(obj: Any, path: List[str]) -> str:
@@ -457,42 +457,37 @@ def _extract_piva_from_xml(xml_text: str) -> str:
         or {}
     )
 
-    piva = _dig(
-        header,
-        [
-            "CedentePrestatore",
-            "DatiAnagrafici",
-            "IdFiscaleIVA",
-            "IdCodice",
-        ],
-    )
-    if piva:
-        return _normalize_piva(piva)
-
-    # Fallback robusto: alcune varianti usano namespace prefix su nodi intermedi.
-    piva = _dig(
-        header,
-        [
-            "p:CedentePrestatore",
-            "p:DatiAnagrafici",
-            "p:IdFiscaleIVA",
-            "p:IdCodice",
-        ],
-    )
-    if piva:
-        return _normalize_piva(piva)
-
-    # Fallback finale su CessionarioCommittente.
-    piva = _dig(
-        header,
+    for path in (
         [
             "CessionarioCommittente",
             "DatiAnagrafici",
             "IdFiscaleIVA",
             "IdCodice",
         ],
-    )
-    return _normalize_piva(piva)
+        [
+            "p:CessionarioCommittente",
+            "p:DatiAnagrafici",
+            "p:IdFiscaleIVA",
+            "p:IdCodice",
+        ],
+        [
+            "CedentePrestatore",
+            "DatiAnagrafici",
+            "IdFiscaleIVA",
+            "IdCodice",
+        ],
+        [
+            "p:CedentePrestatore",
+            "p:DatiAnagrafici",
+            "p:IdFiscaleIVA",
+            "p:IdCodice",
+        ],
+    ):
+        piva = _dig(header, path)
+        if piva:
+            return _normalize_piva(piva)
+
+    return ""
 
 
 def _resolve_tenant_by_piva(supabase, piva_raw: str) -> tuple[Optional[str], Optional[str]]:
