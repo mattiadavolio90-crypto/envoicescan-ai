@@ -5,6 +5,7 @@
     padding: clamp(0.6rem, 1.2vw, 0.95rem) clamp(0.85rem, 2vw, 1.85rem) !important;
 }
 
+/* File uploader: nasconde elementi secondari (lista file, icone, ecc.) */
 [data-testid="stFileUploader"] > div > div:not(:first-child) { display: none !important; }
 [data-testid="stFileUploader"] ul { display: none !important; }
 [data-testid="stFileUploader"] button[kind="icon"] { display: none !important; }
@@ -12,45 +13,9 @@
 [data-testid="stFileUploader"] svg { display: none !important; }
 [data-testid="stFileUploader"] section > div > span { display: none !important; }
 [data-testid="stFileUploader"] section > div:last-child { display: none !important; }
-
-[data-testid="stFileUploader"] { margin: 20px 0; }
-[data-testid="stFileUploader"] > div { width: min(100%, 44rem); max-width: 100%; }
-[data-testid="stFileUploader"] section {
-    padding: clamp(1rem, 4vw, 3.125rem) clamp(1rem, 6vw, 5rem) !important;
-    border: 5px dashed #4CAF50 !important;
-    border-radius: 25px !important;
-    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%) !important;
-    transition: all 0.3s ease !important;
-    box-shadow: 0 6px 12px rgba(0,0,0,0.1) !important;
-}
-[data-testid="stFileUploader"] section:hover {
-    border-color: #2E7D32 !important;
-    background: linear-gradient(135deg, #c8e6c9 0%, #a5d6a7 100%) !important;
-    transform: translateY(-3px) !important;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.15) !important;
-}
-[data-testid="stFileUploader"] label {
-    font-size: clamp(1.25rem, 2vw + 0.7rem, 2rem) !important;
-    font-weight: bold !important;
-    color: #1b5e20 !important;
-    letter-spacing: clamp(0.02em, 0.08vw, 0.06em) !important;
-    text-transform: uppercase !important;
-}
-[data-testid="stFileUploader"] button {
-    padding: clamp(0.7rem, 1.6vw, 0.95rem) clamp(1rem, 3vw, 2.5rem) !important;
-    font-size: clamp(0.9rem, 0.8vw + 0.7rem, 1.125rem) !important;
-    font-weight: bold !important;
-    background-color: #4CAF50 !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 10px !important;
-    cursor: pointer !important;
-    transition: all 0.3s ease !important;
-}
-[data-testid="stFileUploader"] button:hover {
-    background-color: #45a049 !important;
-    transform: scale(1.05) !important;
-}
+/* Lo stile visivo del bottone e della dropzone è gestito dallo scope
+   div.st-key-main_documents_upload_section in app.py.
+   NON aggiungere qui regole su padding, border, background o colori del bottone. */
 
 .file-status-table {
     max-height: 400px;
@@ -165,9 +130,4 @@ footer { visibility: hidden; }
     overflow-wrap: anywhere;
 }
 
-@media (max-width: 900px) {
-    [data-testid="stFileUploader"] section {
-        border-width: 4px !important;
-        border-radius: 18px !important;
-    }
-}
+/* Uploader responsive ora gestito dallo scope in app.py */

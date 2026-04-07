@@ -222,10 +222,10 @@ div[data-testid="stDataFrameGlideDataEditor"] > div,
 button,
 [data-testid="baseButton-primary"],
 [data-testid="baseButton-secondary"],
-[data-testid="stDownloadButton"] button,
-[data-testid="stFileUploaderDropzone"] button {
+[data-testid="stDownloadButton"] button {
     min-height: 2.75rem !important;
 }
+/* Il bottone uploader ha il suo scope dedicato in main_documents_upload_section */
 
 /* Tablet */
 @media (min-width: 768px) and (max-width: 1024px) {
@@ -345,7 +345,6 @@ button,
     /* Bottoni touch-friendly */
     button,
     [data-testid="stDownloadButton"] button,
-    [data-testid="stFileUploaderDropzone"] button,
     div[data-testid="stFormSubmitButton"] button {
         min-height: 44px !important;
         padding-top: 0.8rem !important;
@@ -373,18 +372,9 @@ button,
         overflow-x: auto !important;
     }
 
-    [data-testid="stFileUploader"] > div,
     [data-testid="stExpander"] {
         width: 100% !important;
         max-width: 100% !important;
-    }
-
-    [data-testid="stFileUploaderDropzone"] {
-        gap: 0.6rem !important;
-    }
-
-    [data-testid="stFileUploaderDropzone"]::after {
-        flex: 1 1 100% !important;
     }
 
     section[data-testid="stSidebar"],
@@ -1919,140 +1909,172 @@ else:
     # ============================================================
     # LAYOUT: FILE UPLOADER + AI INFO/BUTTON AFFIANCATI
     # ============================================================
-    st.markdown("""
-    <div style='display:flex; flex-wrap:wrap; align-items:baseline; gap:0.5rem 1rem; padding: 0 0 12px 0;'>
-        <div style='font-size: 2.25rem; font-weight: 700; color: #1f4e8c; line-height: 1.2;'>📄 Documenti</div>
-        <div style='font-size: 0.88rem; color: #166534; font-weight: 500; line-height: 1.4;'>
-            ⚠️ <strong>IMPORTANTE:</strong> Le fatture caricate devono corrispondere alla P.IVA del ristorante mostrato sopra! <strong>Altrimenti verranno scartate</strong>
+    with st.container(key="main_documents_upload_section"):
+        st.markdown("""
+        <div class="documents-header-row">
+            <div class="documents-title">📄 Documenti</div>
+            <div class="documents-warning">
+                ⚠️ <strong>IMPORTANTE:</strong> Le fatture caricate devono corrispondere alla P.IVA del ristorante mostrato sopra! <strong>Altrimenti verranno scartate</strong>
+            </div>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # CSS globale per restyling minimalista del file uploader
-    st.markdown("""
-    <style>
-    [data-testid="stFileUploader"] {
-        margin: 0 !important;
-    }
-    [data-testid="stFileUploader"] > div {
-        width: 100% !important;
-        max-width: 100% !important;
-    }
-    [data-testid="stFileUploader"] section {
-        padding: 0 !important;
-        border: none !important;
-        background: transparent !important;
-        box-shadow: none !important;
-        border-radius: 0 !important;
-    }
-    [data-testid="stFileUploaderDropzone"] {
-        padding: 0 !important;
-        min-height: auto !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 0.75rem !important;
-        background: transparent !important;
-        justify-content: flex-start !important;
-        flex-wrap: wrap !important;
-        border: none !important;
-        border-radius: 0 !important;
-    }
-    [data-testid="stFileUploaderDropzoneInstructions"] {
-        visibility: hidden !important;
-        position: absolute !important;
-        width: 0 !important;
-        height: 0 !important;
-        overflow: hidden !important;
-    }
-    [data-testid="stFileUploaderDropzone"] section,
-    [data-testid="stFileUploaderDropzone"] > div {
-        width: 100% !important;
-    }
-    [data-testid="stFileUploaderDropzone"] button {
-        font-size: 0 !important;
-        padding: 0.72rem 1.05rem !important;
-        min-height: auto !important;
-        flex-shrink: 0 !important;
-        border-radius: 10px !important;
-        border: 1px solid #2d6a4f !important;
-        background-color: #2d6a4f !important;
-        color: transparent !important;
-        box-shadow: none !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        text-align: center !important;
-        position: relative !important;
-        overflow: hidden !important;
-        min-width: 12.5rem !important;
-    }
-    [data-testid="stFileUploaderDropzone"] button > * {
-        opacity: 0 !important;
-    }
-    [data-testid="stFileUploaderDropzone"] button::after {
-        content: "📄 Carica Documenti" !important;
-        position: absolute !important;
-        left: 50% !important;
-        top: 50% !important;
-        transform: translate(-50%, -50%) !important;
-        width: max-content !important;
-        text-align: center !important;
-        font-size: clamp(0.85rem, 0.4vw + 0.75rem, 1rem) !important;
-        color: #ffffff !important;
-        font-weight: 600 !important;
-        white-space: nowrap !important;
-        pointer-events: none !important;
-    }
-    [data-testid="stFileUploaderDropzone"]::after {
-        content: "Formati accettati: XML, P7M, PDF, PNG, JPG, JPEG · Max 200MB" !important;
-        font-size: clamp(0.8rem, 0.3vw + 0.74rem, 0.9rem) !important;
-        color: #2d6a4f !important;
-        line-height: 1.4 !important;
-        font-weight: 600 !important;
-        white-space: normal !important;
-        overflow-wrap: anywhere !important;
-        flex: 1 1 20rem !important;
-        min-width: 0 !important;
-    }
-    [data-testid="stFileUploaderDropzone"] button:hover {
-        border-color: #1f513b !important;
-        background-color: #1f513b !important;
-    }
-    [data-testid="stFileUploaderDropzone"] button:focus,
-    [data-testid="stFileUploaderDropzone"] button:active {
-        border-color: #1f513b !important;
-        background-color: #1f513b !important;
-        color: transparent !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    col_upload, col_ai_right = st.columns([3, 2])
+        """, unsafe_allow_html=True)
 
-    with col_upload:
-        uploaded_files = st.file_uploader(
-            "Carica file",
-            accept_multiple_files=True,
-            type=['xml', 'p7m', 'pdf', 'jpg', 'jpeg', 'png'],
-            label_visibility="collapsed",
-            key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"
-        )
+        st.markdown("""
+        <style>
+        div.st-key-main_documents_upload_section .documents-header-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 0.5rem 1rem;
+            padding: 0 0 12px 0;
+        }
+        div.st-key-main_documents_upload_section .documents-title {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #1f4e8c;
+            line-height: 1.2;
+        }
+        div.st-key-main_documents_upload_section .documents-warning {
+            font-size: 0.88rem;
+            color: #166534;
+            font-weight: 500;
+            line-height: 1.4;
+        }
+        div.st-key-main_documents_upload_section .upload-format-hint {
+            color: #2d6a4f;
+            font-size: clamp(0.8rem, 0.3vw + 0.74rem, 0.9rem);
+            font-weight: 600;
+            line-height: 1.4;
+            padding-top: 0.45rem;
+        }
+        div.st-key-main_documents_upload_section .upload-ai-spacer {
+            height: 34px;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploader"] {
+            margin: 0 !important;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploader"] > div {
+            width: auto !important;
+            max-width: 100% !important;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploader"] section {
+            padding: 0 !important;
+            border: none !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] {
+            padding: 0 !important;
+            min-height: auto !important;
+            background: transparent !important;
+            border: none !important;
+            border-radius: 0 !important;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzoneInstructions"] {
+            visibility: hidden !important;
+            position: absolute !important;
+            width: 0 !important;
+            height: 0 !important;
+            overflow: hidden !important;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] > div {
+            width: auto !important;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button {
+            min-width: 12.5rem !important;
+            height: 2.9rem !important;
+            min-height: 2.9rem !important;
+            padding: 0.72rem 1.05rem !important;
+            border-radius: 10px !important;
+            border: 1px solid #2d6a4f !important;
+            background-color: #2d6a4f !important;
+            color: transparent !important;
+            box-shadow: none !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            text-align: center !important;
+            position: relative !important;
+            overflow: hidden !important;
+            transform: none !important;
+            line-height: 1 !important;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button > * {
+            opacity: 0 !important;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button p,
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button span,
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button div {
+            font-size: 0 !important;
+            line-height: 0 !important;
+            margin: 0 !important;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button::after {
+            content: "📄 Carica Documenti" !important;
+            position: absolute !important;
+            left: 50% !important;
+            top: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            width: max-content !important;
+            text-align: center !important;
+            font-size: clamp(0.85rem, 0.4vw + 0.75rem, 1rem) !important;
+            line-height: 1.1 !important;
+            color: #ffffff !important;
+            font-weight: 600 !important;
+            white-space: nowrap !important;
+            pointer-events: none !important;
+        }
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button:hover,
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button:focus,
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button:active {
+            border-color: #1f513b !important;
+            background-color: #1f513b !important;
+            color: transparent !important;
+            transform: none !important;
+        }
+        @media (max-width: 767px) {
+            div.st-key-main_documents_upload_section .upload-format-hint {
+                padding-top: 0.15rem;
+            }
+            div.st-key-main_documents_upload_section .upload-ai-spacer {
+                height: 12px;
+            }
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
-    with col_ai_right:
-        # Spazio per allinearsi con la dropzone (file_uploader collapsed label riserva ~22px)
-        st.markdown("<div style='margin-top: 34px;'></div>", unsafe_allow_html=True)
-        _ai_in_progress = st.session_state.get('ai_categorization_in_progress', False)
-        if _righe_da_class_ui > 0 and not _ai_in_progress:
-            # 🧠 Recovery: bottone visibile SOLO se rimangono righe Da Classificare dopo l'AI
-            if st.button(
-                "🧠 Riprova AI per Categorizzare",
-                use_container_width=True,
-                type="primary",
-                key="btn_ai_categorizza_upload"
-            ):
-                st.session_state.ai_categorization_in_progress = True
-                st.session_state.trigger_ai_categorize = True
-                st.rerun()
+        col_upload, col_ai_right = st.columns([3, 2])
+
+        with col_upload:
+            upload_button_col, upload_hint_col = st.columns([1, 2])
+            with upload_button_col:
+                uploaded_files = st.file_uploader(
+                    "Carica file",
+                    accept_multiple_files=True,
+                    type=['xml', 'p7m', 'pdf', 'jpg', 'jpeg', 'png'],
+                    label_visibility="collapsed",
+                    key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"
+                )
+            with upload_hint_col:
+                st.markdown(
+                    "<div class='upload-format-hint'>Formati accettati: XML, P7M, PDF, PNG, JPG, JPEG · Max 200MB</div>",
+                    unsafe_allow_html=True,
+                )
+
+        with col_ai_right:
+            st.markdown("<div class='upload-ai-spacer'></div>", unsafe_allow_html=True)
+            _ai_in_progress = st.session_state.get('ai_categorization_in_progress', False)
+            if _righe_da_class_ui > 0 and not _ai_in_progress:
+                if st.button(
+                    "🧠 Riprova AI per Categorizzare",
+                    use_container_width=True,
+                    type="primary",
+                    key="btn_ai_categorizza_upload"
+                ):
+                    st.session_state.ai_categorization_in_progress = True
+                    st.session_state.trigger_ai_categorize = True
+                    st.rerun()
     
     # 🧠 RESET ICONE AI al nuovo caricamento (solo session_state, niente DB)
     if uploaded_files and len(uploaded_files) > 0:

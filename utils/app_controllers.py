@@ -1577,47 +1577,15 @@ def render_dashboard_ui(supabase, logger, user):
     # ============================================================
     # LAYOUT: FILE UPLOADER + AI INFO/BUTTON AFFIANCATI
     # ============================================================
+    # Stile uploader admin — riutilizza lo scope dal container dedicato
     st.markdown("""
     <style>
-    /* Compatta altezza drop zone */
-    [data-testid="stFileUploaderDropzone"] {
-        padding: 10px 16px !important;
-        min-height: 0 !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 12px !important;
-        flex-wrap: wrap !important;
-    }
-    /* Nascondi testo originale inglese "Drag and drop" + limit */
     [data-testid="stFileUploaderDropzoneInstructions"] {
         visibility: hidden !important;
         position: absolute !important;
         width: 0 !important;
         height: 0 !important;
         overflow: hidden !important;
-    }
-    /* Traduci bottone Browse files → Sfoglia */
-    [data-testid="stFileUploaderDropzone"] button {
-        font-size: 0 !important;
-        padding: 8px 18px !important;
-        min-height: 0 !important;
-        flex-shrink: 0 !important;
-    }
-    [data-testid="stFileUploaderDropzone"] button::after {
-        content: "Upload FATTURE" !important;
-        font-size: clamp(0.85rem, 0.4vw + 0.75rem, 1rem) !important;
-        white-space: nowrap !important;
-    }
-    [data-testid="stFileUploaderDropzone"]::after {
-        content: "Carica fatture in formato XML/P7M PDF PNG JPG - Max 200Mb" !important;
-        display: block !important;
-        flex: 1 1 320px !important;
-        min-width: 0 !important;
-        font-size: clamp(0.78rem, 0.35vw + 0.72rem, 0.95rem) !important;
-        line-height: 1.4 !important;
-        color: #666 !important;
-        white-space: normal !important;
-        overflow-wrap: anywhere !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -1634,7 +1602,7 @@ def render_dashboard_ui(supabase, logger, user):
         )
 
     with col_ai_right:
-        st.markdown("<div style='margin-top: 34px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 34px;'></div>", unsafe_allow_html=True)
         _ai_in_progress = st.session_state.get('ai_categorization_in_progress', False)
         if _righe_da_class_ui > 0 and not _ai_in_progress:
             # 🧠 Recovery: bottone visibile SOLO se rimangono righe Da Classificare dopo l'AI
