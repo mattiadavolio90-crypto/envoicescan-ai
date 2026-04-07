@@ -5,6 +5,7 @@ import pandas as pd
 import io
 import time
 import logging
+from collections import defaultdict
 
 from config.constants import CATEGORIE_SPESE_GENERALI, TRUNCATE_DESC_LOG, TRUNCATE_DESC_QUERY
 from utils.text_utils import normalizza_stringa, estrai_nome_categoria, escape_ilike as _escape_ilike
@@ -555,13 +556,14 @@ def render_category_editor(df_completo_filtrato, supabase):
     # ⭐ Key dinamica: cambia dopo ogni salvataggio per forzare refresh widget
     # (evita che Streamlit cache il vecchio stato della colonna Fonte)
     _editor_version = st.session_state.get('editor_refresh_counter', 0)
+    _editor_key = f"editor_dati_v{_editor_version}"
     edited_df = st.data_editor(
         df_editor_paginato,
         column_config=column_config_dict,
         hide_index=True,
         width='stretch',
         height=altezza_dinamica,
-        key=f"editor_dati_v{_editor_version}"
+        key=_editor_key
     )
     
     st.markdown("""
@@ -610,6 +612,60 @@ def render_category_editor(df_completo_filtrato, supabase):
             st.warning(f"⚠️ {celle_bianche} celle vuote convertite a 'Da Classificare'")
         else:
             logger.info("✅ CHECK OK: Nessuna cella bianca nella colonna Categoria")
+
+    pending_category_changes = []
+    _editor_state = st.session_state.get(_editor_key, {})
+    _edited_rows = _editor_state.get('edited_rows', {}) if isinstance(_editor_state, dict) else {}
+
+    for raw_idx, row_changes in _edited_rows.items():
+        if not isinstance(row_changes, dict) or 'Categoria' not in row_changes:
+            continue
+
+        try:
+            row_idx = int(raw_idx)
+        except (TypeError, ValueError):
+            row_idx = raw_idx
+
+        if row_idx not in edited_df.index or row_idx not in df_editor_paginato.index:
+            continue
+
+        nuova_cat = estrai_nome_categoria(edited_df.at[row_idx, 'Categoria'])
+        vecchia_cat = estrai_nome_categoria(df_editor_paginato.at[row_idx, 'Categoria'])
+        vecchia_cat = vecchia_cat or 'Da Classificare'
+
+        if nuova_cat == vecchia_cat:
+            continue
+
+        pending_category_changes.append({
+            'index': row_idx,
+            'descrizione': edited_df.at[row_idx, 'Descrizione'],
+            'file_origine': edited_df.at[row_idx, 'FileOrigine'] if 'FileOrigine' in edited_df.columns else None,
+            'numero_riga': edited_df.at[row_idx, 'NumeroRiga'] if 'NumeroRiga' in edited_df.columns else None,
+            'vecchia_cat': vecchia_cat,
+            'nuova_cat': nuova_cat,
+        })
+
+    if not pending_category_changes and 'Categoria' in edited_df.columns and 'Categoria' in df_editor_paginato.columns:
+        idx_comuni = edited_df.index.intersection(df_editor_paginato.index)
+        for row_idx in idx_comuni:
+            nuova_cat = estrai_nome_categoria(edited_df.at[row_idx, 'Categoria'])
+            vecchia_cat = estrai_nome_categoria(df_editor_paginato.at[row_idx, 'Categoria'])
+            vecchia_cat = vecchia_cat or 'Da Classificare'
+
+            if nuova_cat == vecchia_cat:
+                continue
+
+            pending_category_changes.append({
+                'index': row_idx,
+                'descrizione': edited_df.at[row_idx, 'Descrizione'],
+                'file_origine': edited_df.at[row_idx, 'FileOrigine'] if 'FileOrigine' in edited_df.columns else None,
+                'numero_riga': edited_df.at[row_idx, 'NumeroRiga'] if 'NumeroRiga' in edited_df.columns else None,
+                'vecchia_cat': vecchia_cat,
+                'nuova_cat': nuova_cat,
+            })
+
+    if pending_category_changes:
+        logger.info(f"📝 Modifiche categoria pendenti rilevate: {len(pending_category_changes)}")
     
     # Box riepilogo + selettore ordinamento + bottone Excel su una riga
     col_box, col_ord, col_btn = st.columns([5, 2, 1])
@@ -737,14 +793,14 @@ def render_category_editor(df_completo_filtrato, supabase):
             categorie_modificate_count = 0  # Conta prodotti unici modificati (non righe DB)
             skip_da_classificare_count = 0  # Conta righe "Da Classificare" saltate
             
-            logger.info(f"💾 INIZIO SALVATAGGIO: user_id={user_id}, righe_edited={len(edited_df)}, vista_aggregata={vista_aggregata}")
+            logger.info(f"💾 INIZIO SALVATAGGIO: user_id={user_id}, modifiche_pendenti={len(pending_category_changes)}, vista_aggregata={vista_aggregata}")
             st.toast("Salvataggio in corso...", icon="💾")
             
-            # ⚠️ NOTA PAGINAZIONE: Il salvataggio riguarda SOLO le righe della pagina corrente
-            righe_salvate = len(edited_df)
+            # ⚠️ NOTA PAGINAZIONE: Il salvataggio riguarda SOLO le modifiche della pagina corrente
+            righe_salvate = len(pending_category_changes)
             righe_totali_tabella = num_righe
-            if righe_salvate < righe_totali_tabella:
-                st.info(f"💾 Stai salvando {righe_salvate} {'riga' if righe_salvate == 1 else 'righe'} della pagina corrente. Verifica altre pagine per modifiche aggiuntive.")
+            if 0 < righe_salvate < righe_totali_tabella:
+                st.info(f"💾 Stai salvando {righe_salvate} {'modifica' if righe_salvate == 1 else 'modifiche'} della pagina corrente. Verifica altre pagine per modifiche aggiuntive.")
             
             # ========================================
             # ✅ CHECK: Quale tabella stiamo modificando?
@@ -761,234 +817,153 @@ def render_category_editor(df_completo_filtrato, supabase):
             # Se ha colonne tipiche editor fatture (almeno File + Categoria + Descrizione)
             if (ha_file or (ha_numero_riga and ha_categoria and ha_descrizione and ha_fornitore)):
                 logger.info("🔄 Rilevato: EDITOR FATTURE CLIENTE - Salvataggio modifiche...")
-                
-                for index, row in edited_df.iterrows():
-                    try:
-                        # Recupera valori con nomi alternativi
-                        f_name = row.get('File') or row.get('FileOrigine')
-                        riga_idx = row.get('NumeroRiga') or row.get('Numero Riga') or row.get('Riga') or (index + 1)
-                        nuova_cat_raw = row['Categoria']
-                        descrizione = row['Descrizione']
-                        
-                        # ✅ ESTRAI SOLO NOME CATEGORIA (rimuovi emoji se presente)
-                        nuova_cat = estrai_nome_categoria(nuova_cat_raw)
-                        
-                        # ⛔ SKIP se categoria è "Da Classificare" (non salvare categorie placeholder)
+                if not pending_category_changes:
+                    st.toast("⚠️ Nessuna modifica rilevata.")
+                else:
+                    changes_by_description = {}
+                    conflict_map = defaultdict(set)
+
+                    for change in pending_category_changes:
+                        descrizione = str(change['descrizione'])
+                        conflict_map[descrizione].add(change['nuova_cat'])
+                        changes_by_description[descrizione] = change
+
+                    conflicting_descriptions = [desc for desc, cats in conflict_map.items() if len(cats) > 1]
+                    if conflicting_descriptions:
+                        logger.warning(f"⚠️ Conflitto categorie per {len(conflicting_descriptions)} descrizioni duplicate nella sessione")
+
+                    unique_changes = list(changes_by_description.values())
+                    is_real_admin = st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False)
+
+                    for change in unique_changes:
+                        descrizione = change['descrizione']
+                        nuova_cat = change['nuova_cat']
+                        vecchia_cat = change['vecchia_cat']
+
                         if nuova_cat == "Da Classificare":
                             logger.debug(f"⏭️ SKIP: Categoria 'Da Classificare' non salvata per {descrizione[:TRUNCATE_DESC_QUERY]}")
                             skip_da_classificare_count += 1
                             continue
-                        
-                        # Recupera categoria originale per tracciare correzione
-                        # ⚠️ In vista aggregata, df_editor ha indici diversi da edited_df
-                        # Usa df_editor_paginato (stessi indici di edited_df) per il confronto
-                        if vista_aggregata:
-                            vecchia_cat_raw = df_editor_paginato.loc[index, 'Categoria'] if index in df_editor_paginato.index else None
+
+                        categorie_modificate_count += 1
+                        logger.info(f"✋ MANUALE: '{descrizione[:TRUNCATE_DESC_LOG]}' modificato da '{vecchia_cat}' → {nuova_cat}")
+
+                        if 'righe_modificate_manualmente' not in st.session_state:
+                            st.session_state.righe_modificate_manualmente = []
+                        if descrizione not in st.session_state.righe_modificate_manualmente:
+                            st.session_state.righe_modificate_manualmente.append(descrizione)
+
+                        if is_real_admin:
+                            salva_correzione_in_memoria_globale(
+                                descrizione=descrizione,
+                                vecchia_categoria=vecchia_cat,
+                                nuova_categoria=nuova_cat,
+                                user_email=user_email,
+                                is_admin=True
+                            )
                         else:
-                            vecchia_cat_raw = df_editor.loc[index, 'Categoria'] if index in df_editor.index else None
-                        vecchia_cat = estrai_nome_categoria(vecchia_cat_raw) if vecchia_cat_raw else None
-                        vecchia_cat = vecchia_cat or "Da Classificare"
-                        
-                        # Prepara dati da aggiornare
-                        update_data = {
-                            "categoria": nuova_cat
-                        }
-                        
-                        # Aggiungi prezzo_standard solo se presente e valido
-                        prezzo_std = row.get('PrezzoStandard')
-                        if prezzo_std is not None and pd.notna(prezzo_std):
-                            try:
-                                update_data["prezzo_standard"] = float(prezzo_std)
-                            except (ValueError, TypeError) as e:
-                                logger.warning(f"Errore conversione prezzo_standard: {e}")
-                        
-                        # ✋ TRACCIAMENTO MODIFICA MANUALE
-                        # Se categoria cambiata dall'utente → salva in memoria
-                        categoria_modificata = (vecchia_cat and vecchia_cat != nuova_cat) or \
-                                             (not vecchia_cat and nuova_cat != 'Da Classificare')
-                        
-                        if categoria_modificata:
-                            categorie_modificate_count += 1
-                            logger.info(f"✋ MANUALE: '{descrizione[:TRUNCATE_DESC_LOG]}' modificato da '{vecchia_cat or "vuoto"}' → {nuova_cat}")
-                            
-                            # ⭐ NUOVO: Traccia modifica manuale per colonna Fonte
-                            if 'righe_modificate_manualmente' not in st.session_state:
-                                st.session_state.righe_modificate_manualmente = []
-                            if descrizione not in st.session_state.righe_modificate_manualmente:
-                                st.session_state.righe_modificate_manualmente.append(descrizione)
-                            
-                            # ✅ SALVA IN MEMORIA: LOCALE per clienti, GLOBALE solo per admin veri
-                            is_real_admin = st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False)
-                            
-                            if is_real_admin:
-                                # Admin vero (non impersonificato) → modifica GLOBALE per tutti
-                                salva_correzione_in_memoria_globale(
-                                    descrizione=descrizione,
-                                    vecchia_categoria=vecchia_cat,
-                                    nuova_categoria=nuova_cat,
-                                    user_email=user_email,
-                                    is_admin=True
-                                )
-                                logger.info(f"🔧 ADMIN: Modifica GLOBALE per tutti i clienti")
-                            else:
-                                # Cliente (o admin impersonificato) → modifica LOCALE solo per lui
-                                successo = salva_correzione_in_memoria_locale(
-                                    descrizione=descrizione,
-                                    nuova_categoria=nuova_cat,
-                                    user_id=user_id,
-                                    user_email=user_email,
-                                    vecchia_categoria=vecchia_cat
-                                )
-                                
-                                if successo:
-                                    logger.info(f"✅ CLIENTE: Salvato locale '{descrizione[:TRUNCATE_DESC_LOG]}' → {nuova_cat}")
-                                else:
-                                    logger.error(f"❌ CLIENTE: Errore salvataggio locale '{descrizione[:TRUNCATE_DESC_LOG]}'")
-                        
-                        # 🔄 MODIFICA BATCH: Se categoria è cambiata, aggiorna TUTTE le righe con stessa descrizione
-                        # In vista aggregata: SEMPRE batch update (1 riga vista = N righe DB)
-                        # In vista normale: batch update solo se categoria diversa dalla precedente
-                        esegui_batch_update = vista_aggregata or (vecchia_cat and vecchia_cat != nuova_cat)
-                        
-                        # ⚡ PERFORMANCE: Se categoria non cambiata, SKIP sempre (evita query DB inutili)
-                        # Nota: in vista aggregata esegui_batch_update è sempre True,
-                        # quindi il vecchio check non saltava mai le righe invariate.
-                        if not categoria_modificata:
+                            successo = salva_correzione_in_memoria_locale(
+                                descrizione=descrizione,
+                                nuova_categoria=nuova_cat,
+                                user_id=user_id,
+                                user_email=user_email,
+                                vecchia_categoria=vecchia_cat
+                            )
+                            if not successo:
+                                logger.error(f"❌ CLIENTE: Errore salvataggio locale '{descrizione[:TRUNCATE_DESC_LOG]}'")
+
+                    batch_groups = defaultdict(list)
+                    for change in unique_changes:
+                        if change['nuova_cat'] == 'Da Classificare':
                             continue
-                        
-                        if esegui_batch_update:
-                            if vista_aggregata:
-                                logger.info(f"📦 AGGREGATA - BATCH UPDATE: '{descrizione}' → {nuova_cat}")
-                            else:
-                                logger.info(f"🔄 BATCH UPDATE: '{descrizione}' {vecchia_cat} → {nuova_cat}")
-                            
-                            # 🔍 DIAGNOSI: Log dettagliato descrizione per debug
-                            desc_normalized = normalizza_stringa(descrizione)
-                            logger.debug(f"🔍 DEBUG UPDATE: '{descrizione}' → '{desc_normalized}' → {nuova_cat} (user={user_id})")
-                            
-                            # Aggiorna tutte le righe con stessa descrizione per TUTTI i ristoranti del cliente
-                            query_update_batch = supabase.table("fatture").update(update_data).eq(
+                        batch_groups[change['nuova_cat']].append(change)
+
+                    for nuova_cat, group_changes in batch_groups.items():
+                        descrizioni = sorted({str(change['descrizione']) for change in group_changes if str(change['descrizione']).strip()})
+                        if not descrizioni:
+                            continue
+
+                        logger.info(f"🚀 BATCH SAVE: categoria={nuova_cat}, descrizioni={len(descrizioni)}")
+
+                        for start in range(0, len(descrizioni), 100):
+                            chunk_descrizioni = descrizioni[start:start + 100]
+                            query_batch = supabase.table("fatture").update({"categoria": nuova_cat}).eq(
                                 "user_id", user_id
-                            ).eq(
-                                "descrizione", descrizione
+                            ).in_(
+                                "descrizione", chunk_descrizioni
                             )
-                            query_update_batch = add_ristorante_filter(query_update_batch)
-                            result = query_update_batch.execute()
-                            
-                            # Conteggio affidabile: se data è vuota, nessuna riga è stata aggiornata.
-                            if result is None or not result.data:
+                            query_batch = add_ristorante_filter(query_batch)
+                            result_batch = query_batch.execute()
+
+                            updated_rows = result_batch.data or []
+                            modifiche_effettuate += len(updated_rows)
+                            updated_descs = {row.get('descrizione') for row in updated_rows if row.get('descrizione')}
+
+                            unmatched_changes = [
+                                change for change in group_changes
+                                if str(change['descrizione']) in chunk_descrizioni and str(change['descrizione']) not in updated_descs
+                            ]
+
+                            for change in unmatched_changes:
+                                descrizione = change['descrizione']
+                                f_name = change['file_origine']
+                                riga_idx = change['numero_riga']
                                 righe_aggiornate = 0
-                            else:
-                                righe_aggiornate = len(result.data)
 
-                            # Fallback 1: trim descrizione (spazi iniziali/finali)
-                            if righe_aggiornate == 0 and descrizione and descrizione.strip() != descrizione:
-                                query_update_trim = supabase.table("fatture").update(update_data).eq(
-                                    "user_id", user_id
-                                ).eq(
-                                    "descrizione", descrizione.strip()
-                                )
-                                query_update_trim = add_ristorante_filter(query_update_trim)
-                                result_trim = query_update_trim.execute()
-                                if result_trim is not None and result_trim.data:
-                                    righe_aggiornate = len(result_trim.data)
-                                    logger.info(
-                                        f"✅ FALLBACK TRIM: {righe_aggiornate} righe aggiornate per '{descrizione[:TRUNCATE_DESC_LOG]}'"
+                                if descrizione and str(descrizione).strip() != str(descrizione):
+                                    query_update_trim = supabase.table("fatture").update({"categoria": nuova_cat}).eq(
+                                        "user_id", user_id
+                                    ).eq(
+                                        "descrizione", str(descrizione).strip()
                                     )
+                                    query_update_trim = add_ristorante_filter(query_update_trim)
+                                    result_trim = query_update_trim.execute()
+                                    if result_trim is not None and result_trim.data:
+                                        righe_aggiornate = len(result_trim.data)
 
-                            # Fallback 2: match case-insensitive (stessa stringa)
-                            if righe_aggiornate == 0 and descrizione and descrizione.strip():
-                                query_update_ilike = supabase.table("fatture").update(update_data).eq(
-                                    "user_id", user_id
-                                ).ilike(
-                                    "descrizione", descrizione.strip()
-                                )
-                                query_update_ilike = add_ristorante_filter(query_update_ilike)
-                                result_ilike = query_update_ilike.execute()
-                                if result_ilike is not None and result_ilike.data:
-                                    righe_aggiornate = len(result_ilike.data)
-                                    logger.info(
-                                        f"✅ FALLBACK ILIKE: {righe_aggiornate} righe aggiornate per '{descrizione[:TRUNCATE_DESC_LOG]}'"
+                                if righe_aggiornate == 0 and descrizione and str(descrizione).strip():
+                                    query_update_ilike = supabase.table("fatture").update({"categoria": nuova_cat}).eq(
+                                        "user_id", user_id
+                                    ).ilike(
+                                        "descrizione", str(descrizione).strip()
                                     )
+                                    query_update_ilike = add_ristorante_filter(query_update_ilike)
+                                    result_ilike = query_update_ilike.execute()
+                                    if result_ilike is not None and result_ilike.data:
+                                        righe_aggiornate = len(result_ilike.data)
 
-                            # Fallback robusto: se il batch per descrizione non trova match,
-                            # aggiorna almeno la riga selezionata dall'utente.
-                            if righe_aggiornate == 0 and f_name and riga_idx is not None:
-                                ristorante_id = st.session_state.get('ristorante_id')
-                                query_update_fallback = supabase.table("fatture").update(update_data).eq(
-                                    "user_id", user_id
-                                ).eq(
-                                    "file_origine", f_name
-                                ).eq(
-                                    "numero_riga", riga_idx
-                                )
-                                if ristorante_id:
-                                    query_update_fallback = query_update_fallback.eq("ristorante_id", ristorante_id)
-
-                                result_fallback = query_update_fallback.execute()
-                                if result_fallback is not None and result_fallback.data:
-                                    righe_aggiornate = len(result_fallback.data)
-                                    logger.info(
-                                        f"✅ FALLBACK SINGOLA RIGA: {righe_aggiornate} riga aggiornata per '{descrizione[:TRUNCATE_DESC_LOG]}'"
+                                if righe_aggiornate == 0 and f_name and riga_idx is not None:
+                                    ristorante_id = st.session_state.get('ristorante_id')
+                                    query_update_fallback = supabase.table("fatture").update({"categoria": nuova_cat}).eq(
+                                        "user_id", user_id
+                                    ).eq(
+                                        "file_origine", f_name
+                                    ).eq(
+                                        "numero_riga", riga_idx
                                     )
-                            logger.info(f"✅ BATCH: {righe_aggiornate} righe aggiornate per '{descrizione[:TRUNCATE_DESC_LOG]}'")                            
-                            # 🔍 DIAGNOSI: Se UPDATE fallisce (0 righe), cerca descrizioni simili nel DB
-                            if righe_aggiornate == 0:
-                                logger.error(f"❌ UPDATE FALLITO: 0 righe aggiornate per '{descrizione}'")
-                                logger.info(f"🔍 Cerco descrizioni simili nel database...")
-                                
-                                try:
-                                    # Query diagnostica: cerca per pattern parziale
-                                    parole = descrizione.split()[:3]  # Prime 3 parole
-                                    if parole:
-                                        pattern_search = "%".join(parole)
-                                        check_query = supabase.table("fatture").select("descrizione, categoria").eq(
-                                            "user_id", user_id
-                                        ).ilike("descrizione", f"%{_escape_ilike(pattern_search)}%").limit(5)
-                                        check_query = add_ristorante_filter(check_query)
-                                        check = check_query.execute()
-                                        
-                                        if check.data:
-                                            logger.info(f"📋 Trovate {len(check.data)} descrizioni simili nel DB:")
-                                            for i, row in enumerate(check.data, 1):
-                                                db_desc = row.get('descrizione', 'N/A')
-                                                db_cat = row.get('categoria', 'N/A')
-                                                logger.info(f"   [{i}] DB: '{db_desc}' → cat: '{db_cat}'")
-                                                
-                                                # Confronto carattere per carattere
-                                                if db_desc != descrizione:
-                                                    logger.info(f"   ⚠️ DIFFERENZA TROVATA:")
-                                                    logger.info(f"      edited_df: '{descrizione}' (len={len(descrizione)})")
-                                                    logger.info(f"      database:  '{db_desc}' (len={len(db_desc)})")
-                                        else:
-                                            logger.info(f"   ❌ Nessuna descrizione simile trovata per pattern '{pattern_search}'")
-                                except Exception as diag_err:
-                                    logger.error(f"   ❌ Errore query diagnostica: {diag_err}")
-                            
-                            modifiche_effettuate += righe_aggiornate
-                            
-                        else:
-                            # Aggiorna solo questa riga specifica (nessun cambio categoria)
-                            ristorante_id = st.session_state.get('ristorante_id')
-                            query_update_single = supabase.table("fatture").update(update_data).eq(
-                                "user_id", user_id
-                            ).eq(
-                                "file_origine", f_name
-                            ).eq(
-                                "numero_riga", riga_idx
-                            ).eq(
-                                "descrizione", descrizione
-                            )
-                            if ristorante_id:
-                                query_update_single = query_update_single.eq("ristorante_id", ristorante_id)
-                            result = query_update_single.execute()
+                                    if ristorante_id:
+                                        query_update_fallback = query_update_fallback.eq("ristorante_id", ristorante_id)
+                                    result_fallback = query_update_fallback.execute()
+                                    if result_fallback is not None and result_fallback.data:
+                                        righe_aggiornate = len(result_fallback.data)
 
-                            if result is not None and result.data:
-                                modifiche_effettuate += len(result.data)
-                            
-                    except Exception as e_single:
-                        logger.exception(f"Errore aggiornamento singola riga {f_name}:{riga_idx}")
-                        continue
+                                if righe_aggiornate == 0:
+                                    logger.error(f"❌ UPDATE FALLITO: 0 righe aggiornate per '{descrizione}'")
+                                    try:
+                                        parole = str(descrizione).split()[:3]
+                                        if parole:
+                                            pattern_search = "%".join(parole)
+                                            check_query = supabase.table("fatture").select("descrizione, categoria").eq(
+                                                "user_id", user_id
+                                            ).ilike("descrizione", f"%{_escape_ilike(pattern_search)}%").limit(5)
+                                            check_query = add_ristorante_filter(check_query)
+                                            check = check_query.execute()
+                                            for i, row in enumerate(check.data or [], 1):
+                                                logger.info(f"   [{i}] DB: '{row.get('descrizione', 'N/A')}' → cat: '{row.get('categoria', 'N/A')}'")
+                                    except Exception as diag_err:
+                                        logger.error(f"   ❌ Errore query diagnostica: {diag_err}")
+
+                                modifiche_effettuate += righe_aggiornate
             
             # ⚠️ Se ha 'ID' ma NON colonne fatture → Memoria Globale (admin.py TAB 4)
             elif 'ID' in colonne_df and not ha_file and not ha_fornitore:
