@@ -45,9 +45,13 @@ Analizza fatture elettroniche (XML, P7M, PDF), categorizza i prodotti con intell
 ##  Avvio locale
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-lock.txt
 streamlit run app.py
 ```
+
+Per avere la stessa resa grafica del deploy Railway, usa il lockfile anche in locale.
+Il container di produzione installa le dipendenze da requirements-lock.txt.
+Su Windows il lockfile esclude automaticamente uvloop, che non e' supportato dalla piattaforma.
 
 ---
 
