@@ -185,84 +185,84 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     # Query tutte le descrizioni che hanno categoria NULL, "Da Classificare" o stringa vuota
                     _ristorante_id = st.session_state.get('ristorante_id')
 
-                # Query 1: NULL + stringa vuota collassate
-                _q_nullempty = (
-                    supabase.table("fatture")
-                    .select("descrizione, fornitore, prezzo_unitario, iva_percentuale")
-                    .eq("user_id", user_id)
-                    .or_("categoria.is.null,categoria.eq.")
-                )
-                if _ristorante_id:
-                    _q_nullempty = _q_nullempty.eq("ristorante_id", _ristorante_id)
-                _resp_nullempty = _q_nullempty.execute()
+                    # Query 1: NULL + stringa vuota collassate
+                    _q_nullempty = (
+                        supabase.table("fatture")
+                        .select("descrizione, fornitore, prezzo_unitario, iva_percentuale")
+                        .eq("user_id", user_id)
+                        .or_("categoria.is.null,categoria.eq.")
+                    )
+                    if _ristorante_id:
+                        _q_nullempty = _q_nullempty.eq("ristorante_id", _ristorante_id)
+                    _resp_nullempty = _q_nullempty.execute()
 
-                # Query 2: Da Classificare
-                _q_daclass = (
-                    supabase.table("fatture")
-                    .select("descrizione, fornitore, prezzo_unitario, iva_percentuale")
-                    .eq("user_id", user_id)
-                    .eq("categoria", "Da Classificare")
-                )
-                if _ristorante_id:
-                    _q_daclass = _q_daclass.eq("ristorante_id", _ristorante_id)
-                _resp_daclass = _q_daclass.execute()
+                    # Query 2: Da Classificare
+                    _q_daclass = (
+                        supabase.table("fatture")
+                        .select("descrizione, fornitore, prezzo_unitario, iva_percentuale")
+                        .eq("user_id", user_id)
+                        .eq("categoria", "Da Classificare")
+                    )
+                    if _ristorante_id:
+                        _q_daclass = _q_daclass.eq("ristorante_id", _ristorante_id)
+                    _resp_daclass = _q_daclass.execute()
 
-                _dati_nullempty = _resp_nullempty.data or []
-                _dati_daclass   = _resp_daclass.data or []
-                tutti_dati = _dati_nullempty + _dati_daclass
-                
-                descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
-                fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
+                    _dati_nullempty = _resp_nullempty.data or []
+                    _dati_daclass   = _resp_daclass.data or []
+                    tutti_dati = _dati_nullempty + _dati_daclass
+                    
+                    descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
+                    fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
 
-                # Mapping per-descrizione: mantiene fornitore e IVA allineati con la descrizione
-                # (una stessa descrizione può venire da più righe; scegliamo l'ultima occorrenza non-nulla)
-                desc_to_fornitore: dict = {}
-                desc_to_iva: dict = {}
-                for _row in tutti_dati:
-                    _d = _row.get('descrizione')
-                    if not _d:
-                        continue
-                    _forn = _row.get('fornitore') or ''
-                    _iva = int(_row.get('iva_percentuale') or 0)
-                    if _forn and _d not in desc_to_fornitore:
-                        desc_to_fornitore[_d] = _forn
-                    if _iva and _d not in desc_to_iva:
-                        desc_to_iva[_d] = _iva
-                
-                # 🛡️ QUARANTENA: Identifica descrizioni che hanno ALMENO una riga €0
-                # Queste NON andranno in memoria globale (restano in attesa di review admin)
-                _descrizioni_con_prezzo_zero = set()
-                for row in tutti_dati:
-                    desc = row.get('descrizione')
-                    prezzo = row.get('prezzo_unitario', 0) or 0
-                    if desc and float(prezzo) == 0:
-                        _descrizioni_con_prezzo_zero.add(desc)
-                logger.info(f"🛡️ QUARANTENA: {len(_descrizioni_con_prezzo_zero)} descrizioni con righe €0 (escluse da memoria globale)")
-                
-                logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare (NullEmpty: {len(_dati_nullempty)}, DaClass: {len(_dati_daclass)})")
-            except Exception as e:
-                logger.error(f"Errore query diretta descrizioni: {e}")
-                # Fallback su df_completo se query fallisce
-                descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
-                fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
-                # Fallback mapping per-descrizione da DataFrame
-                desc_to_fornitore = {}
-                desc_to_iva = {}
-                if 'Fornitore' in df_completo.columns:
-                    for _, _r in df_completo[maschera_ai].iterrows():
-                        _d = _r.get('Descrizione')
-                        if _d and _d not in desc_to_fornitore:
-                            desc_to_fornitore[_d] = str(_r.get('Fornitore') or '')
-                        if _d and _d not in desc_to_iva and 'IVAPercentuale' in df_completo.columns:
-                            _iva = int(_r.get('IVAPercentuale') or 0)
-                            if _iva:
-                                desc_to_iva[_d] = _iva
-                # Fallback quarantena: usa TotaleRiga dal DataFrame locale
-                _descrizioni_con_prezzo_zero = set()
-                if 'TotaleRiga' in df_completo.columns:
-                    _mask_zero = maschera_ai & (df_completo['TotaleRiga'] == 0)
-                    _descrizioni_con_prezzo_zero = set(df_completo[_mask_zero]['Descrizione'].dropna().unique())
-                logger.info(f"🛡️ QUARANTENA (fallback): {len(_descrizioni_con_prezzo_zero)} descrizioni €0")
+                    # Mapping per-descrizione: mantiene fornitore e IVA allineati con la descrizione
+                    # (una stessa descrizione può venire da più righe; scegliamo l'ultima occorrenza non-nulla)
+                    desc_to_fornitore: dict = {}
+                    desc_to_iva: dict = {}
+                    for _row in tutti_dati:
+                        _d = _row.get('descrizione')
+                        if not _d:
+                            continue
+                        _forn = _row.get('fornitore') or ''
+                        _iva = int(_row.get('iva_percentuale') or 0)
+                        if _forn and _d not in desc_to_fornitore:
+                            desc_to_fornitore[_d] = _forn
+                        if _iva and _d not in desc_to_iva:
+                            desc_to_iva[_d] = _iva
+                    
+                    # 🛡️ QUARANTENA: Identifica descrizioni che hanno ALMENO una riga €0
+                    # Queste NON andranno in memoria globale (restano in attesa di review admin)
+                    _descrizioni_con_prezzo_zero = set()
+                    for row in tutti_dati:
+                        desc = row.get('descrizione')
+                        prezzo = row.get('prezzo_unitario', 0) or 0
+                        if desc and float(prezzo) == 0:
+                            _descrizioni_con_prezzo_zero.add(desc)
+                    logger.info(f"🛡️ QUARANTENA: {len(_descrizioni_con_prezzo_zero)} descrizioni con righe €0 (escluse da memoria globale)")
+                    
+                    logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare (NullEmpty: {len(_dati_nullempty)}, DaClass: {len(_dati_daclass)})")
+                except Exception as e:
+                    logger.error(f"Errore query diretta descrizioni: {e}")
+                    # Fallback su df_completo se query fallisce
+                    descrizioni_da_classificare = df_completo[maschera_ai]['Descrizione'].unique().tolist()
+                    fornitori_da_classificare = df_completo[maschera_ai]['Fornitore'].unique().tolist()
+                    # Fallback mapping per-descrizione da DataFrame
+                    desc_to_fornitore = {}
+                    desc_to_iva = {}
+                    if 'Fornitore' in df_completo.columns:
+                        for _, _r in df_completo[maschera_ai].iterrows():
+                            _d = _r.get('Descrizione')
+                            if _d and _d not in desc_to_fornitore:
+                                desc_to_fornitore[_d] = str(_r.get('Fornitore') or '')
+                            if _d and _d not in desc_to_iva and 'IVAPercentuale' in df_completo.columns:
+                                _iva = int(_r.get('IVAPercentuale') or 0)
+                                if _iva:
+                                    desc_to_iva[_d] = _iva
+                    # Fallback quarantena: usa TotaleRiga dal DataFrame locale
+                    _descrizioni_con_prezzo_zero = set()
+                    if 'TotaleRiga' in df_completo.columns:
+                        _mask_zero = maschera_ai & (df_completo['TotaleRiga'] == 0)
+                        _descrizioni_con_prezzo_zero = set(df_completo[_mask_zero]['Descrizione'].dropna().unique())
+                    logger.info(f"🛡️ QUARANTENA (fallback): {len(_descrizioni_con_prezzo_zero)} descrizioni €0")
             
             if descrizioni_da_classificare:
                     # 🧠 Placeholder per banner orizzontale
