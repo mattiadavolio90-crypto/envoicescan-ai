@@ -111,6 +111,10 @@ _disable_global_memory = False
 # Es. BICCHIER/CALICE deve stare prima di AMARI per non catturare "BICCHIERI AMARO BRAULIO".
 # Es. ODK/DE KUYPER (VARIE BAR) deve stare prima di BEVANDE per non catturare "ODK SCIROPPO".
 _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
+    (
+        "MANUTENZIONE E ATTREZZATURE",
+        r"\bCAUZIONE\s+FUSTI\b",
+    ),
     # --- Priorità alta: oggetti fisici/attrezzature (override AMARI/LIQUORI se contiene BICCHIER/CALICE) ---
     (
         "MANUTENZIONE E ATTREZZATURE",
@@ -134,12 +138,17 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
     (
         "VINI",
         r"\b(VINO|CHIANTI|MONTEPULCIANO|FRANCIACORTA|PROSECCO|MOSCATO|FALANGHINA|GEWURZTRAMINER|PINOT|RIESLING|MERLOT|SYRAH|CABERNET|"
-        r"BRUT|CUVEE|LANGHE|BAROLO|BARBARESCO|AMARONE|PRIMITIVO|NEBBIOLO|SANGIOVESE|LAMBRUSCO)\b",
+        r"BRUT|CUVEE|LANGHE|BAROLO|BARBARESCO|AMARONE|PRIMITIVO|NEBBIOLO|SANGIOVESE|LAMBRUSCO|DOCG)\b",
+    ),
+    # --- Birre (BEER escluso: in italiano si usa BIRRA; evita catturare GINGER BEER = BEVANDE) ---
+    (
+        "BIRRE",
+        r"\b(BIRRA|BIRRE|HEINEKEN|ICHNUSA|PERONI|MORETTI|MENABREA|TENNENT|TSINGTAO|NASTRO\s*AZZURRO)\b",
     ),
     # --- Bevande analcoliche (SCIROPPO rimosso: gli sciroppi da bar sono VARIE BAR) ---
     (
         "BEVANDE",
-        r"\b(COCA\-COLA|COCA COLA|FANTA|SPRITE|SCHWEPPES|TONICA|GINGER|CEDRATA|ESTATHE|CRODINO|SIFONE|DERBY|ARANCIATA|CHINOTTO|RED BULL)\b",
+        r"\b(COCA\-COLA|COCA COLA|FANTA|SPRITE|SCHWEPPES|TONICA|GINGER|CEDRATA|ESTATHE|CRODINO|SIFONE|DERBY|ARANCIATA|CHINOTTO|RED BULL|YOGA|BRAVO|PFANNER|NETTARE|NETT\.?|SUCCO)\b",
     ),
     (
         "LATTICINI",
@@ -149,9 +158,198 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
         "PASTICCERIA",
         r"\b(PASTICCERIA|CORNETTO|CROISSANT|SFOGLIATELLA|BOMBOLONE|CANNONCINO|KRAPFEN|BIGNE|BRIOCHE)\b",
     ),
+    # --- Pesce e frutti di mare (incluso tonno; lo stato di conservazione non cambia la categoria) ---
+    (
+        "PESCE",
+        r"\b(PESCE|SALMONE|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|ORATE|BRANZINO|SPIGOLA|"
+        r"CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|ALIC[EI]|MERLUZZO|SCAMPI|SCAMPO|"
+        r"VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTICE|"
+        r"ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA)\b",
+    ),
+    # --- Salumi (solo keyword ultra-specifici; COPPA/LONZA/PANCETTA esclusi: troppo ambigui) ---
+    (
+        "SALUMI",
+        r"\b(PROSCIUTT[OI]|PROSC\.|BRESAOLA|MORTADELLA|SPECK|GUANCIALE|NDUJA|SALAME|SALAMI|CULATELLO|LARDO|COPPA\s*DI\s*TESTA)\b",
+    ),
 ]
 
 _CATEGORIE_PLACEHOLDER = {"", "DA CLASSIFICARE"}
+
+# Eccezioni: pattern nel descrizione che BLOCCANO una specifica regola forte.
+# Se (desc matcha eccezione_pattern) E (regola target == regola_bloccata) → skip.
+_ECCEZIONI_REGOLE: list[tuple[str, str]] = [
+    # ACETO DI VINO non è un VINO
+    (r"\bACETO\b", "VINI"),
+    # CAUZIONE FUSTI non è VINO/BIRRE/BEVANDE
+    (r"\bCAUZIONE\b", "VINI"),
+    (r"\bCAUZIONE\b", "BIRRE"),
+    (r"\bCAUZIONE\b", "BEVANDE"),
+    # GIN CO è un brand di caffè/ginseng, non GIN distillato
+    (r"\bGIN CO\b", "DISTILLATI"),
+    # TAZZA GIN CO = stoviglie, non distillato
+    (r"\bTAZZA.+GIN CO\b", "DISTILLATI"),
+    # CORSO sul VINO non è un VINO
+    (r"\bCORSO\b", "VINI"),
+    # CONCHIGLIA/CREMA con LATTE = pasticceria, non latticino
+    (r"\bCONCHIGLIA.+LATTE\b", "LATTICINI"),
+    (r"\bCREMA.+LATTE\b", "LATTICINI"),
+    # VINO DI RISO (condimento asiatico) non è VINO
+    (r"\bVINO\s+(DI\s+)?RISO\b", "VINI"),
+    # TEA/THE con GINGER = CAFFE E THE, non BEVANDE
+    (r"\b(TEA|THE|TE)\b.*\bGINGER\b", "BEVANDE"),
+    (r"\bGINGER\b.*\b(TEA|THE|TE)\b", "BEVANDE"),
+    # BAILEYS è un liquore cremoso, non DISTILLATI (anche se contiene WHISKY)
+    (r"\bBAILEYS\b", "DISTILLATI"),
+    # GINGER BEER/ALE non è BIRRE (è bevanda analcolica da bar)
+    (r"\bGINGER\b", "BIRRE"),
+    # Utensili da cucina (forbici, coltelli) con nomi pesce → MATERIALE/MANUTENZIONE, non PESCE
+    (r"\b(FORBICE|FORBICI|COLTELLO|COLTELLI|PINZA|PINZE)\b", "PESCE"),
+    # Pasta ripiena / dim sum (congelati/secchi) con ingredienti pesce → SECCO, non PESCE
+    (r"\b(RAVIOLI|TORTELLI|TORTELLONI|AGNOLOTTI|GIRASOLI|MEZZELUNE|DIMSUM|DIM\s*SUM)\b", "PESCE"),
+    # Pasta ripiena (congelata/secca) con ingredienti salumi → SECCO, non SALUMI
+    (r"\b(RAVIOLI|TORTELLI|TORTELLONI|AGNOLOTTI|GIRASOLI|MEZZELUNE)\b", "SALUMI"),
+    # SALAME DI CIOCCOLATO = PASTICCERIA, non SALUMI
+    (r"\bSALAME\b.*\bCIOCCOLAT", "SALUMI"),
+]
+
+_MATERIALE_CONSUMO_RE = re.compile(
+    r"\b(MONOUSO|USA\s*E\s*GETTA|ASPORTO|TAKEAWAY|TOVAGLIOLI?|POSATE|PIATTI|COPERCHI|CANNUCCE|PALETTE|"
+    r"STUZZICADENTI|PELLICOLA|FILM|ALLUMINIO|CARTA\s*FORNO|SACCHETTI?|SACCHI|BUSTE?|"
+    r"VASCHE?TTE?|CONTENITORI?|GUANTI|SPUGNE?|DETERSIV\w*|BRILL\w*|LAVASTOV\w*|MOUSSE\s*MANI|"
+    r"SALE\s*PASTIGLIE|POMPETTA|TAPPO)\b"
+)
+_MANUTENZIONE_ATTREZZATURE_RE = re.compile(
+    r"\b(MOP|LAVAPAVIMENTI|SECCHIO|CARRELLO|ATTREZZ\w*|MACCHIN\w*|AFFETTATRICE|FRULLATOR\w*|"
+    r"ROBOT|PIASTRA|GRIGLIA|LAMA|DISCO|PINZA|PINZE|COLTELLO|COLTELLI|FORBICE|FORBICI|"
+    r"PADELLA|PENTOLA|BILANCIA|TERMOMETRO|SPREMIAGRUMI|ERGO|CARAFFA|CARAFFE|BROCCA|BROCCHE)\b"
+)
+_BICCHIERI_MONOUSO_RE = re.compile(
+    r"\b(BICCHIER[EI]?|CALICE|CALICI|TAZZA|TAZZE|COPPA|COPPE)\b.*\b(PLASTICA|CARTA|CARTONE|MONOUSO|ASPORTO|USA\s*E\s*GETTA)\b|"
+    r"\b(PLASTICA|CARTA|CARTONE|MONOUSO|ASPORTO|USA\s*E\s*GETTA)\b.*\b(BICCHIER[EI]?|CALICE|CALICI|TAZZA|TAZZE|COPPA|COPPE)\b"
+)
+_BICCHIERI_DUREVOLI_RE = re.compile(r"\b(BICCHIER[EI]?|CALICE|CALICI|TAZZA|TAZZE|CARAFFA|CARAFFE|BROCCA|BROCCHE)\b")
+_COPPA_DUREVOLE_RE = re.compile(
+    r"\b(COPPA|COPPE)\b.*\b(MARTINI|VETRO|TIMELESS|ELISIA|BRESK|AMBRA)\b|\b(MARTINI|VETRO|TIMELESS|ELISIA|BRESK|AMBRA)\b.*\b(COPPA|COPPE)\b"
+)
+_CAFFE_ASPORTO_RE = re.compile(r"\b(COP|BICCH)\w*\b.*\bCAFFE\b.*\bCARTA\b|\bCARTA\b.*\bCAFFE\b")
+_TAPPI_FORMATO_RE = re.compile(r"\b(TAPPI?|TAPPO)\b.*\b\d{1,3}\s*[Xx]\s*\d{1,3}\b|\b\d{1,3}\s*[Xx]\s*\d{1,3}\b.*\b(TAPPI?|TAPPO)\b")
+_PASTICCERIA_RE = re.compile(
+    r"\b(PASTICCERIA|CORNETT[OI]|CROISSANT|SFOGLIATELL[AE]|BOMBOLON[EI]|CANNONCIN[OI]|KRAPFEN|BIGNE|"
+    r"BRIOCHE|BRIOCHES|ARAGOSTIN[EI]|CANNOLO|CANNOLI|PAIN\s+AU\s+CHOCOLAT|CONCHIGLIA|FROLLA|SFOGLIA|"
+    r"TRECCIA|GIRELLA|CREME\s*BRULEE|CREME\s*BRULE\b|CR[EÈ]ME\s*BR[UÛ]L[EÉ]E|BAO\s+CREMA)\b"
+)
+_PESCE_RE = re.compile(
+    r"\b(PESCE|SALMONE|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|"
+    r"ORATE|BRANZINO|SPIGOLA|CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|"
+    r"ALIC[EI]|MERLUZZO|SCAMPI|SCAMPO|VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|"
+    r"RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTICE|ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|"
+    r"CANNOLICCHI[OA]?|CAVIALE)\b"
+)
+_SALSA_CREMA_RE = re.compile(
+    r"\b(SALSA|SALSE|SUGO|SUGHI|RAGU|RAGÙ|PESTO|BESCIAMELLA|ROUX|CREMA|CREME|FARCITURA|FARCITURE)\b"
+)
+_PASTA_DI_RE = re.compile(r"\bPASTA\s+DI\b")
+_PASTA_CREMA_RE = re.compile(r"\bPASTA\s+(PISTACCHIO|PISTACCHI|NOCCIOLA|NOCCIOLE|NOCI|NOCE|MANDORLA|MANDORLE)\b")
+_LIQUORE_CREMA_RE = re.compile(
+    r"\b(BAILEYS|LIQUORE|AMARO|WHISKY|WHISKEY|GIN|VODKA|RHUM|RUM|TEQUILA|GRAPPA|BRANDY|COGNAC|"
+    r"VERMOUTH|APEROL|CAMPARI|CYNAR|FERNET|MIRTO|SAMBUCA|LIMONCELLO)\b"
+)
+_VARIE_BAR_RE = re.compile(
+    r"\b(ODK|DE\s*KUYPER|DEKUYPER|FABBRI\s*MIXYBAR|MIXYBAR|SCIROPPO\s+ODK|SCIROPPO\s+DE\s*KUYPER|"
+    r"SCIROPPO\s+(?:DI\s+)?MANDORL\w*)\b"
+)
+_CONSERVA_RE = re.compile(
+    r"\b(SCATOL\w*|LATTIN\w*|LATTA|BARATTOLO|VASO|CONSERV\w*|SOTT'?OLIO|SOTTACETO|SOTTACETI|"
+    r"SALAMOIA|SOTTO\s*SALE|PELATI|POLPA|PASSATA)\b"
+)
+_VERDURE_PROCESSATE_RE = re.compile(r"\b(IN\s*OLIO|SECCH[IOEA]|CARAMELL\w*|RUSTIC[IOEA]|GRIGLIAT\w*|TRIFOLAT\w*)\b")
+_SURGELATO_RE = re.compile(r"\b(SURGELAT\w*|SURG\.?|GELO|CONGELAT\w*|CONG\b)\b")
+_AROMI_RE = re.compile(
+    r"\b(BASILICO|ROSMARINO|PEPERONCINO|PREZZEMOLO|SALVIA|TIMO|ALLORO|ORIGANO|FINOCCHIETTO|SHISO|CRESS|"
+    r"MICRO\s*(?:GREEN|GREENS|HERB|HERBS|LEAF|LEAVES))\b"
+)
+_DIMSUM_RE = re.compile(r"\b(DIMSUM|DIM\s*SUM)\b")
+_YOGURT_RE = re.compile(r"\b(YOGURT|YOGHURT)\b")
+_FECOLA_RE = re.compile(r"\bFECOLA\b")
+_CAFFE_THE_RE = re.compile(r"\b(TEA|THE|TE\b|TISANA|TISANE|INFUSO|INFUSI)\b")
+_BEVANDA_VEGETALE_RE = re.compile(
+    r"\b(BEVANDA\s+(?:DI\s+)?)\b.*\b(MANDORL\w*|SOI[AJ]\w*|RISO|AVENA|COCCO|NOCCIOL\w*)\b|"
+    r"\b(LATTE\s+DI)\b.*\b(MANDORL\w*|SOI[AJ]\w*|RISO|AVENA|COCCO|NOCCIOL\w*)\b"
+)
+_LEGUMI_RE = re.compile(r"\b(CECI|LENTICCHIE|FAGIOLI|MAIS|CANNELLINI|BORLOTTI|PISELLI|EDAMAME|FAVE|SOIA)\b")
+_VERDURE_RE = re.compile(
+    r"\b(PISELLI|PANNOCCHI[EA]|POMODOR\w*|PORRI|SPINACI|VERDUR\w*|CARCIOFI|MELANZAN\w*|ZUCCHIN\w*|PATATE|"
+    r"FAGIOLINI|CAVOLFIORE|BROCCOLI|BROCCOLETTI|PEPERONI|CAROTE|ERBETTE|INSALATA|RUCOLA|FUNGH\w*|CIPOLL\w*)\b"
+)
+_SECCO_RE = re.compile(r"\b(SECC[HOIA]\w*|ESSICCAT\w*|DECORTICAT\w*|BUSTA|BUSTE|SACCHETT\w*|SACCHI|FARINA)\b")
+_FORNO_RE = re.compile(r"\b(PIZZA|FOCACCIA|BAGUETTE|CIABATTA|PANE|GRISSINI)\b")
+_BEVANDE_ANALCOLICHE_RE = re.compile(
+    r"\b(CHINOTTO|ARANCIATA|LIMONATA|CEDRATA|COLA|TONICA|GINGER|SCHWEPPES|CRODINO|ESTATHE|SUCCO|SPREMUTA|"
+    r"NETTARE|NETT|YOGA|BRAVO|PFANNER)\b"
+)
+_ACQUA_CONFEZIONATA_RE = re.compile(
+    r"\b((?:ACQ|ACQUA)(?:\s+(?:NATURALE|FRIZZANTE|EFFERVESCENTE|LISCIA))?|(?:ACQ|ACQUA)\s+PANNA|S\.?\s*BENEDETTO|SAN\s*BENEDETTO|"
+    r"LEVISSIMA|VERA\b|SAN\s*PELLEGRINO|PAGNACCO|GAUDIANELLO|FERRARELLE|LURISIA|ROCCHETTA|ULIVETO|"
+    r"LAURETANA|SANTANNA|S\.?\s*ANNA)\b"
+)
+_UTENZE_IDRICHE_RE = re.compile(
+    r"\b(SERVIZIO\s*IDRICO|FORNITURA\s*IDRICA|ACQUEDOTTO|DEPURAZIONE|FOGNATURA|MATERIA\s*ACQUA|QUOTA\s*FISSA\s*ACQUA|"
+    r"CONSUMO\s*IDRICO|ACQUA\s*POTABILE)\b"
+)
+_UTENZE_LOCALI_RE = re.compile(
+    r"\b(ENEL|LUCE|ENERGIA\s*ELETTRICA|GAS|METANO|IDRICO|BOLLETTA|UTENZA|UTENZE|AFFITTO|LOCAZION[EI]|IMMOBILE|"
+    r"MUTUO|CONDOMINIO|TARI|IMU|QUOTA\s*FISSA|MATERIA\s*GAS|ONERI\s*DI\s*SISTEMA|SPESA\s*PER\s*LA\s*VENDITA|"
+    r"SPESA\s*PER\s*LA\s*TARIFFA|RISCALDAMENTO|CLIMATIZZAZIONE)\b"
+)
+_CANONE_LOCALE_RE = re.compile(r"\b(CANONE|LOCAZION[EI]|AFFITTO)\b.*\b(LOCALE|LOCALI|IMMOBILE|NEGOZIO|BOX|MAGAZZINO|CONDOMINIO)\b|\b(CANONE\s+LOCAZIONE|AFFITTO\s+LOCALE)\b")
+_SERVIZI_CANONI_RE = re.compile(
+    r"\b(CANONE|ABBONAMENTO|SERVIZIO|LINEA|FIBRA|ADSL|INTERNET|TELEFONO|TELEFONIA|MOBILE|SIM|VOCE|DATI|POS|RAI|"
+    r"VODAFONE|TIM\b|TELECOM|WIND|ILIAD|FASTWEB|VERISURE)\b"
+)
+_SERVIZI_EXTRA_RE = re.compile(
+    r"\b(ARROTONDAMENTO|TRASPORTO|ASSICURAZIONE|PREMIO\s+ASSICURATIVO|AGG\s*ISTAT|ADEGUAMENTO\s*ISTAT|ISTAT)\b"
+)
+_MANUTENZIONE_CONTRATTO_RE = re.compile(
+    r"\b(CANONE\s+MANUTENZIONE|TELEASSISTENZA|CONTRATTO\s+MANUTENZIONE|MANUTENZIONE\s+ORDINARIA)\b"
+)
+_MANUTENZIONE_GAS_RE = re.compile(
+    r"\b(BOMBOLA|BRUCIATORE|ADATTATORE|RIDUTTORE|VALVOLA|CONTENITORI?)\b.*\bGAS\b|\bGAS\b.*\b(BOMBOLA|BRUCIATORE|ADATTATORE|RIDUTTORE|VALVOLA|CONTENITORI?)\b"
+)
+_MANUTENZIONE_LIGHT_RE = re.compile(r"\b(ACCENDIGAS|ZOCCOLINO)\b")
+_VARIE_BAR_SERVICE_RE = re.compile(
+    r"\b(ZUCCH(?:ERO)?\s*BUSTIN\w*|BUSTIN\w*\s*ZUCCH(?:ERO)?|CIOK\d+\b|CIOCCOLATA\s+(COCCO|PISTACCHIO|FONDENTE))\b"
+)
+_SUSHI_VARIE_RE = re.compile(r"\b(BAMBU|BAMBOO|NORI|WASABI|PANKO|MASAGO|TOBIKO)\b")
+_TAZZE_PIATTI_RE = re.compile(r"\bTAZZE?\b.*\bPIAT\w*\b|\bPIAT\w*\b.*\bTAZZE?\b")
+_ACCESSORI_PRODUZIONE_CREMA_RE = re.compile(r"\b(SAC\s*A\s*POCHE|COPPETTA\s*BICAMERA)\b")
+_SERVIZI_NORMATIVI_RE = re.compile(r"\b(HACCP|ADEMPIMENTI\s*NORMATIVI|SICUREZZA\s*SUL\s*LAVORO|FORMAZIONE|CERTIFICAT\w*|RINNOVI?)\b")
+_AGLIO_CIPOLLA_TRECCIA_RE = re.compile(r"\b(AGLIO|CIP(?:OLLA|OLLE|\.?))\b.*\bTRECCIA\b|\bTRECCIA\b.*\b(AGLIO|CIP(?:OLLA|OLLE|\.?))\b")
+_VERDURA_IN_VASCHETTA_RE = re.compile(r"\b(VALERIANA|RUCOLA|INSALATA|SPINACI|ERBETTE)\b.*\b(VASCHE?TTA|VASCHE?TTE|VASC)\b|\b(VASCHE?TTA|VASCHE?TTE|VASC)\b.*\b(VALERIANA|RUCOLA|INSALATA|SPINACI|ERBETTE)\b")
+_ARANCE_SPREMUTA_RE = re.compile(r"\bARANC\w*\b.*\bSPREMUTA\b|\bSPREMUTA\b.*\bARANC\w*\b")
+_AVOCADO_TRASPORTO_RE = re.compile(r"\bAVOCADO\b.*\bTRASPORTO\s+AEREO\b|\bTRASPORTO\s+AEREO\b.*\bAVOCADO\b")
+_CASTAGNE_ACQUA_RE = re.compile(r"\bCASTAGN\w*\b.*\bD\s*[' ]?ACQUA\b|\bD\s*[' ]?ACQUA\b.*\bCASTAGN\w*\b")
+_CINGHIALE_RE = re.compile(r"\bCINGHIALE\b")
+_PASTA_SFOGLIA_RE = re.compile(r"\bPASTA\s*SFOGLIA\b|\bPASTASFOGLIA\b")
+_POLPA_AVOCADO_RE = re.compile(r"\bPOLPA\b.*\bAVOCADO\b|\bAVOCADO\b.*\bPOLPA\b")
+_SCIROPPATO_RE = re.compile(r"\bSCIROPPAT\w*\b")
+_COPPA_META_RE = re.compile(r"\bCOPPA\b.*\bA\s+META\b|\bA\s+META\b.*\bCOPPA\b")
+_DAYGUM_RE = re.compile(r"\bDAYGUM\b")
+_DETERGENTE_BRAND_RE = re.compile(r"\b(CIF|CANDEG\w*)\b")
+_CROIS_RE = re.compile(r"\bCROIS\b")
+_CREMA_CATALANA_RE = re.compile(r"\bCREMA\s+CATALANA\b")
+_CASTAGNE_D_ACQUA_RE = re.compile(r"\bCASTAGN\w*\b.*\bD[' ]\s*ACQUA\b|\bD[' ]\s*ACQUA\b.*\bCASTAGN\w*\b")
+_LMA_VASC_RE = re.compile(r"\bLMA\b.*\bVASC\b|\bVASC\b.*\bLMA\b")
+_COPPA_GELATO_GUSTO_RE = re.compile(r"\bCOPPA\b.*\b(RABBIT|PAN\s*DAN|CIP\s*CIOK)\b|\b(RABBIT|PAN\s*DAN|CIP\s*CIOK)\b.*\bCOPPA\b")
+_PRODUCTS_REPORT_RE = re.compile(r"\bPRODUCTS\b\s*\(::")
+_PEPE_MACINATO_RE = re.compile(r"PEPE\s+BIANCO\s+MACIN")
+_LAMPONI_FORMATO_RE = re.compile(r"\bLAMPONI\b\s*GR\d+")
+_FUMO_SHOP_RE = re.compile(r"\b(ELFBAR|LOST\s*MARY|OCB|SMOKING\s+FILTRI|PREFILLED\s+POD|TOCA\s+AIR\s+POD|TP800)\b")
+_GINSENG_PREPARATO_RE = re.compile(r"\bPREPARAT\w*\b.*\bGINSENG\b|\bGINSENG\b.*\bPREPARAT\w*\b")
+_ALCOHOL_FREE_RE = re.compile(r"\b(ALCOHOL\s*FREE|ANALCOLIC\w*)\b")
+_ALCOHOL_FREE_BIRRE_RE = re.compile(r"\b(BIRRA|BIRRE|HEINEKEN|ICHNUSA|PERONI|MORETTI|MENABREA|TENNENT|TSINGTAO|NASTRO\s*AZZURRO)\b")
+_ALCOHOL_FREE_VINI_RE = re.compile(r"\b(VINO|CHIANTI|MONTEPULCIANO|FRANCIACORTA|PROSECCO|MOSCATO|FALANGHINA|GEWURZTRAMINER|PINOT|RIESLING|MERLOT|SYRAH|CABERNET|BRUT|CUVEE|LANGHE|BAROLO|BARBARESCO|AMARONE|PRIMITIVO|NEBBIOLO|SANGIOVESE|LAMBRUSCO|DOCG)\b")
+_ALCOHOL_FREE_DISTILLATI_RE = re.compile(r"\b(GIN|TANQUERAY|VODKA|WHISKY|WHISKEY|RHUM|RUM|TEQUILA|GRAPPA|BOURBON|COGNAC|MEZCAL|CACHACA|CACHAÇA|ASSENZIO|BRANDY)\b")
+_ALCOHOL_FREE_AMARI_RE = re.compile(r"\b(AMARO|LIQUORE|LIMONCELLO|SAMBUCA|JAGERMEISTER|AVERNA|MONTENEGRO|NONINO|KAHLUA|BAILEYS|CYNAR|BRANCAMENTA|FERNET|MIRTO|MARASCHINO|APEROL|CAMPARI|ANGOSTURA|PASSOA|CURACAO|TRIPLE\s+SEC|BOLS|PORTO|LILLET|VERMOUTH)\b")
 
 
 def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) -> Tuple[str, Optional[str]]:
@@ -175,8 +373,405 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, f"termine_ambiguo:{desc_u}"
         return cat, None
 
+    if _CASTAGNE_ACQUA_RE.search(desc_u) or _CASTAGNE_D_ACQUA_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "castagne_d_acqua_conserva"
+        return cat, None
+
+    if _ACQUA_CONFEZIONATA_RE.search(desc_u) and not _UTENZE_IDRICHE_RE.search(desc_u) and not _BEVANDE_ANALCOLICHE_RE.search(desc_u):
+        mapped = "ACQUA"
+        if cat != mapped:
+            return mapped, "acqua_confezionata"
+        return cat, None
+
+    if _UTENZE_IDRICHE_RE.search(desc_u):
+        mapped = "UTENZE E LOCALI"
+        if cat != mapped:
+            return mapped, "utenza_idrica"
+        return cat, None
+
+    if _MANUTENZIONE_GAS_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "gas_come_attrezzatura"
+        return cat, None
+
+    if _MANUTENZIONE_LIGHT_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "attrezzatura_leggera"
+        return cat, None
+
+    if _SERVIZI_NORMATIVI_RE.search(desc_u):
+        mapped = "SERVIZI E CONSULENZE"
+        if cat != mapped:
+            return mapped, "servizio_normativo"
+        return cat, None
+
+    if _DAYGUM_RE.search(desc_u):
+        mapped = "SHOP"
+        if cat != mapped:
+            return mapped, "gomma_confezionata_shop"
+        return cat, None
+
+    if _FUMO_SHOP_RE.search(desc_u):
+        mapped = "SHOP"
+        if cat != mapped:
+            return mapped, "articolo_fumo_shop"
+        return cat, None
+
+    if _GINSENG_PREPARATO_RE.search(desc_u):
+        mapped = "CAFFE E THE"
+        if cat != mapped:
+            return mapped, "preparato_ginseng"
+        return cat, None
+
+    if _ALCOHOL_FREE_RE.search(desc_u):
+        if _ALCOHOL_FREE_BIRRE_RE.search(desc_u):
+            mapped = "BIRRE"
+            if cat != mapped:
+                return mapped, "alcohol_free_birra"
+            return cat, None
+        if _ALCOHOL_FREE_VINI_RE.search(desc_u):
+            mapped = "VINI"
+            if cat != mapped:
+                return mapped, "alcohol_free_vino"
+            return cat, None
+        if _ALCOHOL_FREE_DISTILLATI_RE.search(desc_u):
+            mapped = "DISTILLATI"
+            if cat != mapped:
+                return mapped, "alcohol_free_distillato"
+            return cat, None
+        if _ALCOHOL_FREE_AMARI_RE.search(desc_u):
+            mapped = "AMARI/LIQUORI"
+            if cat != mapped:
+                return mapped, "alcohol_free_liquore"
+            return cat, None
+
+    if _DETERGENTE_BRAND_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "detergente_marca"
+        return cat, None
+
+    if _CROIS_RE.search(desc_u):
+        mapped = "PASTICCERIA"
+        if cat != mapped:
+            return mapped, "abbreviazione_croissant"
+        return cat, None
+
+    if _CREMA_CATALANA_RE.search(desc_u):
+        mapped = "PASTICCERIA"
+        if cat != mapped:
+            return mapped, "dessert_crema_catalana"
+        return cat, None
+
+    if _PRODUCTS_REPORT_RE.search(desc_u):
+        mapped = "SERVIZI E CONSULENZE"
+        if cat != mapped:
+            return mapped, "reporting_piattaforma"
+        return cat, None
+
+    if _LAMPONI_FORMATO_RE.search(desc_u):
+        mapped = "FRUTTA"
+        if cat != mapped:
+            return mapped, "frutta_fresca_formato"
+        return cat, None
+
+    if _PEPE_MACINATO_RE.search(desc_u):
+        mapped = "SPEZIE E AROMI"
+        if cat != mapped:
+            return mapped, "spezia_macinata"
+        return cat, None
+
+    if _LMA_VASC_RE.search(desc_u):
+        mapped = "GELATI"
+        if cat != mapped:
+            return mapped, "linea_gelato_vasca"
+        return cat, None
+
+    if _COPPA_GELATO_GUSTO_RE.search(desc_u):
+        mapped = "GELATI"
+        if cat != mapped:
+            return mapped, "coppa_gelato_gusto"
+        return cat, None
+
+    if _CINGHIALE_RE.search(desc_u):
+        mapped = "CARNE"
+        if cat != mapped:
+            return mapped, "carne_selvaggina"
+        return cat, None
+
+    if _COPPA_META_RE.search(desc_u):
+        mapped = "SALUMI"
+        if cat != mapped:
+            return mapped, "coppa_salume"
+        return cat, None
+
+    if _AGLIO_CIPOLLA_TRECCIA_RE.search(desc_u):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "treccia_ortaggio"
+        return cat, None
+
+    if _VERDURA_IN_VASCHETTA_RE.search(desc_u):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "verdura_in_confezione"
+        return cat, None
+
+    if _ARANCE_SPREMUTA_RE.search(desc_u):
+        mapped = "FRUTTA"
+        if cat != mapped:
+            return mapped, "frutta_per_spremuta"
+        return cat, None
+
+    if _AVOCADO_TRASPORTO_RE.search(desc_u):
+        mapped = "FRUTTA"
+        if cat != mapped:
+            return mapped, "frutta_con_descrittore_logistico"
+        return cat, None
+
+    if _PASTA_SFOGLIA_RE.search(desc_u):
+        mapped = "PRODOTTI DA FORNO"
+        if cat != mapped:
+            return mapped, "impasto_sfoglia_forno"
+        return cat, None
+
+    if _POLPA_AVOCADO_RE.search(desc_u):
+        mapped = "FRUTTA"
+        if cat != mapped:
+            return mapped, "polpa_frutta_specifica"
+        return cat, None
+
+    if _MANUTENZIONE_CONTRATTO_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "contratto_manutenzione"
+        return cat, None
+
+    if _SERVIZI_EXTRA_RE.search(desc_u):
+        mapped = "SERVIZI E CONSULENZE"
+        if cat != mapped:
+            return mapped, "servizio_accessorio"
+        return cat, None
+
+    if _CANONE_LOCALE_RE.search(desc_u):
+        mapped = "UTENZE E LOCALI"
+        if cat != mapped:
+            return mapped, "canone_immobile"
+        return cat, None
+
+    if _SERVIZI_CANONI_RE.search(desc_u) and not _CANONE_LOCALE_RE.search(desc_u):
+        mapped = "SERVIZI E CONSULENZE"
+        if cat != mapped:
+            return mapped, "canone_o_servizio"
+        return cat, None
+
+    if _UTENZE_LOCALI_RE.search(desc_u):
+        mapped = "UTENZE E LOCALI"
+        if cat != mapped:
+            return mapped, "utenza_o_locazione"
+        return cat, None
+
+    if _TAPPI_FORMATO_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "tappi_formato_consumabile"
+        return cat, None
+
+    if _CAFFE_ASPORTO_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "caffe_asporto_consumabile"
+        return cat, None
+
+    if _VARIE_BAR_SERVICE_RE.search(desc_u):
+        mapped = "VARIE BAR"
+        if cat != mapped:
+            return mapped, "servizio_bar"
+        return cat, None
+
+    if _TAZZE_PIATTI_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "servizio_tazze_piatti"
+        return cat, None
+
+    if _COPPA_DUREVOLE_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "coppa_contenitore_durevole"
+        return cat, None
+
+    if _ACCESSORI_PRODUZIONE_CREMA_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "accessorio_produzione"
+        return cat, None
+
+    if _BICCHIERI_MONOUSO_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "bicchiere_monouso"
+        return cat, None
+
+    if _BICCHIERI_DUREVOLI_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "bicchiere_o_caraffa_durevole"
+        return cat, None
+
+    if _MATERIALE_CONSUMO_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "consumo_rapido_monouso"
+        return cat, None
+
+    if _MANUTENZIONE_ATTREZZATURE_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "fornitura_durevole"
+        return cat, None
+
+    if _VARIE_BAR_RE.search(desc_u):
+        mapped = "VARIE BAR"
+        if cat != mapped:
+            return mapped, "ingrediente_bar_specifico"
+        return cat, None
+
+    if _SUSHI_VARIE_RE.search(desc_u):
+        mapped = "SUSHI VARIE"
+        if cat != mapped:
+            return mapped, "ingrediente_o_tool_sushi"
+        return cat, None
+
+    if _YOGURT_RE.search(desc_u):
+        mapped = "LATTICINI"
+        if cat != mapped:
+            return mapped, "yogurt_latticino"
+        return cat, None
+
+    if _FECOLA_RE.search(desc_u):
+        mapped = "SECCO"
+        if cat != mapped:
+            return mapped, "fecola_amido_secco"
+        return cat, None
+
+    if _BEVANDA_VEGETALE_RE.search(desc_u):
+        mapped = "BEVANDE"
+        if cat != mapped:
+            return mapped, "bevanda_vegetale_pronta"
+        return cat, None
+
+    if _SCIROPPATO_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "prodotto_sciroppato"
+        return cat, None
+
+    if _CAFFE_THE_RE.search(desc_u):
+        mapped = "CAFFE E THE"
+        if cat != mapped:
+            return mapped, "prodotto_tisana_the_caffe"
+        return cat, None
+
+    if _CONSERVA_RE.search(desc_u) and re.search(r"\b(PASSATA|PASSATE|PELATI|POLPA)\b", desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "prodotto_lavorato_conservato"
+        return cat, None
+
+    if _FORNO_RE.search(desc_u) and (_SURGELATO_RE.search(desc_u) or re.search(r"\bPIZZA\b", desc_u)):
+        mapped = "PRODOTTI DA FORNO"
+        if cat != mapped:
+            return mapped, "forno_anche_surgelato"
+        return cat, None
+
+    if _DIMSUM_RE.search(desc_u):
+        mapped = "SECCO"
+        if cat != mapped:
+            return mapped, "dimsum_come_raviolo"
+        return cat, None
+
+    if _PASTICCERIA_RE.search(desc_u) and _SALSA_CREMA_RE.search(desc_u):
+        mapped = "PASTICCERIA"
+        if cat != mapped:
+            return mapped, "dolce_con_crema"
+        return cat, None
+
+    if re.search(r"\bSALSA\b", desc_u) and _PESCE_RE.search(desc_u):
+        mapped = "SALSE E CREME"
+        if cat != mapped:
+            return mapped, "salsa_base_pesce"
+        return cat, None
+
+    if _PASTA_DI_RE.search(desc_u) and _PESCE_RE.search(desc_u):
+        mapped = "PESCE"
+        if cat != mapped:
+            return mapped, "pasta_di_pesce"
+        return cat, None
+
+    if _PESCE_RE.search(desc_u):
+        mapped = "PESCE"
+        if cat != mapped:
+            return mapped, "pesce_in_qualsiasi_stato"
+        return cat, None
+
+    if (_SALSA_CREMA_RE.search(desc_u) or _PASTA_DI_RE.search(desc_u) or _PASTA_CREMA_RE.search(desc_u)) and not _LIQUORE_CREMA_RE.search(desc_u):
+        mapped = "SALSE E CREME"
+        if cat != mapped:
+            return mapped, "base_salsa_crema"
+        return cat, None
+
+    if _AROMI_RE.search(desc_u):
+        mapped = "SPEZIE E AROMI"
+        if cat != mapped:
+            return mapped, "aroma_fresco_o_secco"
+        return cat, None
+
+    if _SURGELATO_RE.search(desc_u) and (_VERDURE_RE.search(desc_u) or _LEGUMI_RE.search(desc_u)):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "verdura_surgelata"
+        return cat, None
+
+    if _VERDURE_RE.search(desc_u) and _VERDURE_PROCESSATE_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "verdura_processata"
+        return cat, None
+
+    if _LEGUMI_RE.search(desc_u) and _SECCO_RE.search(desc_u):
+        mapped = "SECCO"
+        if cat != mapped:
+            return mapped, "legume_secco_o_farina"
+        return cat, None
+
+    if (_LEGUMI_RE.search(desc_u) or _VERDURE_RE.search(desc_u)) and _CONSERVA_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "vegetale_conservato"
+        return cat, None
+
+    if re.search(r"\bPANNOCCHI[EA]\b", desc_u):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "verdura_raw"
+        return cat, None
+
     for expected, pattern in _CATEGORIA_REGEX_FORTI:
         if not re.search(pattern, desc_u):
+            continue
+
+        # Controlla eccezioni: se la descrizione matcha un'eccezione per questa regola, skip
+        blocked = False
+        for exc_pattern, exc_rule in _ECCEZIONI_REGOLE:
+            if exc_rule == expected and re.search(exc_pattern, desc_u):
+                blocked = True
+                break
+        if blocked:
             continue
 
         if cat_u in _CATEGORIE_PLACEHOLDER or cat_u != expected:
@@ -1327,28 +1922,20 @@ def _chiama_gpt_classificazione(
     try:
         usage = response.usage
         if usage:
-            prompt_tokens = usage.prompt_tokens
-            completion_tokens = usage.completion_tokens
-            
-            cost_input = (prompt_tokens / 1_000_000) * 0.15
-            cost_output = (completion_tokens / 1_000_000) * 0.60
-            total_cost = cost_input + cost_output
-            
-            if 'ristorante_id' in st.session_state and st.session_state.ristorante_id:
-                try:
-                    from services import get_supabase_client
-                    supabase = get_supabase_client()
-                    
-                    supabase.rpc('increment_ai_cost', {
-                        'p_ristorante_id': st.session_state.ristorante_id,
-                        'p_cost': float(total_cost),
-                        'p_tokens': prompt_tokens + completion_tokens,
-                        'p_operation_type': 'categorization'
-                    }).execute()
-                    
-                    logger.info(f"💰 Costo AI Categorizzazione tracciato: ${total_cost:.6f} (in={prompt_tokens}, out={completion_tokens})")
-                except Exception as track_err:
-                    logger.warning(f"⚠️ Errore tracking costo categorizzazione: {track_err}")
+            from services.ai_cost_service import track_ai_usage
+
+            track_ai_usage(
+                operation_type='categorization',
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+                ristorante_id=st.session_state.get('ristorante_id'),
+                item_count=len(da_chiedere_gpt),
+                metadata={
+                    'source': 'categorization-batch',
+                    'batch_size': len(da_chiedere_gpt),
+                    'items_with_hint': len(articoli_con_hint or []),
+                },
+            )
     except Exception as cost_err:
         logger.warning(f"⚠️ Errore calcolo costo categorizzazione: {cost_err}")
     

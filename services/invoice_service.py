@@ -1099,45 +1099,25 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         # ============================================================
         # TRACKING COSTI AI
         # ============================================================
-        # Traccia utilizzo e costo AI per il ristorante
         try:
-            from services import get_supabase_client
-            
-            # Calcola costo basato su token usage
-            tokens_usati = response.usage.total_tokens
-            prompt_tokens = response.usage.prompt_tokens
-            completion_tokens = response.usage.completion_tokens
-            
-            # Pricing GPT-4o-mini (Gen 2026):
-            # Input: $0.15 per 1M token
-            # Output: $0.60 per 1M token
-            # Vision detail=high: ~$0.01-0.03 per immagine
-            costo_input = (prompt_tokens / 1_000_000) * 0.15
-            costo_output = (completion_tokens / 1_000_000) * 0.60
-            costo_totale = round(costo_input + costo_output, 4)
-            
-            # Incrementa contatore per il ristorante
-            ristorante_id = st.session_state.get('ristorante_id')
-            if ristorante_id:
-                try:
-                    supabase_client = get_supabase_client()
-                    result = supabase_client.rpc('increment_ai_cost', {
-                        'p_ristorante_id': ristorante_id,
-                        'p_cost': costo_totale,
-                        'p_tokens': tokens_usati
-                    }).execute()
-                    
-                    logger.info(f"💰 AI Cost tracked: ${costo_totale:.4f} ({tokens_usati} tokens) - Ristorante: {ristorante_id}")
-                except Exception as rpc_err:
-                    # RPC potrebbe non esistere, avere firma diversa o permessi insufficienti
-                    logger.error(f"❌ Errore RPC increment_ai_cost: {rpc_err}")
-                    logger.warning(f"⚠️ Costo AI NON salvato su DB: ${costo_totale:.4f} ({tokens_usati} tokens)")
-                    # Non bloccare l'elaborazione anche se tracking fallisce
-            else:
-                # ⚠️ Utente senza ristorante_id (legacy o errore configurazione)
-                logger.warning(f"⚠️ AI Cost NON tracked: ristorante_id mancante. Costo: ${costo_totale:.4f} ({tokens_usati} tokens)")
+            from services.ai_cost_service import track_ai_usage
+
+            usage = response.usage
+            if usage:
+                track_ai_usage(
+                    operation_type='pdf',
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    ristorante_id=st.session_state.get('ristorante_id'),
+                    source_file=getattr(file_caricato, 'name', None),
+                    item_count=len(righe_prodotti),
+                    metadata={
+                        'source': 'vision-upload',
+                        'file_name': getattr(file_caricato, 'name', None),
+                        'righe_estratte': len(righe_prodotti),
+                    },
+                )
         except Exception as track_error:
-            # Non bloccare l'elaborazione se il tracking fallisce
             logger.warning(f"⚠️ Errore tracking costo AI: {track_error}")
         # ============================================================
         return righe_prodotti

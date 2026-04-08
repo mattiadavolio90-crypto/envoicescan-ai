@@ -735,6 +735,7 @@ def riepilogo_fatture_auto_da_ultimo_login(
         'file_count': 0,
         'row_count': 0,
         'event_count': 0,
+        'needs_review_count': 0,
         'recent_files': [],
         'files_detail': [],
         'window_start': last_login_precedente,
@@ -791,10 +792,11 @@ def riepilogo_fatture_auto_da_ultimo_login(
 
         # Carica dettagli per-file dalla tabella fatture (singola query batch)
         files_detail = []
+        needs_review_count = 0
         if unique_files:
             try:
                 fres = supabase_client.table('fatture') \
-                    .select('file_origine, fornitore, data_documento, totale_riga, created_at') \
+                    .select('file_origine, fornitore, data_documento, totale_riga, created_at, needs_review') \
                     .eq('user_id', user_id) \
                     .in_('file_origine', unique_files) \
                     .order('created_at', desc=True) \
@@ -812,6 +814,8 @@ def riepilogo_fatture_auto_da_ultimo_login(
                         data_doc = frows[0].get('data_documento', '')
                         created = frows[0].get('created_at', '')
                         totale = sum(float(r.get('totale_riga') or 0) for r in frows)
+                        file_needs_review = sum(1 for r in frows if bool(r.get('needs_review')))
+                        needs_review_count += file_needs_review
                         files_detail.append({
                             'file_name': fname,
                             'fornitore': fornitore,
@@ -819,6 +823,7 @@ def riepilogo_fatture_auto_da_ultimo_login(
                             'created_at': created,
                             'num_righe': len(frows),
                             'totale': round(totale, 2),
+                            'needs_review_count': file_needs_review,
                         })
             except Exception:
                 logger.exception('Errore caricamento dettagli per-file fatture auto')
@@ -828,6 +833,7 @@ def riepilogo_fatture_auto_da_ultimo_login(
             'file_count': len(unique_files),
             'row_count': row_count,
             'event_count': len(auto_events),
+            'needs_review_count': needs_review_count,
             'recent_files': unique_files[:3],
             'files_detail': files_detail,
         })

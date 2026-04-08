@@ -6,6 +6,7 @@ import time
 import logging
 import html as _html
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 
 from config.constants import (
     TRUNCATE_DESC_LOG,
@@ -23,10 +24,18 @@ from utils.ristorante_helper import add_ristorante_filter
 from services.ai_service import invalida_cache_memoria, mostra_loading_ai
 from services.invoice_service import estrai_dati_da_scontrino_vision, salva_fattura_processata
 from services.worker_client import parse_file_via_worker
-from services.db_service import clear_fatture_cache
+from services.db_service import calcola_alert, carica_e_prepara_dataframe, clear_fatture_cache
 
 
 logger = logging.getLogger("fci_app")
+
+
+def _make_problematic_upload_entry(file_name: str, reason: str, category: str) -> dict:
+    return {
+        'file_name': file_name,
+        'reason': reason,
+        'category': category,
+    }
 
 
 def handle_uploaded_files(uploaded_files, supabase, user_id):
@@ -35,6 +44,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     t0_upload = time.perf_counter()
     # Pulisci messaggi precedenti all'inizio di un nuovo caricamento
     st.session_state.upload_messages = []
+    st.session_state.pop('last_upload_notification_context', None)
     # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
     if st.session_state.get('force_empty_until_upload', False):
         st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Ripristina upload' prima di caricare nuovi file.")
@@ -272,6 +282,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     
     # Messaggio SOLO per ADMIN (interfaccia pulita per clienti)
     is_admin = st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False)
+    file_blocchi_formato_trial = []
 
     # ============================================================
     # LIMITI TRIAL: max 50 file, solo XML/P7M
@@ -288,6 +299,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                 if not f.name.lower().endswith(_TRIAL_ALLOWED_EXT)
             ]
             if _file_nuovi_bloccati:
+                file_blocchi_formato_trial = [f.name for f in _file_nuovi_bloccati]
                 _uid_tl = st.session_state.get('user_data', {}).get('id', '')
                 _email_tl = st.session_state.get('user_data', {}).get('email', 'unknown')
                 for _bf in _file_nuovi_bloccati:
@@ -686,6 +698,27 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             tutti_problematici.update(file_errore)
         for fname in file_gia_processati:
             tutti_problematici[fname] = "Già presente nel database"
+
+        problematic_entries = []
+        for fname, motivo in file_errore.items():
+            problematic_entries.append(_make_problematic_upload_entry(fname, motivo, 'failed'))
+        for fname in file_gia_processati:
+            problematic_entries.append(_make_problematic_upload_entry(fname, 'Già presente nel database', 'duplicate'))
+        for fname in file_blocchi_trial:
+            problematic_entries.append(_make_problematic_upload_entry(fname, 'Bloccata dalle regole della prova gratuita', 'blocked'))
+        for fname in file_blocchi_formato_trial:
+            problematic_entries.append(_make_problematic_upload_entry(fname, 'Formato non consentito durante la prova gratuita', 'blocked'))
+
+        upload_notification_context = {
+            'upload_id': datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f'),
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'successful_files': list(file_ok),
+            'successful_count': file_processati,
+            'problematic_files': problematic_entries,
+            'problematic_count': len(problematic_entries),
+            'price_alerts': [],
+            'stats': dict(upload_summary),
+        }
         
         # === SALVA MESSAGGI IN SESSION_STATE (persistono fino al prossimo upload) ===
         _messages = []
@@ -765,7 +798,30 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             except Exception as ve:
                 logger.warning(f"[UPLOAD VERIFY] Verifica post-upload fallita: {ve}")
             # Invalida la cache fatture prima del rerun per mostrare subito i nuovi dati.
-            clear_fatture_cache()
+            if file_ok:
+                try:
+                    df_post_upload = carica_e_prepara_dataframe(
+                        user_id,
+                        force_refresh=True,
+                        ristorante_id=st.session_state.get('ristorante_id'),
+                    )
+                    df_alert = calcola_alert(df_post_upload, soglia_minima=5.0)
+                    if not df_alert.empty:
+                        filtered_alerts = df_alert[
+                            (df_alert['Aumento_Perc'] >= 5.0) &
+                            (df_alert['N_Fattura'].isin(file_ok))
+                        ]
+                        upload_notification_context['price_alerts'] = [
+                            {
+                                'product': row['Prodotto'],
+                                'supplier': row['Fornitore'],
+                                'increase_pct': round(float(row['Aumento_Perc']), 1),
+                                'file_name': row['N_Fattura'],
+                            }
+                            for _, row in filtered_alerts.head(5).iterrows()
+                        ]
+                except Exception as price_alert_error:
+                    logger.warning(f"Errore calcolo alert prezzi post-upload: {price_alert_error}")
             if 'righe_ai_appena_categorizzate' in st.session_state:
                 st.session_state.righe_ai_appena_categorizzate = []
             if 'uploader_key' not in st.session_state:
@@ -777,6 +833,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             upload_summary['caricate_successo'] = file_processati
             upload_summary['errori'] = len(tutti_problematici)
             st.session_state.last_upload_summary = upload_summary
+            upload_notification_context['stats'] = dict(upload_summary)
+            st.session_state.last_upload_notification_context = upload_notification_context
             # 🧠 AUTO-TRIGGER AI: avvia categorizzazione automatica dopo upload riuscito
             if file_processati > 0:
                 st.session_state.ai_categorization_in_progress = True
@@ -790,6 +848,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             upload_summary['caricate_successo'] = 0
             upload_summary['errori'] = len(tutti_problematici)
             st.session_state.last_upload_summary = upload_summary
+            upload_notification_context['stats'] = dict(upload_summary)
+            st.session_state.last_upload_notification_context = upload_notification_context
 
     else:
         # Nessun file nuovo — TUTTI duplicati/già presenti
@@ -805,6 +865,20 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         status_text.empty()
         
         st.session_state.last_upload_summary = upload_summary
+        problematic_entries = [
+            _make_problematic_upload_entry(fname, 'Già presente nel database', 'duplicate')
+            for fname in file_gia_processati
+        ]
+        st.session_state.last_upload_notification_context = {
+            'upload_id': datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f'),
+            'created_at': datetime.now(timezone.utc).isoformat(),
+            'successful_files': [],
+            'successful_count': 0,
+            'problematic_files': problematic_entries,
+            'problematic_count': len(problematic_entries),
+            'price_alerts': [],
+            'stats': dict(upload_summary),
+        }
         
         # Salva messaggio persistente per duplicati
         if file_gia_processati:

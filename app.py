@@ -107,6 +107,14 @@ from services.db_service import (
 
 from components.dashboard_renderer import mostra_statistiche
 from services.upload_handler import handle_uploaded_files
+from services.notification_service import (
+    build_monthly_data_notifications,
+    build_price_alert_notifications,
+    build_scoped_notification_id,
+    build_upload_outcome_notifications,
+    dismiss_notification_ids,
+    get_dismissed_notification_ids,
+)
 
 
 # [DEBUG] Helper snapshot session_state — attivo solo con DEBUG_MODE=1
@@ -121,6 +129,294 @@ def _debug_session_snap(label: str) -> None:
     snap = {k: st.session_state.get(k) for k in keys_of_interest}
     logger.debug(f"[SESSION SNAP — {label}] {snap}")
 # ============================================================
+
+
+def _show_toast_once(toast_id: str, message: str, icon: str = None) -> None:
+    """Mostra un toast una sola volta per sessione."""
+    if not message:
+        return
+    if 'shown_dashboard_toasts' not in st.session_state:
+        st.session_state.shown_dashboard_toasts = set()
+    if toast_id in st.session_state.shown_dashboard_toasts:
+        return
+    st.toast(message, icon=icon)
+    st.session_state.shown_dashboard_toasts.add(toast_id)
+
+
+def _render_operational_notifications(notifications, user_id, dismissed_ids, supabase_client):
+    """Render compatto delle notifiche gestionali con dismiss persistente."""
+    if not notifications:
+        return
+
+    styles = {
+        'warning': {
+            'border': '#f59e0b',
+            'background': '#fff7ed',
+            'title': '#9a3412',
+            'body': '#7c2d12',
+        },
+        'info': {
+            'border': '#3b82f6',
+            'background': '#eff6ff',
+            'title': '#1d4ed8',
+            'body': '#1e3a8a',
+        },
+    }
+
+    for notification in notifications:
+        _show_toast_once(
+            f"operational::{notification.get('id')}",
+            notification.get('toast') or notification.get('title') or 'Nuova notifica',
+            icon=notification.get('icon'),
+        )
+
+    count_label = 'promemoria operativo' if len(notifications) == 1 else 'promemoria operativi'
+
+    st.markdown("""
+    <style>
+    div.st-key-expander_operational_notifications [data-testid="stExpander"] details summary {
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        border-radius: 10px;
+        padding: 8px 16px;
+        font-weight: 700;
+        color: #92400e;
+    }
+    div.st-key-expander_operational_notifications [data-testid="stExpander"] details {
+        border: 2px solid #f59e0b;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+    }
+    div.st-key-expander_operational_notifications [data-testid="stExpander"] details[open] summary {
+        border-bottom: 1px solid #fcd34d;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    with st.container(key="expander_operational_notifications"):
+        st.markdown(
+            f"<span style='font-size:1.05rem; font-weight:700; color:#92400e;'>"
+            f"🔔 Hai {len(notifications)} {count_label}"
+            f"</span>",
+            unsafe_allow_html=True,
+        )
+
+        with st.expander("📌 Dettaglio promemoria", expanded=False):
+            for idx, notification in enumerate(notifications):
+                palette = styles.get(notification.get('level'), styles['info'])
+                _n_title = _html.escape(notification.get('title', 'Notifica'))
+                _n_body = _html.escape(notification.get('body', ''))
+                cols = st.columns([5, 1, 1])
+                with cols[0]:
+                    st.markdown(
+                        f"""
+                        <div style="border-left:4px solid {palette['border']}; background:{palette['background']};
+                                    border-radius:10px; padding:12px 14px; margin-bottom:10px;">
+                            <div style="font-weight:700; color:{palette['title']}; margin-bottom:4px;">
+                                {notification.get('icon', '🔔')} {_n_title}
+                            </div>
+                            <div style="font-size:0.92rem; color:{palette['body']};">
+                                {_n_body}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                with cols[1]:
+                    action_page = notification.get('action_page')
+                    if action_page and st.button(
+                        notification.get('action_label', 'Apri'),
+                        key=f"operational_notification_action_{idx}",
+                        use_container_width=True,
+                    ):
+                        st.switch_page(action_page)
+                with cols[2]:
+                    if st.button(
+                        "Nascondi",
+                        key=f"operational_notification_hide_{idx}",
+                        use_container_width=True,
+                    ):
+                        dismiss_notification_ids(
+                            user_id=user_id,
+                            notification_ids=[notification.get('id')],
+                            supabase_client=supabase_client,
+                        )
+                        st.rerun()
+
+
+def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_client, ristorante_id):
+    """Render della notifica fatture automatiche sotto il contesto ristorante."""
+    if not auto_notice or st.session_state.get('auto_invoice_notice_dismissed', False):
+        return
+
+    files_detail = auto_notice.get('files_detail', []) or []
+    pending_files = []
+    for finfo in files_detail:
+        notification_id = build_scoped_notification_id(
+            f"auto-file:{finfo.get('file_name', '')}",
+            ristorante_id,
+        )
+        if finfo.get('file_name') in st.session_state.auto_invoice_handled:
+            continue
+        if notification_id in dismissed_ids:
+            continue
+        pending_files.append(finfo)
+
+    if not pending_files:
+        return
+
+    if not st.session_state.get('auto_invoice_notice_toast_shown', False):
+        fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
+        review_count = sum(int(f.get('needs_review_count') or 0) for f in pending_files)
+        toast_message = f"Hai ricevuto {len(pending_files)} {fatture_label} automatiche"
+        if review_count > 0:
+            righe_label = 'riga richiede revisione' if review_count == 1 else 'righe richiedono revisione'
+            toast_message += f" - {review_count} {righe_label}"
+        st.toast(f"📬 {toast_message}", icon="📥")
+        st.session_state.auto_invoice_notice_toast_shown = True
+
+    st.markdown("""
+    <style>
+    div.st-key-expander_auto_invoices [data-testid="stExpander"] details summary {
+        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+        border-radius: 10px;
+        padding: 8px 16px;
+        font-weight: 700;
+        color: #1e3a8a;
+    }
+    div.st-key-expander_auto_invoices [data-testid="stExpander"] details {
+        border: 2px solid #3b82f6;
+        border-radius: 12px;
+        margin-bottom: 1rem;
+    }
+    div.st-key-expander_auto_invoices [data-testid="stExpander"] details[open] summary {
+        border-bottom: 1px solid #93c5fd;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    with st.container(key="expander_auto_invoices"):
+        fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
+        review_count = sum(int(f.get('needs_review_count') or 0) for f in pending_files)
+        _hdr_col, _save_all_col, _hide_all_col = st.columns([4, 1, 1])
+        with _hdr_col:
+            review_html = ''
+            if review_count > 0:
+                righe_label = 'riga da rivedere' if review_count == 1 else 'righe da rivedere'
+                review_html = (
+                    f"<div style='font-size:0.88rem; color:#92400e; font-weight:600; margin-top:4px;'>"
+                    f"⚠️ {review_count} {righe_label}: controllale prima che entrino nei tuoi calcoli"
+                    f"</div>"
+                )
+            st.markdown(
+                f"<span style='font-size:1.05rem; font-weight:700; color:#1e3a8a;'>"
+                f"🔔 Sono arrivate {len(pending_files)} nuove {fatture_label} dall'ultimo tuo accesso"
+                f"</span>{review_html}",
+                unsafe_allow_html=True,
+            )
+        with _save_all_col:
+            if st.button("✅ Salva tutte", key="auto_notice_save_all", use_container_width=True, type="primary"):
+                _ack_uid = st.session_state.user_data.get('id')
+                _ack_fnames = [f['file_name'] for f in pending_files]
+                if _ack_uid and _ack_fnames:
+                    try:
+                        supabase_client.table('upload_events') \
+                            .update({'needs_ack': False}) \
+                            .eq('user_id', _ack_uid) \
+                            .in_('file_name', _ack_fnames) \
+                            .execute()
+                    except Exception as _ack_err:
+                        logger.error(f"Errore ack needs_ack Salva tutte: {_ack_err}")
+                for f in pending_files:
+                    st.session_state.auto_invoice_handled.add(f['file_name'])
+                clear_fatture_cache()
+                st.session_state.auto_invoice_notice_dismissed = True
+                st.rerun()
+        with _hide_all_col:
+            if st.button("👁 Nascondi", key="auto_notice_hide_all", use_container_width=True):
+                dismiss_notification_ids(
+                    user_id=user_id,
+                    notification_ids=[
+                        build_scoped_notification_id(f"auto-file:{f['file_name']}", ristorante_id)
+                        for f in pending_files
+                    ],
+                    supabase_client=supabase_client,
+                )
+                st.session_state.auto_invoice_notice_dismissed = True
+                st.rerun()
+
+        with st.expander(f"📄 Dettaglio {fatture_label}", expanded=False):
+            for idx, finfo in enumerate(pending_files):
+                fname = finfo.get('file_name', 'file sconosciuto')
+                fornitore = finfo.get('fornitore', 'Sconosciuto')
+                data_doc = finfo.get('data_documento', '')
+                num_righe = finfo.get('num_righe', 0)
+                totale = finfo.get('totale', 0)
+                needs_review_count = int(finfo.get('needs_review_count') or 0)
+                _r_label = 'riga' if num_righe == 1 else 'righe'
+
+                col_detail, col_btns = st.columns([5, 3])
+                with col_detail:
+                    _safe_fornitore = _html.escape(fornitore.upper())
+                    _safe_fname = _html.escape(fname)
+                    _short_fname = _safe_fname if len(fname) <= 12 else _html.escape(fname[:8]) + '…' + _html.escape(fname[fname.rfind('.'):]) if '.' in fname else _html.escape(fname[:12]) + '…'
+                    _review_badge = ''
+                    if needs_review_count > 0:
+                        _review_badge = f" &middot; <span style='color:#b45309; font-weight:700;'>{needs_review_count} da rivedere</span>"
+                    st.markdown(
+                        f"📄 **{_safe_fornitore}** &mdash; "
+                        f"€{totale:,.2f} &middot; "
+                        f"{num_righe} {_r_label} &middot; "
+                        f"{_html.escape(data_doc or 'N/D')}{_review_badge} &middot; "
+                        f"`{_short_fname}`",
+                        help=f"File completo: {_safe_fname}",
+                    )
+                with col_btns:
+                    bc1, bc2, bc3 = st.columns(3)
+                    with bc1:
+                        if st.button("💾 Salva", key=f"auto_save_{idx}", use_container_width=True):
+                            _ack_uid = st.session_state.user_data.get('id')
+                            if _ack_uid:
+                                try:
+                                    supabase_client.table('upload_events') \
+                                        .update({'needs_ack': False}) \
+                                        .eq('user_id', _ack_uid) \
+                                        .eq('file_name', fname) \
+                                        .execute()
+                                except Exception as _ack_err:
+                                    logger.error(f"Errore ack needs_ack Salva {fname}: {_ack_err}")
+                            st.session_state.auto_invoice_handled.add(fname)
+                            clear_fatture_cache()
+                            st.rerun()
+                    with bc2:
+                        if st.button("❌ Rifiuta", key=f"auto_reject_{idx}", use_container_width=True):
+                            _ack_uid = st.session_state.user_data.get('id')
+                            if _ack_uid:
+                                try:
+                                    supabase_client.table('upload_events') \
+                                        .update({'needs_ack': False}) \
+                                        .eq('user_id', _ack_uid) \
+                                        .eq('file_name', fname) \
+                                        .execute()
+                                except Exception as _ack_err:
+                                    logger.error(f"Errore ack needs_ack Rifiuta {fname}: {_ack_err}")
+                            try:
+                                _reject_uid = st.session_state.user_data.get('id')
+                                _reject_rid = st.session_state.get('ristorante_id')
+                                elimina_fattura_completa(fname, _reject_uid, ristoranteid=_reject_rid)
+                                invalida_cache_memoria()
+                                clear_fatture_cache()
+                            except Exception as _rej_err:
+                                logger.error(f"Errore rifiuto fattura auto {fname}: {_rej_err}")
+                            st.session_state.auto_invoice_handled.add(fname)
+                            st.rerun()
+                    with bc3:
+                        if st.button("👁", key=f"auto_hide_{idx}", use_container_width=True, help="Nascondi notifica gia vista"):
+                            dismiss_notification_ids(
+                                user_id=user_id,
+                                notification_ids=[build_scoped_notification_id(f"auto-file:{fname}", ristorante_id)],
+                                supabase_client=supabase_client,
+                            )
+                            st.rerun()
 
 
 # ============================================
@@ -1450,171 +1746,55 @@ logger.debug(
     f"ristorante_id={_sess_rid} force_reload={st.session_state.get('force_reload')}"
 )
 
-# ============================================
-# MESSAGGIO DI BENVENUTO POST-LOGIN
-# ============================================
-if st.session_state.pop('show_welcome', False):
-    _nome_rist = st.session_state.get('nome_ristorante', '')
-    _welcome_nome = _html.escape(_nome_rist if _nome_rist else _sess_email)
-    st.markdown(f"""
-<div style="background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
-            border: 2px solid #3b82f6; border-radius: 12px;
-            padding: 16px 24px; margin-bottom: 1rem;
-            text-align: center;">
-    <span style="font-size: 1.3rem; font-weight: 700; color: #1e3a8a;">
-        👋 Bentornato, {_welcome_nome}!
-    </span>
-    <p style="font-size: 0.9rem; color: #1e40af; margin: 6px 0 0 0;">
-        I tuoi dati sono stati aggiornati. Controlla le statistiche e le nuove fatture qui sotto.
-    </p>
-</div>
-""", unsafe_allow_html=True)
-    # Log evento dashboard_welcome in upload_events
-    try:
-        supabase.table('upload_events').insert({
-            'user_id': _sess_uid,
-            'user_email': _sess_email,
-            'file_name': '_dashboard_welcome',
-            'file_type': 'event',
-            'status': 'WELCOME',
-            'rows_parsed': 0,
-            'rows_saved': 0,
-            'details': {'source': 'dashboard_welcome', 'ristorante_id': str(_sess_rid)},
-        }).execute()
-    except Exception as _we:
-        logger.warning(f"Errore log evento dashboard_welcome: {_we}")
+st.session_state.pop('show_welcome', None)
 
 auto_notice = st.session_state.get('auto_invoice_notice')
+_is_admin_session = (_sess_email or '').strip().lower() in ADMIN_EMAILS
+
+if not _is_admin_session:
+    try:
+        auto_notice = riepilogo_fatture_auto_da_ultimo_login(
+            user_id=st.session_state.get('user_data', {}).get('id'),
+            last_login_precedente=st.session_state.get('user_data', {}).get('last_login_precedente'),
+            login_at=st.session_state.get('user_data', {}).get('login_at'),
+            supabase_client=supabase,
+        )
+        if auto_notice.get('has_new'):
+            st.session_state.auto_invoice_notice = auto_notice
+            st.session_state.auto_invoice_notice_dismissed = False
+            st.session_state.auto_received_file_origini = {
+                f['file_name'] for f in auto_notice.get('files_detail', [])
+            }
+        else:
+            st.session_state.pop('auto_invoice_notice', None)
+            st.session_state.pop('auto_invoice_notice_dismissed', None)
+            st.session_state.pop('auto_received_file_origini', None)
+        auto_notice = st.session_state.get('auto_invoice_notice')
+    except Exception as _dashboard_notice_err:
+        logger.warning(f"Errore refresh notifica fatture automatiche: {_dashboard_notice_err}")
+
+operational_notifications = []
+if not _is_admin_session:
+    operational_notifications = build_monthly_data_notifications(
+        user_id=st.session_state.get('user_data', {}).get('id'),
+        ristorante_id=st.session_state.get('ristorante_id'),
+        reference_dt=datetime.now(timezone.utc),
+    )
+    operational_notifications.extend(
+        build_upload_outcome_notifications(
+            st.session_state.get('last_upload_notification_context')
+        )
+    )
+    operational_notifications.extend(
+        build_price_alert_notifications(
+            st.session_state.get('last_upload_notification_context'),
+            threshold_pct=5.0,
+        )
+    )
+
 # Stato file gestiti (salvati/rifiutati) — persistente durante la sessione
 if 'auto_invoice_handled' not in st.session_state:
     st.session_state.auto_invoice_handled = set()
-
-if auto_notice and not st.session_state.get('auto_invoice_notice_dismissed', False):
-    files_detail = auto_notice.get('files_detail', []) or []
-    # Filtra file già gestiti (salvati o rifiutati)
-    pending_files = [f for f in files_detail if f.get('file_name') not in st.session_state.auto_invoice_handled]
-
-    if pending_files:
-        if not st.session_state.get('auto_invoice_notice_toast_shown', False):
-            fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
-            st.toast(f"\U0001f4ec Hai ricevuto {len(pending_files)} {fatture_label} automatiche", icon="\U0001f4e5")
-            st.session_state.auto_invoice_notice_toast_shown = True
-
-        # CSS expander notifica
-        st.markdown("""
-        <style>
-        div.st-key-expander_auto_invoices [data-testid="stExpander"] details summary {
-            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-            border-radius: 10px;
-            padding: 8px 16px;
-            font-weight: 700;
-            color: #1e3a8a;
-        }
-        div.st-key-expander_auto_invoices [data-testid="stExpander"] details {
-            border: 2px solid #3b82f6;
-            border-radius: 12px;
-            margin-bottom: 1rem;
-        }
-        div.st-key-expander_auto_invoices [data-testid="stExpander"] details[open] summary {
-            border-bottom: 1px solid #93c5fd;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-
-        with st.container(key="expander_auto_invoices"):
-            fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
-
-            # Titolo + "Salva tutte" FUORI dall'expander — sempre visibili senza espandere
-            _hdr_col, _save_all_col = st.columns([5, 1])
-            with _hdr_col:
-                st.markdown(
-                    f"<span style='font-size:1.05rem; font-weight:700; color:#1e3a8a;'>"
-                    f"🔔 Sono arrivate {len(pending_files)} nuove {fatture_label} dall'ultimo tuo accesso"
-                    f"</span>",
-                    unsafe_allow_html=True
-                )
-            with _save_all_col:
-                if st.button("✅ Salva tutte", key="auto_notice_save_all", use_container_width=True, type="primary"):
-                    _ack_uid = st.session_state.user_data.get('id')
-                    _ack_fnames = [f['file_name'] for f in pending_files]
-                    if _ack_uid and _ack_fnames:
-                        try:
-                            supabase.table('upload_events') \
-                                .update({'needs_ack': False}) \
-                                .eq('user_id', _ack_uid) \
-                                .in_('file_name', _ack_fnames) \
-                                .execute()
-                        except Exception as _ack_err:
-                            logger.error(f"Errore ack needs_ack Salva tutte: {_ack_err}")
-                    for f in pending_files:
-                        st.session_state.auto_invoice_handled.add(f['file_name'])
-                    clear_fatture_cache()
-                    st.session_state.auto_invoice_notice_dismissed = True
-                    st.rerun()
-
-            with st.expander(f"📄 Dettaglio {fatture_label}", expanded=False):
-                # Righe per-file
-                for idx, finfo in enumerate(pending_files):
-                    fname = finfo.get('file_name', 'file sconosciuto')
-                    fornitore = finfo.get('fornitore', 'Sconosciuto')
-                    data_doc = finfo.get('data_documento', '')
-                    num_righe = finfo.get('num_righe', 0)
-                    totale = finfo.get('totale', 0)
-                    _r_label = 'riga' if num_righe == 1 else 'righe'
-
-                    col_detail, col_btns = st.columns([5, 2])
-                    with col_detail:
-                        _short_fname = fname if len(fname) <= 12 else fname[:8] + '\u2026' + fname[fname.rfind('.'):] if '.' in fname else fname[:12] + '\u2026'
-                        st.markdown(
-                            f"📄 **{fornitore.upper()}** &mdash; "
-                            f"€{totale:,.2f} &middot; "
-                            f"{num_righe} {_r_label} &middot; "
-                            f"{data_doc or 'N/D'} &middot; "
-                            f"`{_short_fname}`",
-                            help=f"File completo: {fname}"
-                        )
-                    with col_btns:
-                        bc1, bc2 = st.columns(2)
-                        with bc1:
-                            if st.button("\U0001f4be Salva", key=f"auto_save_{idx}", use_container_width=True):
-                                _ack_uid = st.session_state.user_data.get('id')
-                                if _ack_uid:
-                                    try:
-                                        supabase.table('upload_events') \
-                                            .update({'needs_ack': False}) \
-                                            .eq('user_id', _ack_uid) \
-                                            .eq('file_name', fname) \
-                                            .execute()
-                                    except Exception as _ack_err:
-                                        logger.error(f"Errore ack needs_ack Salva {fname}: {_ack_err}")
-                                st.session_state.auto_invoice_handled.add(fname)
-                                clear_fatture_cache()
-                                st.rerun()
-                        with bc2:
-                            if st.button("\u274c Rifiuta", key=f"auto_reject_{idx}", use_container_width=True):
-                                _ack_uid = st.session_state.user_data.get('id')
-                                if _ack_uid:
-                                    try:
-                                        supabase.table('upload_events') \
-                                            .update({'needs_ack': False}) \
-                                            .eq('user_id', _ack_uid) \
-                                            .eq('file_name', fname) \
-                                            .execute()
-                                    except Exception as _ack_err:
-                                        logger.error(f"Errore ack needs_ack Rifiuta {fname}: {_ack_err}")
-                                try:
-                                    _reject_uid = st.session_state.user_data.get('id')
-                                    _reject_rid = st.session_state.get('ristorante_id')
-                                    elimina_fattura_completa(fname, _reject_uid, ristoranteid=_reject_rid)
-                                    invalida_cache_memoria()
-                                    clear_fatture_cache()
-                                except Exception as _rej_err:
-                                    logger.error(f"Errore rifiuto fattura auto {fname}: {_rej_err}")
-                                st.session_state.auto_invoice_handled.add(fname)
-                                st.rerun()
-    else:
-        # Tutti i file sono stati gestiti — nascondi tutto
-        st.session_state.auto_invoice_notice_dismissed = True
 
 st.markdown("""
 <h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-top: 0.5rem;">
@@ -1724,7 +1904,7 @@ if (user.get('email') or '').strip().lower() not in ADMIN_EMAILS:
             for _stale_key in ['righe_ai_appena_categorizzate', 'righe_keyword_appena_categorizzate',
                                'righe_memoria_appena_categorizzate', 'righe_modificate_manualmente',
                                'force_reload', 'force_empty_until_upload',
-                               'files_errori_report', 'last_upload_summary', 'ultimo_upload_ids',
+                               'files_errori_report', 'last_upload_summary', 'last_upload_notification_context', 'ultimo_upload_ids',
                                'ingredienti_temp', 'ricetta_edit_mode', 'ricetta_edit_data',
                                '_fonte_pm_cache']:
                 st.session_state.pop(_stale_key, None)
@@ -1748,6 +1928,37 @@ if (user.get('email') or '').strip().lower() not in ADMIN_EMAILS:
     elif len(ristoranti) == 1:
         # Singolo ristorante: mostra solo info compatta
         st.info(f"🏪 **Ristorante:** {ristoranti[0]['nome_ristorante']} | 📋 **P.IVA:** `IT{ristoranti[0]['partita_iva']}`")
+
+    _current_user_id = st.session_state.get('user_data', {}).get('id')
+    _current_ristorante_id = st.session_state.get('ristorante_id')
+    _dismissed_notification_ids = set()
+    if _current_user_id and not _is_admin_session:
+        _dismissed_notification_ids = get_dismissed_notification_ids(_current_user_id, supabase)
+
+    _visible_operational_notifications = []
+    for notification in operational_notifications:
+        _scoped_id = build_scoped_notification_id(notification.get('id'), _current_ristorante_id)
+        if _scoped_id in _dismissed_notification_ids:
+            continue
+        _visible_operational_notifications.append({**notification, 'id': _scoped_id})
+
+    if _visible_operational_notifications:
+        _render_operational_notifications(
+            notifications=_visible_operational_notifications,
+            user_id=_current_user_id,
+            dismissed_ids=_dismissed_notification_ids,
+            supabase_client=supabase,
+        )
+
+    if not _is_admin_session:
+        _render_auto_invoice_notice(
+            auto_notice=auto_notice,
+            user_id=_current_user_id,
+            dismissed_ids=_dismissed_notification_ids,
+            supabase_client=supabase,
+            ristorante_id=_current_ristorante_id,
+        )
+
         st.markdown("---")
 
 # ============================================================
@@ -1944,8 +2155,11 @@ else:
             color: #2d6a4f;
             font-size: clamp(0.8rem, 0.3vw + 0.74rem, 0.9rem);
             font-weight: 600;
-            line-height: 1.4;
-            padding-top: 0.45rem;
+            line-height: 1.3;
+            min-height: 2.9rem;
+            display: flex;
+            align-items: center;
+            padding-top: 0;
         }
         div.st-key-main_documents_upload_section .upload-ai-spacer {
             height: 34px;
@@ -2035,6 +2249,7 @@ else:
         }
         @media (max-width: 767px) {
             div.st-key-main_documents_upload_section .upload-format-hint {
+                min-height: auto;
                 padding-top: 0.15rem;
             }
             div.st-key-main_documents_upload_section .upload-ai-spacer {

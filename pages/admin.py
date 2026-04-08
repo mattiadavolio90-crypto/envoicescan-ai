@@ -1,11 +1,10 @@
 ﻿"""
 🔧 PANNELLO AMMINISTRAZIONE - OH YEAH! Hub
 ===============================================
-Pannello admin con 6 TAB:
+Pannello admin con 5 TAB:
 - Gestione Clienti (con impersonazione)
 - Review Righe €0 (con revisione permanente)
-- Memoria Globale AI (prodotti_master)
-- Memoria Clienti (prodotti_utente)
+- Memoria AI (globale, clienti, conflitti, audit)
 - Verifica Integrità Database
 - Costi AI per Cliente
 """
@@ -550,7 +549,13 @@ if 'categorie_cached' not in st.session_state:
     logger.info(f"✅ Categorie caricate in cache: {len(st.session_state.categorie_cached)} categorie")
 
 # Usa radio buttons nascosti per mantenere tab attivo
-tab_names = ["📊 Gestione Clienti", "💰 Review Righe €0", "🧠 Memoria Globale AI", "📝 Memoria Clienti", "🔍 Integrità Database", "💳 Costi AI"]
+tab_names = ["📊 Gestione Clienti", "💰 Review Righe €0", "🧠 Memoria AI", "🔍 Integrità Database", "💳 Costi AI"]
+
+if st.session_state.active_tab >= len(tab_names):
+    st.session_state.active_tab = 0
+if 'tab_selector' in st.session_state and st.session_state.tab_selector >= len(tab_names):
+    st.session_state.tab_selector = 0
+
 selected_tab = st.radio(
     "Seleziona Tab",
     range(len(tab_names)),
@@ -572,7 +577,6 @@ tab2 = (st.session_state.active_tab == 1)
 tab3 = (st.session_state.active_tab == 2)
 tab4 = (st.session_state.active_tab == 3)
 tab5 = (st.session_state.active_tab == 4)
-tab6 = (st.session_state.active_tab == 5)
 
 
 # ============================================================
@@ -2402,6 +2406,13 @@ def tab_memoria_globale_unificata():
     """
     st.markdown("## 🧠 Memoria Globale Prodotti")
     st.caption("Gestisci classificazioni condivise tra tutti i clienti")
+
+    def _priority_badge(label, bg_color, text_color, border_color):
+        return (
+            f"<span style=\"display:inline-block;padding:0.15rem 0.55rem;border-radius:999px;"
+            f"background:{bg_color};color:{text_color};border:1px solid {border_color};"
+            f"font-size:0.78rem;font-weight:700;letter-spacing:0.01em;\">{label}</span>"
+        )
     
     # Funzione helper per toggle massivo
     def toggle_all_rows(righe_ids, seleziona):
@@ -2482,6 +2493,7 @@ def tab_memoria_globale_unificata():
             return pd.DataFrame(), False
     
     df_memoria, campo_verified_exists = carica_memoria_globale()
+    df_sospette = _carica_globale_sospette_dataset() if is_admin and campo_verified_exists else pd.DataFrame()
     
     if df_memoria.empty:
         st.warning("📭 Memoria vuota. Inizia a caricare fatture per popolarla!")
@@ -2501,30 +2513,55 @@ def tab_memoria_globale_unificata():
     # ============================================================
     # METRICHE (CARD STILIZZATE)
     # ============================================================
-    totale_utilizzi = int(df_memoria['volte_visto'].sum())
-    chiamate_risparmiate = totale_utilizzi - len(df_memoria)
-    _non_verificati_html = ""
+    totale_prodotti = len(df_memoria)
+    verificati = totale_prodotti
+    non_verificati = 0
     if is_admin and campo_verified_exists:
         non_verificati = int((~df_memoria['verified']).sum())
-        _non_verificati_html = f'<div class="admin-metric-card" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63;"><div class="admin-metric-label" style="color:#c2185b;">⚠️ Da Verificare</div><div class="admin-metric-value" style="color:#880e4f;">{non_verificati}</div></div>'
+        verificati = int((df_memoria['verified']).sum())
+    elif 'verified' in df_memoria.columns:
+        non_verificati = int((~df_memoria['verified']).sum())
+        verificati = totale_prodotti - non_verificati
+
+    badge_verificati = _priority_badge("VERIFICATI", "#e8f5e9", "#1b5e20", "#43a047")
+    badge_review = _priority_badge("DA VERIFICARE", "#fff3e0", "#e65100", "#ff9800")
+    badge_totale = _priority_badge("TOTALE", "#e3f2fd", "#1565c0", "#2196f3")
+
+    st.markdown(
+        (
+            "<div style=\"display:flex;gap:0.5rem;flex-wrap:wrap;margin:0.35rem 0 0.85rem 0;\">"
+            f"{badge_review}<span style=\"font-size:0.9rem;color:#555;\">Storico da ricontrollare con le regole nuove</span>"
+            f"{badge_verificati}<span style=\"font-size:0.9rem;color:#555;\">Voci già confermate manualmente</span>"
+            f"{badge_totale}<span style=\"font-size:0.9rem;color:#555;\">Panoramica completa memoria condivisa</span>"
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
     
     st.markdown(f"""
     <div class="admin-metrics-grid">
         <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
-            <div class="admin-metric-label" style="color:#1976d2;">🧠 Prodotti Totali</div>
-            <div class="admin-metric-value" style="color:#1565c0;">{len(df_memoria):,}</div>
+            <div class="admin-metric-label" style="color:#1976d2;">🧠 Totali</div>
+            <div class="admin-metric-value" style="color:#1565c0;">{totale_prodotti:,}</div>
         </div>
         <div class="admin-metric-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50;">
-            <div class="admin-metric-label" style="color:#2e7d32;">📊 Totale Utilizzi</div>
-            <div class="admin-metric-value" style="color:#1b5e20;">{totale_utilizzi:,}</div>
+            <div class="admin-metric-label" style="color:#2e7d32;">✅ Verificati</div>
+            <div class="admin-metric-value" style="color:#1b5e20;">{verificati:,}</div>
         </div>
-        <div class="admin-metric-card" style="background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0;">
-            <div class="admin-metric-label" style="color:#7b1fa2;">💡 API Risparmiate</div>
-            <div class="admin-metric-value" style="color:#6a1b9a;">{chiamate_risparmiate:,}</div>
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
+            <div class="admin-metric-label" style="color:#ef6c00;">⚠️ Da Verificare</div>
+            <div class="admin-metric-value" style="color:#e65100;">{non_verificati:,}</div>
         </div>
-        {_non_verificati_html}
     </div>
     """, unsafe_allow_html=True)
+
+    if is_admin and campo_verified_exists:
+        if non_verificati > 0:
+            st.warning(
+                f"Ci sono {non_verificati} righe da verificare. Considerale backlog storico: molte sono state classificate prima delle regole nuove, quindi conviene ricontrollarle prima di considerare pulita la memoria globale."
+            )
+        else:
+            st.success("Tutte le righe globali risultano già verificate.")
     
     # ============================================================
     # AZIONI ADMIN
@@ -2585,7 +2622,7 @@ def tab_memoria_globale_unificata():
             
             filtro_verified = st.selectbox(
                 "Stato verifica",
-                ["Da Verificare", "Già Verificate", "Righe €0 Verificate", "Tutte"],
+                ["Da Verificare", "Sospette (regole attuali)", "Già Verificate", "Righe €0 Verificate", "Tutte"],
                 key="filtro_verified"
             )
         else:
@@ -2644,6 +2681,15 @@ def tab_memoria_globale_unificata():
     if is_admin and campo_verified_exists and filtro_verified != "Tutte":
         if filtro_verified == "Da Verificare":
             df_filtrato = df_filtrato[df_filtrato['verified'] == False]
+        elif filtro_verified == "Sospette (regole attuali)":
+            if df_sospette.empty:
+                df_filtrato = df_filtrato.iloc[0:0]
+            else:
+                df_filtrato = df_filtrato.merge(
+                    df_sospette[['id', 'categoria_suggerita', 'motivo_sospetto']],
+                    on='id',
+                    how='inner'
+                )
         elif filtro_verified == "Già Verificate":
             df_filtrato = df_filtrato[df_filtrato['verified'] == True]
         elif filtro_verified == "Righe €0 Verificate":
@@ -2655,8 +2701,11 @@ def tab_memoria_globale_unificata():
             else:
                 df_filtrato = df_filtrato.iloc[0:0]  # Nessun risultato se colonna mancante
     
-    # ORDINA ALFABETICAMENTE per descrizione
-    df_filtrato = df_filtrato.sort_values('descrizione').reset_index(drop=True)
+    # Per il backlog da verificare conviene ordinare per impatto, non solo alfabeticamente.
+    if is_admin and campo_verified_exists and filtro_verified in ("Da Verificare", "Sospette (regole attuali)"):
+        df_filtrato = df_filtrato.sort_values(['volte_visto', 'descrizione'], ascending=[False, True]).reset_index(drop=True)
+    else:
+        df_filtrato = df_filtrato.sort_values('descrizione').reset_index(drop=True)
     
     # ============================================================
     # INFO SEMPLICE + PAGINAZIONE
@@ -2721,6 +2770,11 @@ def tab_memoria_globale_unificata():
         with col_sel_info:
             st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe}")
 
+        st.markdown(
+            f"{badge_review} <span style='color:#666;'>Qui stai guardando il backlog storico non ancora confermato</span>",
+            unsafe_allow_html=True,
+        )
+
         # Bottoni compatti, ravvicinati e allineati a sinistra
         col_actions_left, _spacer = st.columns([2.2, 5.8])
         with col_actions_left:
@@ -2738,6 +2792,18 @@ def tab_memoria_globale_unificata():
                     st.session_state.righe_selezionate.difference_update(righe_pagina_ids)
                     st.session_state.checkbox_refresh_counter += 1  # Forza refresh checkbox
                     st.rerun()
+
+        st.markdown("---")
+        col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
+    elif is_admin and campo_verified_exists and filtro_verified == "Sospette (regole attuali)":
+        st.markdown(
+            f"{badge_review} <span style='color:#666;'>Subset automatico: righe non verificate che oggi il motore classificherebbe diversamente</span>",
+            unsafe_allow_html=True,
+        )
+        if not df_sospette.empty:
+            st.warning(
+                f"Sono state individuate {len(df_sospette)} righe sospette secondo le regole attuali. Questa vista serve per concentrare la review manuale dove la logica nuova segnala una divergenza reale."
+            )
 
         st.markdown("---")
         col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
@@ -2794,9 +2860,25 @@ def tab_memoria_globale_unificata():
         with col_desc:
             desc_short = descrizione[:80] + "..." if len(descrizione) > 80 else descrizione
             # Emoji stato verifica
-            if not verified:
+            if filtro_verified == "Sospette (regole attuali)":
+                categoria_suggerita = row.get('categoria_suggerita', '')
+                motivo_sospetto = row.get('motivo_sospetto', 'dizionario_attuale')
+                st.markdown(
+                    f"<div style='margin:0.15rem 0 0.4rem 0;padding:0.35rem 0.65rem;background:#fff8f1;border-left:4px solid #fb923c;border-radius:8px;font-size:0.82rem;font-weight:700;color:#9a3412;'>Sospetta: oggi il motore propone {categoria_suggerita} ({motivo_sospetto})</div>",
+                    unsafe_allow_html=True,
+                )
+                st.markdown(f"⚠️ `{desc_short}`", help=f"Testo completo: {descrizione}")
+            elif not verified:
+                st.markdown(
+                    "<div style='margin:0.15rem 0 0.4rem 0;padding:0.35rem 0.65rem;background:#fff8f1;border-left:4px solid #fb923c;border-radius:8px;font-size:0.82rem;font-weight:700;color:#9a3412;'>Da verificare: voce storica da ricontrollare</div>",
+                    unsafe_allow_html=True,
+                )
                 st.markdown(f"⚠️ `{desc_short}`", help=f"Testo completo: {descrizione}")
             else:
+                st.markdown(
+                    "<div style='margin:0.15rem 0 0.4rem 0;padding:0.35rem 0.65rem;background:#f3fbf4;border-left:4px solid #4ade80;border-radius:8px;font-size:0.82rem;font-weight:700;color:#166534;'>Verificata: voce già confermata</div>",
+                    unsafe_allow_html=True,
+                )
                 st.markdown(f"✅ `{desc_short}`", help=f"Testo completo: {descrizione}")
         
         # DROPDOWN CATEGORIA (modifica inline)
@@ -3028,12 +3110,8 @@ def tab_memoria_globale_unificata():
                     key="export_unified_csv"
                 )
 
-# Chiama la funzione unificata
-if tab3:
-    tab_memoria_globale_unificata()
-
 # ============================================================
-# TAB 4: MEMORIA CLIENTI (prodotti_utente)
+# VISTA MEMORIA CLIENTI (prodotti_utente)
 # ============================================================
 
 def tab_personalizzazioni_clienti():
@@ -3293,13 +3371,16 @@ def tab_personalizzazioni_clienti():
     st.markdown("---")
     
     # HEADER TABELLA
-    col_check, col_desc, col_cat = st.columns([0.5, 4, 2])
+    col_check, col_desc, col_cat, col_save = st.columns([0.5, 3.5, 2.2, 1.1])
     
     with col_desc:
         st.markdown("**Descrizione**")
     
     with col_cat:
         st.markdown("**Categoria**")
+
+    with col_save:
+        st.markdown("**Salva**")
     
     st.markdown("---")
     
@@ -3310,7 +3391,10 @@ def tab_personalizzazioni_clienti():
         categoria_corrente = row['categoria']
         volte_visto = row['volte_visto']
         
-        col_check, col_desc, col_cat = st.columns([0.5, 4, 2])
+        user_id = row['user_id']
+        email_cliente = row.get('email_cliente', 'Sconosciuto')
+
+        col_check, col_desc, col_cat, col_save = st.columns([0.5, 3.5, 2.2, 1.1])
         
         # CHECKBOX
         with col_check:
@@ -3330,10 +3414,34 @@ def tab_personalizzazioni_clienti():
         with col_desc:
             desc_short = descrizione[:60] + "..." if len(descrizione) > 60 else descrizione
             st.markdown(f"`{desc_short}` ({volte_visto}×)")
+            st.caption(email_cliente)
         
-        # CATEGORIA (solo display, no editing)
+        # CATEGORIA con editing inline
         with col_cat:
-            st.markdown(f"**{categoria_corrente}**")
+            cat_pulita = estrai_nome_categoria(categoria_corrente)
+            index_default = categorie.index(cat_pulita) if cat_pulita in categorie else 0
+            nuova_cat = st.selectbox(
+                "Categoria cliente",
+                categorie,
+                index=index_default,
+                key=f"cat_pers_{row_id}",
+                label_visibility="collapsed"
+            )
+
+        with col_save:
+            if st.button("💾", key=f"save_pers_{row_id}", use_container_width=True, help="Salva categoria locale"):
+                try:
+                    nuova_cat_clean = estrai_nome_categoria(nuova_cat)
+                    _aggiorna_categoria_locale(
+                        local_id=row_id,
+                        descrizione=descrizione,
+                        user_id=user_id,
+                        nuova_categoria=nuova_cat_clean,
+                    )
+                    invalida_cache_memoria()
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Errore salvataggio categoria: {e}")
         
         st.markdown("---")
     
@@ -3415,15 +3523,654 @@ def tab_personalizzazioni_clienti():
                 st.session_state.righe_pers_selezionate = set()
                 st.rerun()
 
-# Chiama la funzione unificata
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _load_all_rows_paginated(table_name: str, select_fields: str):
+    rows = []
+    offset = 0
+    page_size = 1000
+    while True:
+        response = (
+            supabase.table(table_name)
+            .select(select_fields)
+            .order('id', desc=False)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = response.data or []
+        if not batch:
+            break
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+    return rows
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _carica_conflitti_memoria_dataset():
+    global_rows = _load_all_rows_paginated('prodotti_master', 'id, descrizione, categoria, volte_visto')
+    local_rows = _load_all_rows_paginated('prodotti_utente', 'id, descrizione, categoria, volte_visto, user_id, classificato_da')
+
+    if not global_rows or not local_rows:
+        return pd.DataFrame()
+
+    users_resp = supabase.table('users').select('id, email, nome_ristorante').execute()
+    users_map = {
+        row['id']: {
+            'email': row.get('email') or 'Sconosciuto',
+            'nome_ristorante': row.get('nome_ristorante') or 'N/A',
+        }
+        for row in (users_resp.data or [])
+    }
+
+    df_global = pd.DataFrame(global_rows).rename(
+        columns={
+            'id': 'global_id',
+            'categoria': 'categoria_globale',
+            'volte_visto': 'volte_visto_globale',
+        }
+    )
+    df_local = pd.DataFrame(local_rows).rename(
+        columns={
+            'id': 'local_id',
+            'categoria': 'categoria_locale',
+            'volte_visto': 'volte_visto_locale',
+        }
+    )
+
+    for frame in (df_global, df_local):
+        if not frame.empty and 'descrizione' in frame.columns:
+            frame['descrizione'] = frame['descrizione'].apply(
+                lambda value: pulisci_caratteri_corrotti(value) if isinstance(value, str) else value
+            )
+
+    df_conf = df_local.merge(df_global, on='descrizione', how='inner')
+    if df_conf.empty:
+        return pd.DataFrame()
+
+    df_conf = df_conf[df_conf['categoria_locale'] != df_conf['categoria_globale']].copy()
+    if 'classificato_da' in df_conf.columns:
+        df_conf = df_conf[
+            ~df_conf['classificato_da'].fillna('').astype(str).str.contains('eccezione locale accettata', case=False, regex=False)
+        ].copy()
+    if df_conf.empty:
+        return pd.DataFrame()
+
+    df_conf['email_cliente'] = df_conf['user_id'].map(lambda uid: users_map.get(uid, {}).get('email', 'Sconosciuto'))
+    df_conf['ristorante_cliente'] = df_conf['user_id'].map(lambda uid: users_map.get(uid, {}).get('nome_ristorante', 'N/A'))
+    df_conf['impatto_locale'] = df_conf['volte_visto_locale'].fillna(0).astype(int)
+    df_conf['impatto_globale'] = df_conf['volte_visto_globale'].fillna(0).astype(int)
+    df_conf['impatto_totale'] = (df_conf['impatto_locale'] * 10) + df_conf['impatto_globale']
+    return df_conf.sort_values(['impatto_totale', 'descrizione'], ascending=[False, True]).reset_index(drop=True)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _carica_globale_review_dataset():
+    try:
+        rows = _load_all_rows_paginated('prodotti_master', 'id, descrizione, categoria, volte_visto, verified, classificato_da')
+        campo_verified_exists = True
+    except Exception:
+        rows = _load_all_rows_paginated('prodotti_master', 'id, descrizione, categoria, volte_visto')
+        campo_verified_exists = False
+
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(), campo_verified_exists
+
+    df['descrizione'] = df['descrizione'].apply(
+        lambda value: pulisci_caratteri_corrotti(value) if isinstance(value, str) else value
+    )
+    if 'verified' not in df.columns:
+        df['verified'] = False
+    if 'classificato_da' not in df.columns:
+        df['classificato_da'] = ''
+    df['volte_visto'] = df['volte_visto'].fillna(0).astype(int)
+    return df.sort_values(['verified', 'volte_visto', 'descrizione'], ascending=[True, False, True]).reset_index(drop=True), campo_verified_exists
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _carica_audit_mismatch_prodotti_master():
+    from services.ai_service import applica_regole_categoria_forti
+
+    try:
+        rows = _load_all_rows_paginated('prodotti_master', 'id, descrizione, categoria, volte_visto, verified')
+    except Exception:
+        rows = _load_all_rows_paginated('prodotti_master', 'id, descrizione, categoria, volte_visto')
+    if not rows:
+        return pd.DataFrame()
+
+    mismatches = []
+    for row in rows:
+        # Salta voci verificate manualmente dall'admin — decisioni intenzionali
+        if row.get('verified'):
+            continue
+        desc = row.get('descrizione') or ''
+        cat_attuale = row.get('categoria') or 'Da Classificare'
+        nuova_cat, motivo = applica_regole_categoria_forti(desc, cat_attuale)
+        if motivo and nuova_cat != cat_attuale:
+            mismatches.append({
+                'id': row['id'],
+                'descrizione': pulisci_caratteri_corrotti(desc) if isinstance(desc, str) else desc,
+                'categoria_attuale': cat_attuale,
+                'categoria_proposta': nuova_cat,
+                'motivo': motivo,
+                'volte_visto': int(row.get('volte_visto') or 0),
+            })
+
+    if not mismatches:
+        return pd.DataFrame()
+
+    return pd.DataFrame(mismatches).sort_values(['volte_visto', 'descrizione'], ascending=[False, True]).reset_index(drop=True)
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _carica_globale_sospette_dataset():
+    from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti
+
+    try:
+        rows = _load_all_rows_paginated('prodotti_master', 'id, descrizione, categoria, volte_visto, verified, classificato_da')
+    except Exception:
+        rows = _load_all_rows_paginated('prodotti_master', 'id, descrizione, categoria, volte_visto')
+
+    if not rows:
+        return pd.DataFrame()
+
+    sospette = []
+    for row in rows:
+        if row.get('verified'):
+            continue
+
+        desc = row.get('descrizione') or ''
+        cat_attuale = (row.get('categoria') or 'Da Classificare').strip()
+        cat_keyword = applica_correzioni_dizionario(desc, 'Da Classificare')
+        cat_suggerita, motivo = applica_regole_categoria_forti(desc, cat_keyword)
+
+        if not cat_suggerita or cat_suggerita == 'Da Classificare' or cat_suggerita == cat_attuale:
+            continue
+
+        sospette.append({
+            'id': row['id'],
+            'descrizione': pulisci_caratteri_corrotti(desc) if isinstance(desc, str) else desc,
+            'categoria_attuale': cat_attuale,
+            'categoria_suggerita': cat_suggerita,
+            'motivo_sospetto': motivo or 'dizionario_attuale',
+            'classificato_da': row.get('classificato_da') or '',
+            'volte_visto': int(row.get('volte_visto') or 0),
+        })
+
+    if not sospette:
+        return pd.DataFrame()
+
+    return pd.DataFrame(sospette).sort_values(['volte_visto', 'descrizione'], ascending=[False, True]).reset_index(drop=True)
+
+
+# ============================================================
+# AZIONI CONDIVISE: Promozione e Allineamento con cascade fatture
+# ============================================================
+
+def _promuovi_locale_a_globale(global_id: int, local_id: int, descrizione: str,
+                                categoria_locale: str, classificato_da: str):
+    """
+    Promuove una categoria cliente a memoria globale:
+    1. Aggiorna prodotti_master.categoria
+    2. Aggiorna fatture di TUTTI gli utenti SENZA override locale per questa descrizione
+    3. Rimuove l'override locale (prodotti_utente) del cliente promotore
+    """
+    # 1. Aggiorna prodotti_master
+    supabase.table('prodotti_master').update({
+        'categoria': categoria_locale,
+        'verified': True,
+        'classificato_da': classificato_da,
+    }).eq('id', global_id).execute()
+
+    # 2. Cascade fatture con protezione override
+    try:
+        override_resp = supabase.table('prodotti_utente')\
+            .select('user_id, categoria')\
+            .eq('descrizione', descrizione)\
+            .execute()
+
+        user_ids_con_override = {}
+        for row in (override_resp.data or []):
+            uid = row['user_id']
+            if uid:
+                user_ids_con_override[uid] = row['categoria']
+
+        # Aggiorna TUTTE le fatture con questa descrizione
+        supabase.table('fatture')\
+            .update({'categoria': categoria_locale})\
+            .eq('descrizione', descrizione)\
+            .execute()
+
+        # Ripristina fatture degli utenti che hanno ALTRI override locali (non il promotore)
+        for uid, cat_override in user_ids_con_override.items():
+            if cat_override != categoria_locale:
+                supabase.table('fatture')\
+                    .update({'categoria': cat_override})\
+                    .eq('descrizione', descrizione)\
+                    .eq('user_id', uid)\
+                    .execute()
+    except Exception as e:
+        logger.warning(f"⚠️ Errore cascade fatture per '{descrizione[:40]}': {e}")
+
+    # 3. Rimuove l'override locale del promotore
+    supabase.table('prodotti_utente').delete().eq('id', local_id).execute()
+
+
+def _allinea_a_globale(local_id: int, descrizione: str, user_id: str, categoria_globale: str):
+    """
+    Rimuove override locale e riallinea il cliente alla memoria globale:
+    1. Elimina la riga da prodotti_utente
+    2. Aggiorna le fatture del cliente con la categoria globale
+    """
+    # 1. Rimuove override locale
+    supabase.table('prodotti_utente').delete().eq('id', local_id).execute()
+
+    # 2. Aggiorna fatture del cliente
+    try:
+        supabase.table('fatture')\
+            .update({'categoria': categoria_globale})\
+            .eq('descrizione', descrizione)\
+            .eq('user_id', user_id)\
+            .execute()
+    except Exception as e:
+        logger.warning(f"⚠️ Errore aggiornamento fatture cliente per '{descrizione[:40]}': {e}")
+
+
+def _aggiorna_categoria_globale(row_id: int, descrizione: str, nuova_categoria: str,
+                               verified: bool = False, classificato_da: str | None = None):
+    """
+    Aggiorna la categoria globale e propaga la modifica alle fatture,
+    preservando eventuali override locali in prodotti_utente.
+    """
+    payload = {'categoria': nuova_categoria}
+    if verified:
+        payload['verified'] = True
+    if classificato_da:
+        payload['classificato_da'] = classificato_da
+
+    supabase.table('prodotti_master').update(payload).eq('id', row_id).execute()
+
+    try:
+        override_resp = supabase.table('prodotti_utente')\
+            .select('user_id, categoria')\
+            .eq('descrizione', descrizione)\
+            .execute()
+
+        supabase.table('fatture')\
+            .update({'categoria': nuova_categoria})\
+            .eq('descrizione', descrizione)\
+            .execute()
+
+        for ov_row in (override_resp.data or []):
+            supabase.table('fatture')\
+                .update({'categoria': ov_row['categoria']})\
+                .eq('descrizione', descrizione)\
+                .eq('user_id', ov_row['user_id'])\
+                .execute()
+    except Exception as e:
+        logger.warning(f"⚠️ Errore cascade globale per '{descrizione[:40]}': {e}")
+
+
+def _aggiorna_categoria_locale(local_id: int, descrizione: str, user_id: str, nuova_categoria: str):
+    """Aggiorna una categoria locale e propaga la modifica alle fatture del cliente."""
+    supabase.table('prodotti_utente').update({
+        'categoria': nuova_categoria,
+        'classificato_da': 'Admin (edit memoria clienti)',
+        'updated_at': datetime.now(timezone.utc).isoformat(),
+    }).eq('id', local_id).execute()
+
+    try:
+        supabase.table('fatture')\
+            .update({'categoria': nuova_categoria})\
+            .eq('descrizione', descrizione)\
+            .eq('user_id', user_id)\
+            .execute()
+    except Exception as e:
+        logger.warning(f"⚠️ Errore cascade locale per '{descrizione[:40]}': {e}")
+
+
+def _mantieni_locale_solo_cliente(local_id: int, descrizione: str, user_id: str, categoria_locale: str):
+    """Conferma che il conflitto e' intenzionale e deve restare solo per quel cliente."""
+    supabase.table('prodotti_utente').update({
+        'categoria': categoria_locale,
+        'classificato_da': 'Admin (eccezione locale accettata)',
+        'updated_at': datetime.now(timezone.utc).isoformat(),
+    }).eq('id', local_id).execute()
+
+    try:
+        supabase.table('fatture')\
+            .update({'categoria': categoria_locale})\
+            .eq('descrizione', descrizione)\
+            .eq('user_id', user_id)\
+            .execute()
+    except Exception as e:
+        logger.warning(f"⚠️ Errore conferma eccezione locale per '{descrizione[:40]}': {e}")
+
+
+def tab_da_fare_memoria_ai():
+    """Coda operativa prioritaria del nuovo hub Memoria AI."""
+    st.markdown("## ✅ Da fare")
+    st.caption("Qui trovi solo conflitti e anomalie prioritarie. Il resto del backlog resta nel tab Globale.")
+
+    def _priority_badge(label, bg_color, text_color, border_color):
+        return (
+            f"<span style=\"display:inline-block;padding:0.15rem 0.55rem;border-radius:999px;"
+            f"background:{bg_color};color:{text_color};border:1px solid {border_color};"
+            f"font-size:0.78rem;font-weight:700;letter-spacing:0.01em;\">{label}</span>"
+        )
+
+    badge_alta = _priority_badge("ALTA PRIORITA", "#fff3e0", "#e65100", "#ff9800")
+    badge_media = _priority_badge("SOSPETTA", "#fce4ec", "#ad1457", "#e91e63")
+    badge_bassa = _priority_badge("ERRORE", "#e8f5e9", "#1b5e20", "#43a047")
+
+    df_conflitti = _carica_conflitti_memoria_dataset()
+    df_globale, campo_verified_exists = _carica_globale_review_dataset()
+    df_sospette = _carica_globale_sospette_dataset() if campo_verified_exists else pd.DataFrame()
+    df_audit = _carica_audit_mismatch_prodotti_master()
+    categorie = st.session_state.categorie_cached
+
+    non_verificati_totali = 0
+    if not df_globale.empty and campo_verified_exists:
+        non_verificati_totali = int((df_globale['verified'] == False).sum())
+
+    priorita_frames = []
+    ids_sospette = set()
+
+    if not df_sospette.empty:
+        df_sospette_queue = df_sospette.copy()
+        df_sospette_queue['queue_tipo'] = 'Sospetta'
+        df_sospette_queue['categoria_attesa'] = df_sospette_queue['categoria_suggerita']
+        ids_sospette = set(df_sospette_queue['id'].tolist())
+        priorita_frames.append(df_sospette_queue[[
+            'id', 'descrizione', 'categoria_attuale', 'categoria_attesa',
+            'motivo_sospetto', 'classificato_da', 'volte_visto', 'queue_tipo'
+        ]])
+
+    if not df_audit.empty:
+        df_audit_queue = df_audit[~df_audit['id'].isin(ids_sospette)].copy()
+        if not df_audit_queue.empty:
+            df_audit_queue['queue_tipo'] = 'Errore'
+            df_audit_queue['categoria_attesa'] = df_audit_queue['categoria_proposta']
+            df_audit_queue['motivo_sospetto'] = df_audit_queue['motivo']
+            df_audit_queue['classificato_da'] = 'audit'
+            priorita_frames.append(df_audit_queue[[
+                'id', 'descrizione', 'categoria_attuale', 'categoria_attesa',
+                'motivo_sospetto', 'classificato_da', 'volte_visto', 'queue_tipo'
+            ]])
+
+    df_priorita = pd.concat(priorita_frames, ignore_index=True) if priorita_frames else pd.DataFrame(
+        columns=['id', 'descrizione', 'categoria_attuale', 'categoria_attesa', 'motivo_sospetto', 'classificato_da', 'volte_visto', 'queue_tipo']
+    )
+    if not df_priorita.empty:
+        df_priorita = df_priorita.sort_values(['queue_tipo', 'volte_visto', 'descrizione'], ascending=[True, False, True]).reset_index(drop=True)
+
+    backlog_restante_globale = max(non_verificati_totali - df_priorita['id'].nunique(), 0) if campo_verified_exists else 0
+
+    totale_priorita = len(df_conflitti) + len(df_priorita)
+    st.markdown(
+        f"""
+        <div class="admin-metrics-grid">
+            <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
+                <div class="admin-metric-label" style="color:#ef6c00;">🔥 Da fare ora</div>
+                <div class="admin-metric-value" style="color:#e65100;">{totale_priorita:,}</div>
+            </div>
+            <div class="admin-metric-card" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63;">
+                <div class="admin-metric-label" style="color:#c2185b;">⚔️ Conflitti inclusi</div>
+                <div class="admin-metric-value" style="color:#880e4f;">{len(df_conflitti):,}</div>
+            </div>
+            <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
+                <div class="admin-metric-label" style="color:#1976d2;">🌍 Nel tab Globale</div>
+                <div class="admin-metric-value" style="color:#1565c0;">{backlog_restante_globale:,}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if len(df_conflitti) > 0:
+        st.warning(
+            f"Priorita alta: {len(df_conflitti)} conflitti attivi. Sotto trovi solo le anomalie globali realmente prioritarie; il resto resta nel tab Globale."
+        )
+    elif len(df_priorita) > 0:
+        st.info(
+            f"Nessun conflitto attivo. Restano {len(df_priorita)} verifiche prioritarie e {backlog_restante_globale} righe non verificate consultabili nel tab Globale."
+        )
+    else:
+        st.success("Nessuna attivita prioritaria pendente nella memoria AI.")
+
+    st.markdown("---")
+    st.markdown("### 🔥 Coda prioritaria")
+    st.markdown(
+        f"{badge_alta} <span style='color:#666;'>I conflitti sono già inclusi qui e compaiono per primi</span>",
+        unsafe_allow_html=True,
+    )
+    st.caption("Prima risolvi i conflitti tra memoria cliente e globale, poi confermi o correggi le anomalie globali prioritarie.")
+
+    if not df_conflitti.empty:
+        for _, row in df_conflitti.iterrows():
+            desc_short = row['descrizione'][:80] + '...' if len(row['descrizione']) > 80 else row['descrizione']
+            box1, box2, box3, box4 = st.columns([4.2, 1.25, 1.4, 1.4])
+            with box1:
+                st.markdown(f"{badge_alta} `{desc_short}`", unsafe_allow_html=True)
+                st.caption(f"{row['email_cliente']} · locale {row['categoria_locale']} vs globale {row['categoria_globale']}")
+            with box2:
+                if st.button("Globale", key=f"dafare_promote_{row['local_id']}", help="Promuovi categoria cliente a globale", use_container_width=True):
+                    try:
+                        _promuovi_locale_a_globale(
+                            global_id=row['global_id'],
+                            local_id=row['local_id'],
+                            descrizione=row['descrizione'],
+                            categoria_locale=row['categoria_locale'],
+                            classificato_da='Admin (promozione da da-fare conflitti)',
+                        )
+                        invalida_cache_memoria()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Errore promozione: {e}")
+            with box3:
+                if st.button("Solo cliente", key=f"dafare_keep_local_{row['local_id']}", help="Mantieni questa categoria solo per questo cliente", use_container_width=True):
+                    try:
+                        _mantieni_locale_solo_cliente(
+                            local_id=row['local_id'],
+                            descrizione=row['descrizione'],
+                            user_id=row['user_id'],
+                            categoria_locale=row['categoria_locale'],
+                        )
+                        invalida_cache_memoria()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Errore conferma locale: {e}")
+            with box4:
+                if st.button("Usa globale", key=f"dafare_align_{row['local_id']}", help="Rimuovi override locale e riallinea al globale", use_container_width=True):
+                    try:
+                        _allinea_a_globale(
+                            local_id=row['local_id'],
+                            descrizione=row['descrizione'],
+                            user_id=row['user_id'],
+                            categoria_globale=row['categoria_globale'],
+                        )
+                        invalida_cache_memoria()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Errore riallineamento: {e}")
+            st.markdown("---")
+
+    st.markdown(
+        f"{badge_media} <span style='color:#666;'>Sospette secondo le regole attuali</span> "
+        f"{badge_bassa} <span style='color:#666;'>Mismatch audit da correggere</span>",
+        unsafe_allow_html=True,
+    )
+    st.caption("Dopo i conflitti trovi solo errori e sospette prioritarie. Tutte le altre righe non verificate restano nel tab Globale.")
+
+    if df_priorita.empty:
+        if df_conflitti.empty:
+            st.success("Nessuna attivita prioritaria da gestire")
+            return
+        st.info("Non restano altre anomalie prioritarie oltre ai conflitti.")
+
+    if 'dafare_priorita_selezionate' not in st.session_state:
+        st.session_state.dafare_priorita_selezionate = set()
+    if 'dafare_priorita_refresh' not in st.session_state:
+        st.session_state.dafare_priorita_refresh = 0
+
+    righe_priorita_ids = set(df_priorita['id'].tolist())
+
+    col_sel_title, col_sel_info = st.columns([2, 4])
+    with col_sel_title:
+        st.markdown("#### Selezione rapida")
+    with col_sel_info:
+        st.caption(f"Righe prioritarie mostrate: {len(df_priorita)}")
+
+    col_sel_all, col_desel_all, col_hint = st.columns([1.2, 1.2, 4.6])
+    with col_sel_all:
+        if st.button("☑️ Seleziona tutte", key="dafare_select_all_priorita", use_container_width=True):
+            st.session_state.dafare_priorita_selezionate.update(righe_priorita_ids)
+            st.session_state.dafare_priorita_refresh += 1
+            st.rerun()
+    with col_desel_all:
+        if st.button("⬜ Deseleziona tutte", key="dafare_deselect_all_priorita", use_container_width=True):
+            st.session_state.dafare_priorita_selezionate.difference_update(righe_priorita_ids)
+            st.session_state.dafare_priorita_refresh += 1
+            st.rerun()
+    with col_hint:
+        st.caption("Seleziona le righe che vuoi confermare in blocco, poi salva tutto in fondo.")
+
+    st.markdown("---")
+
+    col_check_h, col_desc_h, col_cat_h, col_info_h = st.columns([0.55, 4.1, 2.3, 1.5])
+    with col_desc_h:
+        st.markdown("**Descrizione**")
+    with col_cat_h:
+        st.markdown("**Categoria**")
+    with col_info_h:
+        st.markdown("**Info**")
+    st.markdown("---")
+
+    selezionate_correnti = set()
+    for _, row in df_priorita.iterrows():
+        row_id = row['id']
+        categoria_default = estrai_nome_categoria(row['categoria_attesa'])
+        index_default = categorie.index(categoria_default) if categoria_default in categorie else 0
+        badge = badge_media if row['queue_tipo'] == 'Sospetta' else badge_bassa
+
+        col_check, col_desc, col_cat, col_info = st.columns([0.55, 4.1, 2.3, 1.5])
+        with col_check:
+            checked = st.checkbox(
+                "sel",
+                value=row_id in st.session_state.dafare_priorita_selezionate,
+                key=f"dafare_chk_{row_id}_r{st.session_state.dafare_priorita_refresh}",
+                label_visibility="collapsed",
+            )
+            if checked:
+                selezionate_correnti.add(row_id)
+
+        with col_desc:
+            desc_short = row['descrizione'][:90] + '...' if len(row['descrizione']) > 90 else row['descrizione']
+            st.markdown(f"{badge} `{desc_short}`", unsafe_allow_html=True)
+            st.caption(
+                f"{row['queue_tipo']} · {row['categoria_attuale']} → {row['categoria_attesa']} · {row['motivo_sospetto']} · {int(row['volte_visto'])}×"
+            )
+
+        with col_cat:
+            st.selectbox(
+                "Categoria prioritaria",
+                categorie,
+                index=index_default,
+                key=f"dafare_priorita_cat_{row_id}",
+                label_visibility="collapsed",
+            )
+
+        with col_info:
+            sorgente = (row.get('classificato_da') or 'N/D').replace('keyword-auto', 'keyword').replace('AI', 'AI')
+            st.caption(sorgente)
+
+        st.markdown("---")
+
+    st.session_state.dafare_priorita_selezionate = selezionate_correnti
+    num_selezionate = len(selezionate_correnti)
+
+    if num_selezionate == 0:
+        st.info("Seleziona una o più righe prioritarie per salvarle in blocco.")
+        return
+
+    righe_selezionate_df = df_priorita[df_priorita['id'].isin(selezionate_correnti)].copy()
+    num_modifiche = 0
+    for _, row in righe_selezionate_df.iterrows():
+        nuova_cat = estrai_nome_categoria(st.session_state.get(f"dafare_priorita_cat_{row['id']}", row['categoria_attesa']))
+        if nuova_cat != row['categoria_attuale']:
+            num_modifiche += 1
+
+    st.markdown("### 💾 Salvataggio massivo")
+    st.info(
+        f"Hai selezionato {num_selezionate} righe prioritarie. Tra queste, {num_modifiche} avranno una categoria diversa da quella attuale."
+    )
+
+    col_save, col_cancel = st.columns([2, 1])
+    with col_save:
+        if st.button(f"💾 Salva e conferma ({num_selezionate})", type="primary", use_container_width=True, key="dafare_save_massivo"):
+            try:
+                with st.spinner("Salvataggio massivo in corso..."):
+                    success_count = 0
+                    for _, row in righe_selezionate_df.iterrows():
+                        nuova_cat = estrai_nome_categoria(st.session_state.get(f"dafare_priorita_cat_{row['id']}", row['categoria_attesa']))
+                        _aggiorna_categoria_globale(
+                            row_id=row['id'],
+                            descrizione=row['descrizione'],
+                            nuova_categoria=nuova_cat,
+                            verified=True,
+                            classificato_da=f"Admin (da fare {str(row['queue_tipo']).lower()})",
+                        )
+                        success_count += 1
+
+                    invalida_cache_memoria()
+                    st.session_state.dafare_priorita_selezionate = set()
+                    st.session_state.dafare_priorita_refresh += 1
+                    st.success(f"✅ {success_count} righe prioritarie salvate e confermate")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Errore salvataggio massivo: {e}")
+    with col_cancel:
+        if st.button("❌ Annulla selezione", use_container_width=True, key="dafare_cancel_massivo"):
+            st.session_state.dafare_priorita_selezionate = set()
+            st.session_state.dafare_priorita_refresh += 1
+            st.rerun()
+def tab_memoria_ai_hub():
+    """Hub unificato e semplificato per memoria AI."""
+    st.markdown("## 🧠 Memoria AI")
+    st.caption("Accesso semplice e immediato: da fare, memoria globale, memoria clienti")
+
+    if 'vista_memoria_ai' not in st.session_state:
+        st.session_state.vista_memoria_ai = "✅ Da fare"
+
+    vista_memoria = st.radio(
+        "Vista Memoria AI",
+        ["✅ Da fare", "🌍 Globale", "👤 Clienti"],
+        horizontal=True,
+        key="vista_memoria_ai",
+        label_visibility="collapsed",
+    )
+
+    st.markdown("---")
+
+    if vista_memoria == "✅ Da fare":
+        tab_da_fare_memoria_ai()
+    elif vista_memoria == "🌍 Globale":
+        tab_memoria_globale_unificata()
+    else:
+        tab_personalizzazioni_clienti()
+
+
+# Chiama il nuovo hub unificato
+if tab3:
+    tab_memoria_ai_hub()
+
+# ============================================================
+# TAB 4: VERIFICA INTEGRITÀ DATABASE
+# ============================================================
+
 if tab4:
-    tab_personalizzazioni_clienti()
-
-# ============================================================
-# TAB 5: VERIFICA INTEGRITÀ DATABASE (era TAB 4)
-# ============================================================
-
-if tab5:
     st.markdown("## 🔍 Verifica Integrità Database")
     st.caption("Controlla anomalie nei dati delle fatture: date invalide, prezzi anomali, quantità strane, descrizioni vuote, duplicati, ecc.")
 
@@ -3851,147 +4598,182 @@ if tab5:
 # TAB 6: COSTI AI PER CLIENTE (era TAB 5)
 # ============================================================
 
-if tab6:
+if tab5:
     st.markdown("## 💳 Costi AI per Cliente")
-    st.caption("Monitoraggio utilizzo e costi OpenAI per estrazione PDF e categorizzazione prodotti")
+    st.caption("Monitoraggio reale dei costi AI per periodo, cliente e tipo operazione")
     
     try:
-        # Carica dati costi AI usando funzione RPC
-        response = supabase.rpc('get_ai_costs_summary').execute()
-        
+        periodo_options = {
+            'Ultimi 7 giorni': 7,
+            'Ultimi 30 giorni': 30,
+            'Ultimi 90 giorni': 90,
+            'Tutto': None,
+        }
+        col_periodo, col_refresh = st.columns([2, 1])
+        with col_periodo:
+            periodo_label = st.selectbox(
+                'Periodo',
+                list(periodo_options.keys()),
+                index=1,
+                key='ai_costs_period',
+            )
+        with col_refresh:
+            st.markdown('<br>', unsafe_allow_html=True)
+            if st.button('🔄 Aggiorna', key='refresh_ai_costs', use_container_width=True):
+                st.rerun()
+
+        days_value = periodo_options[periodo_label]
+        summary_args = {'p_days': days_value} if days_value is not None else {}
+        timeseries_args = {'p_days': days_value or 30}
+        recent_args = {'p_days': days_value or 30, 'p_limit': 100}
+
+        response = supabase.rpc('get_ai_costs_summary', summary_args).execute()
+        timeseries_response = supabase.rpc('get_ai_costs_timeseries', timeseries_args).execute()
+        recent_response = supabase.rpc('get_ai_recent_operations', recent_args).execute()
+
         if not response.data or len(response.data) == 0:
-            st.info("📊 Nessun utilizzo AI registrato. I costi verranno tracciati automaticamente quando i clienti caricano PDF o immagini.")
+            st.info('📊 Nessun utilizzo AI registrato nel periodo selezionato.')
         else:
             df_costs = pd.DataFrame(response.data)
-            
-            # ⚠️ BACKWARDS COMPATIBILITY: Aggiungi colonna se non esiste (pre-migrazione)
-            if 'ai_categorization_count' not in df_costs.columns:
-                st.warning("⚠️ **Migrazione database necessaria!** Esegui `migrations/014_add_ai_cost_tracking.sql` per abilitare tracking categorizzazioni.")
-                df_costs['ai_categorization_count'] = 0
-                df_costs['ai_avg_cost_per_operation'] = df_costs.get('ai_avg_cost_per_pdf', 0)
-            
-            # ============================================================
-            # STATISTICHE GENERALI (CARD STILIZZATE)
-            # ============================================================
-            st.markdown("### 📊 Riepilogo Globale")
-            
-            totale_costi = df_costs['ai_cost_total'].sum()
+            df_timeseries = pd.DataFrame(timeseries_response.data or [])
+            df_recent = pd.DataFrame(recent_response.data or [])
+
+            st.markdown('### 📊 Riepilogo Globale')
+
+            totale_costi = float(df_costs['ai_cost_total'].sum())
             totale_pdf = int(df_costs['ai_pdf_count'].sum())
             totale_categorization = int(df_costs['ai_categorization_count'].sum())
             totale_operazioni = totale_pdf + totale_categorization
+            totale_pdf_cost = float(df_costs['pdf_cost_total'].sum())
+            totale_categorization_cost = float(df_costs['categorization_cost_total'].sum())
+            totale_tokens = int(df_costs['total_tokens'].sum())
             costo_medio = totale_costi / totale_operazioni if totale_operazioni > 0 else 0
-            clienti_attivi = len(df_costs[(df_costs['ai_pdf_count'] > 0) | (df_costs['ai_categorization_count'] > 0)])
-            
+            costo_medio_pdf = totale_pdf_cost / totale_pdf if totale_pdf > 0 else 0
+            costo_medio_categ = totale_categorization_cost / totale_categorization if totale_categorization > 0 else 0
+            clienti_attivi = len(df_costs)
+
             st.markdown(f"""
             <div class="admin-metrics-grid">
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63;">
                     <div class="admin-metric-label" style="color:#c2185b;">💰 Totale Costi</div>
-                    <div class="admin-metric-value" style="color:#880e4f;">${totale_costi:.2f}</div>
+                    <div class="admin-metric-value" style="color:#880e4f;">${totale_costi:.4f}</div>
                 </div>
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
-                    <div class="admin-metric-label" style="color:#1976d2;">📄 PDF Processati</div>
-                    <div class="admin-metric-value" style="color:#1565c0;">{totale_pdf:,}</div>
+                    <div class="admin-metric-label" style="color:#1976d2;">📄 Costo PDF</div>
+                    <div class="admin-metric-value" style="color:#1565c0;">${totale_pdf_cost:.4f}</div>
                 </div>
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0;">
-                    <div class="admin-metric-label" style="color:#7b1fa2;">🧠 Categorizzazioni</div>
-                    <div class="admin-metric-value" style="color:#6a1b9a;">{totale_categorization:,}</div>
+                    <div class="admin-metric-label" style="color:#7b1fa2;">🧠 Costo Categ.</div>
+                    <div class="admin-metric-value" style="color:#6a1b9a;">${totale_categorization_cost:.4f}</div>
                 </div>
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
                     <div class="admin-metric-label" style="color:#e65100;">📊 Costo Medio</div>
                     <div class="admin-metric-value" style="color:#e65100;">${costo_medio:.4f}</div>
                 </div>
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50;">
-                    <div class="admin-metric-label" style="color:#2e7d32;">👥 Clienti Attivi</div>
-                    <div class="admin-metric-value" style="color:#1b5e20;">{clienti_attivi}</div>
+                    <div class="admin-metric-label" style="color:#2e7d32;">🔢 Token Totali</div>
+                    <div class="admin-metric-value" style="color:#1b5e20;">{totale_tokens:,}</div>
+                </div>
+                <div class="admin-metric-card" style="background:linear-gradient(135deg,#ede7f6,#d1c4e9); border:2px solid #673ab7;">
+                    <div class="admin-metric-label" style="color:#512da8;">👥 Clienti Attivi</div>
+                    <div class="admin-metric-value" style="color:#4527a0;">{clienti_attivi}</div>
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            
-            # ============================================================
-            # TABELLA DETTAGLIO PER CLIENTE
-            # ============================================================
-            st.markdown("### 📋 Dettaglio per Cliente")
-            
-            # Prepara DataFrame per visualizzazione
-            df_display = df_costs[(df_costs['ai_pdf_count'] > 0) | (df_costs['ai_categorization_count'] > 0)].copy()
-            
-            if len(df_display) > 0:
-                df_display['Cliente'] = df_display['nome_ristorante']
-                df_display['Ragione Sociale'] = df_display['ragione_sociale'].fillna('-')
-                df_display['PDF'] = df_display['ai_pdf_count'].astype(int)
-                df_display['Categorizzazioni'] = df_display['ai_categorization_count'].astype(int)
-                df_display['Tot Operazioni'] = (df_display['ai_pdf_count'] + df_display['ai_categorization_count']).astype(int)
-                df_display['Costo Totale'] = df_display['ai_cost_total'].apply(lambda x: f"${x:.4f}")
-                df_display['Costo/Op'] = df_display['ai_avg_cost_per_operation'].apply(lambda x: f"${x:.4f}")
-                df_display['Ultimo Uso'] = pd.to_datetime(df_display['ai_last_usage']).dt.strftime('%Y-%m-%d %H:%M')
-                
-                # Mostra tabella
+
+            st.caption(
+                f'Operazioni nel periodo: {totale_operazioni:,} | '
+                f'PDF: {totale_pdf:,} (${costo_medio_pdf:.4f}/pdf) | '
+                f'Categorizzazioni: {totale_categorization:,} (${costo_medio_categ:.4f}/batch)'
+            )
+
+            st.markdown('### 📋 Dettaglio per Cliente')
+            df_display = df_costs.copy()
+            df_display['Cliente'] = df_display['nome_ristorante']
+            df_display['Ragione Sociale'] = df_display['ragione_sociale'].fillna('-')
+            df_display['PDF'] = df_display['ai_pdf_count'].astype(int)
+            df_display['Categorizzazioni'] = df_display['ai_categorization_count'].astype(int)
+            df_display['Costo PDF'] = df_display['pdf_cost_total'].apply(lambda x: f"${float(x):.4f}")
+            df_display['Costo Categ.'] = df_display['categorization_cost_total'].apply(lambda x: f"${float(x):.4f}")
+            df_display['Costo Totale'] = df_display['ai_cost_total'].apply(lambda x: f"${float(x):.4f}")
+            df_display['Costo/Op'] = df_display['ai_avg_cost_per_operation'].apply(lambda x: f"${float(x):.4f}")
+            df_display['Token'] = df_display['total_tokens'].astype(int)
+            df_display['Ultimo Uso'] = pd.to_datetime(df_display['ai_last_usage']).dt.strftime('%Y-%m-%d %H:%M')
+
+            st.dataframe(
+                df_display[['Cliente', 'Ragione Sociale', 'PDF', 'Categorizzazioni', 'Costo PDF', 'Costo Categ.', 'Costo Totale', 'Costo/Op', 'Token', 'Ultimo Uso']],
+                width='stretch',
+                hide_index=True,
+            )
+
+            st.markdown('---')
+            col_export, col_spacer = st.columns([2, 8])
+            with col_export:
+                csv_data = df_display[['Cliente', 'Ragione Sociale', 'PDF', 'Categorizzazioni', 'Costo PDF', 'Costo Categ.', 'Costo Totale', 'Costo/Op', 'Token', 'Ultimo Uso']].to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label='📥 Esporta CSV',
+                    data=csv_data,
+                    file_name=f"costi_ai_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime='text/csv',
+                    use_container_width=True,
+                )
+
+            if not df_timeseries.empty:
+                st.markdown('---')
+                st.markdown('### 📈 Andamento Costi')
+                df_timeseries['usage_date'] = pd.to_datetime(df_timeseries['usage_date'])
+                fig_trend = px.line(
+                    df_timeseries,
+                    x='usage_date',
+                    y=['total_cost', 'pdf_cost', 'categorization_cost'],
+                    markers=True,
+                    title='Trend costi AI nel periodo',
+                    labels={'usage_date': '', 'value': 'Costo ($)', 'variable': 'Serie'},
+                )
+                fig_trend.update_layout(height=380)
+                st.plotly_chart(fig_trend, use_container_width=True)
+
+            st.markdown('---')
+            st.markdown('### 📈 Top 10 Clienti per Costo')
+            df_top = df_costs.nlargest(10, 'ai_cost_total').copy()
+            df_top['Cliente'] = df_top['nome_ristorante']
+            fig = px.bar(
+                df_top,
+                x='Cliente',
+                y='ai_cost_total',
+                title='Costi AI per Cliente (Top 10)',
+                labels={'ai_cost_total': 'Costo ($)', 'Cliente': ''},
+                color='ai_cost_total',
+                color_continuous_scale='Blues'
+            )
+            fig.update_layout(showlegend=False, xaxis_tickangle=-45, height=400)
+            st.plotly_chart(fig, use_container_width=True)
+
+            if not df_recent.empty:
+                st.markdown('---')
+                st.markdown('### 🧾 Ultime Operazioni AI')
+                df_recent['Quando'] = pd.to_datetime(df_recent['created_at']).dt.strftime('%Y-%m-%d %H:%M')
+                df_recent['Cliente'] = df_recent['nome_ristorante']
+                df_recent['Tipo'] = df_recent['operation_type'].replace({'pdf': 'PDF', 'categorization': 'Categorizzazione', 'other': 'Altro'})
+                df_recent['Costo'] = df_recent['total_cost'].apply(lambda x: f"${float(x):.6f}")
+                df_recent['Token'] = df_recent['total_tokens'].astype(int)
+                df_recent['Item'] = df_recent['item_count'].astype(int)
+                df_recent['File'] = df_recent['source_file'].fillna('-')
                 st.dataframe(
-                    df_display[['Cliente', 'Ragione Sociale', 'PDF', 'Categorizzazioni', 'Tot Operazioni', 'Costo Totale', 'Costo/Op', 'Ultimo Uso']],
+                    df_recent[['Quando', 'Cliente', 'Tipo', 'model', 'Item', 'Token', 'Costo', 'File']],
                     width='stretch',
-                    hide_index=True
+                    hide_index=True,
                 )
-                
-                # ============================================================
-                # EXPORT CSV
-                # ============================================================
-                st.markdown("---")
-                col_export, col_spacer = st.columns([2, 8])
-                
-                with col_export:
-                    csv_data = df_display[['Cliente', 'Ragione Sociale', 'PDF', 'Categorizzazioni', 'Tot Operazioni', 'Costo Totale', 'Costo/Op', 'Ultimo Uso']].to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Esporta CSV",
-                        data=csv_data,
-                        file_name=f"costi_ai_{datetime.now().strftime('%Y%m%d')}.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                
-                # ============================================================
-                # GRAFICO TOP CLIENTI
-                # ============================================================
-                st.markdown("---")
-                st.markdown("### 📈 Top 10 Clienti per Costo")
-                
-                df_top = df_display.nlargest(10, 'ai_cost_total')
-                
-                fig = px.bar(
-                    df_top,
-                    x='Cliente',
-                    y='ai_cost_total',
-                    title='Costi AI per Cliente (Top 10)',
-                    labels={'ai_cost_total': 'Costo ($)', 'Cliente': ''},
-                    color='ai_cost_total',
-                    color_continuous_scale='Blues'
-                )
-                
-                fig.update_layout(
-                    showlegend=False,
-                    xaxis_tickangle=-45,
-                    height=400
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-                
-                # ============================================================
-                # INFO E NOTE
-                # ============================================================
-                st.markdown("---")
-                st.info("""
-                **ℹ️ Note:**
-                - I costi sono calcolati in base al modello **GPT-4o-mini** (sia Vision che Text)
-                - **PDF Vision**: ~$0.02-0.04 per documento (dipende da complessità e numero prodotti)
-                - **Categorizzazione**: ~$0.001-0.005 per batch (molto economico)
-                - I file **XML sono gratuiti** (parsing locale, nessun costo AI)
-                - Per ridurre i costi, incoraggia i clienti a usare XML quando possibile
-                - La categorizzazione AI viene usata solo per prodotti "Da Classificare"
-                """)
-            else:
-                st.warning("Nessun cliente ha ancora utilizzato funzioni AI")
+
+            st.markdown('---')
+            st.info(
+                'I costi ora sono letti da un ledger eventi AI: puoi analizzarli per periodo, split PDF/categorizzazione e ultime operazioni. '
+                'I file XML restano gratuiti.'
+            )
     
     except Exception as e:
         st.error("❌ Errore caricamento dati Costi AI.")
         logger.exception("Errore nel tab Costi AI")
         with st.expander("🔍 Dettagli Errore"):
             st.code(traceback.format_exc())
+
