@@ -19,7 +19,7 @@ Sei un senior software engineer specializzato in Python, Streamlit e Supabase.
 Devi eseguire un audit completo e approfondito dell'intera applicazione OH YEAH!
 
 Analizza TUTTI i file del progetto in questo ordine:
-app.py, pages/admin.py, pages/2workspace.py, pages/1calcolomargine.py,
+app.py, pages/admin.py, pages/2_foodcost.py, pages/1calcolomargine.py,
 pages/3controlloprezzi.py, pages/gestioneaccount.py,
 services/aiservice.py, services/authservice.py, services/invoiceservice.py,
 services/dbservice.py, services/margineservice.py, services/emailservice.py,

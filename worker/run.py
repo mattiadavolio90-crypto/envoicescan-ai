@@ -22,6 +22,9 @@ ENV VARS:
     WORKER_XML_RETENTION_HOURS    default 24  (GDPR purge)
     WORKER_STALE_LOCK_MINUTES     default 10  (lock recovery)
     WORKER_ID_PREFIX              default "gh-action"
+    WORKER_POLL_INTERVAL_SECONDS  default 15  (attesa tra cicli a coda vuota)
+    WORKER_ERROR_BACKOFF_SECONDS  default 30  (backoff iniziale su errore)
+    WORKER_MAX_BACKOFF_SECONDS    default 300 (cap backoff su errore)
 
 EXIT CODES:
     0  — ciclo completato (anche se coda vuota)
@@ -56,6 +59,10 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 logger = logging.getLogger("worker.run")
+
+WORKER_POLL_INTERVAL_SECONDS = int(os.environ.get("WORKER_POLL_INTERVAL_SECONDS", "15"))
+WORKER_ERROR_BACKOFF_SECONDS = int(os.environ.get("WORKER_ERROR_BACKOFF_SECONDS", "30"))
+WORKER_MAX_BACKOFF_SECONDS = int(os.environ.get("WORKER_MAX_BACKOFF_SECONDS", "300"))
 
 # ─── Assicura PROJECT_ROOT in sys.path ────────────────────────────────────────
 if _ROOT not in sys.path:
@@ -109,8 +116,7 @@ def _ensure_streamlit_available() -> bool:
 
 
 def main() -> int:
-    t_start = time.monotonic()
-    logger.info("==== worker fatture_queue - avvio ====")
+    logger.info("==== worker fatture_queue - loop continuo ====")
 
     # ── Validazione env vars ──────────────────────────────────────────────────
     if not _check_env():
@@ -126,27 +132,42 @@ def main() -> int:
         logger.exception("Impossibile importare queue_processor: %s", exc)
         return 1
 
-    # ── Esegui ciclo ─────────────────────────────────────────────────────────
-    try:
-        stats = run_cycle()
-    except Exception as exc:
-        logger.exception("Errore critico durante run_cycle: %s", exc)
-        return 1
+    consecutive_failures = 0
 
-    elapsed = time.monotonic() - t_start
-    stats.log_summary()
+    while True:
+        cycle_started_at = time.monotonic()
+        try:
+            stats = run_cycle()
+            stats.log_summary()
+            consecutive_failures = 0
 
-    logger.info(
-        "==== worker completato in %.1fs - done=%d retry=%d dead=%d skip=%d ====",
-        elapsed,
-        stats.done,
-        stats.retry_scheduled,
-        stats.dead,
-        stats.skipped,
-    )
-
-    # Exit 0 sempre (anche coda vuota): GitHub Actions non deve fallire per coda vuota
-    return 0
+            sleep_seconds = 1 if stats.batch_claimed > 0 else WORKER_POLL_INTERVAL_SECONDS
+            logger.info(
+                "worker sleep=%ss elapsed=%.1fs claimed=%d done=%d retry=%d dead=%d skip=%d",
+                sleep_seconds,
+                time.monotonic() - cycle_started_at,
+                stats.batch_claimed,
+                stats.done,
+                stats.retry_scheduled,
+                stats.dead,
+                stats.skipped,
+            )
+            time.sleep(sleep_seconds)
+        except KeyboardInterrupt:
+            logger.info("Stop richiesto - chiusura pulita")
+            return 0
+        except Exception as exc:
+            consecutive_failures += 1
+            backoff_seconds = min(
+                WORKER_ERROR_BACKOFF_SECONDS * consecutive_failures,
+                WORKER_MAX_BACKOFF_SECONDS,
+            )
+            logger.exception(
+                "Errore ciclo worker (failure=%d): %s",
+                consecutive_failures,
+                exc,
+            )
+            time.sleep(backoff_seconds)
 
 
 if __name__ == "__main__":

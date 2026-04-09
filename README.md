@@ -16,6 +16,7 @@ Analizza fatture elettroniche (XML, P7M, PDF), categorizza i prodotti con intell
 ##  Funzionalità
 
 - Analisi automatica fatture XML/P7M/PDF
+- Ricezione automatica fatture SDI via Invoicetronic
 - Categorizzazione prodotti con AI (OpenAI GPT-4o-mini)
 - Dashboard margini mensili (Food, Beverage, Spese Generali)
 - Confronto prezzi fornitori
@@ -34,11 +35,13 @@ Analizza fatture elettroniche (XML, P7M, PDF), categorizza i prodotti con intell
 |---|---|
 | Frontend/App | Streamlit |
 | Database | Supabase (PostgreSQL) |
+| Ingestion SDI | Invoicetronic + Supabase Edge Function |
+| Worker API | FastAPI |
 | AI | OpenAI GPT-4o-mini |
 | Email | Brevo SMTP API |
 | Password hashing | Argon2 |
-| Hosting | Streamlit Cloud |
-| Monitoraggio | GitHub Actions (uptime check ogni 5 min) |
+| Hosting | Streamlit Cloud + Railway |
+| Monitoraggio | GitHub Actions (uptime check ogni 15 min) |
 
 ---
 
@@ -59,7 +62,7 @@ Su Windows il lockfile esclude automaticamente uvloop, che non e' supportato dal
 
 ### Misure di sicurezza implementate
 - Password hash Argon2 (m=65536, t=3)
-- Sessioni con scadenza 30 giorni
+- Sessioni con scadenza 30 giorni e token opachi generati con `secrets.token_urlsafe(32)`
 - Rate limiting login (5 tentativi  blocco 15 min)
 - Rate limiting reset password (5 min cooldown)
 - Validazione magic bytes su file caricati (PDF, XML, P7M)
@@ -69,7 +72,7 @@ Su Windows il lockfile esclude automaticamente uvloop, che non e' supportato dal
 - Budget giornaliero AI: max 1000 chiamate/giorno
 - Rotazione log automatica: 50 MB / 10 backup
 - PII rimossi dai log (GDPR Art. 32)
-- XSRF protection attiva, CORS disabilitato
+- XSRF protection attiva, CORS limitato a origin espliciti
 
 ### Strategia di Backup
 

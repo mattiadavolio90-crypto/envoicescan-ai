@@ -2,7 +2,7 @@
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 4.2 | Ultimo aggiornamento: 30 Marzo 2026 | Autore: Mattia D'Avolio  
+Versione: 5.1 | Ultimo aggiornamento: 9 Aprile 2026 | Autore: Mattia D'Avolio  
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato) | URL: https://ohyeah.streamlit.app/
 
 ---
@@ -13,12 +13,14 @@ OH YEAH! Hub è una piattaforma SaaS web-based per ristoratori italiani che anal
 
 **Funzionalità principali:**
 - Caricamento fatture (XML/FatturaPA, P7M, PDF, JPG/PNG)
+- Ricezione automatica fatture via Invoicetronic (codice dest. `7HD37X0`)
 - Classificazione automatica AI in 29 categorie merceologiche (600+ keyword + GPT-4o-mini)
 - Dashboard KPI, grafici Plotly, pivot mensili per categoria e fornitore
+- Notifiche in-app per upload, prezzi, dati mancanti (6 tipologie)
 - Calcolo Margine Operativo Lordo (MOL) con centri di produzione
 - Gestione multi-ristorante (un account, più locali)
 - Controllo variazioni prezzi, sconti, note di credito
-- Export Excel, Privacy Policy GDPR, Terms of Service
+- Export Excel, Privacy Policy GDPR v3.2, Terms of Service
 
 **Pubblico target:** ristoratori, piccole catene (2–5 locali), consulenti F&B
 
@@ -33,9 +35,11 @@ OH YEAH! Hub è una piattaforma SaaS web-based per ristoratori italiani che anal
 | Database | Supabase (PostgreSQL 15) | EU Frankfurt, RLS attivo |
 | AI/ML | OpenAI GPT-4o-mini | Batch 50 articoli, ~0.15$/1M token |
 | Email | Brevo SMTP API v3 | 300 email/giorno, free tier |
-| Password hashing | Argon2id | m=65536, t=3, p=4 (OWASP 2026) |
-| CI/CD | GitHub Actions | Uptime check ogni 5 minuti |
-| Deploy | Streamlit Community Cloud | Auto-deploy da branch `main` |
+| Password hashing | Argon2id | m=65536, parametri default libreria (OWASP) |
+| CI/CD | GitHub Actions | Uptime check ogni 5 min + Worker coda ogni 15 min |
+| Deploy frontend | Streamlit Community Cloud | Auto-deploy da branch `main` |
+| Deploy worker | Railway | FastAPI Worker Docker (classificazione AI scalabile) |
+| SDI Intermediario | Invoicetronic | Ricezione fatture SDI, codice dest. `7HD37X0` |
 | Cookie | extra-streamlit-components | Secure=True, SameSite=Strict (no HttpOnly) |
 
 **Pacchetti chiave:** `supabase`, `openai`, `argon2-cffi`, `pandas`, `plotly`, `openpyxl`, `xmltodict`, `asn1crypto`, `PyMuPDF`, `tenacity`, `charset-normalizer`, `requests`
@@ -46,39 +50,49 @@ OH YEAH! Hub è una piattaforma SaaS web-based per ristoratori italiani che anal
 
 ```
 Oh Yeah! Hub/
-├── app.py                    # Entry point (~1.651 righe): auth, dashboard, upload, AI, export
+├── app.py                    # Entry point (~2.492 righe): auth, dashboard, upload, AI, export
 ├── pages/
-│   ├── admin.py              # Pannello admin 6 tab (~3.942 righe)
-│   ├── 1_calcolo_margine.py  # MOL e centri di produzione (~1.546 righe)
-│   ├── 2_workspace.py        # Ricette, ingredienti, diario (~2.125 righe)
-│   ├── 3_controllo_prezzi.py # Variazioni prezzi, sconti, NC (~584 righe)
-│   ├── gestione_account.py   # Cambio password, export GDPR (~384 righe)
-│   └── privacy_policy.py     # Privacy Policy + Terms of Service
+│   ├── admin.py              # Pannello admin 6 tab (~4.470 righe)
+│   ├── 1_calcolo_margine.py  # MOL e centri di produzione (~1.604 righe)
+│   ├── 2_foodcost.py         # Foodcost, ricette, ingredienti, diario (~2.139 righe)
+│   ├── 3_controllo_prezzi.py # Variazioni prezzi, sconti, NC (~586 righe)
+│   ├── gestione_account.py   # Cambio password, export GDPR (~457 righe)
+│   └── privacy_policy.py     # Privacy Policy v3.2 + Terms of Service
 ├── services/
-│   ├── ai_service.py         # Classificazione AI + memoria 3 livelli (~980 righe)
-│   ├── auth_service.py       # Login, reset, rate limiting, GDPR (~841 righe)
-│   ├── invoice_service.py    # Parsing XML/P7M/PDF/Vision (~1.246 righe)
-│   ├── db_service.py         # Query Supabase + cache + paginazione (~972 righe)
+│   ├── ai_service.py         # Classificazione AI + memoria 3 livelli (~1.908 righe)
+│   ├── ai_cost_service.py    # Tracking costi OpenAI per ristorante (~94 righe)
+│   ├── auth_service.py       # Login, reset, rate limiting, GDPR (~1.143 righe)
+│   ├── invoice_service.py    # Parsing XML/P7M/PDF/Vision (~1.272 righe)
+│   ├── db_service.py         # Query Supabase + cache + paginazione (~977 righe)
 │   ├── margine_service.py    # Calcoli MOL + export Excel (~1.126 righe)
-│   ├── upload_handler.py     # Upload, batch, deduplicazione (~620 righe)
-│   └── email_service.py      # Brevo SMTP con retry (~106 righe)
+│   ├── upload_handler.py     # Upload, batch, deduplicazione (~882 righe)
+│   ├── email_service.py      # Brevo SMTP con retry (~106 righe)
+│   ├── notification_service.py # Notifiche in-app 6 tipologie (~201 righe)
+│   ├── fastapi_worker.py     # FastAPI Worker REST API (~649 righe)
+│   └── worker_client.py      # Proxy Streamlit → Worker con fallback (~127 righe)
+├── components/                # Componenti UI riutilizzabili
+│   ├── category_editor.py    # Data editor categorie (~958 righe)
+│   └── dashboard_renderer.py # KPI, grafici, pivot dashboard (~964 righe)
+├── worker/                    # Worker asincrono fatture_queue
+│   ├── run.py                # Entry point GitHub Actions
+│   └── queue_processor.py    # Elaborazione coda Invoicetronic (~440 righe)
 ├── utils/                    # formatters, text_utils, validation, piva_validator,
 │                             # sidebar_helper, ristorante_helper, period_helper,
-│                             # ui_helpers, page_setup, app_controllers
+│                             # ui_helpers, page_setup, app_controllers (~1.555 righe)
 ├── config/
 │   ├── constants.py          # 29 categorie, 600+ keyword, regex, KPI soglie
 │   ├── logger_setup.py       # RotatingFileHandler (50 MB × 10 backup)
 │   └── prompt_ai_potenziato.py # Prompt GPT con esempi per 29 categorie
+├── supabase/                  # Edge Function invoicetronic-webhook (Deno/TypeScript)
 ├── static/                   # branding.css, common.css, layout.css
-├── tests/                    # 172 test automatici pytest (9 moduli)
-├── migrations/               # 44 SQL migrations numerate (001→044)
-├── docker/                   # Dockerfile, docker-compose.yml, docker-compose.prod.yml,
-│                             # docker-entrypoint.sh
+├── tests/                    # 194 test automatici pytest (11 moduli)
+├── migrations/               # 58 SQL migrations numerate (001→053)
+├── docker/                   # Dockerfile, docker-compose.yml, docker-compose.prod.yml
 ├── scripts/                  # comandi.ps1, dev-serve.ps1, run-tests.ps1
-├── dev-notes/                # Note sviluppo e prompt AI (ex "prompt vscode/")
-├── .github/workflows/        # uptime_check.yml
+├── .github/workflows/        # uptime_check.yml, queue-worker.yml
 ├── .streamlit/               # config.toml, secrets.toml (non versionato)
-├── requirements.txt / requirements-lock.txt (91 pacchetti freezati)
+├── railway.toml              # Configurazione deploy Railway
+├── requirements.txt / requirements-lock.txt (100 pacchetti freezati)
 └── DOCUMENTAZIONE/
 ```
 
@@ -101,7 +115,7 @@ Oh Yeah! Hub/
 - Centri di produzione: FOOD, BAR, ALCOLICI, DOLCI — fatturato mensile + food cost %
 - Grafici Plotly trend temporale, export Excel
 
-### pages/2_workspace.py — Ricette e Diario
+### pages/2_foodcost.py — Foodcost, Ricette e Diario
 - **Tab Analisi**: KPI menu, distribuzione categorie, margine netto per piatto
 - **Tab Lab Ricette**: CRUD completo, ingredienti da 3 fonti (fatture, workspace, semilavorati), calcolo foodcost automatico, ricette annidate
 - **Tab Diario**: note operative giornaliere (CRUD), sanitizzazione XSS
@@ -156,7 +170,7 @@ Oh Yeah! Hub/
 ### Specifiche tecniche auth
 | Elemento | Valore |
 |----------|--------|
-| Password hashing | Argon2id m=65536, t=3, p=4 |
+| Password hashing | Argon2id m=65536, parametri default libreria |
 | Migrazione legacy | Auto da SHA256 al primo login |
 | Password policy | Min 10 char, 3/4 complessità, blacklist 24+ password, no dati personali |
 | Rate limiting login | 5 tentativi → 15 min lockout (persistente su DB `login_attempts`) |
@@ -171,7 +185,7 @@ Oh Yeah! Hub/
 
 | Categoria | Misura | Dettaglio |
 |-----------|--------|-----------|
-| Autenticazione | Argon2id | m=65536, t=3, p=4 (OWASP 2026) |
+| Autenticazione | Argon2id | m=65536, parametri default libreria (OWASP) |
 | Sessioni | Token UUID4 + Cookie 30gg | Auto-logout inattività 8h, invalidazione su token mancante |
 | Cookie | Secure + SameSite=Strict | `extra-streamlit-components` non supporta HttpOnly |
 | Rate Limiting | Login DB + Reset in-memory | Tabella `login_attempts`; dict thread-safe |
@@ -188,7 +202,7 @@ Oh Yeah! Hub/
 | CORS | `enableCORS = false` | Disabilitato |
 | Reset Token | `secrets.token_urlsafe(32)` | 256 bit entropia |
 | Secrets | Streamlit Secrets | Mai hardcoded nel codice |
-| Dependencies | `requirements-lock.txt` | 91 pacchetti freezati (supply chain security) |
+| Dependencies | `requirements-lock.txt` | 100 pacchetti freezati (supply chain security) |
 
 ---
 
@@ -234,15 +248,18 @@ Oh Yeah! Hub/
 | `ingredienti_workspace` | Ingredienti manuali: nome, prezzo_per_um, um |
 | `note_diario` | Note operative giornaliere per ristorante |
 | `review_confirmed/ignored` | Righe confermate/ignorate dopo review admin €0 |
+| `fatture_queue` | Buffer webhook Invoicetronic (pending → processing → done) |
+| `brand_ambigui` | Tracking brand multi-categoria (machine learning) |
+| `ai_usage_events` | Ledger costi OpenAI: token, costi per operazione AI |
 
-**44 migrazioni SQL** (001→044): aggiunta colonne, nuove tabelle, RLS policy, stored procedure RPC, indici performance, fix retroattivi.
+**58 migrazioni SQL** (001→053): aggiunta colonne, nuove tabelle, RLS policy, stored procedure RPC, indici performance, fix retroattivi, hardening sicurezza.
 
 ---
 
 ## 10. Testing
 
-- **172 test automatici** (pytest) — tutti PASSED in ~1.46s
-- 9 moduli: `test_text_utils`, `test_piva_validator`, `test_ai_service`, `test_validation`, `test_constants`, `test_db_service`, `test_invoice_service`, `test_formatters`, `test_auth_service`
+- **194 test automatici** (pytest) — tutti PASSED
+- 11 moduli: `test_trial` (39), `test_text_utils` (30), `test_piva_validator` (18), `test_notification_service` (18), `test_ai_service` (16), `test_validation` (14), `test_constants` (13), `test_db_service` (12), `test_auth_service` (12), `test_invoice_service` (11), `test_formatters` (11)
 - Mock completi per Supabase e OpenAI (nessun servizio esterno toccato)
 
 ```bash
@@ -270,6 +287,54 @@ pytest tests/ --cov=services --cov=utils --cov-report=html  # con coverage
 | `docker-compose.yml` | Stack sviluppo locale |
 | `docker-compose.prod.yml` | Stack produzione — porta 8000 worker **non esposta** pubblicamente |
 | `docker-entrypoint.sh` | Script avvio container |
+
+### Railway — Deploy FastAPI Worker
+- Docker image da `docker/Dockerfile` (configurato in `railway.toml`)
+- Due servizi: `ohyeah` (Streamlit) + `worker` (FastAPI)
+- Comunicazione interna: `WORKER_BASE_URL` → `http://worker:8000`
+
+---
+
+## 12. Integrazione Invoicetronic — Ricezione Automatica SDI
+
+- **Flusso**: SDI → Invoicetronic → POST webhook → Supabase Edge Function (Deno/TypeScript) → `fatture_queue`
+- **Sicurezza webhook**: HMAC-SHA256, anti-replay, verifica payload
+- **Worker coda**: GitHub Actions ogni 15 min → `worker/queue_processor.py` → parsing + classificazione
+- **GDPR**: XML raw purificato dopo 24h tramite RPC `purge_processed_xml_content()`
+- **Codice destinatario SDI**: `7HD37X0`
+
+---
+
+## 13. Sistema di Notifiche In-App
+
+6 tipologie di notifica (`services/notification_service.py`, ~201 righe):
+
+| Tipo | Trigger |
+|------|---------|
+| Upload con file scartati | File duplicati, falliti o bloccati durante upload |
+| Alert prezzi > +5% | Prodotti con aumento prezzo sopra soglia |
+| Ricavi mensili mancanti | Mese precedente senza fatturato in `margini_mensili` |
+| Costo personale mancante | Mese precedente senza `costo_dipendenti` |
+| Esito upload complessivo | Riepilogo per categoria (duplicati, errori) |
+| Azione Controllo Prezzi | Link diretto a `3_controllo_prezzi.py` |
+
+- **Dismiss persistente**: `users.dismissed_notification_ids` (JSONB) con timestamp
+- **Scoped per ristorante**: ID stabile con `ristorante_id`
+- **XSS safe**: `html.escape()` su nomi prodotto
+
+---
+
+## 14. Tracking Costi AI
+
+- `services/ai_cost_service.py` registra ogni chiamata OpenAI in `ai_usage_events`
+- Costi: $0.15/1M input + $0.60/1M output (GPT-4o-mini)
+- Tab 6 pannello admin: report giornalieri/mensili per cliente/ristorante
+- Budget: 1.000 classificazioni/giorno per ristorante
+
+---
+
+*Documento sintetico v5.1 — 9 Aprile 2026*
+*Per la documentazione completa, vedere `DOCUMENTAZIONE_COMPLETA.md`*
 
 ---
 

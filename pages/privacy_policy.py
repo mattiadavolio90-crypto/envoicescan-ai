@@ -1,4 +1,9 @@
 import streamlit as st
+
+from utils.streamlit_compat import patch_streamlit_width_api
+
+patch_streamlit_width_api()
+
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 
 st.set_page_config(
@@ -40,16 +45,19 @@ with tab_privacy:
     **Recoma System S.r.l.**  
     P.IVA: IT09599210961  
     Referente tecnico: Mattia D'Avolio  
-    Email: mattiadavolio90@gmail.com
+    Email: mattiadavolio90@gmail.com  
+    TODO operativo: sostituire con support@ohyeah.app dopo attivazione dominio, mailbox e verifica DNS.
 
     ---
 
     ### Dati Raccolti
     - **Dati anagrafici:** Email, nome ristorante, P.IVA, ragione sociale
     - **Dati di accesso:** Password (conservata esclusivamente in formato hash crittografico Argon2id — la password in chiaro non viene mai archiviata)
-    - **Documenti:** Fatture elettroniche XML/P7M/PDF caricate dall'utente per analisi gestionale
+    - **Documenti:** Fatture elettroniche XML/P7M/PDF caricate dall'utente o ricevute automaticamente tramite SDI (Invoicetronic)
     - **Dati operativi:** Ricette, ingredienti, note diario, margini mensili
-    - **Dati di sessione:** Token di sessione UUID4 con scadenza, timestamp login/logout
+    - **Dati di sessione:** Token di sessione opachi ad alta entropia generati lato server, con scadenza, timestamp login/logout e controlli di inattività
+    - **Log operativi:** Registro upload (nome file, esito, conteggi righe), registro utilizzo AI (modello, token consumati, costo per operazione)
+    - **Preferenze applicazione:** Stato periodo di prova, preferenze notifiche in-app (ID notifiche nascoste)
 
     ---
 
@@ -69,8 +77,10 @@ with tab_privacy:
     ### Conservazione Dati
     - I dati sono conservati per la durata del rapporto contrattuale.
     - **Fatture:** trattenute fino a eliminazione volontaria da parte dell'utente.
-    - **File XML/P7M originali:** purgati automaticamente dopo il processing (non archiviati in forma grezza).
+    - **File XML/P7M originali:** purgati automaticamente dopo il processing (non archiviati in forma grezza). I file ricevuti via SDI (Invoicetronic) vengono purgati dalla coda entro 24 ore dall'elaborazione.
+    - **Log operativi (upload e AI):** conservati per la durata dell'account a fini di trasparenza e supporto tecnico.
     - **Log applicativi:** rotazione automatica — 50 MB × 10 file di backup, senza dati PII in chiaro.
+    - **Tentativi di accesso:** conservati per 15 minuti (rate limiting anti-brute-force), poi eliminati automaticamente.
     - Alla cancellazione dell'account, **tutti i dati vengono eliminati in modo permanente** (eliminazione a cascata su tutte le tabelle correlate — Art. 17 GDPR).
 
     ---
@@ -82,7 +92,9 @@ with tab_privacy:
     |-----------|-------|------|-----------|
     | **Supabase Inc.** | Hosting database | UE — Frankfurt 🇩🇪 | Dati persistiti esclusivamente in UE |
     | **OpenAI LP** | Elaborazione AI categorizzazione | USA | Clausole contrattuali standard UE (SCCs); dati elaborati on-the-fly, non archiviati per training |
-    | **Brevo SAS** | SMTP transazionale | UE | Nessun contenuto di fatture trasmesso |
+    | **Brevo SAS** | SMTP transazionale | UE — Francia 🇫🇷 | Nessun contenuto di fatture trasmesso |
+    | **Invoicetronic S.r.l.** | Ricezione fatture SDI e inoltro webhook | Italia 🇮🇹 | Eventi webhook e metadati fatture inoltrati verso l'infrastruttura OH YEAH!; XML grezzo non archiviato dopo la consegna |
+    | **Railway Corp.** | Worker elaborazione fatture | USA | Elaborazione in memoria, nessun dato persistito; SCCs UE |
 
     ---
 
@@ -91,12 +103,14 @@ with tab_privacy:
     - Mantenere autenticata la sessione di login durante la navigazione
     - Garantire il corretto funzionamento dell'applicazione
 
-    **Caratteristiche tecniche del cookie di sessione:**
-    - Nome: `session_token`
-    - Tipo: cookie tecnico di sessione (strettamente necessario)
-    - Scadenza: 30 giorni
-    - Contenuto: token UUID4 opaco, senza dati personali in chiaro
-    - Scope: `SameSite=Strict`, flag `Secure` — trasmesso solo su HTTPS
+    **Caratteristiche tecniche dei cookie utilizzati:**
+
+    | Cookie | Tipo | Scadenza | Contenuto | Note |
+    |--------|------|----------|-----------|------|
+    | `session_token` | Tecnico / sessione | 30 giorni | Token opaco generato lato server | Mantenimento sessione di login |
+    | `impersonation_user_id` | Tecnico / amministrativo | 30 giorni | UUID utente impersonato | Solo per account amministratori; consente il supporto tecnico |
+
+    Tutti i cookie sono impostati con `SameSite=Strict` e flag `Secure` (trasmessi solo su HTTPS), senza dati personali in chiaro.
 
     **NON utilizziamo:**
     - Cookie di profilazione o marketing
@@ -147,7 +161,7 @@ with tab_privacy:
     ---
 
     ### Modifiche alla Privacy Policy
-    Ultimo aggiornamento: **30 Marzo 2026**
+    Ultimo aggiornamento: **8 Aprile 2026**
 
     Ci riserviamo il diritto di modificare questa informativa. Gli utenti registrati verranno informati tramite notifica nell'applicazione in caso di modifiche sostanziali, con preavviso di almeno 15 giorni.
 
@@ -162,9 +176,10 @@ with tab_tos:
 
     Il Servizio include:
     - Caricamento e analisi automatica di fatture elettroniche (XML, P7M, PDF)
+    - Ricezione automatica fatture elettroniche dal Sistema di Interscambio (SDI) via Invoicetronic
     - Classificazione dei prodotti tramite intelligenza artificiale
     - Calcolo margini e analisi dei costi alimentari
-    - Gestione workspace operativo (ricette, ingredienti, diario)
+    - Gestione area Foodcost (ricette, ingredienti, diario)
     - Controllo prezzi e confronto fornitori
     - Worker automatico di elaborazione fatture con coda persistente
 
@@ -221,7 +236,7 @@ with tab_tos:
     ### 7. Disponibilità del Servizio
     - Il Titolare si impegna a garantire la disponibilità del Servizio (target SLA: 99,5% mensile).
     - Sono previste interruzioni per manutenzione programmata, con preavviso quando possibile.
-    - Il Titolare non è responsabile per interruzioni causate da fornitori terzi (Supabase, OpenAI, Brevo, Streamlit Cloud) o cause di forza maggiore.
+    - Il Titolare non è responsabile per interruzioni causate da fornitori terzi (Supabase, OpenAI, Brevo, Invoicetronic, Railway) o cause di forza maggiore.
 
     ---
 
@@ -249,7 +264,7 @@ with tab_tos:
     ---
 
     ### 11. Modifiche ai Termini
-    Ultimo aggiornamento: **30 Marzo 2026**
+    Ultimo aggiornamento: **8 Aprile 2026**
 
     Il Titolare si riserva il diritto di modificare i presenti Termini. Le modifiche sostanziali saranno comunicate tramite notifica nell'applicazione con almeno 15 giorni di preavviso. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione delle modifiche.
 
@@ -266,7 +281,7 @@ with tab_tos:
     - Caricamento e analisi automatica di fatture elettroniche (XML, PDF, immagini)
     - Classificazione dei prodotti tramite intelligenza artificiale
     - Calcolo margini e analisi dei costi alimentari
-    - Gestione workspace operativo (ricette, ingredienti, diario)
+    - Gestione area Foodcost (ricette, ingredienti, diario)
     - Controllo prezzi e confronto fornitori
 
     **⚠️ Il Servizio NON sostituisce la consulenza fiscale, contabile o legale.** L'utente rimane responsabile delle proprie decisioni operative e fiscali.
@@ -339,7 +354,7 @@ with tab_tos:
     ---
 
     ### 10. Modifiche ai Termini
-    Ultimo aggiornamento: **30 Marzo 2026**
+    Ultimo aggiornamento: **8 Aprile 2026**
 
     Il Titolare si riserva il diritto di modificare i presenti Termini. Le modifiche sostanziali saranno comunicate tramite notifica nell'applicazione con almeno 15 giorni di preavviso. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione delle modifiche.
 

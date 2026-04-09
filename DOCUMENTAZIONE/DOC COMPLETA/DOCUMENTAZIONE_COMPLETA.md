@@ -2,12 +2,14 @@
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 5.0  
-Ultimo aggiornamento: 30 Marzo 2026  
+Versione: 5.1  
+Ultimo aggiornamento: 9 Aprile 2026  
 Autore: Mattia D'Avolio  
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato)  
 URL Produzione: https://ohyeah.streamlit.app/
 
+> **Novità v5.1**: Sistema di notifiche in-app (6 tipologie: upload, prezzi, ricavi, costi, alert), tracking costi AI con tabella `ai_usage_events`, layer controller (`app_controllers.py`), componenti riutilizzabili (`category_editor.py`, `dashboard_renderer.py`), hardening sicurezza Supabase (migration 052), Privacy Policy v3.2 con sub-processori Invoicetronic/Railway.
+>
 > **Novità v5.0**: Integrazione Invoicetronic (ricezione automatica fatture SDI), FastAPI Worker per classificazione AI scalabile, deploy Railway, nuova tabella `fatture_queue` con worker asincrono GitHub Actions, tabella `brand_ambigui` per apprendimento automatico.
 
 ---
@@ -35,6 +37,9 @@ URL Produzione: https://ohyeah.streamlit.app/
 19. [Troubleshooting e FAQ Tecniche](#19-troubleshooting-e-faq-tecniche)
 20. [Integrazione Invoicetronic — Ricezione Automatica SDI](#20-integrazione-invoicetronic--ricezione-automatica-sdi)
 21. [FastAPI Worker — Classificazione AI Scalabile](#21-fastapi-worker--classificazione-ai-scalabile)
+22. [Sistema di Notifiche In-App](#22-sistema-di-notifiche-in-app)
+23. [Tracking Costi AI](#23-tracking-costi-ai)
+24. [Componenti Riutilizzabili](#24-componenti-riutilizzabili)
 
 ---
 
@@ -93,9 +98,9 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 | Formati fattura supportati | XML, P7M, PDF, JPG, PNG |
 | Ricezione automatica SDI | Invoicetronic — codice dest. `7HD37X0` |
 | Modello AI | OpenAI GPT-4o-mini |
-| Copertura test automatici | 172 test, 10 moduli di test |
+| Copertura test automatici | 194 test, 11 moduli di test |
 | Tempo medio classificazione | < 5 secondi per 50 prodotti (batch) |
-| Migrazioni DB | 48 file SQL |
+| Migrazioni DB | 58 file SQL |
 | Ritardo ricezione fattura automatica | ≤ 15 minuti (ciclo worker) |
 
 ---
@@ -180,13 +185,13 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 | Edge Functions | Supabase Edge Functions | Deno | invoicetronic-webhook (TypeScript) |
 | AI/ML | OpenAI API | GPT-4o-mini | Batch classification, ~0.15$/1M token |
 | Email | Brevo SMTP API v3 | Free tier | 300 email/giorno |
-| Hashing | Argon2id | m=65536, t=3, p=4 | OWASP raccomandato 2026 |
+| Hashing | Argon2id | m=65536 | Parametri default libreria argon2-cffi (OWASP raccomandato) |
 | CI/CD | GitHub Actions | — | Uptime check + queue worker ogni 15 minuti |
 | Deploy Frontend | Streamlit Community Cloud | Free tier | Auto-deploy da branch main |
 | Deploy Worker | Railway | Hobby/Pro | Docker image da `docker/Dockerfile` |
 | SDI Intermediario | Invoicetronic | SaaS | Ricezione fatture SDI, codice dest. `7HD37X0` |
 
-### Dipendenze Python Principali (91 pacchetti lockati)
+### Dipendenze Python Principali (100 pacchetti lockati)
 
 | Pacchetto | Uso |
 |-----------|-----|
@@ -242,7 +247,7 @@ Oh Yeah! Hub/
 ├── pages/                          # Pagine multi-page Streamlit
 │   ├── admin.py                    # Pannello admin (6 tab)
 │   ├── 1_calcolo_margine.py        # Calcolo MOL e centri di produzione
-│   ├── 2_workspace.py              # Workspace ricette, ingredienti, diario
+│   ├── 2_foodcost.py               # Foodcost, ricette, ingredienti, diario
 │   ├── 3_controllo_prezzi.py       # Variazioni prezzi, sconti, note di credito
 │   ├── gestione_account.py         # Cambio password e impostazioni
 │   └── privacy_policy.py           # Privacy Policy + Terms of Service
@@ -250,12 +255,14 @@ Oh Yeah! Hub/
 ├── services/                       # Business logic layer
 │   ├── __init__.py                 # get_supabase_client() singleton
 │   ├── ai_service.py              # Classificazione AI + memoria 3 livelli
+│   ├── ai_cost_service.py         # Tracking costi OpenAI per ristorante (NUOVO v5.1)
 │   ├── auth_service.py            # Login, password, reset, GDPR, rate limiting DB
 │   ├── invoice_service.py         # Parsing XML/P7M/PDF/Vision
 │   ├── db_service.py              # Query Supabase + cache + paginazione
 │   ├── margine_service.py         # Calcoli MOL + export Excel
 │   ├── upload_handler.py          # Gestione upload file, batch, deduplicazione
 │   ├── email_service.py           # Brevo SMTP API con retry
+│   ├── notification_service.py    # Notifiche in-app: upload, prezzi, dati mancanti (NUOVO v5.1)
 │   ├── fastapi_worker.py          # FastAPI Worker REST API (AI + parsing)
 │   │                              # - POST /api/classify
 │   │                              # - POST /api/parse
@@ -291,7 +298,14 @@ Oh Yeah! Hub/
 │   ├── ristorante_helper.py
 │   ├── period_helper.py
 │   ├── ui_helpers.py
-│   └── page_setup.py
+│   ├── page_setup.py
+│   └── app_controllers.py         # Controller layer estratto da app.py (NUOVO v5.1)
+│                                   # Upload, AI, filtro temporale, gestione fatture
+│
+├── components/                     # Componenti UI riutilizzabili (NUOVO v5.1)
+│   ├── __init__.py
+│   ├── category_editor.py         # Data editor categorie con salvataggio (~958 righe)
+│   └── dashboard_renderer.py      # Rendering KPI, grafici, pivot dashboard (~964 righe)
 │
 ├── config/                         # Configurazione centralizzata
 │   ├── constants.py               # 29 categorie, 600+ keyword, regex, KPI soglie
@@ -302,12 +316,14 @@ Oh Yeah! Hub/
 │
 ├── tests/                          # Test automatici (pytest)
 │
-├── migrations/                     # SQL migrations manuali (48 file)
-│   ├── 001_add_reset_columns.sql ... 044_create_login_attempts.sql
-│   ├── 045_create_fatture_queue.sql      # Tabella buffer Invoicetronic
-│   ├── 046_add_reset_rate_limit_column.sql
-│   ├── 047_fix_null_confidence_prodotti_master.sql
-│   └── 048_create_brand_ambigui.sql      # Tracking brand multi-categoria
+├── migrations/                     # SQL migrations manuali (58 file)
+│   ├── 001_add_reset_columns.sql ... 048_create_brand_ambigui.sql
+│   ├── 049_add_streak_to_prodotti_master.sql
+│   ├── 050_add_needs_ack_to_upload_events.sql
+│   ├── 050_trigger_resolve_unknown_tenant.sql
+│   ├── 051_create_ai_usage_events.sql    # Ledger costi OpenAI (NUOVO v5.1)
+│   ├── 052_harden_supabase_security_advisor.sql  # Hardening RLS (NUOVO v5.1)
+│   └── 053_add_dismissed_notifications.sql  # Notifiche dismiss (NUOVO v5.1)
 │
 ├── docker/                         # Docker
 │   ├── Dockerfile                 # Build app Streamlit + FastAPI worker
@@ -332,7 +348,7 @@ Oh Yeah! Hub/
 │                                   # build.dockerfilePath = "docker/Dockerfile"
 │
 ├── requirements.txt
-├── requirements-lock.txt          # 91 pacchetti lockati
+├── requirements-lock.txt          # 100 pacchetti lockati
 ├── pytest.ini
 └── README.md
 ```
@@ -595,8 +611,7 @@ UTENTE → Cookie session_token (30 giorni)
 |-----------|--------|
 | Algoritmo | Argon2id |
 | Memory cost | 65536 KB (64 MB) |
-| Time cost | 3 iterazioni |
-| Parallelism | 4 thread |
+| Time cost / Parallelism | Parametri default libreria `argon2-cffi` |
 | Migrazione | Auto da SHA256 legacy al primo login |
 
 ### Validazione Password (GDPR Art.32 + Garante Privacy)
@@ -759,6 +774,9 @@ Se un utente pre-migrazione non ha record in `ristoranti`, il sistema tenta la c
 | session_token_created_at | TIMESTAMPTZ | Creazione token sessione |
 | ultimo_ristorante_id | UUID (FK) | Ultimo ristorante usato |
 | pagine_abilitate | JSONB | Es: `{"marginalita": true, "workspace": true}` |
+| dismissed_notification_ids | JSONB | Mappa notifiche nascoste `{id: dismissed_at}` (NUOVO v5.1) |
+| trial_activated_at | TIMESTAMPTZ | Data attivazione trial (NUOVO v5.1) |
+| trial_active | BOOLEAN | Account in periodo trial (NUOVO v5.1) |
 
 #### `ristoranti` — Locali (multi-ristorante)
 
@@ -910,6 +928,7 @@ Indice su `(email, attempted_at DESC)` per query veloci. Solo `service_role` pu�
 | `login_attempts` | Tentativi login per rate limiting persistente su DB |
 | `fatture_queue` | Buffer webhook Invoicetronic — vedere Sezione 20 |
 | `brand_ambigui` | Tracking automatico brand multi-categoria (machine learning) |
+| `ai_usage_events` | Ledger costi OpenAI: token, costi per operazione AI (NUOVO v5.1) |
 
 #### `fatture_queue` — Buffer webhook Invoicetronic (migration 045)
 
@@ -959,19 +978,47 @@ Tabella di machine learning: traccia automaticamente i brand che vengono spesso 
 
 **Logica**: Quando un brand accumula ≥ 3 correzioni su ≥ 2 categorie diverse con tasso > 20%, `aggiunto_automaticamente` diventa `TRUE` e il brand viene escluso dal matching deterministico del dizionario (passa direttamente al GPT-4o-mini per massima flessibilità).
 
-### Migrazioni SQL (48 file)
+#### `ai_usage_events` — Ledger costi AI (migration 051)
 
-Le migrazioni sono numerate progressivamente da `001` a `048` e gestiscono:
+| Colonna | Tipo | Note |
+|---------|------|------|
+| id | BIGSERIAL (PK) | Auto-increment |
+| ristorante_id | UUID (FK) | Ristorante associato |
+| user_id | UUID (FK) | Utente che ha generato la spesa |
+| operation_type | TEXT | `pdf` \| `categorization` \| `other` |
+| prompt_tokens | INT | Token prompt inviati |
+| completion_tokens | INT | Token risposta ricevuti |
+| total_tokens | INT | Totale token |
+| input_cost | NUMERIC | Costo input ($0.15/1M token GPT-4o-mini) |
+| output_cost | NUMERIC | Costo output ($0.60/1M token GPT-4o-mini) |
+| total_cost | NUMERIC | Costo totale operazione |
+| model | TEXT | Modello AI usato (es. `gpt-4o-mini`) |
+| source_file | TEXT | File origine operazione |
+| metadata | JSONB | Metadati aggiuntivi strutturati |
+| created_at | TIMESTAMPTZ | Timestamp operazione |
 
-- Aggiunta colonne incrementali (reset, sconto, needs_review, verified, P.IVA, altri_ricavi_noiva, tipo_documento)
-- Creazione tabelle (categorie, prodotti_master, prodotti_utente, ristoranti, ricette, ingredienti_workspace, note_diario, margini_mensili, login_attempts, fatture_queue, brand_ambigui)
+**Indici**: `(ristorante_id, created_at DESC)`, `(operation_type)` per aggregazioni veloci.
+
+**Service associato**: `services/ai_cost_service.py` — funzione `track_ai_usage()` registra ogni chiamata OpenAI nel ledger. Utilizzato da Tab 6 del pannello admin per report costi per cliente/ristorante.
+
+### Migrazioni SQL (58 file)
+
+Le migrazioni sono numerate progressivamente da `001` a `053` e gestiscono:
+
+- Aggiunta colonne incrementali (reset, sconto, needs_review, verified, P.IVA, altri_ricavi_noiva, tipo_documento, dismissed_notification_ids, trial)
+- Creazione tabelle (categorie, prodotti_master, prodotti_utente, ristoranti, ricette, ingredienti_workspace, note_diario, margini_mensili, login_attempts, fatture_queue, brand_ambigui, ai_usage_events)
 - Policy RLS per multi-tenancy e autenticazione custom
 - Stored procedure RPC (create_ristorante, get_distinct_files, claim_batch_for_processing, mark_queue_item_done, schedule_retry, purge_processed_xml_content, release_stale_locks, resolve_unknown_tenant)
 - Indici di performance
 - Fix retroattivi (diciture corrotte, permessi RLS, foreign key, duplicate P.IVA ristoranti)
-- Tracking costi AI, sessioni, token, rate limiting
+- Tracking costi AI (`ai_usage_events`), sessioni, token, rate limiting
 - Fix confidenza nulla su prodotti_master (migration 047)
 - Colonna reset rate limit separata da login rate limit (migration 046)
+- Streak conteggio su prodotti_master (migration 049)
+- Needs acknowledgment su upload_events (migration 050)
+- Trigger resolve_unknown_tenant per P.IVA non abbinate (migration 050)
+- Hardening sicurezza Supabase (migration 052)
+- Colonna dismissed_notification_ids per notifiche in-app (migration 053)
 
 ---
 
@@ -987,7 +1034,7 @@ Il pannello admin (`pages/admin.py`) è accessibile solo agli utenti con email i
 - Impersonazione clienti (l'admin vede l'app come il cliente)
 - Cookie impersonazione per sopravvivere a refresh pagina
 - Attivazione/Disattivazione account
-- Gestione pagine abilitate per cliente (Marginalità, Workspace)
+- Gestione pagine abilitate per cliente (Marginalità, Foodcost)
 
 ### Tab 2: 💰 Review Righe €0
 
@@ -1078,7 +1125,7 @@ Tabella trasposta 12 mesi. Le voci di input si dividono in **manuali** (fatturat
 
 ## 14. Pagine Secondarie
 
-### 2_workspace.py — Workspace Ricette e Diario (~2.125 righe)
+### 2_foodcost.py — Foodcost, Ricette e Diario (~2.125 righe)
 
 **4 Tab con navigazione a bottoni:**
 
@@ -1138,11 +1185,12 @@ Tabella trasposta 12 mesi. Le voci di input si dividono in **manuali** (fatturat
 - Cambio password con validazione GDPR
 - Visualizzazione dati account
 - Gestione ristoranti (nome, P.IVA, ragione sociale)
+- **Export dati GDPR Art. 15** (JSON): account, ristoranti, fatture, classificazioni_manuali, upload_events, ai_usage_events, ricette, note_diario, margini_mensili
 
 ### privacy_policy.py — Privacy e Condizioni
 
 Due tab:
-- **Privacy Policy**: Informativa GDPR completa (titolare, base giuridica, diritti, data retention)
+- **Privacy Policy** (v3.2, 8 Aprile 2026): Informativa GDPR completa (titolare, base giuridica, diritti, data retention, sub-processori: Supabase, OpenAI, Brevo, Invoicetronic, Railway)
 - **Terms of Service**: Condizioni d'uso, limitazioni, clausola "non conservazione sostitutiva"
 
 ---
@@ -1160,19 +1208,21 @@ python_functions = test_*
 addopts = -v --tb=short
 ```
 
-### Suite di Test (172 test totali, confermati da pytest)
+### Suite di Test (194 test totali, confermati da pytest)
 
 | File | Test approx. | Copertura |
 |------|------|-----------| 
+| `test_trial.py` | 39 | Gestione trial, attivazione, scadenza, logiche temporali |
 | `test_text_utils.py` | 30 | Normalizzazione, estrazione fornitore, pulizia |
 | `test_piva_validator.py` | 18 | Validazione P.IVA (Luhn), normalizzazione |
-| `test_ai_service.py` | 15 | Classificazione AI, memoria 3 livelli, quarantena |
+| `test_notification_service.py` | 18 | Notifiche in-app: upload, prezzi, dismiss, mensili (NUOVO v5.1) |
+| `test_ai_service.py` | 16 | Classificazione AI, memoria 3 livelli, quarantena |
 | `test_validation.py` | 14 | Diciture, sconti, integrità fattura |
 | `test_constants.py` | 13 | Integrità categorie, regex compilate, KPI soglie |
 | `test_db_service.py` | 12 | Alert variazioni prezzo, normalizzazione categorie |
+| `test_auth_service.py` | 12 | Login, rate limiting, GDPR password, reset |
 | `test_invoice_service.py` | 11 | Parsing XML, P7M, encoding, tipo documento |
 | `test_formatters.py` | 11 | Formattazione numeri, base64, prezzo standard |
-| `test_auth_service.py` | 11 | Login, rate limiting, GDPR password, reset |
 
 > I conteggi per file sono basati su funzioni `test_*`; il totale di 172 include test parametrizzati espansi da pytest.
 
@@ -1196,7 +1246,7 @@ pytest tests/test_ai_service.py -v
 pytest tests/ --cov=services --cov=utils --cov-report=html
 ```
 
-Ultimo risultato: **172/172 PASSED** (~1.46s)
+Ultimo risultato: **194/194 PASSED**
 
 ---
 
@@ -1283,7 +1333,7 @@ OPENAI_API_KEY
 
 ### Dipendenze Lockate
 
-Il file `requirements-lock.txt` contiene 91 pacchetti con versioni esatte per build riproducibili.
+Il file `requirements-lock.txt` contiene 100 pacchetti con versioni esatte per build riproducibili.
 
 ### Supabase
 
@@ -1409,7 +1459,7 @@ jobs:
 
 | Categoria | Misura | Dettaglio |
 |-----------|--------|-----------|
-| **Autenticazione** | Argon2id | m=65536, t=3, p=4 (OWASP 2026) |
+| **Autenticazione** | Argon2id | m=65536, parametri default libreria (OWASP) |
 | **Sessioni** | Token UUID4 + Cookie 30gg | Invalidazione esplicita su logout |
 | **Rate Limiting** | Login: DB persistente; Reset: in-memory | Login usa tabella `login_attempts` su Supabase; Reset usa dict in-memory thread-safe |
 | **Input Validation** | Sanitizzazione AI | Control char removal + 300 char truncation |
@@ -1429,7 +1479,7 @@ jobs:
 | **Worker API** | Porta 8000 interna | In produzione il worker FastAPI non espone la porta 8000 all'esterno; accesso solo via rete Docker interna |
 | **Reset Token** | `secrets.token_urlsafe(32)` | 256 bit di entropia; verifica constant-time (HMAC) |
 | **Secrets** | Streamlit Secrets | Variables d'ambiente, mai hardcoded |
-| **Dependencies** | `requirements-lock.txt` | 91 pacchetti freezati per supply chain security |
+| **Dependencies** | `requirements-lock.txt` | 100 pacchetti freezati per supply chain security |
 
 ### Compliance GDPR
 
@@ -1567,11 +1617,6 @@ pip freeze > requirements-lock.txt
 
 ---
 
-*Documento generato automaticamente dall'analisi completa del codice sorgente.*
-*Per aggiornamenti, modifiche o domande: mattiadavolio90@gmail.com*
-
----
-
 ## 20. Integrazione Invoicetronic — Ricezione Automatica SDI
 
 ### Cos'è Invoicetronic
@@ -1669,7 +1714,7 @@ SELECT resolve_unknown_tenant('01234567890');
 1. Accedere al dashboard Invoicetronic
 2. **Webhooks** → aggiungi webhook URL: `https://<project>.supabase.co/functions/v1/invoicetronic-webhook`
 3. Copiare il **Webhook Secret** → salvare in Supabase come `INVOICETRONIC_WEBHOOK_SECRET`
-4. **API Keys** → copiare API Key → salvare in Supabase come `INVOICETRONIC_API_KEY` e in GitHub Secrets
+4. **API Keys** → copiare API Key → salvare in Supabase come `INVOICETRONIC_API_KEY` e, solo se vuoi un fallback manuale, in GitHub Secrets
 5. Comunicare il **codice destinatario `7HD37X0`** ai fornitori del ristorante
 
 ### Test Locale Edge Function
@@ -1696,7 +1741,7 @@ Il FastAPI Worker (`services/fastapi_worker.py`) separa la logica di classificaz
 - **Scalare indipendentemente** il layer AI dal frontend
 - **Isolare il carico** OpenAI/parsing in un container dedicato
 - **Evitare timeout** di Streamlit su classificazioni batch grandi
-- **Riutilizzare** il worker per il flusso Invoicetronic (webhook + coda)
+- **Separare chiaramente** il worker interno dal flusso webhook pubblico Invoicetronic
 
 ### Modalità Operativa
 
@@ -1706,12 +1751,34 @@ Il FastAPI Worker (`services/fastapi_worker.py`) separa la logica di classificaz
 │ worker_client.py│ ──── POST /api/parse ────────────▶ │  (porta 8000)   │
 └─────────────────┘                                    └─────────────────┘
 
+┌────────────────────┐   POST webhook firmato    ┌────────────────────────────┐
+│    Invoicetronic   │ ────────────────────────▶ │ Supabase Edge Function      │
+└────────────────────┘                           │ invoicetronic-webhook       │
+                                                 └────────────┬───────────────┘
+                                                              │
+                                                              ▼
+                                                 ┌────────────────────────────┐
+                                                 │ public.fatture_queue       │
+                                                 └────────────┬───────────────┘
+                                                              │
+                                                              ▼
+                                                 ┌────────────────────────────┐
+                                                 │ Railway queue worker       │
+                                                 │ python worker/run.py       │
+                                                 └────────────────────────────┘
+
               WORKER_BASE_URL NON impostata (sviluppo locale)
 ┌─────────────────┐
 │  Streamlit UI   │ ──── classifica_con_ai() locale ── (nessun worker)
 │ worker_client.py│       fallback automatico
 └─────────────────┘
 ```
+
+Nota architetturale aggiornata:
+- Il webhook pubblico Invoicetronic vive esclusivamente nella Supabase Edge Function.
+- Il FastAPI worker non e' piu' un endpoint webhook pubblico.
+- `worker/run.py` esegue un loop continuo su Railway e consuma `fatture_queue`.
+- `.github/workflows/queue-worker.yml` resta solo come fallback manuale.
 
 ### Endpoints REST
 
@@ -1832,5 +1899,114 @@ Il container worker viene definito con `command: uvicorn services.fastapi_worker
 
 ---
 
+## 22. Sistema di Notifiche In-App
+
+### Scopo
+
+Il sistema di notifiche (`services/notification_service.py`, ~201 righe) fornisce promemoria operativi in-app per guidare il ristoratore verso azioni correttive. Le notifiche appaiono nella dashboard principale e possono essere nascoste (dismiss) dall'utente.
+
+### Architettura
+
+- **Stateless**: le notifiche vengono ri-calcolate ad ogni caricamento pagina, non sono persistenti in DB
+- **Dismiss persistente**: le notifiche nascoste vengono salvate in `users.dismissed_notification_ids` (JSONB) con timestamp ISO 8601
+- **Scoped per ristorante**: ogni notifica ha un ID stabile che include il `ristorante_id` corrente, tramite `build_scoped_notification_id()`
+- **XSS safe**: i nomi prodotto vengono sanitizzati con `html.escape()` prima dell'inserimento nel body HTML
+
+### 6 Tipologie di Notifica
+
+| # | Tipo | Trigger | Livello |
+|---|------|---------|---------|
+| 1 | Upload con file scartati | Upload con file duplicati, falliti o bloccati | ⚠️ warning |
+| 2 | Alert prezzi > soglia | Upload con prodotti che superano +5% rispetto al prezzo precedente | 📈 warning |
+| 3 | Ricavi mensili mancanti | Mese precedente senza fatturato compilato in `margini_mensili` | 💰 info |
+| 4 | Costo personale mancante | Mese precedente senza `costo_dipendenti` compilato in `margini_mensili` | 👥 info |
+| 5 | Esito upload complessivo | Riepilogo upload con conteggio per categoria (duplicati, errori, bloccati) | ⚠️ warning |
+| 6 | Azione dal Controllo Prezzi | Link diretto alla pagina `3_controllo_prezzi.py` per gli alert rilevati | 📈 warning |
+
+### Funzioni Principali
+
+| Funzione | Scopo |
+|----------|-------|
+| `build_upload_outcome_notifications()` | Genera notifica per upload falliti/duplicati |
+| `build_price_alert_notifications()` | Genera notifica per aumenti prezzo rilevanti |
+| `build_monthly_data_notifications()` | Controlla ricavi e costi mancanti del mese precedente |
+| `build_scoped_notification_id()` | Crea ID stabile nel contesto del ristorante |
+| `get_dismissed_notification_ids()` | Carica le notifiche già nascoste dall'utente |
+| `dismiss_notification_ids()` | Segna notifiche come viste (salvataggio su DB) |
+
+### Schema Dismiss
+
+```python
+# users.dismissed_notification_ids (JSONB)
+{
+    "rist:abc-123:upload-outcome-xyz": "2026-04-09T10:30:00+00:00",
+    "rist:abc-123:price-alerts-xyz": "2026-04-09T11:00:00+00:00"
+}
+```
+
+### Test
+
+18 test in `tests/test_notification_service.py`: upload outcome, price alerts, monthly data, dismiss, scoped IDs, edge cases (empty data, missing context, XSS prevention).
+
+---
+
+## 23. Tracking Costi AI
+
+### Scopo
+
+Il sistema di tracking costi AI (`services/ai_cost_service.py`, ~94 righe) registra ogni chiamata OpenAI in un ledger persistente (`ai_usage_events`) per consentire agli admin di monitorare i costi per cliente e ristorante.
+
+### Funzionamento
+
+1. Ogni operazione AI (classificazione batch, parsing PDF/Vision) chiama `track_ai_usage()`
+2. La funzione calcola i costi in base ai token usati: **$0.15/1M input** + **$0.60/1M output** (GPT-4o-mini)
+3. Il record viene inserito in `ai_usage_events` con `operation_type`, token counts, costi e metadati
+4. Il Tab 6 del pannello admin aggrega questi dati per report giornalieri/mensili per cliente
+
+### Tabella `ai_usage_events` (migration 051)
+
+Vedi Sezione 11 — Schema Database Completo per lo schema dettagliato della tabella.
+
+### Budget
+
+- **Limite**: 1.000 classificazioni/giorno per ristorante
+- **Alert admin**: visibile in Tab 6 del pannello admin
+
+---
+
+## 24. Componenti Riutilizzabili
+
+### Scopo
+
+La cartella `components/` contiene componenti UI estratti per ridurre la complessità delle pagine principali e favorire il riuso.
+
+### components/category_editor.py (~958 righe)
+
+Data editor specializzato per la gestione delle categorie nelle righe fattura:
+- Rendering colonna Categoria con dropdown 29 opzioni
+- Sistema raggruppamento prodotti unici (checkbox, default ON)
+- Ricerca per Prodotto, Categoria o Fornitore
+- Salvataggio batch con propagazione in memoria locale/globale
+- Icone fonte classificazione: 📚 Memoria, 🧠 AI, ✋ Manuale
+
+### components/dashboard_renderer.py (~964 righe)
+
+Rendering KPI e grafici per la dashboard principale:
+- 6 KPI box (Spesa Totale, F&B, Fornitori, Spese Generali, Media Mensile)
+- Grafici Plotly: pivot categorie, pivot fornitori
+- Filtro temporale e selezione vista
+- Export Excel con ordinamento selezionabile
+
+### utils/app_controllers.py (~1.555 righe)
+
+Layer controller estratto da `app.py` per separare logica di business da rendering UI:
+- Controller upload: orchestrazione parsing, deduplicazione, classificazione AI
+- Controller filtro temporale: costruzione query per periodo selezionato
+- Controller gestione fatture: eliminazione singola/massiva, verifica post-delete
+- Controller classificazione AI: recovery pipeline per righe "Da Classificare"
+
+---
+
 *Documento generato automaticamente dall'analisi completa del codice sorgente.*
+*Versione 5.1 — 9 Aprile 2026*
 *Per aggiornamenti, modifiche o domande: mattiadavolio90@gmail.com*

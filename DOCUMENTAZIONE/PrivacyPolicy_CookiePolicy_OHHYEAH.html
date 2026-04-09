@@ -276,9 +276,9 @@
 
     <div class="header-meta">
       <div class="header-meta-item"><label>Titolare</label><span>Recoma System S.r.l.</span></div>
-      <div class="header-meta-item"><label>Ultimo aggiornamento</label><span>30 Marzo 2026</span></div>
-      <div class="header-meta-item"><label>Versione</label><span>v3.1</span></div>
-      <div class="header-meta-item"><label>Applicativo</label><span>OH YEAH! v3.0</span></div>
+      <div class="header-meta-item"><label>Ultimo aggiornamento</label><span>8 Aprile 2026</span></div>
+      <div class="header-meta-item"><label>Versione</label><span>v3.2</span></div>
+      <div class="header-meta-item"><label>Applicativo</label><span>OH YEAH! v3.1</span></div>
     </div>
   </div>
 
@@ -314,9 +314,11 @@
         <tbody>
           <tr><td>Dati anagrafici</td><td>Email, nome ristorante, P.IVA, ragione sociale</td><td>Erogazione servizio, fatturazione</td></tr>
           <tr><td>Credenziali</td><td>Hash Argon2id della password (irreversibile)</td><td>Autenticazione sicura</td></tr>
-          <tr><td>Documenti</td><td>Fatture elettroniche XML/P7M/PDF</td><td>Analisi gestionale costi</td></tr>
+          <tr><td>Documenti</td><td>Fatture elettroniche XML/P7M/PDF (caricate o ricevute via SDI/Invoicetronic)</td><td>Analisi gestionale costi</td></tr>
           <tr><td>Dati operativi</td><td>Ricette, ingredienti, note diario, margini</td><td>Funzionalità applicazione</td></tr>
           <tr><td>Dati di sessione</td><td>Token UUID4 opaco, timestamp accessi</td><td>Gestione sessione autenticata</td></tr>
+          <tr><td>Log operativi</td><td>Registro upload (file, esito, righe), registro utilizzo AI (modello, token, costo)</td><td>Trasparenza e supporto tecnico</td></tr>
+          <tr><td>Preferenze app</td><td>Stato periodo di prova, notifiche in-app nascoste</td><td>Personalizzazione esperienza utente</td></tr>
           <tr><td>Log tecnici</td><td>Azioni anonimizzate (senza PII in chiaro)</td><td>Sicurezza e debug</td></tr>
         </tbody>
       </table>
@@ -367,8 +369,10 @@
         <tbody>
           <tr><td>Dati account</td><td>Durata rapporto contrattuale</td><td>Eliminazione permanente su cancellazione account</td></tr>
           <tr><td>Fatture caricate</td><td>Fino a eliminazione volontaria</td><td>L'utente controlla la propria retention</td></tr>
-          <tr><td>File XML/P7M originali</td><td>Purgati dopo il processing</td><td>Non archiviati in forma grezza — GDPR data minimisation</td></tr>
+          <tr><td>File XML/P7M originali</td><td>Purgati dopo il processing</td><td>Non archiviati in forma grezza; file SDI purgati dalla coda entro 24h</td></tr>
+          <tr><td>Log operativi (upload e AI)</td><td>Durata dell’account</td><td>Conservati per trasparenza e supporto tecnico</td></tr>
           <tr><td>Log applicativi</td><td>Rotazione 50 MB × 10 file</td><td>Senza PII in chiaro, nessun archivio permanente</td></tr>
+          <tr><td>Tentativi di accesso</td><td>15 minuti</td><td>Rate limiting anti-brute-force, poi eliminati automaticamente</td></tr>
           <tr><td>Token di sessione</td><td>30 giorni o al logout</td><td>Invalidazione esplicita e per scadenza</td></tr>
           <tr><td>Email transazionali</td><td>Non archiviate (Brevo)</td><td>Solo log di invio per conformità</td></tr>
         </tbody>
@@ -388,6 +392,8 @@
           <tr><td>Supabase Inc.</td><td>Database hosting</td><td>🇩🇪 Frankfurt, UE</td><td>Dati persistiti esclusivamente in UE — no trasferimento extra-SEE</td></tr>
           <tr><td>OpenAI LP</td><td>AI categorizzazione</td><td>🇺🇸 USA</td><td>Standard Contractual Clauses (SCCs) UE 2021/914; dati on-the-fly, non archiviati per training</td></tr>
           <tr><td>Brevo SAS</td><td>SMTP transazionale</td><td>🇫🇷 Francia, UE</td><td>Nessun contenuto di fatture trasmesso; solo email+oggetto</td></tr>
+          <tr><td>Invoicetronic S.r.l.</td><td>Ricezione fatture SDI</td><td>🇮🇹 Italia</td><td>Fatture XML ricevute via webhook; dati in transito, non archiviati dopo consegna</td></tr>
+          <tr><td>Railway Corp.</td><td>Worker elaborazione fatture</td><td>🇺🇸 USA</td><td>Elaborazione in memoria, nessun dato persistito; SCCs UE per trasferimento dati</td></tr>
           <tr><td>Streamlit Cloud</td><td>Compute / hosting app</td><td>🇺🇸 USA</td><td>Nessun dato persistito lato Streamlit; solo elaborazione in memoria</td></tr>
         </tbody>
       </table>
@@ -407,6 +413,12 @@
           Tipo: tecnico / sessione<br>
           Scadenza: 30 giorni<br>
           Contenuto: UUID4 opaco
+        </div>
+        <div class="cookie-chip">
+          <strong>impersonation_user_id</strong>
+          Tipo: tecnico / amministrativo<br>
+          Scadenza: 30 giorni<br>
+          Solo account admin (supporto tecnico)
         </div>
         <div class="cookie-chip">
           <strong>Secure + SameSite=Strict</strong>
@@ -505,7 +517,7 @@
         <div class="article-title">Modifiche alla Privacy Policy</div>
       </div>
       <p>Il Titolare si riserva il diritto di modificare la presente informativa in qualsiasi momento. Le modifiche sostanziali verranno comunicate all'utente tramite notifica nell'applicazione con almeno <strong>15 giorni di preavviso</strong>. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione delle modifiche.</p>
-      <p><em>Ultimo aggiornamento: <strong>30 Marzo 2026</strong> — versione 3.1</em></p>
+      <p><em>Ultimo aggiornamento: <strong>8 Aprile 2026</strong> — versione 3.2</em></p>
     </div>
 
   </div><!-- /section-wrap privacy -->
@@ -526,7 +538,7 @@
         <div class="article-title">Oggetto del Servizio</div>
       </div>
       <p><strong>OH YEAH!</strong> è una piattaforma SaaS di analisi e gestione dei costi per attività di ristorazione, fornita da <strong>Recoma System S.r.l.</strong> (P.IVA: IT09599210961).</p>
-      <p>Il Servizio include: caricamento e analisi automatica di fatture elettroniche (XML, P7M, PDF) · classificazione AI prodotti · calcolo margini · gestione ricette e ingredienti · controllo prezzi fornitori · worker automatico di elaborazione fatture.</p>
+      <p>Il Servizio include: caricamento e analisi automatica di fatture elettroniche (XML, P7M, PDF) · ricezione automatica fatture dal SDI via Invoicetronic · classificazione AI prodotti · calcolo margini · gestione ricette e ingredienti · controllo prezzi fornitori · worker automatico di elaborazione fatture.</p>
       <div class="warn-box">
         <strong>⚠️ Limitazione importante:</strong> OH YEAH! è uno strumento di analisi gestionale e <strong>non sostituisce la consulenza fiscale, contabile o legale</strong>, né costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014. L'utente rimane responsabile delle proprie decisioni operative e fiscali.
       </div>
@@ -589,7 +601,7 @@
         <div class="article-num">6</div>
         <div class="article-title">Disponibilità e SLA</div>
       </div>
-      <p>Il Titolare si impegna a garantire la disponibilità del Servizio con un target di <strong>uptime ≥ 99,5% mensile</strong>, monitorato tramite health-check automatico ogni 5 minuti con alert email. Sono previste interruzioni per manutenzione programmata, con preavviso quando possibile. Il Titolare non è responsabile per interruzioni causate da fornitori terzi (Supabase, OpenAI, Brevo, Streamlit Cloud) o cause di forza maggiore.</p>
+      <p>Il Titolare si impegna a garantire la disponibilità del Servizio con un target di <strong>uptime ≥ 99,5% mensile</strong>, monitorato tramite health-check automatico ogni 5 minuti con alert email. Sono previste interruzioni per manutenzione programmata, con preavviso quando possibile. Il Titolare non è responsabile per interruzioni causate da fornitori terzi (Supabase, OpenAI, Brevo, Invoicetronic, Railway) o cause di forza maggiore.</p>
     </div>
 
     <div class="article">
@@ -624,7 +636,7 @@
         <div class="article-title">Modifiche ai Termini</div>
       </div>
       <p>Il Titolare si riserva il diritto di modificare i presenti Termini. Le modifiche sostanziali saranno comunicate tramite notifica nell'applicazione con almeno <strong>15 giorni di preavviso</strong>. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione.</p>
-      <p><em>Ultimo aggiornamento: <strong>30 Marzo 2026</strong></em></p>
+      <p><em>Ultimo aggiornamento: <strong>8 Aprile 2026</strong></em></p>
     </div>
 
     <hr>
@@ -649,8 +661,8 @@
        FOOTER
   ══════════════════════════════════════════ -->
   <div class="doc-footer">
-    <span><strong>OH YEAH!</strong> — Privacy Policy &amp; Cookie Policy v3.1</span>
-    <span>Recoma System S.r.l. — Ultimo aggiornamento: 30 Marzo 2026</span>
+    <span><strong>OH YEAH!</strong> — Privacy Policy &amp; Cookie Policy v3.2</span>
+    <span>Recoma System S.r.l. — Ultimo aggiornamento: 8 Aprile 2026</span>
     <span>D.Lgs. 196/2003 + GDPR UE 2016/679</span>
   </div>
 

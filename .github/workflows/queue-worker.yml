@@ -1,4 +1,4 @@
-name: Worker — fatture_queue processor
+name: Worker — fatture_queue manual fallback
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Elabora in modo asincrono le fatture ricevute dal webhook Invoicetronic.
@@ -18,9 +18,6 @@ name: Worker — fatture_queue processor
 # ═══════════════════════════════════════════════════════════════════════════════
 
 on:
-  schedule:
-    # Ogni 15 minuti — bilanciamento latenza/costo GitHub Actions
-    - cron: '*/15 * * * *'
   workflow_dispatch:
     # Permette avvio manuale per test o drain forzato della coda
     inputs:

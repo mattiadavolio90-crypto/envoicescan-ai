@@ -2,6 +2,11 @@ import streamlit as st
 import time
 import hashlib
 from argon2 import PasswordHasher
+
+from utils.streamlit_compat import patch_streamlit_width_api
+
+patch_streamlit_width_api()
+
 from services.db_service import elimina_tutte_fatture
 from services import get_supabase_client
 from services.auth_service import valida_password_compliance
@@ -258,6 +263,79 @@ with tab2:
                         export_data["classificazioni_manuali"] = class_export
                 except Exception as e:
                     logger.warning(f"Errore query classificazioni export: {e}")
+                
+                # Query upload_events con paginazione
+                try:
+                    ue_export = []
+                    offset = 0
+                    page_size = 1000
+                    while True:
+                        ue_query = supabase.table('upload_events').select('file_name, file_type, status, rows_parsed, rows_saved, error_stage, created_at')\
+                            .eq('user_id', user_id)\
+                            .order('created_at', desc=False)\
+                            .range(offset, offset + page_size - 1)\
+                            .execute()
+                        rows = ue_query.data or []
+                        if not rows:
+                            break
+                        ue_export.extend(rows)
+                        if len(rows) < page_size:
+                            break
+                        offset += page_size
+                    if ue_export:
+                        export_data["upload_events"] = ue_export
+                except Exception as e:
+                    logger.warning(f"Errore query upload_events export: {e}")
+                
+                # Query ai_usage_events con paginazione
+                try:
+                    ai_export = []
+                    offset = 0
+                    page_size = 1000
+                    while True:
+                        ai_query = supabase.table('ai_usage_events').select('operation_type, model, total_tokens, total_cost, source_file, created_at')\
+                            .eq('user_id', user_id)\
+                            .order('created_at', desc=False)\
+                            .range(offset, offset + page_size - 1)\
+                            .execute()
+                        rows = ai_query.data or []
+                        if not rows:
+                            break
+                        ai_export.extend(rows)
+                        if len(rows) < page_size:
+                            break
+                        offset += page_size
+                    if ai_export:
+                        export_data["ai_usage_events"] = ai_export
+                except Exception as e:
+                    logger.warning(f"Errore query ai_usage_events export: {e}")
+                
+                # Query ricette
+                try:
+                    ricette_query = supabase.table('ricette').select('nome, categoria, porzioni, costo_totale, prezzo_vendita, note, created_at')\
+                        .eq('userid', user_id).execute()
+                    if ricette_query.data:
+                        export_data["ricette"] = ricette_query.data
+                except Exception as e:
+                    logger.warning(f"Errore query ricette export: {e}")
+                
+                # Query note diario
+                try:
+                    note_query = supabase.table('note_diario').select('titolo, contenuto, data_nota, created_at')\
+                        .eq('userid', user_id).execute()
+                    if note_query.data:
+                        export_data["note_diario"] = note_query.data
+                except Exception as e:
+                    logger.warning(f"Errore query note_diario export: {e}")
+                
+                # Query margini mensili
+                try:
+                    margini_query = supabase.table('margini_mensili').select('mese, anno, fatturato, costo_lavoro, altri_ricavi, created_at')\
+                        .eq('user_id', user_id).execute()
+                    if margini_query.data:
+                        export_data["margini_mensili"] = margini_query.data
+                except Exception as e:
+                    logger.warning(f"Errore query margini_mensili export: {e}")
                 
                 # Converti in JSON
                 json_data = json.dumps(export_data, indent=2, ensure_ascii=False)

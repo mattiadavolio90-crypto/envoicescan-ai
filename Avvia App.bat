@@ -6,6 +6,10 @@ set "PYTHON_EXE=%~dp0.venv\Scripts\python.exe"
 set "APP_FILE=%~dp0app.py"
 set "APP_PORT=8502"
 
+if not defined ADMIN_EMAILS (
+	set "ADMIN_EMAILS=mattiadavolio90@gmail.com"
+)
+
 if not exist "%PYTHON_EXE%" (
 	echo.
 	echo ERRORE: Virtual environment non trovato in .venv\Scripts\python.exe

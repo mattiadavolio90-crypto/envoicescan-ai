@@ -8,6 +8,10 @@ from collections import defaultdict
 import io
 import time
 
+from utils.streamlit_compat import patch_streamlit_width_api
+
+patch_streamlit_width_api()
+
 # Import costanti da modulo separato
 from config.constants import (
     CATEGORIE_SPESE_GENERALI,
@@ -2151,15 +2155,36 @@ else:
             font-weight: 500;
             line-height: 1.4;
         }
+        /* upload_hint_row: forza tutti i wrapper Streamlit a restringersi al contenuto */
+        div.st-key-upload_hint_row {
+            display: inline-flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            gap: 0.55rem !important;
+            flex-wrap: nowrap !important;
+            width: auto !important;
+            max-width: 100% !important;
+        }
+        div.st-key-upload_hint_row > div,
+        div.st-key-upload_hint_row > div > div {
+            width: fit-content !important;
+            max-width: fit-content !important;
+            flex: 0 0 auto !important;
+            min-width: 0 !important;
+        }
+        div.st-key-upload_hint_row > div:last-child,
+        div.st-key-upload_hint_row > div:last-child > div {
+            width: auto !important;
+            max-width: none !important;
+        }
         div.st-key-main_documents_upload_section .upload-format-hint {
             color: #2d6a4f;
             font-size: clamp(0.8rem, 0.3vw + 0.74rem, 0.9rem);
             font-weight: 600;
             line-height: 1.3;
-            min-height: 2.9rem;
-            display: flex;
-            align-items: center;
-            padding-top: 0;
+            white-space: nowrap;
+            margin: 0 !important;
         }
         div.st-key-main_documents_upload_section .upload-ai-spacer {
             height: 34px;
@@ -2262,8 +2287,7 @@ else:
         col_upload, col_ai_right = st.columns([3, 2])
 
         with col_upload:
-            upload_button_col, upload_hint_col = st.columns([1, 2])
-            with upload_button_col:
+            with st.container(key="upload_hint_row"):
                 uploaded_files = st.file_uploader(
                     "Carica file",
                     accept_multiple_files=True,
@@ -2271,7 +2295,6 @@ else:
                     label_visibility="collapsed",
                     key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"
                 )
-            with upload_hint_col:
                 st.markdown(
                     "<div class='upload-format-hint'>Formati accettati: XML, P7M, PDF, PNG, JPG, JPEG · Max 200MB</div>",
                     unsafe_allow_html=True,

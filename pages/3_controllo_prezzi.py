@@ -8,6 +8,10 @@ import pandas as pd
 import io
 from datetime import datetime
 
+from utils.streamlit_compat import patch_streamlit_width_api
+
+patch_streamlit_width_api()
+
 from config.logger_setup import get_logger
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 from utils.ristorante_helper import get_current_ristorante_id

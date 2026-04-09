@@ -1,5 +1,5 @@
 """
-Workspace - Area di Lavoro
+Foodcost - Area Operativa
 Pagina dedicata alla gestione operativa del ristorante
 """
 
@@ -11,6 +11,11 @@ import io
 import time
 from datetime import datetime
 from supabase import Client
+
+from utils.streamlit_compat import patch_streamlit_width_api
+
+patch_streamlit_width_api()
+
 from config.logger_setup import get_logger
 from utils.ristorante_helper import get_current_ristorante_id
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
@@ -62,8 +67,8 @@ supabase = get_supabase_client()
 # CONFIGURAZIONE PAGINA
 # ============================================
 st.set_page_config(
-    page_title="Workspace - OH YEAH! Hub",
-    page_icon="🛠️",
+    page_title="Foodcost - OH YEAH! Hub",
+    page_icon="🍴",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -422,7 +427,7 @@ def get_ingredienti_dropdown(user_id: str, ristorante_id: str, exclude_ricetta_i
             }
         })
     
-    debug_messages.append(f"✅ Ingredienti workspace caricati: {len(workspace_data)}")
+    debug_messages.append(f"✅ Ingredienti manuali Foodcost caricati: {len(workspace_data)}")
     
     # 3. Ricette salvate (solo SEMILAVORATI)
     ricette = get_ricette_come_ingredienti(user_id, ristorante_id, exclude_ricetta_id)
@@ -543,13 +548,13 @@ st.markdown("""
     🍴 <span style="background: linear-gradient(90deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    background-clip: text;">Workspace - Gestione Ricette e Foodcost</span>
+    background-clip: text;">Ricette e Foodcost</span>
 </h2>
 """, unsafe_allow_html=True)
 
 st.markdown("""
 <div style='background-color: #e7f3ff; padding: clamp(0.625rem, 1.5vw, 0.75rem); border-radius: 5px; border-left: 4px solid #2196F3;'>
-<p style='margin: 0; color: #014361; font-size: clamp(0.75rem, 1.8vw, 0.875rem); line-height: 1.4; word-wrap: break-word;'>🍴 <strong>Workspace:</strong> Gestisci ricette, calcola il foodcost per piatto, monitora la marginalità e tieni il diario operativo.</p>
+<p style='margin: 0; color: #014361; font-size: clamp(0.75rem, 1.8vw, 0.875rem); line-height: 1.4; word-wrap: break-word;'>🍴 <strong>Foodcost:</strong> Gestisci ricette, calcola il foodcost per piatto, monitora la marginalità e tieni il diario operativo.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -867,7 +872,7 @@ if selected_tab == "🧪 Lab Ricette":
 
 ### 📝 Crea Ingrediente Manuale
 Puoi creare ingredienti manualmente con prezzi stimati.  
-Questi ingredienti rimangono isolati nel workspace e puoi modificarli/eliminarli in qualsiasi momento o sostituirli con quelli reali.
+Questi ingredienti rimangono isolati nell'area Foodcost e puoi modificarli/eliminarli in qualsiasi momento o sostituirli con quelli reali.
 
 ### 🍽️ Compila la Ricetta
 **🔍 Ingrediente**: Cerca nel dropdown (es: scrivi "mozz" per trovare mozzarella). Vicino ad ogni ingrediente puoi trovare:
@@ -1111,7 +1116,7 @@ Se necessario contattare l'assistenza.
                                     except Exception as e:
                                         st.error("❌ Errore eliminazione. Riprova.")
             except Exception as e:
-                st.warning("⚠️ Impossibile caricare gli ingredienti workspace. Riprova tra qualche secondo.")
+                st.warning("⚠️ Impossibile caricare gli ingredienti manuali Foodcost. Riprova tra qualche secondo.")
                 logger.warning(f"Errore caricamento ingredienti workspace: {e}")
     
     st.divider()

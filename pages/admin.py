@@ -21,6 +21,10 @@ import plotly.express as px
 import extra_streamlit_components as stx
 import requests
 
+from utils.streamlit_compat import patch_streamlit_width_api
+
+patch_streamlit_width_api()
+
 # Import corretto da utils (non da app.py per evitare esecuzione interfaccia)
 from utils.formatters import carica_categorie_da_db
 from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria, pulisci_caratteri_corrotti
@@ -1338,9 +1342,9 @@ if tab1:
                             pagine = row.get('pagine_abilitate') or {'workspace': True}
                             
                             _ws_stato = "✅ attivo" if pagine.get('workspace', True) else "❌ disattivo"
-                            st.markdown(f"**🍴 Workspace: {_ws_stato}**")
+                            st.markdown(f"**🍴 Foodcost: {_ws_stato}**")
                             new_workspace = st.checkbox(
-                                "Abilita Workspace",
+                                "Abilita Foodcost",
                                 value=pagine.get('workspace', True),
                                 key=f"workspace_toggle_{row['user_id']}"
                             )
@@ -1358,7 +1362,7 @@ if tab1:
                                     _verify_val = _verify.data[0].get('pagine_abilitate') if _verify.data else None
                                     
                                     logger.info(f"📄 Pagine aggiornate per {row['email']} (user_id={row['user_id']}): salvato={new_pagine}, verifica_db={_verify_val}")
-                                    st.success(f"✅ Workspace {'attivato' if new_workspace else 'disattivato'} per {row['email']}")
+                                    st.success(f"✅ Foodcost {'attivato' if new_workspace else 'disattivato'} per {row['email']}")
                                     time.sleep(2)
                                     st.rerun()
                                 except Exception as e:

@@ -150,9 +150,26 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+
+def _build_allowed_origins() -> List[str]:
+    raw = os.getenv("WORKER_ALLOWED_ORIGINS", "").strip()
+    if raw:
+        origins = [item.strip() for item in raw.split(",") if item.strip()]
+    else:
+        origins = [
+            "https://ohyeah.streamlit.app",
+            "https://ohyeah.app",
+            "https://envoicescan-ai-production.up.railway.app",
+        ]
+
+    if "*" in origins:
+        raise RuntimeError("WORKER_ALLOWED_ORIGINS non puo' contenere '*'.")
+
+    return list(dict.fromkeys(origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://envoicescan-ai-production.up.railway.app"],
+    allow_origins=_build_allowed_origins(),
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
@@ -603,131 +620,13 @@ def _extract_event_id(payload: dict[str, Any]) -> str:
 
 @app.post(
     "/webhook",
-    response_model=WebhookResponse,
-    summary="Webhook Invoicetronic",
-    tags=["Webhook"],
-    responses={
-        200: {"description": "Accettato con tenant non risolto (unknown_tenant)"},
-        202: {"description": "Accettato in coda"},
-        401: {"description": "Firma HMAC non valida"},
-        422: {"description": "Payload invalido"},
-        429: {"description": "Rate limit superato"},
-    },
+    include_in_schema=False,
 )
-async def invoicetronic_webhook(request: Request):
-    """Riceve notifiche fatture, valida la firma e inserisce direttamente in fatture_queue."""
-    client_ip = request.client.host if request.client else request.headers.get("X-Forwarded-For", "unknown").split(",")[0].strip()
-    _check_rate_limit(client_ip)
-
-    raw_body = await request.body()
-    try:
-        payload = json.loads(raw_body.decode("utf-8"))
-    except Exception:
-        raise HTTPException(status_code=422, detail="Body webhook non e' un JSON valido.")
-
-    SECRET = os.getenv("INVOICETRONIC_WEBHOOK_SECRET", "").strip()
-    if not SECRET:
-        raise HTTPException(status_code=500, detail="INVOICETRONIC_WEBHOOK_SECRET non configurato.")
-
-    signature = request.headers.get("Invoicetronic-Signature", "")
-    if not _verify_webhook_signature(raw_body, signature, SECRET):
-        raise HTTPException(status_code=401, detail="Firma webhook non valida.")
-
-    event_id = _extract_event_id(payload)
-    xml_content = _load_xml_from_payload(payload)
-
-    # Vincolo migration 045: piva_raw non puo' essere vuota.
-    piva_raw = _normalize_piva(
-        str(payload.get("piva_raw") or payload.get("piva") or payload.get("partita_iva") or "")
-    )
-    if not piva_raw:
-        piva_raw = _extract_piva_from_xml(xml_content)
-    if not piva_raw:
-        raise HTTPException(status_code=422, detail="Impossibile determinare piva_raw dal payload o dall'XML.")
-
-    supabase = _get_supabase_client()
-    user_id, ristorante_id = _resolve_tenant_by_piva(supabase, piva_raw)
-
-    nome_file = str(payload.get("nome_file") or payload.get("filename") or f"{event_id}.xml")
-    xml_url = payload.get("xml_url")
-    source = str(payload.get("source") or "invoicetronic").strip().lower() or "invoicetronic"
-    correlation_id = str(request.headers.get("X-Request-ID") or payload.get("correlation_id") or "").strip() or None
-
-    queue_status = "pending" if user_id and ristorante_id else "unknown_tenant"
-    import hashlib as _hl
-    xml_hash = _hl.sha256(xml_content.encode("utf-8")).hexdigest()
-    insert_payload = {
-        "event_id": event_id,
-        "user_id": user_id,
-        "ristorante_id": ristorante_id,
-        "piva_raw": piva_raw,
-        "xml_content": xml_content,
-        "xml_url": xml_url,
-        "xml_hash": xml_hash,
-        "payload_meta": {
-            "nome_file": nome_file,
-            "webhook_received_at": int(time.time()),
-        },
-        "source": source,
-        "correlation_id": correlation_id,
-        "status": queue_status,
-    }
-
-    try:
-        inserted = supabase.table("fatture_queue").insert(insert_payload).execute()
-        row = (inserted.data or [{}])[0]
-        queue_id = row.get("id")
-    except Exception as exc:
-        msg = str(exc)
-        if _looks_like_supabase_auth_error(exc):
-            raise HTTPException(
-                status_code=500,
-                detail="Supabase auth non valida nel worker (controlla SUPABASE_SERVICE_ROLE_KEY su Railway).",
-            )
-        # Idempotenza nativa su UNIQUE(event_id): se duplicato, ritorna successo.
-        if "uq_fatture_queue_event_id" in msg or "duplicate key value" in msg:
-            existing = (
-                supabase.table("fatture_queue")
-                .select("id,status")
-                .eq("event_id", event_id)
-                .limit(1)
-                .execute()
-            )
-            data = existing.data or [{}]
-            existing_id = data[0].get("id")
-            existing_status = data[0].get("status") or "pending"
-            return JSONResponse(
-                status_code=202 if existing_status != "unknown_tenant" else 200,
-                content=WebhookResponse(
-                    status=existing_status,
-                    event_id=event_id,
-                    queue_id=existing_id,
-                    message="Evento gia' presente in coda (idempotenza).",
-                ).model_dump(),
-            )
-        logger.exception("❌ /webhook insert fallita: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Errore inserimento in coda: {exc}")
-
-    # Risposta immediata: nessun processing sincrono nel webhook.
-    if queue_status == "unknown_tenant":
-        return JSONResponse(
-            status_code=200,
-            content=WebhookResponse(
-                status="unknown_tenant",
-                event_id=event_id,
-                queue_id=queue_id,
-                message="Tenant non risolto: evento accodato per riconciliazione.",
-            ).model_dump(),
-        )
-
-    return JSONResponse(
-        status_code=202,
-        content=WebhookResponse(
-            status="pending",
-            event_id=event_id,
-            queue_id=queue_id,
-            message="Evento accettato e accodato.",
-        ).model_dump(),
+async def invoicetronic_webhook_disabled() -> JSONResponse:
+    """Endpoint dismesso: il webhook pubblico vive nella Supabase Edge Function."""
+    raise HTTPException(
+        status_code=410,
+        detail="Webhook Invoicetronic disattivato su FastAPI worker. Usa la Supabase Edge Function.",
     )
 
 

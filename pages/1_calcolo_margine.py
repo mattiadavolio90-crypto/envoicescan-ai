@@ -11,6 +11,10 @@ import time
 import io
 import html as _html
 
+from utils.streamlit_compat import patch_streamlit_width_api
+
+patch_streamlit_width_api()
+
 from config.logger_setup import get_logger
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 from utils.ristorante_helper import get_current_ristorante_id
@@ -24,7 +28,6 @@ from services.margine_service import (
     genera_commenti_kpi,
     export_excel_margini,
     build_transposed_df,
-    extract_input_from_transposed,
     carica_costi_per_categoria,
     salva_fatturato_centri,
     carica_fatturato_centri_periodo,
@@ -397,7 +400,7 @@ if st.session_state.margine_tab == "analisi":
                 if _fatt_netto_mese > 0:
                     st.markdown(f"""
                     <div style="display:inline-block; background:#fef9c3; padding:6px 14px; border-radius:6px; border:1px solid #fde047; font-size:0.88rem; font-weight:500; margin-top:28px;">
-                        💰 Fatturato Netto di {mese_label_sel}: <strong>€ {_fatt_netto_mese:,.2f}</strong>
+                        💰 Fatturato Netto di {mese_label_sel}: <strong>€ {_fatt_netto_mese:,.0f}</strong>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
@@ -450,7 +453,7 @@ if st.session_state.margine_tab == "analisi":
             totale_inserito = sum(_valori_inseriti.values())
             if modo_split == "€ Valore Assoluto":
                 obiettivo = _fatt_netto_mese
-                label_tot = f"€ {totale_inserito:,.2f} / € {obiettivo:,.2f}"
+                label_tot = f"€ {totale_inserito:,.0f} / € {obiettivo:,.0f}"
                 is_valid = abs(totale_inserito - obiettivo) < 1.0
             else:
                 obiettivo = 100.0
@@ -589,7 +592,7 @@ if st.session_state.margine_tab == "analisi":
         def _margine_html(margine):
             cls = "aa-margine-pos" if margine >= 0 else "aa-margine-neg"
             segno = "+" if margine >= 0 else ""
-            return f'<span class="{cls}">{segno}€ {margine:,.2f}</span>'
+            return f'<span class="{cls}">{segno}€ {margine:,.0f}</span>'
 
         def _margine_pct_html(pct):
             if pct >= 0:
@@ -626,10 +629,10 @@ if st.session_state.margine_tab == "analisi":
             # Centro | Fatturato | Costi | % Costi su Fatt. | Margine | Margine % | % su Costi F&B Tot
             h.append(f'<div class="aa-row"><div><span class="aa-arrow">▶</span>{icona}  {centro_nome}</div>')
             if fatturato_split_attivo and _fatt_c > 0:
-                h.append(f'<div>€ {_fatt_c:,.2f}</div>')
+                h.append(f'<div>€ {_fatt_c:,.0f}</div>')
             else:
                 h.append(f'<div style="color:#94a3b8;">—</div>')
-            h.append(f'<div>€ {spesa_c:,.2f}</div>')
+            h.append(f'<div>€ {spesa_c:,.0f}</div>')
             h.append(f'<div>{_bar_html(pct_fatt_c, "#0ea5e9")}</div>')
             if fatturato_split_attivo and _fatt_c > 0:
                 h.append(f'<div>{_margine_html(_margine_c)}</div>')
@@ -650,7 +653,7 @@ if st.session_state.margine_tab == "analisi":
                 pct_cat_centro = (spesa_cat / spesa_c * 100) if spesa_c > 0 else 0.0
                 h.append(f'<div class="aa-cat"><div class="aa-row"><div>↳ {cat_nome_safe}</div>')
                 h.append(f'<div style="color:#94a3b8;">—</div>')
-                h.append(f'<div>€ {spesa_cat:,.2f}</div>')
+                h.append(f'<div>€ {spesa_cat:,.0f}</div>')
                 h.append(f'<div>{_bar_html(pct_cat_fatt, "#94a3b8")}</div>')
                 h.append(f'<div style="color:#94a3b8;">—</div>')
                 h.append(f'<div style="color:#94a3b8;">—</div>')
@@ -661,8 +664,8 @@ if st.session_state.margine_tab == "analisi":
         # Riga TOTALE
         tot_pct_fatt = (totale_costi_fb / fatturato_netto_periodo * 100) if fatturato_netto_periodo > 0 else 0.0
         h.append(f'<div class="aa-row aa-totale"><div>TOTALE (1° Margine)</div>')
-        h.append(f'<div>€ {fatturato_netto_periodo:,.2f}</div>')
-        h.append(f'<div>€ {totale_costi_fb:,.2f}</div>')
+        h.append(f'<div>€ {fatturato_netto_periodo:,.0f}</div>')
+        h.append(f'<div>€ {totale_costi_fb:,.0f}</div>')
         h.append(f'<div>{_bar_html(tot_pct_fatt, "#0ea5e9")}</div>')
         h.append(f'<div>{_margine_html(primo_margine)}</div>')
         _tot_margine_perc = (primo_margine / fatturato_netto_periodo * 100) if fatturato_netto_periodo > 0 else 0.0
@@ -678,7 +681,7 @@ if st.session_state.margine_tab == "analisi":
         # ========================================================
         if spesa_extra_tot > 0:
             st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
-            with st.expander(f"📦 Materiale di Consumo — Totale: € {spesa_extra_tot:,.2f}", expanded=False):
+            with st.expander(f"📦 Materiale di Consumo — Totale: € {spesa_extra_tot:,.0f}", expanded=False):
                 st.markdown(f"""
                 <p style="font-size:0.85rem;color:#475569;margin-bottom:10px;">
                     Costo distribuito proporzionalmente {'al fatturato' if fatturato_split_attivo and fatturato_totale_split > 0 else 'ai costi'} di ogni centro di produzione.
@@ -694,7 +697,7 @@ if st.session_state.margine_tab == "analisi":
                         if f_c > 0:
                             quota = spesa_extra_tot * f_c / fatturato_totale_split
                             pct = f_c / fatturato_totale_split * 100
-                            _mc_rows.append({"Centro": f"{icone_centri.get(c, '')} {c}", "Quota Fatturato": f"{pct:.1f}%", "Costo Attribuito": f"€ {quota:,.2f}"})
+                            _mc_rows.append({"Centro": f"{icone_centri.get(c, '')} {c}", "Quota Fatturato": f"{pct:.1f}%", "Costo Attribuito": f"€ {quota:,.0f}"})
                 else:
                     _centri_presenti = [c for c in _centri_fatt_list if c in df_centri_main['Centro'].values]
                     _spese_centri = {row['Centro']: row['Spesa'] for _, row in df_centri_main.iterrows()}
@@ -703,7 +706,7 @@ if st.session_state.margine_tab == "analisi":
                         sp_c = _spese_centri.get(c, 0.0)
                         pct = (sp_c / _tot_spese_centri * 100) if _tot_spese_centri > 0 else 0.0
                         quota = spesa_extra_tot * sp_c / _tot_spese_centri if _tot_spese_centri > 0 else 0.0
-                        _mc_rows.append({"Centro": f"{icone_centri.get(c, '')} {c}", "Quota (prop. costi)": f"{pct:.1f}%", "Costo Attribuito": f"€ {quota:,.2f}"})
+                        _mc_rows.append({"Centro": f"{icone_centri.get(c, '')} {c}", "Quota (prop. costi)": f"{pct:.1f}%", "Costo Attribuito": f"€ {quota:,.0f}"})
 
                 if _mc_rows:
                     st.dataframe(pd.DataFrame(_mc_rows), hide_index=True, use_container_width=False)
@@ -1071,7 +1074,7 @@ if st.session_state.margine_tab == "centri":
     # ============================================
     # CARICA DATI E FILTRA
     # ============================================
-    df_full = carica_e_prepara_dataframe(user_id, ristorante_id=st.session_state.get('ristorante_id'))
+    df_full = carica_e_prepara_dataframe(user_id, ristorante_id=current_ristorante)
 
     if df_full is None or df_full.empty:
         st.warning("⚠️ Nessun dato disponibile.")
@@ -1172,7 +1175,7 @@ if st.session_state.margine_tab == "centri":
                     pct_incid = (spesa_tot / grand_total_centri * 100) if grand_total_centri > 0 else 0.0
                     icona = icone_centri_cp.get(centro_nome, "📁")
 
-                    with st.expander(f"{icona} **{centro_nome}** — Totale: € {spesa_tot:,.2f} | Media: € {media_c:,.2f} | Incid.: {pct_incid:.1f}%", expanded=False):
+                    with st.expander(f"{icona} **{centro_nome}** — Totale: € {spesa_tot:,.0f} | Media: € {media_c:,.0f} | Incid.: {pct_incid:.1f}%", expanded=False):
                         # Categorie di questo centro
                         cats_centro = CENTRI_DI_PRODUZIONE.get(centro_nome, [])
                         df_cats = df_centri[df_centri['Centro'] == centro_nome].copy()
@@ -1215,13 +1218,13 @@ if st.session_state.margine_tab == "centri":
                         # Column config
                         cc = {'Categoria': st.column_config.TextColumn('Categoria', width='medium')}
                         for col in cat_mesi_cols:
-                            cc[col] = st.column_config.NumberColumn(col, format="€ %.2f")
+                            cc[col] = st.column_config.NumberColumn(col, format="€ %.0f")
                             if mostra_pct_centri:
                                 cc[f'{col} %'] = st.column_config.ProgressColumn('%', format="%.1f%%", min_value=0, max_value=100, width='small')
-                        cc['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
+                        cc['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.0f")
                         if mostra_pct_centri:
                             cc['TOTALE %'] = st.column_config.ProgressColumn('Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small')
-                        cc['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
+                        cc['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.0f")
 
                         alt = max(len(cat_display) * 35 + 50, 120)
                         st.dataframe(cat_display, hide_index=True, use_container_width=True, height=alt, column_config=cc)
@@ -1280,98 +1283,41 @@ if st.session_state.margine_tab == "calcolo":
     # ============================================
     # PREPARA DATAFRAME INPUT (12 mesi SEMPRE)
     # ============================================
-    # Chiave sessione per dati di lavoro non salvati (unica per ristorante/anno)
-    work_key = f"margine_work_{current_ristorante}_{anno}"
-
-    if work_key in st.session_state:
-        # Dati di lavoro non salvati presenti → usali come base
-        df_input = st.session_state[work_key].copy()
-        # Safety: aggiungi colonna Altri_Ricavi_NoIVA se mancante (sessione pre-aggiornamento)
-        if 'Altri_Ricavi_NoIVA' not in df_input.columns:
-            df_input['Altri_Ricavi_NoIVA'] = 0.0
-        # Aggiorna SEMPRE le colonne auto (possono cambiare se caricate nuove fatture)
-        for i in range(12):
-            mese_num = i + 1
-            df_input.at[i, 'Costi_FB_Auto'] = float(costi_fb_mensili.get(mese_num, 0.0))
-            df_input.at[i, 'Costi_Spese_Auto'] = float(costi_spese_mensili.get(mese_num, 0.0))
-    else:
-        # Prima apertura o dopo salvataggio → carica da DB
-        data_input = []
-        for mese_num in range(1, 13):
-            dati_mese = dati_salvati.get(mese_num, {})
-            data_input.append({
-                'Mese': MESI_NOMI[mese_num - 1],
-                'MeseNum': mese_num,
-                'Fatt_IVA10': float(dati_mese.get('fatturato_iva10', 0.0) or 0.0),
-                'Fatt_IVA22': float(dati_mese.get('fatturato_iva22', 0.0) or 0.0),
-                'Altri_Ricavi_NoIVA': float(dati_mese.get('altri_ricavi_noiva', 0.0) or 0.0),
-                'Costi_FB_Auto': float(costi_fb_mensili.get(mese_num, 0.0)),
-                'Altri_FB': float(dati_mese.get('altri_costi_fb', 0.0) or 0.0),
-                'Costi_Spese_Auto': float(costi_spese_mensili.get(mese_num, 0.0)),
-                'Altri_Spese': float(dati_mese.get('altri_costi_spese', 0.0) or 0.0),
-                'Costo_Dipendenti': float(dati_mese.get('costo_dipendenti', 0.0) or 0.0),
-            })
-        df_input = pd.DataFrame(data_input)
-
-    # ============================================
-    # COMPILAZIONE RAPIDA: Applica valori a tutti i mesi
-    # ============================================
-    # Applica costo dipendenti se richiesto
-    if 'costo_dip_da_applicare' in st.session_state:
-        val = st.session_state.costo_dip_da_applicare
-        for i in range(12):
-            df_input.at[i, 'Costo_Dipendenti'] = val
-        del st.session_state.costo_dip_da_applicare
-        st.session_state[work_key] = df_input.copy()
-        if 'margine_data_editor' in st.session_state:
-            del st.session_state['margine_data_editor']
-
-    # Applica altri costi F&B se richiesto
-    if 'altri_fb_da_applicare' in st.session_state:
-        val = st.session_state.altri_fb_da_applicare
-        for i in range(12):
-            df_input.at[i, 'Altri_FB'] = val
-        del st.session_state.altri_fb_da_applicare
-        st.session_state[work_key] = df_input.copy()
-        if 'margine_data_editor' in st.session_state:
-            del st.session_state['margine_data_editor']
-
-    # Applica altre spese se richiesto
-    if 'altre_spese_da_applicare' in st.session_state:
-        val = st.session_state.altre_spese_da_applicare
-        for i in range(12):
-            df_input.at[i, 'Altri_Spese'] = val
-        del st.session_state.altre_spese_da_applicare
-        st.session_state[work_key] = df_input.copy()
-        if 'margine_data_editor' in st.session_state:
-            del st.session_state['margine_data_editor']
-
-    # Applica altri ricavi se richiesto
-    if 'altri_ricavi_da_applicare' in st.session_state:
-        val = st.session_state.altri_ricavi_da_applicare
-        for i in range(12):
-            df_input.at[i, 'Altri_Ricavi_NoIVA'] = val
-        del st.session_state.altri_ricavi_da_applicare
-        st.session_state[work_key] = df_input.copy()
-        if 'margine_data_editor' in st.session_state:
-            del st.session_state['margine_data_editor']
+    data_input = []
+    for mese_num in range(1, 13):
+        dati_mese = dati_salvati.get(mese_num, {})
+        data_input.append({
+            'Mese': MESI_NOMI[mese_num - 1],
+            'MeseNum': mese_num,
+            'Fatt_IVA10': float(dati_mese.get('fatturato_iva10', 0.0) or 0.0),
+            'Fatt_IVA22': float(dati_mese.get('fatturato_iva22', 0.0) or 0.0),
+            'Altri_Ricavi_NoIVA': float(dati_mese.get('altri_ricavi_noiva', 0.0) or 0.0),
+            'Costi_FB_Auto': float(costi_fb_mensili.get(mese_num, 0.0)),
+            'Altri_FB': float(dati_mese.get('altri_costi_fb', 0.0) or 0.0),
+            'Costi_Spese_Auto': float(costi_spese_mensili.get(mese_num, 0.0)),
+            'Altri_Spese': float(dati_mese.get('altri_costi_spese', 0.0) or 0.0),
+            'Costo_Dipendenti': float(dati_mese.get('costo_dipendenti', 0.0) or 0.0),
+        })
+    df_input = pd.DataFrame(data_input)
 
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("""
     <div style="padding: 10px 14px; margin-bottom: 8px;">
-        <span style="color: #1e40af; font-weight: 600; font-size: 1rem;">💡 Compilazione Rapida - Applica lo stesso valore a tutti i 12 mesi. Seleziona la voce, inserisci l'importo e clicca Applica.</span>
+        <span style="color: #1e40af; font-weight: 600; font-size: 1rem;">💡 Inserimento rapido - Seleziona metrica, mese o Tutti i mesi, inserisci l'importo e clicca Applica.</span>
     </div>
     """, unsafe_allow_html=True)
 
-    # Compilazione rapida: dropdown + importo + bottone in una riga
     _OPZIONI_RAPIDA = {
-        "💰 Altri ricavi (no iva)": ("altri_ricavi_da_applicare", 100.0),
-        "💶 Costo personale Lordo": ("costo_dip_da_applicare", 100.0),
-        "🍔 Altri Costi F&B": ("altri_fb_da_applicare", 50.0),
-        "📄 Altre Spese Generali": ("altre_spese_da_applicare", 50.0),
+        "Ricavi IVA 10%": ("Fatt_IVA10", 100.0),
+        "Ricavi IVA 22%": ("Fatt_IVA22", 100.0),
+        "Altri ricavi (no iva)": ("Altri_Ricavi_NoIVA", 100.0),
+        "Altri Costi F&B": ("Altri_FB", 50.0),
+        "Altre Spese Generali": ("Altri_Spese", 50.0),
+        "Costo personale Lordo": ("Costo_Dipendenti", 100.0),
     }
+    _OPZIONI_TEMPORALI = ["Tutti i mesi"] + MESI_NOMI
 
-    col_sel, col_imp, col_btn, col_empty = st.columns([1.5, 1.5, 1, 3])
+    col_sel, col_tempo, col_imp, col_btn, col_empty = st.columns([1.4, 1.1, 1.2, 0.95, 2.35])
     with col_sel:
         voce_selezionata = st.selectbox(
             "Voce da compilare",
@@ -1379,8 +1325,15 @@ if st.session_state.margine_tab == "calcolo":
             key="margine_compilazione_rapida_voce",
             label_visibility="collapsed"
         )
+    with col_tempo:
+        periodo_selezionato = st.selectbox(
+            "Periodo",
+            options=_OPZIONI_TEMPORALI,
+            key="margine_compilazione_rapida_periodo",
+            label_visibility="collapsed"
+        )
     with col_imp:
-        _step_rapida = _OPZIONI_RAPIDA[voce_selezionata][1]
+        _colonna_target, _step_rapida = _OPZIONI_RAPIDA[voce_selezionata]
         importo_rapido = st.number_input(
             "Importo",
             min_value=0.0,
@@ -1390,10 +1343,23 @@ if st.session_state.margine_tab == "calcolo":
             label_visibility="collapsed"
         )
     with col_btn:
-        if st.button("📋 Applica a tutti", use_container_width=True, key="margine_applica_rapido"):
-            _session_key = _OPZIONI_RAPIDA[voce_selezionata][0]
-            st.session_state[_session_key] = importo_rapido
-            st.rerun()
+        if st.button("📋 Applica", use_container_width=True, key="margine_applica_rapido"):
+            df_input_apply = df_input.copy()
+            mesi_target = range(1, 13) if periodo_selezionato == "Tutti i mesi" else [MESI_NOMI.index(periodo_selezionato) + 1]
+            for mese_num in mesi_target:
+                df_input_apply.loc[df_input_apply['MeseNum'] == mese_num, _colonna_target] = float(importo_rapido)
+
+            df_risultati_apply = calcola_risultati(df_input_apply)
+            with st.spinner("Salvataggio in corso..."):
+                success = salva_margini_anno(
+                    user_id, current_ristorante, anno, df_input_apply, df_risultati_apply
+                )
+            if success:
+                st.success("✅ Valore applicato e salvato")
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.error("❌ Errore durante il salvataggio. Riprova.")
 
     # ============================================
     # TABELLA UNICA TRASPOSTA - INPUT + RISULTATI
@@ -1413,212 +1379,200 @@ if st.session_state.margine_tab == "calcolo":
     <li>Le righe con <strong>=</strong> sono calcolate automaticamente e si aggiornano in tempo reale</li>
     <li>Il <strong>Fatturato</strong> si riferisce all'incasso IVA inclusa: viene scorporata l'IVA per ottenere il <em>Fatturato Netto</em></li>
     <li>Se non inserisci fatturato, il <strong>MOL sarà negativo</strong> (somma dei soli costi)</li>
+    <li>I <strong>mesi</strong> compaiono in tabella solo quando sono stati popolati da <strong>fatture</strong> o da <strong>valori manuali salvati</strong></li>
     <li>I dati sono salvati per <strong>ristorante</strong> e <strong>anno</strong> — ogni ristorante ha i propri margini</li>
     </ul>
     </div>
     </details>
     """, unsafe_allow_html=True)
 
-    # Flag per mostrare/nascondere colonne %
-    mostra_pct = st.checkbox("📊 Visualizza incidenze %", value=False, key="mostra_incidenze_pct")
-
     # Build transposed display from df_input
     df_display = build_transposed_df(df_input)
 
-    # ============================================
-    # NASCONDI MESI PRECEDENTI SENZA DATI
-    # Solo per anno corrente: i mesi prima del mese corrente vengono nascosti
-    # se non contengono alcun valore (né fatture né inserimento manuale).
-    # ============================================
-    mese_corrente = datetime.now().month
-    mesi_nascosti = []
-    if anno == anno_corrente:
-        _COLONNE_DATI = ['Fatt_IVA10', 'Fatt_IVA22', 'Altri_Ricavi_NoIVA',
-                         'Costi_FB_Auto', 'Altri_FB', 'Costi_Spese_Auto',
-                         'Altri_Spese', 'Costo_Dipendenti']
-        for _m_idx in range(mese_corrente - 1):  # mesi 0..mese_corrente-2
-            _riga = df_input[df_input['MeseNum'] == _m_idx + 1]
-            if not _riga.empty:
-                _valori = [float(_riga.iloc[0][c]) for c in _COLONNE_DATI if c in _riga.columns]
-                if not any(v != 0 for v in _valori):
-                    mesi_nascosti.append(MESI_NOMI[_m_idx])
+    voce_display_map = {
+        'Fatt. IVA 10%': 'Ricavi | IVA 10%',
+        'Fatt. IVA 22%': 'Ricavi | IVA 22%',
+        'Altri ricavi (no iva)': 'Ricavi | Altri ricavi',
+        '= Fatturato Netto': 'Totale | Fatturato Netto',
+        'Costi F&B (da Fatture)': 'Costi F&B | da fatture',
+        'Altri Costi F&B': 'Costi F&B | altri costi',
+        '= Costi F&B Totali': 'Totale | Costi F&B',
+        '= 1° Margine': 'Margine | 1° Margine',
+        'Spese Gen. (da Fatture)': 'Spese Gen. | da fatture',
+        'Altre Spese Generali': 'Spese Gen. | altre spese',
+        'Costo personale Lordo': 'Personale | costo lordo',
+        '= 2° Margine (MOL)': 'Margine | 2° Margine (MOL)',
+    }
+    df_display['Voce'] = df_display['Voce'].map(lambda v: voce_display_map.get(v, v))
 
-    # Rimuovi colonne dei mesi vuoti precedenti dalla vista
+    euro_cols_all = [c for c in df_display.columns if c.endswith(' €')]
+    pct_cols_all = [c for c in df_display.columns if c.endswith(' %')]
+
+    # ============================================
+    # NASCONDI TUTTI I MESI COMPLETAMENTE VUOTI
+    # Il mese riappare automaticamente quando almeno un campo viene popolato
+    # da fatture o da un inserimento già salvato.
+    # ============================================
+    _COLONNE_DATI = ['Fatt_IVA10', 'Fatt_IVA22', 'Altri_Ricavi_NoIVA',
+                     'Costi_FB_Auto', 'Altri_FB', 'Costi_Spese_Auto',
+                     'Altri_Spese', 'Costo_Dipendenti']
+    mesi_nascosti = []
+    for _m_idx, _mese_nome in enumerate(MESI_NOMI, start=1):
+        _riga = df_input[df_input['MeseNum'] == _m_idx]
+        if _riga.empty:
+            mesi_nascosti.append(_mese_nome)
+            continue
+
+        _valori = [float(_riga.iloc[0][c]) for c in _COLONNE_DATI if c in _riga.columns]
+        if not any(abs(v) > 0.0001 for v in _valori):
+            mesi_nascosti.append(_mese_nome)
+
+    # Rimuovi colonne dei mesi completamente vuoti dalla vista
     if mesi_nascosti:
         _cols_hide = [f'{m} €' for m in mesi_nascosti] + [f'{m} %' for m in mesi_nascosti]
         df_display = df_display.drop(columns=[c for c in _cols_hide if c in df_display.columns])
-        st.caption(f"ℹ️ {len(mesi_nascosti)} mesi senza dati nascosti: {', '.join(mesi_nascosti)}")
-
-    # Se il flag è disattivato, rimuovi le colonne %
-    if not mostra_pct:
-        pct_cols = [c for c in df_display.columns if c.endswith(' %')]
-        df_display = df_display.drop(columns=pct_cols)
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
 
     # Mesi visibili dopo i filtri
     mesi_visibili = [m for m in MESI_NOMI if m not in mesi_nascosti]
 
-    # Column config for data_editor
-    column_config = {
-        'Voce': st.column_config.TextColumn(
-            '📋 Voce', disabled=True, width='medium'
-        ),
-    }
-
-    # Add € (NumberColumn) and % (ProgressColumn with colored bar) for each visible month
-    for mese in mesi_visibili:
-        column_config[f'{mese} €'] = st.column_config.NumberColumn(
-            f'{mese} €', format="%.2f",
-        )
-        column_config[f'{mese} %'] = st.column_config.ProgressColumn(
-            f'{mese} %', format="%.1f%%",
-            min_value=0, max_value=100, width='small'
-        )
-
-    # Disabled columns: Voce + all % columns (text, readonly)
-    disabled_cols = ['Voce']
-    for mese in mesi_visibili:
-        disabled_cols.append(f'{mese} %')
-
-    edited_display = st.data_editor(
-        df_display,
-        column_config=column_config,
-        disabled=disabled_cols,
-        hide_index=True,
-        use_container_width=True,
-        height=520,
-        key="margine_data_editor"
-    )
-
-    # CSS per cambiare colore barre di progresso e numeri da rosso ad arancione
+    # Legenda colori sezioni
     st.markdown("""
-    <style>
-    /* Barre percentuale nella tabella - arancione - selettori multipli per coverage completo */
-    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] {
-        --progress-bar-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] > div {
-        background-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] > div > div {
-        background-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] [class*="ProgressBar"] {
-        background-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] div[role="progressbar"] {
-        background-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] div[role="progressbar"] > div {
-        background-color: #f97316 !important;
-    }
-    [data-testid="stDataFrame"] div[role="progressbar"] > div > div {
-        background-color: #f97316 !important;
-    }
-    /* Testo percentuale - arancione */
-    [data-testid="stDataFrame"] [data-baseweb="progress-bar"] span {
-        color: #f97316 !important;
-        font-weight: 600 !important;
-    }
-    /* Streamlit data_editor progress column specifico */
-    [data-testid="column"] [data-baseweb="progress-bar"] > div {
-        background-color: #f97316 !important;
-    }
-    /* Fallback generico per progress bar */
-    .stDataFrame [data-baseweb="progress-bar"] > div,
-    .stDataFrame [role="progressbar"] > div {
-        background-color: #f97316 !important;
-    }
-    </style>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; margin: 4px 0 10px 0;">
+        <span style="color:#1d4ed8; border:1px solid #bfdbfe; border-radius:999px; padding:4px 12px; font-size:0.78rem; font-weight:600;">Ricavi</span>
+        <span style="color:#c2410c; border:1px solid #fed7aa; border-radius:999px; padding:4px 12px; font-size:0.78rem; font-weight:600;">Costi F&B</span>
+        <span style="color:#6d28d9; border:1px solid #ddd6fe; border-radius:999px; padding:4px 12px; font-size:0.78rem; font-weight:600;">Spese Generali</span>
+        <span style="color:#be185d; border:1px solid #fbcfe8; border-radius:999px; padding:4px 12px; font-size:0.78rem; font-weight:600;">Personale</span>
+        <span style="color:#166534; border:1px solid #bbf7d0; border-radius:999px; padding:4px 12px; font-size:0.78rem; font-weight:600;">Totali & Margini</span>
+    </div>
     """, unsafe_allow_html=True)
+    row_colors = {
+        'Ricavi | IVA 10%': '#1d4ed8',
+        'Ricavi | IVA 22%': '#1d4ed8',
+        'Ricavi | Altri ricavi': '#1d4ed8',
+        'Totale | Fatturato Netto': '#1e40af',
+        'Costi F&B | da fatture': '#c2410c',
+        'Costi F&B | altri costi': '#c2410c',
+        'Totale | Costi F&B': '#9a3412',
+        'Margine | 1° Margine': '#166534',
+        'Spese Gen. | da fatture': '#6d28d9',
+        'Spese Gen. | altre spese': '#6d28d9',
+        'Personale | costo lordo': '#be185d',
+        'Margine | 2° Margine (MOL)': '#15803d',
+    }
+    bold_rows = {
+        'Totale | Fatturato Netto',
+        'Totale | Costi F&B',
+        'Margine | 1° Margine',
+        'Margine | 2° Margine (MOL)',
+    }
+    metric_bg_colors = {
+        'Totale | Fatturato Netto': 'rgba(30, 64, 175, 0.10)',
+        'Totale | Costi F&B': 'rgba(154, 52, 18, 0.10)',
+        'Margine | 1° Margine': 'rgba(22, 101, 52, 0.10)',
+        'Margine | 2° Margine (MOL)': 'rgba(21, 128, 61, 0.10)',
+    }
+    pct_total_rows = {
+        'Costi F&B | da fatture',
+        'Costi F&B | altri costi',
+        'Totale | Costi F&B',
+        'Margine | 1° Margine',
+        'Spese Gen. | da fatture',
+        'Spese Gen. | altre spese',
+        'Personale | costo lordo',
+        'Margine | 2° Margine (MOL)',
+    }
 
-    # ============================================
-    # EXTRACT INPUT & DETECT CHANGES
-    # ============================================
-    # Ricostruisci le colonne dei mesi nascosti (tutti a zero) prima dell'estrazione,
-    # così extract_input_from_transposed riceve sempre tutti e 12 i mesi.
-    _df_edited_full = edited_display.copy()
-    for _m in mesi_nascosti:
-        if f'{_m} €' not in _df_edited_full.columns:
-            _df_edited_full[f'{_m} €'] = 0.0
-        if f'{_m} %' not in _df_edited_full.columns:
-            _df_edited_full[f'{_m} %'] = None
+    df_input_current = df_input.copy()
+    df_display_render = df_display.copy()
+    euro_cols_visibili = [f'{mese} €' for mese in mesi_visibili if f'{mese} €' in df_display_render.columns]
+    pct_cols_visibili = [f'{mese} %' for mese in mesi_visibili if f'{mese} %' in df_display_render.columns]
 
-    df_input_new = extract_input_from_transposed(
-        _df_edited_full, costi_fb_mensili, costi_spese_mensili
+    totale_netto_mesi_visibili = 0.0
+    _mask_netto = df_display_render['Voce'] == 'Totale | Fatturato Netto'
+    if _mask_netto.any() and euro_cols_visibili:
+        totale_netto_mesi_visibili = float(df_display_render.loc[_mask_netto, euro_cols_visibili].fillna(0.0).sum(axis=1).iloc[0])
+
+    if euro_cols_visibili:
+        df_display_render['Totale €'] = df_display_render[euro_cols_visibili].fillna(0.0).sum(axis=1)
+    else:
+        df_display_render['Totale €'] = 0.0
+
+    def _compute_total_pct(row):
+        if row['Voce'] not in pct_total_rows or totale_netto_mesi_visibili <= 0:
+            return None
+        return round((float(row['Totale €']) / totale_netto_mesi_visibili) * 100, 1)
+
+    df_display_render['Totale %'] = df_display_render.apply(_compute_total_pct, axis=1)
+
+    for col in euro_cols_all:
+        if col in df_display_render.columns:
+            df_display_render[col] = df_display_render[col].map(
+                    lambda value: '' if pd.isna(value) or abs(float(value)) < 0.5 else f'€ {float(value):.0f}'
+            )
+    for col in pct_cols_all:
+        if col in df_display_render.columns:
+            df_display_render[col] = df_display_render[col].map(
+                lambda value: '' if pd.isna(value) or abs(float(value)) < 0.05 else f'{float(value):.1f}%'
+            )
+    df_display_render['Totale €'] = df_display_render['Totale €'].map(
+            lambda value: '' if pd.isna(value) or abs(float(value)) < 0.5 else f'€ {float(value):.0f}'
+    )
+    df_display_render['Totale %'] = df_display_render['Totale %'].map(
+        lambda value: '' if pd.isna(value) or abs(float(value)) < 0.05 else f'{float(value):.1f}%'
     )
 
-    rerun_flag_key = f"{work_key}_rerun_done"
-    df_changed = False
+    def _style_rows(row):
+        row_label = row.iloc[0]
+        color = row_colors.get(row_label, '#334155')
+        weight = '800' if row_label in bold_rows else '500'
+        size = '1.08rem' if row_label in bold_rows else '0.92rem'
+        styles = [f'color: {color}; font-weight: {weight} !important; font-size: {size} !important;'] * len(row)
+        if row_label in metric_bg_colors:
+            row_bg = metric_bg_colors[row_label]
+            styles = [style + f' background-color: {row_bg}; box-shadow: inset 0 0 0 9999px {row_bg};' for style in styles]
+            styles[0] = styles[0] + f' border-left: 4px solid {row_colors[row_label]};'
+        return styles
 
-    if work_key in st.session_state and not st.session_state.get(rerun_flag_key, False):
-        editable_cols = ['Fatt_IVA10', 'Fatt_IVA22', 'Altri_Ricavi_NoIVA', 'Altri_FB', 'Altri_Spese', 'Costo_Dipendenti']
-        for col in editable_cols:
-            if not df_input[col].round(2).equals(df_input_new[col].round(2)):
-                df_changed = True
-                break
-    elif work_key not in st.session_state:
-        # Prima apertura: salva stato iniziale
-        st.session_state[work_key] = df_input_new.copy()
+    separator_styles = []
+    for index in range(len(mesi_visibili)):
+        col_position = 3 + (index * 2)
+        separator_styles.append({
+            'selector': f'thead th:nth-child({col_position}), tbody td:nth-child({col_position})',
+            'props': [('border-right', '3px solid #94a3b8')]
+        })
+    separator_styles.extend([
+        {'selector': 'thead th:nth-child(1), tbody td:nth-child(1)', 'props': [('border-right', '3px solid #94a3b8')]},
+        {'selector': 'thead th:nth-last-child(2), tbody td:nth-last-child(2)', 'props': [('border-left', '3px solid #64748b')]},
+        {'selector': 'thead th:last-child, tbody td:last-child', 'props': [('border-right', '3px solid #64748b')]},
+    ])
 
-    if df_changed:
-        st.session_state[work_key] = df_input_new.copy()
-        st.session_state[rerun_flag_key] = True
-        st.rerun()
-
-    # Reset flag
-    if rerun_flag_key in st.session_state:
-        del st.session_state[rerun_flag_key]
-
-    # Usa i valori più aggiornati per i calcoli
-    df_input_current = df_input_new
+    table_styles = [
+        {'selector': 'table', 'props': [('width', '100%'), ('border-collapse', 'separate'), ('border-spacing', '0'), ('font-size', '0.92rem'), ('table-layout', 'auto')]},
+        {'selector': 'thead th', 'props': [('color', '#111827'), ('font-weight', '800'), ('padding', '11px 12px'), ('border-bottom', '2px solid #94a3b8'), ('text-align', 'right'), ('background', '#eef2f7'), ('border-top', '1px solid #d7dde6')]},
+        {'selector': 'thead th:first-child', 'props': [('text-align', 'left'), ('width', '280px'), ('border-top-left-radius', '10px')]},
+        {'selector': 'thead th:last-child', 'props': [('border-top-right-radius', '10px')]},
+        {'selector': 'tbody td', 'props': [('padding', '10px 12px'), ('border-bottom', '1px solid #d3dde8'), ('text-align', 'right'), ('background', 'transparent')]},
+        {'selector': 'tbody td:first-child', 'props': [('text-align', 'left'), ('white-space', 'nowrap'), ('font-weight', '600'), ('padding-right', '16px')]},
+        {'selector': 'tbody tr:hover td', 'props': [('background', '#fafcff')]},
+        {'selector': 'tbody tr:last-child td', 'props': [('border-bottom', 'none')]},
+    ] + separator_styles
+    styled_table = (
+        df_display_render.rename(columns={'Voce': '📊 Metriche'}).style
+        .hide(axis='index')
+        .apply(_style_rows, axis=1)
+        .set_table_styles(table_styles)
+    )
+    st.markdown(
+        f"<div style='overflow-x:auto; padding-bottom:4px;'>{styled_table.to_html()}</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
 
     # ============================================
     # CALCOLA RISULTATI PER KPI + EXPORT
     # ============================================
     df_risultati = calcola_risultati(df_input_current)
-
-    # ============================================
-    # BOTTONI SALVA + EXPORT
-    # ============================================
-
-    # CSS per bottoni personalizzati
-    st.markdown("""
-    <style>
-    /* Bottone Salva Dati - azzurro, compatto (solo area principale, non sidebar) */
-    .main .stButton button[kind="primary"] {
-        background-color: #0ea5e9 !important;
-        color: white !important;
-        border: 2px solid #0284c7 !important;
-        font-weight: 600 !important;
-        max-width: 200px !important;
-    }
-    .main .stButton button[kind="primary"]:hover {
-        background-color: #0284c7 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-    st.markdown("""
-    <p style="font-size: 0.78rem; color: #1e3a5f; margin-bottom: 6px;">
-        💡 Dopo aver inserito i dati, salva per registrare le modifiche prima di cambiare pagina.
-    </p>
-    """, unsafe_allow_html=True)
-
-    if st.button("💾 Salva Dati", type="primary", key="margine_salva"):
-        with st.spinner("Salvataggio in corso..."):
-            success = salva_margini_anno(
-                user_id, current_ristorante, anno, df_input_current, df_risultati
-            )
-        if success:
-            st.success("✅ Dati margini salvati correttamente!")
-            if work_key in st.session_state:
-                del st.session_state[work_key]
-            if 'margine_data_editor' in st.session_state:
-                del st.session_state['margine_data_editor']
-            time.sleep(1)
-            st.rerun()
-        else:
-            st.error("❌ Errore durante il salvataggio. Riprova.")
 
     # ============================================
     # KPI CARDS RIEPILOGO ANNO
@@ -1669,10 +1623,16 @@ if st.session_state.margine_tab == "calcolo":
 
     kpi = calcola_kpi_anno(df_risultati, mesi_filtro=mesi_filtro)
     num_mesi = kpi['num_mesi']
+    df_kpi_mesi = df_risultati[
+        (df_risultati['MeseNum'] != 99) &
+        (df_risultati['Fatt_Netto'] > 0) &
+        (df_risultati['MeseNum'].isin(mesi_filtro))
+    ]
 
     if num_mesi > 0:
         mol_medio = kpi['mol_medio']
         fatt_medio = kpi['fatt_medio']
+        fatt_totale = round(df_kpi_mesi['Fatt_Netto'].sum(), 2) if not df_kpi_mesi.empty else 0.0
         fc_perc = kpi['fc_medio']
         mol_perc = kpi['mol_perc_medio']
         primo_marg = kpi['primo_margine_medio']
@@ -1680,72 +1640,88 @@ if st.session_state.margine_tab == "calcolo":
         costi_fb = kpi['costi_fb_medi']
         spese_gen = kpi['spese_gen_medie']
         spese_perc = kpi['spese_gen_perc_media']
+        personale_medio = kpi['personale_medio']
+        personale_perc = kpi['personale_perc_media']
 
         def _fmt_kpi(val):
             segno = "-" if val < 0 else ""
             return f"{segno}€{abs(val):,.0f}".replace(",", ".")
     
-        # CSS per KPI con sfondo grigio argentato traslucido e bordo
+        # CSS per KPI con card custom uniformi
         st.markdown("""
         <style>
-        /* Altezza uniforme tra tutte le card KPI al variare dello zoom */
-        [data-testid="stHorizontalBlock"]:has(div[data-testid="stMetric"]) > div[data-testid="column"] {
-            display: flex !important;
-            flex-direction: column !important;
-            align-items: stretch !important;
+        .margine-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 12px;
+            margin: 10px 0 4px 0;
         }
-        [data-testid="stHorizontalBlock"]:has(div[data-testid="stMetric"]) > div[data-testid="column"] > div {
-            flex: 1 !important;
-            display: flex !important;
-            flex-direction: column !important;
-        }
-        div[data-testid="stMetric"] {
+        .margine-kpi-card {
             background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
             padding: clamp(1rem, 2.5vw, 1.25rem);
             border-radius: 12px;
             border: 1px solid rgba(206, 212, 218, 0.5);
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
             backdrop-filter: blur(10px);
-            height: 100%;
-            min-height: 100px;
+            min-height: 122px;
             box-sizing: border-box;
-            justify-content: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
         }
-        div[data-testid="stMetric"] label {
-            color: #2563eb !important;
-            font-weight: 600 !important;
-            font-size: clamp(0.75rem, 1.8vw, 0.875rem) !important;
+        .margine-kpi-label {
+            color: #2563eb;
+            font-weight: 600;
+            font-size: clamp(0.74rem, 1.7vw, 0.86rem);
+            line-height: 1.25;
+            min-height: 2.4em;
         }
-        div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-            color: #1e40af !important;
-            font-size: clamp(1.25rem, 3.5vw, 1.75rem) !important;
-            font-weight: 700 !important;
+        .margine-kpi-value {
+            color: #1e40af;
+            font-size: clamp(1.18rem, 3.2vw, 1.62rem);
+            font-weight: 700;
+            line-height: 1.15;
+            margin-top: 8px;
         }
-        /* Delta incidenza in arancione */
-        div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
-            color: #f97316 !important;
-            font-weight: 600 !important;
+        .margine-kpi-sub {
+            color: #f97316;
+            font-weight: 600;
+            font-size: 0.82rem;
+            margin-top: 8px;
+            min-height: 1.3em;
+        }
+        @media (max-width: 1400px) {
+            .margine-kpi-grid {
+                grid-template-columns: repeat(4, minmax(0, 1fr));
+            }
+        }
+        @media (max-width: 900px) {
+            .margine-kpi-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
         }
         </style>
         """, unsafe_allow_html=True)
-    
-        # KPI Cards
-        col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
-    
-        with col_kpi1:
-            st.metric("📈 Fatturato Medio Mensile", _fmt_kpi(fatt_medio), delta=" ", delta_color="off")
-    
-        with col_kpi2:
-            st.metric("🍔 Food Cost", _fmt_kpi(costi_fb), delta=f"incidenza {fc_perc:.1f}%", delta_color="off")
-    
-        with col_kpi3:
-            st.metric("💵 1° Margine", _fmt_kpi(primo_marg), delta=f"incidenza {primo_marg_perc:.1f}%", delta_color="off")
-    
-        with col_kpi4:
-            st.metric("💼 Spese Generali", _fmt_kpi(spese_gen), delta=f"incidenza {spese_perc:.1f}%", delta_color="off")
-    
-        with col_kpi5:
-            st.metric("💰 2° Margine (MOL)", _fmt_kpi(mol_medio), delta=f"incidenza {mol_perc:.1f}%", delta_color="off")
+
+        def _kpi_card_html(label: str, value: str, sub: str) -> str:
+            return (
+                "<div class='margine-kpi-card'>"
+                f"<div class='margine-kpi-label'>{_html.escape(label)}</div>"
+                f"<div class='margine-kpi-value'>{_html.escape(value)}</div>"
+                f"<div class='margine-kpi-sub'>{_html.escape(sub)}</div>"
+                "</div>"
+            )
+
+        kpi_cards_html = ''.join([
+            _kpi_card_html('📈 Fatturato Totale', _fmt_kpi(fatt_totale), f'{num_mesi} mesi attivi nel periodo'),
+            _kpi_card_html('📊 Fatturato Medio', _fmt_kpi(fatt_medio), 'media dei mesi attivi'),
+            _kpi_card_html('🍔 Food Cost', _fmt_kpi(costi_fb), f'incidenza {fc_perc:.1f}%'),
+            _kpi_card_html('💵 1° Margine', _fmt_kpi(primo_marg), f'incidenza {primo_marg_perc:.1f}%'),
+            _kpi_card_html('💼 Spese Generali', _fmt_kpi(spese_gen), f'incidenza {spese_perc:.1f}%'),
+            _kpi_card_html('👥 Costo del Lavoro', _fmt_kpi(personale_medio), f'incidenza {personale_perc:.1f}%'),
+            _kpi_card_html('💰 2° Margine (MOL)', _fmt_kpi(mol_medio), f'incidenza {mol_perc:.1f}%'),
+        ])
+        st.markdown(f"<div class='margine-kpi-grid'>{kpi_cards_html}</div>", unsafe_allow_html=True)
     
         # ============================================
         # COMMENTI AUTOMATICI KPI
@@ -1753,6 +1729,7 @@ if st.session_state.margine_tab == "calcolo":
         commenti = genera_commenti_kpi(kpi, df_risultati, mesi_filtro=mesi_filtro)
     
         if commenti:
+            st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
             st.markdown('<h4 style="color:#1e3a5f;font-weight:700;">💬 Analisi KPI</h4>', unsafe_allow_html=True)
             for c in commenti:
                 st.markdown(f"""
@@ -1775,6 +1752,7 @@ if st.session_state.margine_tab == "calcolo":
         kpi_data = {
             'periodo': periodo_sel,
             'num_mesi': num_mesi,
+            'fatt_totale': fatt_totale,
             'fatt_medio': fatt_medio,
             'costi_fb': costi_fb,
             'fc_perc': fc_perc,
@@ -1782,6 +1760,8 @@ if st.session_state.margine_tab == "calcolo":
             'primo_marg_perc': primo_marg_perc,
             'spese_gen': spese_gen,
             'spese_perc': spese_perc,
+            'personale': personale_medio,
+            'personale_perc': personale_perc,
             'mol_medio': mol_medio,
             'mol_perc': mol_perc
         }

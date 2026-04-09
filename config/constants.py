@@ -1451,6 +1451,12 @@ KPI_SOGLIE = {
         (28, '🟠', 'Spese generali elevate — verificare utenze e contratti'),
         (100, '🔴', 'Spese generali fuori controllo — necessaria rinegoziazione'),
     ],
+    'personale': [
+        (24, '🟢', 'Costo del lavoro contenuto — buona efficienza del personale'),
+        (30, '🟡', 'Costo del lavoro nella norma per il settore'),
+        (35, '🟠', 'Costo del lavoro elevato — verificare turni, produttività e coperti'),
+        (100, '🔴', 'Costo del lavoro critico — incidenza troppo alta sul fatturato'),
+    ],
     'primo_margine': [
         (55, '🔴', '1° Margine molto basso — costi F&B troppo alti rispetto al fatturato'),
         (62, '🟠', '1° Margine sotto la media — margine di miglioramento sui costi'),
@@ -1481,12 +1487,14 @@ import os as _os
 # Configurare: ADMIN_EMAILS=email1@example.com,email2@example.com
 _admin_env = _os.environ.get("ADMIN_EMAILS", "").strip()
 ADMIN_EMAILS = [e.strip().lower() for e in _admin_env.split(",") if e.strip()] if _admin_env else ["mattiadavolio90@gmail.com"]
-if not _admin_env:
+_admin_warning_flag = "OHH_ADMIN_EMAILS_WARNING_EMITTED"
+if not _admin_env and _os.environ.get(_admin_warning_flag) != "1":
     import logging as _logging
     _logging.getLogger("config").warning(
         "⚠️  ADMIN_EMAILS env var non impostata — fallback a mattiadavolio90@gmail.com. "
         "In produzione configurare: ADMIN_EMAILS=email1,email2"
     )
+    _os.environ[_admin_warning_flag] = "1"
 
 
 # ============================================================

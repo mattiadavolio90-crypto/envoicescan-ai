@@ -561,6 +561,8 @@ def calcola_kpi_anno(df_risultati: pd.DataFrame, mesi_filtro: list = None) -> di
         'costi_fb_medi': 0.0,
         'spese_gen_medie': 0.0,
         'spese_gen_perc_media': 0.0,
+        'personale_medio': 0.0,
+        'personale_perc_media': 0.0,
         'num_mesi': 0
     }
     
@@ -590,6 +592,8 @@ def calcola_kpi_anno(df_risultati: pd.DataFrame, mesi_filtro: list = None) -> di
             'costi_fb_medi': round(df_mesi['Costi_FB'].mean(), 2),
             'spese_gen_medie': round(df_mesi['Costi_Spese'].mean(), 2),
             'spese_gen_perc_media': round(df_mesi['Spese_Perc'].mean(), 2),
+            'personale_medio': round(df_mesi['Costi_Personale'].mean(), 2),
+            'personale_perc_media': round(df_mesi['Pers_Perc'].mean(), 2),
             'num_mesi': num_mesi
         }
     except Exception as e:
@@ -674,8 +678,13 @@ def genera_commenti_kpi(kpi: dict, df_risultati, mesi_filtro: list = None) -> li
     mol = kpi['mol_perc_medio']
     emoji, testo = _valuta_soglia(mol, 'mol', crescente=False)
     commenti.append({'kpi_nome': 'MOL', 'percentuale': f'{mol:.1f}%', 'commento': testo, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
+
+    # 5. Personale %
+    pers = kpi.get('personale_perc_media', 0.0)
+    emoji, testo = _valuta_soglia(pers, 'personale', crescente=True)
+    commenti.append({'kpi_nome': 'Costo del lavoro', 'percentuale': f'{pers:.1f}%', 'commento': testo, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
     
-    # 5. Fatturato — confronto con media di periodo
+    # 6. Fatturato — confronto con media di periodo
     try:
         df_mesi = df_risultati[
             (df_risultati['MeseNum'] != 99) &
@@ -705,8 +714,6 @@ def genera_commenti_kpi(kpi: dict, df_risultati, mesi_filtro: list = None) -> li
                     dettaglio += f' · Sopra media (+15%): {nomi_sopra}'
                 
                 commenti.append({'kpi_nome': 'Fatturato', 'percentuale': f'CV {cv:.0f}%', 'commento': dettaglio, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
-        elif len(df_mesi) == 1:
-            commenti.append({'kpi_nome': 'Fatturato', 'percentuale': '—', 'commento': 'Solo 1 mese con dati — confronto non disponibile', 'emoji': 'ℹ️', 'colore': colori.get('ℹ️', '#6b7280')})
     except Exception as e:
         logger.warning(f"Errore analisi fatturato: {e}")
     
@@ -820,65 +827,6 @@ def build_transposed_df(df_input: pd.DataFrame) -> pd.DataFrame:
         rows.append(row)
     
     return pd.DataFrame(rows)
-
-
-def extract_input_from_transposed(df_transposed: pd.DataFrame,
-                                   costi_fb_mensili: dict,
-                                   costi_spese_mensili: dict) -> pd.DataFrame:
-    """
-    Extract editable input values from the transposed display DataFrame
-    back to the internal df_input format (12 rows=months).
-    
-    Reads only from '{Mese} €' columns; ignores '{Mese} %' columns.
-    Only reads the 6 editable rows; ignores calculated/auto rows.
-    DB-auto values (Costi_FB_Auto, Costi_Spese_Auto) come from the
-    costi_*_mensili dicts, not from the editor.
-    
-    Args:
-        df_transposed: Edited DataFrame from st.data_editor (12 rows x 25 cols)
-        costi_fb_mensili: dict {mese_int: float} from calcola_costi_automatici_per_anno
-        costi_spese_mensili: dict {mese_int: float} from calcola_costi_automatici_per_anno
-    
-    Returns:
-        DataFrame with 12 rows (months) and standard input columns
-    """
-    INPUT_ROWS_MAP = {
-        'Fatt. IVA 10%': 'Fatt_IVA10',
-        'Fatt. IVA 22%': 'Fatt_IVA22',
-        'Altri ricavi (no iva)': 'Altri_Ricavi_NoIVA',
-        'Altri Costi F&B': 'Altri_FB',
-        'Altre Spese Generali': 'Altri_Spese',
-        'Costo personale Lordo': 'Costo_Dipendenti',
-    }
-    
-    data_input = []
-    for mese_idx in range(12):
-        mese = MESI_NOMI[mese_idx]
-        mese_num = mese_idx + 1
-        col_euro = f'{mese} €'
-        
-        row = {
-            'Mese': mese,
-            'MeseNum': mese_num,
-            'Costi_FB_Auto': float(costi_fb_mensili.get(mese_num, 0.0)),
-            'Costi_Spese_Auto': float(costi_spese_mensili.get(mese_num, 0.0)),
-        }
-        
-        for voce_label, input_col in INPUT_ROWS_MAP.items():
-            voce_rows = df_transposed[df_transposed['Voce'] == voce_label]
-            if len(voce_rows) > 0:
-                val = voce_rows[col_euro].values[0]
-                row[input_col] = float(val) if pd.notna(val) else 0.0
-            else:
-                row[input_col] = 0.0
-        
-        data_input.append(row)
-    
-    df = pd.DataFrame(data_input)
-    # Ensure column order matches expected format
-    return df[['Mese', 'MeseNum', 'Fatt_IVA10', 'Fatt_IVA22', 'Altri_Ricavi_NoIVA',
-               'Costi_FB_Auto', 'Altri_FB', 'Costi_Spese_Auto',
-               'Altri_Spese', 'Costo_Dipendenti']]
 
 
 # ============================================
@@ -1124,10 +1072,12 @@ def export_excel_margini(df_risultati: pd.DataFrame, anno: int, nome_ristorante:
         
         # Dati KPI
         kpi_rows = [
+            ('Fatturato Totale', kpi_data.get('fatt_totale', 0.0), None),
             ('Fatturato Medio Mensile', kpi_data['fatt_medio'], None),
             ('Food Cost', kpi_data['costi_fb'], kpi_data['fc_perc']),
             ('1° Margine', kpi_data['primo_marg'], kpi_data['primo_marg_perc']),
             ('Spese Generali', kpi_data['spese_gen'], kpi_data['spese_perc']),
+            ('Costo del Lavoro', kpi_data.get('personale', 0.0), kpi_data.get('personale_perc')),
             ('2° Margine (MOL)', kpi_data['mol_medio'], kpi_data['mol_perc']),
         ]
         

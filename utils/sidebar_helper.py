@@ -129,7 +129,7 @@ def render_sidebar(user_data: dict):
             import sys
             frame = sys._getframe(1)
             # Risali max 10 frame per trovare il file pagina (molto più veloce di inspect.stack())
-            _page_names = {'app.py', '1_calcolo_margine.py', '2_workspace.py', '3_controllo_prezzi.py',
+            _page_names = {'app.py', '1_calcolo_margine.py', '2_foodcost.py', '3_controllo_prezzi.py',
                            'gestione_account.py', 'privacy_policy.py', 'admin.py'}
             for _ in range(10):
                 if frame is None:
@@ -198,9 +198,9 @@ def render_sidebar(user_data: dict):
                 st.switch_page("pages/1_calcolo_margine.py")
             
             if pagine_abilitate.get('workspace', True):
-                if st.button("🍴 Workspace", use_container_width=True, key="sidebar_workspace",
-                             type="primary" if current_script == '2_workspace.py' else "secondary"):
-                    st.switch_page("pages/2_workspace.py")
+                if st.button("🍴 Foodcost", use_container_width=True, key="sidebar_workspace",
+                             type="primary" if current_script == '2_foodcost.py' else "secondary"):
+                    st.switch_page("pages/2_foodcost.py")
         
         st.markdown("---")
         
