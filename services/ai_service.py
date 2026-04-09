@@ -350,6 +350,11 @@ _ALCOHOL_FREE_BIRRE_RE = re.compile(r"\b(BIRRA|BIRRE|HEINEKEN|ICHNUSA|PERONI|MOR
 _ALCOHOL_FREE_VINI_RE = re.compile(r"\b(VINO|CHIANTI|MONTEPULCIANO|FRANCIACORTA|PROSECCO|MOSCATO|FALANGHINA|GEWURZTRAMINER|PINOT|RIESLING|MERLOT|SYRAH|CABERNET|BRUT|CUVEE|LANGHE|BAROLO|BARBARESCO|AMARONE|PRIMITIVO|NEBBIOLO|SANGIOVESE|LAMBRUSCO|DOCG)\b")
 _ALCOHOL_FREE_DISTILLATI_RE = re.compile(r"\b(GIN|TANQUERAY|VODKA|WHISKY|WHISKEY|RHUM|RUM|TEQUILA|GRAPPA|BOURBON|COGNAC|MEZCAL|CACHACA|CACHAÇA|ASSENZIO|BRANDY)\b")
 _ALCOHOL_FREE_AMARI_RE = re.compile(r"\b(AMARO|LIQUORE|LIMONCELLO|SAMBUCA|JAGERMEISTER|AVERNA|MONTENEGRO|NONINO|KAHLUA|BAILEYS|CYNAR|BRANCAMENTA|FERNET|MIRTO|MARASCHINO|APEROL|CAMPARI|ANGOSTURA|PASSOA|CURACAO|TRIPLE\s+SEC|BOLS|PORTO|LILLET|VERMOUTH)\b")
+_CREAMI_RICARICA_RE = re.compile(r"\bCREAMI\b.*\bRICARICA\b|\bRICARICA\b.*\bCREAMI\b")
+_CREAMI_DISPENSER_RE = re.compile(r"\bCREAMI\b.*\bDISPENSER\b|\bDISPENSER\b.*\bCREAMI\b")
+_BLEND_T_FILTRI_RE = re.compile(r"\bBLEND\b.*\bT\b.*\bFILTRI?\b|\bFILTRI?\b.*\bBLEND\b.*\bT\b")
+_LATTIERA_RE = re.compile(r"\bLATTIERA\b")
+_TOPPING_CACAO_RE = re.compile(r"\bTOPPING\b.*\b(CIOCCOLAT\w*|CACAO)\b|\b(CIOCCOLAT\w*|CACAO)\b.*\bTOPPING\b")
 
 
 def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) -> Tuple[str, Optional[str]]:
@@ -425,6 +430,36 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "CAFFE E THE"
         if cat != mapped:
             return mapped, "preparato_ginseng"
+        return cat, None
+
+    if _CREAMI_RICARICA_RE.search(desc_u):
+        mapped = "PASTICCERIA"
+        if cat != mapped:
+            return mapped, "creami_ricarica_dolciaria"
+        return cat, None
+
+    if _CREAMI_DISPENSER_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "creami_dispenser_attrezzatura"
+        return cat, None
+
+    if _BLEND_T_FILTRI_RE.search(desc_u):
+        mapped = "CAFFE E THE"
+        if cat != mapped:
+            return mapped, "blend_t_filtri_infusione"
+        return cat, None
+
+    if _LATTIERA_RE.search(desc_u):
+        mapped = "LATTICINI"
+        if cat != mapped:
+            return mapped, "lattiera_linea_latticini"
+        return cat, None
+
+    if _TOPPING_CACAO_RE.search(desc_u):
+        mapped = "VARIE BAR"
+        if cat != mapped:
+            return mapped, "topping_cacao_bar"
         return cat, None
 
     if _ALCOHOL_FREE_RE.search(desc_u):
@@ -1887,6 +1922,7 @@ def _chiama_gpt_classificazione(
     _ha_fornitori = lista_fornitori and len(lista_fornitori) == len(da_chiedere_gpt)
     _ha_iva = lista_iva and len(lista_iva) == len(da_chiedere_gpt)
     _ha_hint = lista_hint and len(lista_hint) == len(da_chiedere_gpt)
+    _items_with_hint = 0
     if _ha_fornitori or _ha_iva or _ha_hint:
         payload = []
         for idx, desc_norm in enumerate(da_chiedere_normalizzate):
@@ -1903,6 +1939,7 @@ def _chiama_gpt_classificazione(
                 hint_val = lista_hint[idx]
                 if hint_val:
                     item["hint"] = hint_val
+                    _items_with_hint += 1
             payload.append(item)
         articoli_json = json.dumps(payload, ensure_ascii=False)
     else:
@@ -1933,7 +1970,7 @@ def _chiama_gpt_classificazione(
                 metadata={
                     'source': 'categorization-batch',
                     'batch_size': len(da_chiedere_gpt),
-                    'items_with_hint': len(articoli_con_hint or []),
+                    'items_with_hint': _items_with_hint,
                 },
             )
     except Exception as cost_err:
@@ -2022,7 +2059,7 @@ def classifica_con_ai(
     if not da_chiedere_gpt:
         return [
             risultati[d] if d in risultati 
-            else applica_correzioni_dizionario(d, "MATERIALE DI CONSUMO")
+            else applica_correzioni_dizionario(d, "Da Classificare")
             for d in lista_descrizioni
         ]
 
@@ -2081,10 +2118,10 @@ def classifica_con_ai(
         
     except json.JSONDecodeError as e:
         logger.error(f"Errore parsing JSON da OpenAI: {e}")
-        return [applica_correzioni_dizionario(d, "MATERIALE DI CONSUMO") for d in lista_descrizioni]
+        return [applica_correzioni_dizionario(d, "Da Classificare") for d in lista_descrizioni]
     except Exception as e:
         logger.error(f"Errore classificazione AI: {e}")
-        return [applica_correzioni_dizionario(d, "MATERIALE DI CONSUMO") for d in lista_descrizioni]
+        return [applica_correzioni_dizionario(d, "Da Classificare") for d in lista_descrizioni]
 
 
 # ============================================================

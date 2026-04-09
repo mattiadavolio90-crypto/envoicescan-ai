@@ -5,12 +5,12 @@
 #   - Niente volumi hot-reload (immagine già compilata)
 #   - WORKER_RELOAD=false
 #   - Healthcheck più conservativo
-#   - Worker sempre attivo (no profiles)
+#   - API FastAPI e queue worker separati
 #   - Variables da Railway env (non da file .env)
 #
 # Deploy Railway:
 #   1. Collega repo GitHub a Railway
-#   2. Aggiungi servizio ohyeah e worker come due Railway services
+#   2. Aggiungi tre servizi: frontend, api, queue-worker
 #   3. Imposta le env vars sul dashboard Railway (non committare .env)
 #
 # Deploy VPS manuale:
@@ -48,6 +48,8 @@ services:
     depends_on:
       worker:
         condition: service_healthy
+      queue-worker:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
       interval: 30s
@@ -83,6 +85,8 @@ services:
       # Rate limiting
       - WORKER_RATE_LIMIT=${WORKER_RATE_LIMIT:-60}
       - WORKER_RATE_WINDOW_SEC=${WORKER_RATE_WINDOW_SEC:-60}
+      # Queue processor separato: l'API non deve processare inline la coda.
+      - ENABLE_INLINE_QUEUE_PROCESSOR=0
       # Uvicorn
       - WORKER_RELOAD=false
       - WORKER_PORT=8000
@@ -93,6 +97,26 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+
+  # ──────────────────────────────────────────
+  # QUEUE WORKER DEDICATO (Invoicetronic ingest)
+  # ──────────────────────────────────────────
+  queue-worker:
+    image: ${DOCKER_IMAGE:-ohyeah-hub}:${IMAGE_TAG:-latest}
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ohyeah-queue-worker-prod
+    command: >
+      python worker/run.py
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - WORKER_POLL_INTERVAL_SECONDS=${WORKER_POLL_INTERVAL_SECONDS:-15}
+      - WORKER_ERROR_BACKOFF_SECONDS=${WORKER_ERROR_BACKOFF_SECONDS:-10}
+      - WORKER_MAX_BACKOFF_SECONDS=${WORKER_MAX_BACKOFF_SECONDS:-120}
+    restart: unless-stopped
 
   # ──────────────────────────────────────────
   # NGINX REVERSE PROXY (opzionale — VPS only)

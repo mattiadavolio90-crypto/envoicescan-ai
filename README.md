@@ -43,6 +43,13 @@ Analizza fatture elettroniche (XML, P7M, PDF), categorizza i prodotti con intell
 | Hosting | Streamlit Cloud + Railway |
 | Monitoraggio | GitHub Actions (uptime check ogni 15 min) |
 
+### Topologia deploy consigliata
+
+- Streamlit frontend pubblico
+- FastAPI pubblico solo per `/health`, `/api/classify`, `/api/parse`
+- Queue worker separato per `python worker/run.py`
+- Webhook Invoicetronic pubblico solo su Supabase Edge Function deployata con `--no-verify-jwt` e protetta da HMAC/replay protection
+
 ---
 
 ##  Avvio locale

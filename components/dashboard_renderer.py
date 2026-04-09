@@ -188,7 +188,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     # Query 1: NULL + stringa vuota collassate
                     _q_nullempty = (
                         supabase.table("fatture")
-                        .select("descrizione, fornitore, prezzo_unitario, iva_percentuale")
+                        .select("id, descrizione, fornitore, prezzo_unitario, iva_percentuale")
                         .eq("user_id", user_id)
                         .or_("categoria.is.null,categoria.eq.")
                     )
@@ -199,7 +199,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     # Query 2: Da Classificare
                     _q_daclass = (
                         supabase.table("fatture")
-                        .select("descrizione, fornitore, prezzo_unitario, iva_percentuale")
+                        .select("id, descrizione, fornitore, prezzo_unitario, iva_percentuale")
                         .eq("user_id", user_id)
                         .eq("categoria", "Da Classificare")
                     )
@@ -218,12 +218,16 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     # (una stessa descrizione può venire da più righe; scegliamo l'ultima occorrenza non-nulla)
                     desc_to_fornitore: dict = {}
                     desc_to_iva: dict = {}
+                    desc_to_row_ids: dict = {}
                     for _row in tutti_dati:
                         _d = _row.get('descrizione')
                         if not _d:
                             continue
+                        _row_id = _row.get('id')
                         _forn = _row.get('fornitore') or ''
                         _iva = int(_row.get('iva_percentuale') or 0)
+                        if _row_id is not None:
+                            desc_to_row_ids.setdefault(_d, []).append(_row_id)
                         if _forn and _d not in desc_to_fornitore:
                             desc_to_fornitore[_d] = _forn
                         if _iva and _d not in desc_to_iva:
@@ -248,6 +252,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     # Fallback mapping per-descrizione da DataFrame
                     desc_to_fornitore = {}
                     desc_to_iva = {}
+                    desc_to_row_ids = {}
                     if 'Fornitore' in df_completo.columns:
                         for _, _r in df_completo[maschera_ai].iterrows():
                             _d = _r.get('Descrizione')
@@ -481,7 +486,8 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         
                         # ⚡ OTTIMIZZAZIONE: Raggruppa descrizioni per categoria per batch UPDATE
                         # Invece di 1 query per descrizione (N+1), facciamo 1 query per categoria
-                        cat_to_descs = {}  # {categoria: [(desc_orig, desc_normalized), ...]}
+                        cat_to_descs = {}  # {categoria: [descrizione, ...]}
+                        cat_to_row_ids = {}  # {categoria: set(row_id, ...)}
                         for desc, cat in mappa_categorie.items():
                             if not cat or cat.strip() == '':
                                 logger.warning(f"⚠️ Categoria vuota/NULL per '{desc[:TRUNCATE_DESC_LOG]}', skip update")
@@ -489,27 +495,37 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             if cat == "Da Classificare":
                                 logger.info(f"⏭️ Skip update per '{desc[:TRUNCATE_DESC_LOG]}' → già Da Classificare")
                                 continue
-                            cat_to_descs.setdefault(cat, []).append((desc, normalizza_stringa(desc)))
+                            cat_to_descs.setdefault(cat, []).append(desc)
+                            row_ids = desc_to_row_ids.get(desc) or []
+                            if row_ids:
+                                cat_to_row_ids.setdefault(cat, set()).update(row_ids)
+                            else:
+                                logger.warning(f"⚠️ Nessun row_id disponibile per '{desc[:TRUNCATE_DESC_LOG]}', userò fallback esatto")
                         
                         logger.info(f"⚡ BATCH UPDATE: {len(cat_to_descs)} categorie distinte per {sum(len(v) for v in cat_to_descs.values())} descrizioni")
                         
-                        # FASE 1: Batch UPDATE per categoria con descrizioni normalizzate (.in_())
+                        # FASE 1: Batch UPDATE per categoria usando gli id riga letti dal DB
                         descs_non_matchate = {}  # {desc_orig: cat} - fallback individuale
                         
-                        for cat, desc_pairs in cat_to_descs.items():
-                            normalized_list = [dn for _, dn in desc_pairs]
-                            original_list = [do for do, _ in desc_pairs]
+                        for cat, desc_list in cat_to_descs.items():
+                            row_ids = sorted(cat_to_row_ids.get(cat, set()))
+
+                            if not row_ids:
+                                logger.info(f"ℹ️ Nessun row_id batch per {cat}, passo al fallback esatto per {len(desc_list)} descrizioni")
+                                for desc_orig in desc_list:
+                                    descs_non_matchate[desc_orig] = cat
+                                continue
                             
-                            # Batch UPDATE con tutte le descrizioni normalizzate per questa categoria
+                            # Batch UPDATE con tutte le righe note per questa categoria
                             try:
                                 query_batch = supabase.table("fatture").update(
                                     {"categoria": cat}
-                                ).eq("user_id", user_id).in_("descrizione", normalized_list)
+                                ).eq("user_id", user_id).in_("id", row_ids)
                                 query_batch = add_ristorante_filter(query_batch)
                                 result_batch = query_batch.execute()
                                 
                                 matched_count = len(result_batch.data) if result_batch.data else 0
-                                matched_descs = {row['descrizione'] for row in result_batch.data} if result_batch.data else set()
+                                matched_ids = {row['id'] for row in result_batch.data} if result_batch.data else set()
                                 
                                 if matched_count > 0:
                                     logger.info(f"⚡ Batch {cat}: {matched_count} righe aggiornate")
@@ -517,36 +533,53 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 righe_aggiornate_totali += matched_count
                                 
                                 # Identifica descrizioni matchate per tracking
-                                for desc_orig, desc_norm in desc_pairs:
-                                    if desc_norm in matched_descs:
+                                for desc_orig in desc_list:
+                                    desc_row_ids = set(desc_to_row_ids.get(desc_orig) or [])
+                                    if desc_row_ids and desc_row_ids.issubset(matched_ids):
                                         descrizioni_aggiornate.append(desc_orig)
                                     else:
                                         descs_non_matchate[desc_orig] = cat
                                 
                             except Exception as batch_err:
                                 logger.warning(f"⚠️ Batch UPDATE fallito per {cat}: {batch_err}, fallback individuale")
-                                for desc_orig, _ in desc_pairs:
+                                for desc_orig in desc_list:
                                     descs_non_matchate[desc_orig] = cat
                         
                         # FASE 2: Fallback individuale SOLO per descrizioni non matchate dal batch
+                        # Conservativo: match esatti בלבד, mai ILIKE parziale per evitare update espansivi.
                         if descs_non_matchate:
                             logger.info(f"🔄 Fallback individuale per {len(descs_non_matchate)} descrizioni non matchate")
                         
                         for desc, cat in descs_non_matchate.items():
                             num_aggiornate = 0
+                            row_ids = desc_to_row_ids.get(desc) or []
+
+                            if row_ids:
+                                try:
+                                    query_update_ids = supabase.table("fatture").update(
+                                        {"categoria": cat}
+                                    ).eq("user_id", user_id).in_("id", row_ids)
+                                    query_update_ids = add_ristorante_filter(query_update_ids)
+                                    result_ids = query_update_ids.execute()
+                                    num_aggiornate = len(result_ids.data) if result_ids.data else 0
+                                    if num_aggiornate > 0:
+                                        logger.info(f"✅ Match ID: '{desc[:TRUNCATE_DESC_LOG]}...' ({num_aggiornate} righe)")
+                                except Exception as _e_ids:
+                                    logger.debug(f"Fallback id per '{desc[:TRUNCATE_DESC_QUERY]}': {_e_ids}")
                             
                             # Tentativo con descrizione originale (non normalizzata)
-                            try:
-                                query_update2 = supabase.table("fatture").update(
-                                    {"categoria": cat}
-                                ).eq("user_id", user_id).eq("descrizione", desc)
-                                query_update2 = add_ristorante_filter(query_update2)
-                                result2 = query_update2.execute()
-                                num_aggiornate = len(result2.data) if result2.data else 0
-                                if num_aggiornate > 0:
-                                    logger.info(f"✅ Match desc originale: '{desc[:TRUNCATE_DESC_LOG]}...' ({num_aggiornate} righe)")
-                            except Exception as _e_orig:
-                                logger.debug(f"Fallback desc originale per '{desc[:TRUNCATE_DESC_QUERY]}': {_e_orig}")
+                            if num_aggiornate == 0:
+                                try:
+                                    query_update2 = supabase.table("fatture").update(
+                                        {"categoria": cat}
+                                    ).eq("user_id", user_id).eq("descrizione", desc)
+                                    query_update2 = add_ristorante_filter(query_update2)
+                                    result2 = query_update2.execute()
+                                    num_aggiornate = len(result2.data) if result2.data else 0
+                                    if num_aggiornate > 0:
+                                        logger.info(f"✅ Match desc originale: '{desc[:TRUNCATE_DESC_LOG]}...' ({num_aggiornate} righe)")
+                                except Exception as _e_orig:
+                                    logger.debug(f"Fallback desc originale per '{desc[:TRUNCATE_DESC_QUERY]}': {_e_orig}")
                             
                             # Tentativo con trim
                             if num_aggiornate == 0:
@@ -564,7 +597,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                     except Exception as _e_trim:
                                         logger.debug(f"Fallback trim per '{desc[:TRUNCATE_DESC_QUERY]}': {_e_trim}")
                             
-                            # Tentativo ILIKE case-insensitive
+                            # Tentativo ILIKE case-insensitive solo esatto, mai parziale
                             if num_aggiornate == 0 and len(desc.strip()) >= 3:
                                 try:
                                     query_update4 = supabase.table("fatture").update(
@@ -575,16 +608,6 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                     num_aggiornate = len(result4.data) if result4.data else 0
                                     if num_aggiornate > 0:
                                         logger.info(f"✅ Match ILIKE esatto: '{desc[:TRUNCATE_DESC_LOG]}...' ({num_aggiornate} righe)")
-                                    
-                                    if num_aggiornate == 0 and len(desc.strip()) >= 5:
-                                        query_update5 = supabase.table("fatture").update(
-                                            {"categoria": cat}
-                                        ).eq("user_id", user_id).ilike("descrizione", f"%{_escape_ilike(desc.strip()[:TRUNCATE_DESC_QUERY])}%")
-                                        query_update5 = add_ristorante_filter(query_update5)
-                                        result5 = query_update5.execute()
-                                        num_aggiornate = len(result5.data) if result5.data else 0
-                                        if num_aggiornate > 0:
-                                            logger.info(f"✅ Match ILIKE parziale: '{desc[:TRUNCATE_DESC_LOG]}...' ({num_aggiornate} righe)")
                                 except Exception as ilike_err:
                                     logger.warning(f"Errore ILIKE update '{desc[:TRUNCATE_DESC_QUERY]}...': {ilike_err}")
                             

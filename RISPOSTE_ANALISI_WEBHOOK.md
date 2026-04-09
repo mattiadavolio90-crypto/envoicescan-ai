@@ -3,16 +3,21 @@
 
 ---
 
-## 1️⃣ COSA C'È GIÀ (Stato Attuale)
+## 1️⃣ COSA C'È GIÀ (Stato Attuale aggiornato)
 
 ### ✅ Endpoint Webhook
-**Risposta PARZIALE:**
-- ❌ **L'endpoint `/webhook` NON è implementato** in `services/fastapi_worker.py`
+**Risposta AGGIORNATA:**
+- ✅ **Il webhook pubblico non deve stare in FastAPI**
 - ✅ La struttura FastAPI esiste con:
   - POST `/api/classify` (classificazione AI) — **FUNZIONANTE**
   - POST `/api/parse` (parsing XML/P7M) — **FUNZIONANTE**
   - GET `/health` (health check) — **FUNZIONANTE**
-  - CORS middleware già configurato (Allow-list origin)
+  - POST `/webhook` dismesso intenzionalmente con HTTP `410 Gone`
+  - CORS middleware già configurato (allow-list origin)
+
+**Endpoint pubblico corretto:**
+- `https://<project-ref>.supabase.co/functions/v1/invoicetronic-webhook`
+- Deploy raccomandato: `supabase functions deploy invoicetronic-webhook --no-verify-jwt`
 
 ### ✅ Dockerfile & docker-compose.prod.yml
 **Risposta POSITIVA:**
@@ -23,11 +28,17 @@
   - Health check endpoint
   - Entrypoint script
 
-- ✅ `docker/docker-compose.prod.yml`: **contiene già la configurazione per il worker**
+- ✅ `docker/docker-compose.prod.yml`: ora documenta la separazione tra API FastAPI e queue worker
   ```yaml
   worker:
     image: ohyeah-hub:latest
     command: uvicorn services.fastapi_worker:app --host 0.0.0.0 --port 8000 --workers 2
+    environment:
+      - ENABLE_INLINE_QUEUE_PROCESSOR=0
+
+  queue-worker:
+    image: ohyeah-hub:latest
+    command: python worker/run.py
     healthcheck: GET /health:8000
     environment: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, OPENAI_API_KEY
   ```
@@ -46,78 +57,24 @@
 
 ## 2️⃣ COSA MANCA O VA MODIFICATO
 
-### ❌ CRITICO: Endpoint POST `/webhook` Mancante
+### ❌ CRITICO: Servizio Railway non ancora separato in produzione
 
-**Gap:** `services/fastapi_worker.py` NON ha un endpoint `/webhook` per ricevere fatture da Invoicetronic.
+**Gap:** il codice è pronto per avere API e queue-worker separati, ma il servizio Railway live può ancora essere avviato solo come FastAPI con queue loop inline.
 
-**Cosa va aggiunto:**
-1. **Modello Pydantic `WebhookRequest`** per validare il payload:
-   ```python
-   class WebhookRequest(BaseModel):
-       fattura_b64: str           # XML/P7M in base64
-       nome_file: str             # nome originale
-       user_id: str               # ID ristoratore Oh Yeah! Hub
-       ristorante_id: str         # ID ristorante
-       piva: str                  # Partita IVA (opzionale)
-   ```
+**Cosa va fatto sul dashboard Railway:**
+1. Creare un servizio pubblico `api` con comando `uvicorn services.fastapi_worker:app --host 0.0.0.0 --port 8000 --workers 2`
+2. Impostare `ENABLE_INLINE_QUEUE_PROCESSOR=0` sul servizio `api`
+3. Creare un servizio privato `queue-worker` con comando `python worker/run.py`
+4. Non assegnare dominio pubblico a `queue-worker`
 
-2. **POST `/webhook` endpoint** che:
-   - Verifica il token HMAC-SHA256 (`X-Webhook-Signature` header)
-   - Valida il payload
-   - **Risponde HTTP 202 Accepted IMMEDIATAMENTE** (entro 3 secondi max)
-   - Inserisce la fattura nella tabella `fatture_queue` di Supabase in background
+### ❌ CRITICO: Auth Edge Function da fissare esplicitamente
 
-3. **Funzione `_enqueue_fattura()`** che:
-   - Decodifica base64 → XML/P7M
-   - Inserisce in `fatture_queue` con status='pending'
-   - Ritorna `{"queue_id": 123, "event_id": "uuid-..."}`
+**Gap:** il test remoto ha restituito `401 Unauthorized` quando la funzione veniva chiamata senza un bearer compatibile con la policy attuale.
 
-4. **Funzione `_verify_webhook_token()`** per HMAC-SHA256 verification
-
-### ❌ CRITICO: Tabella `fatture_queue` Non Completamente Configurata
-
-**Gap:** La tabella `fatture_queue` potrebbe non avere tutte le RPC Supabase necessarie.
-
-**Cosa va aggiunto:**
-1. **Migration SQL** per creare/aggiornare:
-   ```sql
-   CREATE TABLE fatture_queue (
-       id BIGSERIAL PRIMARY KEY,
-       event_id UUID UNIQUE,
-       user_id UUID, ristorante_id UUID,
-       xml_content TEXT,
-       payload_meta JSONB,
-       status TEXT ('pending'|'processing'|'done'|'dead'),
-       worker_id TEXT, attempt_count INT, last_error_msg TEXT,
-       created_at TIMESTAMP, updated_at TIMESTAMP
-   )
-   ```
-
-2. **RPC Supabase:**
-   - `claim_batch_for_processing()` — claim atomico batch
-   - `mark_queue_item_done()` — mark done + GDPR purge xml
-   - `schedule_retry()` —incrementa tentativo
-   - `release_stale_locks()` — rilascia lock scaduti
-   - `purge_processed_xml_content()` — cancella XML > 24h (GDPR)
-
-### ❌ Autenticazione Webhook
-**Gap:** Non c'è verifica del token Invoicetronic.
-
-**Implementazione:**
-```python
-# Header: X-Webhook-Signature: sha256=hexdigest
-# Secret: INVOICETRONIC_WEBHOOK_SECRET env var
-import hmac, hashlib
-expected = "sha256=" + hmac.new(secret.encode(), payload_raw, hashlib.sha256).hexdigest()
-valid = hmac.compare_digest(signature, expected)
-```
-
-### ❌ Idempotenza (Opzionale ma Consigliato)
-**Gap:** Nessuna gestione duplicati (stesso XML ricevuto due volte).
-
-**Implementazione:**
-- Header: `X-Idempotency-Key: uuid`
-- Store in Redis o DB: `idempotency_key → queue_id`
+**Scelta raccomandata:**
+- Deploy Edge Function con `--no-verify-jwt`
+- Lasciare l'autenticazione del webhook a HMAC SHA-256 + anti-replay
+- Usare la `anon key` solo per test remoti se si decide temporaneamente di mantenere `verify_jwt=true`
 - Se esiste, ritorna lo stesso `queue_id` senza reinserire
 
 ### ✅ Risposta Asincrona — GIÀ POSSIBILE

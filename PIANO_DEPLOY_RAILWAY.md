@@ -20,50 +20,69 @@
 4. **Railway config** (`railway.toml`): esiste (minimalista) ✓
 
 ### ❌ MANCA — GAP CRITICI
-1. **Endpoint POST `/webhook`** per ricevere fatture da Invoicetronic
-2. **Autenticazione webhook** (token/signature verification)
-3. **Gestione idempotenza** (X-Idempotency-Key per duplicati)
-4. **Risposta asincrona** (HTTP 200 immediato, processing in background)
-5. **Integrazione con `fatture_queue`** (salvataggio nella coda Supabase)
+1. **Topologia Railway ancora ambigua** tra FastAPI API e queue worker
+2. **Documentazione storica non allineata** alla scelta Edge Function pubblica
+3. **Configurazione dashboard Railway** da rendere esplicita per 3 servizi
+4. **Verifica auth Edge Function** da chiarire per test remoti
+5. **Dominio e mail supporto** ancora da completare fuori repo
 
 ---
 
 ## 🎯 PIANO D'AZIONE (5 STEP ORDINATI)
 
-### STEP 1: Aggiungere Endpoint POST `/webhook` in `services/fastapi_worker.py`
+### STEP 1: Fissare l'architettura definitiva
 
-**Cosa va aggiunto:**
-- Modello Pydantic `WebhookRequest` per validare il payload
-- RPC Supabase per inserire la fattura in `fatture_queue` (DA CREARE in SQL)
-- Verifica autenticazione con token HMAC-SHA256
-- Gestione idempotenza con `X-Idempotency-Key`
-- Risposta HTTP 200 immediata + processing asincrono in background
+**Scelta corretta aggiornata:**
+- Endpoint pubblico Invoicetronic: `https://<project-ref>.supabase.co/functions/v1/invoicetronic-webhook`
+- FastAPI worker: nessun webhook pubblico, `/webhook` deve restare dismesso
+- Queue consumer: processo dedicato `python worker/run.py`
+- FastAPI API: processo separato `uvicorn services.fastapi_worker:app --host 0.0.0.0 --port 8000 --workers 2`
 
-**File da modificare:** `services/fastapi_worker.py`
+**File interessati:** `services/fastapi_worker.py`, `worker/run.py`, `docker/docker-compose.prod.yml`, dashboard Railway
 
-**Codice da aggiungere (dopo la classe `ParseResponse`):**
+### STEP 2: Configurazione Railway consigliata
 
-```python
-# ═══════════════════════════════════════════════════════════════════════════
-# WEBHOOK INVOICETRONIC
-# ═══════════════════════════════════════════════════════════════════════════
+**Servizi da avere su Railway:**
 
-class WebhookRequest(BaseModel):
-    """Payload ricevuto da Invoicetronic via webhook."""
-    fattura_b64: str = Field(..., description="Contenuto fattura (XML o P7M) in base64")
-    nome_file: str = Field(..., description="Nome file originale (es: IT12345_00001.xml.p7m)")
-    user_id: str = Field(..., description="ID proprietario ristorante in Oh Yeah! Hub")
-    ristorante_id: str = Field(..., description="ID ristorante in Oh Yeah! Hub")
-    piva: str = Field(default="", description="Partita IVA ricevente (opzionale)")
-    
+1. **frontend**
+    - Command: `streamlit run app.py --server.address 0.0.0.0 --server.port 8501`
+    - Porta: `8501`
+    - Variabile chiave: `WORKER_BASE_URL=https://<api-domain>.up.railway.app`
 
-class WebhookResponse(BaseModel):
-    """Risposta webhook — accepted con queue_id."""
-    status: str = Field(default="accepted", description="Stato accettazione")
-    queue_id: int = Field(..., description="ID record in fatture_queue")
-    event_id: str = Field(..., description="UUID evento webhook")
-    message: str
+2. **api**
+    - Command: `uvicorn services.fastapi_worker:app --host 0.0.0.0 --port 8000 --workers 2`
+    - Porta: `8000`
+    - Variabile chiave: `ENABLE_INLINE_QUEUE_PROCESSOR=0`
+    - Dominio pubblico: sì
 
+3. **queue-worker**
+    - Command: `python worker/run.py`
+    - Porta: nessuna esposta
+    - Variabili chiave: `WORKER_POLL_INTERVAL_SECONDS=15`, `WORKER_ERROR_BACKOFF_SECONDS=10`, `WORKER_MAX_BACKOFF_SECONDS=120`
+    - Dominio pubblico: no
+
+### STEP 3: Auth corretta Edge Function
+
+- Deploy raccomandato: `supabase functions deploy invoicetronic-webhook --project-ref vthikmfpywilukizputn --no-verify-jwt`
+- Motivo: Invoicetronic e i test webhook non possono inviare un JWT Supabase valido; l'autenticazione avviene via HMAC SHA-256 + anti-replay già implementati nella funzione
+- Se vuoi testare con JWT verification attiva, devi usare la legacy `anon key` come bearer token; non usare `service_role` per questo flusso
+
+### STEP 4: Verifiche post-deploy
+
+1. `GET https://<api-domain>.up.railway.app/health` → `200`
+2. `POST https://<api-domain>.up.railway.app/webhook` → `410`
+3. `POST https://<project-ref>.supabase.co/functions/v1/invoicetronic-webhook` con firma valida → `200/202`
+4. Verifica nei log del servizio `queue-worker` che un record `pending` passi a `done`
+
+### STEP 5: Checklist operativa aggiornata
+
+- [x] Webhook pubblico spostato su Supabase Edge Function
+- [x] FastAPI `/webhook` dismesso con risposta `410`
+- [x] Worker continuo `python worker/run.py`
+- [ ] Railway separato in 3 servizi effettivi
+- [ ] Edge Function deployata o confermata con `--no-verify-jwt`
+- [ ] Dominio `ohyeah.app` puntato correttamente
+- [ ] Mail supporto `support@ohyeah.app` configurata
 
 # ─── Inserimento in coda Supabase ──────────────────────────────────────────
 
