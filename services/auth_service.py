@@ -763,7 +763,8 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         logger.exception("Errore verifica credenziali")
         if _is_connectivity_error(e):
             return None, "Connessione internet assente o server non raggiungibile. Verifica la connessione e riprova."
-        return None, "Errore durante la verifica delle credenziali. Riprova tra qualche minuto."
+        # DEBUG TEMPORANEO: mostra tipo eccezione per diagnostica rapida
+        return None, f"Errore durante la verifica delle credenziali ({type(e).__name__}: {e})"
 
 
 def riepilogo_fatture_auto_da_ultimo_login(
