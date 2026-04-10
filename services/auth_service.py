@@ -66,6 +66,19 @@ def _is_connectivity_error(error: Exception) -> bool:
     return any(marker in message for marker in connectivity_markers)
 
 
+def _is_missing_column_error(error: Exception) -> bool:
+    """Riconosce errori PostgREST/Supabase dovuti a colonne non presenti."""
+    message = f"{type(error).__name__}: {error}".lower()
+    missing_column_markers = (
+        'column',
+        'does not exist',
+        'could not find the',
+        'schema cache',
+        'pgrst',
+    )
+    return any(marker in message for marker in missing_column_markers)
+
+
 def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
     """
     Controlla se l'email e' in lockout interrogando la tabella login_attempts.
@@ -678,20 +691,37 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         if bloccato:
             return None, f"Troppi tentativi falliti. Riprova tra {minuti} minuti."
         
-        # Query utente attivo (include colonne trial per check scadenza)
-        response = supabase_client.table("users") \
-            .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
-                "password_hash, partita_iva, created_at, last_login, "
-                "trial_active, trial_activated_at") \
-            .eq("email", email) \
-            .eq("attivo", True) \
-            .execute()
+        # Query utente attivo. Se il DB non ha ancora le colonne trial,
+        # facciamo fallback trasparente al set base di colonne.
+        try:
+            response = supabase_client.table("users") \
+                .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
+                    "password_hash, partita_iva, created_at, last_login, "
+                    "trial_active, trial_activated_at") \
+                .eq("email", email) \
+                .eq("attivo", True) \
+                .execute()
+        except Exception as query_err:
+            if not _is_missing_column_error(query_err):
+                raise
+            logger.warning(
+                "Colonne trial non disponibili su users durante login; "
+                "fallback a query compatibile con schema legacy"
+            )
+            response = supabase_client.table("users") \
+                .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
+                    "password_hash, partita_iva, created_at, last_login") \
+                .eq("email", email) \
+                .eq("attivo", True) \
+                .execute()
         
         if not response.data:
             registra_tentativo(email, False, supabase_client)
             return None, "Credenziali errate o account disattivato"
         
         user = response.data[0]
+        user.setdefault('trial_active', False)
+        user.setdefault('trial_activated_at', None)
         
         # Verifica password
         if verify_and_migrate_password(user, password):
