@@ -70,7 +70,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError, APIError
 
 # Import da moduli interni
-from config.constants import DIZIONARIO_CORREZIONI, BRAND_AMBIGUI_NO_DICT, TUTTE_LE_CATEGORIE, MEMORIA_SESSION_CAP, MAX_DESC_LENGTH_DB
+from config.constants import DIZIONARIO_CORREZIONI, BRAND_AMBIGUI_NO_DICT, TUTTE_LE_CATEGORIE, MEMORIA_SESSION_CAP, MAX_DESC_LENGTH_DB, MAX_AI_CALLS_PER_DAY
 from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizza_stringa
 from utils.validation import is_dicitura_sicura
 
@@ -2006,7 +2006,8 @@ def classifica_con_ai(
     lista_fornitori: Optional[List[str]] = None,
     lista_iva: Optional[List[int]] = None,
     lista_hint: Optional[List[Optional[str]]] = None,
-    openai_client: Optional[OpenAI] = None
+    openai_client: Optional[OpenAI] = None,
+    ristorante_id: Optional[str] = None,
 ) -> List[str]:
     """
     Classificazione AI con JSON strutturato + correzioni dizionario.
@@ -2022,12 +2023,44 @@ def classifica_con_ai(
         lista_hint: Lista hint categoria ALLINEATA con lista_descrizioni (opzionale).
                     Ogni elemento è una categoria suggerita (confidence 'media') o None.
         openai_client: Client OpenAI (opzionale, crea nuovo se None)
+        ristorante_id: ID ristorante per rate limit giornaliero (opzionale)
     
     Returns:
         List[str]: Lista categorie classificate (stesso ordine input)
+    
+    Raises:
+        RuntimeError: Se il limite giornaliero AI per ristorante è superato.
     """
     if not lista_descrizioni:
         return []
+
+    # 🔒 RATE LIMIT SERVER-SIDE: max MAX_AI_CALLS_PER_DAY chiamate/giorno per ristorante
+    if ristorante_id:
+        try:
+            from services import get_supabase_client
+            _sb = get_supabase_client()
+            _today = datetime.now(timezone.utc).strftime('%Y-%m-%dT00:00:00+00:00')
+            _count_resp = (
+                _sb.table('ai_usage_events')
+                .select('id', count='exact')
+                .eq('ristorante_id', ristorante_id)
+                .gte('created_at', _today)
+                .execute()
+            )
+            _calls_today = _count_resp.count or 0
+            if _calls_today >= MAX_AI_CALLS_PER_DAY:
+                logger.warning(
+                    f"🔒 Rate limit AI superato per ristorante {ristorante_id}: "
+                    f"{_calls_today}/{MAX_AI_CALLS_PER_DAY} chiamate oggi"
+                )
+                raise RuntimeError(
+                    f"Limite giornaliero AI raggiunto ({MAX_AI_CALLS_PER_DAY} chiamate/giorno). "
+                    f"Riprova domani."
+                )
+        except RuntimeError:
+            raise
+        except Exception as _rl_err:
+            logger.warning(f"⚠️ Errore check rate limit AI: {_rl_err} — proseguo senza limite")
     
     # Usa client iniettato o crea nuovo
     if openai_client is None:

@@ -37,6 +37,7 @@ def classifica_via_worker(
     iva: Optional[List[int]] = None,
     hint: Optional[List[Optional[str]]] = None,
     user_id: Optional[str] = None,
+    ristorante_id: Optional[str] = None,
 ) -> List[str]:
     """Classifica prodotti via worker HTTP (con fallback locale su classifica_con_ai).
 
@@ -46,6 +47,7 @@ def classifica_via_worker(
         iva:         Lista aliquote IVA % (opzionale).
         hint:        Lista hint categoria (opzionale, può contenere None).
         user_id:     ID utente — usato dal worker per caricare la memoria classificazioni.
+        ristorante_id: ID ristorante — usato per rate limit giornaliero AI.
 
     Returns:
         Lista di stringhe categoria, allineata con `descrizioni`.
@@ -61,6 +63,7 @@ def classifica_via_worker(
                     "iva": iva,
                     "hint": hint,
                     "user_id": user_id,
+                    "ristorante_id": ristorante_id,
                 },
                 timeout=_CLASSIFY_TIMEOUT,
             )
@@ -87,6 +90,7 @@ def classifica_via_worker(
         lista_fornitori=fornitori,
         lista_iva=iva,
         lista_hint=hint,
+        ristorante_id=ristorante_id,
     )
 
 

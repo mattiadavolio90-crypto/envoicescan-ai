@@ -68,7 +68,11 @@ def _is_connectivity_error(error: Exception) -> bool:
 
 def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
     """
-    Controlla se l'email è in lockout interrogando la tabella login_attempts.
+    Controlla rate limit login con pattern INSERT-first (atomico).
+
+    Inserisce PRIMA un tentativo fallito (pessimistico), poi conta.
+    Questo elimina la race condition TOCTOU del pattern SELECT-then-INSERT.
+    Se il login ha successo, registra_tentativo(email, True) cancella i fallimenti.
 
     Returns:
         (True, minuti_rimanenti) se bloccato,
@@ -80,6 +84,14 @@ def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
             supabase_client = get_supabase_client()
 
         email_lower = email.lower().strip()
+
+        # 1. INSERT tentativo fallito PRIMA del count (atomico, elimina TOCTOU)
+        supabase_client.table('login_attempts').insert({
+            'email': email_lower,
+            'success': False,
+        }).execute()
+
+        # 2. COUNT fallimenti nella finestra (include il record appena inserito)
         since = (datetime.now(timezone.utc) - timedelta(minutes=_LOCKOUT_MINUTES)).isoformat()
 
         resp = supabase_client.table('login_attempts') \
@@ -113,6 +125,17 @@ def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
                 logger.warning(f"Errore calcolo minuti lockout: {rate_err}")
             logger.warning(f"⛔ Login bloccato: lockout {remaining} min rimanenti")
             return True, remaining
+
+        # 3. Pulizia record > 24h (best-effort)
+        try:
+            cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+            supabase_client.table('login_attempts') \
+                .delete() \
+                .eq('email', email_lower) \
+                .lt('attempted_at', cutoff) \
+                .execute()
+        except Exception:
+            pass
 
         return False, 0
     except Exception as exc:
@@ -668,22 +691,46 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         if bloccato:
             return None, f"Troppi tentativi falliti. Riprova tra {minuti} minuti."
         
-        # Query utente attivo
+        # Query utente attivo (include colonne trial per check scadenza)
         response = supabase_client.table("users") \
             .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
-                "password_hash, partita_iva, created_at, last_login") \
+                "password_hash, partita_iva, created_at, last_login, "
+                "trial_active, trial_activated_at") \
             .eq("email", email) \
             .eq("attivo", True) \
             .execute()
         
         if not response.data:
-            registra_tentativo(email, False, supabase_client)
+            # Tentativo fallito già registrato da controlla_rate_limit (INSERT-first)
             return None, "Credenziali errate o account disattivato"
         
         user = response.data[0]
         
         # Verifica password
         if verify_and_migrate_password(user, password):
+            # 🔒 CHECK TRIAL SCADUTO: se trial attiva ma scaduta, disattiva account
+            if user.get('trial_active') is True and user.get('trial_activated_at'):
+                try:
+                    _trial_start = datetime.fromisoformat(
+                        str(user['trial_activated_at']).replace('Z', '+00:00')
+                    )
+                    if _trial_start.tzinfo is None:
+                        _trial_start = _trial_start.replace(tzinfo=timezone.utc)
+                    _trial_end = _trial_start + timedelta(days=7)
+                    if datetime.now(timezone.utc) > _trial_end:
+                        # Trial scaduto: disattiva utente
+                        supabase_client.table('users').update({
+                            'trial_active': False,
+                            'attivo': False,
+                        }).eq('id', user['id']).execute()
+                        logger.warning(
+                            f"⏰ Trial scaduto per user_id={user['id']} "
+                            f"(email={email}, attivato={user['trial_activated_at']})"
+                        )
+                        return None, "Il tuo periodo di prova è scaduto. Contatta il supporto."
+                except Exception as _trial_err:
+                    logger.warning(f"Errore check trial scaduto: {_trial_err}")
+
             registra_tentativo(email, True, supabase_client)
             previous_last_login = user.get('last_login')
             login_now_iso = datetime.now(timezone.utc).isoformat()
@@ -706,7 +753,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             
             return user, None
         else:
-            registra_tentativo(email, False, supabase_client)
+            # Tentativo fallito già registrato da controlla_rate_limit (INSERT-first)
             return None, "Credenziali errate"
             
     except AuthServiceUnavailableError as e:

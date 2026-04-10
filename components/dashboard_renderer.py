@@ -413,6 +413,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 iva=[desc_to_iva.get(d, 0) for d in chunk],
                                 hint=[desc_to_hint.get(d) for d in chunk],
                                 user_id=user_id,
+                                ristorante_id=st.session_state.get('ristorante_id'),
                             )
                             st.session_state['_ai_budget_calls'] = st.session_state.get('_ai_budget_calls', 0) + 1
                             ai_batch_upsert = []

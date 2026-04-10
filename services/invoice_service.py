@@ -706,6 +706,11 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     has_totale = totale_riga and totale_riga != 0
                     has_desc = descrizione_raw and len(descrizione_raw.strip()) > 3
                     if not has_totale and not has_desc:
+                        logger.warning(
+                            f"⚠️ {file_caricato.name} - Riga {idx} scartata: "
+                            f"prezzo=0, totale=0, descrizione assente/corta. "
+                            f"Desc='{(descrizione_raw or '')[:80]}', Fornitore='{fornitore}'"
+                        )
                         continue
                     needs_review_flag = True
                 
@@ -714,6 +719,11 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     if totale_riga and totale_riga != 0:  # Accetta anche negativi (note di credito)
                         quantita = 1.0
                     else:
+                        logger.warning(
+                            f"⚠️ {file_caricato.name} - Riga {idx} scartata: "
+                            f"quantità=0 e totale_riga=0. "
+                            f"Desc='{(descrizione_raw or '')[:80]}', Fornitore='{fornitore}'"
+                        )
                         continue
                 else:
                     quantita = float(quantita_raw)

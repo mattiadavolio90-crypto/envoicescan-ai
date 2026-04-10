@@ -185,13 +185,15 @@ class ClassifyRequest(BaseModel):
     iva: Optional[List[int]] = Field(None, description="Lista aliquote IVA % (4, 10, 22)")
     hint: Optional[List[Optional[str]]] = Field(None, description="Lista hint categoria (o null)")
     user_id: Optional[str] = Field(None, description="ID utente — usato per caricare memoria classificazioni")
+    ristorante_id: Optional[str] = Field(None, description="ID ristorante — usato per rate limit giornaliero AI")
 
     model_config = {"json_schema_extra": {"example": {
         "descrizioni": ["FARINA 00 KG 25", "VINO CHIANTI 0.75L"],
         "fornitori": ["MOLINO SPADONI", "ANTINORI"],
         "iva": [10, 22],
         "hint": [None, "BEVANDE"],
-        "user_id": "abc-123"
+        "user_id": "abc-123",
+        "ristorante_id": "rist-456"
     }}}
 
 
@@ -282,6 +284,7 @@ async def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
             lista_iva=body.iva,
             lista_hint=body.hint,
             openai_client=openai_client,
+            ristorante_id=body.ristorante_id,
         )
 
         elapsed_ms = int((time.monotonic() - t0) * 1000)

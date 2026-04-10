@@ -758,13 +758,14 @@ if st.session_state.get('_set_impersonation_cookie') and _cookie_manager is not 
     try:
         _cookie_manager.set(
             "impersonation_user_id",
-            str(st.session_state['_set_impersonation_cookie']),
+            str(st.session_state.get('_set_impersonation_cookie', '')),
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
             secure=True, same_site="strict"
         )
     except Exception as _ice:
         logger.warning(f"Errore impostazione cookie impersonazione: {_ice}")
-    del st.session_state['_set_impersonation_cookie']
+    if '_set_impersonation_cookie' in st.session_state:
+        del st.session_state['_set_impersonation_cookie']
 
 # ============================================
 # TIMEOUT IMPERSONAZIONE (max 30 minuti)
