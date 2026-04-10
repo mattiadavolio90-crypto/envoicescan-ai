@@ -86,7 +86,9 @@ def _get_supabase_credentials() -> tuple[str, str]:
     try:
         import streamlit as st
         url = st.secrets["supabase"]["url"]
-        key = st.secrets["supabase"]["key"]
+        # Preferisci service_role key (necessaria dopo hardening RLS migration 052);
+        # fallback alla anon key per retrocompatibilità con deploy non aggiornati.
+        key = st.secrets["supabase"].get("service_role_key") or st.secrets["supabase"]["key"]
         return url, key
     except Exception:
         pass
