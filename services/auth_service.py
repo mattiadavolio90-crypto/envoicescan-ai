@@ -66,19 +66,6 @@ def _is_connectivity_error(error: Exception) -> bool:
     return any(marker in message for marker in connectivity_markers)
 
 
-def _is_missing_column_error(error: Exception) -> bool:
-    """Riconosce errori PostgREST/Supabase dovuti a colonne non presenti."""
-    message = f"{type(error).__name__}: {error}".lower()
-    missing_column_markers = (
-        'column',
-        'does not exist',
-        'could not find the',
-        'schema cache',
-        'pgrst',
-    )
-    return any(marker in message for marker in missing_column_markers)
-
-
 def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
     """
     Controlla se l'email e' in lockout interrogando la tabella login_attempts.
@@ -691,45 +678,41 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
         if bloccato:
             return None, f"Troppi tentativi falliti. Riprova tra {minuti} minuti."
         
-        # Query utente attivo. Se il DB non ha ancora le colonne trial,
-        # facciamo fallback trasparente al set base di colonne.
-        try:
-            response = supabase_client.table("users") \
-                .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
-                    "password_hash, partita_iva, created_at, last_login, "
-                    "trial_active, trial_activated_at") \
-                .eq("email", email) \
-                .eq("attivo", True) \
-                .execute()
-        except Exception as query_err:
-            if not _is_missing_column_error(query_err):
-                raise
-            logger.warning(
-                "Colonne trial non disponibili su users durante login; "
-                "fallback a query compatibile con schema legacy"
-            )
-            response = supabase_client.table("users") \
-                .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
-                    "password_hash, partita_iva, created_at, last_login") \
-                .eq("email", email) \
-                .eq("attivo", True) \
-                .execute()
+        # Query base utente attivo: deve restare compatibile anche con schema legacy.
+        response = supabase_client.table("users") \
+            .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
+                "password_hash, partita_iva, created_at, last_login") \
+            .eq("email", email) \
+            .eq("attivo", True) \
+            .execute()
         
         if not response.data:
             registra_tentativo(email, False, supabase_client)
             return None, "Credenziali errate o account disattivato"
         
         user = response.data[0]
-        user.setdefault('trial_active', False)
-        user.setdefault('trial_activated_at', None)
         
         # Verifica password
         if verify_and_migrate_password(user, password):
+            trial_active = False
+            trial_activated_at = None
+            try:
+                trial_resp = supabase_client.table('users') \
+                    .select('trial_active, trial_activated_at') \
+                    .eq('id', user['id']) \
+                    .maybe_single() \
+                    .execute()
+                if trial_resp.data:
+                    trial_active = trial_resp.data.get('trial_active') is True
+                    trial_activated_at = trial_resp.data.get('trial_activated_at')
+            except Exception as trial_query_err:
+                logger.warning(f"Check trial saltato durante login: {trial_query_err}")
+
             # 🔒 CHECK TRIAL SCADUTO: se trial attiva ma scaduta, disattiva account
-            if user.get('trial_active') is True and user.get('trial_activated_at'):
+            if trial_active and trial_activated_at:
                 try:
                     _trial_start = datetime.fromisoformat(
-                        str(user['trial_activated_at']).replace('Z', '+00:00')
+                        str(trial_activated_at).replace('Z', '+00:00')
                     )
                     if _trial_start.tzinfo is None:
                         _trial_start = _trial_start.replace(tzinfo=timezone.utc)
@@ -742,7 +725,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
                         }).eq('id', user['id']).execute()
                         logger.warning(
                             f"⏰ Trial scaduto per user_id={user['id']} "
-                            f"(email={email}, attivato={user['trial_activated_at']})"
+                            f"(email={email}, attivato={trial_activated_at})"
                         )
                         return None, "Il tuo periodo di prova è scaduto. Contatta il supporto."
                 except Exception as _trial_err:
