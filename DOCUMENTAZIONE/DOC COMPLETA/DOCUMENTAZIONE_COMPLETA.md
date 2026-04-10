@@ -2,12 +2,14 @@
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 5.1  
-Ultimo aggiornamento: 9 Aprile 2026  
+Versione: 5.2  
+Ultimo aggiornamento: 10 Aprile 2026  
 Autore: Mattia D'Avolio  
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato)  
 URL Produzione: https://ohyeah.streamlit.app/
 
+> **Novità v5.2**: Il worker `fatture_queue` è stato migrato da GitHub Actions a un service Railway dedicato `queue-worker`, con loop continuo ogni 15 secondi. Il service FastAPI `worker` usa `ENABLE_INLINE_QUEUE_PROCESSOR=0` e `.github/workflows/queue-worker.yml` resta solo come fallback manuale di emergenza.
+>
 > **Novità v5.1**: Sistema di notifiche in-app (6 tipologie: upload, prezzi, ricavi, costi, alert), tracking costi AI con tabella `ai_usage_events`, layer controller (`app_controllers.py`), componenti riutilizzabili (`category_editor.py`, `dashboard_renderer.py`), hardening sicurezza Supabase (migration 052), Privacy Policy v3.2 con sub-processori Invoicetronic/Railway.
 >
 > **Novità v5.0**: Integrazione Invoicetronic (ricezione automatica fatture SDI), FastAPI Worker per classificazione AI scalabile, deploy Railway, nuova tabella `fatture_queue` con worker asincrono GitHub Actions, tabella `brand_ambigui` per apprendimento automatico.
@@ -101,7 +103,7 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 | Copertura test automatici | 194 test, 11 moduli di test |
 | Tempo medio classificazione | < 5 secondi per 50 prodotti (batch) |
 | Migrazioni DB | 58 file SQL |
-| Ritardo ricezione fattura automatica | ≤ 15 minuti (ciclo worker) |
+| Ritardo ricezione fattura automatica | ≤ 15 secondi (loop continuo Railway) |
 
 ---
 
@@ -148,8 +150,10 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
          │      lookup P.IVA → ristoranti                │
          │      INSERT fatture_queue (pending)           │
          │           │                                   │
-         │  GitHub Actions (ogni 15 min)                 │
-         │    → worker/run.py → queue_processor.py       │
+         │  Railway service: queue-worker                │
+         │    → python worker/run.py                     │
+         │    → loop continuo ogni 15 secondi            │
+         │    → queue_processor.py                       │
          │      claim_batch_for_processing()             │
          │      estrai_dati_da_xml() → salva_fattura()   │
          │      mark_queue_item_done() (purge XML GDPR)  │
@@ -186,9 +190,9 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 | AI/ML | OpenAI API | GPT-4o-mini | Batch classification, ~0.15$/1M token |
 | Email | Brevo SMTP API v3 | Free tier | 300 email/giorno |
 | Hashing | Argon2id | m=65536 | Parametri default libreria argon2-cffi (OWASP raccomandato) |
-| CI/CD | GitHub Actions | — | Uptime check + queue worker ogni 15 minuti |
+| CI/CD | GitHub Actions | — | Uptime check + fallback manuale queue-worker |
 | Deploy Frontend | Streamlit Community Cloud | Free tier | Auto-deploy da branch main |
-| Deploy Worker | Railway | Hobby/Pro | Docker image da `docker/Dockerfile` |
+| Deploy Worker | Railway | Hobby/Pro | Tre service separati: `ohyeah` (frontend), `worker` (FastAPI), `queue-worker` (fatture_queue) |
 | SDI Intermediario | Invoicetronic | SaaS | Ricezione fatture SDI, codice dest. `7HD37X0` |
 
 ### Dipendenze Python Principali (100 pacchetti lockati)
@@ -271,9 +275,9 @@ Oh Yeah! Hub/
 │   └── worker_client.py           # Proxy Streamlit → FastAPI Worker
 │                                   # Fallback automatico su funzioni locali
 │
-├── worker/                         # Worker asincrono fatture_queue (NUOVO)
+├── worker/                         # Worker asincrono fatture_queue (Railway queue-worker)
 │   ├── __init__.py
-│   ├── run.py                      # Entry point GitHub Actions / terminale
+│   ├── run.py                      # Entry point Railway queue-worker / terminale
 │   └── queue_processor.py          # Logica elaborazione coda Invoicetronic
 │                                   # - run_cycle(): ciclo completo con stats
 │                                   # - claim_batch_for_processing() via RPC
@@ -338,7 +342,7 @@ Oh Yeah! Hub/
 │
 ├── .github/workflows/
 │   ├── uptime_check.yml           # Uptime monitoring ogni 5 minuti
-│   └── queue-worker.yml           # Worker fatture_queue ogni 15 minuti (NUOVO)
+│   └── queue-worker.yml           # Fallback manuale di emergenza per fatture_queue
 │
 ├── .streamlit/
 │   ├── config.toml
@@ -1265,22 +1269,34 @@ Ultimo risultato: **194/194 PASSED**
 
 ### Railway — Deploy Worker FastAPI
 
-Railway è la piattaforma utilizzata per deployare il **FastAPI Worker** come servizio Docker separato dal frontend Streamlit. Il worker gestisce le richieste AI pesanti (classificazione batch, parsing XML) evitando di sovraccaricare l'istanza Streamlit.
+Railway è la piattaforma utilizzata per deployare i servizi Docker separati dal frontend Streamlit. L'architettura aggiornata usa tre service distinti: frontend Streamlit, FastAPI Worker per classificazione/parsing e `queue-worker` dedicato al consumo continuo di `fatture_queue`.
 
 | Parametro | Valore |
 |-----------|--------|
 | Piattaforma | Railway (Hobby o Pro plan) |
 | Build | `docker/Dockerfile` (percorso configurato in `railway.toml`) |
-| Servizi | Due servizi separati: `ohyeah` (Streamlit) + `worker` (FastAPI) |
+| Servizi | Tre servizi separati: `ohyeah` (Streamlit) + `worker` (FastAPI) + `queue-worker` (worker asincrono) |
 | Comunicazione interna | `WORKER_BASE_URL` → `http://worker:8000` (rete privata Railway) |
 | URL worker esterno | `https://envoicescan-ai-production.up.railway.app` (CORS configurato) |
 | Configurazione | `railway.toml`: `build.dockerfilePath = "docker/Dockerfile"` |
 
 **Setup Railway**:
 1. Collega repo GitHub a Railway
-2. Crea due service: uno per app Streamlit, uno per worker FastAPI
+2. Crea tre service: app Streamlit, worker FastAPI, queue-worker dedicato
 3. Imposta le env vars nel dashboard Railway (NON committare `.env`)
-4. Il worker non espone la porta 8000 esternamente — accesso solo via rete interna Railway
+4. Il service `worker` espone solo le API FastAPI; il service `queue-worker` non richiede dominio pubblico
+5. Sul service `worker` imposta `ENABLE_INLINE_QUEUE_PROCESSOR=0`
+
+**Dettagli tecnici queue-worker Railway**:
+
+| Parametro | Valore |
+|-----------|--------|
+| Entry point | `python worker/run.py` |
+| Logica | `worker/queue_processor.py` |
+| Modalità | Loop continuo 24/7 |
+| Intervallo poll | 15 secondi |
+| Env vars richieste | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `INVOICETRONIC_API_KEY`, `OPENAI_API_KEY` |
+| Env vars operative | `WORKER_BATCH_SIZE=10`, `WORKER_XML_RETENTION_HOURS=24`, `WORKER_STALE_LOCK_MINUTES=10` |
 
 ### Supabase Edge Functions — invoicetronic-webhook
 
@@ -1357,11 +1373,12 @@ I file Docker sono organizzati nella cartella `docker/`:
 | `docker/docker-compose.prod.yml` | Stack produzione Railway/VPS — porta worker 8000 **non esposta** |
 | `docker/docker-entrypoint.sh` | Script avvio container |
 
-Il `docker-compose.prod.yml` definisce due servizi:
+Il `docker-compose.prod.yml` definisce tre servizi:
 - `ohyeah`: Streamlit su porta 8501 (esposta)
 - `worker`: FastAPI su porta 8000 (**non esposta** — solo rete Docker interna)
+- `queue-worker`: worker asincrono `fatture_queue` senza porta pubblica
 
-La comunicazione avviene via `WORKER_BASE_URL=http://worker:8000`, garantendo che le route `/api/classify` e `/api/parse` siano raggiungibili solo dall'interno della rete privata.
+La comunicazione applicativa avviene via `WORKER_BASE_URL=http://worker:8000`, garantendo che le route `/api/classify` e `/api/parse` siano raggiungibili solo dall'interno della rete privata, mentre il consumo della coda resta interamente delegato al service `queue-worker`.
 
 ---
 
@@ -1406,13 +1423,11 @@ jobs:
 
 File: `.github/workflows/queue-worker.yml`
 
-Questo workflow elabora in modo asincrono le fatture ricevute dal webhook Invoicetronic. Esegue automaticamente ogni 15 minuti processando la coda `fatture_queue`.
+Questo workflow non è più il worker primario della coda. Dal 10 Aprile 2026 resta solo come fallback manuale di emergenza per drain forzato di `fatture_queue` quando il service Railway `queue-worker` non è disponibile.
 
 ```yaml
 name: Worker — fatture_queue processor
 on:
-  schedule:
-    - cron: '*/15 * * * *'   # Ogni 15 minuti
   workflow_dispatch:          # Trigger manuale con parametro batch_size
 
 jobs:
@@ -1436,7 +1451,7 @@ jobs:
         run: python worker/run.py
 ```
 
-**Costo stimato GitHub Actions**: circa 720 run/mese (ogni 15 min, 24h). Ogni run dura < 60s se la coda è vuota → entro i 2.000 min/mese del free tier per repo privati.
+**Nota operativa**: l'elaborazione continua della coda ora gira su Railway tramite il service dedicato `queue-worker`. GitHub Actions non consuma più minuti su schedule automatico per questo flusso.
 
 **Trigger manuale**: dal tab "Actions" su GitHub è possibile avviare il worker manualmente, specificando un `batch_size` personalizzato per drain forzato della coda.
 
@@ -1524,7 +1539,7 @@ jobs:
 
 #### Fatture Invoicetronic non appaiono in dashboard
 1. Verificare status `fatture_queue`: record con `status=pending` → non ancora processati
-2. Il worker GitHub Actions gira ogni 15 minuti → attendere il ciclo
+2. Il service Railway `queue-worker` polla la coda ogni 15 secondi → attendere il ciclo successivo
 3. `status=failed` o `status=dead` → vedere `error_message` nella tabella
 4. `status=unknown_tenant` → P.IVA del ristorante non ancora registrata su OH YEAH! Hub; aggiungere il ristorante con la P.IVA corretta, poi chiamare la RPC `resolve_unknown_tenant(piva)` per rimettere in `pending`
 5. Verificare che la Edge Function `invoicetronic-webhook` risponda (GET `/functions/v1/invoicetronic-webhook` → `200 OK`)
@@ -1650,11 +1665,12 @@ Fornitore → SDI → Invoicetronic (codice dest. 7HD37X0)
           │    ON CONFLICT (event_id) DO NOTHING       │
           │ 9. Risponde 200 SEMPRE (evita retry Storm) │
           └────────────────────────────────────────────┘
-                       │ (ogni 15 minuti)
+                       │ (loop continuo ogni 15 secondi)
                        ▼
-          GitHub Actions: queue-worker.yml
+          Railway service: queue-worker
           ┌────────────────────────────────────────────┐
           │ python worker/run.py                       │
+          │ loop continuo 24/7                         │
           │ → purge_processed_xml_content() GDPR       │
           │ → release_stale_locks() recovery           │
           │ → claim_batch_for_processing()             │
@@ -1694,7 +1710,7 @@ Il worker (`worker/queue_processor.py`) è progettato per operare in modo robust
 -- claim_batch_for_processing() usa:
 SELECT ... FOR UPDATE SKIP LOCKED
 ```
-Più istanze del worker (es. multiple run GitHub Actions sovrapposti) non processano mai lo stesso record.
+Più istanze del worker (es. più container Railway o fallback manuale GitHub Actions) non processano mai lo stesso record.
 
 #### Retry con Backoff Esponenziale
 I record falliti vengono ri-schedulati con `schedule_retry()`. Il numero di tentativi è tracciato in `attempt_count`. Dopo N tentativi massimi il record diventa `dead` (non viene perso, è ancora consultabile in DB).
@@ -1777,7 +1793,8 @@ Il FastAPI Worker (`services/fastapi_worker.py`) separa la logica di classificaz
 Nota architetturale aggiornata:
 - Il webhook pubblico Invoicetronic vive esclusivamente nella Supabase Edge Function.
 - Il FastAPI worker non e' piu' un endpoint webhook pubblico.
-- `worker/run.py` esegue un loop continuo su Railway e consuma `fatture_queue`.
+- `worker/run.py` esegue un loop continuo su Railway come SERVICE DEDICATO (`queue-worker`) e consuma `fatture_queue` ogni 15 secondi.
+- Il service worker FastAPI ha `ENABLE_INLINE_QUEUE_PROCESSOR=0`.
 - `.github/workflows/queue-worker.yml` resta solo come fallback manuale.
 
 ### Endpoints REST

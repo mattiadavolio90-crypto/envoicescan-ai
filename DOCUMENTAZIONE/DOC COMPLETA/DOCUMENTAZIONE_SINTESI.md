@@ -2,7 +2,7 @@
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 5.1 | Ultimo aggiornamento: 9 Aprile 2026 | Autore: Mattia D'Avolio  
+Versione: 5.2 | Ultimo aggiornamento: 10 Aprile 2026 | Autore: Mattia D'Avolio  
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato) | URL: https://ohyeah.streamlit.app/
 
 ---
@@ -36,9 +36,9 @@ OH YEAH! Hub è una piattaforma SaaS web-based per ristoratori italiani che anal
 | AI/ML | OpenAI GPT-4o-mini | Batch 50 articoli, ~0.15$/1M token |
 | Email | Brevo SMTP API v3 | 300 email/giorno, free tier |
 | Password hashing | Argon2id | m=65536, parametri default libreria (OWASP) |
-| CI/CD | GitHub Actions | Uptime check ogni 5 min + Worker coda ogni 15 min |
+| CI/CD | GitHub Actions | Uptime check ogni 5 min + fallback manuale queue-worker |
 | Deploy frontend | Streamlit Community Cloud | Auto-deploy da branch `main` |
-| Deploy worker | Railway | FastAPI Worker Docker (classificazione AI scalabile) |
+| Deploy worker | Railway | Tre service separati: `ohyeah`, `worker`, `queue-worker` |
 | SDI Intermediario | Invoicetronic | Ricezione fatture SDI, codice dest. `7HD37X0` |
 | Cookie | extra-streamlit-components | Secure=True, SameSite=Strict (no HttpOnly) |
 
@@ -74,7 +74,7 @@ Oh Yeah! Hub/
 │   ├── category_editor.py    # Data editor categorie (~958 righe)
 │   └── dashboard_renderer.py # KPI, grafici, pivot dashboard (~964 righe)
 ├── worker/                    # Worker asincrono fatture_queue
-│   ├── run.py                # Entry point GitHub Actions
+│   ├── run.py                # Entry point Railway queue-worker
 │   └── queue_processor.py    # Elaborazione coda Invoicetronic (~440 righe)
 ├── utils/                    # formatters, text_utils, validation, piva_validator,
 │                             # sidebar_helper, ristorante_helper, period_helper,
@@ -89,7 +89,7 @@ Oh Yeah! Hub/
 ├── migrations/               # 58 SQL migrations numerate (001→053)
 ├── docker/                   # Dockerfile, docker-compose.yml, docker-compose.prod.yml
 ├── scripts/                  # comandi.ps1, dev-serve.ps1, run-tests.ps1
-├── .github/workflows/        # uptime_check.yml, queue-worker.yml
+├── .github/workflows/        # uptime_check.yml, queue-worker.yml (fallback manuale)
 ├── .streamlit/               # config.toml, secrets.toml (non versionato)
 ├── railway.toml              # Configurazione deploy Railway
 ├── requirements.txt / requirements-lock.txt (100 pacchetti freezati)
@@ -290,8 +290,10 @@ pytest tests/ --cov=services --cov=utils --cov-report=html  # con coverage
 
 ### Railway — Deploy FastAPI Worker
 - Docker image da `docker/Dockerfile` (configurato in `railway.toml`)
-- Due servizi: `ohyeah` (Streamlit) + `worker` (FastAPI)
+- Tre servizi: `ohyeah` (Streamlit) + `worker` (FastAPI) + `queue-worker` (worker asincrono)
 - Comunicazione interna: `WORKER_BASE_URL` → `http://worker:8000`
+- Il service `worker` ha `ENABLE_INLINE_QUEUE_PROCESSOR=0`
+- Il service `queue-worker` esegue `python worker/run.py` in loop continuo ogni 15 secondi
 
 ---
 
@@ -299,7 +301,7 @@ pytest tests/ --cov=services --cov=utils --cov-report=html  # con coverage
 
 - **Flusso**: SDI → Invoicetronic → POST webhook → Supabase Edge Function (Deno/TypeScript) → `fatture_queue`
 - **Sicurezza webhook**: HMAC-SHA256, anti-replay, verifica payload
-- **Worker coda**: GitHub Actions ogni 15 min → `worker/queue_processor.py` → parsing + classificazione
+- **Worker coda**: service Railway `queue-worker` → `python worker/run.py` → `worker/queue_processor.py` → parsing + classificazione ogni 15 secondi
 - **GDPR**: XML raw purificato dopo 24h tramite RPC `purge_processed_xml_content()`
 - **Codice destinatario SDI**: `7HD37X0`
 
@@ -333,7 +335,7 @@ pytest tests/ --cov=services --cov=utils --cov-report=html  # con coverage
 
 ---
 
-*Documento sintetico v5.1 — 9 Aprile 2026*
+*Documento sintetico v5.2 — 10 Aprile 2026*
 *Per la documentazione completa, vedere `DOCUMENTAZIONE_COMPLETA.md`*
 
 ---
@@ -341,6 +343,7 @@ pytest tests/ --cov=services --cov=utils --cov-report=html  # con coverage
 ## 12. Monitoraggio
 
 - **GitHub Actions** `uptime_check.yml`: curl ogni 5 minuti su `https://ohyeah.streamlit.app/`; se HTTP ≠ 200 → email alert via Brevo
+- **GitHub Actions** `queue-worker.yml`: fallback manuale di emergenza, non più eseguito su schedule automatico
 - **Logging applicativo**: `RotatingFileHandler`, 50 MB × 10 backup (~550 MB max), livello INFO, logger modulari per ogni componente (`app`, `ai`, `auth`, `invoice`, `db`, `admin`, `email`, `margine_service`)
 
 ---
