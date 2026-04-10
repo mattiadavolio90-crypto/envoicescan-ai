@@ -68,11 +68,7 @@ def _is_connectivity_error(error: Exception) -> bool:
 
 def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
     """
-    Controlla rate limit login con pattern INSERT-first (atomico).
-
-    Inserisce PRIMA un tentativo fallito (pessimistico), poi conta.
-    Questo elimina la race condition TOCTOU del pattern SELECT-then-INSERT.
-    Se il login ha successo, registra_tentativo(email, True) cancella i fallimenti.
+    Controlla se l'email e' in lockout interrogando la tabella login_attempts.
 
     Returns:
         (True, minuti_rimanenti) se bloccato,
@@ -84,14 +80,6 @@ def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
             supabase_client = get_supabase_client()
 
         email_lower = email.lower().strip()
-
-        # 1. INSERT tentativo fallito PRIMA del count (atomico, elimina TOCTOU)
-        supabase_client.table('login_attempts').insert({
-            'email': email_lower,
-            'success': False,
-        }).execute()
-
-        # 2. COUNT fallimenti nella finestra (include il record appena inserito)
         since = (datetime.now(timezone.utc) - timedelta(minutes=_LOCKOUT_MINUTES)).isoformat()
 
         resp = supabase_client.table('login_attempts') \
@@ -126,7 +114,6 @@ def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
             logger.warning(f"⛔ Login bloccato: lockout {remaining} min rimanenti")
             return True, remaining
 
-        # 3. Pulizia record > 24h (best-effort)
         try:
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
             supabase_client.table('login_attempts') \
@@ -701,7 +688,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             .execute()
         
         if not response.data:
-            # Tentativo fallito già registrato da controlla_rate_limit (INSERT-first)
+            registra_tentativo(email, False, supabase_client)
             return None, "Credenziali errate o account disattivato"
         
         user = response.data[0]
@@ -753,7 +740,7 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             
             return user, None
         else:
-            # Tentativo fallito già registrato da controlla_rate_limit (INSERT-first)
+            registra_tentativo(email, False, supabase_client)
             return None, "Credenziali errate"
             
     except AuthServiceUnavailableError as e:
