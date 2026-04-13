@@ -270,11 +270,7 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
 
     if not st.session_state.get('auto_invoice_notice_toast_shown', False):
         fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
-        review_count = sum(int(f.get('needs_review_count') or 0) for f in pending_files)
         toast_message = f"Hai ricevuto {len(pending_files)} {fatture_label} automatiche"
-        if review_count > 0:
-            righe_label = 'riga richiede revisione' if review_count == 1 else 'righe richiedono revisione'
-            toast_message += f" - {review_count} {righe_label}"
         st.toast(f"📬 {toast_message}", icon="📥")
         st.session_state.auto_invoice_notice_toast_shown = True
 
@@ -300,21 +296,12 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
 
     with st.container(key="expander_auto_invoices"):
         fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
-        review_count = sum(int(f.get('needs_review_count') or 0) for f in pending_files)
-        _hdr_col, _save_all_col, _hide_all_col = st.columns([4, 1, 1])
+        _hdr_col, _save_all_col = st.columns([5, 1])
         with _hdr_col:
-            review_html = ''
-            if review_count > 0:
-                righe_label = 'riga da rivedere' if review_count == 1 else 'righe da rivedere'
-                review_html = (
-                    f"<div style='font-size:0.88rem; color:#92400e; font-weight:600; margin-top:4px;'>"
-                    f"⚠️ {review_count} {righe_label}: controllale prima che entrino nei tuoi calcoli"
-                    f"</div>"
-                )
             st.markdown(
                 f"<span style='font-size:1.05rem; font-weight:700; color:#1e3a8a;'>"
                 f"🔔 Sono arrivate {len(pending_files)} nuove {fatture_label} dall'ultimo tuo accesso"
-                f"</span>{review_html}",
+                f"</span>",
                 unsafe_allow_html=True,
             )
         with _save_all_col:
@@ -335,19 +322,6 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
                 clear_fatture_cache()
                 st.session_state.auto_invoice_notice_dismissed = True
                 st.rerun()
-        with _hide_all_col:
-            if st.button("👁 Nascondi", key="auto_notice_hide_all", use_container_width=True):
-                dismiss_notification_ids(
-                    user_id=user_id,
-                    notification_ids=[
-                        build_scoped_notification_id(f"auto-file:{f['file_name']}", ristorante_id)
-                        for f in pending_files
-                    ],
-                    supabase_client=supabase_client,
-                )
-                st.session_state.auto_invoice_notice_dismissed = True
-                st.rerun()
-
         with st.expander(f"📄 Dettaglio {fatture_label}", expanded=False):
             for idx, finfo in enumerate(pending_files):
                 fname = finfo.get('file_name', 'file sconosciuto')
@@ -355,27 +329,22 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
                 data_doc = finfo.get('data_documento', '')
                 num_righe = finfo.get('num_righe', 0)
                 totale = finfo.get('totale', 0)
-                needs_review_count = int(finfo.get('needs_review_count') or 0)
-                _r_label = 'riga' if num_righe == 1 else 'righe'
 
-                col_detail, col_btns = st.columns([5, 3])
+                col_detail, col_btns = st.columns([6, 2])
                 with col_detail:
-                    _safe_fornitore = _html.escape(fornitore.upper())
-                    _safe_fname = _html.escape(fname)
-                    _short_fname = _safe_fname if len(fname) <= 12 else _html.escape(fname[:8]) + '…' + _html.escape(fname[fname.rfind('.'):]) if '.' in fname else _html.escape(fname[:12]) + '…'
-                    _review_badge = ''
-                    if needs_review_count > 0:
-                        _review_badge = f" &middot; <span style='color:#b45309; font-weight:700;'>{needs_review_count} da rivedere</span>"
+                    _row_label = format_fattura_label(
+                        file_name=fname,
+                        fornitore=fornitore,
+                        totale=totale,
+                        num_righe=num_righe,
+                        data=data_doc,
+                        max_file_chars=28,
+                    )
                     st.markdown(
-                        f"📄 **{_safe_fornitore}** &mdash; "
-                        f"€{totale:,.2f} &middot; "
-                        f"{num_righe} {_r_label} &middot; "
-                        f"{_html.escape(data_doc or 'N/D')}{_review_badge} &middot; "
-                        f"`{_short_fname}`",
-                        help=f"File completo: {_safe_fname}",
+                        f"{_row_label}",
                     )
                 with col_btns:
-                    bc1, bc2, bc3 = st.columns(3)
+                    bc1, bc2 = st.columns(2)
                     with bc1:
                         if st.button("💾 Salva", key=f"auto_save_{idx}", use_container_width=True):
                             _ack_uid = st.session_state.user_data.get('id')
@@ -412,14 +381,6 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
                             except Exception as _rej_err:
                                 logger.error(f"Errore rifiuto fattura auto {fname}: {_rej_err}")
                             st.session_state.auto_invoice_handled.add(fname)
-                            st.rerun()
-                    with bc3:
-                        if st.button("👁", key=f"auto_hide_{idx}", use_container_width=True, help="Nascondi notifica gia vista"):
-                            dismiss_notification_ids(
-                                user_id=user_id,
-                                notification_ids=[build_scoped_notification_id(f"auto-file:{fname}", ristorante_id)],
-                                supabase_client=supabase_client,
-                            )
                             st.rerun()
 
 
@@ -2303,17 +2264,6 @@ else:
 
         with col_ai_right:
             st.markdown("<div class='upload-ai-spacer'></div>", unsafe_allow_html=True)
-            _ai_in_progress = st.session_state.get('ai_categorization_in_progress', False)
-            if _righe_da_class_ui > 0 and not _ai_in_progress:
-                if st.button(
-                    "🧠 Riprova AI per Categorizzare",
-                    use_container_width=True,
-                    type="primary",
-                    key="btn_ai_categorizza_upload"
-                ):
-                    st.session_state.ai_categorization_in_progress = True
-                    st.session_state.trigger_ai_categorize = True
-                    st.rerun()
     
     # 🧠 RESET ICONE AI al nuovo caricamento (solo session_state, niente DB)
     if uploaded_files and len(uploaded_files) > 0:

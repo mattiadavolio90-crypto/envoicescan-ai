@@ -1603,18 +1603,6 @@ def render_dashboard_ui(supabase, logger, user):
 
     with col_ai_right:
         st.markdown("<div style='height: 34px;'></div>", unsafe_allow_html=True)
-        _ai_in_progress = st.session_state.get('ai_categorization_in_progress', False)
-        if _righe_da_class_ui > 0 and not _ai_in_progress:
-            # 🧠 Recovery: bottone visibile SOLO se rimangono righe Da Classificare dopo l'AI
-            if st.button(
-                "🧠 Riprova AI per Categorizzare",
-                use_container_width=True,
-                type="primary",
-                key="btn_ai_categorizza_upload"
-            ):
-                st.session_state.ai_categorization_in_progress = True
-                st.session_state.trigger_ai_categorize = True
-                st.rerun()
 
     # 🧠 RESET ICONE AI al nuovo caricamento (solo session_state, niente DB)
     if uploaded_files and len(uploaded_files) > 0:

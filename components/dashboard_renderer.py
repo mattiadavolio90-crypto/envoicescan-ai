@@ -185,31 +185,18 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     # Query tutte le descrizioni che hanno categoria NULL, "Da Classificare" o stringa vuota
                     _ristorante_id = st.session_state.get('ristorante_id')
 
-                    # Query 1: NULL + stringa vuota collassate
-                    _q_nullempty = (
+                    # Query UNICA: NULL + stringa vuota + Da Classificare (risparmia 1 roundtrip HTTP)
+                    _q_all = (
                         supabase.table("fatture")
                         .select("id, descrizione, fornitore, prezzo_unitario, iva_percentuale")
                         .eq("user_id", user_id)
-                        .or_("categoria.is.null,categoria.eq.")
+                        .or_("categoria.is.null,categoria.eq.,categoria.eq.Da Classificare")
                     )
                     if _ristorante_id:
-                        _q_nullempty = _q_nullempty.eq("ristorante_id", _ristorante_id)
-                    _resp_nullempty = _q_nullempty.execute()
+                        _q_all = _q_all.eq("ristorante_id", _ristorante_id)
+                    _resp_all = _q_all.execute()
 
-                    # Query 2: Da Classificare
-                    _q_daclass = (
-                        supabase.table("fatture")
-                        .select("id, descrizione, fornitore, prezzo_unitario, iva_percentuale")
-                        .eq("user_id", user_id)
-                        .eq("categoria", "Da Classificare")
-                    )
-                    if _ristorante_id:
-                        _q_daclass = _q_daclass.eq("ristorante_id", _ristorante_id)
-                    _resp_daclass = _q_daclass.execute()
-
-                    _dati_nullempty = _resp_nullempty.data or []
-                    _dati_daclass   = _resp_daclass.data or []
-                    tutti_dati = _dati_nullempty + _dati_daclass
+                    tutti_dati = _resp_all.data or []
                     
                     descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
                     fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
@@ -376,7 +363,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     # 🧠 STEP 1: Invia all'AI tutte le descrizioni non risolte dalla memoria
                     # Il dizionario interviene SOLO come fallback post-AI per i "Da Classificare" rimasti
                     descrizioni_per_ai = list(descrizioni_dopo_memoria)
-                    chunk_size = 50
+                    chunk_size = 30
                     
                     if descrizioni_per_ai:
                         # 🔒 BUDGET GIORNALIERO AI: limita chiamate per sessione/giorno
@@ -636,6 +623,11 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                     # ⚡ BATCH: Raggruppa per categoria prima di fare query
                                     _fb_cat_to_descs = {}  # {categoria: [desc1, desc2, ...]}
                                     for desc in ancora_da_class:
+                                        # Prima prova regole forti (più precise), poi dizionario
+                                        cat_forte = applica_regole_categoria_forti(desc)
+                                        if cat_forte:
+                                            _fb_cat_to_descs.setdefault(cat_forte, []).append(desc)
+                                            continue
                                         cat_dizionario = applica_correzioni_dizionario(desc, "Da Classificare")
                                         if cat_dizionario and cat_dizionario != 'Da Classificare':
                                             _fb_cat_to_descs.setdefault(cat_dizionario, []).append(desc)

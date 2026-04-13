@@ -541,6 +541,40 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                         pass  # Se la data non è parsabile, lascia passare
 
                         # ============================================================
+                        # BLOCCO MESI PRECEDENTI ANNO CORRENTE (per clienti non-admin)
+                        # ============================================================
+                        # Se il flag blocco_mesi_precedenti è attivo in pagine_abilitate,
+                        # impedisci caricamento fatture con mese < mese corrente (stesso anno).
+                        # Admin e impersonificati bypassano sempre.
+                        if not is_admin:
+                            _pagine_cfg_mesi = st.session_state.get('user_data', {}).get('pagine_abilitate') or {}
+                            if _pagine_cfg_mesi.get('blocco_mesi_precedenti', False):
+                                _data_doc_mesi = None
+                                if isinstance(items, list) and len(items) > 0:
+                                    _data_doc_mesi = items[0].get('Data_Documento') or items[0].get('data_documento')
+                                if _data_doc_mesi and _data_doc_mesi != 'N/A':
+                                    try:
+                                        _dt_doc_mesi = pd.to_datetime(_data_doc_mesi)
+                                        _now_mesi = pd.Timestamp.now()
+                                        if _dt_doc_mesi.year == _now_mesi.year and _dt_doc_mesi.month < _now_mesi.month:
+                                            from config.constants import MESI_ITA as _MESI_BLK
+                                            _mese_nome = _MESI_BLK[_now_mesi.month - 1]
+                                            logger.warning(
+                                                f"📅 UPLOAD BLOCCATO MESE PRECEDENTE {file.name} - Data {_data_doc_mesi} "
+                                                f"precedente a {_mese_nome} {_now_mesi.year} "
+                                                f"(user: {st.session_state.get('user_data', {}).get('email')})"
+                                            )
+                                            raise ValueError(
+                                                f"MESE PRECEDENTE \u2014 La data documento ({_data_doc_mesi}) è precedente al "
+                                                f"mese corrente ({_mese_nome} {_now_mesi.year}). "
+                                                f"È possibile caricare solo fatture del mese in corso."
+                                            )
+                                    except ValueError:
+                                        raise
+                                    except Exception:
+                                        pass  # Se la data non è parsabile, lascia passare
+
+                        # ============================================================
                         # BLOCCO TRIAL: solo fatture del mese di attivazione trial
                         # ============================================================
                         _trial_upload = st.session_state.get('trial_info', {})

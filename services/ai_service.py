@@ -356,6 +356,36 @@ _BLEND_T_FILTRI_RE = re.compile(r"\bBLEND\b.*\bT\b.*\bFILTRI?\b|\bFILTRI?\b.*\bB
 _LATTIERA_RE = re.compile(r"\bLATTIERA\b")
 _TOPPING_CACAO_RE = re.compile(r"\bTOPPING\b.*\b(CIOCCOLAT\w*|CACAO)\b|\b(CIOCCOLAT\w*|CACAO)\b.*\bTOPPING\b")
 
+# --- Regole prodotti comuni che l'AI spesso sbaglia ---
+_TERRA_VITA_RE = re.compile(r"\bTERRA\s*&\s*VITA\b")
+_PROVOLONE_ABBREV_RE = re.compile(r"\bPROVOL\.?\b")
+_GALBANINO_BIRAGHI_RE = re.compile(r"\b(GALBANINO|BIRAGHINI|GRANBIRAGHI|BIRAGHI)\b")
+_FORMAGGIO_SPALMABILE_RE = re.compile(r"\bFORM\.?\s*(FRESCO|SPALMABILE)\b|\bSPALMABILE\b.*\b(FORM|FORMAGG)")
+_GRATTUGGIATO_RE = re.compile(r"\bGRATTUGGIAT[OA]\b")
+_ORTOFRUTTA_RE = re.compile(r"\bORTOFRUTTA\b")
+_BONDUELLE_RE = re.compile(r"\bBONDUELLE\b")
+_MAIS_PISELLI_RE = re.compile(r"\b(MAIS|PISELLI)\b.*\b(BONDUELLE|SIGMA|TRIS|LATTINA)\b|\b(BONDUELLE|SIGMA)\b.*\b(MAIS|PISELLI)\b")
+_CIPOLLINE_CONSERVA_RE = re.compile(r"\bCIPOLLINE\b.*\b(SACLA|BARATTOL|GR\.?\d|AGRODOLC)\b|\b(SACLA|BARATTOL)\b.*\bCIPOLLINE\b")
+_ERBETTE_RE = re.compile(r"\bERBETTE\b")
+_PULYCAFF_RE = re.compile(r"\bPULY\s*(CAFF|MILK)\b")
+_BRITA_FILTRO_RE = re.compile(r"\bBRITA\b|\bPURITY\b.*\bCARTUCCIA\b|\bCARTUCCIA\b.*\bFILTR")
+_STOPPER_RE = re.compile(r"\bSTOPPER\b")
+_PENNA_LATTE_ART_RE = re.compile(r"\bPENNA\b.*\bLATTE\s*ART\b")
+_TEIERA_TAZZONE_RE = re.compile(r"\b(TEIERA|TAZZONE)\b")
+_COPPA_MAROCCHINO_RE = re.compile(r"\bCOPPA\b.*\bMAROCCHINO\b|\bMAROCCHINO\b.*\bCOPPA\b")
+_TORTILLA_RE = re.compile(r"\bTORTILLA\b")
+_CACAO_POLVERE_RE = re.compile(r"\bCACAO\b.*\b(KG|GR|POLV|\d)\b|\bCACAO\b\s+\d")
+_FRUTTI_BOSCO_RE = re.compile(r"\bFRUTTI\s+DI\s+BOSCO\b|\bFRUTT\w*\s+BOSCO\b")
+_SPIANATA_RE = re.compile(r"\bSPIANATA\b")
+_MIELE_BUSTINE_RE = re.compile(r"\bMIELE\b.*\bBUSTIN\w*\b|\bBUSTIN\w*\b.*\bMIELE\b|\bCONFEZIONE\s+MIELE\b")
+_CIOCCOLATA_CALDA_RE = re.compile(r"\bCIOCCOLATA\b.*\b(MONODOS|CALDA|LATTE|PREPARATO)\b|\bMONODOS\w*\b.*\bCIOCCOLAT")
+_VINO_DOC_RE = re.compile(r"\b(DOC|DOCG|IGT)\b.*\bCL\s*75\b|\bCL\s*75\b.*\b(DOC|DOCG|IGT)\b")
+_PIADA_RE = re.compile(r"\bPIAD[AE]\b")
+_SALE_ALIMENTARE_RE = re.compile(r"\bSALE\b.*\b(IODATO|FINO|GROSSO|MARINO)\b")
+_VANIGLIA_BACCA_RE = re.compile(r"\b(VANIGLIA|BACCA\s+VANIGLIA)\b")
+_NOCI_PISTACCHIO_SECCO_RE = re.compile(r"\b(NOCI\s+SGUSCIAT|PISTACCHI\w*\s+(CALIF|TOST|SGUS|INTERO))\b")
+_NON_FOOD_RE = re.compile(r"\bNON\s*FOOD\b")
+
 
 def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) -> Tuple[str, Optional[str]]:
     """
@@ -460,6 +490,176 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "VARIE BAR"
         if cat != mapped:
             return mapped, "topping_cacao_bar"
+        return cat, None
+
+    # --- Regole prodotti comuni che l'AI spesso sbaglia ---
+
+    if _TERRA_VITA_RE.search(desc_u):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "terra_vita_insalate"
+        return cat, None
+
+    if _PENNA_LATTE_ART_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "utensile_latte_art"
+        return cat, None
+
+    if _STOPPER_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "accessorio_stopper"
+        return cat, None
+
+    if _PROVOLONE_ABBREV_RE.search(desc_u):
+        mapped = "LATTICINI"
+        if cat != mapped:
+            return mapped, "provolone_latticino"
+        return cat, None
+
+    if _GALBANINO_BIRAGHI_RE.search(desc_u):
+        mapped = "LATTICINI"
+        if cat != mapped:
+            return mapped, "formaggio_brand_italiano"
+        return cat, None
+
+    if _FORMAGGIO_SPALMABILE_RE.search(desc_u):
+        mapped = "LATTICINI"
+        if cat != mapped:
+            return mapped, "formaggio_spalmabile"
+        return cat, None
+
+    if _GRATTUGGIATO_RE.search(desc_u):
+        mapped = "LATTICINI"
+        if cat != mapped:
+            return mapped, "formaggio_grattugiato"
+        return cat, None
+
+    if _ORTOFRUTTA_RE.search(desc_u):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "ortofrutta_generica"
+        return cat, None
+
+    if _BONDUELLE_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "bonduelle_conserve"
+        return cat, None
+
+    if _MAIS_PISELLI_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "mais_piselli_conserva"
+        return cat, None
+
+    if _CIPOLLINE_CONSERVA_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "cipolline_conserva"
+        return cat, None
+
+    if _ERBETTE_RE.search(desc_u):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "erbette_verdura"
+        return cat, None
+
+    if _PULYCAFF_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "pulizia_macchina_caffe"
+        return cat, None
+
+    if _BRITA_FILTRO_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "filtro_acqua_attrezzatura"
+        return cat, None
+
+    if _TEIERA_TAZZONE_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "contenitore_durevole"
+        return cat, None
+
+    if _COPPA_MAROCCHINO_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "coppa_marocchino_vetro"
+        return cat, None
+
+    if _TORTILLA_RE.search(desc_u):
+        mapped = "PRODOTTI DA FORNO"
+        if cat != mapped:
+            return mapped, "tortilla_forno"
+        return cat, None
+
+    if _PIADA_RE.search(desc_u):
+        mapped = "PRODOTTI DA FORNO"
+        if cat != mapped:
+            return mapped, "piadina_forno"
+        return cat, None
+
+    if _CACAO_POLVERE_RE.search(desc_u):
+        mapped = "VARIE BAR"
+        if cat != mapped:
+            return mapped, "cacao_polvere_bar"
+        return cat, None
+
+    if _CIOCCOLATA_CALDA_RE.search(desc_u):
+        mapped = "VARIE BAR"
+        if cat != mapped:
+            return mapped, "cioccolata_calda_bar"
+        return cat, None
+
+    if _MIELE_BUSTINE_RE.search(desc_u):
+        mapped = "VARIE BAR"
+        if cat != mapped:
+            return mapped, "miele_bustine_bar"
+        return cat, None
+
+    if _FRUTTI_BOSCO_RE.search(desc_u):
+        mapped = "FRUTTA"
+        if cat != mapped:
+            return mapped, "frutti_bosco_frutta"
+        return cat, None
+
+    if _SPIANATA_RE.search(desc_u):
+        mapped = "SALUMI"
+        if cat != mapped:
+            return mapped, "spianata_salume"
+        return cat, None
+
+    if _VINO_DOC_RE.search(desc_u):
+        mapped = "VINI"
+        if cat != mapped:
+            return mapped, "vino_doc_denominazione"
+        return cat, None
+
+    if _SALE_ALIMENTARE_RE.search(desc_u):
+        mapped = "SECCO"
+        if cat != mapped:
+            return mapped, "sale_alimentare"
+        return cat, None
+
+    if _VANIGLIA_BACCA_RE.search(desc_u):
+        mapped = "SPEZIE E AROMI"
+        if cat != mapped:
+            return mapped, "vaniglia_spezia"
+        return cat, None
+
+    if _NOCI_PISTACCHIO_SECCO_RE.search(desc_u):
+        mapped = "SECCO"
+        if cat != mapped:
+            return mapped, "frutta_secca_guscio"
+        return cat, None
+
+    if _NON_FOOD_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "articolo_non_food"
         return cat, None
 
     if _ALCOHOL_FREE_RE.search(desc_u):
@@ -1378,12 +1578,16 @@ def _build_compiled_patterns() -> Tuple[list, list]:
     """
     Costruisce le liste di (pattern_compilato, categoria) ordinate per lunghezza keyword decrescente.
     Chiamata UNA VOLTA all'import del modulo. Ritorna (patterns_alimenti, patterns_contenitori).
+    
+    Il pattern boundary accetta anche cifre come separatore sinistro per gestire
+    codici GDO con numeri incollati (es. "200CANGURINO", "G500STOP-TOAST").
     """
     patterns_alimenti = []
     patterns_contenitori = []
     
     for keyword, categoria in sorted(DIZIONARIO_CORREZIONI.items(), key=lambda x: len(x[0]), reverse=True):
-        pattern = re.compile(r'(?:^|[\s\W])' + re.escape(keyword) + r'(?:[\s\W]|$)')
+        # Boundary sinistro: inizio stringa, whitespace, non-alfanumerico, O cifra (per codici GDO)
+        pattern = re.compile(r'(?:^|[\s\W\d])' + re.escape(keyword) + r'(?:[\s\W]|$)')
         if keyword in _KEYWORDS_CONTENITORI:
             patterns_contenitori.append((pattern, categoria))
         else:
@@ -2139,10 +2343,30 @@ def classifica_con_ai(
                 logger.warning(f"⚠️ Errore durante retry {retry_num}: {retry_err}")
                 # Continua con i risultati che abbiamo
         
+        # 🔧 SAFETY NET: Applica regole forti + dizionario ai "Da Classificare" residui
+        _fallback_count = 0
+        for desc in da_chiedere_gpt:
+            if risultati.get(desc) == "Da Classificare":
+                # Try strong rules first (higher precision)
+                cat_strong, reason = applica_regole_categoria_forti(desc, "Da Classificare")
+                if cat_strong != "Da Classificare":
+                    risultati[desc] = cat_strong
+                    _fallback_count += 1
+                    logger.info(f"🧭 REGOLA FORTE FALLBACK: '{desc[:40]}' → {cat_strong} [{reason}]")
+                    continue
+                # Then try dictionary corrections
+                cat_dict = applica_correzioni_dizionario(desc, "Da Classificare")
+                if cat_dict != "Da Classificare":
+                    risultati[desc] = cat_dict
+                    _fallback_count += 1
+                    logger.info(f"📖 DIZIONARIO FALLBACK: '{desc[:40]}' → {cat_dict}")
+        if _fallback_count > 0:
+            logger.info(f"🔧 SAFETY NET: {_fallback_count} descrizioni recuperate con regole forti/dizionario")
+        
         # Log finale
         ancora_da_class = sum(1 for d in da_chiedere_gpt if risultati.get(d) == "Da Classificare")
         if ancora_da_class > 0:
-            logger.warning(f"⚠️ Dopo {MAX_RETRY} retry, {ancora_da_class}/{len(da_chiedere_gpt)} descrizioni rimangono Da Classificare")
+            logger.warning(f"⚠️ Dopo {MAX_RETRY} retry + safety net, {ancora_da_class}/{len(da_chiedere_gpt)} descrizioni rimangono Da Classificare")
         else:
             logger.info(f"✅ Tutte le {len(da_chiedere_gpt)} descrizioni classificate con successo")
         

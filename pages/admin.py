@@ -1339,12 +1339,12 @@ if tab1:
                             st.markdown("---")
                             
                             # AZIONE 2b: Gestione Pagine Abilitate
+                            st.markdown("### Opzioni")
                             pagine = row.get('pagine_abilitate') or {'workspace': True}
                             
-                            _ws_stato = "✅ attivo" if pagine.get('workspace', True) else "❌ disattivo"
-                            st.markdown(f"**🍴 Foodcost: {_ws_stato}**")
+                            _ws_stato = "attivo" if pagine.get('workspace', True) else "disattivo"
                             new_workspace = st.checkbox(
-                                "Abilita Foodcost",
+                                f"Foodcost (attuale: {_ws_stato})",
                                 value=pagine.get('workspace', True),
                                 key=f"workspace_toggle_{row['user_id']}"
                             )
@@ -1373,10 +1373,9 @@ if tab1:
                                         logger.exception(f"Errore aggiornamento pagine_abilitate per {row.get('email')}")
                             
                             # Toggle Calcolo Margine
-                            _cm_stato = "✅ attivo" if pagine.get('calcolo_margine', True) else "❌ disattivo"
-                            st.markdown(f"**📊 Calcolo Margine: {_cm_stato}**")
+                            _cm_stato = "attivo" if pagine.get('calcolo_margine', True) else "disattivo"
                             new_calcolo_margine = st.checkbox(
-                                "Abilita Calcolo Margine",
+                                f"Calcolo Margine (attuale: {_cm_stato})",
                                 value=pagine.get('calcolo_margine', True),
                                 key=f"calcolo_margine_toggle_{row['user_id']}"
                             )
@@ -1400,10 +1399,9 @@ if tab1:
                                         logger.exception(f"Errore aggiornamento pagine_abilitate per {row.get('email')}")
                             
                             # Toggle Controllo Prezzi
-                            _cp_stato = "✅ attivo" if pagine.get('controllo_prezzi', True) else "❌ disattivo"
-                            st.markdown(f"**💰 Controllo Prezzi: {_cp_stato}**")
+                            _cp_stato = "attivo" if pagine.get('controllo_prezzi', True) else "disattivo"
                             new_controllo_prezzi = st.checkbox(
-                                "Abilita Controllo Prezzi",
+                                f"Controllo Prezzi (attuale: {_cp_stato})",
                                 value=pagine.get('controllo_prezzi', True),
                                 key=f"controllo_prezzi_toggle_{row['user_id']}"
                             )
@@ -1429,13 +1427,11 @@ if tab1:
                             st.markdown("---")
                             
                             # AZIONE 2c: Blocco Fatture Anno Precedente
-                            st.markdown("**📅 Restrizione Periodo Fatture**")
                             anno_corrente = datetime.now().year
-                            st.caption(f"Se attivo, il cliente può caricare solo fatture dall'1 Gennaio dell'anno in corso ({anno_corrente}). Si aggiorna automaticamente ogni anno.")
                             
                             blocco_attivo = pagine.get('blocco_anno_precedente', True)
                             new_blocco = st.checkbox(
-                                "🔒 Blocca fatture precedenti all'anno in corso",
+                                f"Blocca fatture precedenti all'anno in corso (attuale: {'attivo' if blocco_attivo else 'disattivo'} - riferimento: {anno_corrente})",
                                 value=blocco_attivo,
                                 key=f"blocco_anno_{row_key}"
                             )
@@ -1456,6 +1452,35 @@ if tab1:
                                 except Exception as e:
                                     st.error(f"Errore: {e}")
                                     logger.exception(f"Errore aggiornamento blocco_anno per {row.get('email')}")
+                            
+                            st.markdown("---")
+
+                            # AZIONE 2c-bis: Blocco Fatture Mesi Precedenti (anno corrente)
+                            mese_corrente_nome = datetime.now().strftime('%B').capitalize()
+                            
+                            blocco_mesi_attivo = pagine.get('blocco_mesi_precedenti', False)
+                            new_blocco_mesi = st.checkbox(
+                                f"Blocca fatture dei mesi precedenti (attuale: {'attivo' if blocco_mesi_attivo else 'disattivo'} - consente solo {mese_corrente_nome} {anno_corrente}; non si applica ai trial)",
+                                value=blocco_mesi_attivo,
+                                key=f"blocco_mesi_{row_key}"
+                            )
+                            
+                            if new_blocco_mesi != blocco_mesi_attivo:
+                                try:
+                                    _merge_and_save_pagina_abilitata(
+                                        user_id=row['user_id'],
+                                        page_key='blocco_mesi_precedenti',
+                                        enabled=new_blocco_mesi
+                                    )
+                                    
+                                    stato_mesi = "ATTIVATO" if new_blocco_mesi else "DISATTIVATO"
+                                    logger.info(f"📆 Blocco mesi precedenti {stato_mesi} per {row['email']}")
+                                    st.success(f"✅ Blocco mesi precedenti {stato_mesi.lower()}")
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Errore: {e}")
+                                    logger.exception(f"Errore aggiornamento blocco_mesi per {row.get('email')}")
                             
                             st.markdown("---")
 

@@ -1427,6 +1427,66 @@ DIZIONARIO_CORREZIONI = {
     # ===== BATCH FIX: Utenze e locali =====
     "ISTAT": "UTENZE E LOCALI",        # adeguamento ISTAT (affitto)
 
+    # ===== BATCH FIX: Prodotti mancanti dalla categorizzazione =====
+    # Latticini - brand/abbreviazioni italiane
+    "GALBANINO": "LATTICINI",
+    "BIRAGHINI": "LATTICINI",
+    "GRANBIRAGHI": "LATTICINI",
+    "GRATTUGGIATO": "LATTICINI",
+    "SPALMABILE": "LATTICINI",
+    "EDAMER": "LATTICINI",
+    "OVOLINE": "LATTICINI",
+    # Verdure/Ortofrutta
+    "ORTOFRUTTA": "VERDURE",
+    "ERBETTE": "VERDURE",
+    # Scatolame e conserve
+    "BONDUELLE": "SCATOLAME E CONSERVE",
+    "CIPOLLINE": "SCATOLAME E CONSERVE",
+    # Materiale di consumo - pulizia e carta
+    "PANNOSPUGNA": "MATERIALE DI CONSUMO",
+    "ASCIUGATUTTO": "MATERIALE DI CONSUMO",
+    "AIR WICK": "MATERIALE DI CONSUMO",
+    "VETRIL": "MATERIALE DI CONSUMO",
+    "WC NET": "MATERIALE DI CONSUMO",
+    "CEROTTI": "MATERIALE DI CONSUMO",
+    "ANTIGRASSO": "MATERIALE DI CONSUMO",
+    "CANGURINO": "MATERIALE DI CONSUMO",
+    # Manutenzione - pulizia macchine caffè
+    "PULYCAFF": "MANUTENZIONE E ATTREZZATURE",
+    "PULYMILK": "MANUTENZIONE E ATTREZZATURE",
+    # Secco - sale e frutta secca
+    "NOVOSAL": "SECCO",
+    "SALE IODATO": "SECCO",
+    # Shop - snack
+    "TARALLINI": "SHOP",
+    "ARACHIDI": "SHOP",
+    "S.CARLO": "SHOP",
+    # Salumi
+    "SPIANATA": "SALUMI",
+    # Prodotti da forno
+    "TORTILLA": "PRODOTTI DA FORNO",
+    "STOP-TOAST": "PRODOTTI DA FORNO",
+    # Frutta
+    "FRUTTI DI BOSCO": "FRUTTA",
+    # Spezie
+    "VANIGLIA": "SPEZIE E AROMI",
+    # Varie bar
+    "DOLCIFICANTE": "VARIE BAR",
+    # Materiale di consumo - residui
+    "BORSA": "MATERIALE DI CONSUMO",
+    "SHOPPER": "MATERIALE DI CONSUMO",
+    "VASSOIO": "MATERIALE DI CONSUMO",
+    "ADDOLCITORE": "MATERIALE DI CONSUMO",
+    "TOV.": "MATERIALE DI CONSUMO",          # abbreviazione tovaglioli
+    "TOVAGLIETTA": "MATERIALE DI CONSUMO",
+    "TRAPUNTATI": "MATERIALE DI CONSUMO",     # tovaglioli trapuntati
+    "MONOVELO": "MATERIALE DI CONSUMO",       # tovaglioli monovelo
+    "CANGURINO": "MATERIALE DI CONSUMO",      # brand carta/tovaglioli
+    # Scatolame
+    "SCATOLAME": "SCATOLAME E CONSERVE",
+    # Frutta secca
+    "NOCI": "SECCO",
+
 }
 
 # ============================================================
@@ -1507,7 +1567,7 @@ TRUNCATE_ERROR_DISPLAY = 150
 
 # Limiti upload e batch
 MAX_FILE_SIZE_P7M = 50_000_000  # 50 MB
-MAX_FILES_PER_UPLOAD = 100       # Max file per singolo upload
+MAX_FILES_PER_UPLOAD = 150       # Max file per singolo upload
 MAX_UPLOAD_TOTAL_MB = 200        # Max dimensione totale upload (MB)
 MAX_DESC_LENGTH_DB = 500
 

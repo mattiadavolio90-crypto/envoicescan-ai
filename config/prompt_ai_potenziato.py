@@ -173,12 +173,22 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ⚠️ ERRORI COMUNI DA EVITARE
 ═══════════════════════════════════════════════════════════════════
 
+🚨 REGOLA ASSOLUTA: DEVI classificare OGNI articolo. "Da Classificare" NON è MAI una risposta valida.
+   Se non sei sicuro, scegli la categoria PIÙ PROBABILE basandoti sulla descrizione.
+
 ❌ NON usare MAI "FOOD" - categoria non esiste!
 ❌ NON usare MAI "NOTE E DICITURE" - categoria riservata solo admin!
 ❌ NON mettere CROSTATINE in FRUTTA - sono PASTICCERIA
 ❌ NON mettere CANNONCINI BURRO in LATTICINI - sono PASTICCERIA
 ❌ NON mettere SALAME DI CIOCCOLATO in SALUMI - è PASTICCERIA
 ❌ NON mettere PASSATA POMODORO in FRUTTA - è SCATOLAME E CONSERVE
+❌ NON mettere TERRA&VITA (insalate) in MATERIALE DI CONSUMO - è VERDURE!
+❌ NON mettere TORTILLA/PIADA/PIADINA in MATERIALE DI CONSUMO o OLIO E CONDIMENTI - sono PRODOTTI DA FORNO!
+❌ NON mettere PROVOL/GALBANINO/BIRAGHI/GRATTUGGIATO in Da Classificare - sono LATTICINI!
+❌ NON mettere PENNA LATTE ART / STOPPER VINO in LATTICINI o VINI - sono MANUTENZIONE E ATTREZZATURE!
+❌ NON mettere CIOCCOLATA CALDA MONODOSE / CACAO MONODOSE in LATTICINI - sono VARIE BAR!
+❌ NON mettere PULYCAFF / BRITA / FILTRI MACCHINA in BEVANDE - sono MANUTENZIONE E ATTREZZATURE!
+❌ NON mettere articoli NON FOOD / PANNOSPUGNA / VETRIL / WC NET in Da Classificare - sono MATERIALE DI CONSUMO!
 ❌ NON mettere TAZZE/BICCHIERI in VARIE BAR - sono MATERIALE DI CONSUMO (monouso) o MANUTENZIONE E ATTREZZATURE (professionali)
 ❌ NON mettere CORNETTI in MATERIALE DI CONSUMO - sono PASTICCERIA!
 ❌ NON mettere BRIOCHES in MATERIALE DI CONSUMO - sono PASTICCERIA!
