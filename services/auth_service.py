@@ -23,6 +23,7 @@ import logging
 import json
 import re
 import uuid
+import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict, Any, List
 
@@ -781,6 +782,9 @@ def riepilogo_fatture_auto_da_ultimo_login(
     riepilogo: Dict[str, Any] = {
         'has_new': False,
         'file_count': 0,
+        'new_count': 0,
+        'pending_count': 0,
+        'total_pending_count': 0,
         'row_count': 0,
         'event_count': 0,
         'needs_review_count': 0,
@@ -804,7 +808,7 @@ def riepilogo_fatture_auto_da_ultimo_login(
         # i nuovi record hanno created_at > login_at ma needs_ack=true,
         # quindi compaiono comunque.
         res = supabase_client.table('upload_events') \
-            .select('file_name, rows_saved, created_at, details, status') \
+            .select('id, file_name, rows_saved, created_at, details, status') \
             .eq('user_id', user_id) \
             .eq('needs_ack', True) \
             .in_('status', ['SAVED_OK', 'SAVED_PARTIAL']) \
@@ -829,12 +833,13 @@ def riepilogo_fatture_auto_da_ultimo_login(
         # Mostra in dashboard solo fatture arrivate da Invoicetronic.
         rows = [row for row in rows if _is_invoicetronic_event(row)]
 
-        # Deduplicazione per file_name (possono esserci più eventi per stesso file)
-        auto_events = []
-        seen_for_dedup: set = set()
+        # Dedup logico per file_name con ACK per-evento: mantieni tutti gli id evento
+        # e usa l'evento più recente per i conteggi "nuove" / "in sospeso".
+        from collections import defaultdict
+        grouped_by_file: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         for row in rows:
             fname = str(row.get('file_name') or '').strip()
-            if not fname or fname in seen_for_dedup:
+            if not fname:
                 continue
             try:
                 rows_saved = int(row.get('rows_saved') or 0)
@@ -842,8 +847,27 @@ def riepilogo_fatture_auto_da_ultimo_login(
                 rows_saved = 0
             if rows_saved <= 0:
                 continue
-            seen_for_dedup.add(fname)
-            auto_events.append(row)
+            grouped_by_file[fname].append(row)
+
+        auto_events = []
+        for fname, frows in grouped_by_file.items():
+            latest_row = sorted(
+                frows,
+                key=lambda r: str(r.get('created_at') or ''),
+                reverse=True,
+            )[0]
+            event_ids = [r.get('id') for r in frows if r.get('id') is not None]
+            latest_row = dict(latest_row)
+            latest_row['event_ids'] = event_ids
+            latest_row['event_count_for_file'] = len(event_ids)
+            latest_row['file_name'] = fname
+            auto_events.append(latest_row)
+
+        auto_events = sorted(
+            auto_events,
+            key=lambda r: str(r.get('created_at') or ''),
+            reverse=True,
+        )
 
         if not auto_events:
             return riepilogo
@@ -851,14 +875,23 @@ def riepilogo_fatture_auto_da_ultimo_login(
         unique_files = []
         row_count = 0
 
+        login_ts = pd.to_datetime(login_at, utc=True, errors='coerce') if login_at else pd.NaT
+        nuove_count = 0
+
         for row in auto_events:
             fname = str(row.get('file_name') or '').strip()
             if fname:
                 unique_files.append(fname)
+            created_ts = pd.to_datetime(row.get('created_at'), utc=True, errors='coerce')
+            if pd.notna(login_ts) and pd.notna(created_ts) and created_ts >= login_ts:
+                nuove_count += 1
             try:
                 row_count += int(row.get('rows_saved') or 0)
             except (TypeError, ValueError):
                 pass
+
+        total_pending_count = len(unique_files)
+        pending_count = max(0, total_pending_count - nuove_count)
 
         # Carica dettagli per-file dalla tabella fatture (singola query batch)
         files_detail = []
@@ -880,9 +913,10 @@ def riepilogo_fatture_auto_da_ultimo_login(
                 for fname in unique_files:
                     frows = grouped.get(fname, [])
                     if frows:
+                        event_row = next((r for r in auto_events if r.get('file_name') == fname), {})
                         fornitore = frows[0].get('fornitore', 'Sconosciuto')
                         data_doc = frows[0].get('data_documento', '')
-                        created = frows[0].get('created_at', '')
+                        created = event_row.get('created_at', frows[0].get('created_at', ''))
                         totale = sum(float(r.get('totale_riga') or 0) for r in frows)
                         file_needs_review = sum(1 for r in frows if bool(r.get('needs_review')))
                         needs_review_count += file_needs_review
@@ -894,6 +928,8 @@ def riepilogo_fatture_auto_da_ultimo_login(
                             'num_righe': len(frows),
                             'totale': round(totale, 2),
                             'needs_review_count': file_needs_review,
+                            'event_ids': event_row.get('event_ids', []),
+                            'event_count_for_file': event_row.get('event_count_for_file', 1),
                         })
             except Exception:
                 logger.exception('Errore caricamento dettagli per-file fatture auto')
@@ -901,6 +937,9 @@ def riepilogo_fatture_auto_da_ultimo_login(
         riepilogo.update({
             'has_new': len(unique_files) > 0,
             'file_count': len(unique_files),
+            'new_count': nuove_count,
+            'pending_count': pending_count,
+            'total_pending_count': total_pending_count,
             'row_count': row_count,
             'event_count': len(auto_events),
             'needs_review_count': needs_review_count,

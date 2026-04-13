@@ -1243,7 +1243,13 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
 
             
             # Verifica integrità
-            verifica = verifica_integrita_fattura(nome_file, dati_prodotti, user_id, supabase_client)
+            verifica = verifica_integrita_fattura(
+                nome_file,
+                dati_prodotti,
+                user_id,
+                supabase_client,
+                righe_db_override=righe_confermate,
+            )
             
             # Log upload event
             try:

@@ -291,21 +291,9 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
     # Split chiaro per il cliente:
     # - nuove: ricevute dopo l'ultimo login
     # - in sospeso: backlog non ancora confermato
-    login_at = auto_notice.get('window_end')
-    nuove_count = 0
-    if login_at:
-        try:
-            login_ts = pd.to_datetime(login_at, utc=True, errors='coerce')
-            if pd.notna(login_ts):
-                for finfo in pending_files:
-                    created_ts = pd.to_datetime(finfo.get('created_at'), utc=True, errors='coerce')
-                    if pd.notna(created_ts) and created_ts >= login_ts:
-                        nuove_count += 1
-        except Exception:
-            nuove_count = 0
-
-    totale_da_conferma = len(pending_files)
-    in_sospeso_count = max(0, totale_da_conferma - nuove_count)
+    nuove_count = int(auto_notice.get('new_count') or 0)
+    totale_da_conferma = int(auto_notice.get('total_pending_count') or len(pending_files))
+    in_sospeso_count = int(auto_notice.get('pending_count') or max(0, totale_da_conferma - nuove_count))
 
     if not st.session_state.get('auto_invoice_notice_toast_shown', False):
         fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
@@ -346,13 +334,16 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
         with _save_all_col:
             if st.button("✅ Salva tutte", key="auto_notice_save_all", use_container_width=True, type="primary"):
                 _ack_uid = st.session_state.user_data.get('id')
-                _ack_fnames = [f['file_name'] for f in pending_files]
-                if _ack_uid and _ack_fnames:
+                _ack_event_ids = []
+                for _f in pending_files:
+                    _ack_event_ids.extend(_f.get('event_ids') or [])
+                _ack_event_ids = list({eid for eid in _ack_event_ids if eid is not None})
+                if _ack_uid and _ack_event_ids:
                     try:
                         supabase_client.table('upload_events') \
                             .update({'needs_ack': False}) \
                             .eq('user_id', _ack_uid) \
-                            .in_('file_name', _ack_fnames) \
+                            .in_('id', _ack_event_ids) \
                             .execute()
                     except Exception as _ack_err:
                         logger.error(f"Errore ack needs_ack Salva tutte: {_ack_err}")
@@ -392,13 +383,15 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
                     with bc1:
                         if st.button("💾 Salva", key=f"auto_save_{idx}", use_container_width=True):
                             _ack_uid = st.session_state.user_data.get('id')
+                            _ack_event_ids = [eid for eid in (finfo.get('event_ids') or []) if eid is not None]
                             if _ack_uid:
                                 try:
-                                    supabase_client.table('upload_events') \
-                                        .update({'needs_ack': False}) \
-                                        .eq('user_id', _ack_uid) \
-                                        .eq('file_name', fname) \
-                                        .execute()
+                                    if _ack_event_ids:
+                                        supabase_client.table('upload_events') \
+                                            .update({'needs_ack': False}) \
+                                            .eq('user_id', _ack_uid) \
+                                            .in_('id', _ack_event_ids) \
+                                            .execute()
                                 except Exception as _ack_err:
                                     logger.error(f"Errore ack needs_ack Salva {fname}: {_ack_err}")
                             st.session_state.auto_invoice_handled.add(fname)
@@ -407,13 +400,15 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
                     with bc2:
                         if st.button("❌ Rifiuta", key=f"auto_reject_{idx}", use_container_width=True):
                             _ack_uid = st.session_state.user_data.get('id')
+                            _ack_event_ids = [eid for eid in (finfo.get('event_ids') or []) if eid is not None]
                             if _ack_uid:
                                 try:
-                                    supabase_client.table('upload_events') \
-                                        .update({'needs_ack': False}) \
-                                        .eq('user_id', _ack_uid) \
-                                        .eq('file_name', fname) \
-                                        .execute()
+                                    if _ack_event_ids:
+                                        supabase_client.table('upload_events') \
+                                            .update({'needs_ack': False}) \
+                                            .eq('user_id', _ack_uid) \
+                                            .in_('id', _ack_event_ids) \
+                                            .execute()
                                 except Exception as _ack_err:
                                     logger.error(f"Errore ack needs_ack Rifiuta {fname}: {_ack_err}")
                             try:

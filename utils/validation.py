@@ -170,7 +170,8 @@ def verifica_integrita_fattura(
     nome_file: str,
     dati_prodotti: list,
     user_id: str,
-    supabase_client
+    supabase_client,
+    righe_db_override: Optional[int] = None,
 ) -> Optional[Dict]:
     """
     Verifica che tutte le righe del file siano state salvate su Supabase.
@@ -205,16 +206,20 @@ def verifica_integrita_fattura(
         # Conta righe nel DataFrame parsed
         righe_parsed = len(dati_prodotti)
         
-        # Query specifica per il file_origine (doppio filtro user_id + file_origine)
-        response = supabase_client.table("fatture") \
-            .select("id", count="exact") \
-            .eq("user_id", user_id) \
-            .eq("file_origine", nome_file) \
-            .execute()
-        
-        
-        # Usa count esatto dalle metadata della query (più affidabile)
-        righe_db = response.count if response.count is not None else len(response.data) if response.data else 0
+        # Se disponibile, usa il numero righe confermate della singola insert appena eseguita.
+        # Evita falsi positivi quando lo stesso file_origine è già presente storicamente.
+        if righe_db_override is not None:
+            righe_db = int(righe_db_override)
+        else:
+            # Fallback legacy: conteggio storico per file_origine.
+            response = supabase_client.table("fatture") \
+                .select("id", count="exact") \
+                .eq("user_id", user_id) \
+                .eq("file_origine", nome_file) \
+                .execute()
+
+            # Usa count esatto dalle metadata della query (più affidabile)
+            righe_db = response.count if response.count is not None else len(response.data) if response.data else 0
         
         # Risultato verifica
         risultato = {
