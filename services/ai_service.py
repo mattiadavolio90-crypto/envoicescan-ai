@@ -355,6 +355,11 @@ _CREAMI_DISPENSER_RE = re.compile(r"\bCREAMI\b.*\bDISPENSER\b|\bDISPENSER\b.*\bC
 _BLEND_T_FILTRI_RE = re.compile(r"\bBLEND\b.*\bT\b.*\bFILTRI?\b|\bFILTRI?\b.*\bBLEND\b.*\bT\b")
 _LATTIERA_RE = re.compile(r"\bLATTIERA\b")
 _TOPPING_CACAO_RE = re.compile(r"\bTOPPING\b.*\b(CIOCCOLAT\w*|CACAO)\b|\b(CIOCCOLAT\w*|CACAO)\b.*\bTOPPING\b")
+_VASSOIO_ESPOSIZIONE_RE = re.compile(r"\bVASSOIO\b.*\bESPOSIZION\w*\b|\bESPOSIZION\w*\b.*\bVASSOIO\b")
+_ORZO_BAR_RE = re.compile(r"\bORZO\b.*\b(\d+\s*GR|GR\s*\d+|SOLUBILE)\b|\b(\d+\s*GR|GR\s*\d+|SOLUBILE)\b.*\bORZO\b")
+_VERISURE_HARDWARE_RE = re.compile(
+    r"\b(KIT\s*BASE|UPGRADE\s+AD\s+ALTA\s+SICUREZZA|ZEROVISION|PACK\s+PROTEZIONE|PACK\s+SOS|SENSORE\s+DI\s+MOVIMENTO\s+CERTIFICATO)\b"
+)
 
 # --- Regole prodotti comuni che l'AI spesso sbaglia ---
 _TERRA_VITA_RE = re.compile(r"\bTERRA\s*&\s*VITA\b")
@@ -438,6 +443,13 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "attrezzatura_leggera"
         return cat, None
 
+    # Hardware sicurezza: deve battere la keyword generica "CERTIFICATO" usata in ambito normativo.
+    if _VERISURE_HARDWARE_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "hardware_sicurezza"
+        return cat, None
+
     if _SERVIZI_NORMATIVI_RE.search(desc_u):
         mapped = "SERVIZI E CONSULENZE"
         if cat != mapped:
@@ -490,6 +502,25 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "VARIE BAR"
         if cat != mapped:
             return mapped, "topping_cacao_bar"
+        return cat, None
+
+    if _VASSOIO_ESPOSIZIONE_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "vassoio_esposizione_durevole"
+        return cat, None
+
+    if _ORZO_BAR_RE.search(desc_u):
+        mapped = "CAFFE E THE"
+        if cat != mapped:
+            return mapped, "orzo_linea_bar"
+        return cat, None
+
+    # Brand/intrugli bar devono vincere prima di match generici come frutta o aromi.
+    if _VARIE_BAR_RE.search(desc_u):
+        mapped = "VARIE BAR"
+        if cat != mapped:
+            return mapped, "ingrediente_bar_specifico"
         return cat, None
 
     # --- Regole prodotti comuni che l'AI spesso sbaglia ---
@@ -1528,6 +1559,11 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
             else:
                 logger.info(f"📋 Memoria Admin (cache/ottieni): '{descrizione[:40]}' → {record['categoria']}")
                 return record['categoria']
+
+        # 0.5️⃣ Override brand bar non negoziabili: non devono essere battuti da cache auto errata.
+        categoria_forzata, motivo_forzato = applica_regole_categoria_forti(descrizione, "Da Classificare")
+        if motivo_forzato == "ingrediente_bar_specifico":
+            return categoria_forzata
         
         # 1️⃣ Check memoria LOCALE utente (da cache, 0 query!)
         if user_id in cache['prodotti_utente']:
@@ -1935,6 +1971,11 @@ def categorizza_con_memoria(
             else:
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → {record['categoria']} (validata admin)")
                 return record['categoria']
+
+        # LIVELLO 1.5: Override brand bar non negoziabili prima della memoria automatica.
+        categoria_forzata, motivo_forzato = applica_regole_categoria_forti(descrizione, "Da Classificare")
+        if motivo_forzato == "ingrediente_bar_specifico":
+            return categoria_forzata
     
     except Exception as e:
         logger.warning(f"Errore check memoria admin (cache): {e}")

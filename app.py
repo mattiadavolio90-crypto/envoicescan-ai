@@ -2324,6 +2324,10 @@ else:
             # Pulisce riepilogo ultimo upload all'inizio di un nuovo caricamento
             if 'last_upload_summary' in st.session_state:
                 del st.session_state.last_upload_summary
+            # Evita che banner/messaggi del batch precedente restino visibili sul nuovo upload.
+            st.session_state.upload_messages = []
+            st.session_state.upload_messages_time = 0
+            st.session_state.pop('last_upload_notification_context', None)
 
     # ============================================================
     # INIZIALIZZAZIONE SET ERRORI (prevenzione loop)
