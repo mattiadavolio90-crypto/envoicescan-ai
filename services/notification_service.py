@@ -108,6 +108,38 @@ def build_price_alert_notifications(
         'toast': f"Attenzione prezzi: {count} {_pluralize(count, 'aumento rilevato', 'aumenti rilevati')}",
         'action_label': 'Vai alla pagina',
         'action_page': 'pages/3_controllo_prezzi.py',
+        'action_state_key': 'cp_tab_attivo',
+        'action_state_value': 'variazioni',
+    }]
+
+
+def build_credit_note_notifications(upload_context: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Crea una notifica dedicata quando l'ultimo upload contiene note di credito."""
+    if not upload_context:
+        return []
+
+    upload_id = str(upload_context.get('upload_id') or '').strip()
+    credit_note_files = upload_context.get('credit_note_files') or []
+    if not upload_id or not credit_note_files:
+        return []
+
+    count = len(credit_note_files)
+    body = (
+        f"Nell'ultimo caricamento sono state rilevate {count} "
+        f"{_pluralize(count, 'nota di credito', 'note di credito')} (TD04)."
+    )
+
+    return [{
+        'id': f'credit-notes-{upload_id}',
+        'level': 'info',
+        'icon': '🧾',
+        'title': 'Note di credito rilevate',
+        'body': body,
+        'toast': f"{count} {_pluralize(count, 'nota di credito rilevata', 'note di credito rilevate')}",
+        'action_label': 'Vai alla pagina',
+        'action_page': 'pages/3_controllo_prezzi.py',
+        'action_state_key': 'cp_tab_attivo',
+        'action_state_value': 'nc',
     }]
 
 
@@ -231,6 +263,8 @@ def build_monthly_data_notifications(
             'toast': f'Promemoria: manca il fatturato di {month_label} {year}',
             'action_label': 'Vai alla pagina',
             'action_page': 'pages/1_calcolo_margine.py',
+            'action_state_key': 'margine_tab',
+            'action_state_value': 'calcolo',
         })
 
     if costo_dipendenti <= 0:
@@ -246,6 +280,8 @@ def build_monthly_data_notifications(
             'toast': f'Promemoria: manca il costo del personale di {month_label} {year}',
             'action_label': 'Vai alla pagina',
             'action_page': 'pages/1_calcolo_margine.py',
+            'action_state_key': 'margine_tab',
+            'action_state_value': 'calcolo',
         })
 
     return notifications

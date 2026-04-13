@@ -112,6 +112,7 @@ from services.db_service import (
 from components.dashboard_renderer import mostra_statistiche
 from services.upload_handler import handle_uploaded_files
 from services.notification_service import (
+    build_credit_note_notifications,
     build_monthly_data_notifications,
     build_price_alert_notifications,
     build_scoped_notification_id,
@@ -145,6 +146,17 @@ def _show_toast_once(toast_id: str, message: str, icon: str = None) -> None:
         return
     st.toast(message, icon=icon)
     st.session_state.shown_dashboard_toasts.add(toast_id)
+
+
+def _apply_notification_navigation_target(notification: dict) -> None:
+    """Imposta eventuale stato tab prima del cambio pagina dalle notifiche."""
+    if not isinstance(notification, dict):
+        return
+
+    state_key = notification.get('action_state_key')
+    state_value = notification.get('action_state_value')
+    if state_key and state_value is not None:
+        st.session_state[state_key] = state_value
 
 
 def _render_operational_notifications(notifications, user_id, dismissed_ids, supabase_client):
@@ -232,6 +244,7 @@ def _render_operational_notifications(notifications, user_id, dismissed_ids, sup
                         key=f"operational_notification_action_{idx}",
                         use_container_width=True,
                     ):
+                        _apply_notification_navigation_target(notification)
                         st.switch_page(action_page)
                 with cols[2]:
                     if st.button(
@@ -267,6 +280,32 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
 
     if not pending_files:
         return
+
+    # Mantieni ordinamento cronologico di ricezione (piu recente prima).
+    pending_files = sorted(
+        pending_files,
+        key=lambda x: str(x.get('created_at') or ''),
+        reverse=True,
+    )
+
+    # Split chiaro per il cliente:
+    # - nuove: ricevute dopo l'ultimo login
+    # - in sospeso: backlog non ancora confermato
+    login_at = auto_notice.get('window_end')
+    nuove_count = 0
+    if login_at:
+        try:
+            login_ts = pd.to_datetime(login_at, utc=True, errors='coerce')
+            if pd.notna(login_ts):
+                for finfo in pending_files:
+                    created_ts = pd.to_datetime(finfo.get('created_at'), utc=True, errors='coerce')
+                    if pd.notna(created_ts) and created_ts >= login_ts:
+                        nuove_count += 1
+        except Exception:
+            nuove_count = 0
+
+    totale_da_conferma = len(pending_files)
+    in_sospeso_count = max(0, totale_da_conferma - nuove_count)
 
     if not st.session_state.get('auto_invoice_notice_toast_shown', False):
         fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
@@ -322,7 +361,12 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
                 clear_fatture_cache()
                 st.session_state.auto_invoice_notice_dismissed = True
                 st.rerun()
-        with st.expander(f"📄 Dettaglio {fatture_label}", expanded=False):
+        expander_title = (
+            f"📄 Fatture | Nuove: {nuove_count} | "
+            f"In sospeso da confermare: {in_sospeso_count} | "
+            f"Totale da confermare: {totale_da_conferma}"
+        )
+        with st.expander(expander_title, expanded=False):
             for idx, finfo in enumerate(pending_files):
                 fname = finfo.get('file_name', 'file sconosciuto')
                 fornitore = finfo.get('fornitore', 'Sconosciuto')
@@ -1755,6 +1799,11 @@ if not _is_admin_session:
         build_price_alert_notifications(
             st.session_state.get('last_upload_notification_context'),
             threshold_pct=5.0,
+        )
+    )
+    operational_notifications.extend(
+        build_credit_note_notifications(
+            st.session_state.get('last_upload_notification_context')
         )
     )
 

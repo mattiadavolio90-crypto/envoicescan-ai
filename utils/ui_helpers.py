@@ -162,8 +162,15 @@ def render_pivot_mensile(
         num_righe = len(pivot_display)
         altezza = max(num_righe * 35 + 50, 200)
 
+        # Evidenzia visivamente le colonne riepilogo senza alterare dati o calcoli.
+        df_styled = (
+            pivot_display.style
+            .set_properties(subset=['TOTALE'], **{'background-color': '#dbeafe'})
+            .set_properties(subset=['MEDIA'], **{'background-color': '#fef9c3'})
+        )
+
         st.dataframe(
-            pivot_display,
+            df_styled,
             hide_index=True,
             width='stretch',
             height=altezza,
@@ -176,7 +183,7 @@ def render_pivot_mensile(
 
         with col_left:
             st.markdown(f"""
-            <div style="background-color: #E3F2FD; padding: clamp(0.75rem, 1.5vw, 0.95rem) clamp(0.9rem, 2vw, 1.25rem); border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: min(100%, fit-content); max-width: 100%; box-sizing: border-box;">
+            <div style="display:inline-block; background-color: #E3F2FD; padding: clamp(0.75rem, 1.5vw, 0.95rem) clamp(0.9rem, 2vw, 1.25rem); border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 20px; width: fit-content; max-width: 100%; box-sizing: border-box;">
                 <p style="color: #1565C0; font-size: clamp(0.85rem, 1.4vw, 1rem); font-weight: bold; margin: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.4;">
                     📋 N. Righe: {num_righe:,} | 💰 Totale: € {totale:,.0f} | 📊 Media mensile: € {media:,.0f}
                 </p>
