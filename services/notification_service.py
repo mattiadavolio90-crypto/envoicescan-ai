@@ -43,18 +43,23 @@ def build_upload_outcome_notifications(upload_context: Optional[Dict[str, Any]])
         for item in problematic_files
     )
     labels = {
-        'duplicate': 'gia presenti',
         'failed': 'con errore di elaborazione',
         'blocked': 'bloccate dalle regole di caricamento',
         'other': 'scartate',
     }
+    actionable_total = sum(category_counts.get(key, 0) for key in ('failed', 'blocked', 'other'))
+    # I duplicati vengono gia mostrati nel riepilogo upload sotto il pulsante Carica Documenti.
+    # Evitiamo quindi doppio avviso in alto.
+    if actionable_total <= 0:
+        return []
+
     summary_parts = []
-    for key in ('duplicate', 'failed', 'blocked', 'other'):
+    for key in ('failed', 'blocked', 'other'):
         count = category_counts.get(key, 0)
         if count > 0:
             summary_parts.append(f"{count} {labels[key]}")
 
-    total_problematic = len(problematic_files)
+    total_problematic = actionable_total
     fatture_label = _pluralize(total_problematic, 'fattura non e entrata', 'fatture non sono entrate')
     body = f"Nell'ultimo caricamento {total_problematic} {fatture_label}"
     if summary_parts:

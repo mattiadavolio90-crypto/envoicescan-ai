@@ -20,6 +20,7 @@ import secrets
 import requests
 import hashlib
 import logging
+import json
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -812,12 +813,34 @@ def riepilogo_fatture_auto_da_ultimo_login(
             .execute()
 
         rows = res.data or []
+
+        def _is_invoicetronic_event(event_row: Dict[str, Any]) -> bool:
+            details = event_row.get('details') or {}
+            if isinstance(details, str):
+                try:
+                    details = json.loads(details)
+                except Exception:
+                    details = {}
+            source = ''
+            if isinstance(details, dict):
+                source = str(details.get('source') or '').strip().lower()
+            return source.startswith('invoicetronic')
+
+        # Mostra in dashboard solo fatture arrivate da Invoicetronic.
+        rows = [row for row in rows if _is_invoicetronic_event(row)]
+
         # Deduplicazione per file_name (possono esserci più eventi per stesso file)
         auto_events = []
         seen_for_dedup: set = set()
         for row in rows:
             fname = str(row.get('file_name') or '').strip()
             if not fname or fname in seen_for_dedup:
+                continue
+            try:
+                rows_saved = int(row.get('rows_saved') or 0)
+            except (TypeError, ValueError):
+                rows_saved = 0
+            if rows_saved <= 0:
                 continue
             seen_for_dedup.add(fname)
             auto_events.append(row)
