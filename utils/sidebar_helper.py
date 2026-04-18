@@ -188,6 +188,8 @@ def render_sidebar(user_data: dict):
                     logger.warning(f"Errore parsing pagine_abilitate sidebar: {e}")
                     _pagine_raw = {}
             pagine_abilitate = _pagine_raw if isinstance(_pagine_raw, dict) else {}
+            workspace_enabled = pagine_abilitate.get('workspace', True)
+            analisi_personalizzata_enabled = pagine_abilitate.get('analisi_personalizzata', False)
             
             if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",
                          type="primary" if current_script == '3_controllo_prezzi.py' else "secondary"):
@@ -197,10 +199,15 @@ def render_sidebar(user_data: dict):
                          type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
                 st.switch_page("pages/1_calcolo_margine.py")
             
-            if pagine_abilitate.get('workspace', True):
+            if workspace_enabled:
                 if st.button("🍴 Foodcost", use_container_width=True, key="sidebar_workspace",
                              type="primary" if current_script == '2_foodcost.py' else "secondary"):
                     st.switch_page("pages/2_foodcost.py")
+
+            if analisi_personalizzata_enabled:
+                if st.button("🏷️ Analisi e Tag", use_container_width=True, key="sidebar_analisi_personalizzata",
+                             type="primary" if current_script == '4_analisi_personalizzata.py' else "secondary"):
+                    st.switch_page("pages/4_analisi_personalizzata.py")
         
         st.markdown("---")
         

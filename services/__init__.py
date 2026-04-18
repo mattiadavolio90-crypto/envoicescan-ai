@@ -88,7 +88,14 @@ def _get_supabase_credentials() -> tuple[str, str]:
         url = st.secrets["supabase"]["url"]
         # Preferisci service_role key (necessaria dopo hardening RLS migration 052);
         # fallback alla anon key per retrocompatibilità con deploy non aggiornati.
-        key = st.secrets["supabase"].get("service_role_key") or st.secrets["supabase"]["key"]
+        key = st.secrets["supabase"].get("service_role_key")
+        if not key:
+            import logging as _logging
+            _logging.getLogger(__name__).warning(
+                "⚠️ SUPABASE service_role_key NON trovata in st.secrets! "
+                "Fallback ad anon key — RLS potrebbe bloccare le query dopo migration 052."
+            )
+            key = st.secrets["supabase"]["key"]
         return url, key
     except Exception:
         pass

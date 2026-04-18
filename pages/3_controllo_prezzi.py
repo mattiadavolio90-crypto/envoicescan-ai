@@ -5,8 +5,8 @@ Pagina dedicata al monitoraggio prezzi e documenti finanziari.
 
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 import io
-from datetime import datetime
 
 from utils.streamlit_compat import patch_streamlit_width_api
 
@@ -15,11 +15,11 @@ patch_streamlit_width_api()
 from config.logger_setup import get_logger
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 from utils.ristorante_helper import get_current_ristorante_id
-from services import get_supabase_client
 from services.db_service import (
     carica_e_prepara_dataframe,
     calcola_alert,
     carica_sconti_e_omaggi,
+    get_custom_tags,
 )
 
 # Logger
@@ -196,7 +196,8 @@ with col_info_periodo:
 # CARICAMENTO DATI
 # ============================================
 with st.spinner("Caricamento dati fatture..."):
-    df_all = carica_e_prepara_dataframe(user_id, ristorante_id=st.session_state.get('ristorante_id'))
+    df_all = carica_e_prepara_dataframe(user_id, ristorante_id=current_ristorante)
+    custom_tags = get_custom_tags(user_id, current_ristorante)
 
 if df_all.empty:
     st.info("📊 Nessuna fattura disponibile. Carica le fatture dalla pagina Analisi Fatture AI.")
@@ -249,70 +250,76 @@ with col_t3:
 from utils.ui_helpers import load_css
 load_css('common.css')
 
-st.markdown("---")
+st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
 
 # ================================================================
 # TAB 1: VARIAZIONI PREZZO
 # ================================================================
 if st.session_state.cp_tab_attivo == "variazioni":
 
-    # Filtri
-    col_search, col_soglia = st.columns([3, 1])
-
-    with col_search:
-        filtro_prodotto = st.text_input(
-            "🔍 Cerca Prodotto",
-            "",
-            placeholder="Digita per filtrare per nome prodotto...",
-            key="cp_filtro_alert_prodotto"
-        )
+    # ── Riga filtro: Soglia + Badge conteggio ──
+    col_soglia, col_badge = st.columns([1, 3])
 
     with col_soglia:
         soglia_aumento = st.number_input(
-            "Soglia Aumento Minimo %",
+            "Soglia %",
             min_value=0,
             max_value=100,
             value=5,
             step=1,
             key="cp_soglia_alert",
-            help="Mostra solo aumenti ≥ +X%"
+            help="Mostra solo variazioni con valore assoluto ≥ X%"
         )
 
-    # Calcola alert (solo F&B)
-    # Usa df_all (storico completo) per non perdere comparazioni tra periodi diversi
-    df_alert = calcola_alert(df_all, soglia_aumento, filtro_prodotto)
+    # Calcola alert (solo F&B, storico completo)
+    df_alert_source = df_all
+    df_alert = calcola_alert(df_alert_source, soglia_aumento)
 
-    # Badge conteggio
+    with col_badge:
+        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+        if not df_alert.empty:
+            st.info(f"⚠️ **{len(df_alert)} Variazioni Rilevate** (soglia ≥ {soglia_aumento}%) - Solo prodotti Food & Beverage")
+        else:
+            st.success(f"✅ Nessuna variazione rilevata con soglia ≥ {soglia_aumento}%")
+
     if not df_alert.empty:
-        st.info(f"⚠️ **{len(df_alert)} Variazioni Rilevate** (soglia ≥ +{soglia_aumento}%) - Solo prodotti Food & Beverage")
 
-        st.caption("📖 **Storico**: ultimi 5 prezzi precedenti | **Media**: media dello storico | **Ultimo**: prezzo ultimo acquisto | **Var. %**: variazione ultimo vs penultimo")
+        # ── TABELLA ──
+        st.caption("📖 **Storico**: ultimi 5 prezzi incluso l'ultimo | **Trend**: andamento recente | **Imp. €/mese**: stima peso economico del rincaro o ribasso | ⏰ Confronto su tutto lo storico, indipendente dal filtro periodo")
 
-        # Prepara colonne display
         df_display = df_alert.copy()
         df_display['Data'] = pd.to_datetime(df_display['Data']).dt.strftime('%d/%m/%y')
-
         df_display['Media'] = df_display['Media'].apply(lambda x: f"€{x:.2f}")
         df_display['Ultimo'] = df_display['Ultimo'].apply(lambda x: f"€{x:.2f}")
+        df_display['Trend'] = df_display['Trend'].fillna('↕️')
 
         def formatta_variazione(perc):
+            if pd.isna(perc):
+                return 'N/A'
             if perc > 0:
                 return f"🔴 +{perc:.1f}%"
-            elif perc < 0:
+            if perc < 0:
                 return f"🟢 {perc:.1f}%"
-            else:
-                return f"{perc:.1f}%"
+            return f"{perc:.1f}%"
+
+        def formatta_impatto(valore):
+            if pd.isna(valore):
+                return '-'
+            if valore > 0:
+                return f"🔴 €{valore:.0f}"
+            if valore < 0:
+                return f"🟢 €{valore:.0f}"
+            return '€0'
 
         df_display['Aumento_Perc'] = df_display['Aumento_Perc'].apply(formatta_variazione)
+        df_display['Impatto_Stimato'] = df_display['Impatto_Stimato'].apply(formatta_impatto)
 
         df_display = df_display.reset_index(drop=True)
+        df_display = df_display[['Prodotto', 'Categoria', 'Fornitore', 'Storico', 'Media', 'Ultimo', 'Trend', 'Aumento_Perc', 'Impatto_Stimato', 'Data', 'N_Fattura']]
+        df_display.columns = ['Prodotto', 'Cat.', 'Fornitore', 'Storico (ultimi 5)', 'Media storico', 'Ultimo', 'Trend', 'Var. %', 'Imp. €/mese', 'Data ultima', 'N.Fattura']
 
-        df_display = df_display[['Prodotto', 'Categoria', 'Fornitore', 'Storico', 'Media', 'Ultimo', 'Aumento_Perc', 'Data', 'N_Fattura']]
-        df_display.columns = ['Prodotto', 'Cat.', 'Fornitore', 'Storico (ultimi 5)', 'Media storico', 'Ultimo', 'Var. %', 'Data ultima', 'N.Fattura']
-
-        # Tabella scrollabile
         num_righe_alert = len(df_display)
-        altezza_alert = min(max(num_righe_alert * 35 + 50, 200), 500)
+        altezza_alert = min(max(num_righe_alert * 35 + 50, 220), 520)
 
         st.dataframe(
             df_display,
@@ -326,7 +333,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             df_alert.to_excel(writer, sheet_name='Variazioni Prezzo', index=False)
 
-        col_spacer, col_btn = st.columns([9, 3])
+        col_spacer, col_btn = st.columns([11, 1])
         with col_btn:
             st.download_button(
                 label="Excel",
@@ -335,10 +342,236 @@ if st.session_state.cp_tab_attivo == "variazioni":
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="cp_download_excel_alert",
                 type="primary",
-                use_container_width=False
+                use_container_width=True
             )
+
+        # ── KPI CARDS (dimensione fissa, colori dinamici, nessun decimale) ──
+        st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+
+        df_metric = df_alert.copy()
+        df_metric['Aumento_Perc'] = pd.to_numeric(df_metric['Aumento_Perc'], errors='coerce').fillna(0.0)
+        df_metric['Impatto_Stimato'] = pd.to_numeric(df_metric['Impatto_Stimato'], errors='coerce').fillna(0.0)
+
+        scostamento_medio = int(round(float(df_metric['Aumento_Perc'].mean()))) if not df_metric.empty else 0
+        impatto_netto = int(round(float(df_metric['Impatto_Stimato'].sum())))
+        fornitori_coinvolti = int(df_metric['Fornitore'].nunique())
+
+        if scostamento_medio > 0:
+            colore_scostamento = "#dc2626"
+            scostamento_label = f"+{scostamento_medio}%"
+        elif scostamento_medio < 0:
+            colore_scostamento = "#16a34a"
+            scostamento_label = f"{scostamento_medio}%"
+        else:
+            colore_scostamento = "#1e40af"
+            scostamento_label = "0%"
+
+        if impatto_netto > 0:
+            colore_impatto = "#dc2626"
+            impatto_label = f"+€{abs(impatto_netto):,}/mese"
+        elif impatto_netto < 0:
+            colore_impatto = "#16a34a"
+            impatto_label = f"-€{abs(impatto_netto):,}/mese"
+        else:
+            colore_impatto = "#1e40af"
+            impatto_label = "€0/mese"
+
+        st.markdown(f"""
+        <style>
+        .cp-kpi-row {{
+            display: flex;
+            gap: 16px;
+            margin-bottom: 1.5rem;
+        }}
+        .cp-kpi-card {{
+            flex: 1 1 0;
+            min-width: 0;
+            background: linear-gradient(135deg, rgba(248,249,250,0.95), rgba(233,236,239,0.95));
+            padding: clamp(0.75rem, 2vw, 1.25rem);
+            border-radius: 12px;
+            border: 1px solid rgba(206,212,218,0.5);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.05);
+            text-align: center;
+            box-sizing: border-box;
+            aspect-ratio: auto;
+        }}
+        .cp-kpi-card .kpi-label {{
+            color: #2563eb;
+            font-size: clamp(0.7rem, 1.6vw, 0.85rem);
+            font-weight: 600;
+            margin-bottom: 6px;
+        }}
+        .cp-kpi-card .kpi-value {{
+            font-size: clamp(1.2rem, 3vw, 1.8rem);
+            font-weight: 700;
+            line-height: 1.2;
+        }}
+        </style>
+        <div class="cp-kpi-row">
+            <div class="cp-kpi-card">
+                <div class="kpi-label">⚠️ Alert attivi</div>
+                <div class="kpi-value" style="color: #1e40af;">{len(df_metric)}</div>
+            </div>
+            <div class="cp-kpi-card">
+                <div class="kpi-label">📈 Scostamento medio</div>
+                <div class="kpi-value" style="color: {colore_scostamento};">{scostamento_label}</div>
+            </div>
+            <div class="cp-kpi-card">
+                <div class="kpi-label">💰 Impatto stimato</div>
+                <div class="kpi-value" style="color: {colore_impatto};">{impatto_label}</div>
+            </div>
+            <div class="cp-kpi-card">
+                <div class="kpi-label">🏪 Fornitori coinvolti</div>
+                <div class="kpi-value" style="color: #1e40af;">{fornitori_coinvolti}</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
+
+    # ── GRAFICO: Storico prezzo acquisto (sempre visibile) ──
+    st.markdown("### 📈 Storico prezzo acquisto")
+    st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
+
+    # Toggle: solo prodotti con alert o tutti
+    st.markdown("<p style='font-size:1.15rem; font-weight:700; color:#1e40af; margin-bottom:0.25rem;'>Prodotti da visualizzare</p>", unsafe_allow_html=True)
+
+    _has_alerts = not df_alert.empty
+    _scope_options = ["Solo con alert", "Tutti i prodotti"] if _has_alerts else ["Tutti i prodotti"]
+    if st.session_state.get('cp_scope_grafico') not in _scope_options:
+        st.session_state.cp_scope_grafico = _scope_options[0]
+
+    scope_grafico = st.radio(
+        "Prodotti da visualizzare",
+        label_visibility="collapsed",
+        options=_scope_options,
+        index=0,
+        horizontal=True,
+        key="cp_scope_grafico",
+    )
+    st.markdown("<div style='margin-top: 0.75rem;'></div>", unsafe_allow_html=True)
+
+    if scope_grafico == "Solo con alert" and _has_alerts:
+        prodotti_grafico = []
+        for valore in df_alert['Prodotto'].dropna().astype(str).tolist():
+            label = valore.replace(" ⚠️ >6m", "").strip()
+            if label and label not in prodotti_grafico:
+                prodotti_grafico.append(label)
     else:
-        st.success(f"✅ Nessuna variazione rilevata con soglia ≥ +{soglia_aumento}%. Tutto sotto controllo!")
+        prodotti_grafico = sorted(
+            df_alert_source['Descrizione'].dropna().astype(str).str.strip().unique().tolist()
+        )
+
+    st.markdown("<p style='font-size:1.15rem; font-weight:700; color:#1e40af; margin-bottom:0.25rem;'>Seleziona prodotto</p>", unsafe_allow_html=True)
+
+    if not prodotti_grafico:
+        st.info("📭 Nessun prodotto disponibile per il grafico.")
+    else:
+        prodotto_grafico = st.selectbox(
+            "Seleziona prodotto",
+            options=prodotti_grafico,
+            key="cp_prodotto_grafico",
+            label_visibility="collapsed"
+        )
+        st.markdown("<div style='margin-top: 0.75rem;'></div>", unsafe_allow_html=True)
+
+        # Filtro temporale
+        PERIODI = {"Ultimi 30 giorni": 30, "Ultimi 90 giorni": 90, "Ultimi 180 giorni": 180, "Tutto": 0}
+        st.markdown("<p style='font-size:1.15rem; font-weight:700; color:#1e40af; margin-bottom:0.25rem;'>Seleziona periodo</p>", unsafe_allow_html=True)
+        periodo_sel = st.selectbox(
+            "Seleziona periodo",
+            options=list(PERIODI.keys()),
+            index=len(PERIODI) - 1,
+            key="cp_periodo_grafico",
+            label_visibility="collapsed"
+        )
+
+        df_trend = df_alert_source.copy()
+        df_trend['Data_DT'] = pd.to_datetime(df_trend['DataDocumento'], errors='coerce')
+        df_trend['PrezzoUnitario'] = pd.to_numeric(df_trend['PrezzoUnitario'], errors='coerce')
+        df_trend['TotaleRiga'] = pd.to_numeric(df_trend.get('TotaleRiga'), errors='coerce')
+        df_trend['Quantita'] = pd.to_numeric(df_trend.get('Quantita'), errors='coerce')
+
+        # B1: match esatto (con fallback startswith per nomi troncati)
+        filtro_chart = prodotto_grafico.strip().upper()
+        df_trend['_desc_norm'] = df_trend['Descrizione'].astype(str).str.strip().str.upper()
+        _mask_prodotto = df_trend['_desc_norm'] == filtro_chart
+        if _mask_prodotto.sum() == 0:
+            _mask_prodotto = df_trend['_desc_norm'].str.startswith(filtro_chart, na=False)
+        df_trend = df_trend[
+            _mask_prodotto
+            & df_trend['Data_DT'].notna()
+            & df_trend['PrezzoUnitario'].notna()
+            & (df_trend['PrezzoUnitario'] > 0)
+        ].copy()
+
+        # Prezzo medio calcolato su tutto lo storico del prodotto PRIMA del filtro periodo
+        df_trend = df_trend.sort_values(['Data_DT', 'FileOrigine', 'Descrizione'])
+        prezzo_medio = float(df_trend['PrezzoUnitario'].mean()) if not df_trend.empty else 0.0
+
+        # Applica filtro temporale
+        giorni_periodo = PERIODI[periodo_sel]
+        if giorni_periodo > 0:
+            data_limite = pd.Timestamp.now() - pd.Timedelta(days=giorni_periodo)
+            df_trend = df_trend[df_trend['Data_DT'] >= data_limite]
+
+        if not df_trend.empty and prezzo_medio > 0:
+            df_trend['Var_Perc'] = ((df_trend['PrezzoUnitario'] - prezzo_medio) / prezzo_medio) * 100
+            df_trend['VarPercLabel'] = df_trend['Var_Perc'].apply(lambda x: f"{x:+.1f}%")
+
+            num_fornitori_chart = df_trend['Fornitore'].fillna('Fornitore sconosciuto').nunique()
+            use_color = num_fornitori_chart > 1
+
+            fig_prezzo = px.line(
+                df_trend,
+                x='Data_DT',
+                y='Var_Perc',
+                color='Fornitore' if use_color else None,
+                markers=True,
+                title=f"Variazione % prezzo — {prodotto_grafico}",
+                labels={'Data_DT': '', 'Var_Perc': 'Variazione %', 'Fornitore': 'Fornitore'},
+                custom_data=['PrezzoUnitario', 'VarPercLabel'],
+            )
+            if not use_color:
+                fig_prezzo.update_traces(
+                    line=dict(color='#2563eb', width=2),
+                    marker=dict(size=8, color='#1d4ed8'),
+                )
+            else:
+                fig_prezzo.update_traces(marker=dict(size=8))
+
+            fig_prezzo.update_traces(
+                hovertemplate="<b>Prezzo acquisto</b>: €%{customdata[0]:.2f}<br><b>Variazione vs media</b>: %{customdata[1]}<extra></extra>"
+            )
+            fig_prezzo.add_hline(
+                y=0,
+                line_dash='dash',
+                line_color='#6b7280',
+                annotation_text=f"Prezzo medio di acquisto €{prezzo_medio:.2f}",
+                annotation_position='top left',
+            )
+            fig_prezzo.update_layout(
+                height=420,
+                hovermode='closest',
+                xaxis=dict(
+                    tickformat='%d/%m/%Y',
+                    tickfont=dict(size=16, color='#1e40af', family='Arial Black')
+                ),
+                yaxis=dict(
+                    tickfont=dict(size=16, color='#1e40af', family='Arial Black')
+                ),
+                title=dict(font=dict(size=24, color='#1e40af', family='Arial Black')),
+                font=dict(size=16, color='#1e40af', family='Arial'),
+                yaxis_title_font=dict(size=18, color='#1e40af', family='Arial Black'),
+                xaxis_title_font=dict(size=18, color='#1e40af', family='Arial Black'),
+            )
+            st.plotly_chart(
+                fig_prezzo,
+                use_container_width=True,
+                config={'displayModeBar': False}
+            )
+        else:
+            st.info("📭 Nessun dato disponibile per disegnare lo storico di questo prodotto.")
 
 
 # ================================================================
@@ -346,7 +579,10 @@ if st.session_state.cp_tab_attivo == "variazioni":
 # ================================================================
 elif st.session_state.cp_tab_attivo == "sconti":
 
-    st.caption("📖 **Sconti**: totale sconti ricevuti | **Omaggi**: valore stimato dall'ultimo prezzo d'acquisto × quantità | **Totale**: somma sconti + omaggi | Solo F&B")
+    st.markdown(
+        "<p style='color:#1e40af; font-size:0.95rem; font-weight:600; margin-bottom:0.8rem;'>📖 <b>Sconti</b>: totale sconti ricevuti | <b>Omaggi</b>: valore stimato dall'ultimo prezzo d'acquisto × quantità se disponibile | <b>Totale</b>: somma sconti + omaggi | Solo F&amp;B</p>",
+        unsafe_allow_html=True,
+    )
 
     # Carica dati
     with st.spinner("Caricamento sconti e omaggi..."):
@@ -397,6 +633,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
 
     importo_sconti = df_sconti['importo_sconto'].sum() if not df_sconti.empty else 0.0
     valore_omaggi = dati_sconti.get('totale_omaggi', totale_risparmiato - importo_sconti)
+    _omaggi_ha_storico = valore_omaggi is not None and not (isinstance(valore_omaggi, float) and valore_omaggi == 0.0 and not df_omaggi.empty)
 
     with col_metric1:
         st.markdown(f"""
@@ -408,11 +645,13 @@ elif st.session_state.cp_tab_attivo == "sconti":
         """, unsafe_allow_html=True)
 
     with col_metric2:
+        _omaggi_display = f"€{valore_omaggi:,.2f}" if _omaggi_ha_storico else "N/D"
+        _omaggi_sub = f"{len(df_omaggi)} prodotti omaggio" if _omaggi_ha_storico else f"{len(df_omaggi)} omaggi — nessuno storico prezzi"
         st.markdown(f"""
         <div class="kpi-card-cp">
             <div class="kpi-label">🎁 Omaggi Ricevuti</div>
-            <div class="kpi-value">€{valore_omaggi:,.2f}</div>
-            <div style="font-size: clamp(0.65rem, 1.4vw, 0.75rem); color: #6b7280; margin-top: 4px;">{len(df_omaggi)} prodotti omaggio</div>
+            <div class="kpi-value">{_omaggi_display}</div>
+            <div style="font-size: clamp(0.65rem, 1.4vw, 0.75rem); color: #6b7280; margin-top: 4px;">{_omaggi_sub}</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -478,7 +717,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
             with pd.ExcelWriter(excel_sconti, engine='openpyxl') as writer:
                 df_sconti_view.to_excel(writer, sheet_name='Sconti', index=False)
 
-            col_spacer, col_btn = st.columns([9, 3])
+            col_spacer, col_btn = st.columns([11, 1])
             with col_btn:
                 st.download_button(
                     label="Excel",
@@ -487,7 +726,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="cp_download_excel_sconti",
                     type="primary",
-                    use_container_width=False
+                    use_container_width=True
                 )
 
     else:
@@ -537,14 +776,14 @@ elif st.session_state.cp_tab_attivo == "sconti":
                 column_config=col_cfg
             )
 
-            st.info("ℹ️ Ultimo Prezzo = ultimo acquisto dello stesso prodotto dallo stesso fornitore prima dell'omaggio. Vuoto se primo acquisto.")
+            st.info("ℹ️ Ultimo Prezzo = ultimo acquisto disponibile dello stesso prodotto prima dell'omaggio, preferibilmente dallo stesso fornitore.")
 
             # Export Excel omaggi
             excel_omaggi = io.BytesIO()
             with pd.ExcelWriter(excel_omaggi, engine='openpyxl') as writer:
                 df_omaggi_view.to_excel(writer, sheet_name='Omaggi', index=False)
 
-            col_spacer, col_btn = st.columns([9, 3])
+            col_spacer, col_btn = st.columns([11, 1])
             with col_btn:
                 st.download_button(
                     label="Excel",
@@ -553,7 +792,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="cp_download_excel_omaggi",
                     type="primary",
-                    use_container_width=False
+                    use_container_width=True
                 )
 
     if df_sconti.empty and df_omaggi.empty:
@@ -568,16 +807,16 @@ elif st.session_state.cp_tab_attivo == "nc":
     # Filtra note di credito: TD04 oppure importi negativi (per dati pre-migrazione)
     # NOTA: TipoDocumento ha default 'TD01' nel caricamento, quindi per fatture
     # pre-migrazione il campo esiste ma vale 'TD01'. Serve combinare entrambi i criteri.
+    # NC = documenti TD04 oppure INTERO documento con totale negativo (non singole righe sconto)
     mask_td04 = (df_filtrato['TipoDocumento'] == 'TD04') if 'TipoDocumento' in df_filtrato.columns else pd.Series(False, index=df_filtrato.index)
-    mask_negativi = (df_filtrato['TotaleRiga'] < 0)
-    mask_nc = mask_td04 | (mask_negativi & ~mask_td04)
+    # Per documenti non-TD04, consideriamo NC solo se il totale del documento è negativo
+    _totale_per_doc = df_filtrato.groupby('FileOrigine')['TotaleRiga'].transform('sum')
+    mask_doc_negativo = (_totale_per_doc < 0) & ~mask_td04
+    mask_nc = mask_td04 | mask_doc_negativo
     
     df_nc = df_filtrato[mask_nc].copy()
 
-    # Calcoli per riepilogo
-    totale_nc = df_nc['TotaleRiga'].sum() if not df_nc.empty else 0.0
-    num_documenti_nc = df_nc['FileOrigine'].nunique() if not df_nc.empty else 0
-    num_righe_nc = len(df_nc)
+    st.caption("📖 **Note di Credito**: documenti TD04 o fatture con totale complessivo negativo. Le singole righe sconto all'interno di fatture normali sono mostrate nel tab Sconti e Omaggi.")
 
     # ============================================================
     # FILTRI NOTE DI CREDITO
@@ -670,19 +909,19 @@ elif st.session_state.cp_tab_attivo == "nc":
             with pd.ExcelWriter(excel_nc, engine='openpyxl') as writer:
                 df_nc_display.to_excel(writer, sheet_name='Note di Credito', index=False)
 
-            col_riep_nc, col_btn_nc = st.columns([7, 3])
+            col_riep_nc, col_btn_nc = st.columns([11, 1])
             with col_riep_nc:
                 st.markdown("""
-                <div style="background-color: #E3F2FD; padding: clamp(0.75rem, 1.5vw, 0.9rem) clamp(0.9rem, 2vw, 1.25rem); border-radius: 8px;
-                            border: 2px solid #2196F3; margin-top: 8px; width: min(100%, fit-content); max-width: 100%; box-sizing: border-box;">
-                    <span style="color: #1565C0; font-weight: bold; font-size: clamp(0.85rem, 2vw, 1rem); white-space: normal; overflow-wrap: anywhere; line-height: 1.4;">
+                <div style="display:inline-block; background-color:#E3F2FD; padding:10px 16px; border-radius:8px;
+                            border:2px solid #2196F3; margin-top:8px; box-sizing:border-box; width:auto; max-width:100%;">
+                    <span style="color:#1565C0; font-weight:700; font-size:clamp(0.88rem, 2vw, 1rem); white-space:nowrap; line-height:1.35;">
                         📋 N. Documenti: {} &nbsp;|&nbsp; N. Righe: {} &nbsp;|&nbsp; 💰 Totale Note di Credito: €{:.2f}
                     </span>
                 </div>
                 """.format(num_doc_nc_view, num_righe_nc_view_box, abs(totale_nc_view)),
                 unsafe_allow_html=True)
             with col_btn_nc:
-                st.markdown("<div style='margin-top: 14px;'></div>", unsafe_allow_html=True)
+                st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
                 st.download_button(
                     label="Excel",
                     data=excel_nc.getvalue(),
@@ -690,7 +929,7 @@ elif st.session_state.cp_tab_attivo == "nc":
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="cp_download_excel_nc",
                     type="primary",
-                    use_container_width=False
+                    use_container_width=True
                 )
         else:
             st.info("📊 Nessun risultato con i filtri applicati")

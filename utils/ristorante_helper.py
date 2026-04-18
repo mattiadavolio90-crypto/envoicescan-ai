@@ -35,8 +35,8 @@ def add_ristorante_filter(query, ristorante_id=None):
         return query
     except Exception as e:
         logger.error(f"❌ Errore in add_ristorante_filter: {e}")
-        # In caso di errore, ritorna query inalterata per non bloccare l'app
-        return query
+        # Rilancia: meglio fallire visibilmente che mostrare dati non filtrati
+        raise
 
 
 def get_current_ristorante_id():

@@ -2,15 +2,17 @@
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 5.2  
-Ultimo aggiornamento: 10 Aprile 2026  
+Versione: 5.3  
+Ultimo aggiornamento: 15 Aprile 2026  
 Autore: Mattia D'Avolio  
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato)  
 URL Produzione: https://ohyeah.streamlit.app/
 
+> **Novità v5.3**: Audit sicurezza e privacy completo — protezione XXE (defusedxml), protezione SSRF (whitelist host Invoicetronic), minimizzazione PII nei log, session token migrato a `secrets.token_urlsafe(32)`, reset token con `secrets.token_urlsafe(32)` + `datetime.now(timezone.utc)`, GDPR Art.17 esteso a 14 tabelle (custom_tags, ai_usage_events, login_attempts), export GDPR Art.20 esteso (prodotti_utente, custom_tags), Privacy Policy v3.3. 330 test automatici.
+>
 > **Novità v5.2**: Il worker `fatture_queue` è stato migrato da GitHub Actions a un service Railway dedicato `queue-worker`, con loop continuo ogni 15 secondi. Il service FastAPI `worker` usa `ENABLE_INLINE_QUEUE_PROCESSOR=0` e `.github/workflows/queue-worker.yml` resta solo come fallback manuale di emergenza.
 >
-> **Novità v5.1**: Sistema di notifiche in-app (6 tipologie: upload, prezzi, ricavi, costi, alert), tracking costi AI con tabella `ai_usage_events`, layer controller (`app_controllers.py`), componenti riutilizzabili (`category_editor.py`, `dashboard_renderer.py`), hardening sicurezza Supabase (migration 052), Privacy Policy v3.2 con sub-processori Invoicetronic/Railway.
+> **Novità v5.1**: Sistema di notifiche in-app (6 tipologie: upload, prezzi, ricavi, costi, alert), tracking costi AI con tabella `ai_usage_events`, layer controller (`app_controllers.py`), componenti riutilizzabili (`category_editor.py`, `dashboard_renderer.py`), hardening sicurezza Supabase (migration 052), Privacy Policy v3.3 con sub-processori Invoicetronic/Railway/Streamlit Cloud.
 >
 > **Novità v5.0**: Integrazione Invoicetronic (ricezione automatica fatture SDI), FastAPI Worker per classificazione AI scalabile, deploy Railway, nuova tabella `fatture_queue` con worker asincrono GitHub Actions, tabella `brand_ambigui` per apprendimento automatico.
 
@@ -100,7 +102,7 @@ Il servizio è attualmente in fase di lancio. Il modello previsto è **SaaS a su
 | Formati fattura supportati | XML, P7M, PDF, JPG, PNG |
 | Ricezione automatica SDI | Invoicetronic — codice dest. `7HD37X0` |
 | Modello AI | OpenAI GPT-4o-mini |
-| Copertura test automatici | 194 test, 11 moduli di test |
+| Copertura test automatici | 330 test, 11 moduli di test |
 | Tempo medio classificazione | < 5 secondi per 50 prodotti (batch) |
 | Migrazioni DB | 58 file SQL |
 | Ritardo ricezione fattura automatica | ≤ 15 secondi (loop continuo Railway) |
@@ -645,7 +647,7 @@ UTENTE → Cookie session_token (30 giorni)
 
 ### Gestione Cookie di Sessione
 
-- **session_token**: UUID4, salvato in DB + cookie browser (30 giorni)
+- **session_token**: Token opaco ad alta entropia (`secrets.token_urlsafe(32)`), salvato in DB + cookie browser (30 giorni)
 - **impersonation_user_id**: Solo per admin che impersonano clienti
 - Cookie impostato con `Secure=True` e `SameSite=strict` (la libreria `extra-streamlit-components` **non supporta** `HttpOnly`)
 - Verifica TTL 30 giorni al ripristino sessione
@@ -1189,12 +1191,12 @@ Tabella trasposta 12 mesi. Le voci di input si dividono in **manuali** (fatturat
 - Cambio password con validazione GDPR
 - Visualizzazione dati account
 - Gestione ristoranti (nome, P.IVA, ragione sociale)
-- **Export dati GDPR Art. 15** (JSON): account, ristoranti, fatture, classificazioni_manuali, upload_events, ai_usage_events, ricette, note_diario, margini_mensili
+- **Export dati GDPR Art. 15** (JSON): account, ristoranti, fatture, classificazioni_manuali, upload_events, ai_usage_events, ricette, note_diario, margini_mensili, prodotti_utente, custom_tags
 
 ### privacy_policy.py — Privacy e Condizioni
 
 Due tab:
-- **Privacy Policy** (v3.2, 8 Aprile 2026): Informativa GDPR completa (titolare, base giuridica, diritti, data retention, sub-processori: Supabase, OpenAI, Brevo, Invoicetronic, Railway)
+- **Privacy Policy** (v3.3, 15 Aprile 2026): Informativa GDPR completa (titolare, base giuridica, diritti, data retention, sub-processori: Supabase, OpenAI, Brevo, Invoicetronic, Railway, Streamlit Cloud)
 - **Terms of Service**: Condizioni d'uso, limitazioni, clausola "non conservazione sostitutiva"
 
 ---
@@ -1212,7 +1214,7 @@ python_functions = test_*
 addopts = -v --tb=short
 ```
 
-### Suite di Test (194 test totali, confermati da pytest)
+### Suite di Test (330 test totali, confermati da pytest)
 
 | File | Test approx. | Copertura |
 |------|------|-----------| 
@@ -1228,7 +1230,7 @@ addopts = -v --tb=short
 | `test_invoice_service.py` | 11 | Parsing XML, P7M, encoding, tipo documento |
 | `test_formatters.py` | 11 | Formattazione numeri, base64, prezzo standard |
 
-> I conteggi per file sono basati su funzioni `test_*`; il totale di 172 include test parametrizzati espansi da pytest.
+> I conteggi per file sono basati su funzioni `test_*`; il totale di 330 include test parametrizzati espansi da pytest.
 
 ### Fixtures (conftest.py)
 
@@ -1250,7 +1252,7 @@ pytest tests/test_ai_service.py -v
 pytest tests/ --cov=services --cov=utils --cov-report=html
 ```
 
-Ultimo risultato: **194/194 PASSED**
+Ultimo risultato: **330/330 PASSED**
 
 ---
 
@@ -1475,7 +1477,7 @@ jobs:
 | Categoria | Misura | Dettaglio |
 |-----------|--------|-----------|
 | **Autenticazione** | Argon2id | m=65536, parametri default libreria (OWASP) |
-| **Sessioni** | Token UUID4 + Cookie 30gg | Invalidazione esplicita su logout |
+| **Sessioni** | Token opaco ad alta entropia + Cookie 30gg | Invalidazione esplicita su logout |
 | **Rate Limiting** | Login: DB persistente; Reset: in-memory | Login usa tabella `login_attempts` su Supabase; Reset usa dict in-memory thread-safe |
 | **Input Validation** | Sanitizzazione AI | Control char removal + 300 char truncation |
 | **XSS Prevention** | `html.escape()` | Su tutti gli output user-generated |
@@ -1494,6 +1496,8 @@ jobs:
 | **Worker API** | Porta 8000 interna | In produzione il worker FastAPI non espone la porta 8000 all'esterno; accesso solo via rete Docker interna |
 | **Reset Token** | `secrets.token_urlsafe(32)` | 256 bit di entropia; verifica constant-time (HMAC) |
 | **Secrets** | Streamlit Secrets | Variables d'ambiente, mai hardcoded |
+| **XXE Protection** | defusedxml | Validazione XML con defusedxml prima del parsing — prevenzione XML External Entity attacks |
+| **SSRF Protection** | Whitelist host | Solo `*.invoicetronic.com/.it` su HTTPS per fetch XML remoti |
 | **Dependencies** | `requirements-lock.txt` | 100 pacchetti freezati per supply chain security |
 
 ### Compliance GDPR
@@ -1501,8 +1505,8 @@ jobs:
 - **Privacy Policy**: Pagina dedicata con informativa completa
 - **Terms of Service**: Condizioni d'uso con clausole legali italiane
 - **Data Retention**: Le fatture restano nel DB finché l'utente le elimina
-- **Diritto all'oblio**: L'admin può eliminare completamente un account
-- **Portabilità**: Export Excel di tutti i dati
+- **Diritto all'oblio**: Funzione "Elimina Account" self-service — eliminazione permanente a cascata su 14 tabelle (fatture, prodotti_utente, classificazioni_manuali, upload_events, margini_mensili, review_confirmed, review_ignored, ricette, ingredienti_workspace, note_diario, custom_tags, ai_usage_events, login_attempts, ristoranti) + riga users
+- **Portabilità**: Export JSON GDPR di tutti i dati (10 tabelle) da Gestione Account
 - **Base giuridica**: Contratto (Art. 6.1.b) per il servizio, consenso per marketing
 - **Nota legale**: "Non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014"
 - **Creazione client GDPR**: L'admin non conosce mai la password del cliente

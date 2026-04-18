@@ -1079,8 +1079,8 @@ def render_sidebar_and_header(supabase, logger, cookie_manager):
             Prova gratuita attiva &mdash; Rimangono {_tb_days} giorni
         </strong><br>
         <span style="color:#92400e;font-size:0.85rem;">
-            Accesso limitato alle fatture del mese in corso.
-            Upload: max 50 file, solo XML/P7M. Export Excel non disponibile durante la prova.
+            Accesso alle fatture del mese in corso e del mese precedente.
+            Upload: max 50 file, solo XML/P7M. Export Excel disponibile anche durante la prova.
         </span>
     </div>
 </div>

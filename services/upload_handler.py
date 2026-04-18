@@ -18,7 +18,7 @@ from config.constants import (
 )
 
 from utils.piva_validator import normalizza_piva
-from utils.formatters import log_upload_event, get_nome_base_file
+from utils.formatters import log_upload_event, get_nome_base_file, calcola_alert_data_consegna_td24
 from utils.ristorante_helper import add_ristorante_filter
 
 from services.ai_service import invalida_cache_memoria, mostra_loading_ai
@@ -30,12 +30,156 @@ from services.db_service import calcola_alert, carica_e_prepara_dataframe, clear
 logger = logging.getLogger("fci_app")
 
 
+def _is_trial_invoice_date_allowed(data_documento: str, reference_date=None) -> bool:
+    """Consente in trial fatture del mese corrente o del mese precedente."""
+    if not data_documento or data_documento == 'N/A':
+        return True
+
+    try:
+        _ref = pd.Timestamp(reference_date) if reference_date is not None else pd.Timestamp.now()
+        _current_period = (_ref.year, _ref.month)
+        _previous_ref = _ref.replace(day=1) - pd.Timedelta(days=1)
+        _previous_period = (_previous_ref.year, _previous_ref.month)
+        _dt = pd.to_datetime(data_documento)
+        return (_dt.year, _dt.month) in {_current_period, _previous_period}
+    except Exception:
+        return True
+
+
 def _make_problematic_upload_entry(file_name: str, reason: str, category: str) -> dict:
     return {
         'file_name': file_name,
         'reason': reason,
         'category': category,
     }
+
+
+def _get_policy_block_kind(error_text: str) -> str | None:
+    """Classifica i blocchi upload intenzionali per mostrare un messaggio corretto."""
+    _err = str(error_text or '')
+    if _err.startswith('ANNO PRECEDENTE'):
+        return 'year'
+    if _err.startswith('MESE PRECEDENTE'):
+        return 'month'
+    if _err.startswith('BLOCCO TRIAL'):
+        return 'trial'
+    return None
+
+
+def _build_policy_block_messages(policy_blocks: dict) -> list[str]:
+    """Costruisce i banner UI per i blocchi data intenzionali senza messaggi fuorvianti."""
+    messages = []
+    _now = pd.Timestamp.now()
+    _current_year = _now.year
+
+    if policy_blocks.get('year'):
+        _n = len(policy_blocks['year'])
+        _lbl = 'file ignorato' if _n == 1 else 'file ignorati'
+        messages.append(
+            f'<div style="padding:10px 16px;background:#fef9c3;border-left:5px solid #d97706;'
+            f'border-radius:6px;margin-bottom:8px;">'
+            f'<span style="font-size:0.88rem;font-weight:600;color:#92400e;">'
+            f'📅 {_n} {_lbl} perché con data dell\'anno precedente — '
+            f'è possibile caricare solo fatture dal 1 Gennaio {_current_year} in poi.'
+            f'</span></div>'
+        )
+
+    if policy_blocks.get('month'):
+        from config.constants import MESI_ITA as _MESI_MESI
+        _n = len(policy_blocks['month'])
+        _lbl = 'file ignorato' if _n == 1 else 'file ignorati'
+        _mese_nome = _MESI_MESI[_now.month - 1]
+        messages.append(
+            f'<div style="padding:10px 16px;background:#fef9c3;border-left:5px solid #d97706;'
+            f'border-radius:6px;margin-bottom:8px;">'
+            f'<span style="font-size:0.88rem;font-weight:600;color:#92400e;">'
+            f'📆 {_n} {_lbl} perché per questo account è attivo il blocco dei mesi precedenti — '
+            f'sono consentite solo fatture di {_mese_nome} {_current_year}.'
+            f'</span></div>'
+        )
+
+    if policy_blocks.get('trial'):
+        from config.constants import MESI_ITA as _MESI_TRIAL
+        _prev_month_ref = _now.replace(day=1) - pd.Timedelta(days=1)
+        _allowed_labels = (
+            f"{_MESI_TRIAL[_now.month - 1]} {_now.year} "
+            f"oppure {_MESI_TRIAL[_prev_month_ref.month - 1]} {_prev_month_ref.year}"
+        )
+        _n = len(policy_blocks['trial'])
+        _lbl = 'file ignorato' if _n == 1 else 'file ignorati'
+        messages.append(
+            f'<div style="padding:10px 16px;background:#fef9c3;border-left:5px solid #d97706;'
+            f'border-radius:6px;margin-bottom:8px;">'
+            f'<span style="font-size:0.88rem;font-weight:600;color:#92400e;">'
+            f'🎟️ {_n} {_lbl} per data non consentita in prova gratuita — '
+            f'puoi caricare fatture del mese corrente o del mese precedente ({_allowed_labels}).'
+            f'</span></div>'
+        )
+
+    return messages
+
+
+def _find_existing_saved_ok_events(supabase_client, user_id: str, ristorante_id: str, file_names: list[str]) -> dict:
+    """Recupera upload già completati con successo per gli stessi file."""
+    if supabase_client is None or not user_id or not file_names:
+        return {}
+
+    normalized_targets = {str(name).strip().lower() for name in file_names if name}
+    raw_targets = [str(name).strip() for name in file_names if name]
+    matches = {}
+
+    try:
+        query = (
+            supabase_client.table("upload_events")
+            .select("file_name, created_at, details")
+            .eq("user_id", user_id)
+            .eq("status", "SAVED_OK")
+        )
+        if raw_targets:
+            query = query.in_("file_name", list(set(raw_targets)))
+
+        response = query.execute()
+        for row in response.data or []:
+            file_name = str(row.get("file_name") or "").strip()
+            if not file_name:
+                continue
+
+            key = file_name.lower()
+            if key not in normalized_targets:
+                continue
+
+            details = row.get("details") or {}
+            event_ristorante_id = details.get("ristorante_id") if isinstance(details, dict) else None
+            same_ristorante = (
+                not ristorante_id
+                or not event_ristorante_id  # compatibilità con eventi legacy
+                or str(event_ristorante_id) == str(ristorante_id)
+            )
+            if not same_ristorante:
+                continue
+
+            current = matches.get(key)
+            if not current or str(row.get("created_at") or "") > str(current.get("created_at") or ""):
+                matches[key] = row
+    except Exception as e:
+        logger.warning(f"Errore controllo upload_events SAVED_OK: {e}")
+
+    return matches
+
+
+def _format_saved_ok_date(created_at_value) -> str:
+    try:
+        return pd.to_datetime(created_at_value).strftime("%d/%m/%Y")
+    except Exception:
+        return "data sconosciuta"
+
+
+def _duplicate_reason_for_ui(file_name: str, reasons_map: dict) -> str:
+    reasons = reasons_map.get(file_name) or ["Già presente nel database"]
+    if isinstance(reasons, list):
+        reason_text = " — ".join(str(r) for r in reasons if r)
+        return reason_text or "Già presente nel database"
+    return str(reasons)
 
 
 def handle_uploaded_files(uploaded_files, supabase, user_id):
@@ -189,34 +333,66 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     file_gia_processati_reason = {}
     
     just_uploaded = st.session_state.get('just_uploaded_files', set())
+    force_reimport_all = bool(st.session_state.get('force_reimport_upload', False))
+    force_reimport_files = {
+        str(name).strip().lower()
+        for name in st.session_state.get('force_reimport_files', set())
+        if name
+    }
+    existing_saved_ok_events = _find_existing_saved_ok_events(
+        supabase,
+        user_id,
+        st.session_state.get('ristorante_id'),
+        [f.name for f in file_unici],
+    )
     
     for file in file_unici:
         filename = file.name
         filename_lower = filename.strip().lower()
         nome_base = get_nome_base_file(filename)
+        is_force_reimport = (
+            force_reimport_all
+            or filename_lower in force_reimport_files
+            or nome_base in force_reimport_files
+        )
+        existing_saved_ok = existing_saved_ok_events.get(filename_lower)
         
         # ── Confronto a 2 livelli ──────────────────────────────────
-        # 1° LIVELLO: match ESATTO sul nome file completo (affidabile)
-        # 2° LIVELLO: match sul nome base senza estensione (cattura XML/PDF stesso doc)
+        # 1° LIVELLO: upload già confermato via upload_events
+        # 2° LIVELLO: match ESATTO sul nome file completo nel DB
+        # 3° LIVELLO: match sul nome base senza estensione
         is_exact_match = filename_lower in file_su_supabase_full
         is_base_match = nome_base in file_su_supabase
         is_just_uploaded = nome_base in just_uploaded
         
-        if is_exact_match or is_base_match or is_just_uploaded:
+        if existing_saved_ok and not is_force_reimport:
+            file_gia_processati.append(filename)
+            imported_at_label = _format_saved_ok_date(existing_saved_ok.get('created_at'))
+            reason = [
+                f"File già importato il {imported_at_label}",
+                "usare 'Reimporta' per forzare l'aggiornamento",
+            ]
+            file_gia_processati_reason[filename] = reason.copy()
+            logger.info(f"📋 SKIP '{filename}' → upload_events SAVED_OK del {imported_at_label}")
+        elif is_exact_match or is_base_match or is_just_uploaded:
             file_gia_processati.append(filename)
             # Log dettagliato per diagnosi
             reason = []
-            if is_exact_match: reason.append('nome esatto in DB')
-            if is_base_match and not is_exact_match: reason.append(f'nome base "{nome_base}" in DB')
-            if is_just_uploaded: reason.append('appena caricato')
+            if is_exact_match:
+                reason.append('nome esatto in DB')
+            if is_base_match and not is_exact_match:
+                reason.append(f'nome base "{nome_base}" in DB')
+            if is_just_uploaded:
+                reason.append('appena caricato')
             file_gia_processati_reason[filename] = reason.copy()
             logger.info(f"📋 SKIP '{filename}' → {', '.join(reason)}")
         # Protezione: Salta file che hanno già dato errore in questa sessione
         elif filename in st.session_state.get('files_con_errori', set()):
             continue
         else:
-            file_nuovi.append(file)
-    
+            if is_force_reimport:
+                logger.info(f"🔄 Reimport forzato consentito per '{filename}'")
+            file_nuovi.append(file)    
     logger.info(
         f"📊 Dedup risultato: {len(file_nuovi)} nuovi, {len(file_gia_processati)} già presenti, "
         f"{duplicate_count} duplicati upload ({len(duplicate_in_selection)} nomi duplicati nella selezione)"
@@ -259,6 +435,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         status='DUPLICATE_SKIPPED',
                         details={
                             'source': 'manual_upload',
+                            'ristorante_id': st.session_state.get('ristorante_id'),
                             'reason': 'already_in_db',
                             'dedup_reason': file_gia_processati_reason.get(_fname, []),
                         },
@@ -272,6 +449,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         status='DUPLICATE_SKIPPED',
                         details={
                             'source': 'manual_upload',
+                            'ristorante_id': st.session_state.get('ristorante_id'),
                             'reason': 'already_in_session',
                             'dedup_reason': file_gia_processati_reason.get(_fname, []),
                         },
@@ -374,8 +552,9 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         errori = []
         file_ok = []
         file_note_credito = []
+        td24_date_alerts = []  # TD24: tracking copertura data_consegna
         file_errore = {}
-        file_blocchi_trial = []  # file bloccati per mese errato (non errori tecnici)
+        file_blocchi_policy = {'year': [], 'month': [], 'trial': []}  # blocchi data intenzionali
         
         try:
             # Mostra animazione AI
@@ -424,9 +603,10 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         _ext = nome_file.rsplit('.', 1)[-1].lower() if '.' in nome_file else ''
                         _magic_ok = False
                         if _ext == 'xml':
-                            # XML: deve iniziare con <?xml o <  (BOM UTF-8 opzionale)
-                            _head = file_content[:100].lstrip(b'\xef\xbb\xbf')  # strip BOM
-                            _magic_ok = _head.lstrip().startswith((b'<?xml', b'<'))
+                            # XML: deve iniziare con <?xml o tag FatturaElettronica (BOM UTF-8 opzionale)
+                            _head = file_content[:200].lstrip(b'\xef\xbb\xbf')  # strip BOM
+                            _head_stripped = _head.lstrip()
+                            _magic_ok = _head_stripped.startswith(b'<?xml') or b'<' in _head_stripped[:10] and b'FatturaElettronica' in _head[:500]
                         elif _ext == 'p7m':
                             # P7M: DER binary (0x30) oppure PEM/base64 (testo ASCII)
                             _raw_start = file_content[:20].decode('ascii', errors='ignore').strip()
@@ -545,8 +725,10 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         # ============================================================
                         # Se il flag blocco_mesi_precedenti è attivo in pagine_abilitate,
                         # impedisci caricamento fatture con mese < mese corrente (stesso anno).
-                        # Admin e impersonificati bypassano sempre.
-                        if not is_admin:
+                        # Admin e impersonificati bypassano sempre. I trial seguono una
+                        # policy dedicata e possono caricare anche il mese precedente.
+                        _trial_upload = st.session_state.get('trial_info', {})
+                        if not is_admin and not _trial_upload.get('is_trial'):
                             _pagine_cfg_mesi = st.session_state.get('user_data', {}).get('pagine_abilitate') or {}
                             if _pagine_cfg_mesi.get('blocco_mesi_precedenti', False):
                                 _data_doc_mesi = None
@@ -575,41 +757,39 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                         pass  # Se la data non è parsabile, lascia passare
 
                         # ============================================================
-                        # BLOCCO TRIAL: solo fatture del mese di attivazione trial
+                        # BLOCCO TRIAL: consenti mese corrente e mese precedente
                         # ============================================================
-                        _trial_upload = st.session_state.get('trial_info', {})
                         if not is_admin and _trial_upload.get('is_trial'):
-                            # Mese/anno sempre dal momento attuale: immune alla cache stantia
                             _t_now_trial = pd.Timestamp.now()
-                            _t_month = _t_now_trial.month
-                            _t_year = _t_now_trial.year
-                            if _t_month and _t_year:
-                                _data_trial = None
-                                if isinstance(items, list) and len(items) > 0:
-                                    _data_trial = (
-                                        items[0].get('Data_Documento')
-                                        or items[0].get('data_documento')
-                                    )
-                                if _data_trial and _data_trial != 'N/A':
-                                    try:
-                                        _dt_trial = pd.to_datetime(_data_trial)
-                                        if _dt_trial.month != _t_month or _dt_trial.year != _t_year:
-                                            from config.constants import MESI_ITA as _MESI
-                                            _mn = _MESI[_t_month - 1]
-                                            logger.warning(
-                                                f"🎟️ UPLOAD BLOCCATO TRIAL {file.name} - "
-                                                f"Data {_data_trial} fuori dal mese trial {_mn} {_t_year} "
-                                                f"(user: {st.session_state.get('user_data', {}).get('email')})"
-                                            )
-                                            raise ValueError(
-                                                f"BLOCCO TRIAL \u2014 Durante la prova gratuita puoi caricare solo "
-                                                f"fatture di {_mn} {_t_year}. "
-                                                f"La fattura ha data {_data_trial}."
-                                            )
-                                    except ValueError:
-                                        raise
-                                    except Exception:
-                                        pass  # Data non parsabile: lascia passare
+                            _prev_month_ref = _t_now_trial.replace(day=1) - pd.Timedelta(days=1)
+                            from config.constants import MESI_ITA as _MESI
+                            _allowed_labels = (
+                                f"{_MESI[_t_now_trial.month - 1]} {_t_now_trial.year} "
+                                f"oppure {_MESI[_prev_month_ref.month - 1]} {_prev_month_ref.year}"
+                            )
+                            _data_trial = None
+                            if isinstance(items, list) and len(items) > 0:
+                                _data_trial = (
+                                    items[0].get('Data_Documento')
+                                    or items[0].get('data_documento')
+                                )
+                            if _data_trial and _data_trial != 'N/A':
+                                try:
+                                    if not _is_trial_invoice_date_allowed(_data_trial, reference_date=_t_now_trial):
+                                        logger.warning(
+                                            f"🎟️ UPLOAD BLOCCATO TRIAL {file.name} - "
+                                            f"Data {_data_trial} fuori finestra consentita ({_allowed_labels}) "
+                                            f"(user: {st.session_state.get('user_data', {}).get('email')})"
+                                        )
+                                        raise ValueError(
+                                            f"BLOCCO TRIAL \u2014 Durante la prova gratuita puoi caricare "
+                                            f"fatture del mese corrente o del mese precedente "
+                                            f"({_allowed_labels}). La fattura ha data {_data_trial}."
+                                        )
+                                except ValueError:
+                                    raise
+                                except Exception:
+                                    pass  # Data non parsabile: lascia passare
                         
                         # Salva in memoria se trovati dati (SILENZIOSO)
                         result = salva_fattura_processata(
@@ -635,6 +815,17 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                             if isinstance(items, list) and len(items) > 0:
                                 if str(items[0].get('tipo_documento', '')).upper().strip() == 'TD04':
                                     file_note_credito.append(file.name)
+                                # Rileva TD24 e calcola copertura data_consegna
+                                _td24_alert = calcola_alert_data_consegna_td24(items)
+                                if _td24_alert and _td24_alert['status'] != 'ok':
+                                    td24_date_alerts.append({
+                                        'file_name': file.name,
+                                        'fornitore': str(items[0].get('Fornitore', 'Sconosciuto')),
+                                        'status': _td24_alert['status'],
+                                        'lines_total': _td24_alert['lines_total'],
+                                        'lines_with_date': _td24_alert['lines_with_date'],
+                                        'pct': _td24_alert['pct'],
+                                    })
                             st.session_state.files_processati_sessione.add(file.name)
                             # Aggiungi anche nome base per prevenire duplicati con estensione diversa
                             st.session_state.files_processati_sessione.add(get_nome_base_file(file.name))
@@ -649,16 +840,34 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         full_error = str(e)
 
                         # ============================================================
-                        # Blocchi trial (mese errato, anno precedente) NON sono errori
-                        # tecnici: vanno in un bucket separato per non inquinare il
-                        # report upload con messaggi intenzionali.
+                        # Blocchi policy su data upload NON sono errori tecnici.
+                        # Li separiamo per tipo, con messaggi coerenti e logging audit.
                         # ============================================================
-                        _is_policy_block = (
-                            full_error.startswith('BLOCCO TRIAL')
-                            or full_error.startswith('ANNO PRECEDENTE')
-                        )
-                        if _is_policy_block:
-                            file_blocchi_trial.append(file.name)
+                        _policy_block_kind = _get_policy_block_kind(full_error)
+                        if _policy_block_kind:
+                            file_blocchi_policy[_policy_block_kind].append(file.name)
+                            try:
+                                _status_map = {
+                                    'year': 'YEAR_BLOCKED',
+                                    'month': 'MONTH_BLOCKED',
+                                    'trial': 'TRIAL_DATE_BLOCKED',
+                                }
+                                log_upload_event(
+                                    user_id=st.session_state.user_data.get("id"),
+                                    user_email=st.session_state.user_data.get("email", "unknown"),
+                                    file_name=file.name,
+                                    status=_status_map[_policy_block_kind],
+                                    rows_parsed=0,
+                                    rows_saved=0,
+                                    details={
+                                        "source": "manual_upload",
+                                        "policy_block": _policy_block_kind,
+                                        "policy_error": full_error[:250],
+                                    },
+                                    supabase_client=supabase,
+                                )
+                            except Exception as _policy_log_error:
+                                logger.warning(f"Errore logging policy block {file.name}: {_policy_log_error}")
                             continue  # Non aggiungere a file_errore né a files_con_errori
 
                         error_msg = full_error[:TRUNCATE_ERROR_DISPLAY] + ("..." if len(full_error) > TRUNCATE_ERROR_DISPLAY else "")
@@ -731,15 +940,21 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         if file_errore:
             tutti_problematici.update(file_errore)
         for fname in file_gia_processati:
-            tutti_problematici[fname] = "Già presente nel database"
+            tutti_problematici[fname] = _duplicate_reason_for_ui(fname, file_gia_processati_reason)
 
         problematic_entries = []
         for fname, motivo in file_errore.items():
             problematic_entries.append(_make_problematic_upload_entry(fname, motivo, 'failed'))
         for fname in file_gia_processati:
-            problematic_entries.append(_make_problematic_upload_entry(fname, 'Già presente nel database', 'duplicate'))
-        for fname in file_blocchi_trial:
-            problematic_entries.append(_make_problematic_upload_entry(fname, 'Bloccata dalle regole della prova gratuita', 'blocked'))
+            problematic_entries.append(
+                _make_problematic_upload_entry(fname, _duplicate_reason_for_ui(fname, file_gia_processati_reason), 'duplicate')
+            )
+        for fname in file_blocchi_policy.get('year', []):
+            problematic_entries.append(_make_problematic_upload_entry(fname, 'Data fattura dell\'anno precedente', 'blocked'))
+        for fname in file_blocchi_policy.get('month', []):
+            problematic_entries.append(_make_problematic_upload_entry(fname, 'Data del mese precedente non consentita per questo account', 'blocked'))
+        for fname in file_blocchi_policy.get('trial', []):
+            problematic_entries.append(_make_problematic_upload_entry(fname, 'Fuori finestra consentita per la prova gratuita', 'blocked'))
         for fname in file_blocchi_formato_trial:
             problematic_entries.append(_make_problematic_upload_entry(fname, 'Formato non consentito durante la prova gratuita', 'blocked'))
 
@@ -752,30 +967,13 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             'problematic_files': problematic_entries,
             'problematic_count': len(problematic_entries),
             'price_alerts': [],
+            'td24_date_alerts': td24_date_alerts,
             'stats': dict(upload_summary),
         }
         
         # === SALVA MESSAGGI IN SESSION_STATE (persistono fino al prossimo upload) ===
         _messages = []
-        if file_blocchi_trial:
-            _bt_n = len(file_blocchi_trial)
-            _bt_lbl = "file ignorato" if _bt_n == 1 else "file ignorati"
-            _trial_month_label = st.session_state.get('trial_info', {}).get('trial_month')
-            _trial_year_label = st.session_state.get('trial_info', {}).get('trial_year')
-            _mn_label = ''
-            if _trial_month_label:
-                try:
-                    from config.constants import MESI_ITA as _M
-                    _mn_label = f" ({_M[_trial_month_label - 1]} {_trial_year_label})"
-                except Exception:
-                    pass
-            _messages.append(
-                f'<div style="padding:10px 16px;background:#fef9c3;border-left:5px solid #d97706;'
-                f'border-radius:6px;margin-bottom:8px;">'
-                f'<span style="font-size:0.88rem;font-weight:600;color:#92400e;">'
-                f'🎟️ {_bt_n} {_bt_lbl} per mese errato{_mn_label} — solo fatture del mese corrente durante la prova gratuita.'
-                f'</span></div>'
-            )
+        _messages.extend(_build_policy_block_messages(file_blocchi_policy))
         if file_processati > 0:
             msg_ok = f"1 fattura caricata" if file_processati == 1 else f"{file_processati} fatture caricate"
             _messages.append(f'<div style="padding:10px 16px;background:#d4edda;border-left:5px solid #28a745;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#155724;">✅ {msg_ok} con successo!</span></div>')
@@ -794,6 +992,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                 # Normalizza motivi per raggruppamento leggibile
                 if motivo == "Già presente nel database":
                     motivo_label = "Già caricata in precedenza (duplicata)"
+                elif "già importato il" in motivo.lower():
+                    motivo_label = motivo
                 elif "P.IVA FATTURA DIVERSA" in motivo:
                     motivo_label = "P.IVA della fattura diversa da quella dell'azienda"
                 elif "ANNO PRECEDENTE" in motivo:
@@ -901,7 +1101,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         
         st.session_state.last_upload_summary = upload_summary
         problematic_entries = [
-            _make_problematic_upload_entry(fname, 'Già presente nel database', 'duplicate')
+            _make_problematic_upload_entry(fname, _duplicate_reason_for_ui(fname, file_gia_processati_reason), 'duplicate')
             for fname in file_gia_processati
         ]
         st.session_state.last_upload_notification_context = {
@@ -913,16 +1113,20 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             'problematic_files': problematic_entries,
             'problematic_count': len(problematic_entries),
             'price_alerts': [],
+            'td24_date_alerts': [],
             'stats': dict(upload_summary),
         }
         
         # Salva messaggio persistente per duplicati
         if file_gia_processati:
-            nomi = ", ".join(_html.escape(f) for f in file_gia_processati)
+            nomi = ", ".join(
+                _html.escape(f"{f} ({_duplicate_reason_for_ui(f, file_gia_processati_reason)})")
+                for f in file_gia_processati
+            )
             n = len(file_gia_processati)
-            lbl = "fattura scartata perché già caricata in precedenza (duplicata)" if n == 1 else "fatture scartate perché già caricate in precedenza (duplicate)"
+            lbl = "file già importato in precedenza" if n == 1 else "file già importati in precedenza"
             st.session_state.upload_messages = [
-                f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}:</span><br/><span style="font-size:0.78rem;color:#856404;">{nomi}</span></div>'
+                f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl} — usare "Reimporta" per forzare l\'aggiornamento.</span><br/><span style="font-size:0.78rem;color:#856404;">{nomi}</span></div>'
             ]
             st.session_state.upload_messages_time = time.time()
             # Segna come processati

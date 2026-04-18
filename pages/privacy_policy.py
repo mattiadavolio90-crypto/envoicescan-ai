@@ -33,7 +33,14 @@ else:
     render_sidebar(st.session_state.user_data)
 
 render_oh_yeah_header()
-st.title("📋 Privacy Policy & Termini di Servizio")
+st.markdown("""
+<h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-bottom: 10px;">
+    📋 <span style="background: linear-gradient(90deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;">Privacy Policy & Termini di Servizio</span>
+</h2>
+""", unsafe_allow_html=True)
 
 # Tab per navigazione tra le due sezioni
 tab_privacy, tab_tos = st.tabs(["🔒 Privacy Policy", "📑 Termini di Servizio"])
@@ -45,8 +52,7 @@ with tab_privacy:
     **Recoma System S.r.l.**  
     P.IVA: IT09599210961  
     Referente tecnico: Mattia D'Avolio  
-    Email: mattiadavolio90@gmail.com  
-    TODO operativo: sostituire con support@ohyeah.app dopo attivazione dominio, mailbox e verifica DNS.
+    Email: mattiadavolio90@gmail.com
 
     ---
 
@@ -95,6 +101,7 @@ with tab_privacy:
     | **Brevo SAS** | SMTP transazionale | UE — Francia 🇫🇷 | Nessun contenuto di fatture trasmesso |
     | **Invoicetronic S.r.l.** | Ricezione fatture SDI e inoltro webhook | Italia 🇮🇹 | Eventi webhook e metadati fatture inoltrati verso l'infrastruttura OH YEAH!; XML grezzo non archiviato dopo la consegna |
     | **Railway Corp.** | Worker elaborazione fatture | USA | Elaborazione in memoria, nessun dato persistito; SCCs UE |
+    | **Streamlit Cloud** | Hosting applicazione web | USA | Nessun dato persistito lato Streamlit; solo elaborazione in memoria; SCCs UE |
 
     ---
 
@@ -140,7 +147,9 @@ with tab_privacy:
     - **IDOR protection:** filtro .eq('userid', user_id) su tutte le operazioni UPDATE/DELETE — nessuna modifica possibile su record di altri utenti
     - **Path traversal:** sanitizzazione nome file prima della persistenza su DB
     - **XSS output:** html.escape() su tutti i valori dinamici interpolati in HTML
-    - **Test di sicurezza:** 172 test automatizzati, pipeline CI/CD con verifica ad ogni rilascio
+    - **Protezione XXE:** validazione XML con defusedxml prima del parsing (prevenzione XML External Entity attacks)
+    - **Protezione SSRF:** whitelist host autorizzati per fetch XML remoti (solo *.invoicetronic.com/.it su HTTPS)
+    - **Test di sicurezza:** 330 test automatizzati, pipeline CI/CD con verifica ad ogni rilascio
 
     ---
 
@@ -161,7 +170,7 @@ with tab_privacy:
     ---
 
     ### Modifiche alla Privacy Policy
-    Ultimo aggiornamento: **8 Aprile 2026**
+    Ultimo aggiornamento: **15 Aprile 2026**
 
     Ci riserviamo il diritto di modificare questa informativa. Gli utenti registrati verranno informati tramite notifica nell'applicazione in caso di modifiche sostanziali, con preavviso di almeno 15 giorni.
 
@@ -217,7 +226,7 @@ with tab_tos:
     ---
 
     ### 5. Classificazione AI e Limitazioni
-    - La classificazione automatica dei prodotti è fornita tramite intelligenza artificiale (OpenAI GPT-4o) e ha natura **indicativa**.
+    - La classificazione automatica dei prodotti è fornita tramite intelligenza artificiale (OpenAI GPT-4o-mini) e ha natura **indicativa**.
     - Il Titolare **non garantisce l'accuratezza al 100%** delle classificazioni AI.
     - I contenuti delle fatture vengono trasmessi ad OpenAI **esclusivamente on-the-fly** per la categorizzazione, senza archivio permanente.
     - L'utente è tenuto a verificare e correggere le classificazioni quando necessario.
@@ -264,7 +273,7 @@ with tab_tos:
     ---
 
     ### 11. Modifiche ai Termini
-    Ultimo aggiornamento: **8 Aprile 2026**
+    Ultimo aggiornamento: **15 Aprile 2026**
 
     Il Titolare si riserva il diritto di modificare i presenti Termini. Le modifiche sostanziali saranno comunicate tramite notifica nell'applicazione con almeno 15 giorni di preavviso. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione delle modifiche.
 
@@ -273,95 +282,6 @@ with tab_tos:
     ### Contatti
     **Recoma System S.r.l.**  
     Referente: Mattia D'Avolio  
-    Email: mattiadavolio90@gmail.com  
-    P.IVA: IT09599210961
-    """)
-
-    Il Servizio include:
-    - Caricamento e analisi automatica di fatture elettroniche (XML, PDF, immagini)
-    - Classificazione dei prodotti tramite intelligenza artificiale
-    - Calcolo margini e analisi dei costi alimentari
-    - Gestione area Foodcost (ricette, ingredienti, diario)
-    - Controllo prezzi e confronto fornitori
-
-    **⚠️ Il Servizio NON sostituisce la consulenza fiscale, contabile o legale.** L'utente rimane responsabile delle proprie decisioni operative e fiscali.
-
-    ---
-
-    ### 2. Registrazione e Account
-    - L'accesso al Servizio richiede la creazione di un account con email, P.IVA e dati del ristorante.
-    - L'account è **personale e non cedibile**. L'utente è responsabile della custodia delle proprie credenziali.
-    - L'utente garantisce la veridicità dei dati forniti in fase di registrazione.
-    - Il Titolare si riserva il diritto di sospendere account con dati manifestamente falsi.
-
-    ---
-
-    ### 3. Utilizzo Consentito
-    L'utente si impegna a:
-    - Utilizzare il Servizio esclusivamente per finalità lecite e connesse alla propria attività
-    - Non tentare di accedere a dati di altri utenti
-    - Non sovraccaricare il sistema con upload massivi o automatizzati
-    - Non decompilare, disassemblare o effettuare reverse engineering del software
-    - Non riprodurre, distribuire o rivendere il Servizio o parte di esso
-
-    ---
-
-    ### 4. Proprietà Intellettuale
-    Il software, i codici sorgente, il design, i marchi e tutti i contenuti del Servizio sono di **proprietà esclusiva del Titolare** e protetti dalle leggi italiane ed europee sul diritto d'autore (L. 633/1941, Direttiva UE 2019/790).
-
-    L'utente ottiene una **licenza d'uso non esclusiva, non trasferibile e revocabile** per la durata dell'abbonamento.
-
-    I dati caricati dall'utente (fatture, ricette, note) restano di **proprietà dell'utente**.
-
-    ---
-
-    ### 5. Classificazione AI e Limitazioni
-    - La classificazione automatica dei prodotti è fornita tramite intelligenza artificiale e ha natura **indicativa**.
-    - Il Titolare **non garantisce l'accuratezza al 100%** delle classificazioni AI.
-    - L'utente è tenuto a verificare e correggere le classificazioni quando necessario.
-    - Il Servizio fornisce strumenti di revisione e conferma manuale a tale scopo.
-
-    ---
-
-    ### 6. Disponibilità del Servizio
-    - Il Titolare si impegna a garantire la disponibilità del Servizio, ma non garantisce un uptime del 100%.
-    - Sono previste interruzioni per manutenzione programmata, con preavviso quando possibile.
-    - Il Titolare non è responsabile per interruzioni causate da fornitori terzi (Supabase, OpenAI, Brevo) o cause di forza maggiore.
-
-    ---
-
-    ### 7. Limitazione di Responsabilità
-    - Il Servizio è fornito **"così com'è" (as is)**.
-    - Il Titolare non è responsabile per danni diretti o indiretti derivanti dall'uso del Servizio, inclusi ma non limitati a: perdita di dati, decisioni aziendali basate sulle analisi, interruzioni del servizio.
-    - La responsabilità massima del Titolare è in ogni caso limitata all'importo pagato dall'utente nei 12 mesi precedenti.
-
-    ---
-
-    ### 8. Sospensione e Cessazione
-    Il Titolare si riserva il diritto di sospendere o cessare l'account dell'utente in caso di:
-    - Violazione dei presenti Termini
-    - Uso fraudolento o abusivo del Servizio
-    - Mancato pagamento (se applicabile)
-    - Richiesta dell'autorità giudiziaria
-
-    L'utente può cancellare il proprio account in qualsiasi momento dalla sezione "Gestione Account". Alla cancellazione, tutti i dati vengono eliminati in modo permanente.
-
-    ---
-
-    ### 9. Legge Applicabile e Foro Competente
-    I presenti Termini sono regolati dalla **legge italiana**. Per qualsiasi controversia è competente il **Foro di Milano**, salvo diversa disposizione inderogabile di legge a favore del consumatore.
-
-    ---
-
-    ### 10. Modifiche ai Termini
-    Ultimo aggiornamento: **8 Aprile 2026**
-
-    Il Titolare si riserva il diritto di modificare i presenti Termini. Le modifiche sostanziali saranno comunicate tramite notifica nell'applicazione con almeno 15 giorni di preavviso. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione delle modifiche.
-
-    ---
-
-    ### Contatti
-    **Mattia D'Avolio**  
     Email: mattiadavolio90@gmail.com  
     P.IVA: IT09599210961
     """)

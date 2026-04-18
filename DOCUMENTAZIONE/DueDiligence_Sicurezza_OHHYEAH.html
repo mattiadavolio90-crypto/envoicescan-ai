@@ -439,7 +439,7 @@
           <div class="card-value">
             <strong>Python 3.12</strong> + Streamlit Cloud<br>
             <strong>Supabase</strong> (PostgreSQL 15, pgvector)<br>
-            <strong>OpenAI GPT-4o</strong> (AI categorizzazione) — dato elaborato on-the-fly, non archiviato<br>
+            <strong>OpenAI GPT-4o-mini</strong> (AI categorizzazione) — dato elaborato on-the-fly, non archiviato<br>
             <strong>Brevo</strong> (SMTP transazionale)
           </div>
         </div>
@@ -466,7 +466,7 @@
           <div class="card-value">
             Row-Level Security PostgreSQL su tutte le tabelle<br>
             Filtro applicativo <strong>user_id + ristorante_id</strong> su ogni query<br>
-            Session token UUID4 a TTL — nessuna condivisione tra tenant<br>
+            Session token opaco ad alta entropia a TTL — nessuna condivisione tra tenant<br>
             Accesso DB con <em>service role key</em> lato server (non esposta al client)
           </div>
         </div>
@@ -488,7 +488,7 @@
           </li>
           <li>
             <span class="icon icon-ok">✓</span>
-            <span><strong>Session token:</strong> UUID4, stored in Supabase, TTL 30 giorni, scadenza automatica per inattività 8h, invalidazione esplicita al logout e su token non valido (cookie browser cancellato). Cookie <strong>Secure + SameSite=Strict</strong>. <em>(Streamlit CookieManager non supporta HttpOnly — mitigato con SameSite=Strict + HTTPS obbligatorio.)</em></span>
+            <span><strong>Session token:</strong> Token opaco ad alta entropia (secrets.token_urlsafe), stored in Supabase, TTL 30 giorni, scadenza automatica per inattività 8h, invalidazione esplicita al logout e su token non valido (cookie browser cancellato). Cookie <strong>Secure + SameSite=Strict</strong>. <em>(Streamlit CookieManager non supporta HttpOnly — mitigato con SameSite=Strict + HTTPS obbligatorio.)</em></span>
           </li>
           <li>
             <span class="icon icon-ok">✓</span>
@@ -585,7 +585,7 @@
         </li>
         <li>
           <span class="icon icon-ok">✓</span>
-          <span><strong>AI &amp; dati sensibili:</strong> i contenuti delle fatture (fornitori, importi) vengono elaborati da OpenAI GPT-4o esclusivamente on-the-fly per la categorizzazione automatica. Non vengono archiviati da OpenAI in modalità training.</span>
+          <span><strong>AI &amp; dati sensibili:</strong> i contenuti delle fatture (fornitori, importi) vengono elaborati da OpenAI GPT-4o-mini esclusivamente on-the-fly per la categorizzazione automatica. Non vengono archiviati da OpenAI in modalità training.</span>
         </li>
       </ul>
     </div>
@@ -612,7 +612,7 @@
         <div class="card">
           <div class="card-label">Test automatici CI/CD</div>
           <div class="card-value">
-            <strong>172 test pytest</strong> — copertura 100% percorsi critici<br>
+            <strong>330 test pytest</strong> — copertura 100% percorsi critici<br>
             Eseguiti ad ogni push su GitHub Actions<br>
             Pipeline bloccante: merge rifiutato se test falliscono<br>
             Test unitari + integrazione su auth, parsing fatture, webhook
@@ -728,7 +728,7 @@
           <tr>
             <td>A07 — Auth Failures</td>
             <td><span class="badge badge-green">✓ Mitigato</span></td>
-            <td>Argon2id, rate limiting login+reset DB-backed, session UUID4 con TTL, invalidazione al logout, password policy.</td>
+            <td>Argon2id, rate limiting login+reset DB-backed, session token ad alta entropia con TTL, invalidazione al logout, password policy.</td>
           </tr>
           <tr>
             <td>A08 — Data Integrity Failures</td>
@@ -738,7 +738,7 @@
           <tr>
             <td>A09 — Logging &amp; Monitoring</td>
             <td><span class="badge badge-green">✓ Mitigato</span></td>
-            <td>Log strutturati rotating 50 MB×10, separati per modulo. Uptime check ogni 5 min con alert email. 172 test CI.</td>
+            <td>Log strutturati rotating 50 MB×10, separati per modulo. Uptime check ogni 5 min con alert email. 330 test CI.</td>
           </tr>
           <tr>
             <td>A10 — SSRF</td>

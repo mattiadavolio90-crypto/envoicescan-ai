@@ -450,6 +450,53 @@ def carica_categorie_da_db(supabase_client=None) -> list:
 
 
 # ============================================================
+# TD24 DATA CONSEGNA
+# ============================================================
+
+def calcola_alert_data_consegna_td24(items: Optional[List[Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
+    """
+    Calcola lo stato di copertura data_consegna per una fattura TD24.
+
+    Returns:
+        dict con status/lines_total/lines_with_date/pct oppure None se non TD24.
+    """
+    if not isinstance(items, list) or not items:
+        return None
+
+    tipo_documento = str(items[0].get('tipo_documento', '') or '').upper().strip()
+    if tipo_documento != 'TD24':
+        return None
+
+    def _to_float(value: Any) -> float:
+        try:
+            return float(value or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    valid_items = [
+        r for r in items
+        if _to_float(r.get('Totale_Riga', r.get('totale_riga', 0))) > 0
+    ]
+    lines_total = len(valid_items)
+    lines_with_date = sum(1 for r in valid_items if r.get('data_consegna'))
+    pct = round((lines_with_date / lines_total * 100), 1) if lines_total > 0 else 100.0
+
+    if pct < 50:
+        status = 'missing'
+    elif pct < 95:
+        status = 'warning'
+    else:
+        status = 'ok'
+
+    return {
+        'status': status,
+        'lines_total': lines_total,
+        'lines_with_date': lines_with_date,
+        'pct': pct,
+    }
+
+
+# ============================================================
 # LOGGING EVENTI
 # ============================================================
 
@@ -466,6 +513,7 @@ def log_upload_event(
     details: Optional[dict] = None,
     supabase_client = None,
     needs_ack: bool = False,
+    alert_data_consegna: Optional[str] = None,
 ) -> None:
     """
     Logga evento di upload su Supabase per supporto tecnico.
@@ -498,24 +546,39 @@ def log_upload_event(
         file_type = "xml" if file_name.lower().endswith(".xml") else \
                    "pdf" if file_name.lower().endswith(".pdf") else \
                    "image" if file_name.lower().endswith((".jpg", ".jpeg", ".png")) else "unknown"
-        
+
+        # Normalizza stati non supportati dal vincolo DB, mantenendo il dettaglio originale.
+        normalized_status = status
+        details_payload = dict(details or {})
+        if status in {"DUPLICATE_SKIPPED", "DUPLICATE_IN_SELECTION"}:
+            normalized_status = "SAVED_PARTIAL"
+            details_payload.setdefault('original_status', status)
+            details_payload.setdefault('duplicate_event', True)
+
         # Tronca error_message se troppo lungo
         if error_message and len(error_message) > 500:
             error_message = error_message[:497] + "..."
+
+        alert_status = alert_data_consegna or details_payload.get('alert_data_consegna')
+        if isinstance(alert_status, str):
+            alert_status = alert_status.strip().lower()
+        if alert_status not in {'ok', 'warning', 'missing'}:
+            alert_status = None
         
         event_data = {
             'user_id': user_id,
             'user_email': user_email,
             'file_name': file_name,
             'file_type': file_type,
-            'status': status,
+            'status': normalized_status,
             'rows_parsed': rows_parsed,
             'rows_saved': rows_saved,
             'rows_excluded': rows_excluded,
             'error_stage': error_stage,
             'error_message': error_message,
-            'details': details,
+            'details': details_payload or None,
             'needs_ack': needs_ack,
+            'alert_data_consegna': alert_status,
         }
         
         supabase_client.table('upload_events').insert(event_data).execute()

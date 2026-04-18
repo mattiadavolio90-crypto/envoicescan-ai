@@ -1596,3 +1596,15 @@ MAX_RIGHE_GLOBALE = 100000       # Max righe per utente/ristorante
 MAX_RIGHE_BATCH = 500            # Max righe per singolo batch upload
 BATCH_FILE_SIZE = 20             # Max file per batch
 
+# Limiti feature Analisi Personalizzata
+MAX_CUSTOM_TAGS_TRIAL = 1        # Max tag in prova gratuita
+MAX_CUSTOM_TAGS = 10             # Max tag per account attivo
+MAX_PRODOTTI_PER_TAG = 200       # Max associazioni per singolo tag
+ORPHAN_CHECK_DAYS = 90           # Finestra giorni per warning "potenzialmente orfano"
+CUSTOM_TAG_SUGGESTION_LIMIT = 20  # Max suggerimenti automatici iniziali
+CUSTOM_TAG_SEARCH_RESULT_LIMIT = 100  # Max risultati ricerca descrizioni in UI
+CUSTOM_TAG_ALERT_SOGLIA_DEFAULT = 5.0  # Soglia alert % predefinita per trend tag
+CUSTOM_TAG_COLOR_DEFAULT = "#2563EB"   # Colore default tag
+CUSTOM_TAG_UNITA_KG = {"KG", "GR"}     # Unita normalizzate riconducibili a KG
+CUSTOM_TAG_UNITA_LT = {"LT", "ML", "CL"}  # Unita normalizzate riconducibili a LT
+

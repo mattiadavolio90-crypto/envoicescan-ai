@@ -7,6 +7,13 @@ from services import get_supabase_client
 
 logger = get_logger('page_setup')
 
+# Pagine opzionali: se la chiave manca in users.pagine_abilitate,
+# il default deve essere FALSE per rollout sicuro.
+OPTIONAL_PAGES = {
+    'workspace',
+    'analisi_personalizzata',
+}
+
 
 @st.cache_data(ttl=60)
 def _fetch_pagine_abilitate(user_id: str):
@@ -40,10 +47,10 @@ def check_page_enabled(page_key: str, user_id: str):
         except Exception:
             pagine_raw = None
 
-    # Default: workspace abilitato solo se non specificato
     pagine_abilitate = pagine_raw if isinstance(pagine_raw, dict) else {}
 
-    is_enabled = pagine_abilitate.get(page_key, True)
+    default_enabled = False if page_key in OPTIONAL_PAGES else True
+    is_enabled = pagine_abilitate.get(page_key, default_enabled)
     if not is_enabled:
         logger.info(f"Pagina '{page_key}' BLOCCATA per utente {user_id} (pagine={pagine_abilitate})")
         st.warning("⚠️ Questa pagina non è abilitata per il tuo account. Contatta l'amministratore.")

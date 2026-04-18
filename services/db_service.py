@@ -11,8 +11,9 @@ Pattern: Dependency Injection per Supabase client
 """
 
 import logging
+import re
 import time
-from typing import Dict, Any
+from typing import Dict, Any, List
 import pandas as pd
 import streamlit as st
 
@@ -22,6 +23,13 @@ from config.constants import CATEGORIE_SPESE_GENERALI
 # Logger centralizzato
 from config.logger_setup import get_logger
 logger = get_logger('db')
+
+
+def _normalize_custom_tag_key(text: str) -> str:
+    """Normalizza una descrizione libera in chiave stabile lato Python."""
+    if not text:
+        return ""
+    return re.sub(r"\s+", " ", str(text).strip().upper())
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -145,6 +153,7 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     # Se force_refresh, invalida cache prima di ricaricare
     if force_refresh:
         _carica_fatture_da_supabase.clear()
+        get_fatture_stats.clear()
         logger.info("🔄 Cache invalidata per force_refresh")
     
     # 🚀 CACHED: Carica dati da Supabase (cached per 120s)
@@ -317,123 +326,144 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     """
     Calcola alert aumenti prezzi confrontando il PREZZO UNITARIO EFFETTIVO
     (con sconti applicati) tra acquisti successivi dello stesso prodotto.
-    
+
     IMPORTANTE: Escludi SOLO le 3 categorie spese generali reali.
     MATERIALE DI CONSUMO È F&B! (tovaglioli, piatti usa e getta, pellicole = materiali consumo ristorante)
-    
+
     Logica:
     - Confronta Prezzo Unit. Effettivo (€/PZ, €/Kg, etc.)
     - Indipendente da quantità acquistata
     - Rileva anche ribassi (valore negativo)
-    
+    - Espone trend sintetico e impatto economico stimato per il mese
+
     Args:
         df: DataFrame con colonne Descrizione, Fornitore, DataDocumento, PrezzoUnitario, Categoria
         soglia_minima: Percentuale minima per alert (es. 5.0 = 5%)
         filtro_prodotto: Stringa per filtrare prodotti (opzionale)
-    
+
     Returns:
         DataFrame con alert ordinati per aumento decrescente
     """
-    _ALERT_COLUMNS = ['Prodotto', 'Categoria', 'Fornitore', 'Storico', 'Media',
-                       'Ultimo', 'Aumento_Perc', 'Data', 'N_Fattura']
+    _ALERT_COLUMNS = [
+        'Prodotto', 'Categoria', 'Fornitore', 'Storico', 'Media',
+        'Ultimo', 'Aumento_Perc', 'Data', 'N_Fattura',
+        'Trend', 'Impatto_Stimato', 'Delta_Euro'
+    ]
     if df.empty:
         return pd.DataFrame(columns=_ALERT_COLUMNS)
-    
+
     # Verifica colonne necessarie
     required_cols = ['Descrizione', 'Fornitore', 'DataDocumento', 'PrezzoUnitario', 'Categoria', 'FileOrigine']
     if not all(col in df.columns for col in required_cols):
         return pd.DataFrame(columns=_ALERT_COLUMNS)
-    
+
     # ============================================================
     # FILTRO: ESCLUDI SOLO LE 3 CATEGORIE SPESE GENERALI
     # ============================================================
-    # Le uniche 3 categorie NON F&B sono:
-    # 1. MANUTENZIONE E ATTREZZATURE
-    # 2. UTENZE E LOCALI
-    # 3. SERVIZI E CONSULENZE
-    #
-    # TUTTO IL RESTO È F&B (incluso MATERIALE DI CONSUMO!)
     df_fb = df[~df['Categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
-    
+
     if df_fb.empty:
-        return pd.DataFrame()
-    
+        return pd.DataFrame(columns=_ALERT_COLUMNS)
+
     # ============================================================
     # FILTRO 2: SEARCH PRODOTTO (se specificato)
     # ============================================================
     if filtro_prodotto:
         df_fb = df_fb[df_fb['Descrizione'].str.contains(filtro_prodotto, case=False, na=False, regex=False)]
-    
+
     df = df_fb  # Usa solo prodotti F&B
-    
+
     if df.empty:
         return pd.DataFrame(columns=_ALERT_COLUMNS)
-    
+
     alert_list = []
-    
+
     # Normalizza chiavi groupby (case-insensitive, strip spazi)
     df = df.copy()
-    df['_desc_key'] = df['Descrizione'].str.strip().str.upper()
-    df['_forn_key'] = df['Fornitore'].str.strip().str.upper()
+    df['_desc_key'] = df['Descrizione'].astype(str).str.strip().str.upper()
+    df['_forn_key'] = df['Fornitore'].astype(str).str.strip().str.upper()
 
     # Raggruppa per Descrizione + Fornitore (case-insensitive)
     for (_dk, _fk), group in df.groupby(['_desc_key', '_forn_key']):
-        # Usa il valore originale più frequente come etichetta display
         prodotto = group['Descrizione'].mode()[0]
         fornitore = group['Fornitore'].mode()[0]
-        # Ordina per data
         group = group.sort_values('DataDocumento')
-        
-        # Filtra solo acquisti con prezzo valido
+
         acquisti_validi = group[group['PrezzoUnitario'] > 0].copy()
-        
-        # Serve almeno 2 acquisti per confrontare
+
         if len(acquisti_validi) < 2:
             continue
-        
-        # 🎯 ANALISI ULTIMO ACQUISTO: confronta ultimo vs penultimo
+
         ultimo = acquisti_validi.iloc[-1]
         penultimo = acquisti_validi.iloc[-2]
-        
-        prezzo_ultimo = ultimo['PrezzoUnitario']
-        prezzo_penultimo = penultimo['PrezzoUnitario']
-        
-        # 🛡️ Segnala se troppo tempo tra ultimo e penultimo (>180 giorni)
+
+        prezzo_ultimo = float(ultimo['PrezzoUnitario'])
+        prezzo_penultimo = float(penultimo['PrezzoUnitario'])
+        delta_euro = prezzo_ultimo - prezzo_penultimo
+
         nota_stagionale = ""
         try:
             data_penultimo = pd.to_datetime(penultimo['DataDocumento'], utc=True)
             data_ultimo = pd.to_datetime(ultimo['DataDocumento'], utc=True)
             giorni_diff = (data_ultimo - data_penultimo).days
-            
+
             if giorni_diff > 180:
-                nota_stagionale = " ⚠️ >6m"  # Prodotto stagionale: segnala ma non nascondere
+                nota_stagionale = " ⚠️ >6m"
         except (ValueError, TypeError):
-            pass  # Se parsing date fallisce, continua comunque
-        
-        # CALCOLA VARIAZIONE ULTIMO VS PENULTIMO
+            pass
+
         variazione_perc = ((prezzo_ultimo - prezzo_penultimo) / prezzo_penultimo) * 100
-        
-        # Filtra per soglia minima (include anche ribassi negativi)
+
         if abs(variazione_perc) >= soglia_minima:
-            # Usa nome file completo per N_Fattura
             file_origine = str(ultimo.get('FileOrigine', ''))
-            
-            # 📈 STORICO PREZZI: ultimi 5 acquisti PRECEDENTI all'ultimo (dal 2° al 6°)
-            # L'ultimo acquisto va nella colonna "Ultimo" separata
             n_acquisti = len(acquisti_validi)
-            
+
             if n_acquisti >= 2:
-                # Prendi dal 2° al 6° acquisto più recente (esclude l'ultimo)
-                precedenti = acquisti_validi.iloc[:-1].tail(5)
-                prezzi_storici = [f"€{p:.2f}" for p in precedenti['PrezzoUnitario'].tolist()]
+                ultimi_cinque = acquisti_validi.tail(5)
+                prezzi_storici = [f"€{p:.2f}" for p in ultimi_cinque['PrezzoUnitario'].tolist()]
                 storico_str = " → ".join(prezzi_storici)
-                
-                # Media dei prezzi nello storico
-                media_storico = precedenti['PrezzoUnitario'].mean()
+                media_storico = float(ultimi_cinque['PrezzoUnitario'].mean())
             else:
                 storico_str = "-"
                 media_storico = prezzo_penultimo
-            
+
+            # Trend sintetico sulle ultime variazioni
+            prezzi_recenti = pd.to_numeric(acquisti_validi['PrezzoUnitario'].tail(4), errors='coerce').dropna().tolist()
+            variazioni_recenti = [
+                prezzi_recenti[i] - prezzi_recenti[i - 1]
+                for i in range(1, len(prezzi_recenti))
+                if abs(prezzi_recenti[i] - prezzi_recenti[i - 1]) > 0.0001
+            ]
+            if len(variazioni_recenti) >= 3 and all(v > 0 for v in variazioni_recenti[-3:]):
+                trend = '⬆️⬆️'
+            elif len(variazioni_recenti) >= 3 and all(v < 0 for v in variazioni_recenti[-3:]):
+                trend = '⬇️⬇️'
+            elif any(v > 0 for v in variazioni_recenti) and any(v < 0 for v in variazioni_recenti):
+                trend = '↕️'
+            elif delta_euro > 0:
+                trend = '⬆️'
+            elif delta_euro < 0:
+                trend = '⬇️'
+            else:
+                trend = '↕️'
+
+            # Impatto economico stimato: delta ultimo vs penultimo × q.tà media recente × frequenza acquisto stimata
+            if 'Quantita' in acquisti_validi.columns:
+                quantita_recenti = pd.to_numeric(acquisti_validi['Quantita'].tail(3), errors='coerce').dropna()
+            else:
+                quantita_recenti = pd.Series(dtype=float)
+            quantita_riferimento = float(quantita_recenti.mean()) if not quantita_recenti.empty else 1.0
+
+            date_recenti = pd.to_datetime(acquisti_validi['DataDocumento'].tail(4), errors='coerce').dropna().sort_values()
+            frequenza_mensile = 1.0
+            if len(date_recenti) >= 2:
+                intervalli = date_recenti.diff().dt.days.dropna()
+                intervalli = intervalli[intervalli > 0]
+                if not intervalli.empty:
+                    frequenza_mensile = max(1.0, min(6.0, 30.0 / float(intervalli.mean())))
+
+            impatto_stimato = float(delta_euro * quantita_riferimento * frequenza_mensile)
+
             alert_list.append({
                 'Prodotto': (prodotto + nota_stagionale)[:50],
                 'Categoria': str(ultimo['Categoria'])[:15],
@@ -443,16 +473,18 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
                 'Ultimo': prezzo_ultimo,
                 'Aumento_Perc': variazione_perc,
                 'Data': ultimo['DataDocumento'],
-                'N_Fattura': file_origine
+                'N_Fattura': file_origine,
+                'Trend': trend,
+                'Impatto_Stimato': impatto_stimato,
+                'Delta_Euro': delta_euro,
             })
-    
+
     if not alert_list:
         return pd.DataFrame(columns=_ALERT_COLUMNS)
-    
+
     df_alert = pd.DataFrame(alert_list)
-    # Ordina per Aumento_Perc DECRESCENTE (maggiori aumenti prima, ribassi alla fine)
     df_alert = df_alert.sort_values('Aumento_Perc', ascending=False).reset_index(drop=True)
-    
+
     return df_alert
 
 
@@ -557,7 +589,7 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
         from config.constants import FORNITORI_SPESE_GENERALI_KEYWORDS
         
         # Crea pattern regex per escludere tutti i fornitori in una sola passata
-        pattern = '|'.join(FORNITORI_SPESE_GENERALI_KEYWORDS)
+        pattern = '|'.join(re.escape(k) for k in FORNITORI_SPESE_GENERALI_KEYWORDS)
         df_food = df_food[~df_food['fornitore'].str.contains(pattern, case=False, na=False, regex=True)].copy()
         
         # Logging conteggi per verifica filtro
@@ -597,74 +629,75 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
         
         totale_omaggi = 0.0
         if not df_omaggi.empty:
-            # Recupera TUTTO lo storico prezzi per i prodotti in omaggio
-            # (non solo il periodo corrente, per avere l'ultimo prezzo reale)
-            desc_list = df_omaggi['descrizione'].unique().tolist()
+            # Recupera tutto lo storico prezzi positivo del ristorante per stimare il valore degli omaggi
             all_historical = []
-            batch_size = 30
-            
-            for i in range(0, len(desc_list), batch_size):
-                batch = desc_list[i:i+batch_size]
-                try:
-                    hist_query = supabase_client.table('fatture')\
-                        .select('descrizione, fornitore, prezzo_unitario, data_documento')\
-                        .eq('user_id', user_id)\
-                        .gt('prezzo_unitario', 0)\
-                        .in_('descrizione', batch)
-                    
-                    if ristorante_id:
-                        hist_query = hist_query.eq('ristorante_id', ristorante_id)
-                    
-                    _hist_page, _hist_all = 0, []
-                    while True:
-                        _hr = hist_query.order('data_documento', desc=True)\
-                                        .range(_hist_page * 1000, (_hist_page + 1) * 1000 - 1)\
-                                        .execute()
-                        if not _hr.data:
-                            break
-                        _hist_all.extend(_hr.data)
-                        if len(_hr.data) < 1000:
-                            break
-                        _hist_page += 1
-                    hist_response_data = _hist_all
-                    if hist_response_data:
-                        all_historical.extend(hist_response_data)
-                except Exception as e:
-                    logger.warning(f"Errore query storico omaggi batch {i}: {e}")
-            
+            try:
+                hist_query = supabase_client.table('fatture')\
+                    .select('descrizione, fornitore, prezzo_unitario, data_documento')\
+                    .eq('user_id', user_id)\
+                    .gt('prezzo_unitario', 0)
+
+                if ristorante_id:
+                    hist_query = hist_query.eq('ristorante_id', ristorante_id)
+
+                _hist_page = 0
+                while True:
+                    _hr = hist_query.order('data_documento', desc=True)\
+                                    .range(_hist_page * 1000, (_hist_page + 1) * 1000 - 1)\
+                                    .execute()
+                    if not _hr.data:
+                        break
+                    all_historical.extend(_hr.data)
+                    if len(_hr.data) < 1000:
+                        break
+                    _hist_page += 1
+            except Exception as e:
+                logger.warning(f"Errore query storico omaggi: {e}")
+
             df_hist = pd.DataFrame(all_historical) if all_historical else pd.DataFrame()
+
+            # Normalizza dati per matching robusto
+            df_omaggi = df_omaggi.reset_index(drop=True)
+            df_omaggi['data_documento'] = pd.to_datetime(df_omaggi['data_documento'], errors='coerce')
+            df_omaggi['quantita'] = pd.to_numeric(df_omaggi['quantita'], errors='coerce').fillna(1.0)
+            df_omaggi['ultimo_prezzo'] = pd.NA
+
+            def _norm_key(value):
+                return re.sub(r'\s+', ' ', str(value).strip().upper()) if pd.notna(value) else ''
+
             if not df_hist.empty:
                 df_hist['data_documento'] = pd.to_datetime(df_hist['data_documento'], errors='coerce')
-                df_hist = df_hist.sort_values('data_documento', ascending=False)
-            
-            # Normalizza anche le date degli omaggi per confronto sicuro
-            df_omaggi['data_documento'] = pd.to_datetime(df_omaggi['data_documento'], errors='coerce')
-            
-            # Per ogni omaggio, trova l'ultimo prezzo d'acquisto via pandas merge (O(n log n))
-            df_omaggi = df_omaggi.reset_index(drop=True)
-            if not df_hist.empty:
-                _hist = df_hist[['descrizione', 'fornitore', 'data_documento', 'prezzo_unitario']].rename(
-                    columns={'data_documento': '_data_hist', 'prezzo_unitario': '_prezzo_hist'}
-                )
-                _merged = df_omaggi[['descrizione', 'fornitore', 'data_documento', 'quantita']].copy()
-                _merged['_omaggio_idx'] = _merged.index
-                _merged = _merged.merge(_hist, on=['descrizione', 'fornitore'], how='left')
-                # Mantieni solo prezzi storici precedenti alla data dell'omaggio
-                _merged = _merged[_merged['_data_hist'] < _merged['data_documento']]
-                if not _merged.empty:
-                    # Prendi il prezzo più recente per ogni omaggio
-                    _best_idx = _merged.groupby('_omaggio_idx')['_data_hist'].idxmax()
-                    _best = _merged.loc[_best_idx].set_index('_omaggio_idx')['_prezzo_hist']
-                    df_omaggi['ultimo_prezzo'] = df_omaggi.index.map(_best)
-                else:
-                    df_omaggi['ultimo_prezzo'] = None
-            else:
-                df_omaggi['ultimo_prezzo'] = None
+                df_hist['prezzo_unitario'] = pd.to_numeric(df_hist['prezzo_unitario'], errors='coerce')
+                df_hist = df_hist.dropna(subset=['data_documento', 'prezzo_unitario']).sort_values('data_documento', ascending=False)
+                df_hist['descrizione_key'] = df_hist['descrizione'].apply(_norm_key)
+                df_hist['fornitore_key'] = df_hist['fornitore'].apply(_norm_key)
+
+                df_omaggi['descrizione_key'] = df_omaggi['descrizione'].apply(_norm_key)
+                df_omaggi['fornitore_key'] = df_omaggi['fornitore'].apply(_norm_key)
+
+                for idx, row in df_omaggi.iterrows():
+                    mask_same_supplier = (
+                        (df_hist['descrizione_key'] == row['descrizione_key']) &
+                        (df_hist['fornitore_key'] == row['fornitore_key']) &
+                        (df_hist['data_documento'] < row['data_documento'])
+                    )
+                    candidati = df_hist[mask_same_supplier]
+
+                    if candidati.empty:
+                        mask_same_product = (
+                            (df_hist['descrizione_key'] == row['descrizione_key']) &
+                            (df_hist['data_documento'] < row['data_documento'])
+                        )
+                        candidati = df_hist[mask_same_product]
+
+                    if not candidati.empty:
+                        df_omaggi.at[idx, 'ultimo_prezzo'] = float(candidati.iloc[0]['prezzo_unitario'])
+
             df_omaggi['valore_stimato'] = df_omaggi.apply(
-                lambda r: abs(r['ultimo_prezzo'] * r['quantita']) if pd.notna(r['ultimo_prezzo']) else None,
+                lambda r: abs(float(r['ultimo_prezzo']) * float(r['quantita'])) if pd.notna(r['ultimo_prezzo']) else pd.NA,
                 axis=1
             )
-            
+
             totale_omaggi = float(df_omaggi['valore_stimato'].sum(min_count=1))
             if pd.isna(totale_omaggi):
                 totale_omaggi = 0.0
@@ -993,6 +1026,247 @@ def clear_fatture_cache() -> None:
     get_fatture_stats.clear()
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def get_custom_tags(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
+    """Carica i custom tag dell'utente per il ristorante corrente."""
+    try:
+        from services import get_supabase_client
+        supabase_client = get_supabase_client()
+        response = (
+            supabase_client.table("custom_tags")
+            .select("id,nome,emoji,colore,created_at")
+            .eq("user_id", user_id)
+            .eq("ristorante_id", ristorante_id)
+            .order("nome")
+            .execute()
+        )
+        return response.data or []
+    except Exception as e:
+        logger.error(f"Errore get_custom_tags user_id={user_id} ristorante_id={ristorante_id}: {e}")
+        return []
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_custom_tag_prodotti(tag_id: int, user_id: str) -> List[Dict[str, Any]]:
+    """Carica le associazioni descrizione per un singolo tag."""
+    try:
+        from services import get_supabase_client
+        supabase_client = get_supabase_client()
+        response = (
+            supabase_client.table("custom_tag_prodotti")
+            .select("id,tag_id,descrizione,descrizione_key,fattore_kg,created_at")
+            .eq("tag_id", tag_id)
+            .eq("user_id", user_id)
+            .order("descrizione")
+            .execute()
+        )
+        return response.data or []
+    except Exception as e:
+        logger.error(f"Errore get_custom_tag_prodotti tag_id={tag_id}: {e}")
+        return []
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_descrizioni_distinte(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
+    """
+    Carica le descrizioni fattura e le aggrega in Python per descrizione_key.
+    Questa lista e la base per la ricerca live nella UI.
+    """
+    try:
+        from services import get_supabase_client
+        supabase_client = get_supabase_client()
+
+        rows = []
+        page = 0
+        page_size = 1000
+        max_pages = 200
+
+        while page < max_pages:
+            if page > 50:
+                logger.warning(
+                    f"⚠️ get_descrizioni_distinte oltre 50 pagine per user_id={user_id} ristorante_id={ristorante_id}"
+                )
+
+            offset = page * page_size
+            response = (
+                supabase_client.table("fatture")
+                .select("descrizione,fornitore,data_documento,unita_misura")
+                .eq("user_id", user_id)
+                .eq("ristorante_id", ristorante_id)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+
+            if not response.data:
+                break
+
+            rows.extend(response.data)
+
+            if len(response.data) < page_size:
+                break
+
+            page += 1
+
+        grouped: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            descrizione = (row.get("descrizione") or "").strip()
+            if not descrizione:
+                continue
+
+            descrizione_key = _normalize_custom_tag_key(descrizione)
+            if not descrizione_key:
+                continue
+
+            item = grouped.setdefault(
+                descrizione_key,
+                {
+                    "descrizione": descrizione,
+                    "descrizione_key": descrizione_key,
+                    "occorrenze": 0,
+                    "fornitori": set(),
+                    "ultima_data": row.get("data_documento"),
+                    "unita_misura_set": set(),
+                },
+            )
+
+            item["occorrenze"] += 1
+
+            fornitore = (row.get("fornitore") or "").strip()
+            if fornitore:
+                item["fornitori"].add(fornitore)
+
+            unita_misura = (row.get("unita_misura") or "").strip()
+            if unita_misura:
+                item["unita_misura_set"].add(unita_misura)
+
+            data_documento = row.get("data_documento")
+            if data_documento and (not item["ultima_data"] or data_documento > item["ultima_data"]):
+                item["ultima_data"] = data_documento
+
+        results = []
+        for item in grouped.values():
+            results.append(
+                {
+                    "descrizione": item["descrizione"],
+                    "descrizione_key": item["descrizione_key"],
+                    "occorrenze": item["occorrenze"],
+                    "num_fornitori": len(item["fornitori"]),
+                    "fornitori": sorted(item["fornitori"]),
+                    "ultima_data": item["ultima_data"],
+                    "unita_misura": sorted(item["unita_misura_set"]),
+                }
+            )
+
+        results.sort(key=lambda x: (-x["occorrenze"], x["descrizione"]))
+        return results
+    except Exception as e:
+        logger.error(f"Errore get_descrizioni_distinte user_id={user_id} ristorante_id={ristorante_id}: {e}")
+        return []
+
+
+def clear_tags_cache() -> None:
+    """Invalida solo la cache legata ai custom tag."""
+    logger.debug(f"[CACHE] clear_tags_cache() chiamata — ts={time.time():.3f}")
+    get_custom_tags.clear()
+    get_custom_tag_prodotti.clear()
+    get_descrizioni_distinte.clear()
+
+
+def crea_tag(user_id: str, ristorante_id: str, nome: str, emoji: str = None, colore: str = None) -> Dict[str, Any]:
+    """Crea un nuovo custom tag e invalida la cache dedicata."""
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+
+    payload = {
+        "user_id": user_id,
+        "ristorante_id": ristorante_id,
+        "nome": (nome or "").strip(),
+        "emoji": (emoji or None),
+        "colore": (colore or None),
+    }
+    response = supabase_client.table("custom_tags").insert(payload).execute()
+    clear_tags_cache()
+    return (response.data or [{}])[0]
+
+
+def aggiorna_tag(tag_id: int, user_id: str, nome: str, emoji: str = None, colore: str = None) -> Dict[str, Any]:
+    """Aggiorna metadata del tag e invalida la cache dedicata."""
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+
+    payload = {
+        "nome": (nome or "").strip(),
+        "emoji": (emoji or None),
+        "colore": (colore or None),
+    }
+    response = (
+        supabase_client.table("custom_tags")
+        .update(payload)
+        .eq("id", tag_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    clear_tags_cache()
+    return (response.data or [{}])[0]
+
+
+def elimina_tag(tag_id: int, user_id: str) -> bool:
+    """Elimina un tag; le associazioni vengono rimosse via ON DELETE CASCADE."""
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+
+    supabase_client.table("custom_tags").delete().eq("id", tag_id).eq("user_id", user_id).execute()
+    clear_tags_cache()
+    return True
+
+
+def aggiungi_associazioni(tag_id: int, descrizioni: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Inserisce associazioni per un tag usando descrizione_key come chiave interna.
+    Usa upsert per evitare rollback di batch interi su duplicati.
+    """
+    if not descrizioni:
+        return []
+
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+
+    payload = []
+    for item in descrizioni:
+        descrizione = (item.get("descrizione") or "").strip()
+        if not descrizione:
+            continue
+        payload.append(
+            {
+                "tag_id": tag_id,
+                "descrizione": descrizione,
+                "descrizione_key": _normalize_custom_tag_key(item.get("descrizione_key") or descrizione),
+                "fattore_kg": item.get("fattore_kg"),
+            }
+        )
+
+    if not payload:
+        return []
+
+    response = (
+        supabase_client.table("custom_tag_prodotti")
+        .upsert(payload, on_conflict="tag_id,descrizione_key")
+        .execute()
+    )
+    clear_tags_cache()
+    return response.data or []
+
+
+def rimuovi_associazione(associazione_id: int, user_id: str) -> bool:
+    """Rimuove una singola associazione tag-prodotto."""
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+
+    supabase_client.table("custom_tag_prodotti").delete().eq("id", associazione_id).eq("user_id", user_id).execute()
+    clear_tags_cache()
+    return True
+
+
 __all__ = [
     'carica_e_prepara_dataframe',
     'ricalcola_prezzi_con_sconti',
@@ -1002,4 +1276,13 @@ __all__ = [
     'elimina_tutte_fatture',
     'get_fatture_stats',
     'clear_fatture_cache',
+    'get_custom_tags',
+    'get_custom_tag_prodotti',
+    'get_descrizioni_distinte',
+    'clear_tags_cache',
+    'crea_tag',
+    'aggiorna_tag',
+    'elimina_tag',
+    'aggiungi_associazioni',
+    'rimuovi_associazione',
 ]

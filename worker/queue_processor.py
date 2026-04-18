@@ -408,7 +408,19 @@ def _fetch_xml_from_url(url: str) -> str | None:
     Usa INVOICETRONIC_API_KEY dalle env vars se disponibile.
     """
     try:
+        from urllib.parse import urlparse
         import urllib.request
+        
+        # 🔒 SSRF protection: whitelist host Invoicetronic
+        parsed = urlparse(url)
+        _allowed_suffixes = ('.invoicetronic.com', '.invoicetronic.it')
+        if not parsed.hostname or not parsed.hostname.endswith(_allowed_suffixes):
+            logger.warning("SSRF blocked: host non consentito: %s", parsed.hostname)
+            return None
+        if parsed.scheme != 'https':
+            logger.warning("SSRF blocked: schema non-HTTPS: %s", parsed.scheme)
+            return None
+        
         api_key = os.environ.get("INVOICETRONIC_API_KEY", "")
         req = urllib.request.Request(url)
         if api_key:
@@ -513,6 +525,7 @@ def run_cycle() -> CycleStats:
                         queue_id, result.event_id, result.error,
                     )
             except Exception as exc:
+                stats.retry_scheduled += 1
                 logger.error("[item=%d] schedule_retry fallita: %s", queue_id, exc)
                 stats.errors.append(f"item={queue_id} schedule_retry={exc}")
 

@@ -47,14 +47,14 @@ def build_upload_outcome_notifications(upload_context: Optional[Dict[str, Any]])
         'blocked': 'bloccate dalle regole di caricamento',
         'other': 'scartate',
     }
-    actionable_total = sum(category_counts.get(key, 0) for key in ('failed', 'blocked', 'other'))
-    # I duplicati vengono gia mostrati nel riepilogo upload sotto il pulsante Carica Documenti.
-    # Evitiamo quindi doppio avviso in alto.
+    actionable_total = sum(category_counts.get(key, 0) for key in ('failed', 'other'))
+    # I duplicati e i blocchi da regole upload sono gia mostrati nel riepilogo
+    # sotto il pulsante Carica Documenti. Evitiamo quindi doppio avviso nell'expander.
     if actionable_total <= 0:
         return []
 
     summary_parts = []
-    for key in ('failed', 'blocked', 'other'):
+    for key in ('failed', 'other'):
         count = category_counts.get(key, 0)
         if count > 0:
             summary_parts.append(f"{count} {labels[key]}")
@@ -141,6 +141,65 @@ def build_credit_note_notifications(upload_context: Optional[Dict[str, Any]]) ->
         'action_state_key': 'cp_tab_attivo',
         'action_state_value': 'nc',
     }]
+
+
+def build_td24_date_notifications(upload_context: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Crea notifiche per fatture differite TD24 con data consegna mancante o parziale.
+
+    Soglie:
+      - pct < 50%  → MISSING (warning)  — alert inline + expander
+      - pct < 95%  → WARNING (info)     — solo expander
+      - pct >= 95% → silenzioso
+    """
+    if not upload_context:
+        return []
+
+    upload_id = str(upload_context.get('upload_id') or '').strip()
+    td24_alerts = upload_context.get('td24_date_alerts') or []
+    if not upload_id or not td24_alerts:
+        return []
+
+    notifications: List[Dict[str, Any]] = []
+
+    missing_files = [a for a in td24_alerts if a.get('status') == 'missing']
+    warning_files = [a for a in td24_alerts if a.get('status') == 'warning']
+
+    def _build_body(alerts: List[Dict[str, Any]]) -> str:
+        parts = []
+        for a in alerts:
+            fname = _html.escape(str(a.get('file_name', '?')))
+            fornitore = _html.escape(str(a.get('fornitore', '?')))
+            pct = float(a.get('pct') or 0.0)
+            parts.append(
+                f"{fornitore} ({fname}) — "
+                f"{a.get('lines_with_date', 0)}/{a.get('lines_total', 0)} righe con data "
+                f"({pct:.1f}% coperta)"
+            )
+        return '<br/>'.join(parts)
+
+    if missing_files:
+        n = len(missing_files)
+        notifications.append({
+            'id': f'td24-date-missing-{upload_id}',
+            'level': 'warning',
+            'icon': '📅',
+            'title': f"Fattura differita senza data consegna ({n} {_pluralize(n, 'file', 'file')})",
+            'body': _build_body(missing_files),
+            'toast': f"📅 {n} {_pluralize(n, 'fattura differita', 'fatture differite')} senza data consegna",
+        })
+
+    if warning_files:
+        n = len(warning_files)
+        notifications.append({
+            'id': f'td24-date-warning-{upload_id}',
+            'level': 'info',
+            'icon': '📅',
+            'title': f"Fattura differita con data consegna parziale ({n} {_pluralize(n, 'file', 'file')})",
+            'body': _build_body(warning_files),
+            'toast': f"📅 {n} {_pluralize(n, 'fattura differita', 'fatture differite')} con data parziale",
+        })
+
+    return notifications
 
 
 def build_scoped_notification_id(base_id: str, ristorante_id: Optional[str]) -> str:

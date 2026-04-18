@@ -535,7 +535,14 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
 # ============================================================
 
 render_oh_yeah_header()
-st.title("👨‍💼 Pannello Amministrazione")
+st.markdown("""
+<h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-bottom: 10px;">
+    👨‍💼 <span style="background: linear-gradient(90deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;">Pannello Amministrazione</span>
+</h2>
+""", unsafe_allow_html=True)
 st.caption(f"Admin: {user.get('email')} | [🏠 Torna all'App](/) | [🔓 Cambia Password](/gestione_account)")
 st.markdown("---")
 
@@ -607,13 +614,15 @@ if tab1:
                 "📧 Email cliente *", 
                 key="new_email", 
                 placeholder="cliente@esempio.com",
-                help="Email per login cliente"
+                help="Email per login cliente",
+                max_chars=254,
             )
             new_name = st.text_input(
                 "🏪 Nome ristorante *", 
                 key="new_name", 
                 placeholder="Es: Ristorante Da Mario",
-                help="Nome locale"
+                help="Nome locale",
+                max_chars=100,
             )
         
         with col2:
@@ -628,7 +637,8 @@ if tab1:
                 "📄 Ragione Sociale", 
                 key="new_ragione_sociale", 
                 placeholder="Mario Rossi S.r.l. (opzionale)",
-                help="Nome ufficiale azienda (opzionale)"
+                help="Nome ufficiale azienda (opzionale)",
+                max_chars=150,
             )
         
         # Validazione real-time P.IVA
@@ -649,7 +659,7 @@ if tab1:
             # Validazione input
             errori_form = []
             
-            if not new_email or '@' not in new_email:
+            if not new_email or not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]{2,}$', new_email.strip()):
                 errori_form.append("❌ Email non valida")
             
             if not new_name:
@@ -1219,10 +1229,10 @@ if tab1:
                             
                             if st.button("📧 Invia Email Reset", key=f"reset_{row_key}", type="primary", use_container_width=True):
                                 try:
-                                    import uuid
+                                    import secrets as _admin_secrets
                                     
-                                    reset_token = str(uuid.uuid4())
-                                    expires_at = datetime.now() + timedelta(hours=1)
+                                    reset_token = _admin_secrets.token_urlsafe(32)
+                                    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
                                     
                                     supabase.table('users')\
                                         .update({
@@ -1423,6 +1433,40 @@ if tab1:
                                     else:
                                         st.error(f"Errore: {e}")
                                         logger.exception(f"Errore aggiornamento pagine_abilitate per {row.get('email')}")
+
+                            # Toggle Analisi Personalizzata
+                            _ap_stato = "attivo" if pagine.get('analisi_personalizzata', False) else "disattivo"
+                            new_analisi_personalizzata = st.checkbox(
+                                f"Analisi Personalizzata (attuale: {_ap_stato})",
+                                value=pagine.get('analisi_personalizzata', False),
+                                key=f"analisi_personalizzata_toggle_{row['user_id']}"
+                            )
+
+                            if new_analisi_personalizzata != pagine.get('analisi_personalizzata', False):
+                                try:
+                                    _merge_and_save_pagina_abilitata(
+                                        user_id=row['user_id'],
+                                        page_key='analisi_personalizzata',
+                                        enabled=new_analisi_personalizzata
+                                    )
+                                    logger.info(
+                                        f"🏷️ Analisi Personalizzata "
+                                        f"{'attivata' if new_analisi_personalizzata else 'disattivata'} "
+                                        f"per {row['email']}"
+                                    )
+                                    st.success(
+                                        f"✅ Analisi Personalizzata "
+                                        f"{'attivata' if new_analisi_personalizzata else 'disattivata'} "
+                                        f"per {row['email']}"
+                                    )
+                                    time.sleep(2)
+                                    st.rerun()
+                                except Exception as e:
+                                    if 'pagine_abilitate' in str(e) or 'PGRST204' in str(e):
+                                        st.error("⚠️ Esegui migrazione 038_add_pagine_abilitate.sql su Supabase per abilitare questa funzionalità")
+                                    else:
+                                        st.error(f"Errore: {e}")
+                                        logger.exception(f"Errore aggiornamento pagine_abilitate per {row.get('email')}")
                             
                             st.markdown("---")
                             
@@ -1486,7 +1530,7 @@ if tab1:
 
                             # AZIONE 2d: Trial 7 Giorni Gratuiti
                             st.markdown("**🎟️ Prova Gratuita 7 Giorni**")
-                            st.caption("Attiva accesso trial limitato al mese corrente (no export Excel)")
+                            st.caption("Attiva accesso trial per mese corrente e precedente con export Excel abilitato")
 
                             _trial_data = _fresh_trial_map.get(row['user_id'], {})
                             _has_active_trial = _trial_data.get('trial_active', False)
@@ -3982,7 +4026,7 @@ def tab_da_fare_memoria_ai():
             desc_short = row['descrizione'][:80] + '...' if len(row['descrizione']) > 80 else row['descrizione']
             box1, box2, box3, box4 = st.columns([4.2, 1.25, 1.4, 1.4])
             with box1:
-                st.markdown(f"{badge_alta} `{desc_short}`", unsafe_allow_html=True)
+                st.markdown(f"{badge_alta} `{_html.escape(desc_short)}`", unsafe_allow_html=True)
                 st.caption(f"{row['email_cliente']} · locale {row['categoria_locale']} vs globale {row['categoria_globale']}")
             with box2:
                 if st.button("Globale", key=f"dafare_promote_{row['local_id']}", help="Promuovi categoria cliente a globale", use_container_width=True):
@@ -4097,7 +4141,7 @@ def tab_da_fare_memoria_ai():
 
         with col_desc:
             desc_short = row['descrizione'][:90] + '...' if len(row['descrizione']) > 90 else row['descrizione']
-            st.markdown(f"{badge} `{desc_short}`", unsafe_allow_html=True)
+            st.markdown(f"{badge} `{_html.escape(desc_short)}`", unsafe_allow_html=True)
             st.caption(
                 f"{row['queue_tipo']} · {row['categoria_attuale']} → {row['categoria_attesa']} · {row['motivo_sospetto']} · {int(row['volte_visto'])}×"
             )
@@ -4621,6 +4665,127 @@ if tab4:
                 logger.exception("Errore verifica integrità DB")
                 with st.expander("🔍 Dettagli Tecnici"):
                     st.code(traceback.format_exc())
+
+    # ============================================================
+    # FATTURE TD24 — COPERTURA DATA CONSEGNA
+    # ============================================================
+    st.markdown("---")
+    with st.expander("📅 Fatture TD24 — Copertura Data Consegna", expanded=False):
+        st.caption("Fatture differite (TD24): percentuale di righe con data consegna estratta dal DDT.")
+        try:
+            # Query: conta righe TD24 per utente, con e senza data_consegna
+            _td24_query = supabase.table('fatture')\
+                .select('user_id, file_origine, fornitore, data_consegna, data_documento, totale_riga')\
+                .eq('tipo_documento', 'TD24')
+
+            if filtro_email:
+                # Cerca user_id dalla email
+                _user_resp = supabase.table('users').select('id').eq('email', filtro_email).execute()
+                if _user_resp.data:
+                    _td24_query = _td24_query.eq('user_id', _user_resp.data[0]['id'])
+
+            # Applica lo stesso filtro periodo del resto del pannello
+            _td24_days = None
+            if filtro_periodo == "Ultimi 30 giorni":
+                _td24_days = 30
+            elif filtro_periodo == "Ultimi 90 giorni":
+                _td24_days = 90
+            elif filtro_periodo == "Ultimi 180 giorni":
+                _td24_days = 180
+            if _td24_days is not None:
+                _cutoff_date = (datetime.now(timezone.utc) - timedelta(days=_td24_days)).strftime('%Y-%m-%d')
+                _td24_query = _td24_query.gte('data_documento', _cutoff_date)
+
+            _td24_rows = []
+            _offset = 0
+            _page = 1000
+            while True:
+                _resp = _td24_query.range(_offset, _offset + _page - 1).execute()
+                _batch = _resp.data if _resp.data else []
+                if not _batch:
+                    break
+                _td24_rows.extend(_batch)
+                if len(_batch) < _page:
+                    break
+                _offset += _page
+
+            if _td24_rows:
+                df_td24 = pd.DataFrame(_td24_rows)
+                df_td24['has_date'] = df_td24['data_consegna'].notna() & (df_td24['data_consegna'] != '')
+                df_td24['totale_riga'] = pd.to_numeric(df_td24.get('totale_riga'), errors='coerce').fillna(0)
+
+                # Aggregazione per user_id + file
+                agg = df_td24.groupby(['user_id', 'file_origine', 'fornitore']).agg(
+                    righe_totali=('has_date', 'count'),
+                    righe_con_data=('has_date', 'sum'),
+                    totale_eur=('totale_riga', 'sum'),
+                ).reset_index()
+                agg['pct_coperta'] = (agg['righe_con_data'] / agg['righe_totali'] * 100).round(1)
+                agg['status'] = agg['pct_coperta'].apply(
+                    lambda p: '🔴 Missing' if p < 50 else ('🟡 Parziale' if p < 95 else '🟢 OK')
+                )
+
+                # Riepilogo per utente
+                user_agg = agg.groupby('user_id').agg(
+                    file_td24=('file_origine', 'nunique'),
+                    righe_totali=('righe_totali', 'sum'),
+                    righe_con_data=('righe_con_data', 'sum'),
+                ).reset_index()
+                user_agg['pct_coperta'] = (user_agg['righe_con_data'] / user_agg['righe_totali'] * 100).round(1)
+
+                # Risolvi email da user_id
+                _uid_list = user_agg['user_id'].unique().tolist()
+                _email_map = {}
+                for _uid in _uid_list:
+                    try:
+                        _e_resp = supabase.table('users').select('email').eq('id', _uid).limit(1).execute()
+                        if _e_resp.data:
+                            _email_map[_uid] = _e_resp.data[0]['email']
+                    except Exception:
+                        pass
+                user_agg['email'] = user_agg['user_id'].map(_email_map).fillna('?')
+
+                # KPI
+                col1, col2, col3 = st.columns(3)
+                col1.metric("File TD24 totali", int(agg['file_origine'].nunique()))
+                col2.metric("Copertura media", f"{user_agg['pct_coperta'].mean():.1f}%")
+                _n_problem = len(agg[agg['pct_coperta'] < 95])
+                col3.metric("File con alert", _n_problem)
+
+                st.markdown("**Riepilogo per cliente:**")
+                st.dataframe(
+                    user_agg[['email', 'file_td24', 'righe_totali', 'righe_con_data', 'pct_coperta']].rename(columns={
+                        'email': 'Email',
+                        'file_td24': 'File TD24',
+                        'righe_totali': 'Righe Totali',
+                        'righe_con_data': 'Con Data',
+                        'pct_coperta': '% Coperta',
+                    }),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+                # Dettaglio file con problemi
+                _problem_files = agg[agg['pct_coperta'] < 95].sort_values('pct_coperta')
+                if not _problem_files.empty:
+                    st.markdown("**Dettaglio file con copertura < 95%:**")
+                    _display = _problem_files[['fornitore', 'file_origine', 'righe_totali', 'righe_con_data', 'pct_coperta', 'totale_eur', 'status']].rename(columns={
+                        'fornitore': 'Fornitore',
+                        'file_origine': 'File',
+                        'righe_totali': 'Righe',
+                        'righe_con_data': 'Con Data',
+                        'pct_coperta': '% Coperta',
+                        'totale_eur': 'Totale €',
+                        'status': 'Status',
+                    })
+                    st.dataframe(_display, use_container_width=True, hide_index=True)
+                else:
+                    st.success("✅ Tutti i file TD24 hanno copertura data consegna ≥ 95%.")
+            else:
+                st.info("Nessuna fattura TD24 trovata nel database.")
+        except Exception as e:
+            st.error("❌ Errore durante il caricamento dati TD24.")
+            logger.exception("Errore sezione TD24 admin")
 
 
 # ============================================================

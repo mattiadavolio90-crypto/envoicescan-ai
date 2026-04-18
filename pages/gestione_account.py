@@ -52,7 +52,14 @@ ph = PasswordHasher()
 render_sidebar(user)
 
 render_oh_yeah_header()
-st.title("⚙️ Gestione Account")
+st.markdown("""
+<h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-bottom: 10px;">
+    ⚙️ <span style="background: linear-gradient(90deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;">Gestione Account</span>
+</h2>
+""", unsafe_allow_html=True)
 st.info(f"**Account:** {user.get('email')}")
 
 # ===== TAB: Cambio Password + Elimina Account =====
@@ -60,7 +67,7 @@ tab1, tab2, tab3 = st.tabs(["🔑 Cambio Password", "📥 Scarica Dati", "🗑�
 
 # ----- TAB 1: CAMBIO PASSWORD -----
 with tab1:
-    st.subheader("Modifica Password")
+    st.markdown("<h3 style='color:#1e40af;font-weight:700;'>🔑 Modifica Password</h3>", unsafe_allow_html=True)
     
     stored_hash_check = user.get('password_hash', '').strip()
     if stored_hash_check and not stored_hash_check.startswith('$argon2'):
@@ -70,9 +77,9 @@ with tab1:
         )
     
     with st.form("form_cambio_password"):
-        vecchia_password = st.text_input("Password Attuale", type="password")
-        nuova_password = st.text_input("Nuova Password", type="password", help="Minimo 10 caratteri")
-        conferma_password = st.text_input("Conferma Nuova Password", type="password")
+        vecchia_password = st.text_input("Password Attuale", type="password", max_chars=128)
+        nuova_password = st.text_input("Nuova Password", type="password", help="Minimo 10 caratteri", max_chars=128)
+        conferma_password = st.text_input("Conferma Nuova Password", type="password", max_chars=128)
         
         st.markdown("""
         **Requisiti password:**
@@ -134,7 +141,7 @@ with tab1:
                                 logger.error(f"Update fallito per user_id={user['id']}")
                             else:
                                 st.success("✅ Password aggiornata con successo!")
-                                logger.info(f"Password modificata per {user.get('email')}")
+                                logger.info(f"Password modificata per user_id={user.get('id')}")
                                 st.info("🔄 Reindirizzamento al login tra 2 secondi...")
                                 time.sleep(2)
                                 
@@ -148,12 +155,12 @@ with tab1:
                                 st.switch_page("app.py")
                             
                     except Exception as e:
-                        logger.exception(f"Errore cambio password per {user.get('email')}")
+                        logger.exception(f"Errore cambio password per user_id={user.get('id')}")
                         st.error("❌ Operazione non riuscita. Riprova o contatta il supporto.")
 
 # ----- TAB 2: EXPORT DATI -----
 with tab2:
-    st.subheader("📥 Esporta i Tuoi Dati")
+    st.markdown("<h3 style='color:#1e40af;font-weight:700;'>📥 Esporta i Tuoi Dati</h3>", unsafe_allow_html=True)
     
     st.info("""
     **Diritto di Accesso (Art. 15 GDPR)**
@@ -337,6 +344,38 @@ with tab2:
                 except Exception as e:
                     logger.warning(f"Errore query margini_mensili export: {e}")
                 
+                # Query prodotti_utente (classificazioni personalizzate)
+                try:
+                    pu_export = []
+                    offset = 0
+                    page_size = 1000
+                    while True:
+                        pu_query = supabase.table('prodotti_utente').select('descrizione, categoria, classificato_da, volte_visto, created_at')\
+                            .eq('user_id', user_id)\
+                            .order('id', desc=False)\
+                            .range(offset, offset + page_size - 1)\
+                            .execute()
+                        rows = pu_query.data or []
+                        if not rows:
+                            break
+                        pu_export.extend(rows)
+                        if len(rows) < page_size:
+                            break
+                        offset += page_size
+                    if pu_export:
+                        export_data["prodotti_utente"] = pu_export
+                except Exception as e:
+                    logger.warning(f"Errore query prodotti_utente export: {e}")
+                
+                # Query custom_tags
+                try:
+                    tags_query = supabase.table('custom_tags').select('name, color, created_at')\
+                        .eq('user_id', user_id).execute()
+                    if tags_query.data:
+                        export_data["custom_tags"] = tags_query.data
+                except Exception as e:
+                    logger.warning(f"Errore query custom_tags export: {e}")
+                
                 # Converti in JSON
                 json_data = json.dumps(export_data, indent=2, ensure_ascii=False)
                 
@@ -371,7 +410,7 @@ with tab2:
 
 # ----- TAB 3: ELIMINA ACCOUNT -----
 with tab3:
-    st.subheader("Eliminazione Account")
+    st.markdown("<h3 style='color:#1e40af;font-weight:700;'>🗑️ Eliminazione Account</h3>", unsafe_allow_html=True)
     
     # Gli admin NON possono auto-eliminarsi
     if is_admin:
@@ -414,7 +453,7 @@ with tab3:
                     # STEP 1: Elimina tutte le fatture (di TUTTI i ristoranti)
                     # Temporaneamente rimuovi ristorante_id per eliminare TUTTE le fatture dell'utente
                     saved_ristorante_id = st.session_state.pop('ristorante_id', None)
-                    logger.info(f"ELIMINAZIONE ACCOUNT - Inizio per user_id={user_id}, email={user_email}")
+                    logger.info(f"ELIMINAZIONE ACCOUNT - Inizio per user_id={user_id}")
                     result_fatture = elimina_tutte_fatture(user_id)
                     
                     if not result_fatture.get('success'):
@@ -437,11 +476,18 @@ with tab3:
                         ('ricette', 'userid'),
                         ('ingredienti_workspace', 'userid'),
                         ('note_diario', 'userid'),
+                        ('custom_tags', 'user_id'),
+                        ('ai_usage_events', 'user_id'),
+                        ('login_attempts', 'email'),
                         ('ristoranti', 'user_id'),
                     ]
                     for table_name, id_col in tables_to_clean:
                         try:
-                            supabase.table(table_name).delete().eq(id_col, user_id).execute()
+                            # login_attempts usa email come filtro, non user_id
+                            if table_name == 'login_attempts':
+                                supabase.table(table_name).delete().eq(id_col, user_email.strip().lower()).execute()
+                            else:
+                                supabase.table(table_name).delete().eq(id_col, user_id).execute()
                             logger.info(f"ELIMINAZIONE ACCOUNT - Pulita tabella {table_name}")
                         except Exception as table_err:
                             logger.warning(f"Errore pulizia tabella {table_name}: {table_err}")
@@ -455,7 +501,13 @@ with tab3:
                     # STEP 3: Elimina l'utente dalla tabella users
                     delete_result = supabase.table('users').delete().eq('id', user_id).execute()
                     
-                    logger.info(f"ELIMINAZIONE ACCOUNT - Utente {user_email} eliminato dal database")
+                    # Verifica che l'utente sia stato effettivamente eliminato
+                    if not delete_result.data:
+                        logger.error(f"ELIMINAZIONE ACCOUNT FALLITA - Nessuna riga eliminata per user_id={user_id}")
+                        st.error("❌ Errore: l'account non è stato eliminato dal database. Contatta il supporto.")
+                        st.stop()
+                    
+                    logger.info(f"ELIMINAZIONE ACCOUNT - Utente user_id={user_id} eliminato dal database")
                     
                     # STEP 4: Pulizia cache e sessione, poi logout
                     st.cache_data.clear()

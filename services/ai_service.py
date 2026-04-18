@@ -138,7 +138,8 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
     (
         "VINI",
         r"\b(VINO|CHIANTI|MONTEPULCIANO|FRANCIACORTA|PROSECCO|MOSCATO|FALANGHINA|GEWURZTRAMINER|PINOT|RIESLING|MERLOT|SYRAH|CABERNET|"
-        r"BRUT|CUVEE|LANGHE|BAROLO|BARBARESCO|AMARONE|PRIMITIVO|NEBBIOLO|SANGIOVESE|LAMBRUSCO|DOCG)\b",
+        r"BRUT|CUVEE|LANGHE|BAROLO|BARBARESCO|AMARONE|PRIMITIVO|NEBBIOLO|SANGIOVESE|LAMBRUSCO|DOCG|DOC|IGT|"
+        r"PASSERINA|RIBOLLA|VALDOB\w*|PLUM\s+WINE)\b",
     ),
     # --- Birre (BEER escluso: in italiano si usa BIRRA; evita catturare GINGER BEER = BEVANDE) ---
     (
@@ -161,10 +162,10 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
     # --- Pesce e frutti di mare (incluso tonno; lo stato di conservazione non cambia la categoria) ---
     (
         "PESCE",
-        r"\b(PESCE|SALMONE|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|ORATE|BRANZINO|SPIGOLA|"
+        r"\b(PESCE|SALMON[EI]|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|ORATE|BRANZIN[OI]|SPIGOLA|"
         r"CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|ALIC[EI]|MERLUZZO|SCAMPI|SCAMPO|"
         r"VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTICE|"
-        r"ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA)\b",
+        r"ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|CANNOLICCHI[OA]?|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|SPUMILIA)\b",
     ),
     # --- Salumi (solo keyword ultra-specifici; COPPA/LONZA/PANCETTA esclusi: troppo ambigui) ---
     (
@@ -204,6 +205,10 @@ _ECCEZIONI_REGOLE: list[tuple[str, str]] = [
     (r"\bGINGER\b", "BIRRE"),
     # Utensili da cucina (forbici, coltelli) con nomi pesce → MATERIALE/MANUTENZIONE, non PESCE
     (r"\b(FORBICE|FORBICI|COLTELLO|COLTELLI|PINZA|PINZE)\b", "PESCE"),
+    # SALMONI/SALMONE con "BRAVO" (brand fornitore pesce) non è una BEVANDA
+    (r"\bSALMON\w*\b", "BEVANDE"),
+    # INSALATA DI MARE non è VERDURE
+    (r"\bINSALATA\s+DI\s+MARE\b", "VERDURE"),
     # Pasta ripiena / dim sum (congelati/secchi) con ingredienti pesce → SECCO, non PESCE
     (r"\b(RAVIOLI|TORTELLI|TORTELLONI|AGNOLOTTI|GIRASOLI|MEZZELUNE|DIMSUM|DIM\s*SUM)\b", "PESCE"),
     # Pasta ripiena (congelata/secca) con ingredienti salumi → SECCO, non SALUMI
@@ -239,11 +244,11 @@ _PASTICCERIA_RE = re.compile(
     r"TRECCIA|GIRELLA|CREME\s*BRULEE|CREME\s*BRULE\b|CR[EÈ]ME\s*BR[UÛ]L[EÉ]E|BAO\s+CREMA)\b"
 )
 _PESCE_RE = re.compile(
-    r"\b(PESCE|SALMONE|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|"
-    r"ORATE|BRANZINO|SPIGOLA|CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|"
+    r"\b(PESCE|SALMON[EI]|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|"
+    r"ORATE|BRANZIN[OI]|SPIGOLA|CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|"
     r"ALIC[EI]|MERLUZZO|SCAMPI|SCAMPO|VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|"
     r"RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTICE|ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|"
-    r"CANNOLICCHI[OA]?|CAVIALE)\b"
+    r"CANNOLICCHI[OA]?|CAVIALE|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|SPUMILIA)\b"
 )
 _SALSA_CREMA_RE = re.compile(
     r"\b(SALSA|SALSE|SUGO|SUGHI|RAGU|RAGÙ|PESTO|BESCIAMELLA|ROUX|CREMA|CREME|FARCITURA|FARCITURE)\b"
@@ -309,11 +314,18 @@ _SERVIZI_CANONI_RE = re.compile(
 _SERVIZI_EXTRA_RE = re.compile(
     r"\b(ARROTONDAMENTO|TRASPORTO|ASSICURAZIONE|PREMIO\s+ASSICURATIVO|AGG\s*ISTAT|ADEGUAMENTO\s*ISTAT|ISTAT)\b"
 )
+_RIVALSA_BOLLO_RE = re.compile(r"\b(RIVALSA\s+(?:IMPOSTA\s+DI\s+)?BOLLO|IMPOSTA\s+DI\s+BOLLO|RIVALSA\s+BOLLO)\b")
 _MANUTENZIONE_CONTRATTO_RE = re.compile(
     r"\b(CANONE\s+MANUTENZIONE|TELEASSISTENZA|CONTRATTO\s+MANUTENZIONE|MANUTENZIONE\s+ORDINARIA)\b"
 )
 _MANUTENZIONE_GAS_RE = re.compile(
     r"\b(BOMBOLA|BRUCIATORE|ADATTATORE|RIDUTTORE|VALVOLA|CONTENITORI?)\b.*\bGAS\b|\bGAS\b.*\b(BOMBOLA|BRUCIATORE|ADATTATORE|RIDUTTORE|VALVOLA|CONTENITORI?)\b"
+)
+_INTERVENTO_TECNICO_ATTREZZATURE_RE = re.compile(
+    r"\b(RIPARAZION\w*|MANUTENZION\w*|SOSTITUZION\w*|GUASTO|RICAMBIO|ASSISTENZA\s+TECNICA|INTERVENTO\s+TECNICO)\b"
+)
+_APPARECCHI_CUCINA_RE = re.compile(
+    r"\b(CUOCIRAVIOLI|CUCINA|WOK|FORNO|CAPPA|FRIGGITRICE|FRIGGITRIC[EI]|FRIGO|FRIGORIFERO|CELLA|LAVASTOVIGLIE|PIASTRA|BRUCIATORE|UGELLO|PILOTA|TERMOCOPPIA|RUBINETTO\s+GAS)\b"
 )
 _MANUTENZIONE_LIGHT_RE = re.compile(r"\b(ACCENDIGAS|ZOCCOLINO)\b")
 _VARIE_BAR_SERVICE_RE = re.compile(
@@ -326,6 +338,8 @@ _SERVIZI_NORMATIVI_RE = re.compile(r"\b(HACCP|ADEMPIMENTI\s*NORMATIVI|SICUREZZA\
 _AGLIO_CIPOLLA_TRECCIA_RE = re.compile(r"\b(AGLIO|CIP(?:OLLA|OLLE|\.?))\b.*\bTRECCIA\b|\bTRECCIA\b.*\b(AGLIO|CIP(?:OLLA|OLLE|\.?))\b")
 _VERDURA_IN_VASCHETTA_RE = re.compile(r"\b(VALERIANA|RUCOLA|INSALATA|SPINACI|ERBETTE)\b.*\b(VASCHE?TTA|VASCHE?TTE|VASC)\b|\b(VASCHE?TTA|VASCHE?TTE|VASC)\b.*\b(VALERIANA|RUCOLA|INSALATA|SPINACI|ERBETTE)\b")
 _ARANCE_SPREMUTA_RE = re.compile(r"\bARANC\w*\b.*\bSPREMUTA\b|\bSPREMUTA\b.*\bARANC\w*\b")
+_FRUTTA_TROPICALE_RE = re.compile(r"\b(FRUTTA\s+(?:DELLA\s+)?PASION\w*|PASSION\s*FRUIT|MARACU(JA|YA))\b")
+_GERMOGLI_SOIA_RE = re.compile(r"\bGERMOGLI\b.*\bSOIA\b|\bSOIA\b.*\bGERMOGLI\b")
 _AVOCADO_TRASPORTO_RE = re.compile(r"\bAVOCADO\b.*\bTRASPORTO\s+AEREO\b|\bTRASPORTO\s+AEREO\b.*\bAVOCADO\b")
 _CASTAGNE_ACQUA_RE = re.compile(r"\bCASTAGN\w*\b.*\bD\s*[' ]?ACQUA\b|\bD\s*[' ]?ACQUA\b.*\bCASTAGN\w*\b")
 _CINGHIALE_RE = re.compile(r"\bCINGHIALE\b")
@@ -384,12 +398,32 @@ _FRUTTI_BOSCO_RE = re.compile(r"\bFRUTTI\s+DI\s+BOSCO\b|\bFRUTT\w*\s+BOSCO\b")
 _SPIANATA_RE = re.compile(r"\bSPIANATA\b")
 _MIELE_BUSTINE_RE = re.compile(r"\bMIELE\b.*\bBUSTIN\w*\b|\bBUSTIN\w*\b.*\bMIELE\b|\bCONFEZIONE\s+MIELE\b")
 _CIOCCOLATA_CALDA_RE = re.compile(r"\bCIOCCOLATA\b.*\b(MONODOS|CALDA|LATTE|PREPARATO)\b|\bMONODOS\w*\b.*\bCIOCCOLAT")
-_VINO_DOC_RE = re.compile(r"\b(DOC|DOCG|IGT)\b.*\bCL\s*75\b|\bCL\s*75\b.*\b(DOC|DOCG|IGT)\b")
+_VINO_DOC_RE = re.compile(r"\b(DOC|DOCG|IGT)\b.*\b(CL\s*75|75\s*CL)\b|\b(CL\s*75|75\s*CL)\b.*\b(DOC|DOCG|IGT)\b")
 _PIADA_RE = re.compile(r"\bPIAD[AE]\b")
 _SALE_ALIMENTARE_RE = re.compile(r"\bSALE\b.*\b(IODATO|FINO|GROSSO|MARINO)\b")
 _VANIGLIA_BACCA_RE = re.compile(r"\b(VANIGLIA|BACCA\s+VANIGLIA)\b")
 _NOCI_PISTACCHIO_SECCO_RE = re.compile(r"\b(NOCI\s+SGUSCIAT|PISTACCHI\w*\s+(CALIF|TOST|SGUS|INTERO))\b")
 _NON_FOOD_RE = re.compile(r"\bNON\s*FOOD\b")
+
+# --- Regole audit anomalie categorizzazione ---
+_SALVIETTA_TNT_RE = re.compile(r"\bSALV\w*\b.*\bTNT\b|\bTNT\b.*\bSALV\w*\b")
+_MOCCHI_MOCHI_RE = re.compile(r"\b(MOCCHI|MOCHI)\b")
+_BURRATA_RE = re.compile(r"\bBURRAT[AE]\b")
+_OLIO_EXV_RE = re.compile(r"\bOLIO\s+EX(TRA)?V\w*\b")
+_RAVIOLI_GRIGLIA_CARNE_RE = re.compile(r"\bRAVIOLI\b.*\bGRIGLIA\b.*\b(CARNE|MAIALE)\b")
+_CONTRIBUTO_CONSEGNA_RE = re.compile(r"\bCONTRIBUTO\s+SPESE\b.*\bCONSEGNA\b|\bSPESE\s+DI\s+CONSEGNA\b")
+_CAPRICCIOSA_SECCHIO_RE = re.compile(r"\bCAPRICCIOSA\b.*\bSECCHIO\b|\bSECCHIO\b.*\bCAPRICCIOSA\b")
+_YOUTIAO_RE = re.compile(r"\bYOUTIAO\b")
+_WOSUN_RE = re.compile(r"\bWOSUN\b")
+_GUACAMOLE_RE = re.compile(r"\bGUACA\w*\b")
+_CONCENTRATO_POMODORO_RE = re.compile(r"\b(DOPPIO\s+)?CONCENTRATO\b.*\bMUTTI\b|\bMUTTI\b.*\bCONCENTRATO\b")
+_OVINO_RE = re.compile(r"\b(OVINO|AGNELLO|AGNELL\w*)\b")
+_INSALATA_MARE_RE = re.compile(r"\bINSALATA\s+DI\s+MARE\b")
+_CODA_SMARIA_RE = re.compile(r"\bCODA\b.*\bS\.?\s*MARIA\b")
+_GRANELLA_PISTACCHIO_RE = re.compile(r"\bGRANELLA\b.*\bPISTACCH\w*\b")
+_TOFU_GENERICO_RE = re.compile(r"\b(TOFU|TOUFU|DOUFU)\b")
+_TOFU_PESCE_RE = re.compile(r"\b(SEAFOOD|FISH|PESCE)\b.*\b(TOFU|TOUFU)\b|\b(TOFU|TOUFU)\b.*\b(SEAFOOD|FISH|PESCE|DI\s+PESCE)\b")
+_CIMI_BIMBA_RE = re.compile(r"\bCIMI\s+DI\s+BIMBA\b")
 
 
 def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) -> Tuple[str, Optional[str]]:
@@ -449,6 +483,129 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         if cat != mapped:
             return mapped, "hardware_sicurezza"
         return cat, None
+
+    # --- Regole audit: correzioni anomalie categorizzazione ---
+
+    # Salviette/tovaglioli TNT → materiale di consumo (non frutta per "LIMONE")
+    if _SALVIETTA_TNT_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "salvietta_tnt_consumo"
+        return cat, None
+
+    # MOCCHI/MOCHI (gelato/dessert) → pasticceria
+    if _MOCCHI_MOCHI_RE.search(desc_u):
+        mapped = "PASTICCERIA"
+        if cat != mapped:
+            return mapped, "mochi_pasticceria"
+        return cat, None
+
+    # Burrate → latticini (non servizi/materiale)
+    if _BURRATA_RE.search(desc_u):
+        mapped = "LATTICINI"
+        if cat != mapped:
+            return mapped, "burrata_latticino"
+        return cat, None
+
+    # Olio extravergine → olio e condimenti (non materiale di consumo)
+    if _OLIO_EXV_RE.search(desc_u):
+        mapped = "OLIO E CONDIMENTI"
+        if cat != mapped:
+            return mapped, "olio_extravergine"
+        return cat, None
+
+    # Ravioli alla griglia di carne/maiale → carne (non manutenzione)
+    if _RAVIOLI_GRIGLIA_CARNE_RE.search(desc_u):
+        mapped = "CARNE"
+        if cat != mapped:
+            return mapped, "ravioli_griglia_carne"
+        return cat, None
+
+    # Contributo/spese di consegna → servizi (non gelati)
+    if _CONTRIBUTO_CONSEGNA_RE.search(desc_u):
+        mapped = "SERVIZI E CONSULENZE"
+        if cat != mapped:
+            return mapped, "contributo_consegna_servizio"
+        return cat, None
+
+    # Insalata capricciosa in secchio → scatolame (non manutenzione)
+    if _CAPRICCIOSA_SECCHIO_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "capricciosa_secchio_conserva"
+        return cat, None
+
+    # Concentrato di pomodoro Mutti → scatolame (non pasticceria)
+    if _CONCENTRATO_POMODORO_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "concentrato_mutti_conserva"
+        return cat, None
+
+    # Youtiao (frittella cinese) → prodotti da forno
+    if _YOUTIAO_RE.search(desc_u):
+        mapped = "PRODOTTI DA FORNO"
+        if cat != mapped:
+            return mapped, "youtiao_forno"
+        return cat, None
+
+    # Wosun (verdura cinese) → verdure
+    if _WOSUN_RE.search(desc_u):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "wosun_verdura"
+        return cat, None
+
+    # Cimi di bimba (cime di rapa, typo) → verdure
+    if _CIMI_BIMBA_RE.search(desc_u):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "cimi_bimba_verdura"
+        return cat, None
+
+    # Guacamole/salsa guaca → salse e creme
+    if _GUACAMOLE_RE.search(desc_u):
+        mapped = "SALSE E CREME"
+        if cat != mapped:
+            return mapped, "guacamole_salsa"
+        return cat, None
+
+    # Ovino/agnello → carne (non pesce)
+    if _OVINO_RE.search(desc_u):
+        mapped = "CARNE"
+        if cat != mapped:
+            return mapped, "ovino_agnello_carne"
+        return cat, None
+
+    # Insalata di mare → pesce (non verdure)
+    if _INSALATA_MARE_RE.search(desc_u):
+        mapped = "PESCE"
+        if cat != mapped:
+            return mapped, "insalata_mare_pesce"
+        return cat, None
+
+    # Coda S.Maria (code mazzancolle) → pesce (non carne)
+    if _CODA_SMARIA_RE.search(desc_u):
+        mapped = "PESCE"
+        if cat != mapped:
+            return mapped, "coda_smaria_pesce"
+        return cat, None
+
+    # Granella di pistacchio → spezie e aromi (non materiale)
+    if _GRANELLA_PISTACCHIO_RE.search(desc_u):
+        mapped = "SPEZIE E AROMI"
+        if cat != mapped:
+            return mapped, "granella_pistacchio_spezia"
+        return cat, None
+
+    # Tofu/toufu/doufu generico → latticini (ma NON se è seafood/fish tofu)
+    if _TOFU_GENERICO_RE.search(desc_u) and not _TOFU_PESCE_RE.search(desc_u):
+        mapped = "LATTICINI"
+        if cat != mapped:
+            return mapped, "tofu_latticino"
+        return cat, None
+
+    # --- Fine regole audit ---
 
     if _SERVIZI_NORMATIVI_RE.search(desc_u):
         mapped = "SERVIZI E CONSULENZE"
@@ -793,6 +950,18 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "frutta_per_spremuta"
         return cat, None
 
+    if _FRUTTA_TROPICALE_RE.search(desc_u):
+        mapped = "FRUTTA"
+        if cat != mapped:
+            return mapped, "frutta_tropicale"
+        return cat, None
+
+    if _GERMOGLI_SOIA_RE.search(desc_u):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "germogli_soia_verdura"
+        return cat, None
+
     if _AVOCADO_TRASPORTO_RE.search(desc_u):
         mapped = "FRUTTA"
         if cat != mapped:
@@ -815,6 +984,18 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "MANUTENZIONE E ATTREZZATURE"
         if cat != mapped:
             return mapped, "contratto_manutenzione"
+        return cat, None
+
+    if _RIVALSA_BOLLO_RE.search(desc_u):
+        mapped = "SERVIZI E CONSULENZE"
+        if cat != mapped:
+            return mapped, "rivalsa_bollo_servizio"
+        return cat, None
+
+    if _INTERVENTO_TECNICO_ATTREZZATURE_RE.search(desc_u) and _APPARECCHI_CUCINA_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "intervento_tecnico_attrezzatura"
         return cat, None
 
     if _SERVIZI_EXTRA_RE.search(desc_u):

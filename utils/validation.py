@@ -84,7 +84,7 @@ def is_dicitura_sicura(descrizione: str, prezzo: float, quantita: float) -> bool
         "COSTO IMBALLO", "SPESE IMBALLO",
         
         # Sconti/abbuoni
-        "SCONTO QUANTITÀ", "SCONTO VOLUME", "ABBUONO",
+        "SCONTO QUANTITÀ", "SCONTO VOLUME", "SCONTO FINALE", "SCONTI FINALI", "ABBUONO",
         "ARROTONDAMENTO", "SUPPLEMENTO", "MAGGIORAZIONE",
         
         # Note generiche

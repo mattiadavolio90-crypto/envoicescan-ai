@@ -230,7 +230,9 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             _descrizioni_con_prezzo_zero.add(desc)
                     logger.info(f"🛡️ QUARANTENA: {len(_descrizioni_con_prezzo_zero)} descrizioni con righe €0 (escluse da memoria globale)")
                     
-                    logger.info(f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare (NullEmpty: {len(_dati_nullempty)}, DaClass: {len(_dati_daclass)})")
+                    logger.info(
+                        f"🔍 Query diretta DB: trovate {len(descrizioni_da_classificare)} descrizioni uniche da classificare"
+                    )
                 except Exception as e:
                     logger.error(f"Errore query diretta descrizioni: {e}")
                     # Fallback su df_completo se query fallisce
@@ -394,14 +396,18 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 <div class="progress-status">{prodotti_elaborati} di {totale_da_classificare} prodotti</div>
                             </div>
                             """, unsafe_allow_html=True)
-                            cats = classifica_via_worker(
-                                chunk,
-                                fornitori=[desc_to_fornitore.get(d, '') for d in chunk],
-                                iva=[desc_to_iva.get(d, 0) for d in chunk],
-                                hint=[desc_to_hint.get(d) for d in chunk],
-                                user_id=user_id,
-                                ristorante_id=st.session_state.get('ristorante_id'),
-                            )
+                            try:
+                                cats = classifica_via_worker(
+                                    chunk,
+                                    fornitori=[desc_to_fornitore.get(d, '') for d in chunk],
+                                    iva=[desc_to_iva.get(d, 0) for d in chunk],
+                                    hint=[desc_to_hint.get(d) for d in chunk],
+                                    user_id=user_id,
+                                    ristorante_id=st.session_state.get('ristorante_id'),
+                                )
+                            except Exception as ai_exc:
+                                logger.error(f"❌ classifica_via_worker fallita per chunk {_chunk_num}: {ai_exc}")
+                                cats = ["Da Classificare"] * len(chunk)
                             st.session_state['_ai_budget_calls'] = st.session_state.get('_ai_budget_calls', 0) + 1
                             ai_batch_upsert = []
                             for desc, cat in zip(chunk, cats):

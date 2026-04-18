@@ -17,9 +17,11 @@ Dipendenze:
 
 import json
 import re
+from datetime import datetime
 import pandas as pd
 import streamlit as st
 import xmltodict
+from defusedxml import ElementTree as _DefusedET
 from typing import List, Dict, Any, Optional
 
 
@@ -43,6 +45,7 @@ from utils.formatters import (
     safe_get,
     converti_in_base64,
     calcola_prezzo_standard_intelligente,
+    calcola_alert_data_consegna_td24,
     log_upload_event
 )
 from utils.text_utils import (
@@ -591,6 +594,13 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
         else:
             contenuto = contenuto_bytes
         
+        # 🔒 Validazione XXE: verifica assenza entità esterne prima del parsing
+        try:
+            _DefusedET.fromstring(contenuto if isinstance(contenuto, str) else contenuto.decode('utf-8', errors='replace'))
+        except Exception as xxe_err:
+            logger.warning(f"⚠️ Validazione XML sicurezza fallita: {xxe_err}")
+            raise ValueError(f"XML non valido o potenzialmente pericoloso: {xxe_err}")
+        
         doc = xmltodict.parse(contenuto)
         
         root_key = list(doc.keys())[0]
@@ -635,7 +645,49 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
             logger.info(f"📋 P.IVA Cessionario estratta: {piva_cessionario}")
         
         body = safe_get(fattura, ['FatturaElettronicaBody'], default={}, keep_list=False)
-        
+
+        # ============================================================
+        # ESTRAZIONE DATA CONSEGNA DA DatiDDT (fatture differite TD24)
+        # ============================================================
+        # Mappa numero_riga → data consegna (YYYY-MM-DD) dal blocco DatiDDT.
+        # Schema A/C: DatiDDT con RiferimentoNumeroLinea + DataDDT
+        # Schema B: idem, date anche ripetute in Descrizione
+        # Schema D: nessun DatiDDT → fallback regex GG/MM/AAAA in Descrizione
+        _ddt_date_map: Dict[int, str] = {}  # linea → "YYYY-MM-DD"
+        _ddt_global_date: Optional[str] = None  # data DDT senza RiferimentoNumeroLinea
+        is_td24 = (tipo_documento == 'TD24')
+
+        if is_td24:
+            dati_generali = safe_get(body, ['DatiGenerali'], default={}, keep_list=False)
+            dati_ddt_raw = dati_generali.get('DatiDDT') if isinstance(dati_generali, dict) else None
+            if dati_ddt_raw is not None:
+                if isinstance(dati_ddt_raw, dict):
+                    dati_ddt_raw = [dati_ddt_raw]
+                if isinstance(dati_ddt_raw, list):
+                    for ddt_block in dati_ddt_raw:
+                        if not isinstance(ddt_block, dict):
+                            continue
+                        data_ddt = str(ddt_block.get('DataDDT') or '').strip()
+                        if not data_ddt:
+                            continue
+                        rif_linee = ddt_block.get('RiferimentoNumeroLinea')
+                        if rif_linee is None:
+                            # Nessun riferimento riga → vale per tutte le righe
+                            _ddt_global_date = data_ddt
+                        else:
+                            if not isinstance(rif_linee, list):
+                                rif_linee = [rif_linee]
+                            for num in rif_linee:
+                                try:
+                                    _ddt_date_map[int(num)] = data_ddt
+                                except (ValueError, TypeError):
+                                    pass
+            if _ddt_date_map or _ddt_global_date:
+                logger.info(
+                    f"📅 TD24 DatiDDT: {len(_ddt_date_map)} righe mappate"
+                    + (f", data globale={_ddt_global_date}" if _ddt_global_date else "")
+                )
+
         linee = safe_get(
             body, 
             ['DatiBeniServizi', 'DettaglioLinee'], 
@@ -816,7 +868,29 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     )
                 else:
                     prezzo_std = None
-                
+
+                # ============================================================
+                # DATA CONSEGNA (solo TD24): DatiDDT → regex fallback
+                # ============================================================
+                _riga_data_consegna = None
+                if is_td24:
+                    # 1) Mappa DatiDDT per numero riga
+                    _riga_data_consegna = _ddt_date_map.get(idx)
+                    # 2) Fallback: data globale DDT (senza RiferimentoNumeroLinea)
+                    if not _riga_data_consegna and _ddt_global_date:
+                        _riga_data_consegna = _ddt_global_date
+                    # 3) Fallback: regex GG/MM/AAAA nella descrizione (Schema D)
+                    if not _riga_data_consegna and descrizione_raw:
+                        _date_match = re.search(r'\b(\d{2})/(\d{2})/(\d{4})\b', descrizione_raw)
+                        if _date_match:
+                            _dd, _mm, _yyyy = _date_match.groups()
+                            try:
+                                _parsed = datetime.strptime(f"{_yyyy}-{_mm}-{_dd}", "%Y-%m-%d")
+                                if 2020 <= _parsed.year <= 2030:
+                                    _riga_data_consegna = _parsed.strftime("%Y-%m-%d")
+                            except ValueError:
+                                pass
+
                 righe_prodotti.append({
                     'Numero_Riga': idx,
                     'Codice_Articolo': codice_articolo,
@@ -834,7 +908,8 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     'needs_review': needs_review,
                     'piva_cessionario': piva_cessionario,  # P.IVA destinatario fattura
                     'tipo_documento': tipo_documento,  # TD01=Fattura, TD04=Nota Credito
-                    'sconto_percentuale': round(sconto_percentuale, 2)  # % sconto applicato
+                    'sconto_percentuale': round(sconto_percentuale, 2),  # % sconto applicato
+                    'data_consegna': _riga_data_consegna,  # Data consegna DDT (solo TD24)
                 })
             except Exception as e:
                 logger.warning(f"{file_caricato.name} - Riga {idx} skippata: {str(e)[:100]}")
@@ -1232,9 +1307,26 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     "prezzo_standard": float(prezzo_std) if prezzo_std and pd.notna(prezzo_std) else None,
                     "needs_review": prod.get("needs_review", False),
                     "tipo_documento": prod.get("tipo_documento", "TD01"),
-                    "sconto_percentuale": prod.get("sconto_percentuale", 0.0)
+                    "sconto_percentuale": prod.get("sconto_percentuale", 0.0),
+                    "data_consegna": prod.get("data_consegna"),
                 })
             
+
+            # Idempotenza: rimuovi eventuali righe già esistenti per lo stesso file/user/ristorante
+            cleanup_response = (
+                supabase_client.table("fatture")
+                .delete()
+                .eq("user_id", user_id)
+                .eq("file_origine", nome_file)
+                .eq("ristorante_id", ristorante_id)
+                .execute()
+            )
+            righe_preesistenti = len(cleanup_response.data) if cleanup_response.data else 0
+            if righe_preesistenti:
+                logger.warning(
+                    f"♻️ Idempotenza salvataggio: eliminate {righe_preesistenti} righe preesistenti "
+                    f"per {nome_file} (user={user_id}, ristorante={ristorante_id})"
+                )
 
             # Inserimento
             response = supabase_client.table("fatture").insert(records).execute()
@@ -1259,6 +1351,16 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     user_email = "worker"
 
                 _is_invoicetronic = event_source == 'invoicetronic'
+                _td24_alert = calcola_alert_data_consegna_td24(dati_prodotti)
+                _base_details = {"source": event_source, "ristorante_id": ristorante_id}
+                if _td24_alert:
+                    _base_details.update({
+                        "alert_data_consegna": _td24_alert["status"],
+                        "td24_lines_total": _td24_alert["lines_total"],
+                        "td24_lines_with_date": _td24_alert["lines_with_date"],
+                        "td24_pct": _td24_alert["pct"],
+                    })
+
                 if verifica and verifica["integrita_ok"]:
                     log_upload_event(
                         user_id=user_id,
@@ -1269,11 +1371,18 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                         rows_saved=verifica["righe_db"],
                         error_stage=None,
                         error_message=None,
-                        details={"source": event_source},
+                        details=_base_details,
                         supabase_client=supabase_client,
                         needs_ack=_is_invoicetronic,
+                        alert_data_consegna=_td24_alert["status"] if _td24_alert else None,
                     )
                 elif verifica:
+                    _partial_details = {
+                        **_base_details,
+                        "righe_parsed": verifica["righe_parsed"],
+                        "righe_db": verifica["righe_db"],
+                        "perdite": verifica["perdite"],
+                    }
                     log_upload_event(
                         user_id=user_id,
                         user_email=user_email,
@@ -1283,14 +1392,10 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                         rows_saved=verifica["righe_db"],
                         error_stage="POSTCHECK",
                         error_message=f"Perdita dati: {verifica['perdite']} righe mancanti",
-                        details={
-                            "source": event_source,
-                            "righe_parsed": verifica["righe_parsed"],
-                            "righe_db": verifica["righe_db"],
-                            "perdite": verifica["perdite"]
-                        },
+                        details=_partial_details,
                         supabase_client=supabase_client,
                         needs_ack=_is_invoicetronic,
+                        alert_data_consegna=_td24_alert["status"] if _td24_alert else None,
                     )
             except Exception as log_error:
                 logger.error(f"Errore logging upload event: {log_error}")
@@ -1334,7 +1439,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     rows_saved=0,
                     error_stage="SUPABASE_INSERT",
                     error_message=str(e)[:500],
-                    details={"source": event_source, "exception_type": type(e).__name__},
+                    details={"source": event_source, "ristorante_id": ristorante_id, "exception_type": type(e).__name__},
                     supabase_client=supabase_client
                 )
             except Exception as log_error:

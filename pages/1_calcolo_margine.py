@@ -136,7 +136,7 @@ with col_tab1:
             st.session_state.margine_tab = "calcolo"
             st.rerun()
 with col_tab2:
-    if st.button("🏭 CENTRI\nDI PRODUZIONE", key="btn_tab_centri", use_container_width=True,
+    if st.button("🏭 CENTRI DI\nCOSTO", key="btn_tab_centri", use_container_width=True,
                  type="primary" if st.session_state.margine_tab == "centri" else "secondary"):
         if st.session_state.margine_tab != "centri":
             st.session_state.margine_tab = "centri"
@@ -183,7 +183,7 @@ if st.session_state.margine_tab == "analisi":
     col_periodo_aa, col_info_aa = st.columns([1.5, 4.5])
 
     with col_periodo_aa:
-        st.markdown('<p style="color:#1e3a5f;font-weight:600;font-size:0.9rem;margin:0 0 4px 0;">📅 Filtra per Periodo</p>', unsafe_allow_html=True)
+        st.markdown('<p style="color:#1e40af;font-weight:600;font-size:0.9rem;margin:0 0 4px 0;">📅 Filtra per Periodo</p>', unsafe_allow_html=True)
         periodo_sel_aa = st.selectbox(
             "📅 Filtra per Periodo",
             options=PERIODO_OPTIONS,
@@ -308,7 +308,7 @@ if st.session_state.margine_tab == "analisi":
         totale_costi_fb = df_costi_cat['totale'].sum()
 
         st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-        st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">🏭 Incidenza Centri di Produzione sul Fatturato</h3>', unsafe_allow_html=True)
+        st.markdown('<h3 style="color:#1e40af;font-weight:700;">🏭 Incidenza Centri di Costo sul Fatturato</h3>', unsafe_allow_html=True)
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
 
         # ============================================
@@ -733,22 +733,20 @@ if st.session_state.margine_tab == "analisi":
                     sheet_name = centro_n[:31]
                     df_c_agg_exp.to_excel(writer, index=False, sheet_name=sheet_name)
             excel_buf_c.seek(0)
-            _is_trial_cm = st.session_state.get('trial_info', {}).get('is_trial', False)
             st.download_button(
-                label="Excel" if not _is_trial_cm else "🔒 Excel (non disponibile in prova)",
+                label="Excel",
                 data=excel_buf_c.getvalue(),
                 file_name=f"analisi_centri_categorie_{anno_aa}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="aa_download_centri",
                 type="primary",
                 use_container_width=False,
-                disabled=_is_trial_cm,
             )
 
         # ============================================
         # KPI PERIODO - ANALISI CENTRI
         # ============================================
-        st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📊 Riepilogo KPI - Media valori per periodo</h3>', unsafe_allow_html=True)
+        st.markdown('<h3 style="color:#1e40af;font-weight:700;">📊 Riepilogo KPI - Media valori per periodo</h3>', unsafe_allow_html=True)
 
         # Numero mesi con fatturato > 0 (esclude mesi futuri o senza dati inseriti)
         _num_mesi_attivi_aa = _mesi_con_fatt_aa if _mesi_con_fatt_aa > 0 else 1
@@ -956,7 +954,8 @@ if st.session_state.margine_tab == "analisi":
             })
 
             if _commenti_centri:
-                st.markdown('<h4 style="color:#1e3a5f;font-weight:700;">💬 Analisi KPI</h4>', unsafe_allow_html=True)
+                st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
+                st.markdown('<h4 style="color:#1e40af;font-weight:700;">💬 Analisi KPI</h4>', unsafe_allow_html=True)
                 for c in _commenti_centri:
                     st.markdown(f"""
                     <div style='display: flex; align-items: center; gap: 12px; padding: 10px 16px; margin: 5px 0;
@@ -1151,7 +1150,8 @@ if st.session_state.margine_tab == "centri":
                 pivot['MEDIA'] = pivot.drop(columns=['TOTALE']).replace(0, pd.NA).mean(axis=1)
 
                 # Report
-                st.markdown("### 🏭 Spesa per Centro di Produzione mensile")
+                st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
+                st.markdown("### 🏭 Spesa per Centro di Costo mensile")
 
                 # Costruisci display DataFrame
                 mesi_cols = [c for c in pivot.columns if c not in ['TOTALE', 'MEDIA']]
@@ -1252,16 +1252,14 @@ if st.session_state.margine_tab == "centri":
 
                 with _col_centri_right:
                     st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
-                    _is_trial_centri = st.session_state.get('trial_info', {}).get('is_trial', False)
                     st.download_button(
-                        label="Excel" if not _is_trial_centri else "🔒 Excel (non disponibile in prova)",
+                        label="Excel",
                         data=excel_data_centri,
                         file_name=f"centri_produzione_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="cm_download_excel_centri",
                         type="primary",
                         use_container_width=False,
-                        disabled=_is_trial_centri,
                     )
 
 if st.session_state.margine_tab == "calcolo":
@@ -1365,7 +1363,7 @@ if st.session_state.margine_tab == "calcolo":
     # TABELLA UNICA TRASPOSTA - INPUT + RISULTATI
     # ============================================
     st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📊 Tabella Annuale ricavi-costi-margini</h3>', unsafe_allow_html=True)
+    st.markdown('<h3 style="color:#1e40af;font-weight:700;">📊 Tabella Annuale ricavi-costi-margini</h3>', unsafe_allow_html=True)
 
     st.markdown("""
     <details style='background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; margin-bottom: 16px;'>
@@ -1596,7 +1594,7 @@ if st.session_state.margine_tab == "calcolo":
     col_periodo_kpi, col_info_kpi = st.columns([1.5, 4.5])
 
     with col_periodo_kpi:
-        st.markdown('<p style="color:#1e3a5f;font-weight:600;font-size:0.9rem;margin:0 0 4px 0;">📅 Periodo di riferimento KPI</p>', unsafe_allow_html=True)
+        st.markdown('<p style="color:#1e40af;font-weight:600;font-size:0.9rem;margin:0 0 4px 0;">📅 Periodo di riferimento KPI</p>', unsafe_allow_html=True)
         periodo_sel = st.selectbox(
             "📅 Periodo di riferimento KPI",
             options=list(periodi_kpi.keys()),
@@ -1768,15 +1766,13 @@ if st.session_state.margine_tab == "calcolo":
         excel_data = export_excel_margini(df_risultati, anno, nome_rist, kpi_data)
         _col_excel_empty_t1, col_excel_t1 = st.columns([5, 1])
         with col_excel_t1:
-            _is_trial_mg = st.session_state.get('trial_info', {}).get('is_trial', False)
             st.download_button(
-                "🔒 Excel (prova)" if _is_trial_mg else "Excel",
+                "Excel",
                 data=excel_data,
                 file_name=f"Margini_{anno}_{nome_rist.replace(' ', '_')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="margine_download",
                 use_container_width=False,
-                disabled=_is_trial_mg,
             )
 
 

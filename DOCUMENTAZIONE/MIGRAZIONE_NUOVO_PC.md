@@ -183,7 +183,7 @@ Il browser si apre automaticamente su `http://localhost:8501`.
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest tests/ --tb=short
-# Atteso: 172 passed, 0 failed
+# Atteso: 330 passed, 0 failed
 ```
 
 ---
@@ -213,4 +213,4 @@ Aprilo con Notepad e verifica che il percorso Python punti al `.venv` locale:
 
 ---
 
-*Documento generato il 20/03/2026 — versione progetto con 172 test passati.*
+*Documento generato il 20/03/2026 — aggiornato il 15/04/2026 — versione progetto con 330 test passati.*

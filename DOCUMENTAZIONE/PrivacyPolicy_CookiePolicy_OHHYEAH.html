@@ -276,8 +276,8 @@
 
     <div class="header-meta">
       <div class="header-meta-item"><label>Titolare</label><span>Recoma System S.r.l.</span></div>
-      <div class="header-meta-item"><label>Ultimo aggiornamento</label><span>8 Aprile 2026</span></div>
-      <div class="header-meta-item"><label>Versione</label><span>v3.2</span></div>
+      <div class="header-meta-item"><label>Ultimo aggiornamento</label><span>15 Aprile 2026</span></div>
+      <div class="header-meta-item"><label>Versione</label><span>v3.3</span></div>
       <div class="header-meta-item"><label>Applicativo</label><span>OH YEAH! v3.1</span></div>
     </div>
   </div>
@@ -316,7 +316,7 @@
           <tr><td>Credenziali</td><td>Hash Argon2id della password (irreversibile)</td><td>Autenticazione sicura</td></tr>
           <tr><td>Documenti</td><td>Fatture elettroniche XML/P7M/PDF (caricate o ricevute via SDI/Invoicetronic)</td><td>Analisi gestionale costi</td></tr>
           <tr><td>Dati operativi</td><td>Ricette, ingredienti, note diario, margini</td><td>Funzionalità applicazione</td></tr>
-          <tr><td>Dati di sessione</td><td>Token UUID4 opaco, timestamp accessi</td><td>Gestione sessione autenticata</td></tr>
+          <tr><td>Dati di sessione</td><td>Token opaco ad alta entropia, timestamp accessi</td><td>Gestione sessione autenticata</td></tr>
           <tr><td>Log operativi</td><td>Registro upload (file, esito, righe), registro utilizzo AI (modello, token, costo)</td><td>Trasparenza e supporto tecnico</td></tr>
           <tr><td>Preferenze app</td><td>Stato periodo di prova, notifiche in-app nascoste</td><td>Personalizzazione esperienza utente</td></tr>
           <tr><td>Log tecnici</td><td>Azioni anonimizzate (senza PII in chiaro)</td><td>Sicurezza e debug</td></tr>
@@ -412,7 +412,7 @@
           <strong>session_token</strong>
           Tipo: tecnico / sessione<br>
           Scadenza: 30 giorni<br>
-          Contenuto: UUID4 opaco
+          Contenuto: Token opaco ad alta entropia
         </div>
         <div class="cookie-chip">
           <strong>impersonation_user_id</strong>
@@ -458,11 +458,13 @@
           <tr><td>Controllo accessi</td><td>Row-Level Security PostgreSQL + filtro applicativo user_id + ristorante_id su ogni query</td></tr>
           <tr><td>Rate limiting login</td><td>5 tentativi / 15 minuti per coppia IP+email — persistente su DB</td></tr>
           <tr><td>Rate limiting reset pw</td><td>1 richiesta / 5 minuti per email — persistente su DB (migration 046)</td></tr>
-          <tr><td>Sessioni</td><td>Token UUID4, TTL 30 giorni, scadenza inattività 8h, invalidazione al logout e su token non valido. Cookie Secure + SameSite=Strict</td></tr>
+          <tr><td>Sessioni</td><td>Token opaco ad alta entropia (secrets.token_urlsafe), TTL 30 giorni, scadenza inattività 8h, invalidazione al logout e su token non valido. Cookie Secure + SameSite=Strict</td></tr>
           <tr><td>IDOR protection</td><td>Filtro .eq('userid', user_id) su tutte le operazioni UPDATE/DELETE — nessuna modifica su record altrui anche con RLS permissivo</td></tr>
           <tr><td>Path traversal</td><td>Sanitizzazione nome file e File_Origine prima della persistenza su DB (strip ../ e path separator)</td></tr>
           <tr><td>XSS output</td><td>html.escape() su tutti i valori DB interpolati in HTML con unsafe_allow_html (sidebar, admin panel, categorie, P.IVA)</td></tr>
-          <tr><td>Test automatici</td><td>172 test pytest — eseguiti ad ogni rilascio in CI/CD; pipeline bloccante</td></tr>
+          <tr><td>Protezione XXE</td><td>Validazione XML con defusedxml prima del parsing — prevenzione XML External Entity attacks</td></tr>
+          <tr><td>Protezione SSRF</td><td>Whitelist host autorizzati per fetch XML remoti (solo *.invoicetronic.com/.it su HTTPS)</td></tr>
+          <tr><td>Test automatici</td><td>330 test pytest — eseguiti ad ogni rilascio in CI/CD; pipeline bloccante</td></tr>
           <tr><td>Dipendenze</td><td>requirements-lock.txt con hash SHA256; Dependabot CVE alerts attivi</td></tr>
           <tr><td>Log</td><td>Rotating 50 MB × 10, senza PII in chiaro, stack trace solo server-side</td></tr>
         </tbody>
@@ -517,7 +519,7 @@
         <div class="article-title">Modifiche alla Privacy Policy</div>
       </div>
       <p>Il Titolare si riserva il diritto di modificare la presente informativa in qualsiasi momento. Le modifiche sostanziali verranno comunicate all'utente tramite notifica nell'applicazione con almeno <strong>15 giorni di preavviso</strong>. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione delle modifiche.</p>
-      <p><em>Ultimo aggiornamento: <strong>8 Aprile 2026</strong> — versione 3.2</em></p>
+      <p><em>Ultimo aggiornamento: <strong>15 Aprile 2026</strong> — versione 3.3</em></p>
     </div>
 
   </div><!-- /section-wrap privacy -->
@@ -588,7 +590,7 @@
         <div class="article-title">Classificazione AI — Limitazioni e Responsabilità</div>
       </div>
       <ul>
-        <li>La classificazione automatica è fornita tramite <strong>OpenAI GPT-4o</strong> e ha natura <strong>indicativa</strong> — non costituisce parere professionale.</li>
+        <li>La classificazione automatica è fornita tramite <strong>OpenAI GPT-4o-mini</strong> e ha natura <strong>indicativa</strong> — non costituisce parere professionale.</li>
         <li>Il Titolare <strong>non garantisce l'accuratezza al 100%</strong> delle classificazioni AI.</li>
         <li>I contenuti delle fatture vengono trasmessi ad OpenAI <strong>on-the-fly, senza archivio permanente</strong>.</li>
         <li>Il Servizio fornisce strumenti di revisione e conferma manuale.</li>
@@ -636,7 +638,7 @@
         <div class="article-title">Modifiche ai Termini</div>
       </div>
       <p>Il Titolare si riserva il diritto di modificare i presenti Termini. Le modifiche sostanziali saranno comunicate tramite notifica nell'applicazione con almeno <strong>15 giorni di preavviso</strong>. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione.</p>
-      <p><em>Ultimo aggiornamento: <strong>8 Aprile 2026</strong></em></p>
+      <p><em>Ultimo aggiornamento: <strong>15 Aprile 2026</strong></em></p>
     </div>
 
     <hr>
@@ -662,7 +664,7 @@
   ══════════════════════════════════════════ -->
   <div class="doc-footer">
     <span><strong>OH YEAH!</strong> — Privacy Policy &amp; Cookie Policy v3.2</span>
-    <span>Recoma System S.r.l. — Ultimo aggiornamento: 8 Aprile 2026</span>
+    <span>Recoma System S.r.l. — Ultimo aggiornamento: 15 Aprile 2026</span>
     <span>D.Lgs. 196/2003 + GDPR UE 2016/679</span>
   </div>
 

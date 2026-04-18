@@ -97,7 +97,7 @@ Su Windows il lockfile esclude automaticamente uvloop, che non e' supportato dal
 python -m pytest tests/ -v
 ```
 
-149 test automatici.
+330 test automatici.
 
 ---
 

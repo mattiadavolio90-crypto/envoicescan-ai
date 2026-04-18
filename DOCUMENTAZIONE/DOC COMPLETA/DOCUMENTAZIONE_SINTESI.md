@@ -2,7 +2,7 @@
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 5.2 | Ultimo aggiornamento: 10 Aprile 2026 | Autore: Mattia D'Avolio  
+Versione: 5.3 | Ultimo aggiornamento: 15 Aprile 2026 | Autore: Mattia D'Avolio  
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato) | URL: https://ohyeah.streamlit.app/
 
 ---
@@ -20,7 +20,7 @@ OH YEAH! Hub è una piattaforma SaaS web-based per ristoratori italiani che anal
 - Calcolo Margine Operativo Lordo (MOL) con centri di produzione
 - Gestione multi-ristorante (un account, più locali)
 - Controllo variazioni prezzi, sconti, note di credito
-- Export Excel, Privacy Policy GDPR v3.2, Terms of Service
+- Export Excel, Privacy Policy GDPR v3.3, Terms of Service
 
 **Pubblico target:** ristoratori, piccole catene (2–5 locali), consulenti F&B
 
@@ -57,7 +57,7 @@ Oh Yeah! Hub/
 │   ├── 2_foodcost.py         # Foodcost, ricette, ingredienti, diario (~2.139 righe)
 │   ├── 3_controllo_prezzi.py # Variazioni prezzi, sconti, NC (~586 righe)
 │   ├── gestione_account.py   # Cambio password, export GDPR (~457 righe)
-│   └── privacy_policy.py     # Privacy Policy v3.2 + Terms of Service
+│   └── privacy_policy.py     # Privacy Policy v3.3 + Terms of Service
 ├── services/
 │   ├── ai_service.py         # Classificazione AI + memoria 3 livelli (~1.908 righe)
 │   ├── ai_cost_service.py    # Tracking costi OpenAI per ristorante (~94 righe)
@@ -85,7 +85,7 @@ Oh Yeah! Hub/
 │   └── prompt_ai_potenziato.py # Prompt GPT con esempi per 29 categorie
 ├── supabase/                  # Edge Function invoicetronic-webhook (Deno/TypeScript)
 ├── static/                   # branding.css, common.css, layout.css
-├── tests/                    # 194 test automatici pytest (11 moduli)
+├── tests/                    # 330 test automatici pytest (11 moduli)
 ├── migrations/               # 58 SQL migrations numerate (001→053)
 ├── docker/                   # Dockerfile, docker-compose.yml, docker-compose.prod.yml
 ├── scripts/                  # comandi.ps1, dev-serve.ps1, run-tests.ps1
@@ -175,7 +175,7 @@ Oh Yeah! Hub/
 | Password policy | Min 10 char, 3/4 complessità, blacklist 24+ password, no dati personali |
 | Rate limiting login | 5 tentativi → 15 min lockout (persistente su DB `login_attempts`) |
 | Rate limiting reset | 1 richiesta / 5 min (in-memory thread-safe) |
-| Session cookie | UUID4, Secure=True, SameSite=Strict, 30 giorni |
+| Session cookie | Token opaco ad alta entropia (`secrets.token_urlsafe`), Secure=True, SameSite=Strict, 30 giorni |
 | Inattività sessione | Auto-logout dopo 8 ore (`SESSION_INACTIVITY_HOURS = 8`) |
 | Token invalido | Sessione revocata immediatamente se token non in DB |
 | Reset token | `secrets.token_urlsafe(32)` — 256 bit entropia, verifica HMAC constant-time |
@@ -186,7 +186,7 @@ Oh Yeah! Hub/
 | Categoria | Misura | Dettaglio |
 |-----------|--------|-----------|
 | Autenticazione | Argon2id | m=65536, parametri default libreria (OWASP) |
-| Sessioni | Token UUID4 + Cookie 30gg | Auto-logout inattività 8h, invalidazione su token mancante |
+| Sessioni | Token opaco ad alta entropia + Cookie 30gg | Auto-logout inattività 8h, invalidazione su token mancante |
 | Cookie | Secure + SameSite=Strict | `extra-streamlit-components` non supporta HttpOnly |
 | Rate Limiting | Login DB + Reset in-memory | Tabella `login_attempts`; dict thread-safe |
 | IDOR | `.eq('userid', user_id)` su UPDATE/DELETE | Ogni scrittura workspace include filtro owner |
@@ -198,11 +198,13 @@ Oh Yeah! Hub/
 | SQL Injection | Parametrized queries | Supabase client non permette raw SQL |
 | File Upload | Magic bytes validation | Verifica header + size limits (100 file, 200 MB, 50 MB P7M) |
 | Error Handling | `showErrorDetails = false` | Mai esporre stack trace in produzione |
-| Logging | No PII nei log | Email troncate, password mai loggate |
+| Logging | No PII nei log | Email/P.IVA mai in chiaro, user_id nei log operativi |
 | CORS | `enableCORS = false` | Disabilitato |
 | Reset Token | `secrets.token_urlsafe(32)` | 256 bit entropia |
 | Secrets | Streamlit Secrets | Mai hardcoded nel codice |
 | Dependencies | `requirements-lock.txt` | 100 pacchetti freezati (supply chain security) |
+| XXE Protection | defusedxml | Validazione XML prima del parsing — prevenzione XML External Entity attacks |
+| SSRF Protection | Whitelist host | Solo `*.invoicetronic.com/.it` su HTTPS per fetch XML remoti |
 
 ---
 
@@ -258,7 +260,7 @@ Oh Yeah! Hub/
 
 ## 10. Testing
 
-- **194 test automatici** (pytest) — tutti PASSED
+- **330 test automatici** (pytest) — tutti PASSED
 - 11 moduli: `test_trial` (39), `test_text_utils` (30), `test_piva_validator` (18), `test_notification_service` (18), `test_ai_service` (16), `test_validation` (14), `test_constants` (13), `test_db_service` (12), `test_auth_service` (12), `test_invoice_service` (11), `test_formatters` (11)
 - Mock completi per Supabase e OpenAI (nessun servizio esterno toccato)
 
@@ -335,7 +337,7 @@ pytest tests/ --cov=services --cov=utils --cov-report=html  # con coverage
 
 ---
 
-*Documento sintetico v5.2 — 10 Aprile 2026*
+*Documento sintetico v5.3 — 15 Aprile 2026*
 *Per la documentazione completa, vedere `DOCUMENTAZIONE_COMPLETA.md`*
 
 ---
@@ -352,8 +354,8 @@ pytest tests/ --cov=services --cov=utils --cov-report=html  # con coverage
 
 - **Privacy Policy + ToS**: pagina in-app (`privacy_policy.py`), versione HTML (`PrivacyPolicy_CookiePolicy_OHHYEAH.html`)
 - **Data retention**: fatture nel DB finché l'utente le elimina esplicitamente
-- **Diritto all'oblio**: l'admin può eliminare completamente un account (tutti i dati correlati)
-- **Portabilità**: export JSON dati da `gestione_account.py` (Art. 15 GDPR)
+- **Diritto all'oblio**: funzione "Elimina Account" self-service — eliminazione permanente a cascata su 14 tabelle
+- **Portabilità**: export JSON dati da `gestione_account.py` (Art. 20 GDPR) — 10 tabelle incluse
 - **Creazione client GDPR**: l'admin non conosce mai la password del cliente (token attivazione via email)
 - **Nota legale**: "Non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014"
 

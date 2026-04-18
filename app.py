@@ -116,6 +116,7 @@ from services.notification_service import (
     build_monthly_data_notifications,
     build_price_alert_notifications,
     build_scoped_notification_id,
+    build_td24_date_notifications,
     build_upload_outcome_notifications,
     dismiss_notification_ids,
     get_dismissed_notification_ids,
@@ -907,7 +908,14 @@ if st.query_params.get("reset_token"):
     # Nascondi sidebar per pagina pulita
     hide_sidebar_css()
     
-    st.title("🔐 Imposta la tua Password")
+    st.markdown("""
+    <h2 style="font-size: clamp(2rem, 4.5vw, 2.8rem); font-weight: 700; margin: 0; margin-bottom: 10px;">
+        🔐 <span style="background: linear-gradient(90deg, #1e40af 0%, #3b82f6 50%, #60a5fa 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;">Imposta la tua Password</span>
+    </h2>
+    """, unsafe_allow_html=True)
     
     # Verifica token valido
     try:
@@ -1484,7 +1492,7 @@ if 'ristoranti' not in st.session_state or not st.session_state.get('ristorante_
                 # Tenta creazione automatica ristorante se ha P.IVA
                 if piva and user_id:
                     logger.warning(f"⚠️ Utente legacy {user_id} senza ristoranti - tentativo creazione automatica")
-                    logger.warning(f"   Dati: nome='{nome}', piva='{piva}'")
+                    logger.warning(f"   Dati: nome='{nome}', piva=***{piva[-4:] if piva and len(piva) >= 4 else '????'}")
                     try:
                         # Cerca ristorante con questa P.IVA DELLO STESSO UTENTE
                         check_existing = supabase.table('ristoranti')\
@@ -1801,6 +1809,11 @@ if not _is_admin_session:
             st.session_state.get('last_upload_notification_context')
         )
     )
+    operational_notifications.extend(
+        build_td24_date_notifications(
+            st.session_state.get('last_upload_notification_context')
+        )
+    )
 
 # Stato file gestiti (salvati/rifiutati) — persistente durante la sessione
 if 'auto_invoice_handled' not in st.session_state:
@@ -1835,8 +1848,8 @@ if _tb.get('is_trial') and not st.session_state.get('impersonating', False):
             Prova gratuita attiva &mdash; Rimangono {_tb_days} giorni
         </strong><br>
         <span style="color:#92400e;font-size:0.85rem;">
-            Accesso limitato alle fatture del mese in corso.
-            Upload: max 50 file, solo XML/P7M. Export Excel non disponibile durante la prova.
+            Accesso alle fatture del mese in corso e del mese precedente.
+            Upload: max 50 file, solo XML/P7M. Export Excel disponibile anche durante la prova.
         </span>
     </div>
 </div>
@@ -2198,20 +2211,29 @@ else:
         div.st-key-main_documents_upload_section [data-testid="stFileUploader"] {
             margin: 0 !important;
         }
-        div.st-key-main_documents_upload_section [data-testid="stFileUploader"] > div {
-            width: auto !important;
-            max-width: 100% !important;
+        div.st-key-main_documents_upload_section [data-testid="stFileUploader"] > div,
+        div.st-key-main_documents_upload_section [data-testid="stFileUploader"] > div > div,
+        div.st-key-main_documents_upload_section [data-testid="stFileUploader"] section,
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"],
+        div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] > div {
+            width: fit-content !important;
+            max-width: fit-content !important;
         }
         div.st-key-main_documents_upload_section [data-testid="stFileUploader"] section {
+            display: inline-flex !important;
+            align-items: center !important;
             padding: 0 !important;
+            min-height: 0 !important;
             border: none !important;
             background: transparent !important;
             box-shadow: none !important;
             border-radius: 0 !important;
         }
         div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] {
+            display: inline-flex !important;
+            align-items: center !important;
             padding: 0 !important;
-            min-height: auto !important;
+            min-height: 0 !important;
             background: transparent !important;
             border: none !important;
             border-radius: 0 !important;
@@ -2301,6 +2323,23 @@ else:
                     label_visibility="collapsed",
                     key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"
                 )
+                if uploaded_files and len(uploaded_files) > 0:
+                    st.markdown(
+                        """
+                        <style>
+                        div.st-key-main_documents_upload_section [data-testid="stFileUploader"] {
+                            visibility: hidden !important;
+                            height: 0 !important;
+                            min-height: 0 !important;
+                            margin: 0 !important;
+                            padding: 0 !important;
+                            overflow: hidden !important;
+                            pointer-events: none !important;
+                        }
+                        </style>
+                        """,
+                        unsafe_allow_html=True,
+                    )
                 st.markdown(
                     "<div class='upload-format-hint'>Formati accettati: XML, P7M, PDF, PNG, JPG, JPEG · Max 200MB</div>",
                     unsafe_allow_html=True,
@@ -2660,6 +2699,21 @@ if 'upload_messages' in st.session_state and st.session_state.upload_messages:
     if _msg_age < 30:
         for _msg in st.session_state.upload_messages:
             st.markdown(_msg, unsafe_allow_html=True)
+        # Inline st.error per TD24 MISSING (pct < 50%)
+        _td24_ctx = (st.session_state.get('last_upload_notification_context') or {}).get('td24_date_alerts') or []
+        _td24_missing = [a for a in _td24_ctx if a.get('status') == 'missing']
+        if _td24_missing:
+            _td24_lines = []
+            for _a in _td24_missing:
+                _td24_lines.append(
+                    f"• **{_a.get('fornitore', '?')}** ({_a.get('file_name', '?')}) — "
+                    f"{_a.get('lines_with_date', 0)}/{_a.get('lines_total', 0)} righe con data consegna"
+                )
+            st.error(
+                "📅 **Fatture differite (TD24) senza data consegna:**\n\n"
+                + "\n".join(_td24_lines)
+                + "\n\nLa data consegna è importante per l'analisi dei margini mensili."
+            )
     else:
         st.session_state.upload_messages = []
 
