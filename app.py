@@ -106,7 +106,10 @@ from services.db_service import (
     elimina_fattura_completa,
     elimina_tutte_fatture,
     get_fatture_stats,
-    clear_fatture_cache
+    clear_fatture_cache,
+    get_fatture_cestino,
+    ripristina_fattura,
+    svuota_cestino,
 )
 
 from components.dashboard_renderer import mostra_statistiche
@@ -415,7 +418,7 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
                             try:
                                 _reject_uid = st.session_state.user_data.get('id')
                                 _reject_rid = st.session_state.get('ristorante_id')
-                                elimina_fattura_completa(fname, _reject_uid, ristoranteid=_reject_rid)
+                                elimina_fattura_completa(fname, _reject_uid, ristoranteid=_reject_rid, soft_delete=False)
                                 invalida_cache_memoria()
                                 clear_fatture_cache()
                             except Exception as _rej_err:
@@ -2556,8 +2559,8 @@ else:
                             
                             # Mostra risultato DENTRO lo spinner (indentazione corretta)
                             if result["success"]:
-                                st.success(f"✅ **{result['fatture_eliminate']} fatture** eliminate! ({result['righe_eliminate']} prodotti)")
-                                st.info("🧹 **Ripristino completo**: Cache, JSON locali e stato sessione puliti")
+                                st.success(f"✅ **{result['fatture_eliminate']} fatture** spostate nel cestino! ({result['righe_eliminate']} prodotti)")
+                                st.info("🗑️ Le fatture resteranno nel cestino per 30 giorni, poi verranno eliminate definitivamente.")
                                 
                                 # LOG AUDIT: Verifica immediata post-delete
                                 try:
@@ -2654,7 +2657,7 @@ else:
                                     st.session_state.files_processati_sessione.discard(os.path.splitext(file_eliminato)[0].lower())
                                 
                                 if result["success"]:
-                                    st.success(f"✅ Fattura **{fattura_selezionata['File']}** eliminata! ({result['righe_eliminate']} prodotti)")
+                                    st.success(f"✅ Fattura **{fattura_selezionata['File']}** spostata nel cestino ({result['righe_eliminate']} prodotti)")
                                     time.sleep(0.3)
                                     st.rerun()
                                 else:
@@ -2662,7 +2665,62 @@ else:
             else:
                 st.info("🔭 Nessuna fattura da eliminare.")
             
-            st.caption("⚠️ L'eliminazione è immediata e irreversibile")
+            st.caption("🗑️ Le fatture eliminate vengono spostate nel cestino per 30 giorni")
+            
+            # ========== CESTINO FATTURE ==========
+            st.markdown("---")
+            st.markdown("### 🗑️ Cestino")
+            
+            cestino_items = get_fatture_cestino(user_id, ristorante_id=st.session_state.get('ristorante_id'))
+            
+            if cestino_items:
+                st.info(f"📦 **{len(cestino_items)} fatture** nel cestino")
+                
+                for idx_c, item in enumerate(cestino_items):
+                    # Calcola giorni rimanenti
+                    try:
+                        from datetime import datetime, timezone
+                        deleted_dt = datetime.fromisoformat(item['deleted_at'].replace('Z', '+00:00'))
+                        giorni_passati = (datetime.now(timezone.utc) - deleted_dt).days
+                        giorni_rimasti = max(0, 30 - giorni_passati)
+                    except Exception:
+                        giorni_rimasti = "?"
+                    
+                    col_info, col_btn = st.columns([3, 1])
+                    with col_info:
+                        st.markdown(
+                            f"**{item['fornitore']}** — `{item['file_origine']}` "
+                            f"({item['num_righe']} righe, €{item['totale']:.2f}) "
+                            f"— ⏳ {giorni_rimasti} giorni rimasti"
+                        )
+                    with col_btn:
+                        if st.button("♻️ Ripristina", key=f"ripristina_{idx_c}", use_container_width=True):
+                            result_r = ripristina_fattura(
+                                item['file_origine'], user_id,
+                                ristorante_id=st.session_state.get('ristorante_id')
+                            )
+                            if result_r["success"]:
+                                clear_fatture_cache()
+                                st.success(f"✅ Fattura **{item['file_origine']}** ripristinata!")
+                                time.sleep(0.3)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Errore ripristino: {result_r['error']}")
+                
+                # Svuota cestino — solo admin
+                if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+                    st.markdown("---")
+                    if st.button("⚠️ Svuota Cestino (elimina tutto definitivamente)", type="secondary", key="btn_svuota_cestino"):
+                        result_s = svuota_cestino(user_id, ristorante_id=st.session_state.get('ristorante_id'))
+                        if result_s["success"]:
+                            clear_fatture_cache()
+                            st.success(f"✅ Cestino svuotato: {result_s['righe_eliminate']} righe eliminate definitivamente")
+                            time.sleep(0.3)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Errore: {result_s['error']}")
+            else:
+                st.caption("Il cestino è vuoto.")
 
 
 

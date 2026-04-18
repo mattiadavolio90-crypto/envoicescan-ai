@@ -57,6 +57,7 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
                 .select('data_documento, totale_riga, categoria') \
                 .eq('user_id', user_id) \
                 .eq('ristorante_id', ristorante_id) \
+                .is_('deleted_at', 'null') \
                 .gte('data_documento', f'{anno}-01-01') \
                 .lt('data_documento', f'{anno + 1}-01-01') \
                 .neq('categoria', 'Da Classificare') \
@@ -133,6 +134,7 @@ def carica_costi_per_categoria(user_id: str, ristorante_id: str,
                 .select('data_documento, totale_riga, categoria') \
                 .eq('user_id', user_id) \
                 .eq('ristorante_id', ristorante_id) \
+                .is_('deleted_at', 'null') \
                 .gte('data_documento', date_from) \
                 .lte('data_documento', date_to) \
                 .neq('categoria', 'Da Classificare') \

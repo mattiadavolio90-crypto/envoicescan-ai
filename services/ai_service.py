@@ -2460,27 +2460,24 @@ def classifica_con_ai(
     if not lista_descrizioni:
         return []
 
-    # 🔒 RATE LIMIT SERVER-SIDE: max MAX_AI_CALLS_PER_DAY chiamate/giorno per ristorante
+    # 🔒 RATE LIMIT SERVER-SIDE: max MAX_AI_CALLS_PER_DAY categorizzazioni/giorno per ristorante
     if ristorante_id:
         try:
-            from services import get_supabase_client
-            _sb = get_supabase_client()
-            _today = datetime.now(timezone.utc).strftime('%Y-%m-%dT00:00:00+00:00')
-            _count_resp = (
-                _sb.table('ai_usage_events')
-                .select('id', count='exact')
-                .eq('ristorante_id', ristorante_id)
-                .gte('created_at', _today)
-                .execute()
+            from services.ai_cost_service import get_daily_quota_status
+
+            quota = get_daily_quota_status(
+                ristorante_id=ristorante_id,
+                operation_types=['categorization'],
+                daily_limit=MAX_AI_CALLS_PER_DAY,
             )
-            _calls_today = _count_resp.count or 0
-            if _calls_today >= MAX_AI_CALLS_PER_DAY:
+            _calls_today = int(quota['used'])
+            if quota['is_exceeded']:
                 logger.warning(
-                    f"🔒 Rate limit AI superato per ristorante {ristorante_id}: "
+                    f"🔒 Rate limit categorizzazioni superato per ristorante {ristorante_id}: "
                     f"{_calls_today}/{MAX_AI_CALLS_PER_DAY} chiamate oggi"
                 )
                 raise RuntimeError(
-                    f"Limite giornaliero AI raggiunto ({MAX_AI_CALLS_PER_DAY} chiamate/giorno). "
+                    f"Limite giornaliero categorizzazioni AI raggiunto ({MAX_AI_CALLS_PER_DAY} chiamate/giorno). "
                     f"Riprova domani."
                 )
         except RuntimeError:

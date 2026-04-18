@@ -141,41 +141,39 @@ CATEGORIE_FOOD_BEVERAGE = [
 
 
 # ============================================
-# CATEGORIE MATERIALI E CONSUMABILI (F&B!)
+# GRUPPI LOGICI CATEGORIE
 # ============================================
-# IMPORTANTE: MATERIALE DI CONSUMO Ãˆ CONSIDERATO F&B!
-# Contiene materiali di consumo per il ristorante:
-# - Tovaglioli, piatti/bicchieri usa e getta
-# - Pellicole, contenitori asporto, buste
-# - Detergenti per stoviglie, spugne
-# - Guanti, cannucce, posate monouso
-# Questi prodotti DEVONO apparire negli alert/sconti
-CATEGORIE_MATERIALI = ["MATERIALE DI CONSUMO"]
+# IMPORTANTE: "MATERIALE DI CONSUMO" NON cambia come stringa nel DB,
+# ma dal punto di vista logico rientra ora nelle SPESE GENERALI.
+# Il gruppo separato "Materiali" viene rimosso.
+CATEGORIE_MATERIALI = []  # legacy compat: gruppo logico rimosso
 
 
 # ============================================
-# CATEGORIE SPESE OPERATIVE (NON F&B)
+# CATEGORIE SPESE OPERATIVE / GENERALI (NON F&B)
 # ============================================
-# IMPORTANTE: Queste sono le UNICHE 3 categorie NON considerate Food & Beverage
-# TUTTO IL RESTO Ã¨ F&B (incluso MATERIALE DI CONSUMO = materiali consumo ristorante!)
+# Le 4 categorie NON considerate Food & Beverage sono:
+# - SERVIZI E CONSULENZE
+# - UTENZE E LOCALI
+# - MANUTENZIONE E ATTREZZATURE
+# - MATERIALE DI CONSUMO
 CATEGORIE_SPESE_OPERATIVE = [
     "SERVIZI E CONSULENZE",        # Es: Consulenze HACCP, Commercialista
-    "UTENZE E LOCALI",              # Es: Bollette ENEL, Affitto locale
+    "UTENZE E LOCALI",             # Es: Bollette ENEL, Affitto locale
     "MANUTENZIONE E ATTREZZATURE"  # Es: Riparazione forno, Manutenzione cappa
 ]
+CATEGORIE_SPESE_GENERALI = CATEGORIE_SPESE_OPERATIVE + ["MATERIALE DI CONSUMO"]
 
 
 # ============================================
 # TUTTE LE CATEGORIE (per AI e retrocompatibilitÃ )
 # ============================================
-# NOTA: Queste liste statiche sono mantenute per retrocompatibilitÃ 
-# L'app usa carica_categorie_da_db() per dropdown e UI
-TUTTE_LE_CATEGORIE = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI + CATEGORIE_SPESE_OPERATIVE
+# NOTA: F&B = 25 categorie, Spese Generali = 4 categorie
+TUTTE_LE_CATEGORIE = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_SPESE_GENERALI
 
 
 # RetrocompatibilitÃ  con codice esistente
-CATEGORIE_FOOD = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI
-CATEGORIE_SPESE_GENERALI = CATEGORIE_SPESE_OPERATIVE
+CATEGORIE_FOOD = CATEGORIE_FOOD_BEVERAGE
 
 
 # ============================================
@@ -198,9 +196,6 @@ CENTRI_DI_PRODUZIONE = {
     ],
     "DOLCI": [
         "PASTICCERIA", "GELATI"
-    ],
-    "MATERIALE DI CONSUMO": [
-        "MATERIALE DI CONSUMO"
     ],
     "SHOP": [
         "SHOP"
@@ -1573,6 +1568,7 @@ MAX_DESC_LENGTH_DB = 500
 
 # Budget AI giornaliero per ristorante
 MAX_AI_CALLS_PER_DAY = 1000      # Max classificazioni AI al giorno per ristorante
+VISION_DAILY_LIMIT = 50          # Max chiamate Vision (PDF/JPG/PNG) al giorno per ristorante
 
 # Memoria sessione AI
 MEMORIA_SESSION_CAP = 500

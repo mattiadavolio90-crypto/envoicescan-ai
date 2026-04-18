@@ -22,9 +22,11 @@ ENV VARS:
     WORKER_XML_RETENTION_HOURS    default 24  (GDPR purge)
     WORKER_STALE_LOCK_MINUTES     default 10  (lock recovery)
     WORKER_ID_PREFIX              default "gh-action"
-    WORKER_POLL_INTERVAL_SECONDS  default 15  (attesa tra cicli a coda vuota)
-    WORKER_ERROR_BACKOFF_SECONDS  default 30  (backoff iniziale su errore)
-    WORKER_MAX_BACKOFF_SECONDS    default 300 (cap backoff su errore)
+    WORKER_POLL_INTERVAL_SECONDS      default 15    (attesa tra cicli a coda vuota)
+    WORKER_ERROR_BACKOFF_SECONDS      default 30    (backoff iniziale su errore)
+    WORKER_MAX_BACKOFF_SECONDS        default 300   (cap backoff su errore)
+    WORKER_PURGE_INTERVAL_SECONDS     default 21600 (purge cestino ogni 6h)
+    WORKER_RETENTION_INTERVAL_SECONDS default 86400 (retention fatture >2 anni ogni 24h)
 
 EXIT CODES:
     0  — ciclo completato (anche se coda vuota)
@@ -63,6 +65,8 @@ logger = logging.getLogger("worker.run")
 WORKER_POLL_INTERVAL_SECONDS = int(os.environ.get("WORKER_POLL_INTERVAL_SECONDS", "15"))
 WORKER_ERROR_BACKOFF_SECONDS = int(os.environ.get("WORKER_ERROR_BACKOFF_SECONDS", "30"))
 WORKER_MAX_BACKOFF_SECONDS = int(os.environ.get("WORKER_MAX_BACKOFF_SECONDS", "300"))
+WORKER_PURGE_INTERVAL_SECONDS = int(os.environ.get("WORKER_PURGE_INTERVAL_SECONDS", str(6 * 3600)))  # default 6h
+WORKER_RETENTION_INTERVAL_SECONDS = int(os.environ.get("WORKER_RETENTION_INTERVAL_SECONDS", str(24 * 3600)))  # default 24h
 
 # ─── Assicura PROJECT_ROOT in sys.path ────────────────────────────────────────
 if _ROOT not in sys.path:
@@ -132,7 +136,17 @@ def main() -> int:
         logger.exception("Impossibile importare queue_processor: %s", exc)
         return 1
 
+    # Import manutenzioni periodiche su fatture
+    try:
+        from services.db_service import purge_cestino_scaduto, purge_fatture_retention
+    except Exception as exc:
+        logger.warning("Impossibile importare funzioni manutenzione fatture: %s", exc)
+        purge_cestino_scaduto = None
+        purge_fatture_retention = None
+
     consecutive_failures = 0
+    last_purge_time = 0.0
+    last_retention_time = 0.0
 
     while True:
         cycle_started_at = time.monotonic()
@@ -140,6 +154,34 @@ def main() -> int:
             stats = run_cycle()
             stats.log_summary()
             consecutive_failures = 0
+
+            # Purge periodico cestino fatture (ogni WORKER_PURGE_INTERVAL_SECONDS)
+            now = time.monotonic()
+            if purge_cestino_scaduto and (now - last_purge_time) >= WORKER_PURGE_INTERVAL_SECONDS:
+                try:
+                    purge_result = purge_cestino_scaduto()
+                    if purge_result.get("righe_eliminate", 0) > 0:
+                        logger.info(
+                            "🗑️ Purge cestino: %d righe scadute eliminate",
+                            purge_result["righe_eliminate"],
+                        )
+                except Exception as purge_exc:
+                    logger.warning("Errore purge cestino: %s", purge_exc)
+                last_purge_time = now
+
+            # Retention fatture > 2 anni (batch sicuro da 500 righe, ogni 24h)
+            if purge_fatture_retention and (now - last_retention_time) >= WORKER_RETENTION_INTERVAL_SECONDS:
+                try:
+                    retention_result = purge_fatture_retention(batch_size=500)
+                    if retention_result.get("righe_eliminate", 0) > 0:
+                        logger.info(
+                            "🧹 Retention fatture: %d righe eliminate (%d dal cestino)",
+                            retention_result["righe_eliminate"],
+                            retention_result.get("righe_da_cestino", 0),
+                        )
+                except Exception as retention_exc:
+                    logger.warning("Errore retention fatture: %s", retention_exc)
+                last_retention_time = now
 
             sleep_seconds = 1 if stats.batch_claimed > 0 else WORKER_POLL_INTERVAL_SECONDS
             logger.info(

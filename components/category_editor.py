@@ -129,15 +129,15 @@ def render_category_editor(df_completo_filtrato, supabase):
     
     # ✅ FILTRO DINAMICO IN BASE ALLA SELEZIONE - USA DATI FILTRATI PER PERIODO
     # NOTA: Filtriamo SOLO per categoria, NON per fornitore!
-    # - MATERIALE DI CONSUMO (ex NO FOOD) è F&B (pellicole, guanti, detersivi)
-    # - SPESE GENERALI sono solo 3 categorie: UTENZE, SERVIZI, MANUTENZIONE
+    # - MATERIALE DI CONSUMO rientra ora nelle Spese Generali
+    # - Le Spese Generali sono 4 categorie logiche
     if tipo_filtro == "Food & Beverage":
-        # F&B + MATERIALE DI CONSUMO = tutto tranne Spese Generali
+        # F&B = tutto ciò che NON appartiene a Spese Generali
         df_base = df_completo_filtrato[
             ~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)
         ].copy()
     elif tipo_filtro == "Spese Generali":
-        # Solo le 3 categorie spese generali
+        # Solo le categorie spese generali definite in constants.py
         df_base = df_completo_filtrato[
             df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)
         ].copy()

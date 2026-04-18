@@ -22,7 +22,11 @@ from utils.formatters import log_upload_event, get_nome_base_file, calcola_alert
 from utils.ristorante_helper import add_ristorante_filter
 
 from services.ai_service import invalida_cache_memoria, mostra_loading_ai
-from services.invoice_service import estrai_dati_da_scontrino_vision, salva_fattura_processata
+from services.invoice_service import (
+    estrai_dati_da_scontrino_vision,
+    salva_fattura_processata,
+    VisionDailyLimitExceededError,
+)
 from services.worker_client import parse_file_via_worker
 from services.db_service import calcola_alert, carica_e_prepara_dataframe, clear_fatture_cache
 
@@ -835,6 +839,28 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         else:
                             raise ValueError(f"Errore salvataggio: {result.get('error', 'Sconosciuto')}")
                     
+                    except VisionDailyLimitExceededError as e:
+                        quota_msg = str(e)
+                        logger.warning(f"🚫 File scartato per quota Vision esaurita: {file.name} — {quota_msg}")
+                        file_errore[file.name] = quota_msg
+                        st.session_state.files_errori_report[file.name] = quota_msg
+                        try:
+                            log_upload_event(
+                                user_id=st.session_state.user_data.get("id"),
+                                user_email=st.session_state.user_data.get("email", "unknown"),
+                                file_name=file.name,
+                                status="VISION_LIMIT_REACHED",
+                                rows_parsed=0,
+                                rows_saved=0,
+                                error_stage="VISION",
+                                error_message=quota_msg[:150],
+                                details={"source": "manual_upload", "exception_type": type(e).__name__},
+                                supabase_client=supabase,
+                            )
+                        except Exception as log_error:
+                            logger.warning(f"Errore logging vision limit event: {log_error}")
+                        continue
+
                     except Exception as e:
                         # TRACCIA ERRORE DETTAGLIATO (silenzioso - solo log)
                         full_error = str(e)
@@ -998,6 +1024,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                     motivo_label = "P.IVA della fattura diversa da quella dell'azienda"
                 elif "ANNO PRECEDENTE" in motivo:
                     motivo_label = "Data fattura dell'anno precedente"
+                elif "QUOTA VISION RAGGIUNTA" in motivo:
+                    motivo_label = "Quota Vision giornaliera raggiunta — file scartato, riprova domani"
                 else:
                     motivo_label = motivo
                 motivi_raggruppati[motivo_label].append(fname)

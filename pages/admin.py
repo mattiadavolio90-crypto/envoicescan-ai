@@ -31,10 +31,11 @@ from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria, pu
 from utils.validation import is_dicitura_sicura, is_sconto_omaggio_sicuro
 from utils.piva_validator import valida_formato_piva, normalizza_piva
 from services.auth_service import crea_cliente_con_token, verifica_sessione_da_cookie
+from services.db_service import get_retention_last_status
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 
 # Importa costanti per filtri e admin
-from config.constants import CATEGORIE_SPESE_GENERALI, ADMIN_EMAILS, CATEGORIE_FOOD_BEVERAGE, CATEGORIE_MATERIALI, CATEGORIE_SPESE_OPERATIVE
+from config.constants import CATEGORIE_SPESE_GENERALI, ADMIN_EMAILS, CATEGORIE_FOOD_BEVERAGE, VISION_DAILY_LIMIT
 
 # ============================================================
 # SETUP
@@ -2182,8 +2183,8 @@ if tab2:
     st.markdown("### 📝 Righe da Revisionare (raggruppate)")
     
     # Prepara lista categorie (usata per ogni riga)
-    _categorie_fb = sorted(CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI)
-    _categorie_spese = sorted(CATEGORIE_SPESE_OPERATIVE)
+    _categorie_fb = sorted(CATEGORIE_FOOD_BEVERAGE)
+    _categorie_spese = sorted(CATEGORIE_SPESE_GENERALI)
     _categorie_review = ["NOTE E DICITURE"] + _categorie_spese + _categorie_fb
 
     # Init session state per selezione massiva
@@ -4247,6 +4248,38 @@ if tab4:
     st.markdown("## 🔍 Verifica Integrità Database")
     st.caption("Controlla anomalie nei dati delle fatture: date invalide, prezzi anomali, quantità strane, descrizioni vuote, duplicati, ecc.")
 
+    # ============================================================
+    # RETENTION AUTOMATICA FATTURE > 2 ANNI
+    # ============================================================
+    try:
+        retention_status = get_retention_last_status(supabase)
+        _last_run = retention_status.get('last_run_at')
+        if _last_run:
+            try:
+                _last_run_fmt = datetime.fromisoformat(str(_last_run).replace('Z', '+00:00')).strftime('%d/%m/%Y %H:%M')
+            except Exception:
+                _last_run_fmt = str(_last_run)
+        else:
+            _last_run_fmt = 'Mai eseguito'
+
+        st.markdown("### 🧹 Retention automatica dati")
+        col_ret1, col_ret2, col_ret3, col_ret4 = st.columns(4)
+        with col_ret1:
+            st.metric("Ultimo ciclo", _last_run_fmt)
+        with col_ret2:
+            st.metric("Righe eliminate", int(retention_status.get('rows_deleted') or 0))
+        with col_ret3:
+            st.metric("Dal cestino", int(retention_status.get('rows_from_trash') or 0))
+        with col_ret4:
+            st.metric("Stato", "OK" if retention_status.get('status') == 'ok' else 'Errore')
+
+        if retention_status.get('error_message'):
+            st.warning(f"Ultimo errore retention: {retention_status['error_message']}")
+
+        st.markdown("---")
+    except Exception as e:
+        logger.warning(f"Errore caricamento retention status in admin: {e}")
+
     @st.cache_data(ttl=60, show_spinner=False)
     def _carica_clienti_integrita_non_admin():
         try:
@@ -4834,6 +4867,22 @@ if tab5:
 
             st.markdown('### 📊 Riepilogo Globale')
 
+            # Quota Vision odierna per ristorante (indipendente dal filtro periodo)
+            _vision_today_start = datetime.now(timezone.utc).strftime('%Y-%m-%dT00:00:00+00:00')
+            _vision_today_resp = (
+                supabase.table('ai_usage_events')
+                .select('ristorante_id,operation_type,created_at')
+                .gte('created_at', _vision_today_start)
+                .in_('operation_type', ['pdf', 'vision'])
+                .execute()
+            )
+            _vision_today_rows = _vision_today_resp.data or []
+            _vision_counts_by_ristorante = {}
+            if _vision_today_rows:
+                _df_vision_today = pd.DataFrame(_vision_today_rows)
+                if not _df_vision_today.empty and 'ristorante_id' in _df_vision_today.columns:
+                    _vision_counts_by_ristorante = _df_vision_today.groupby('ristorante_id').size().to_dict()
+
             totale_costi = float(df_costs['ai_cost_total'].sum())
             totale_pdf = int(df_costs['ai_pdf_count'].sum())
             totale_categorization = int(df_costs['ai_categorization_count'].sum())
@@ -4853,7 +4902,7 @@ if tab5:
                     <div class="admin-metric-value" style="color:#880e4f;">${totale_costi:.4f}</div>
                 </div>
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
-                    <div class="admin-metric-label" style="color:#1976d2;">📄 Costo PDF</div>
+                    <div class="admin-metric-label" style="color:#1976d2;">�️ Costo Vision</div>
                     <div class="admin-metric-value" style="color:#1565c0;">${totale_pdf_cost:.4f}</div>
                 </div>
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0;">
@@ -4877,25 +4926,47 @@ if tab5:
 
             st.caption(
                 f'Operazioni nel periodo: {totale_operazioni:,} | '
-                f'PDF: {totale_pdf:,} (${costo_medio_pdf:.4f}/pdf) | '
+                f'Vision: {totale_pdf:,} (${costo_medio_pdf:.4f}/file) | '
                 f'Categorizzazioni: {totale_categorization:,} (${costo_medio_categ:.4f}/batch)'
             )
+
+            _vision_today_total = int(sum(_vision_counts_by_ristorante.values())) if _vision_counts_by_ristorante else 0
+            _vision_today_active = int(len(_vision_counts_by_ristorante)) if _vision_counts_by_ristorante else 0
+            _vision_peak_used = int(max(_vision_counts_by_ristorante.values())) if _vision_counts_by_ristorante else 0
+            _vision_peak_remaining = max(0, VISION_DAILY_LIMIT - _vision_peak_used)
+
+            st.markdown('### 👁️ Quota Vision di oggi')
+            col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+            with col_v1:
+                st.metric('Vision oggi', _vision_today_total)
+            with col_v2:
+                st.metric('Limite per ristorante', VISION_DAILY_LIMIT)
+            with col_v3:
+                st.metric('Ristoranti attivi oggi', _vision_today_active)
+            with col_v4:
+                st.metric('Residuo minimo', _vision_peak_remaining)
 
             st.markdown('### 📋 Dettaglio per Cliente')
             df_display = df_costs.copy()
             df_display['Cliente'] = df_display['nome_ristorante']
             df_display['Ragione Sociale'] = df_display['ragione_sociale'].fillna('-')
-            df_display['PDF'] = df_display['ai_pdf_count'].astype(int)
+            df_display['Vision'] = df_display['ai_pdf_count'].astype(int)
             df_display['Categorizzazioni'] = df_display['ai_categorization_count'].astype(int)
-            df_display['Costo PDF'] = df_display['pdf_cost_total'].apply(lambda x: f"${float(x):.4f}")
+            df_display['Costo Vision'] = df_display['pdf_cost_total'].apply(lambda x: f"${float(x):.4f}")
             df_display['Costo Categ.'] = df_display['categorization_cost_total'].apply(lambda x: f"${float(x):.4f}")
             df_display['Costo Totale'] = df_display['ai_cost_total'].apply(lambda x: f"${float(x):.4f}")
             df_display['Costo/Op'] = df_display['ai_avg_cost_per_operation'].apply(lambda x: f"${float(x):.4f}")
             df_display['Token'] = df_display['total_tokens'].astype(int)
+            _rist_col = 'ristorante_id' if 'ristorante_id' in df_display.columns else ('id' if 'id' in df_display.columns else None)
+            if _rist_col:
+                df_display['Vision Oggi'] = df_display[_rist_col].map(lambda rid: int(_vision_counts_by_ristorante.get(rid, 0)))
+            else:
+                df_display['Vision Oggi'] = 0
+            df_display['Residuo Vision'] = df_display['Vision Oggi'].apply(lambda n: max(0, VISION_DAILY_LIMIT - int(n)))
             df_display['Ultimo Uso'] = pd.to_datetime(df_display['ai_last_usage']).dt.strftime('%Y-%m-%d %H:%M')
 
             st.dataframe(
-                df_display[['Cliente', 'Ragione Sociale', 'PDF', 'Categorizzazioni', 'Costo PDF', 'Costo Categ.', 'Costo Totale', 'Costo/Op', 'Token', 'Ultimo Uso']],
+                df_display[['Cliente', 'Ragione Sociale', 'Vision', 'Vision Oggi', 'Residuo Vision', 'Categorizzazioni', 'Costo Vision', 'Costo Categ.', 'Costo Totale', 'Costo/Op', 'Token', 'Ultimo Uso']],
                 width='stretch',
                 hide_index=True,
             )
@@ -4903,7 +4974,7 @@ if tab5:
             st.markdown('---')
             col_export, col_spacer = st.columns([2, 8])
             with col_export:
-                csv_data = df_display[['Cliente', 'Ragione Sociale', 'PDF', 'Categorizzazioni', 'Costo PDF', 'Costo Categ.', 'Costo Totale', 'Costo/Op', 'Token', 'Ultimo Uso']].to_csv(index=False).encode('utf-8')
+                csv_data = df_display[['Cliente', 'Ragione Sociale', 'Vision', 'Vision Oggi', 'Residuo Vision', 'Categorizzazioni', 'Costo Vision', 'Costo Categ.', 'Costo Totale', 'Costo/Op', 'Token', 'Ultimo Uso']].to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label='📥 Esporta CSV',
                     data=csv_data,
@@ -4948,7 +5019,7 @@ if tab5:
                 st.markdown('### 🧾 Ultime Operazioni AI')
                 df_recent['Quando'] = pd.to_datetime(df_recent['created_at']).dt.strftime('%Y-%m-%d %H:%M')
                 df_recent['Cliente'] = df_recent['nome_ristorante']
-                df_recent['Tipo'] = df_recent['operation_type'].replace({'pdf': 'PDF', 'categorization': 'Categorizzazione', 'other': 'Altro'})
+                df_recent['Tipo'] = df_recent['operation_type'].replace({'pdf': 'Vision', 'vision': 'Vision', 'categorization': 'Categorizzazione', 'other': 'Altro'})
                 df_recent['Costo'] = df_recent['total_cost'].apply(lambda x: f"${float(x):.6f}")
                 df_recent['Token'] = df_recent['total_tokens'].astype(int)
                 df_recent['Item'] = df_recent['item_count'].astype(int)
@@ -4961,7 +5032,7 @@ if tab5:
 
             st.markdown('---')
             st.info(
-                'I costi ora sono letti da un ledger eventi AI: puoi analizzarli per periodo, split PDF/categorizzazione e ultime operazioni. '
+                'I costi ora sono letti da un ledger eventi AI: puoi analizzarli per periodo, split Vision/categorizzazione e ultime operazioni. '
                 'I file XML restano gratuiti.'
             )
     

@@ -59,8 +59,21 @@ from utils.validation import (
 
 # Logger centralizzato
 from config.logger_setup import get_logger
-from config.constants import MAX_FILE_SIZE_P7M
+from config.constants import MAX_FILE_SIZE_P7M, VISION_DAILY_LIMIT
 logger = get_logger('invoice')
+
+
+class VisionDailyLimitExceededError(RuntimeError):
+    """Eccezione custom quando la quota Vision giornaliera del ristorante è esaurita."""
+
+    def __init__(self, used: int, limit: int, ristorante_id: str | None = None):
+        self.used = int(used or 0)
+        self.limit = int(limit or 0)
+        self.ristorante_id = ristorante_id
+        super().__init__(
+            f"QUOTA VISION RAGGIUNTA — Limite giornaliero esaurito ({self.used}/{self.limit}) per PDF/JPG/PNG. "
+            f"Questo file è stato scartato. Riprova domani oppure carica XML/P7M."
+        )
 
 
 def normalizza_unita_misura(um: str) -> str:
@@ -1015,6 +1028,33 @@ def estrai_dati_da_scontrino_vision(file_caricato, openai_client=None):
                 st.error("❌ OPENAI_API_KEY mancante")
                 return []
             openai_client = OpenAI(api_key=api_key)
+
+        # 🔒 RATE LIMIT VISION SEPARATO: max VISION_DAILY_LIMIT chiamate/giorno per ristorante
+        ristorante_id = st.session_state.get('ristorante_id')
+        if ristorante_id:
+            try:
+                from services.ai_cost_service import get_daily_quota_status
+                quota = get_daily_quota_status(
+                    ristorante_id=ristorante_id,
+                    operation_types=['pdf', 'vision'],
+                    daily_limit=VISION_DAILY_LIMIT,
+                )
+                if quota['is_exceeded']:
+                    logger.warning(
+                        "🔒 Quota Vision superata per ristorante %s: %s/%s oggi",
+                        ristorante_id,
+                        quota['used'],
+                        quota['limit'],
+                    )
+                    raise VisionDailyLimitExceededError(
+                        used=int(quota['used']),
+                        limit=int(quota['limit']),
+                        ristorante_id=ristorante_id,
+                    )
+            except VisionDailyLimitExceededError:
+                raise
+            except Exception as quota_err:
+                logger.warning(f"⚠️ Errore check quota Vision: {quota_err} — proseguo senza blocco")
         
         file_caricato.seek(0)
         base64_image = converti_in_base64(file_caricato, file_caricato.name)
@@ -1461,6 +1501,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
 
 
 __all__ = [
+    'VisionDailyLimitExceededError',
     'estrai_dati_da_xml',
     'estrai_dati_da_scontrino_vision',
     'salva_fattura_processata',

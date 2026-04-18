@@ -430,17 +430,13 @@ def carica_categorie_da_db(supabase_client=None) -> list:
     """
     # Import delle categorie da constants.py per garantire coerenza
     from config.constants import (
-        CATEGORIE_FOOD_BEVERAGE, 
-        CATEGORIE_MATERIALI, 
-        CATEGORIE_SPESE_OPERATIVE
+        CATEGORIE_FOOD,
+        CATEGORIE_SPESE_GENERALI,
     )
     
-    # Combina tutte le categorie F&B (Food+Beverage + MATERIALE DI CONSUMO)
-    categorie_fb = CATEGORIE_FOOD_BEVERAGE + CATEGORIE_MATERIALI  # Include MATERIALE DI CONSUMO
-    
-    # Ordina alfabeticamente entrambe le liste
-    categorie_fb_sorted = sorted(categorie_fb)
-    categorie_spese_sorted = sorted(CATEGORIE_SPESE_OPERATIVE)
+    # Combina tutte le categorie usando i gruppi logici centralizzati
+    categorie_fb_sorted = sorted(CATEGORIE_FOOD)
+    categorie_spese_sorted = sorted(CATEGORIE_SPESE_GENERALI)
     
     # Combina: prima F&B, poi spese generali
     categorie_finali = categorie_fb_sorted + categorie_spese_sorted

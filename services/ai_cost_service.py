@@ -37,6 +37,64 @@ def _get_session_user_id() -> str | None:
         return None
 
 
+def get_daily_ai_usage_count(
+    *,
+    ristorante_id: str | None,
+    operation_types: list[str] | tuple[str, ...],
+) -> int:
+    """Conta gli eventi AI del giorno corrente per un ristorante e uno o più tipi operazione."""
+    if not ristorante_id or not operation_types:
+        return 0
+
+    try:
+        from datetime import datetime, timezone
+        from services import get_supabase_client
+
+        supabase = get_supabase_client()
+        day_start = datetime.now(timezone.utc).strftime('%Y-%m-%dT00:00:00+00:00')
+        normalized_types = [str(op).strip() for op in operation_types if str(op).strip()]
+        if not normalized_types:
+            return 0
+
+        query = (
+            supabase.table('ai_usage_events')
+            .select('id', count='exact')
+            .eq('ristorante_id', ristorante_id)
+            .gte('created_at', day_start)
+        )
+        if len(normalized_types) == 1:
+            query = query.eq('operation_type', normalized_types[0])
+        else:
+            query = query.in_('operation_type', normalized_types)
+
+        resp = query.execute()
+        return int(resp.count or 0)
+    except Exception as exc:
+        logger.warning('⚠️ Errore conteggio daily AI usage: %s', exc)
+        return 0
+
+
+def get_daily_quota_status(
+    *,
+    ristorante_id: str | None,
+    operation_types: list[str] | tuple[str, ...],
+    daily_limit: int,
+) -> dict[str, int | bool]:
+    """Restituisce stato quota giornaliera per uno o più tipi operazione."""
+    used = get_daily_ai_usage_count(
+        ristorante_id=ristorante_id,
+        operation_types=operation_types,
+    )
+    limit = max(0, int(daily_limit or 0))
+    remaining = max(0, limit - used)
+    return {
+        'used': used,
+        'limit': limit,
+        'remaining': remaining,
+        'is_exceeded': used >= limit if limit > 0 else False,
+    }
+
+
 def track_ai_usage(
     *,
     operation_type: str,

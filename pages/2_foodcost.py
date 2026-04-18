@@ -19,7 +19,7 @@ patch_streamlit_width_api()
 from config.logger_setup import get_logger
 from utils.ristorante_helper import get_current_ristorante_id
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
-from config.constants import CATEGORIE_SPESE_OPERATIVE
+from config.constants import CATEGORIE_SPESE_GENERALI
 from services import get_supabase_client
 
 # Logger
@@ -257,7 +257,8 @@ def get_articoli_da_fatture(user_id: str, ristorante_id: str = None) -> tuple:
             q = supabase.table('fatture')\
                 .select('descrizione, prezzo_unitario, unita_misura, data_documento, categoria')\
                 .eq('user_id', user_id)\
-                .not_.in_('categoria', CATEGORIE_SPESE_OPERATIVE)\
+                .is_('deleted_at', 'null')\
+                .not_.in_('categoria', CATEGORIE_SPESE_GENERALI)\
                 .order('data_documento', desc=True)\
                 .range(offset, offset + page_size - 1)
             if ristorante_id:
