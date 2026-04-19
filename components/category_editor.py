@@ -58,6 +58,44 @@ CATEGORIA_ICONS: dict[str, str] = {
 }
 
 
+def _compute_novita_badge(created_at_value, login_reference_value) -> str:
+    """Restituisce il badge Novità se la fattura è arrivata dopo l'ultimo login utile."""
+    created_ts = pd.to_datetime(created_at_value, utc=True, errors='coerce')
+    login_ts = pd.to_datetime(login_reference_value, utc=True, errors='coerce')
+    if pd.isna(created_ts) or pd.isna(login_ts):
+        return ''
+    return '🆕 Nuova' if created_ts > login_ts else ''
+
+
+def _sort_detail_rows(df_source: pd.DataFrame) -> pd.DataFrame:
+    """Ordina la vista per arrivo più recente, con fallback su data documento."""
+    if df_source is None or df_source.empty:
+        return df_source.copy() if isinstance(df_source, pd.DataFrame) else pd.DataFrame()
+
+    df_sorted = df_source.copy()
+    sort_cols = []
+    ascending = []
+
+    if 'CreatedAt' in df_sorted.columns:
+        df_sorted['_sort_created_at'] = pd.to_datetime(df_sorted['CreatedAt'], utc=True, errors='coerce')
+        sort_cols.append('_sort_created_at')
+        ascending.append(False)
+
+    if 'DataDocumento' in df_sorted.columns:
+        df_sorted['_sort_data_documento'] = pd.to_datetime(df_sorted['DataDocumento'], errors='coerce')
+        sort_cols.append('_sort_data_documento')
+        ascending.append(False)
+
+    if sort_cols:
+        df_sorted = df_sorted.sort_values(by=sort_cols, ascending=ascending, na_position='last')
+
+    drop_cols = [c for c in ['_sort_created_at', '_sort_data_documento'] if c in df_sorted.columns]
+    if drop_cols:
+        df_sorted = df_sorted.drop(columns=drop_cols)
+
+    return df_sorted.reset_index(drop=True)
+
+
 def render_category_editor(df_completo_filtrato, supabase):
     """Renderizza la sezione Dettaglio Articoli con data editor e logica di salvataggio."""
     # Placeholder se dataset mancanti/vuoti
@@ -153,63 +191,29 @@ def render_category_editor(df_completo_filtrato, supabase):
     # Aggiungi prezzo_standard se esiste nel database
     if 'PrezzoStandard' in df_base.columns:
         cols_base.append('PrezzoStandard')
+    if 'CreatedAt' in df_base.columns:
+        cols_base.append('CreatedAt')
     
     df_editor = df_base[cols_base].copy()
     
-    # ⭐ COLONNA FONTE - Origine categorizzazione (UI-only, NON salvata in DB)
-    # 2 stati: 🧠 Automatico (dizionario, AI, memoria) | ✏️ Modifica Manuale
-    if 'Descrizione' in df_editor.columns:
-        # AUTOMATICO 🧠: qualsiasi fonte automatica (keyword, AI, memoria locale/globale)
-        righe_diz = st.session_state.get('righe_keyword_appena_categorizzate', [])
-        righe_mem = st.session_state.get('righe_memoria_appena_categorizzate', [])
-        righe_ai  = st.session_state.get('righe_ai_appena_categorizzate', [])
-        auto_set = (
-            set(str(d).strip() for d in righe_diz)
-            | set(str(d).strip() for d in righe_mem)
-            | set(str(d).strip() for d in righe_ai)
+    # ⭐ COLONNA NOVITÀ - badge UI basato su CreatedAt rispetto all'ultimo login utile
+    _user_data = st.session_state.get('user_data', {}) or {}
+    _current_access_key = '_current_access_started_at'
+    if _current_access_key not in st.session_state:
+        st.session_state[_current_access_key] = _user_data.get('login_at') or pd.Timestamp.utcnow().isoformat()
+
+    _novita_reference = (
+        _user_data.get('last_login_precedente')
+        or st.session_state.get('last_login_precedente')
+        or st.session_state.get(_current_access_key)
+    )
+
+    if 'CreatedAt' in df_editor.columns:
+        df_editor['Novità'] = df_editor['CreatedAt'].apply(
+            lambda value: _compute_novita_badge(value, _novita_reference)
         )
-
-        # MANUALE ✏️
-        righe_man = st.session_state.get('righe_modificate_manualmente', [])
-        man_set = set(str(d).strip() for d in righe_man)
-
-        # 🔄 FALLBACK: Se session state vuote (es. reload pagina DOPO upload),
-        # ricostruisce 🧠 interrogando prodotti_master per le descrizioni nel DataFrame.
-        # ⚠️ Attivo SOLO se c'è stato almeno un upload in questa sessione:
-        # evita icone fantasma a login fresco (nessun upload → nessuna icona).
-        _had_upload = bool(st.session_state.get('files_processati_sessione'))
-        if not auto_set and not man_set and _had_upload:
-            try:
-                _fonte_cache_key = '_fonte_pm_cache'
-                if _fonte_cache_key not in st.session_state:
-                    descs_da_cercare = df_editor['Descrizione'].dropna().unique().tolist()[:500]
-                    if descs_da_cercare:
-                        _pm_resp = supabase.table('prodotti_master').select('descrizione').in_('descrizione', descs_da_cercare).execute()
-                        st.session_state[_fonte_cache_key] = {
-                            row['descrizione'].strip() for row in (_pm_resp.data or []) if row.get('descrizione')
-                        }
-                    else:
-                        st.session_state[_fonte_cache_key] = set()
-                auto_set = st.session_state[_fonte_cache_key]
-            except Exception as _fe:
-                logger.warning(f"Fonte fallback prodotti_master: {_fe}")
-
-        # Priorità: ✏️ > 🧠 > '' (vuoto = nessuna fonte tracciata)
-        # Righe auto-ricevute via worker/webhook → 🧠 per FileOrigine
-        _auto_file_origini = set(st.session_state.get('auto_received_file_origini', set()))
-        if _auto_file_origini:
-            df_editor['Fonte'] = df_editor.apply(
-                lambda row: ' ✏️ ' if str(row['Descrizione']).strip() in man_set else
-                            ' 🧠 ' if (str(row['Descrizione']).strip() in auto_set or
-                                       str(row['FileOrigine'] or '').strip() in _auto_file_origini) else '',
-                axis=1
-            )
-        else:
-            df_editor['Fonte'] = df_editor['Descrizione'].apply(
-                lambda d: ' ✏️ ' if str(d).strip() in man_set else
-                          ' 🧠 ' if str(d).strip() in auto_set else ''
-            )
-        logger.info(f"✅ Colonna Fonte: {len(man_set)} manuali, {len(auto_set)} automatici, {len(_auto_file_origini)} file auto")
+    else:
+        df_editor['Novità'] = ''
     
     # 🧪 TEST AGGREGAZIONE (diagnostico - zero impatto UI)
     if 'Descrizione' in df_editor.columns:
@@ -282,6 +286,9 @@ def render_category_editor(df_completo_filtrato, supabase):
     
     # ===== FINE CALCOLO =====
 
+    # Ordinamento default: fatture/righe arrivate più recentemente in alto
+    df_editor = _sort_detail_rows(df_editor)
+
     num_righe = len(df_editor)
     
     # Avviso salvataggio modifiche (dopo filtri)
@@ -318,8 +325,10 @@ def render_category_editor(df_completo_filtrato, supabase):
         }
         
         # ✅ Aggiungi colonne opzionali solo se presenti
-        if 'Fonte' in df_editor.columns:
-            agg_dict['Fonte'] = 'first'
+        if 'Novità' in df_editor.columns:
+            agg_dict['Novità'] = 'first'
+        if 'CreatedAt' in df_editor.columns:
+            agg_dict['CreatedAt'] = 'max'
         if 'PrezzoStandard' in df_editor.columns:
             agg_dict['PrezzoStandard'] = 'mean'
         
@@ -335,13 +344,9 @@ def render_category_editor(df_completo_filtrato, supabase):
             df_editor_agg.rename(columns={'FileOrigine': 'NumFatture'}, inplace=True)
         
         # Riordina colonne per allinearle con vista normale
-        # Ordine: NumFatture, NumRighe, Data, Descrizione, Categoria, Fornitore, Quantita, Totale, Prezzo, UM, IVA, Fonte
-        cols_order = ['NumFatture', 'NumRighe', 'DataDocumento', 'Descrizione', 'Categoria', 
+        # Ordine: NumFatture, NumRighe, Data, Descrizione, Novità, Categoria, Fornitore, Quantita, Totale, Prezzo, UM, IVA
+        cols_order = ['NumFatture', 'NumRighe', 'DataDocumento', 'Descrizione', 'Novità', 'Categoria', 
                      'Fornitore', 'Quantita', 'TotaleRiga', 'PrezzoUnitario', 'UnitaMisura', 'IVAPercentuale']
-        
-        # Aggiungi Fonte se presente
-        if 'Fonte' in df_editor_agg.columns:
-            cols_order.append('Fonte')
         
         # Aggiungi PrezzoStandard se presente
         if 'PrezzoStandard' in df_editor_agg.columns:
@@ -352,9 +357,9 @@ def render_category_editor(df_completo_filtrato, supabase):
         df_editor_agg = df_editor_agg[cols_final]
         
         # Usa vista aggregata
-        df_editor_paginato = df_editor_agg
+        df_editor_paginato = _sort_detail_rows(df_editor_agg)
     else:
-        df_editor_paginato = df_editor.copy()
+        df_editor_paginato = _sort_detail_rows(df_editor.copy())
     
     # Calcola prodotti unici (descrizioni distinte)
     num_prodotti_unici = df_editor['Descrizione'].nunique()
@@ -455,7 +460,7 @@ def render_category_editor(df_completo_filtrato, supabase):
     # Migrazione vecchi nomi → nuovi nomi avviene in carica_e_prepara_dataframe()
     
     # 🚫 RIMUOVI colonne LISTINO dalla visualizzazione
-    cols_to_drop = [c for c in ['PrezzoStandard', 'Listino', 'LISTINO'] if c in df_editor_paginato.columns]
+    cols_to_drop = [c for c in ['PrezzoStandard', 'Listino', 'LISTINO', 'CreatedAt'] if c in df_editor_paginato.columns]
     if cols_to_drop:
         df_editor_paginato = df_editor_paginato.drop(columns=cols_to_drop)
 
@@ -504,9 +509,9 @@ def render_category_editor(df_completo_filtrato, supabase):
             disabled=True,
             width="small"
         ),
-        "Fonte": st.column_config.TextColumn(
-            "⭐ Fonte",
-            help="🧠 Categoria assegnata automaticamente (dizionario, AI, memoria) | ✏️ Corretta manualmente",
+        "Novità": st.column_config.TextColumn(
+            "🆕 Novità",
+            help="Mostra le fatture arrivate dopo l'ultimo login dell'utente",
             disabled=True,
             width="small"
         )
@@ -554,7 +559,7 @@ def render_category_editor(df_completo_filtrato, supabase):
         )
     
     # ⭐ Key dinamica: cambia dopo ogni salvataggio per forzare refresh widget
-    # (evita che Streamlit cache il vecchio stato della colonna Fonte)
+    # (evita che Streamlit cache il vecchio stato del data editor)
     _editor_version = st.session_state.get('editor_refresh_counter', 0)
     _editor_key = f"editor_dati_v{_editor_version}"
     edited_df = st.data_editor(
@@ -568,14 +573,11 @@ def render_category_editor(df_completo_filtrato, supabase):
     
     st.markdown("""
         <style>
-        /* 🧠 COLORAZIONE ROSA per righe classificate da AI */
         [data-testid="stDataFrame"] [data-testid="stDataFrameCell"] {
             transition: background-color 0.3s ease;
         }
-        /* Nota: Streamlit data_editor non supporta styling condizionale per riga basato su valore cella.
-           La colorazione visiva principale sarà l'icona 🧠 nella colonna Stato. */
         
-        /* 🔍 EMOJI PIÙ GRANDI nella colonna Fonte (ultima colonna) */
+        /* 🔍 BADGE PIÙ LEGGIBILE nella colonna Novità */
         /* Approccio 1: Targetta tutte le celle dell'ultima colonna */
         div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(1),
         div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(2):has(:only-child) {
@@ -747,9 +749,11 @@ def render_category_editor(df_completo_filtrato, supabase):
             if 'PrezzoStandard' in df_export.columns:
                 df_export = df_export.drop(columns=['PrezzoStandard'])
             
-            # Rimuovi colonna Fonte (emoji, non utile in Excel)
-            if 'Fonte' in df_export.columns:
-                df_export = df_export.drop(columns=['Fonte'])
+            # Rimuovi colonna Novità e CreatedAt (segnali solo UI, non utili in Excel)
+            if 'Novità' in df_export.columns:
+                df_export = df_export.drop(columns=['Novità'])
+            if 'CreatedAt' in df_export.columns:
+                df_export = df_export.drop(columns=['CreatedAt'])
             
             # Rimuovi colonna CatIcon (solo decorativa nella UI)
             if 'CatIcon' in df_export.columns:

@@ -148,6 +148,14 @@ CATEGORIE_FOOD_BEVERAGE = [
 # Il gruppo separato "Materiali" viene rimosso.
 CATEGORIE_MATERIALI = []  # legacy compat: gruppo logico rimosso
 
+# Alias storici da normalizzare per clienti e dati legacy
+LEGACY_CATEGORY_ALIASES = {
+    "NO FOOD": "MATERIALE DI CONSUMO",
+    "MATERIALI": "MATERIALE DI CONSUMO",
+    "MATERIALE CONSUMO": "MATERIALE DI CONSUMO",
+    "MATERIALI CONSUMO": "MATERIALE DI CONSUMO",
+}
+
 
 # ============================================
 # CATEGORIE SPESE OPERATIVE / GENERALI (NON F&B)

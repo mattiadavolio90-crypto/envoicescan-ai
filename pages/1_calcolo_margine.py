@@ -62,10 +62,7 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     st.switch_page("app.py")
     st.stop()
 
-# Admin puro (non impersonificato) → redirect a pannello admin
-if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
-    st.switch_page("pages/admin.py")
-    st.stop()
+# Admin puro: accesso consentito anche fuori dal pannello admin
 
 user = st.session_state.user_data
 user_id = user["id"]
@@ -356,7 +353,7 @@ if st.session_state.margine_tab == "analisi":
             <div style='color: #1e3a5f; font-size: 0.875rem; line-height: 1.6; margin-bottom: 12px;'>
             Ripartisci il Fatturato Netto tra i centri di produzione <strong>mese per mese</strong>.
             I dati vengono salvati e recuperati automaticamente in base al periodo selezionato nel filtro in alto.
-            I costi di <strong>Materiale di Consumo</strong> vengono distribuiti proporzionalmente al fatturato di ogni centro.
+            Questa analisi mostra i centri F&amp;B; le <strong>Spese Generali</strong>, incluso <strong>Materiale di Consumo</strong>, restano fuori da questa ripartizione.
             </div>
             """, unsafe_allow_html=True)
 
@@ -513,8 +510,8 @@ if st.session_state.margine_tab == "analisi":
 
         # Calcola percentuali
         # Se split attivo: % su fatturato specifico del centro
-        # Materiale di Consumo / Shop: costo distribuito proporzionalmente
-        _no_fatturato = {"MATERIALE DI CONSUMO", "SHOP"}
+        # Eventuali centri senza fatturato diretto (es. SHOP): costo distribuito proporzionalmente
+        _no_fatturato = {"SHOP"}
         if fatturato_split_attivo and fatturato_totale_split > 0:
             def _calc_pct_fatt(row):
                 centro = row['Centro']
@@ -552,8 +549,8 @@ if st.session_state.margine_tab == "analisi":
         # 1° Margine (Fatturato Netto - Costi F&B) per la colonna Margine %
         primo_margine = fatturato_netto_periodo - totale_costi_fb
 
-        # Separa MATERIALE DI CONSUMO e SHOP dalla tabella principale
-        _centri_no_fatt = {"MATERIALE DI CONSUMO", "SHOP"}
+        # Separa eventuali centri senza fatturato diretto dalla tabella principale
+        _centri_no_fatt = {"SHOP"}
         df_centri_main = df_centri_agg[~df_centri_agg['Centro'].isin(_centri_no_fatt)]
         df_centri_extra = df_centri_agg[df_centri_agg['Centro'].isin(_centri_no_fatt)]
         spesa_extra_tot = df_centri_extra['Spesa'].sum() if not df_centri_extra.empty else 0.0
@@ -677,14 +674,14 @@ if st.session_state.margine_tab == "analisi":
         st.markdown(''.join(h), unsafe_allow_html=True)
 
         # ========================================================
-        # SEZIONE MATERIALE DI CONSUMO — expander con totale e suddivisione
+        # SEZIONE COSTI SENZA FATTURATO DIRETTO — expander con totale e suddivisione
         # ========================================================
         if spesa_extra_tot > 0:
             st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
-            with st.expander(f"📦 Materiale di Consumo — Totale: € {spesa_extra_tot:,.0f}", expanded=False):
+            with st.expander(f"🛍️ Costi senza fatturato diretto — Totale: € {spesa_extra_tot:,.0f}", expanded=False):
                 st.markdown(f"""
                 <p style="font-size:0.85rem;color:#475569;margin-bottom:10px;">
-                    Costo distribuito proporzionalmente {'al fatturato' if fatturato_split_attivo and fatturato_totale_split > 0 else 'ai costi'} di ogni centro di produzione.
+                    Costo distribuito proporzionalmente {'al fatturato' if fatturato_split_attivo and fatturato_totale_split > 0 else 'ai costi'} dei centri F&amp;B.
                 </p>
                 """, unsafe_allow_html=True)
 

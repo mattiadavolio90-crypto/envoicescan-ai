@@ -18,7 +18,7 @@ import pandas as pd
 import streamlit as st
 
 # Import config
-from config.constants import CATEGORIE_SPESE_GENERALI
+from config.constants import CATEGORIE_SPESE_GENERALI, LEGACY_CATEGORY_ALIASES
 
 # Logger centralizzato
 from config.logger_setup import get_logger
@@ -175,6 +175,7 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
         )
         # Converti spazi bianchi in NaN
         df_result.loc[df_result['Categoria'].astype(str).str.strip() == '', 'Categoria'] = pd.NA
+        df_result['Categoria'] = df_result['Categoria'].apply(lambda v: v.strip() if isinstance(v, str) else v)
         
         # 🔄 MIGRAZIONE AUTOMATICA: Aggiorna vecchi nomi categorie
         mapping_categorie = {
@@ -184,7 +185,8 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
             'DOLCI': 'PASTICCERIA',
             'OLIO': 'OLIO E CONDIMENTI',
             'CONSERVE': 'SCATOLAME E CONSERVE',
-            'CAFFÈ': 'CAFFE E THE'
+            'CAFFÈ': 'CAFFE E THE',
+            **LEGACY_CATEGORY_ALIASES,
         }
         
         righe_migrate = 0

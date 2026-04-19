@@ -1568,13 +1568,10 @@ if 'ristoranti' not in st.session_state or not st.session_state.get('ristorante_
 
 
 # ============================================
-# ADMIN PURO: REDIRECT A PANNELLO ADMIN
+# ADMIN PURO: ACCESSO APP SENZA RESTRIZIONI
 # ============================================
-# L'admin (non impersonificato) non accede alle pagine app, solo al pannello admin.
 if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
-    logger.info(f"👨‍💼 Admin user_id={user.get('id')} su app.py → redirect a pannello admin")
-    st.switch_page("pages/admin.py")
-    st.stop()
+    logger.info(f"👨‍💼 Admin user_id={user.get('id')} in modalità unrestricted su app.py")
 
 # ============================================
 # TRIAL: VERIFICA SCADENZA + CARICA INFO

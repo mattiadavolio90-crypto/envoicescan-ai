@@ -70,7 +70,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError, APIError
 
 # Import da moduli interni
-from config.constants import DIZIONARIO_CORREZIONI, BRAND_AMBIGUI_NO_DICT, TUTTE_LE_CATEGORIE, MEMORIA_SESSION_CAP, MAX_DESC_LENGTH_DB, MAX_AI_CALLS_PER_DAY
+from config.constants import DIZIONARIO_CORREZIONI, BRAND_AMBIGUI_NO_DICT, TUTTE_LE_CATEGORIE, MEMORIA_SESSION_CAP, MAX_DESC_LENGTH_DB, MAX_AI_CALLS_PER_DAY, LEGACY_CATEGORY_ALIASES
 from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizza_stringa
 from utils.validation import is_dicitura_sicura
 
@@ -104,6 +104,16 @@ _memoria_cache = {
 
 # Flag per disabilitare la memoria globale (solo sessione)
 _disable_global_memory = False
+
+
+def _normalize_category_name(categoria: str | None) -> str | None:
+    """Converte alias storici cliente nella categoria canonica attuale."""
+    if categoria is None:
+        return None
+    cat = str(categoria).strip()
+    if not cat:
+        return None
+    return LEGACY_CATEGORY_ALIASES.get(cat, cat)
 
 
 # Regole forti: proteggono da errori grossolani AI/dizionario.
@@ -1336,7 +1346,7 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
 
             if rows_locale:
                 _memoria_cache['prodotti_utente'][user_id] = {
-                    row['descrizione']: row['categoria']
+                    row['descrizione']: (_normalize_category_name(row.get('categoria')) or row.get('categoria'))
                     for row in rows_locale
                 }
                 logger.info(f"📦 Cache LOCALE caricata: {len(rows_locale)} prodotti per user {user_id[:8]}")
@@ -1359,7 +1369,7 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                 _streak_promo = 0
                 for row in rows_globale:
                     desc = row['descrizione']
-                    cat = row['categoria']
+                    cat = _normalize_category_name(row.get('categoria')) or row.get('categoria')
                     conf = row.get('confidence')
                     streak = row.get('consecutive_correct_classifications', 0) or 0
                     if conf in ('alta', 'altissima') or streak >= 3:
@@ -1381,7 +1391,7 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
             if rows_manuali:
                 _memoria_cache['classificazioni_manuali'] = {
                     row['descrizione']: {
-                        'categoria': row['categoria_corretta'],
+                        'categoria': (_normalize_category_name(row.get('categoria_corretta')) or row.get('categoria_corretta')),
                         'is_dicitura': row.get('is_dicitura', False)
                     }
                     for row in rows_manuali
@@ -1904,6 +1914,8 @@ def salva_correzione_in_memoria_locale(
             return False
     
     try:
+        nuova_categoria = _normalize_category_name(nuova_categoria) or nuova_categoria
+
         # Normalizza descrizione
         desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
         
@@ -2020,6 +2032,9 @@ def salva_correzione_in_memoria_globale(
             return False
     
     try:
+        vecchia_categoria = _normalize_category_name(vecchia_categoria) or vecchia_categoria
+        nuova_categoria = _normalize_category_name(nuova_categoria) or nuova_categoria
+
         # Normalizza descrizione
         desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
         
@@ -2460,8 +2475,9 @@ def classifica_con_ai(
     if not lista_descrizioni:
         return []
 
-    # 🔒 RATE LIMIT SERVER-SIDE: max MAX_AI_CALLS_PER_DAY categorizzazioni/giorno per ristorante
-    if ristorante_id:
+    # � Admin e impersonazione bypassano i limiti giornalieri AI per test operativi
+    _is_unrestricted_admin = bool(st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False))
+    if ristorante_id and not _is_unrestricted_admin:
         try:
             from services.ai_cost_service import get_daily_quota_status
 

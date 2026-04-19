@@ -33,6 +33,8 @@ def check_page_enabled(page_key: str, user_id: str):
     Controlla se la pagina è abilitata per l'utente leggendo dal DB (cached 60s).
     Sincronizza anche session_state.user_data['pagine_abilitate'].
     Se non abilitata, mostra warning e blocca la pagina con st.stop().
+
+    Admin e sessioni in impersonazione bypassano sempre il gating.
     """
     pagine_raw = _fetch_pagine_abilitate(user_id)
     if pagine_raw is not None:
@@ -48,6 +50,10 @@ def check_page_enabled(page_key: str, user_id: str):
             pagine_raw = None
 
     pagine_abilitate = pagine_raw if isinstance(pagine_raw, dict) else {}
+
+    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+        logger.debug(f"Bypass pagina '{page_key}' per admin/impersonazione (user={user_id})")
+        return
 
     default_enabled = False if page_key in OPTIONAL_PAGES else True
     is_enabled = pagine_abilitate.get(page_key, default_enabled)

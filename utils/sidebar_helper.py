@@ -168,46 +168,46 @@ def render_sidebar(user_data: dict):
         # ============================================
         # SEZIONE OPERATIVO
         # ============================================
-        # Admin puro (non impersonificato) vede SOLO pannello admin
         _is_pure_admin = user_email_normalized in admin_emails_normalized and not st.session_state.get('impersonating', False)
-        
-        if not _is_pure_admin:
-            st.markdown("### 📋 Sezioni e Funzioni")
-            
-            if st.button("🧠 Analisi Fatture AI", use_container_width=True, key="sidebar_dashboard",
-                         type="primary" if current_script == 'app.py' else "secondary"):
-                st.switch_page("app.py")
-            
-            # Pagine abilitabili dall'admin
-            _pagine_raw = st.session_state.get('user_data', {}).get('pagine_abilitate')
-            if isinstance(_pagine_raw, str):
-                import json
-                try:
-                    _pagine_raw = json.loads(_pagine_raw)
-                except Exception as e:
-                    logger.warning(f"Errore parsing pagine_abilitate sidebar: {e}")
-                    _pagine_raw = {}
-            pagine_abilitate = _pagine_raw if isinstance(_pagine_raw, dict) else {}
-            workspace_enabled = pagine_abilitate.get('workspace', True)
-            analisi_personalizzata_enabled = pagine_abilitate.get('analisi_personalizzata', False)
-            
-            if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",
-                         type="primary" if current_script == '3_controllo_prezzi.py' else "secondary"):
-                st.switch_page("pages/3_controllo_prezzi.py")
-            
-            if st.button("💰 Calcolo Marginalità", use_container_width=True, key="sidebar_margine",
-                         type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
-                st.switch_page("pages/1_calcolo_margine.py")
-            
-            if workspace_enabled:
-                if st.button("🍴 Foodcost", use_container_width=True, key="sidebar_workspace",
-                             type="primary" if current_script == '2_foodcost.py' else "secondary"):
-                    st.switch_page("pages/2_foodcost.py")
 
-            if analisi_personalizzata_enabled:
-                if st.button("🏷️ Analisi e Tag", use_container_width=True, key="sidebar_analisi_personalizzata",
-                             type="primary" if current_script == '4_analisi_personalizzata.py' else "secondary"):
-                    st.switch_page("pages/4_analisi_personalizzata.py")
+        st.markdown("### 📋 Sezioni e Funzioni")
+        if _is_pure_admin:
+            st.caption("Accesso admin senza restrizioni attivo")
+        
+        if st.button("🧠 Analisi Fatture AI", use_container_width=True, key="sidebar_dashboard",
+                     type="primary" if current_script == 'app.py' else "secondary"):
+            st.switch_page("app.py")
+        
+        # Pagine abilitabili dall'admin
+        _pagine_raw = st.session_state.get('user_data', {}).get('pagine_abilitate')
+        if isinstance(_pagine_raw, str):
+            import json
+            try:
+                _pagine_raw = json.loads(_pagine_raw)
+            except Exception as e:
+                logger.warning(f"Errore parsing pagine_abilitate sidebar: {e}")
+                _pagine_raw = {}
+        pagine_abilitate = _pagine_raw if isinstance(_pagine_raw, dict) else {}
+        workspace_enabled = True if _is_pure_admin else pagine_abilitate.get('workspace', True)
+        analisi_personalizzata_enabled = True if _is_pure_admin else pagine_abilitate.get('analisi_personalizzata', False)
+        
+        if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",
+                     type="primary" if current_script == '3_controllo_prezzi.py' else "secondary"):
+            st.switch_page("pages/3_controllo_prezzi.py")
+        
+        if st.button("💰 Calcolo Marginalità", use_container_width=True, key="sidebar_margine",
+                     type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
+            st.switch_page("pages/1_calcolo_margine.py")
+        
+        if workspace_enabled:
+            if st.button("🍴 Foodcost", use_container_width=True, key="sidebar_workspace",
+                         type="primary" if current_script == '2_foodcost.py' else "secondary"):
+                st.switch_page("pages/2_foodcost.py")
+
+        if analisi_personalizzata_enabled:
+            if st.button("🏷️ Analisi e Tag", use_container_width=True, key="sidebar_analisi_personalizzata",
+                         type="primary" if current_script == '4_analisi_personalizzata.py' else "secondary"):
+                st.switch_page("pages/4_analisi_personalizzata.py")
         
         st.markdown("---")
         

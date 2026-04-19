@@ -1029,9 +1029,10 @@ def estrai_dati_da_scontrino_vision(file_caricato, openai_client=None):
                 return []
             openai_client = OpenAI(api_key=api_key)
 
-        # 🔒 RATE LIMIT VISION SEPARATO: max VISION_DAILY_LIMIT chiamate/giorno per ristorante
+        # � Admin e impersonazione bypassano i limiti Vision per test operativi
         ristorante_id = st.session_state.get('ristorante_id')
-        if ristorante_id:
+        _is_unrestricted_admin = bool(st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False))
+        if ristorante_id and not _is_unrestricted_admin:
             try:
                 from services.ai_cost_service import get_daily_quota_status
                 quota = get_daily_quota_status(
