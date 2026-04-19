@@ -6,6 +6,80 @@ from config.logger_setup import get_logger
 
 logger = get_logger(__name__)
 
+ADMIN_TEST_WORKSPACE_NAME = "Ambiente Test Admin"
+ADMIN_TEST_WORKSPACE_RAGIONE_SOCIALE = "Workspace Test Admin"
+ADMIN_TEST_WORKSPACE_PIVA = "00000000000"
+
+
+def is_pure_admin_session() -> bool:
+    """True se la sessione corrente è admin puro e non in impersonificazione."""
+    try:
+        return bool(
+            st.session_state.get('user_is_admin', False)
+            and not st.session_state.get('impersonating', False)
+        )
+    except Exception as e:
+        logger.debug(f"Errore verifica pure admin session: {e}")
+        return False
+
+
+def ensure_admin_test_workspace(supabase_client, user: dict):
+    """Recupera o crea il workspace test dedicato all'admin corrente."""
+    user_id = (user or {}).get('id')
+    if not supabase_client or not user_id:
+        return None
+
+    try:
+        response = (
+            supabase_client.table('ristoranti')
+            .select('id, nome_ristorante, partita_iva, ragione_sociale, user_id')
+            .eq('user_id', user_id)
+            .eq('attivo', True)
+            .order('nome_ristorante')
+            .execute()
+        )
+        existing = response.data or []
+    except Exception as e:
+        logger.error(f"❌ Errore caricamento workspace admin: {e}")
+        existing = []
+
+    preferred = next(
+        (
+            r for r in existing
+            if str(r.get('nome_ristorante') or '').strip().lower() == ADMIN_TEST_WORKSPACE_NAME.lower()
+        ),
+        None,
+    )
+    if preferred:
+        return preferred
+
+    payload = {
+        'user_id': user_id,
+        'nome_ristorante': ADMIN_TEST_WORKSPACE_NAME,
+        'partita_iva': (
+            str((user or {}).get('partita_iva') or '').strip()
+            if str((user or {}).get('partita_iva') or '').strip().isdigit()
+            and len(str((user or {}).get('partita_iva') or '').strip()) == 11
+            else ADMIN_TEST_WORKSPACE_PIVA
+        ),
+        'ragione_sociale': ADMIN_TEST_WORKSPACE_RAGIONE_SOCIALE,
+        'attivo': True,
+    }
+
+    try:
+        created = supabase_client.table('ristoranti').insert(payload).execute()
+        if created.data:
+            logger.info(f"🧪 Workspace test admin creato: user_id={user_id}")
+            return created.data[0]
+    except Exception as e:
+        logger.warning(f"⚠️ Creazione workspace test admin fallita: {e}")
+
+    if existing:
+        logger.info(f"ℹ️ Fallback su workspace admin esistente: user_id={user_id}")
+        return existing[0]
+
+    return None
+
 def add_ristorante_filter(query, ristorante_id=None):
     """
     Aggiunge automaticamente filtro ristorante_id a una query Supabase.

@@ -103,7 +103,7 @@ def render_sidebar(user_data: dict):
             and not st.session_state.get('impersonating', False)
         )
         if _is_pure_admin_sidebar:
-            nome_ristorante = "Amministratore"
+            nome_ristorante = st.session_state.get('nome_ristorante') or 'Ambiente Test Admin'
         else:
             nome_ristorante = st.session_state.get('nome_ristorante') or user_data.get('nome_ristorante') or 'Ristorante'
         

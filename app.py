@@ -52,7 +52,7 @@ from utils.formatters import (
     get_nome_base_file
 )
 
-from utils.ristorante_helper import add_ristorante_filter
+from utils.ristorante_helper import add_ristorante_filter, ensure_admin_test_workspace
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 from utils.ui_helpers import load_css, load_js, render_pivot_mensile
 
@@ -1446,27 +1446,39 @@ if not user or not user.get('id'):
     st.session_state._cookie_checked = True
     st.rerun()
 
-if 'ristoranti' not in st.session_state or not st.session_state.get('ristorante_id'):
+_is_pure_admin_session = st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False)
+
+if _is_pure_admin_session:
     try:
-        # Admin: carica TUTTI i ristoranti dal sistema
-        if st.session_state.get('user_is_admin', False):
-            ristoranti = supabase.table('ristoranti')\
-                .select('id, nome_ristorante, partita_iva, ragione_sociale, user_id')\
-                .eq('attivo', True)\
-                .order('nome_ristorante')\
-                .execute()
-            
-            logger.info(f"👨‍💼 ADMIN: Caricati {len(ristoranti.data) if ristoranti.data else 0} ristoranti (tutti i clienti)")
+        admin_workspace = ensure_admin_test_workspace(supabase, user)
+        st.session_state.ristoranti = [admin_workspace] if admin_workspace else []
+
+        if admin_workspace:
+            st.session_state.ristorante_id = admin_workspace['id']
+            st.session_state.partita_iva = admin_workspace.get('partita_iva')
+            st.session_state.nome_ristorante = admin_workspace.get('nome_ristorante') or 'Ambiente Test Admin'
+            logger.info(f"🧪 Admin workspace test attivo: rist_id={admin_workspace['id']}")
         else:
-            # Utente normale: carica solo i propri ristoranti
-            ristoranti = supabase.table('ristoranti')\
-                .select('id, nome_ristorante, partita_iva, ragione_sociale')\
-                .eq('user_id', user.get('id'))\
-                .eq('attivo', True)\
-                .execute()
-            
-            logger.info(f"🔍 DEBUG: Caricati {len(ristoranti.data) if ristoranti.data else 0} ristoranti per user_id={user.get('id')}")
+            logger.warning("⚠️ Nessun workspace test admin disponibile")
+            st.session_state.pop('ristorante_id', None)
+            st.session_state.partita_iva = None
+            st.session_state.nome_ristorante = 'Ambiente Test Admin'
+    except Exception as e:
+        logger.exception(f"Errore setup workspace test admin: {e}")
+        st.session_state.ristoranti = []
+        st.session_state.pop('ristorante_id', None)
+        st.session_state.partita_iva = None
+        st.session_state.nome_ristorante = 'Ambiente Test Admin'
+elif 'ristoranti' not in st.session_state or not st.session_state.get('ristorante_id'):
+    try:
+        # Utente normale o admin in impersonificazione: carica solo i ristoranti del profilo attivo
+        ristoranti = supabase.table('ristoranti')\
+            .select('id, nome_ristorante, partita_iva, ragione_sociale')\
+            .eq('user_id', user.get('id'))\
+            .eq('attivo', True)\
+            .execute()
         
+        logger.info(f"🔍 DEBUG: Caricati {len(ristoranti.data) if ristoranti.data else 0} ristoranti per user_id={user.get('id')}")
         st.session_state.ristoranti = ristoranti.data if ristoranti.data else []
         
         # Se ha ristoranti, imposta il default
@@ -2074,45 +2086,11 @@ else:
         st.warning(f"⚠️ Database quasi pieno: {righe_totali:,}/{MAX_RIGHE_GLOBALE:,} righe ({percentuale:.0f}%)")
     
     # ============================================================
-    # SELETTORE RISTORANTE PER ADMIN
+    # WORKSPACE TEST FISSO PER ADMIN
     # ============================================================
-    # Gli admin possono selezionare qualsiasi ristorante per le fatture di test
     if st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False):
-        st.markdown("### 👨‍💼 Modalità Admin - Seleziona Ristorante")
-        
-        if st.session_state.get('ristoranti') and len(st.session_state.ristoranti) > 0:
-            # Crea lista ristoranti per selectbox
-            ristoranti_admin = st.session_state.ristoranti
-            
-            # Trova indice ristorante attualmente selezionato
-            current_rist_id = st.session_state.get('ristorante_id')
-            try:
-                current_idx = next(i for i, r in enumerate(ristoranti_admin) if r['id'] == current_rist_id)
-            except StopIteration:
-                current_idx = 0
-            
-            selected_idx = st.selectbox(
-                "Seleziona ristorante per caricare fatture:",
-                range(len(ristoranti_admin)),
-                format_func=lambda i: f"🏪 {ristoranti_admin[i]['nome_ristorante']} - P.IVA: IT{ristoranti_admin[i]['partita_iva']}",
-                index=current_idx,
-                key="admin_ristorante_selector"
-            )
-            
-            # Aggiorna ristorante selezionato
-            selected_ristorante = ristoranti_admin[selected_idx]
-            if selected_ristorante['id'] != st.session_state.get('ristorante_id'):
-                st.session_state.ristorante_id = selected_ristorante['id']
-                st.session_state.partita_iva = selected_ristorante['partita_iva']
-                st.session_state.nome_ristorante = selected_ristorante['nome_ristorante']
-                logger.info(f"👨‍💼 Admin: ristorante cambiato a rist_id={selected_ristorante['id']}")
-                st.rerun()
-            
-            st.info(f"📌 Le fatture saranno caricate per: **{st.session_state.nome_ristorante}** (P.IVA: IT{st.session_state.partita_iva})")
-            st.markdown("---")
-        else:
-            st.error("⚠️ Nessun ristorante disponibile nel sistema. Crea almeno un cliente prima di caricare fatture.")
-            st.stop()
+        st.info("🧪 Ambiente test admin attivo: qui puoi usare le stesse pagine operative del cliente senza selezionare un ristorante.")
+        st.markdown("---")
     
     # ============================================================
     # PRE-COMPUTE: Conta righe da categorizzare per UI (dal DataFrame cached)
@@ -2144,11 +2122,18 @@ else:
     # LAYOUT: FILE UPLOADER + AI INFO/BUTTON AFFIANCATI
     # ============================================================
     with st.container(key="main_documents_upload_section"):
-        st.markdown("""
+        _is_pure_admin_upload = st.session_state.get('user_is_admin', False) and not st.session_state.get('impersonating', False)
+        _documents_warning_html = (
+            "🧪 <strong>AMBIENTE TEST ADMIN:</strong> puoi caricare documenti liberamente per prove, training AI e categorizzazione."
+            if _is_pure_admin_upload
+            else "⚠️ <strong>IMPORTANTE:</strong> Le fatture caricate devono corrispondere alla P.IVA del ristorante mostrato sopra! <strong>Altrimenti verranno scartate</strong>"
+        )
+
+        st.markdown(f"""
         <div class="documents-header-row">
             <div class="documents-title">📄 Documenti</div>
             <div class="documents-warning">
-                ⚠️ <strong>IMPORTANTE:</strong> Le fatture caricate devono corrispondere alla P.IVA del ristorante mostrato sopra! <strong>Altrimenti verranno scartate</strong>
+                {_documents_warning_html}
             </div>
         </div>
         """, unsafe_allow_html=True)
