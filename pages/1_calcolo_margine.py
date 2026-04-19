@@ -405,6 +405,9 @@ if st.session_state.margine_tab == "analisi":
                     st.warning(f"⚠️ Nessun fatturato inserito per {mese_label_sel} nel tab Calcolo Ricavi-Costi-Margini.")
 
             # --- Modalità inserimento ---
+            if "aa_split_mode_radio" not in st.session_state:
+                st.session_state["aa_split_mode_radio"] = "€ Valore Assoluto"
+
             modo_split = st.radio(
                 "Modalità di inserimento",
                 ["% Percentuale", "€ Valore Assoluto"],

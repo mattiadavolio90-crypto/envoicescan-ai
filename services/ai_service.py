@@ -133,7 +133,7 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
     # --- Ingredienti/sciroppi da bar (brand specifici) ---
     (
         "VARIE BAR",
-        r"\b(ODK|DE KUYPER|DEKUYPER|FABBRI MIXYBAR)\b",
+        r"\b(ODK|DE KUYPER|DEKUYPER|FABBRI MIXYBAR|DOLCIFICANTE)\b",
     ),
     # --- Alcolici ---
     (

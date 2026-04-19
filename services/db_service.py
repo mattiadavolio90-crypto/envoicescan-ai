@@ -126,7 +126,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         return pd.DataFrame()
 
 
-def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None, ristorante_id=None):
+def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None, ristorante_id=None, include_review_rows: bool = False):
     """
     🔥 SINGLE SOURCE OF TRUTH: Carica fatture SOLO da Supabase
     
@@ -167,6 +167,24 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     
     # Normalizzazione categorie (veloce, in-memory)
     df_result = df_result.copy()  # Non modificare il cached DataFrame
+
+    # Compatibilità naming colonna review: alcuni flussi usano NeedsReview, altri needs_review
+    if 'NeedsReview' in df_result.columns and 'needs_review' not in df_result.columns:
+        df_result['needs_review'] = df_result['NeedsReview'].fillna(False).astype(bool)
+    elif 'needs_review' in df_result.columns and 'NeedsReview' not in df_result.columns:
+        df_result['NeedsReview'] = df_result['needs_review'].fillna(False).astype(bool)
+
+    if not include_review_rows:
+        review_col = 'needs_review' if 'needs_review' in df_result.columns else 'NeedsReview' if 'NeedsReview' in df_result.columns else None
+        if review_col is not None:
+            righe_prima_review = len(df_result)
+            df_result = df_result[~df_result[review_col].fillna(False).astype(bool)].copy()
+            righe_nascoste = righe_prima_review - len(df_result)
+            if righe_nascoste > 0:
+                logger.info(f"🙈 Nascoste {righe_nascoste} righe in review dalle viste standard cliente")
+
+    if df_result.empty:
+        return pd.DataFrame()
     
     if 'Categoria' in df_result.columns:
         df_result['Categoria'] = df_result['Categoria'].replace(
