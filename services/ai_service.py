@@ -143,7 +143,7 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
     (
         "AMARI/LIQUORI",
         r"\b(AMARO|LIQUORE|LIMONCELLO|SAMBUCA|JAGERMEISTER|AVERNA|MONTENEGRO|NONINO|KAHLUA|BAILEYS|CYNAR|BRANCAMENTA|FERNET|MIRTO|"
-        r"MARASCHINO|APEROL|CAMPARI|ANGOSTURA|PASSOA|CURACAO|TRIPLE SEC|BOLS|PORTO|LILLET|VERMOUTH)\b",
+        r"MARASCHINO|APEROL|CAMPARI|ANGOSTURA|PASSOA|CURACAO|TRIPLE SEC|BOLS|PORTO|LILLET|VERMOUTH|UNICUM|MALIBU['\u2019]?|MARZADRO)\b",
     ),
     (
         "VINI",
@@ -174,8 +174,9 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
         "PESCE",
         r"\b(PESCE|SALMON[EI]|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|ORATE|BRANZIN[OI]|SPIGOLA|"
         r"CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|ALIC[EI]|MERLUZZO|SCAMPI|SCAMPO|"
-        r"VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTICE|"
-        r"ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|CANNOLICCHI[OA]?|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|SPUMILIA)\b",
+        r"VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTIC[EI]|"
+        r"ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|CANNOLICCHI[OA]?|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|SPUMILIA|"
+        r"PAGR[OA]|PAGARO|PAGRUS)\b",
     ),
     # --- Salumi (solo keyword ultra-specifici; COPPA/LONZA/PANCETTA esclusi: troppo ambigui) ---
     (
@@ -257,8 +258,9 @@ _PESCE_RE = re.compile(
     r"\b(PESCE|SALMON[EI]|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|"
     r"ORATE|BRANZIN[OI]|SPIGOLA|CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|"
     r"ALIC[EI]|MERLUZZO|SCAMPI|SCAMPO|VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|"
-    r"RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTICE|ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|"
-    r"CANNOLICCHI[OA]?|CAVIALE|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|SPUMILIA)\b"
+    r"RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTIC[EI]|ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|"
+    r"CANNOLICCHI[OA]?|CAVIALE|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|SPUMILIA|"
+    r"PAGR[OA]|PAGARO|PAGRUS)\b"
 )
 _SALSA_CREMA_RE = re.compile(
     r"\b(SALSA|SALSE|SUGO|SUGHI|RAGU|RAGÙ|PESTO|BESCIAMELLA|ROUX|CREMA|CREME|FARCITURA|FARCITURE)\b"
@@ -439,6 +441,18 @@ _GRANELLA_PISTACCHIO_RE = re.compile(r"\bGRANELLA\b.*\bPISTACCH\w*\b")
 _TOFU_GENERICO_RE = re.compile(r"\b(TOFU|TOUFU|DOUFU)\b")
 _TOFU_PESCE_RE = re.compile(r"\b(SEAFOOD|FISH|PESCE)\b.*\b(TOFU|TOUFU)\b|\b(TOFU|TOUFU)\b.*\b(SEAFOOD|FISH|PESCE|DI\s+PESCE)\b")
 _CIMI_BIMBA_RE = re.compile(r"\bCIMI\s+DI\s+BIMBA\b")
+_TARTUFO_CARPACCIO_RE = re.compile(r"CARPACCIO.*TARTUF\w*|TARTUF\w*.*CARPACCIO")
+_ACETO_RISO_RE = re.compile(r"\bACETO\b.*\bRISO\b|\bRISO\b.*\bACETO\b")
+_UNAGI_RE = re.compile(r"\bUNAGI\b")
+_DIMSUM_SECCO_RE = re.compile(r"\b(RAVIOLI|SHAO\s?MAI|SIU\s?MAI|GYOZA|HAUKAU|HAR\s?GAU|DIMSUM|DIM\s*SUM)\b")
+
+# --- Regole nuovi prodotti non coperti ---
+_LIQ_CL_RE = re.compile(r"\bLIQ\.?\b.*\bCL\.?\s*\d")
+_AMARO_BRAND_EXTRA_RE = re.compile(r"\b(UNICUM|MALIBU['\u2019]?|MARZADRO|STREGA|VECCHIA\s+ROMAGNA)\b")
+_LIEVITO_RE = re.compile(r"\bLIEVIT\w*\b")
+_PISELLI_STANDALONE_RE = re.compile(r"\bPISELLI\b")
+_PASTA_RIPIENA_SECCO_RE = re.compile(r"\b(TORTELLI\w*|TORTELLONI|TORTELLINI|AGNOLOTTI|CAPPELLETTI|MEZZELUNE|GIRASOLI)\b")
+_SURGITAL_RE = re.compile(r"\bSURGITAL\b")
 
 # Regole forti che devono battere cache locali/globali automatiche errate.
 # Non include la memoria admin, che resta prioritaria e intenzionale.
@@ -446,6 +460,17 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "ingrediente_bar_specifico",
     "capricciosa_secchio_conserva",
     "topping_bar_specifico",
+    "tartufo_carpaccio_conserva",
+    "aceto_riso_condimento",
+    "unagi_pesce",
+    "dimsum_secco",
+    "salvietta_tnt_consumo",
+    "liq_cl_liquore",
+    "amaro_brand_liquore",
+    "lievito_secco",
+    "pasta_ripiena_secco",
+    "surgital_secco",
+    "piselli_verdura",
 }
 
 
@@ -516,6 +541,49 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "salvietta_tnt_consumo"
         return cat, None
 
+    # LIQ. abbreviazione + CL formato → liquore (non generico)
+    if _LIQ_CL_RE.search(desc_u):
+        mapped = "AMARI/LIQUORI"
+        if cat != mapped:
+            return mapped, "liq_cl_liquore"
+        return cat, None
+
+    # Brand amari/liquori extra (Unicum, Malibu, Marzadro…)
+    if _AMARO_BRAND_EXTRA_RE.search(desc_u):
+        mapped = "AMARI/LIQUORI"
+        if cat != mapped:
+            return mapped, "amaro_brand_liquore"
+        return cat, None
+
+    # Lievito (fresco/secco) → secco (ingrediente base panificazione)
+    if _LIEVITO_RE.search(desc_u):
+        mapped = "SECCO"
+        if cat != mapped:
+            return mapped, "lievito_secco"
+        return cat, None
+
+    # Pasta ripiena italiana (tortelli, tortelloni, agnolotti…) → secco
+    if _PASTA_RIPIENA_SECCO_RE.search(desc_u):
+        mapped = "SECCO"
+        if cat != mapped:
+            return mapped, "pasta_ripiena_secco"
+        return cat, None
+
+    # Surgital (brand pasta ripiena surgelata) → secco
+    if _SURGITAL_RE.search(desc_u):
+        mapped = "SECCO"
+        if cat != mapped:
+            return mapped, "surgital_secco"
+        return cat, None
+
+    # Piselli standalone (bulk verdure) → verdure
+    # NB: mais/piselli + bonduelle/sigma/lattina → scatolame è gestito più avanti
+    if _PISELLI_STANDALONE_RE.search(desc_u) and not _MAIS_PISELLI_RE.search(desc_u):
+        mapped = "VERDURE"
+        if cat != mapped:
+            return mapped, "piselli_verdura"
+        return cat, None
+
     # MOCCHI/MOCHI (gelato/dessert) → pasticceria
     if _MOCCHI_MOCHI_RE.search(desc_u):
         mapped = "PASTICCERIA"
@@ -537,11 +605,39 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "santhe_bevanda"
         return cat, None
 
+    # Carpaccio di tartufo nero → conserva/scatolame
+    if _TARTUFO_CARPACCIO_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "tartufo_carpaccio_conserva"
+        return cat, None
+
+    # Aceto di riso → condimento (non salsa generica)
+    if _ACETO_RISO_RE.search(desc_u):
+        mapped = "OLIO E CONDIMENTI"
+        if cat != mapped:
+            return mapped, "aceto_riso_condimento"
+        return cat, None
+
+    # Unagi kabayaki / anguilla preparata → pesce
+    if _UNAGI_RE.search(desc_u):
+        mapped = "PESCE"
+        if cat != mapped:
+            return mapped, "unagi_pesce"
+        return cat, None
+
     # Olio extravergine → olio e condimenti (non materiale di consumo)
     if _OLIO_EXV_RE.search(desc_u):
         mapped = "OLIO E CONDIMENTI"
         if cat != mapped:
             return mapped, "olio_extravergine"
+        return cat, None
+
+    # Ravioli / Shaomai / Gyoza / Haukau → secco (famiglia dimsum/ripieni)
+    if _DIMSUM_SECCO_RE.search(desc_u) and not _RAVIOLI_GRIGLIA_CARNE_RE.search(desc_u):
+        mapped = "SECCO"
+        if cat != mapped:
+            return mapped, "dimsum_secco"
         return cat, None
 
     # Ravioli alla griglia di carne/maiale → carne (non manutenzione)

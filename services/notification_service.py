@@ -102,27 +102,35 @@ def build_upload_quality_notifications(upload_context: Optional[Dict[str, Any]])
     needs_review_rows = int(quality_checks.get('needs_review_rows') or 0)
     zero_price_rows = int(quality_checks.get('zero_price_rows') or 0)
     uncategorized_rows = int(quality_checks.get('uncategorized_rows') or 0)
+    uncategorized_unique = int(quality_checks.get('uncategorized_unique_products') or 0)
 
     if needs_review_rows <= 0 and zero_price_rows <= 0 and uncategorized_rows <= 0:
         return []
 
     details = []
     if needs_review_rows > 0:
-        details.append(f"{needs_review_rows} righe da rivedere")
+        details.append(f"{needs_review_rows} {_pluralize(needs_review_rows, 'riga da rivedere', 'righe da rivedere')}")
     if zero_price_rows > 0:
-        details.append(f"{zero_price_rows} righe a €0")
+        details.append(f"{zero_price_rows} {_pluralize(zero_price_rows, 'riga', 'righe')} a €0")
     if uncategorized_rows > 0:
-        details.append(f"{uncategorized_rows} non classificate")
+        prod_label = f"/{uncategorized_unique} {_pluralize(uncategorized_unique, 'prodotto univoco', 'prodotti univoci')}" if uncategorized_unique else ""
+        details.append(
+            f"{uncategorized_rows} {_pluralize(uncategorized_rows, 'riga', 'righe')}{prod_label} "
+            f"{_pluralize(uncategorized_rows, 'richiede', 'richiedono')} la tua attenzione poiché "
+            f"{_pluralize(uncategorized_rows, 'risulta', 'risultano')} Da Classificare"
+        )
 
-    body = f"Verifica automatica completata su {rows_saved} righe salvate: " + ', '.join(details) + '.'
+    body = ' · '.join(details) + '.'
+
+    title = 'Attenzione: prodotti Da Classificare' if uncategorized_rows > 0 else 'Verifica qualità ultime fatture'
 
     return [{
         'id': f'upload-quality-{upload_id}',
         'level': 'warning',
-        'icon': '🧪',
-        'title': 'Verifica qualità ultime fatture',
+        'icon': '⚠️' if uncategorized_rows > 0 else '🧪',
+        'title': title,
         'body': body,
-        'toast': f"Controllo qualità: {needs_review_rows} {_pluralize(needs_review_rows, 'riga da rivedere', 'righe da rivedere')}",
+        'toast': f"{uncategorized_rows} righe Da Classificare" if uncategorized_rows > 0 else f"Controllo qualità: {needs_review_rows} {_pluralize(needs_review_rows, 'riga da rivedere', 'righe da rivedere')}",
     }]
 
 

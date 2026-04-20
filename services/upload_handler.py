@@ -204,7 +204,7 @@ def _collect_post_upload_quality_checks(supabase_client, user_id: str, file_name
     try:
         query = (
             supabase_client.table('fatture')
-            .select('file_origine, prezzo_unitario, categoria, needs_review')
+            .select('file_origine, prezzo_unitario, categoria, needs_review, descrizione')
             .eq('user_id', user_id)
             .in_('file_origine', list({str(name).strip() for name in file_names if str(name).strip()}))
         )
@@ -213,6 +213,7 @@ def _collect_post_upload_quality_checks(supabase_client, user_id: str, file_name
         rows = response.data or []
 
         checks['rows_saved'] = len(rows)
+        _uncategorized_descs: set[str] = set()
         for row in rows:
             try:
                 prezzo = float(row.get('prezzo_unitario') or 0)
@@ -226,9 +227,13 @@ def _collect_post_upload_quality_checks(supabase_client, user_id: str, file_name
                 checks['needs_review_rows'] += 1
             if categoria == 'Da Classificare':
                 checks['uncategorized_rows'] += 1
+                _d = str(row.get('descrizione') or '').strip().upper()
+                if _d:
+                    _uncategorized_descs.add(_d)
             if categoria == '📝 NOTE E DICITURE':
                 checks['note_rows'] += 1
 
+        checks['uncategorized_unique_products'] = len(_uncategorized_descs)
         checks['verification_ok'] = True
     except Exception as exc:
         checks['verification_error'] = str(exc)[:180]
@@ -577,9 +582,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     if st.session_state.get('suppress_upload_messages_once', False):
         st.session_state.suppress_upload_messages_once = False
     
-    # ✅ Pulizia flag just_uploaded
-    if erano_just_uploaded:
-        st.session_state.just_uploaded_files = set()
+    # ✅ just_uploaded_files NON viene pulito qui: resta disponibile per il badge Novità
+    # nel category_editor. Verrà sovrascritto al prossimo upload riuscito.
     
     # ============================================================
     # ELABORAZIONE FILE NUOVI (solo se ci sono)
@@ -1149,39 +1153,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                 upload_summary['righe_prezzo_zero'] = quality_checks.get('zero_price_rows', 0)
                 upload_summary['righe_non_classificate'] = quality_checks.get('uncategorized_rows', 0)
 
-                if quality_checks.get('verification_ok'):
-                    _rows_saved = int(quality_checks.get('rows_saved') or 0)
-                    _review = int(quality_checks.get('needs_review_rows') or 0)
-                    _zero = int(quality_checks.get('zero_price_rows') or 0)
-                    _unc = int(quality_checks.get('uncategorized_rows') or 0)
-                    if _review > 0 or _zero > 0 or _unc > 0:
-                        _details = []
-                        if _review > 0:
-                            _details.append(f"{_review} da rivedere")
-                        if _zero > 0:
-                            _details.append(f"{_zero} a prezzo zero")
-                        if _unc > 0:
-                            _details.append(f"{_unc} non classificate")
-                        _messages.append(
-                            f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #f59e0b;border-radius:6px;margin-bottom:8px;">'
-                            f'<span style="font-size:0.88rem;font-weight:600;color:#92400e;">'
-                            f'🧪 Verifica qualità completata: {_rows_saved} righe salvate — ' + ', '.join(_details) + '.'
-                            f'</span></div>'
-                        )
-                    else:
-                        _messages.append(
-                            f'<div style="padding:10px 16px;background:#d1fae5;border-left:5px solid #10b981;border-radius:6px;margin-bottom:8px;">'
-                            f'<span style="font-size:0.88rem;font-weight:600;color:#065f46;">'
-                            f'✅ Verifica qualità completata: {_rows_saved} righe salvate, nessuna anomalia su categorizzazione o righe a prezzo zero.'
-                            f'</span></div>'
-                        )
-                else:
-                    _messages.append(
-                        '<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #d97706;border-radius:6px;margin-bottom:8px;">'
-                        '<span style="font-size:0.88rem;font-weight:600;color:#92400e;">'
-                        '⚠️ Upload salvato, ma la verifica qualità automatica non è riuscita a completarsi.'
-                        '</span></div>'
-                    )
+                # Nota: il dettaglio qualità viene mostrato SOLO nell'expander notifiche,
+                # non nel messaggio inline di conferma upload.
             if 'righe_ai_appena_categorizzate' in st.session_state:
                 st.session_state.righe_ai_appena_categorizzate = []
             if 'uploader_key' not in st.session_state:
