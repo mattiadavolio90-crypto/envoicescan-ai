@@ -341,6 +341,7 @@ _MANUTENZIONE_LIGHT_RE = re.compile(r"\b(ACCENDIGAS|ZOCCOLINO)\b")
 _VARIE_BAR_SERVICE_RE = re.compile(
     r"\b(ZUCCH(?:ERO)?\s*BUSTIN\w*|BUSTIN\w*\s*ZUCCH(?:ERO)?|CIOK\d+\b|CIOCCOLATA\s+(COCCO|PISTACCHIO|FONDENTE))\b"
 )
+_SANTHE_RE = re.compile(r"\bSAN\s*TH[EÉ']\b|\bSANTHE['’]?\b")
 _SUSHI_VARIE_RE = re.compile(r"\b(BAMBU|BAMBOO|NORI|WASABI|PANKO|MASAGO|TOBIKO)\b")
 _TAZZE_PIATTI_RE = re.compile(r"\bTAZZE?\b.*\bPIAT\w*\b|\bPIAT\w*\b.*\bTAZZE?\b")
 _ACCESSORI_PRODUZIONE_CREMA_RE = re.compile(r"\b(SAC\s*A\s*POCHE|COPPETTA\s*BICAMERA)\b")
@@ -379,6 +380,10 @@ _CREAMI_DISPENSER_RE = re.compile(r"\bCREAMI\b.*\bDISPENSER\b|\bDISPENSER\b.*\bC
 _BLEND_T_FILTRI_RE = re.compile(r"\bBLEND\b.*\bT\b.*\bFILTRI?\b|\bFILTRI?\b.*\bBLEND\b.*\bT\b")
 _LATTIERA_RE = re.compile(r"\bLATTIERA\b")
 _TOPPING_CACAO_RE = re.compile(r"\bTOPPING\b.*\b(CIOCCOLAT\w*|CACAO)\b|\b(CIOCCOLAT\w*|CACAO)\b.*\bTOPPING\b")
+_TOPPING_BAR_RE = re.compile(
+    r"\bTOPPING\b.*\b(TOSCHI|FRUTTI?\s+DI\s+BOSCO|FRUTT\w*\s+BOSCO|PISTACCH\w*|CARAMELL\w*|VANIGL\w*)\b|"
+    r"\b(TOSCHI|FRUTTI?\s+DI\s+BOSCO|FRUTT\w*\s+BOSCO|PISTACCH\w*|CARAMELL\w*|VANIGL\w*)\b.*\bTOPPING\b"
+)
 _VASSOIO_ESPOSIZIONE_RE = re.compile(r"\bVASSOIO\b.*\bESPOSIZION\w*\b|\bESPOSIZION\w*\b.*\bVASSOIO\b")
 _ORZO_BAR_RE = re.compile(r"\bORZO\b.*\b(\d+\s*GR|GR\s*\d+|SOLUBILE)\b|\b(\d+\s*GR|GR\s*\d+|SOLUBILE)\b.*\bORZO\b")
 _VERISURE_HARDWARE_RE = re.compile(
@@ -434,6 +439,14 @@ _GRANELLA_PISTACCHIO_RE = re.compile(r"\bGRANELLA\b.*\bPISTACCH\w*\b")
 _TOFU_GENERICO_RE = re.compile(r"\b(TOFU|TOUFU|DOUFU)\b")
 _TOFU_PESCE_RE = re.compile(r"\b(SEAFOOD|FISH|PESCE)\b.*\b(TOFU|TOUFU)\b|\b(TOFU|TOUFU)\b.*\b(SEAFOOD|FISH|PESCE|DI\s+PESCE)\b")
 _CIMI_BIMBA_RE = re.compile(r"\bCIMI\s+DI\s+BIMBA\b")
+
+# Regole forti che devono battere cache locali/globali automatiche errate.
+# Non include la memoria admin, che resta prioritaria e intenzionale.
+_NON_NEGOZIABILI_CACHE_OVERRIDE = {
+    "ingrediente_bar_specifico",
+    "capricciosa_secchio_conserva",
+    "topping_bar_specifico",
+}
 
 
 def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) -> Tuple[str, Optional[str]]:
@@ -515,6 +528,13 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "LATTICINI"
         if cat != mapped:
             return mapped, "burrata_latticino"
+        return cat, None
+
+    # Santhe/SanThé pesca-limone → bevande (non frutta)
+    if _SANTHE_RE.search(desc_u):
+        mapped = "BEVANDE"
+        if cat != mapped:
+            return mapped, "santhe_bevanda"
         return cat, None
 
     # Olio extravergine → olio e condimenti (non materiale di consumo)
@@ -669,6 +689,12 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "VARIE BAR"
         if cat != mapped:
             return mapped, "topping_cacao_bar"
+        return cat, None
+
+    if _TOPPING_BAR_RE.search(desc_u):
+        mapped = "VARIE BAR"
+        if cat != mapped:
+            return mapped, "topping_bar_specifico"
         return cat, None
 
     if _VASSOIO_ESPOSIZIONE_RE.search(desc_u):
@@ -1751,9 +1777,9 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
                 logger.info(f"📋 Memoria Admin (cache/ottieni): '{descrizione[:40]}' → {record['categoria']}")
                 return record['categoria']
 
-        # 0.5️⃣ Override brand bar non negoziabili: non devono essere battuti da cache auto errata.
+        # 0.5️⃣ Override forti non negoziabili: non devono essere battuti da cache auto errata.
         categoria_forzata, motivo_forzato = applica_regole_categoria_forti(descrizione, "Da Classificare")
-        if motivo_forzato == "ingrediente_bar_specifico":
+        if motivo_forzato in _NON_NEGOZIABILI_CACHE_OVERRIDE:
             return categoria_forzata
         
         # 1️⃣ Check memoria LOCALE utente (da cache, 0 query!)
@@ -2168,9 +2194,9 @@ def categorizza_con_memoria(
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → {record['categoria']} (validata admin)")
                 return record['categoria']
 
-        # LIVELLO 1.5: Override brand bar non negoziabili prima della memoria automatica.
+        # LIVELLO 1.5: Override forti non negoziabili prima della memoria automatica.
         categoria_forzata, motivo_forzato = applica_regole_categoria_forti(descrizione, "Da Classificare")
-        if motivo_forzato == "ingrediente_bar_specifico":
+        if motivo_forzato in _NON_NEGOZIABILI_CACHE_OVERRIDE:
             return categoria_forzata
     
     except Exception as e:

@@ -186,6 +186,57 @@ def _duplicate_reason_for_ui(file_name: str, reasons_map: dict) -> str:
     return str(reasons)
 
 
+def _collect_post_upload_quality_checks(supabase_client, user_id: str, file_names: list[str], ristorante_id=None) -> dict:
+    """Verifica post-upload: righe salvate, €0, needs_review e non categorizzate."""
+    checks = {
+        'checked_files': len(file_names or []),
+        'rows_saved': 0,
+        'zero_price_rows': 0,
+        'needs_review_rows': 0,
+        'uncategorized_rows': 0,
+        'note_rows': 0,
+        'verification_ok': False,
+    }
+
+    if supabase_client is None or not user_id or not file_names:
+        return checks
+
+    try:
+        query = (
+            supabase_client.table('fatture')
+            .select('file_origine, prezzo_unitario, categoria, needs_review')
+            .eq('user_id', user_id)
+            .in_('file_origine', list({str(name).strip() for name in file_names if str(name).strip()}))
+        )
+        query = add_ristorante_filter(query, ristorante_id)
+        response = query.execute()
+        rows = response.data or []
+
+        checks['rows_saved'] = len(rows)
+        for row in rows:
+            try:
+                prezzo = float(row.get('prezzo_unitario') or 0)
+            except (TypeError, ValueError):
+                prezzo = 0.0
+            categoria = str(row.get('categoria') or '').strip()
+
+            if abs(prezzo) < 1e-9:
+                checks['zero_price_rows'] += 1
+            if bool(row.get('needs_review')):
+                checks['needs_review_rows'] += 1
+            if categoria == 'Da Classificare':
+                checks['uncategorized_rows'] += 1
+            if categoria == '📝 NOTE E DICITURE':
+                checks['note_rows'] += 1
+
+        checks['verification_ok'] = True
+    except Exception as exc:
+        checks['verification_error'] = str(exc)[:180]
+        logger.warning(f"[UPLOAD VERIFY] Audit qualità post-upload fallito: {exc}")
+
+    return checks
+
+
 def handle_uploaded_files(uploaded_files, supabase, user_id):
     """Gestisce l'elaborazione completa dei file caricati: deduplicazione, validazione, salvataggio."""
     # [DEBUG]
@@ -1085,12 +1136,62 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         ]
                 except Exception as price_alert_error:
                     logger.warning(f"Errore calcolo alert prezzi post-upload: {price_alert_error}")
+
+                quality_checks = _collect_post_upload_quality_checks(
+                    supabase,
+                    user_id,
+                    file_ok,
+                    st.session_state.get('ristorante_id'),
+                )
+                upload_notification_context['quality_checks'] = quality_checks
+                upload_summary['righe_salvate'] = quality_checks.get('rows_saved', 0)
+                upload_summary['righe_da_rivedere'] = quality_checks.get('needs_review_rows', 0)
+                upload_summary['righe_prezzo_zero'] = quality_checks.get('zero_price_rows', 0)
+                upload_summary['righe_non_classificate'] = quality_checks.get('uncategorized_rows', 0)
+
+                if quality_checks.get('verification_ok'):
+                    _rows_saved = int(quality_checks.get('rows_saved') or 0)
+                    _review = int(quality_checks.get('needs_review_rows') or 0)
+                    _zero = int(quality_checks.get('zero_price_rows') or 0)
+                    _unc = int(quality_checks.get('uncategorized_rows') or 0)
+                    if _review > 0 or _zero > 0 or _unc > 0:
+                        _details = []
+                        if _review > 0:
+                            _details.append(f"{_review} da rivedere")
+                        if _zero > 0:
+                            _details.append(f"{_zero} a prezzo zero")
+                        if _unc > 0:
+                            _details.append(f"{_unc} non classificate")
+                        _messages.append(
+                            f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #f59e0b;border-radius:6px;margin-bottom:8px;">'
+                            f'<span style="font-size:0.88rem;font-weight:600;color:#92400e;">'
+                            f'🧪 Verifica qualità completata: {_rows_saved} righe salvate — ' + ', '.join(_details) + '.'
+                            f'</span></div>'
+                        )
+                    else:
+                        _messages.append(
+                            f'<div style="padding:10px 16px;background:#d1fae5;border-left:5px solid #10b981;border-radius:6px;margin-bottom:8px;">'
+                            f'<span style="font-size:0.88rem;font-weight:600;color:#065f46;">'
+                            f'✅ Verifica qualità completata: {_rows_saved} righe salvate, nessuna anomalia su categorizzazione o righe a prezzo zero.'
+                            f'</span></div>'
+                        )
+                else:
+                    _messages.append(
+                        '<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #d97706;border-radius:6px;margin-bottom:8px;">'
+                        '<span style="font-size:0.88rem;font-weight:600;color:#92400e;">'
+                        '⚠️ Upload salvato, ma la verifica qualità automatica non è riuscita a completarsi.'
+                        '</span></div>'
+                    )
             if 'righe_ai_appena_categorizzate' in st.session_state:
                 st.session_state.righe_ai_appena_categorizzate = []
             if 'uploader_key' not in st.session_state:
                 st.session_state.uploader_key = 0
             st.session_state.uploader_key += 1
-            st.session_state.just_uploaded_files = set()
+            st.session_state.just_uploaded_files = {
+                str(name).strip()
+                for name in list(file_ok) + [get_nome_base_file(name) for name in file_ok]
+                if str(name).strip()
+            }
             st.session_state.files_processati_sessione = set()
             st.session_state.ultimo_upload_ids = []
             upload_summary['caricate_successo'] = file_processati

@@ -9,7 +9,7 @@ from collections import defaultdict
 
 from config.constants import CATEGORIE_SPESE_GENERALI, TRUNCATE_DESC_LOG, TRUNCATE_DESC_QUERY
 from utils.text_utils import normalizza_stringa, estrai_nome_categoria, escape_ilike as _escape_ilike
-from utils.formatters import calcola_prezzo_standard_intelligente, carica_categorie_da_db
+from utils.formatters import calcola_prezzo_standard_intelligente, carica_categorie_da_db, get_nome_base_file
 from utils.ristorante_helper import add_ristorante_filter
 from utils.ui_helpers import load_css
 from services.ai_service import invalida_cache_memoria, salva_correzione_in_memoria_globale, salva_correzione_in_memoria_locale
@@ -65,6 +65,27 @@ def _compute_novita_badge(created_at_value, login_reference_value) -> str:
     if pd.isna(created_ts) or pd.isna(login_ts):
         return ''
     return '🆕 Nuova' if created_ts > login_ts else ''
+
+
+def _resolve_novita_badge(file_origine_value, created_at_value, login_reference_value, recent_file_origini=None) -> str:
+    """Mostra il badge sui file recenti (manuali o Invoicetronic) anche se cambia l'estensione/nome base."""
+    recent_files = set()
+    for fname in (recent_file_origini or set()):
+        fname_str = str(fname).strip()
+        if not fname_str:
+            continue
+        recent_files.add(fname_str)
+        recent_files.add(get_nome_base_file(fname_str))
+
+    current_file = str(file_origine_value or '').strip()
+    current_candidates = {current_file}
+    if current_file:
+        current_candidates.add(get_nome_base_file(current_file))
+
+    if recent_files:
+        return '🆕 Nuova' if recent_files.intersection(current_candidates) else ''
+
+    return _compute_novita_badge(created_at_value, login_reference_value)
 
 
 def _sort_detail_rows(df_source: pd.DataFrame) -> pd.DataFrame:
@@ -208,10 +229,38 @@ def render_category_editor(df_completo_filtrato, supabase):
         or st.session_state.get(_current_access_key)
     )
 
+    _recent_file_origini = set()
+    _recent_file_origini.update(
+        str(fname).strip()
+        for fname in (st.session_state.get('auto_received_file_origini') or set())
+        if str(fname).strip()
+    )
+    _recent_file_origini.update(
+        str(fname).strip()
+        for fname in ((st.session_state.get('last_upload_notification_context') or {}).get('successful_files') or [])
+        if str(fname).strip()
+    )
+    _recent_file_origini.update(
+        str(fname).strip()
+        for fname in (st.session_state.get('just_uploaded_files') or set())
+        if str(fname).strip()
+    )
+
     if 'CreatedAt' in df_editor.columns:
-        df_editor['Novità'] = df_editor['CreatedAt'].apply(
-            lambda value: _compute_novita_badge(value, _novita_reference)
-        )
+        if 'FileOrigine' in df_editor.columns:
+            df_editor['Novità'] = df_editor.apply(
+                lambda row: _resolve_novita_badge(
+                    row.get('FileOrigine'),
+                    row.get('CreatedAt'),
+                    _novita_reference,
+                    _recent_file_origini,
+                ),
+                axis=1,
+            )
+        else:
+            df_editor['Novità'] = df_editor['CreatedAt'].apply(
+                lambda value: _compute_novita_badge(value, _novita_reference)
+            )
     else:
         df_editor['Novità'] = ''
     
@@ -299,14 +348,24 @@ def render_category_editor(df_completo_filtrato, supabase):
 """, unsafe_allow_html=True)
     
     # ============================================================
-    # 📦 CHECKBOX RAGGRUPPAMENTO PRODOTTI
+    # 📦 TOGGLE VISTA / FILTRO NOVITÀ
     # ============================================================
-    vista_aggregata = st.checkbox(
-        "📦 Raggruppa prodotti unici", 
-        value=True,  # ← DEFAULT ON
-        help="Mostra 1 riga per prodotto con totali sommati (Q.tà, €, Prezzo medio)",
-        key="checkbox_raggruppa_prodotti"
-    )
+    col_flag_group, col_flag_new, _ = st.columns([2.6, 2.4, 5.0])
+    with col_flag_group:
+        vista_aggregata = st.checkbox(
+            "📦 Raggruppa prodotti unici",
+            value=True,
+            key="checkbox_raggruppa_prodotti"
+        )
+    with col_flag_new:
+        filtra_nuovi = st.checkbox(
+            "🆕 Filtra nuovi inserimenti",
+            value=False,
+            key="checkbox_filtra_nuovi_inserimenti"
+        )
+
+    if filtra_nuovi and 'Novità' in df_editor.columns:
+        df_editor = df_editor[df_editor['Novità'] == '🆕 Nuova'].copy()
 
     df_editor_paginato = df_editor.copy()  # fallback sicuro (sovrascritto sotto se vista_aggregata)
 
@@ -480,6 +539,7 @@ def render_category_editor(df_completo_filtrato, supabase):
         df_editor_paginato = df_editor_paginato[_cols]
 
     # Configurazione colonne (ordine allineato tra vista normale e aggregata)
+    # Niente tooltip hover sui titoli: devono restare facili da cliccare per l'ordinamento.
     column_config_dict = {
         "FileOrigine": st.column_config.TextColumn("📄 File", disabled=True),
         "NumeroRiga": st.column_config.NumberColumn("🔢 N.Riga", disabled=True, width="small"),
@@ -487,13 +547,11 @@ def render_category_editor(df_completo_filtrato, supabase):
         "Descrizione": st.column_config.TextColumn("📝 Descrizione", disabled=True),
         "CatIcon": st.column_config.TextColumn(
             "🏷️",
-            help="Emoji categoria merceologica",
             disabled=True,
             width="small",
         ),
         "Categoria": st.column_config.SelectboxColumn(
             "Categoria",
-            help="Seleziona la categoria corretta (le celle 'Da Classificare' devono essere categorizzate)",
             width="medium",
             options=categorie_disponibili,
             required=True
@@ -511,7 +569,6 @@ def render_category_editor(df_completo_filtrato, supabase):
         ),
         "Novità": st.column_config.TextColumn(
             "🆕 Novità",
-            help="Mostra le fatture arrivate dopo l'ultimo login dell'utente",
             disabled=True,
             width="small"
         )
@@ -525,7 +582,6 @@ def render_category_editor(df_completo_filtrato, supabase):
         if 'NumFatture' in df_editor_paginato.columns:
             column_config_dict["NumFatture"] = st.column_config.NumberColumn(
                 "📄 N.Fatt",
-                help="Numero fatture con questo prodotto",
                 disabled=True,
                 width="small"
             )
@@ -534,7 +590,6 @@ def render_category_editor(df_completo_filtrato, supabase):
         if 'NumRighe' in df_editor_paginato.columns:
             column_config_dict["NumRighe"] = st.column_config.NumberColumn(
                 "📊 N.Righe",
-                help="Numero righe fattura aggregate per questo prodotto",
                 disabled=True,
                 width="small"
             )
@@ -542,7 +597,6 @@ def render_category_editor(df_completo_filtrato, supabase):
         # Adatta etichette colonne esistenti
         column_config_dict["Quantita"] = st.column_config.NumberColumn(
             "📦 Q.tà TOT",
-            help="Quantità totale da tutte le fatture",
             disabled=True
         )
         

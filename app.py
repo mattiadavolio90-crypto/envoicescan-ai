@@ -121,6 +121,7 @@ from services.notification_service import (
     build_scoped_notification_id,
     build_td24_date_notifications,
     build_upload_outcome_notifications,
+    build_upload_quality_notifications,
     dismiss_notification_ids,
     get_dismissed_notification_ids,
 )
@@ -1807,6 +1808,11 @@ if not _is_admin_session:
     )
     operational_notifications.extend(
         build_upload_outcome_notifications(
+            st.session_state.get('last_upload_notification_context')
+        )
+    )
+    operational_notifications.extend(
+        build_upload_quality_notifications(
             st.session_state.get('last_upload_notification_context')
         )
     )

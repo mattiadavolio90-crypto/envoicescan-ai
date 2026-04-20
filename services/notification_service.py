@@ -76,6 +76,56 @@ def build_upload_outcome_notifications(upload_context: Optional[Dict[str, Any]])
     }]
 
 
+def build_upload_quality_notifications(upload_context: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Crea una notifica quando l'ultimo upload contiene righe da rivedere."""
+    if not upload_context:
+        return []
+
+    upload_id = str(upload_context.get('upload_id') or '').strip()
+    quality_checks = upload_context.get('quality_checks') or {}
+    if not upload_id or not quality_checks:
+        return []
+
+    verification_ok = bool(quality_checks.get('verification_ok'))
+    if not verification_ok:
+        err = _html.escape(str(quality_checks.get('verification_error') or 'verifica non disponibile'))
+        return [{
+            'id': f'upload-quality-{upload_id}',
+            'level': 'warning',
+            'icon': '🧪',
+            'title': 'Verifica qualità upload non completata',
+            'body': f"Le fatture risultano caricate, ma il controllo automatico finale non è riuscito: {err}.",
+            'toast': 'Verifica qualità da ricontrollare',
+        }]
+
+    rows_saved = int(quality_checks.get('rows_saved') or 0)
+    needs_review_rows = int(quality_checks.get('needs_review_rows') or 0)
+    zero_price_rows = int(quality_checks.get('zero_price_rows') or 0)
+    uncategorized_rows = int(quality_checks.get('uncategorized_rows') or 0)
+
+    if needs_review_rows <= 0 and zero_price_rows <= 0 and uncategorized_rows <= 0:
+        return []
+
+    details = []
+    if needs_review_rows > 0:
+        details.append(f"{needs_review_rows} righe da rivedere")
+    if zero_price_rows > 0:
+        details.append(f"{zero_price_rows} righe a €0")
+    if uncategorized_rows > 0:
+        details.append(f"{uncategorized_rows} non classificate")
+
+    body = f"Verifica automatica completata su {rows_saved} righe salvate: " + ', '.join(details) + '.'
+
+    return [{
+        'id': f'upload-quality-{upload_id}',
+        'level': 'warning',
+        'icon': '🧪',
+        'title': 'Verifica qualità ultime fatture',
+        'body': body,
+        'toast': f"Controllo qualità: {needs_review_rows} {_pluralize(needs_review_rows, 'riga da rivedere', 'righe da rivedere')}",
+    }]
+
+
 def build_price_alert_notifications(
     upload_context: Optional[Dict[str, Any]],
     threshold_pct: float = 5.0,
