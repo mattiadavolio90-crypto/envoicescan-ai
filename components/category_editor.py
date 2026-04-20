@@ -461,9 +461,9 @@ def render_category_editor(df_completo_filtrato, supabase):
         ('SCATOLAME E CONSERVE' if str(cat).strip().upper() == 'CONSERVE' else cat)
         for cat in categorie_disponibili
     ]
-    # 🔄 MIGRAZIONE NOMI: Uniforma vecchio nome 'CAFFÈ' al nuovo 'CAFFE E THE'
+    # 🔄 MIGRAZIONE NOMI: Uniforma vecchio nome 'CAFFÈ' / 'CAFFÈ E THE' al nuovo 'CAFFE E THE'
     categorie_disponibili = [
-        ('CAFFE E THE' if str(cat).strip().upper() in ['CAFFÈ', 'CAFFE'] else cat)
+        ('CAFFE E THE' if str(cat).strip().upper() in ['CAFFÈ', 'CAFFE', 'CAFFÈ E THE'] else cat)
         for cat in categorie_disponibili
     ]
     

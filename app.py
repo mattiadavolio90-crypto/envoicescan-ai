@@ -2107,7 +2107,8 @@ else:
     try:
         if not df_cache.empty and 'Categoria' in df_cache.columns:
             # Escludi le stesse righe escluse dalla dashboard (note + review) — solo lettura, no copy
-            _mask_note = df_cache['Categoria'].fillna('') == '📝 NOTE E DICITURE'
+            _cat_col_ui = df_cache['Categoria'].fillna('')
+            _mask_note = (_cat_col_ui == '📝 NOTE E DICITURE') | (_cat_col_ui == 'NOTE E DICITURE')
             if 'needs_review' in df_cache.columns:
                 _mask_review = df_cache['needs_review'].fillna(False) == True
                 _df_for_count = df_cache[~(_mask_note | _mask_review)]

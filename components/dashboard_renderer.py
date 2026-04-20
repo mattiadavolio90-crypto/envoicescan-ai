@@ -106,8 +106,9 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     # Costruisci maschera esclusione
     mask_escludi = pd.Series([False] * len(df_completo), index=df_completo.index)
     
-    # 1. Escludi TUTTE le NOTE E DICITURE (validate o meno)
-    mask_note = df_completo['Categoria'].fillna('') == '📝 NOTE E DICITURE'
+    # 1. Escludi TUTTE le NOTE E DICITURE (validate o meno, con o senza emoji prefisso)
+    _cat_col = df_completo['Categoria'].fillna('')
+    mask_note = (_cat_col == '📝 NOTE E DICITURE') | (_cat_col == 'NOTE E DICITURE')
     mask_escludi = mask_escludi | mask_note
     
     # 2. Escludi righe in review (qualsiasi categoria)

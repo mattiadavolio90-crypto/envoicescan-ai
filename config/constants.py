@@ -236,8 +236,10 @@ FORNITORI_SPESE_GENERALI_KEYWORDS = [
 # che produce gelati, brioche, succhi) vanno in BRAND_AMBIGUI_NO_DICT e devono
 # passare dall'AI per una classificazione per-prodotto.
 CATEGORIA_PER_FORNITORE = {
-    "CP S.P.A": "UTENZE E LOCALI",          # Bollette energia/gas
-    "M&M SRL": "GELATI",                    # Fornitore gelati (solo gelati)
+    "CP S.P.A": "UTENZE E LOCALI",              # Bollette energia/gas
+    "M&M SRL": "GELATI",                        # Fornitore gelati (solo gelati)
+    "SHIDU INTERNATIONAL": "VERDURE",           # Fornitore prodotti asiatici/verdure
+    "NOVA HORECA": "MANUTENZIONE E ATTREZZATURE",  # Fornitore attrezzature horeca
 }
 
 
@@ -1002,12 +1004,16 @@ DIZIONARIO_CORREZIONI = {
     "TOP RANK": "SERVIZI E CONSULENZE",
     "TENUTA DELLA CONTABILIT": "SERVIZI E CONSULENZE",
     "ONORARI": "SERVIZI E CONSULENZE",
+    "REVISORE LEGALE": "SERVIZI E CONSULENZE",
+    "REVISORE": "SERVIZI E CONSULENZE",
     "PREMIO POSTICIPATO": "SERVIZI E CONSULENZE",
     "SPESE TRANSAZIONE": "SERVIZI E CONSULENZE",
     "SPESE DI AMMINISTRAZIONE": "SERVIZI E CONSULENZE",
     "GESTIONE AMMINISTRATIVA": "SERVIZI E CONSULENZE",
     "SPESE ACCESSORIE": "SERVIZI E CONSULENZE",
     "SPESE VARIE": "SERVIZI E CONSULENZE",
+    "COUPON": "📝 NOTE E DICITURE",
+    "BUONO SCONTO": "📝 NOTE E DICITURE",
     
     # ===== PENALI E INTERESSI =====
     "INDENNITA": "SERVIZI E CONSULENZE",
