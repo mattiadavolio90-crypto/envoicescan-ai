@@ -5,6 +5,7 @@ import pandas as pd
 import time
 import logging
 import html as _html
+import re
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
@@ -21,14 +22,20 @@ from utils.piva_validator import normalizza_piva
 from utils.formatters import log_upload_event, get_nome_base_file, calcola_alert_data_consegna_td24
 from utils.ristorante_helper import add_ristorante_filter
 
-from services.ai_service import invalida_cache_memoria, mostra_loading_ai
+from services.ai_service import (
+    invalida_cache_memoria,
+    mostra_loading_ai,
+    carica_memoria_completa,
+    ottieni_hint_per_ai,
+)
 from services.invoice_service import (
     estrai_dati_da_scontrino_vision,
     salva_fattura_processata,
     VisionDailyLimitExceededError,
 )
-from services.worker_client import parse_file_via_worker
+from services.worker_client import parse_file_via_worker, classifica_via_worker
 from services.db_service import calcola_alert, carica_e_prepara_dataframe, clear_fatture_cache
+from utils.validation import is_dicitura_sicura
 
 
 logger = logging.getLogger("fci_app")
@@ -186,6 +193,249 @@ def _duplicate_reason_for_ui(file_name: str, reasons_map: dict) -> str:
     return str(reasons)
 
 
+_GENERIC_UNCATEGORIZED_DESC = {
+    'VARIE', 'MERCE', 'PRODOTTO', 'PRODOTTI', 'ARTICOLO', 'ARTICOLI',
+    'MATERIALE', 'ALIMENTARI', 'ASSORTITI', 'MISTO', 'DIVERSI'
+}
+
+_DOC_REFERENCE_RE = re.compile(
+    r'\b(DDT|BOLLA|RIFERIMENTO|RIF\.?|DOCUMENTO|FATTURA|ORDINE|NR\.?|NUM\.?|N\.)\b',
+    re.IGNORECASE,
+)
+
+
+def _should_skip_post_upload_ai_for_row(row: dict) -> tuple[bool, str]:
+    """Stabilisce se una riga deve restare Da Classificare anche dopo il passaggio AI."""
+    descrizione = str(row.get('descrizione') or '').strip()
+    if not descrizione:
+        return True, 'dati_insufficienti'
+
+    try:
+        prezzo = float(row.get('prezzo_unitario') or 0)
+    except (TypeError, ValueError):
+        prezzo = 0.0
+
+    try:
+        quantita = float(row.get('quantita') or 0)
+    except (TypeError, ValueError):
+        quantita = 0.0
+
+    desc_upper = descrizione.upper().strip()
+    desc_compact = re.sub(r'[^A-Z0-9]+', ' ', desc_upper).strip()
+    tokens = [tok for tok in desc_compact.split() if tok]
+
+    if is_dicitura_sicura(descrizione, prezzo, quantita):
+        return True, 'riferimento_documento'
+
+    if not tokens or re.fullmatch(r'[\d\W]+', descrizione or ''):
+        return True, 'dati_insufficienti'
+
+    if desc_compact in _GENERIC_UNCATEGORIZED_DESC:
+        return True, 'descrizione_generica'
+
+    if len(tokens) <= 2 and any(tok in _GENERIC_UNCATEGORIZED_DESC for tok in tokens):
+        return True, 'descrizione_generica'
+
+    if _DOC_REFERENCE_RE.search(desc_upper):
+        return True, 'riferimento_documento'
+
+    if abs(prezzo) < 1e-9 and len(tokens) <= 3:
+        return True, 'prezzo_zero_senza_contesto'
+
+    return False, ''
+
+
+def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names: list[str], ristorante_id=None) -> dict:
+    """Esegue automaticamente la categorizzazione AI sulle righe appena caricate rimaste non classificate."""
+    summary = {
+        'rows_scanned': 0,
+        'eligible_descriptions': 0,
+        'resolved_descriptions': 0,
+        'resolved_rows': 0,
+        'remaining_descriptions': [],
+        'remaining_reason_counts': {},
+        'completed': False,
+    }
+
+    if supabase_client is None or not user_id or not file_names:
+        return summary
+
+    try:
+        query = (
+            supabase_client.table('fatture')
+            .select('id, descrizione, fornitore, iva_percentuale, prezzo_unitario, quantita, categoria, needs_review, file_origine')
+            .eq('user_id', user_id)
+            .in_('file_origine', list({str(name).strip() for name in file_names if str(name).strip()}))
+        )
+        query = add_ristorante_filter(query, ristorante_id)
+        response = query.execute()
+        rows = response.data or []
+
+        unresolved_rows = [
+            row for row in rows
+            if str(row.get('categoria') or '').strip() in {'', 'Da Classificare'}
+        ]
+        summary['rows_scanned'] = len(unresolved_rows)
+        if not unresolved_rows:
+            summary['completed'] = True
+            return summary
+
+        invalida_cache_memoria()
+        carica_memoria_completa(user_id, supabase_client=supabase_client)
+
+        desc_map: dict[str, dict] = {}
+        for row in unresolved_rows:
+            desc = str(row.get('descrizione') or '').strip()
+            if not desc:
+                continue
+            meta = desc_map.setdefault(desc, {
+                'rows': [],
+                'fornitore': '',
+                'iva': 0,
+                'eligible': False,
+                'skip_reasons': set(),
+            })
+            meta['rows'].append(row)
+            if row.get('fornitore') and not meta['fornitore']:
+                meta['fornitore'] = str(row.get('fornitore') or '')
+            if row.get('iva_percentuale') and not meta['iva']:
+                try:
+                    meta['iva'] = int(float(row.get('iva_percentuale') or 0))
+                except (TypeError, ValueError):
+                    meta['iva'] = 0
+
+            skip, reason = _should_skip_post_upload_ai_for_row(row)
+            if skip:
+                meta['skip_reasons'].add(reason)
+            else:
+                meta['eligible'] = True
+
+        descs_for_ai = [desc for desc, meta in desc_map.items() if meta['eligible']]
+        summary['eligible_descriptions'] = len(descs_for_ai)
+
+        remaining_reasons = Counter()
+        remaining_descs: list[str] = []
+
+        for desc, meta in desc_map.items():
+            if not meta['eligible']:
+                reason = sorted(meta['skip_reasons'])[0] if meta['skip_reasons'] else 'dati_insufficienti'
+
+                # Le righe puramente tecniche/documentali non devono restare Da Classificare:
+                # le salviamo come NOTE E DICITURE così spariscono dalle notifiche cliente.
+                if reason == 'riferimento_documento':
+                    row_ids = [row.get('id') for row in meta['rows'] if row.get('id') is not None]
+                    if row_ids:
+                        q_note = supabase_client.table('fatture').update({
+                            'categoria': '📝 NOTE E DICITURE',
+                            'needs_review': False,
+                        }).eq('user_id', user_id).in_('id', row_ids)
+                        q_note = add_ristorante_filter(q_note, ristorante_id)
+                        q_note.execute()
+                        summary['resolved_rows'] += len(row_ids)
+                        summary['resolved_descriptions'] += 1
+                    continue
+
+                remaining_reasons[reason] += 1
+                remaining_descs.append(desc)
+
+        chunk_size = 30
+
+        for start in range(0, len(descs_for_ai), chunk_size):
+            chunk = descs_for_ai[start:start + chunk_size]
+            ai_memory_upserts = []
+            fornitori = [desc_map[d]['fornitore'] for d in chunk]
+            iva = [desc_map[d]['iva'] for d in chunk]
+            hint = [ottieni_hint_per_ai(d, user_id) for d in chunk]
+
+            try:
+                categories = classifica_via_worker(
+                    chunk,
+                    fornitori=fornitori,
+                    iva=iva,
+                    hint=hint,
+                    user_id=user_id,
+                    ristorante_id=ristorante_id,
+                )
+            except Exception as ai_exc:
+                logger.warning(f"[UPLOAD AI] Fallback AI fallito: {ai_exc}")
+                categories = ['Da Classificare'] * len(chunk)
+
+            for desc, categoria in zip(chunk, categories):
+                categoria_finale = str(categoria or '').strip() or 'Da Classificare'
+                meta = desc_map[desc]
+
+                if categoria_finale == 'Da Classificare':
+                    remaining_reasons['dati_insufficienti'] += 1
+                    remaining_descs.append(desc)
+                    continue
+
+                nonzero_ids = []
+                zero_ids = []
+                for row in meta['rows']:
+                    try:
+                        prezzo = float(row.get('prezzo_unitario') or 0)
+                    except (TypeError, ValueError):
+                        prezzo = 0.0
+                    row_id = row.get('id')
+                    if row_id is None:
+                        continue
+                    if abs(prezzo) < 1e-9:
+                        zero_ids.append(row_id)
+                    else:
+                        nonzero_ids.append(row_id)
+
+                if nonzero_ids:
+                    q = supabase_client.table('fatture').update({
+                        'categoria': categoria_finale,
+                        'needs_review': False,
+                    }).eq('user_id', user_id).in_('id', nonzero_ids)
+                    q = add_ristorante_filter(q, ristorante_id)
+                    q.execute()
+                    summary['resolved_rows'] += len(nonzero_ids)
+
+                if zero_ids:
+                    q_zero = supabase_client.table('fatture').update({
+                        'categoria': categoria_finale,
+                        'needs_review': True,
+                    }).eq('user_id', user_id).in_('id', zero_ids)
+                    q_zero = add_ristorante_filter(q_zero, ristorante_id)
+                    q_zero.execute()
+                    summary['resolved_rows'] += len(zero_ids)
+
+                if nonzero_ids:
+                    ai_memory_upserts.append({
+                        'user_id': user_id,
+                        'descrizione': desc,
+                        'categoria': categoria_finale,
+                        'volte_visto': 1,
+                        'classificato_da': 'AI (auto-upload)',
+                        'updated_at': datetime.now(timezone.utc).isoformat(),
+                        'created_at': datetime.now(timezone.utc).isoformat(),
+                    })
+
+                summary['resolved_descriptions'] += 1
+
+            if ai_memory_upserts:
+                supabase_client.table('prodotti_utente').upsert(
+                    ai_memory_upserts,
+                    on_conflict='user_id,descrizione'
+                ).execute()
+
+        invalida_cache_memoria()
+        summary['remaining_descriptions'] = remaining_descs[:15]
+        summary['remaining_reason_counts'] = dict(remaining_reasons)
+        summary['completed'] = True
+        logger.info(
+            f"[UPLOAD AI] completato: {summary['resolved_descriptions']} descrizioni risolte, "
+            f"{len(summary['remaining_descriptions'])} residue"
+        )
+    except Exception as exc:
+        summary['error'] = str(exc)[:180]
+        logger.warning(f"[UPLOAD AI] Errore categorizzazione automatica post-upload: {exc}")
+
+    return summary
+
+
 def _collect_post_upload_quality_checks(supabase_client, user_id: str, file_names: list[str], ristorante_id=None) -> dict:
     """Verifica post-upload: righe salvate, €0, needs_review e non categorizzate."""
     checks = {
@@ -214,6 +464,7 @@ def _collect_post_upload_quality_checks(supabase_client, user_id: str, file_name
 
         checks['rows_saved'] = len(rows)
         _uncategorized_descs: set[str] = set()
+        _uncategorized_examples: list[str] = []
         for row in rows:
             try:
                 prezzo = float(row.get('prezzo_unitario') or 0)
@@ -227,13 +478,17 @@ def _collect_post_upload_quality_checks(supabase_client, user_id: str, file_name
                 checks['needs_review_rows'] += 1
             if categoria == 'Da Classificare':
                 checks['uncategorized_rows'] += 1
-                _d = str(row.get('descrizione') or '').strip().upper()
+                _raw_desc = str(row.get('descrizione') or '').strip()
+                _d = _raw_desc.upper()
                 if _d:
+                    if _d not in _uncategorized_descs and len(_uncategorized_examples) < 8:
+                        _uncategorized_examples.append(_raw_desc)
                     _uncategorized_descs.add(_d)
             if categoria == '📝 NOTE E DICITURE':
                 checks['note_rows'] += 1
 
         checks['uncategorized_unique_products'] = len(_uncategorized_descs)
+        checks['uncategorized_examples'] = _uncategorized_examples
         checks['verification_ok'] = True
     except Exception as exc:
         checks['verification_error'] = str(exc)[:180]
@@ -1141,6 +1396,14 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                 except Exception as price_alert_error:
                     logger.warning(f"Errore calcolo alert prezzi post-upload: {price_alert_error}")
 
+                ai_auto_summary = _run_post_upload_ai_categorization(
+                    supabase,
+                    user_id,
+                    file_ok,
+                    st.session_state.get('ristorante_id'),
+                )
+                upload_notification_context['ai_auto_summary'] = ai_auto_summary
+
                 quality_checks = _collect_post_upload_quality_checks(
                     supabase,
                     user_id,
@@ -1172,12 +1435,10 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             st.session_state.last_upload_summary = upload_summary
             upload_notification_context['stats'] = dict(upload_summary)
             st.session_state.last_upload_notification_context = upload_notification_context
-            # 🧠 AUTO-TRIGGER AI: avvia categorizzazione automatica dopo upload riuscito
-            if file_processati > 0:
-                st.session_state.ai_categorization_in_progress = True
-                st.session_state.trigger_ai_categorize = True
-                st.session_state.pop('_fonte_pm_cache', None)  # Invalida cache Fonte
-                logger.info(f"🧠 Auto-trigger AI: {file_processati} file caricati → categorizzazione automatica")
+            clear_fatture_cache()
+            st.session_state.ai_categorization_in_progress = False
+            st.session_state.trigger_ai_categorize = False
+            st.session_state.pop('_fonte_pm_cache', None)
             # [DEBUG]
             logger.debug(f"[TIMING] handle_uploaded_files completato in {time.perf_counter()-t0_upload:.2f}s")
             st.rerun()

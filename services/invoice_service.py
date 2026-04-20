@@ -888,7 +888,11 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                 _riga_data_consegna = None
                 if is_td24:
                     # 1) Mappa DatiDDT per numero riga
-                    _riga_data_consegna = _ddt_date_map.get(idx)
+                    # Usa NumeroLinea reale dall'XML (non idx enumerate) perché
+                    # alcuni fornitori (es. PARTESA) numerano le righe come 10, 20, 30...
+                    # e RiferimentoNumeroLinea nel DatiDDT fa riferimento a quei valori.
+                    _num_linea_xml = int(riga.get('NumeroLinea') or 0)
+                    _riga_data_consegna = _ddt_date_map.get(_num_linea_xml) or _ddt_date_map.get(idx)
                     # 2) Fallback: data globale DDT (senza RiferimentoNumeroLinea)
                     if not _riga_data_consegna and _ddt_global_date:
                         _riga_data_consegna = _ddt_global_date

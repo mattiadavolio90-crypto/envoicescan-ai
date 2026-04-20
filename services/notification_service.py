@@ -77,7 +77,7 @@ def build_upload_outcome_notifications(upload_context: Optional[Dict[str, Any]])
 
 
 def build_upload_quality_notifications(upload_context: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Crea una notifica quando l'ultimo upload contiene righe da rivedere."""
+    """Crea una notifica solo per i casi realmente rimasti irrisolti dopo il passaggio automatico AI."""
     if not upload_context:
         return []
 
@@ -99,38 +99,35 @@ def build_upload_quality_notifications(upload_context: Optional[Dict[str, Any]])
         }]
 
     rows_saved = int(quality_checks.get('rows_saved') or 0)
-    needs_review_rows = int(quality_checks.get('needs_review_rows') or 0)
-    zero_price_rows = int(quality_checks.get('zero_price_rows') or 0)
     uncategorized_rows = int(quality_checks.get('uncategorized_rows') or 0)
     uncategorized_unique = int(quality_checks.get('uncategorized_unique_products') or 0)
 
-    if needs_review_rows <= 0 and zero_price_rows <= 0 and uncategorized_rows <= 0:
+    # Le righe a €0 e quelle marcate needs_review sono gestite automaticamente
+    # nel tab "Review Righe 0€" — non richiedono una notifica separata.
+    if uncategorized_rows <= 0:
         return []
 
-    details = []
-    if needs_review_rows > 0:
-        details.append(f"{needs_review_rows} {_pluralize(needs_review_rows, 'riga da rivedere', 'righe da rivedere')}")
-    if zero_price_rows > 0:
-        details.append(f"{zero_price_rows} {_pluralize(zero_price_rows, 'riga', 'righe')} a €0")
-    if uncategorized_rows > 0:
-        prod_label = f"/{uncategorized_unique} {_pluralize(uncategorized_unique, 'prodotto univoco', 'prodotti univoci')}" if uncategorized_unique else ""
-        details.append(
-            f"{uncategorized_rows} {_pluralize(uncategorized_rows, 'riga', 'righe')}{prod_label} "
-            f"{_pluralize(uncategorized_rows, 'richiede', 'richiedono')} la tua attenzione poiché "
-            f"{_pluralize(uncategorized_rows, 'risulta', 'risultano')} Da Classificare"
-        )
+    prod_label = f"/{uncategorized_unique} {_pluralize(uncategorized_unique, 'prodotto univoco', 'prodotti univoci')}" if uncategorized_unique else ""
+    examples = [
+        _html.escape(str(item).strip())
+        for item in (quality_checks.get('uncategorized_examples') or [])
+        if str(item).strip()
+    ]
 
-    body = ' · '.join(details) + '.'
-
-    title = 'Attenzione: prodotti Da Classificare' if uncategorized_rows > 0 else 'Verifica qualità ultime fatture'
+    body = (
+        f"{uncategorized_rows} {_pluralize(uncategorized_rows, 'riga', 'righe')}{prod_label} "
+        f"non sono state categorizzate automaticamente perché la descrizione non contiene abbastanza informazioni."
+    )
+    if examples:
+        body += "<br/>Verifica queste voci:<br/>• " + "<br/>• ".join(examples[:8])
 
     return [{
         'id': f'upload-quality-{upload_id}',
         'level': 'warning',
-        'icon': '⚠️' if uncategorized_rows > 0 else '🧪',
-        'title': title,
+        'icon': '⚠️',
+        'title': 'Alcune voci richiedono verifica',
         'body': body,
-        'toast': f"{uncategorized_rows} righe Da Classificare" if uncategorized_rows > 0 else f"Controllo qualità: {needs_review_rows} {_pluralize(needs_review_rows, 'riga da rivedere', 'righe da rivedere')}",
+        'toast': f"{uncategorized_rows} righe Da Classificare",
     }]
 
 
@@ -222,28 +219,49 @@ def build_td24_date_notifications(upload_context: Optional[Dict[str, Any]]) -> L
     missing_files = [a for a in td24_alerts if a.get('status') == 'missing']
     warning_files = [a for a in td24_alerts if a.get('status') == 'warning']
 
-    def _build_body(alerts: List[Dict[str, Any]]) -> str:
+    def _build_body(alerts: List[Dict[str, Any]], no_ddt_note: bool = False) -> str:
         parts = []
         for a in alerts:
             fname = _html.escape(str(a.get('file_name', '?')))
             fornitore = _html.escape(str(a.get('fornitore', '?')))
             pct = float(a.get('pct') or 0.0)
-            parts.append(
+            line = (
                 f"{fornitore} ({fname}) — "
                 f"{a.get('lines_with_date', 0)}/{a.get('lines_total', 0)} righe con data "
                 f"({pct:.1f}% coperta)"
             )
+            if no_ddt_note and pct == 0.0:
+                line += (
+                    " · Il fornitore ha emesso questa fattura come TD24 senza blocchi DDT "
+                    "(probabile errore nel tipo documento usato dal fornitore — nessuna azione richiesta da parte tua)"
+                )
+            parts.append(line)
         return '<br/>'.join(parts)
 
-    if missing_files:
-        n = len(missing_files)
+    # Separa i "missing" in due gruppi: copertura 0% (errore fornitore) vs parziale (dato realmente assente)
+    no_ddt_files = [a for a in missing_files if float(a.get('pct') or 0.0) == 0.0]
+    partial_missing_files = [a for a in missing_files if float(a.get('pct') or 0.0) > 0.0]
+
+    if no_ddt_files:
+        n = len(no_ddt_files)
+        notifications.append({
+            'id': f'td24-date-noddt-{upload_id}',
+            'level': 'info',
+            'icon': 'ℹ️',
+            'title': f"Fattura differita senza DDT ({n} {_pluralize(n, 'file', 'file')})",
+            'body': _build_body(no_ddt_files, no_ddt_note=True),
+            'toast': f"ℹ️ {n} {_pluralize(n, 'fattura', 'fatture')} TD24 senza DDT — nessuna azione richiesta",
+        })
+
+    if partial_missing_files:
+        n = len(partial_missing_files)
         notifications.append({
             'id': f'td24-date-missing-{upload_id}',
             'level': 'warning',
             'icon': '📅',
-            'title': f"Fattura differita senza data consegna ({n} {_pluralize(n, 'file', 'file')})",
-            'body': _build_body(missing_files),
-            'toast': f"📅 {n} {_pluralize(n, 'fattura differita', 'fatture differite')} senza data consegna",
+            'title': f"Fattura differita con dati consegna mancanti ({n} {_pluralize(n, 'file', 'file')})",
+            'body': _build_body(partial_missing_files),
+            'toast': f"📅 {n} {_pluralize(n, 'fattura differita', 'fatture differite')} con date mancanti",
         })
 
     if warning_files:

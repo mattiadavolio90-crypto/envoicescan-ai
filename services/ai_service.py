@@ -288,6 +288,8 @@ _AROMI_RE = re.compile(
 _DIMSUM_RE = re.compile(r"\b(DIMSUM|DIM\s*SUM)\b")
 _YOGURT_RE = re.compile(r"\b(YOGURT|YOGHURT)\b")
 _FECOLA_RE = re.compile(r"\bFECOLA\b")
+_BREAKFAST_FLAKES_SECCO_RE = re.compile(r"\b((?:RICE|CORN|BRAN|WHEAT)\s+FLAKES?|MUESLI|GRANOLA)\b")
+_RIGA_FATTURA_TECNICA_RE = re.compile(r"\bRIGA\s+FATTURA\b")
 _CAFFE_THE_RE = re.compile(r"\b(TEA|THE|TE\b|TISANA|TISANE|INFUSO|INFUSI)\b")
 _BEVANDA_VEGETALE_RE = re.compile(
     r"\b(BEVANDA\s+(?:DI\s+)?)\b.*\b(MANDORL\w*|SOI[AJ]\w*|RISO|AVENA|COCCO|NOCCIOL\w*)\b|"
@@ -729,6 +731,20 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "LATTICINI"
         if cat != mapped:
             return mapped, "tofu_latticino"
+        return cat, None
+
+    # Breakfast flakes / cereali in fiocchi → secco
+    if _BREAKFAST_FLAKES_SECCO_RE.search(desc_u):
+        mapped = "SECCO"
+        if cat != mapped:
+            return mapped, "flakes_secco"
+        return cat, None
+
+    # Riga fattura / righe tecniche di nota credito → note e diciture
+    if _RIGA_FATTURA_TECNICA_RE.search(desc_u):
+        mapped = "📝 NOTE E DICITURE"
+        if cat != mapped:
+            return mapped, "riga_fattura_tecnica"
         return cat, None
 
     # --- Fine regole audit ---
