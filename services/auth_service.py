@@ -123,8 +123,8 @@ def controlla_rate_limit(email: str, supabase_client=None) -> Tuple[bool, int]:
                 .eq('email', email_lower) \
                 .lt('attempted_at', cutoff) \
                 .execute()
-        except Exception:
-            pass
+        except Exception as cleanup_exc:
+            logger.warning("Cleanup login_attempts fallito: %s", cleanup_exc, exc_info=True)
 
         return False, 0
     except Exception as exc:
@@ -979,7 +979,8 @@ def verifica_sessione_da_cookie(
 
         response = supabase_client.table('users') \
             .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
-                    "session_token, session_token_created_at, last_seen_at") \
+                    "session_token, session_token_created_at, last_seen_at, "
+                    "ultimo_ristorante_id") \
             .eq('session_token', token) \
             .eq('attivo', True) \
             .execute()
@@ -1098,6 +1099,7 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
                 .execute()
             if not check_utente.data:
                 logger.info(f"Reset richiesto per email non registrata: {email}")
+                _record_reset_request(email, supabase_client)
                 return True, _MSG_GENERICO
         except Exception:
             logger.exception(f"Errore verifica esistenza utente per {email}")
