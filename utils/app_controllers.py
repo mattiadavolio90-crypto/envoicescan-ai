@@ -683,8 +683,8 @@ def render_sidebar_and_header(supabase, logger, cookie_manager):
                         'session_token_created_at': None,
                         'last_seen_at': None,
                     }).eq('email', _email_emergency).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Emergency logout: invalidazione token DB fallita: %s", e)
         st.session_state.clear()
         st.session_state.logged_in = False
         st.session_state.force_logout = True
