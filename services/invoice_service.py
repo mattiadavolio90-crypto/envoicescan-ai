@@ -406,8 +406,8 @@ def _prova_decodifica_base64(contenuto_bytes: bytes) -> bytes | None:
         # Verifica che sia DER valido (inizia con 0x30 = SEQUENCE)
         if decoded and decoded[0:1] == b'\x30':
             return decoded
-    except Exception:
-        pass
+    except Exception as b64_err:
+        logger.debug("_prova_decodifica_base64: tentativo fallito (%s)", b64_err)
     return None
 
 
@@ -920,7 +920,7 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     'Fornitore': fornitore,
                     'Categoria': categoria_finale,
                     'Data_Documento': data_documento,
-                    'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', ''),
+                    'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', '').replace('%2F', '').replace('%2f', '').replace('\x00', ''),
                     'Prezzo_Standard': prezzo_std,
                     'needs_review': needs_review,
                     'piva_cessionario': piva_cessionario,  # P.IVA destinatario fattura
@@ -1060,7 +1060,25 @@ def estrai_dati_da_scontrino_vision(file_caricato, openai_client=None):
                 raise
             except Exception as quota_err:
                 logger.warning(f"⚠️ Errore check quota Vision: {quota_err} — proseguo senza blocco")
-        
+
+        # I-1: Limite dimensione immagini Vision — file >20 MB supera il massimo OpenAI (~20 MB inline)
+        _MAX_VISION_BYTES = 20 * 1024 * 1024  # 20 MB
+        _file_size = getattr(file_caricato, 'size', None)
+        if _file_size is None:
+            try:
+                file_caricato.seek(0, 2)
+                _file_size = file_caricato.tell()
+                file_caricato.seek(0)
+            except Exception:
+                _file_size = 0
+        if _file_size > _MAX_VISION_BYTES:
+            logger.warning(
+                "⚠️ File Vision troppo grande: %s (%d MB) — limite 20 MB",
+                file_caricato.name, _file_size // (1024 * 1024)
+            )
+            _ui_msg("error", f"❌ {file_caricato.name} supera il limite di 20 MB per l'analisi Vision.")
+            return []
+
         file_caricato.seek(0)
         base64_image = converti_in_base64(file_caricato, file_caricato.name)
         if not base64_image:
@@ -1220,7 +1238,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 'Fornitore': fornitore,
                 'Categoria': categoria_iniziale,
                 'Data_Documento': data_documento,
-                'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', ''),
+                'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', '').replace('%2F', '').replace('%2f', '').replace('\x00', ''),
                 'Prezzo_Standard': prezzo_std,
                 'needs_review': needs_review,
                 'piva_cessionario': piva_cessionario  # P.IVA destinatario per validazione
@@ -1287,7 +1305,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
     from services import get_supabase_client
 
     # Sanitizza nome file: previene path traversal nel campo file_origine del DB
-    nome_file = nome_file.replace('..', '').replace('/', '').replace('\\', '')
+    nome_file = nome_file.replace('..', '').replace('/', '').replace('\\', '').replace('%2F', '').replace('%2f', '').replace('\x00', '')
     event_source = (ingestion_source or "manual_upload").strip().lower()
 
     # ── Risoluzione user_id ────────────────────────────────────────────────────
