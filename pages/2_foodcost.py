@@ -1593,7 +1593,8 @@ Se necessario contattare l'assistenza.
                                             q = q.eq('ristorante_id', current_ristorante)
                                         resp = q.order('ordine_visualizzazione', desc=True).limit(1).execute()
                                         next_ordine = (resp.data[0]['ordine_visualizzazione'] + 1) if resp.data else 1
-                                    except Exception:
+                                    except Exception as e:
+                                        logger.warning("Fallback ordine_visualizzazione=1 (query fallita): %s", e)
                                         next_ordine = 1
                                 
                                 ricetta_data['ordine_visualizzazione'] = next_ordine
