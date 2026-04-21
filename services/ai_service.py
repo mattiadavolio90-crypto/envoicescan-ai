@@ -83,7 +83,6 @@ logger = get_logger('ai')
 # ============================================================
 MEMORIA_AI_FILE = "memoria_ai_correzioni.json"
 RETRIABLE_ERRORS = (RateLimitError, APITimeoutError, APIConnectionError, APIError)
-MAX_TOKENS_PER_BATCH = 12000  # Limite sicuro per evitare timeout
 
 # ============================================================
 # CACHE GLOBALE IN-MEMORY (ELIMINA N+1 QUERY)
@@ -1473,9 +1472,9 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
             logger.error(f"Impossibile creare client Supabase: {e}")
             return _memoria_cache
 
-    try:
-        # Carica dati LOCALE utente solo se non già caricati per questo user_id
-        if not user_already_loaded:
+    # Carica dati LOCALE utente solo se non già caricati per questo user_id
+    if not user_already_loaded:
+        try:
             rows_locale = _fetch_all_rows(
                 supabase_client, 'prodotti_utente',
                 'descrizione, categoria',
@@ -1492,10 +1491,13 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                 _memoria_cache['prodotti_utente'][user_id] = {}
 
             _memoria_cache.setdefault('_loaded_user_ids', set()).add(user_id)
+        except Exception as e:
+            logger.warning(f"Query 1 (prodotti_utente) fallita per user {user_id[:8]}: {e}")
 
-        # Carica dati GLOBALI solo se non già caricati
-        if not global_loaded:
-            # Query 2: Carica TUTTA la memoria globale (paginata)
+    # Carica dati GLOBALI solo se non già caricati
+    if not global_loaded:
+        # Query 2: Carica TUTTA la memoria globale (paginata)
+        try:
             rows_globale = _fetch_all_rows(
                 supabase_client, 'prodotti_master',
                 'descrizione, categoria, confidence, consecutive_correct_classifications'
@@ -1519,8 +1521,11 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                 _memoria_cache['prodotti_master'] = _bypass
                 _memoria_cache['prodotti_master_hint'] = _hint
                 logger.info(f"📦 Cache GLOBALE caricata: {len(_bypass)} bypass (alta/altissima + {_streak_promo} streak>=3), {len(_hint)} hint (media/None)")
+        except Exception as e:
+            logger.warning(f"Query 2 (prodotti_master) fallita: {e}")
 
-            # Query 3: Carica TUTTE le classificazioni manuali admin (paginata)
+        # Query 3: Carica TUTTE le classificazioni manuali admin (paginata)
+        try:
             rows_manuali = _fetch_all_rows(
                 supabase_client, 'classificazioni_manuali',
                 'descrizione, categoria_corretta, is_dicitura'
@@ -1535,32 +1540,30 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                     for row in rows_manuali
                 }
                 logger.info(f"📦 Cache MANUALI caricata: {len(rows_manuali)} classificazioni")
+        except Exception as e:
+            logger.warning(f"Query 3 (classificazioni_manuali) fallita: {e}")
 
-            # Query 4: Carica brand ambigui dinamici da Supabase
-            try:
-                result_brand = supabase_client.table('brand_ambigui')\
-                    .select('brand')\
-                    .eq('aggiunto_automaticamente', True)\
-                    .execute()
-                brand_dinamici = {row['brand'] for row in result_brand.data} if result_brand.data else set()
-                _memoria_cache['brand_ambigui'] = brand_dinamici
-                if brand_dinamici:
-                    logger.info(f"📦 Cache BRAND AMBIGUI caricata: {len(brand_dinamici)} brand dinamici")
-            except Exception as brand_err:
-                # Tabella potrebbe non esistere ancora (migration non eseguita)
-                logger.warning(f"⚠️ brand_ambigui non caricati (tabella assente?): {brand_err}")
-                _memoria_cache['brand_ambigui'] = set()
+        # Query 4: Carica brand ambigui dinamici da Supabase
+        try:
+            result_brand = supabase_client.table('brand_ambigui')\
+                .select('brand')\
+                .eq('aggiunto_automaticamente', True)\
+                .execute()
+            brand_dinamici = {row['brand'] for row in result_brand.data} if result_brand.data else set()
+            _memoria_cache['brand_ambigui'] = brand_dinamici
+            if brand_dinamici:
+                logger.info(f"📦 Cache BRAND AMBIGUI caricata: {len(brand_dinamici)} brand dinamici")
+        except Exception as brand_err:
+            # Tabella potrebbe non esistere ancora (migration non eseguita)
+            logger.warning(f"⚠️ brand_ambigui non caricati (tabella assente?): {brand_err}")
+            _memoria_cache['brand_ambigui'] = set()
 
-            _memoria_cache['loaded'] = True
-            _memoria_cache['_loaded_at'] = time.time()
+        _memoria_cache['loaded'] = True
+        _memoria_cache['_loaded_at'] = time.time()
 
-        _memoria_cache['version'] += 1
-        logger.info(f"✅ Cache caricata (v{_memoria_cache['version']}) per user {user_id[:8]}")
-        return _memoria_cache
-
-    except Exception as e:
-        logger.error(f"Errore caricamento cache completa: {e}")
-        return _memoria_cache
+    _memoria_cache['version'] += 1
+    logger.info(f"✅ Cache caricata (v{_memoria_cache['version']}) per user {user_id[:8]}")
+    return _memoria_cache
 
 
 def invalida_cache_memoria():
@@ -1746,7 +1749,8 @@ def _aggiorna_brand_tracking(
         try:
             from services import get_supabase_client
             supabase_client = get_supabase_client()
-        except Exception:
+        except Exception as e:
+            logger.debug("_aggiorna_brand_tracking: impossibile ottenere supabase_client per brand '%s': %s", brand, e)
             return
 
     try:
@@ -1772,7 +1776,8 @@ def _aggiorna_brand_tracking(
                 .ilike('descrizione', f'{brand}%')\
                 .execute()
             totale = count_res.count or 1
-        except Exception:
+        except Exception as e:
+            logger.debug("_aggiorna_brand_tracking: conteggio prodotti_master fallito per brand '%s', uso fallback: %s", brand, e)
             totale = max(num_corr, 1)
 
         tasso = round(num_corr / totale, 4)
@@ -2484,6 +2489,9 @@ def _chiama_gpt_classificazione(
 
     # 🔒 Sanitizza input: rimuovi caratteri di controllo, limita lunghezza per descrizione
     _MAX_DESC_LEN = 300
+    # Nota: non si verifica esplicitamente il conteggio token in input. Con batch_size=30 e
+    # descrizioni troncate a 300 char, il payload stimato rimane entro ~6-7k token —
+    # ampiamente sotto il limite 128k di gpt-4o-mini.
     da_chiedere_sanitized = [
         _CTRL_RE.sub('', desc)[:_MAX_DESC_LEN] for desc in da_chiedere_gpt
     ]
