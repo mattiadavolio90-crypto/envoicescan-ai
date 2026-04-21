@@ -292,6 +292,9 @@ if st.session_state.margine_tab == "analisi":
         for cat in cats:
             cat_to_centro[cat] = centro_nome
 
+    # Escludi NOTE E DICITURE: righe descrittive non pertinenti ai centri di produzione
+    df_costi_cat = df_costi_cat[df_costi_cat['categoria'] != '📝 NOTE E DICITURE']
+
     if df_costi_cat.empty:
         st.info("📊 Nessun dato fatture F&B disponibile per il periodo selezionato. Carica le fatture nella pagina Analisi Fatture.")
         st.stop()
@@ -1104,6 +1107,8 @@ if st.session_state.margine_tab == "centri":
                     cat_to_centro[cat] = centro
 
             df_centri = df_food_cp.copy()
+            # Escludi NOTE E DICITURE: righe descrittive non pertinenti ai centri di produzione
+            df_centri = df_centri[df_centri['Categoria'] != '📝 NOTE E DICITURE']
             df_centri['Centro'] = df_centri['Categoria'].map(cat_to_centro).fillna('Da Classificare')
             _non_mappate_cp = df_centri[df_centri['Centro'] == 'Da Classificare']['Categoria'].unique().tolist()
             if _non_mappate_cp:
