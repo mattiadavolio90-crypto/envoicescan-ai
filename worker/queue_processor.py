@@ -29,6 +29,7 @@ import io
 import logging
 import os
 import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -174,6 +175,7 @@ BATCH_SIZE        = int(os.environ.get("WORKER_BATCH_SIZE", "10"))
 XML_RETENTION_H   = int(os.environ.get("WORKER_XML_RETENTION_HOURS", "24"))
 STALE_LOCK_MIN    = int(os.environ.get("WORKER_STALE_LOCK_MINUTES", "10"))
 WORKER_ID_PREFIX  = os.environ.get("WORKER_ID_PREFIX", "gh-action")
+JOB_TIMEOUT       = int(os.environ.get("WORKER_JOB_TIMEOUT_SECONDS", "300"))
 
 
 # ─── Tipi di risultato ────────────────────────────────────────────────────────
@@ -473,9 +475,47 @@ def run_cycle() -> CycleStats:
         queue_id = item["id"]
         t0 = time.monotonic()
 
-        try:
-            result = _process_item(supabase, item)
-        except Exception as exc:
+        # ── Watchdog timeout per singolo job ─────────────────────────────────
+        job_done: threading.Event = threading.Event()
+        job_result: list[ItemResult | None] = [None]
+        job_exc: list[BaseException | None] = [None]
+
+        def _run_job(
+            _supabase=supabase,
+            _item=item,
+            _done=job_done,
+            _res=job_result,
+            _exc=job_exc,
+        ) -> None:
+            try:
+                _res[0] = _process_item(_supabase, _item)
+            except Exception as e:
+                _exc[0] = e
+            finally:
+                _done.set()
+
+        _t = threading.Thread(target=_run_job, daemon=True)
+        _t.start()
+        completed = job_done.wait(timeout=JOB_TIMEOUT)
+
+        if not completed:
+            elapsed = time.monotonic() - t0
+            logger.error(
+                "[item=%d event=%s] Job timeout (%ds) — scheduled retry",
+                queue_id, item.get("event_id", "?"), JOB_TIMEOUT,
+            )
+            try:
+                _schedule_retry(supabase, queue_id, f"job timeout after {JOB_TIMEOUT}s")
+                stats.retry_scheduled += 1
+            except Exception as retry_exc:
+                logger.error("[item=%d] schedule_retry dopo timeout fallita: %s", queue_id, retry_exc)
+                stats.errors.append(f"item={queue_id} timeout+retry_failed={retry_exc}")
+            continue
+
+        elapsed = time.monotonic() - t0
+
+        if job_exc[0] is not None:
+            exc = job_exc[0]
             # Safety net: non deve mai crashare il ciclo
             logger.exception("[item=%d] Eccezione imprevista nel processor", queue_id)
             result = ItemResult(
@@ -484,8 +524,8 @@ def run_cycle() -> CycleStats:
                 status="retry",
                 error=f"Unhandled exception: {exc}",
             )
-
-        elapsed = time.monotonic() - t0
+        else:
+            result = job_result[0]
 
         # ── Aggiorna stato in DB ───────────────────────────────────────────
         if result.status == "done":
