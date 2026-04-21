@@ -54,6 +54,10 @@ def _is_trial_invoice_date_allowed(data_documento: str, reference_date=None) -> 
         _dt = pd.to_datetime(data_documento)
         return (_dt.year, _dt.month) in {_current_period, _previous_period}
     except Exception:
+        logger.debug(
+            "_is_trial_invoice_date_allowed: data non parsabile '%s', accetto per default",
+            data_documento,
+        )
         return True
 
 
@@ -936,6 +940,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                             _magic_ok = file_content[:2] == b'\xff\xd8'
                         elif _ext == 'png':
                             _magic_ok = file_content[:4] == b'\x89PNG'
+                        else:
+                            raise ValueError(f"Formato non supportato: .{_ext}")
                         
                         if not _magic_ok:
                             raise ValueError(f"Il contenuto del file non corrisponde all'estensione .{_ext}")
@@ -952,6 +958,15 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                             raise ValueError("Parsing ritornato None")
                         if len(items) == 0:
                             raise ValueError("Nessuna riga estratta - DataFrame vuoto")
+                        
+                        # U-3: Cap righe per fattura — previene payload >5MB verso Supabase
+                        _MAX_RIGHE_PER_FATTURA = 2000
+                        if len(items) > _MAX_RIGHE_PER_FATTURA:
+                            logger.warning(
+                                "Fattura %s ha %d righe, supera il limite di %d — troncata",
+                                file.name, len(items), _MAX_RIGHE_PER_FATTURA,
+                            )
+                            items = items[:_MAX_RIGHE_PER_FATTURA]
                         
                         # ============================================================
                         # VALIDAZIONE P.IVA CESSIONARIO (Anti-abuso)
