@@ -903,6 +903,11 @@ def render_category_editor(df_completo_filtrato, supabase):
                             skip_da_classificare_count += 1
                             continue
 
+                        if nuova_cat not in categorie_valide_set:
+                            logger.warning("Categoria non valida scartata al save: '%s'", nuova_cat)
+                            skip_da_classificare_count += 1
+                            continue
+
                         categorie_modificate_count += 1
                         logger.info(f"✋ MANUALE: '{descrizione[:TRUNCATE_DESC_LOG]}' modificato da '{vecchia_cat}' → {nuova_cat}")
 
@@ -934,6 +939,8 @@ def render_category_editor(df_completo_filtrato, supabase):
                     for change in unique_changes:
                         if change['nuova_cat'] == 'Da Classificare':
                             continue
+                        if change['nuova_cat'] not in categorie_valide_set:
+                            continue  # già loggato nel loop precedente
                         batch_groups[change['nuova_cat']].append(change)
 
                     for nuova_cat, group_changes in batch_groups.items():
