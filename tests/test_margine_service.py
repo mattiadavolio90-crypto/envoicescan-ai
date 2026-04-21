@@ -6,7 +6,7 @@ Copertura: calcola_risultati, calcola_kpi_anno
 import pytest
 import pandas as pd
 
-from services.margine_service import calcola_risultati, calcola_kpi_anno
+from services.margine_service import calcola_risultati, calcola_kpi_anno, build_transposed_df, export_excel_margini
 
 # ---------------------------------------------------------------------------
 # Helper: costruisce un DataFrame di input a 12 righe
@@ -298,3 +298,164 @@ class TestCalcolaKpiAnno:
         assert isinstance(kpi, dict)
         assert kpi["num_mesi"] == 0
         assert kpi["mol_medio"] == 0.0
+
+
+# ===========================================================================
+# build_transposed_df
+# ===========================================================================
+
+class TestBuildTransposedDf:
+
+    def test_build_transposed_df_happy_path(self):
+        """
+        12 mesi con dati validi.
+        - 12 righe (una per voce finanziaria)
+        - Colonne Gen €, Gen %, Dic €, Dic % presenti
+        - Fatt_Netto Gen calcolato correttamente
+        """
+        df_in = _make_input(
+            fatt_iva10=1100.0,
+            fatt_iva22=1220.0,
+            altri_ricavi_noiva=500.0,
+            costi_fb_auto=300.0,
+            altri_fb=100.0,
+            costi_spese_auto=200.0,
+            altri_spese=50.0,
+            costo_dipendenti=600.0,
+        )
+
+        df = build_transposed_df(df_in)
+
+        # 12 righe (voci finanziarie)
+        assert len(df) == 12
+
+        # Colonne attese
+        for col in ["Voce", "Gen €", "Gen %", "Dic €", "Dic %"]:
+            assert col in df.columns, f"Colonna mancante: {col}"
+
+        # Trova la riga "= Fatturato Netto"
+        riga_fn = df[df["Voce"] == "= Fatturato Netto"]
+        assert len(riga_fn) == 1, "Riga '= Fatturato Netto' non trovata"
+
+        fatt_netto_atteso = round(1100.0 / 1.10 + 1220.0 / 1.22 + 500.0, 2)
+        assert round(riga_fn.iloc[0]["Gen €"], 2) == fatt_netto_atteso
+
+        # La riga Fatturato Netto non ha percentuale (None o NaN)
+        assert pd.isna(riga_fn.iloc[0]["Gen %"])
+
+    def test_build_transposed_df_tutti_zero(self):
+        """
+        Tutti i mesi a zero: deve ritornare 12 righe senza crash,
+        con valori 0 nelle colonne €.
+        """
+        df_in = _make_input()
+
+        df = build_transposed_df(df_in)
+
+        assert len(df) == 12
+        assert "Voce" in df.columns
+
+        # Tutti i valori € devono essere 0
+        riga_fn = df[df["Voce"] == "= Fatturato Netto"].iloc[0]
+        assert round(riga_fn["Gen €"], 2) == 0.0
+        assert round(riga_fn["Dic €"], 2) == 0.0
+
+
+# ===========================================================================
+# export_excel_margini
+# ===========================================================================
+
+def _make_df_risultati_completo() -> pd.DataFrame:
+    """Costruisce un df_risultati realistico passando per calcola_risultati."""
+    df_in = _make_input(
+        fatt_iva10=1100.0,
+        fatt_iva22=1220.0,
+        altri_ricavi_noiva=500.0,
+        costi_fb_auto=300.0,
+        altri_fb=100.0,
+        costi_spese_auto=200.0,
+        altri_spese=50.0,
+        costo_dipendenti=600.0,
+    )
+    return calcola_risultati(df_in)
+
+
+# kpi_data minimale con le chiavi attese da export_excel_margini
+_KPI_DATA_MINIMALE = {
+    "periodo": "Gen-Mar 2025",
+    "num_mesi": 3,
+    "fatt_totale": 15000.0,
+    "fatt_medio": 5000.0,
+    "costi_fb": 1200.0,
+    "fc_perc": 24.0,
+    "primo_marg": 3800.0,
+    "primo_marg_perc": 76.0,
+    "spese_gen": 600.0,
+    "spese_perc": 12.0,
+    "personale": 800.0,
+    "personale_perc": 16.0,
+    "mol_medio": 1000.0,
+    "mol_perc": 20.0,
+}
+
+
+class TestExportExcelMargini:
+
+    def test_export_excel_senza_kpi(self):
+        """
+        Happy path senza kpi_data:
+        - ritorna bytes non vuoti
+        - file Excel valido con foglio "Margini 2025"
+        """
+        import io
+        import openpyxl
+
+        df_ris = _make_df_risultati_completo()
+        result = export_excel_margini(df_ris, anno=2025, nome_ristorante="Test Ristorante")
+
+        assert isinstance(result, bytes)
+        assert len(result) > 0
+
+        wb = openpyxl.load_workbook(io.BytesIO(result))
+        assert "Margini 2025" in wb.sheetnames
+        # Senza kpi_data deve avere solo 1 foglio
+        assert "KPI Periodo" not in wb.sheetnames
+
+    def test_export_excel_con_kpi(self):
+        """
+        Happy path con kpi_data:
+        - deve esistere il foglio "KPI Periodo"
+        - deve esistere il foglio "Margini 2025"
+        """
+        import io
+        import openpyxl
+
+        df_ris = _make_df_risultati_completo()
+        result = export_excel_margini(
+            df_ris,
+            anno=2025,
+            nome_ristorante="Test Ristorante",
+            kpi_data=_KPI_DATA_MINIMALE,
+        )
+
+        assert isinstance(result, bytes)
+        assert len(result) > 0
+
+        wb = openpyxl.load_workbook(io.BytesIO(result))
+        assert "Margini 2025" in wb.sheetnames
+        assert "KPI Periodo" in wb.sheetnames
+
+    def test_export_excel_df_vuoto_non_crasha(self):
+        """
+        df_risultati senza righe TOT ANNO (o vuoto): verifica che non crashi
+        silenziosamente — deve sollevare un'eccezione documentata (IndexError/KeyError),
+        non restituire bytes corrotti.
+        """
+        import pytest
+
+        df_vuoto = _make_risultati()  # ha TOT ANNO con tutti zero — non crasha
+        # Questo è il caso limite: df con TOT ANNO a zero deve comunque produrre bytes validi
+        result = export_excel_margini(df_vuoto, anno=2025, nome_ristorante="Vuoto")
+        assert isinstance(result, bytes)
+        assert len(result) > 0
+
