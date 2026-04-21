@@ -54,10 +54,12 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response as StarletteResponse
 
 # ─── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -75,6 +77,7 @@ logger = logging.getLogger("fastapi_worker")
 
 _RATE_LIMIT = int(os.getenv("WORKER_RATE_LIMIT", "30"))
 _RATE_WINDOW = int(os.getenv("WORKER_RATE_WINDOW_SEC", "60"))
+WORKER_SECRET_KEY = os.getenv("WORKER_SECRET_KEY", "")
 _QUEUE_LOOP_INTERVAL_SEC = int(os.getenv("QUEUE_LOOP_INTERVAL_SEC", "30"))
 _ENABLE_INLINE_QUEUE_PROCESSOR = os.getenv("ENABLE_INLINE_QUEUE_PROCESSOR", "1").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -101,6 +104,16 @@ def _check_rate_limit(ip: str) -> None:
 # ═══════════════════════════════════════════════════════════════════════════
 # APP FASTAPI
 # ═══════════════════════════════════════════════════════════════════════════
+
+async def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
+    """Verifica API key condivisa tra Streamlit e worker.
+    Se WORKER_SECRET_KEY non è configurata (dev mode), il check è saltato.
+    """
+    if not WORKER_SECRET_KEY:
+        return  # dev mode: skip
+    if x_worker_key != WORKER_SECRET_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
 
 async def _queue_loop() -> None:
     """Esegue ciclicamente il processor coda senza bloccare l'event loop FastAPI."""
@@ -167,6 +180,23 @@ def _build_allowed_origins() -> List[str]:
 
     return list(dict.fromkeys(origins))
 
+_MAX_BODY_BYTES = 50 * 1024 * 1024  # 50 MB
+
+
+class _ContentSizeLimitMiddleware(BaseHTTPMiddleware):
+    """Rifiuta richieste con Content-Length > 50MB prima che vengano lette in RAM."""
+    async def dispatch(self, request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                if int(content_length) > _MAX_BODY_BYTES:
+                    return StarletteResponse("Payload too large", status_code=413)
+            except ValueError:
+                pass
+        return await call_next(request)
+
+
+app.add_middleware(_ContentSizeLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_build_allowed_origins(),
@@ -180,7 +210,7 @@ app.add_middleware(
 # ═══════════════════════════════════════════════════════════════════════════
 
 class ClassifyRequest(BaseModel):
-    descrizioni: List[str] = Field(..., min_length=1, description="Lista descrizioni prodotti da classificare")
+    descrizioni: List[str] = Field(..., min_length=1, max_length=200, description="Lista descrizioni prodotti da classificare (max 200)")
     fornitori: Optional[List[str]] = Field(None, description="Lista fornitori (allineata con descrizioni)")
     iva: Optional[List[int]] = Field(None, description="Lista aliquote IVA % (4, 10, 22)")
     hint: Optional[List[Optional[str]]] = Field(None, description="Lista hint categoria (o null)")
@@ -245,6 +275,7 @@ async def health() -> Dict[str, str]:
         429: {"description": "Rate limit superato"},
         500: {"description": "Errore interno classificazione"},
     },
+    dependencies=[Depends(_verify_worker_key)],
 )
 async def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
     """
@@ -319,6 +350,7 @@ async def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
         429: {"description": "Rate limit superato"},
         500: {"description": "Errore interno parsing"},
     },
+    dependencies=[Depends(_verify_worker_key)],
 )
 async def parse_invoice(
     request: Request,
@@ -530,9 +562,9 @@ def _resolve_tenant_by_piva(supabase, piva_raw: str) -> tuple[Optional[str], Opt
         rows = lookup.data or []
         if rows:
             return rows[0].get("user_id"), rows[0].get("ristorante_id")
-    except Exception:
+    except Exception as e:
         # Fallback su ristoranti se la tabella lookup non e' disponibile.
-        pass
+        logger.debug("_resolve_tenant_by_piva: piva_ristoranti lookup fallita per piva '%s', uso fallback ristoranti: %s", piva, e)
 
     try:
         lookup = (

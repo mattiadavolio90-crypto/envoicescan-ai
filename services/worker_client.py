@@ -21,6 +21,9 @@ import requests
 
 logger = logging.getLogger("fci_app")
 
+# API key condivisa con il worker FastAPI (opzionale — dev mode: skip se assente)
+_WORKER_KEY = os.environ.get("WORKER_SECRET_KEY", "")
+
 # Timeout per chiamate al worker (secondi)
 _CLASSIFY_TIMEOUT = 90   # OpenAI può richiedere 30-60s per batch grandi
 _PARSE_TIMEOUT = 30
@@ -65,6 +68,7 @@ def classifica_via_worker(
                     "user_id": user_id,
                     "ristorante_id": ristorante_id,
                 },
+                headers={"X-Worker-Key": _WORKER_KEY} if _WORKER_KEY else {},
                 timeout=_CLASSIFY_TIMEOUT,
             )
             # Non fare fallback su 4xx (errore del client, non del server)
@@ -126,6 +130,7 @@ def parse_file_via_worker(
                 f"{base}/api/parse",
                 files={"file": (nome_file, contents, "application/octet-stream")},
                 data={"user_id": user_id or ""},
+                headers={"X-Worker-Key": _WORKER_KEY} if _WORKER_KEY else {},
                 timeout=_PARSE_TIMEOUT,
             )
             # Non fare fallback su 4xx (formato non valido, ecc.)
