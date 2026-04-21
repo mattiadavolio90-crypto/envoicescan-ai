@@ -1088,7 +1088,8 @@ if tab1:
                     }
                     for r in (_fresh_batch.data or [])
                 }
-            except Exception:
+            except Exception as e:
+                logger.warning(f"Errore batch pre-fetch pagine_abilitate/trial per Tab1: {e}", exc_info=True)
                 _fresh_pagine_map = {}
                 _fresh_trial_map = {}
             for idx, row in df_clienti_sorted.iterrows():
@@ -1129,6 +1130,9 @@ if tab1:
                     
                     with col_entra:
                         if st.button("👁️ Entra come cliente", key=f"impersona_{row_key}", type="primary", use_container_width=True):
+                            if (row.get('email') or '').strip().lower() in ADMIN_EMAILS:
+                                st.error("🚫 Non è possibile impersonare un altro amministratore.")
+                                st.stop()
                             st.session_state.admin_original_user = st.session_state.user_data.copy()
                             st.session_state.impersonating = True
                             st.session_state.impersonation_started_at = datetime.now(timezone.utc).isoformat()
@@ -2402,8 +2406,8 @@ if tab2:
                                     _batch_master, on_conflict='descrizione'
                                 ).execute()
                                 _mem_count = len(_batch_master)
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.warning(f"Errore upsert prodotti_master (batch conferma review): {e}")
                         
                         logger.info(f"✅ REVIEW batch conferma: {_ok_count} righe aggiornate, {_mem_count} in memoria globale, cliente={filtro_cliente_id or 'TUTTI'}, categorie={list(set(x['categoria'] for x in _batch_master))}")
                         st.success(f"✅ {_ok_count} righe confermate + {_mem_count} salvate in memoria globale")
@@ -2445,8 +2449,8 @@ if tab2:
                                 supabase.table('prodotti_master').upsert(
                                     _batch_diciture, on_conflict='descrizione'
                                 ).execute()
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logger.warning(f"Errore upsert prodotti_master (batch diciture review): {e}")
                         logger.info(f"📝 REVIEW batch diciture: {_ok} righe → NOTE E DICITURE, cliente={filtro_cliente_id or 'TUTTI'}")
                         st.success(f"📝 {_ok} righe → NOTE E DICITURE (+ memoria globale)")
                     except Exception as _e:
@@ -3088,18 +3092,21 @@ def tab_memoria_globale_unificata():
                                             
                                             # Poi: RIPRISTINA le fatture degli utenti con override locale
                                             for uid in user_ids_con_override:
-                                                cat_locale = supabase.table('prodotti_utente')\
-                                                    .select('categoria')\
-                                                    .eq('user_id', uid)\
-                                                    .eq('descrizione', descrizione)\
-                                                    .limit(1)\
-                                                    .execute()
-                                                if cat_locale.data:
-                                                    supabase.table('fatture')\
-                                                        .update({'categoria': cat_locale.data[0]['categoria']})\
-                                                        .eq('descrizione', descrizione)\
+                                                try:
+                                                    cat_locale = supabase.table('prodotti_utente')\
+                                                        .select('categoria')\
                                                         .eq('user_id', uid)\
+                                                        .eq('descrizione', descrizione)\
+                                                        .limit(1)\
                                                         .execute()
+                                                    if cat_locale.data:
+                                                        supabase.table('fatture')\
+                                                            .update({'categoria': cat_locale.data[0]['categoria']})\
+                                                            .eq('descrizione', descrizione)\
+                                                            .eq('user_id', uid)\
+                                                            .execute()
+                                                except Exception as uid_err:
+                                                    logger.error(f"Errore ripristino override locale per uid={uid}, desc='{descrizione[:40]}': {uid_err}")
                                             
                                             logger.info(f"🛡️ Protetti {len(user_ids_con_override)} utenti con override locale per '{descrizione[:40]}'")
                                         else:
