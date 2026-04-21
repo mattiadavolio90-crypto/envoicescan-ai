@@ -186,18 +186,27 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     # Query tutte le descrizioni che hanno categoria NULL, "Da Classificare" o stringa vuota
                     _ristorante_id = st.session_state.get('ristorante_id')
 
-                    # Query UNICA: NULL + stringa vuota + Da Classificare (risparmia 1 roundtrip HTTP)
-                    _q_all = (
-                        supabase.table("fatture")
-                        .select("id, descrizione, fornitore, prezzo_unitario, iva_percentuale")
-                        .eq("user_id", user_id)
-                        .or_("categoria.is.null,categoria.eq.,categoria.eq.Da Classificare")
-                    )
-                    if _ristorante_id:
-                        _q_all = _q_all.eq("ristorante_id", _ristorante_id)
-                    _resp_all = _q_all.execute()
-
-                    tutti_dati = _resp_all.data or []
+                    # Loop paginato: utenti con >1000 fatture non classificate ricevono classificazione completa
+                    tutti_dati = []
+                    _offset_ai = 0
+                    _page_ai = 1000
+                    while True:
+                        _q_all = (
+                            supabase.table("fatture")
+                            .select("id, descrizione, fornitore, prezzo_unitario, iva_percentuale")
+                            .eq("user_id", user_id)
+                            .or_("categoria.is.null,categoria.eq.,categoria.eq.Da Classificare")
+                        )
+                        if _ristorante_id:
+                            _q_all = _q_all.eq("ristorante_id", _ristorante_id)
+                        _resp_all = _q_all.range(_offset_ai, _offset_ai + _page_ai - 1).execute()
+                        _batch = _resp_all.data or []
+                        if not _batch:
+                            break
+                        tutti_dati.extend(_batch)
+                        if len(_batch) < _page_ai:
+                            break
+                        _offset_ai += _page_ai
                     
                     descrizioni_da_classificare = list(set([row['descrizione'] for row in tutti_dati if row.get('descrizione')]))
                     fornitori_da_classificare = list(set([row['fornitore'] for row in tutti_dati if row.get('fornitore')]))
@@ -617,12 +626,31 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         
                         # 🔧 FALLBACK: Applica dizionario ai prodotti rimasti "Da Classificare"
                         try:
-                            query_check = supabase.table("fatture").select("descrizione, categoria").eq("user_id", user_id)
-                            query_check = add_ristorante_filter(query_check)
-                            df_check = query_check.execute()
-                            if df_check.data:
-                                df_temp = pd.DataFrame(df_check.data)
-                                ancora_da_class = df_temp[(df_temp['categoria'].isna()) | (df_temp['categoria'] == 'Da Classificare')]['descrizione'].unique()
+                            _all_check = []
+                            _offset_chk = 0
+                            _page_chk = 1000
+                            while True:
+                                _q_chk = (
+                                    supabase.table("fatture")
+                                    .select("descrizione, categoria")
+                                    .eq("user_id", user_id)
+                                    .or_("categoria.is.null,categoria.eq.,categoria.eq.Da Classificare")
+                                )
+                                _q_chk = add_ristorante_filter(_q_chk)
+                                _r_chk = _q_chk.range(_offset_chk, _offset_chk + _page_chk - 1).execute()
+                                _batch_chk = _r_chk.data or []
+                                if not _batch_chk:
+                                    break
+                                _all_check.extend(_batch_chk)
+                                if len(_batch_chk) < _page_chk:
+                                    break
+                                _offset_chk += _page_chk
+
+                            if _all_check:
+                                df_temp = pd.DataFrame(_all_check)
+                                ancora_da_class = df_temp[
+                                    (df_temp['categoria'].isna()) | (df_temp['categoria'] == 'Da Classificare')
+                                ]['descrizione'].unique()
                                 
                                 if len(ancora_da_class) > 0:
                                     logger.info(f"🔧 FALLBACK: Tentando categorizzazione con dizionario per {len(ancora_da_class)} prodotti rimasti...")
