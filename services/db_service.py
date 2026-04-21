@@ -1227,16 +1227,38 @@ def svuota_cestino(user_id: str, ristorante_id: str = None, supabase_client=None
         active_count = active_resp.count if active_resp.count else 0
         
         if active_count == 0:
-            try:
-                supabase_client.table("prodotti_utente").delete().eq("user_id", user_id).execute()
-                logger.info(f"🧹 prodotti_utente resettati per user {user_id}")
-            except Exception as e_pu:
-                logger.warning(f"⚠️ Impossibile resettare prodotti_utente: {e_pu}")
-            try:
-                supabase_client.table("classificazioni_manuali").delete().eq("user_id", user_id).execute()
-                logger.info(f"🧹 classificazioni_manuali resettate per user {user_id}")
-            except Exception as e_cm:
-                logger.warning(f"⚠️ Impossibile resettare classificazioni_manuali: {e_cm}")
+            # prodotti_utente e classificazioni_manuali non hanno ristorante_id:
+            # va pulire solo se l'utente non ha fatture attive in NESSUN ristorante.
+            cleanup_user_tables = True
+            if ristorante_id:
+                try:
+                    all_active_resp = (
+                        supabase_client.table("fatture")
+                        .select("id", count="exact")
+                        .eq("user_id", user_id)
+                        .is_("deleted_at", "null")
+                        .limit(1)
+                        .execute()
+                    )
+                    if (all_active_resp.count or 0) > 0:
+                        cleanup_user_tables = False
+                        logger.info(
+                            f"🛡️ Fatture attive in altri ristoranti: "
+                            f"skip cleanup prodotti_utente/classificazioni per user {user_id}"
+                        )
+                except Exception:
+                    cleanup_user_tables = False  # safe default: non cancellare se incerto
+            if cleanup_user_tables:
+                try:
+                    supabase_client.table("prodotti_utente").delete().eq("user_id", user_id).execute()
+                    logger.info(f"🧹 prodotti_utente resettati per user {user_id}")
+                except Exception as e_pu:
+                    logger.warning(f"⚠️ Impossibile resettare prodotti_utente: {e_pu}")
+                try:
+                    supabase_client.table("classificazioni_manuali").delete().eq("user_id", user_id).execute()
+                    logger.info(f"🧹 classificazioni_manuali resettate per user {user_id}")
+                except Exception as e_cm:
+                    logger.warning(f"⚠️ Impossibile resettare classificazioni_manuali: {e_cm}")
         
         logger.warning(f"🗑️ CESTINO SVUOTATO: {num_righe} righe eliminate definitivamente per user {user_id}")
         return {"success": True, "error": None, "righe_eliminate": num_righe}

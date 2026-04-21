@@ -212,8 +212,8 @@ def _check_reset_rate_limit(email: str, supabase_client=None) -> Optional[str]:
                 logger.warning("⛔ Reset password bloccato: cooldown DB attivo")
                 return f"Attendi {remaining} minuti prima di richiedere un altro reset."
     except Exception as e:
-        logger.warning(f"Errore check_reset_rate_limit DB: {e} — permesso passare")
-        # Fallback permissivo: se il DB non risponde non blocchiamo l'utente
+        logger.warning(f"Errore check_reset_rate_limit DB: {e} — reset bloccato per sicurezza")
+        return "Servizio temporaneamente non disponibile. Riprova tra qualche minuto."
     return None
 
 
@@ -1087,13 +1087,29 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
         if supabase_client is None:
             supabase_client = get_supabase_client()
         
+        # Verifica esistenza utente PRIMA di salvare il codice (anti-email-relay abuse)
+        # Risposta sempre generica per non rivelare se l'email è registrata
+        _MSG_GENERICO = "Se l'email è registrata riceverai un codice. Controlla la casella di posta."
+        try:
+            check_utente = supabase_client.table('users') \
+                .select('id') \
+                .eq('email', email.lower().strip()) \
+                .maybe_single() \
+                .execute()
+            if not check_utente.data:
+                logger.info(f"Reset richiesto per email non registrata: {email}")
+                return True, _MSG_GENERICO
+        except Exception:
+            logger.exception(f"Errore verifica esistenza utente per {email}")
+            return False, "Errore temporaneo, riprova tra qualche minuto"
+
         # Salva codice nel DB
         stored_in_db = True
         try:
             supabase_client.table('users').update({
                 'reset_code': code,
                 'reset_expires': expires
-            }).eq('email', email).execute()
+            }).eq('email', email.lower().strip()).execute()
         except Exception:
             logger.exception(f"Errore salvataggio codice per {email}")
             stored_in_db = False
