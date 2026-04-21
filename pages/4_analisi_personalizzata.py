@@ -975,7 +975,7 @@ elif st.session_state.ap_tab_attivo == "gestione":
                 ]
 
                 if nuove_associazioni:
-                    aggiungi_associazioni(tag_id, nuove_associazioni)
+                    aggiungi_associazioni(tag_id, nuove_associazioni, user_id=user_id)
                 for assoc in associazioni_da_rimuovere:
                     rimuovi_associazione(int(assoc["id"]), user_id)
 
@@ -996,7 +996,7 @@ elif st.session_state.ap_tab_attivo == "gestione":
                 colore=CUSTOM_TAG_COLOR_DEFAULT,
             )
             if selected_associazioni:
-                aggiungi_associazioni(int(new_tag["id"]), selected_associazioni)
+                aggiungi_associazioni(int(new_tag["id"]), selected_associazioni, user_id=user_id)
 
             st.session_state.ap_tag_selezionato_id = int(new_tag["id"])
             st.session_state.pop("ap_form_nome", None)

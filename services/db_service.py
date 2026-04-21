@@ -959,8 +959,8 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None, ristoranteid: str 
         try:
             from services.ai_service import invalida_cache_memoria
             invalida_cache_memoria()
-        except Exception:
-            pass
+        except Exception as cache_exc:
+            logger.warning("Invalidazione cache memoria fallita dopo soft-delete massivo: %s", cache_exc)
         
         return {"success": True, "error": None, "righe_eliminate": num_righe, "fatture_eliminate": num_fatture}
         
@@ -1246,7 +1246,12 @@ def svuota_cestino(user_id: str, ristorante_id: str = None, supabase_client=None
                             f"🛡️ Fatture attive in altri ristoranti: "
                             f"skip cleanup prodotti_utente/classificazioni per user {user_id}"
                         )
-                except Exception:
+                except Exception as verify_exc:
+                    logger.warning(
+                        "Verifica fatture attive altri ristoranti fallita in svuota_cestino "
+                        "(skip cleanup prodotti_utente/classificazioni): %s",
+                        verify_exc, exc_info=True
+                    )
                     cleanup_user_tables = False  # safe default: non cancellare se incerto
             if cleanup_user_tables:
                 try:
@@ -1621,7 +1626,7 @@ def elimina_tag(tag_id: int, user_id: str) -> bool:
     return True
 
 
-def aggiungi_associazioni(tag_id: int, descrizioni: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def aggiungi_associazioni(tag_id: int, descrizioni: List[Dict[str, Any]], user_id: str = None) -> List[Dict[str, Any]]:
     """
     Inserisce associazioni per un tag usando descrizione_key come chiave interna.
     Usa upsert per evitare rollback di batch interi su duplicati.
@@ -1631,6 +1636,19 @@ def aggiungi_associazioni(tag_id: int, descrizioni: List[Dict[str, Any]]) -> Lis
 
     from services import get_supabase_client
     supabase_client = get_supabase_client()
+
+    # Verifica ownership: il tag deve appartenere all'utente chiamante
+    if user_id:
+        ownership = (
+            supabase_client.table("custom_tags")
+            .select("id")
+            .eq("id", tag_id)
+            .eq("user_id", user_id)
+            .maybe_single()
+            .execute()
+        )
+        if not ownership.data:
+            raise PermissionError(f"Tag {tag_id} non appartiene all'utente {user_id}")
 
     payload = []
     for item in descrizioni:
