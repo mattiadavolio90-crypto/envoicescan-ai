@@ -204,6 +204,7 @@ def mostra_pagina_login(supabase, cookie_manager):
                             st.session_state.logged_in = True
                             st.session_state.user_data = user
                             st.session_state.force_logout = False  # ← Reset flag logout
+                            st.session_state.pop('_session_token_set_this_run', None)  # Reset guard cookie per questo login
 
                             # Salva P.IVA in session_state per validazione fatture
                             st.session_state.partita_iva = user.get('partita_iva')
@@ -213,7 +214,8 @@ def mostra_pagina_login(supabase, cookie_manager):
                             st.session_state.pop('login_tab_attivo', None)
 
                             # 🍪 Genera e salva session_token nel DB + cookie persistente
-                            if cookie_manager is not None:
+                            if cookie_manager is not None and not st.session_state.get('_session_token_set_this_run'):
+                                st.session_state['_session_token_set_this_run'] = True
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
                                     _s_token = _secrets.token_urlsafe(32)
