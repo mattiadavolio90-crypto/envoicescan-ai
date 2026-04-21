@@ -11,16 +11,17 @@ xmltodict>=0.13.0
 defusedxml>=0.7.1
 extra-streamlit-components>=0.1.60
 PyMuPDF>=1.23.0
-Pillow>=10.0.0
-requests>=2.31.0
+Pillow>=12.2.0
+requests>=2.33.0
 tenacity>=8.2.3
 asn1crypto>=1.5.1
-# Security: fixes CVE-2026-26007
-cryptography>=46.0.5
+# Security: fixes CVE-2026-26007, CVE-2026-34073, CVE-2026-39892
+cryptography>=46.0.7
 # Security: fixes CVE-2026-32597
 PyJWT>=2.12.0
 # FastAPI worker (Fase 3 — AI/parsing separato da Streamlit)
 fastapi>=0.111.0
 uvicorn[standard]>=0.29.0
-python-multipart>=0.0.12
+# Security: fixes CVE-2026-40347
+python-multipart>=0.0.26
 python-dotenv>=1.0.0
