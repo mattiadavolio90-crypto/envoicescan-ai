@@ -140,38 +140,26 @@ def render_pivot_mensile(
     grand_total = pivot['TOTALE'].sum()
 
     # Display DataFrame con colonne % interleaved
+    # FIX React #185: NON usare None per zero → tiene dtype=float64 puro (Arrow-safe).
+    # Nessun column_config con format → evita bug Glide Data Grid in Streamlit 1.54.
     pivot_display = pd.DataFrame()
-    pivot_display[index_col] = pivot.index
+    pivot_display[index_col] = pivot.index.astype(str)
 
     for col in cols_sorted:
-        pivot_display[col] = pivot[col].apply(lambda x: x if x > 0 else None).values
+        pivot_display[col] = pivot[col].astype(float).round(2).values
         ct = col_totals[col]
-        # Clamp percentuali in [0, 100] per evitare valori fuori range che causano React #185 in ProgressColumn
         if ct and ct > 0:
-            pct_vals = (pivot[col] / ct * 100).round(1).clip(lower=0, upper=100).fillna(0).values
+            pct_vals = (pivot[col] / ct * 100).round(1).clip(lower=0, upper=100).fillna(0).astype(float).values
         else:
             pct_vals = [0.0] * len(pivot)
         pivot_display[f'{col} %'] = pct_vals
 
-    pivot_display['TOTALE'] = pivot['TOTALE'].values
+    pivot_display['TOTALE'] = pivot['TOTALE'].astype(float).round(2).values
     if grand_total and grand_total > 0:
-        pivot_display['TOTALE %'] = (pivot['TOTALE'] / grand_total * 100).round(1).clip(lower=0, upper=100).fillna(0).values
+        pivot_display['TOTALE %'] = (pivot['TOTALE'] / grand_total * 100).round(1).clip(lower=0, upper=100).fillna(0).astype(float).values
     else:
         pivot_display['TOTALE %'] = [0.0] * len(pivot)
-    pivot_display['MEDIA'] = pivot['MEDIA'].values
-
-    # Column config
-    # NOTA: Sostituito ProgressColumn con NumberColumn formattato "%" per evitare React error #185
-    # che si verificava con valori fuori range [0,100] o NaN in ProgressColumn.
-    column_config = {
-        index_col: st.column_config.TextColumn(index_col, width='medium'),
-    }
-    for col in cols_sorted:
-        column_config[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-        column_config[f'{col} %'] = st.column_config.NumberColumn('%', format="%.1f%%", width='small')
-    column_config['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
-    column_config['TOTALE %'] = st.column_config.NumberColumn('Incid. %', format="%.1f%%", width='small')
-    column_config['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
+    pivot_display['MEDIA'] = pivot['MEDIA'].astype(float).round(2).values
 
     if not pivot_display.empty:
         # Inizializza session_state per il checkbox se necessario
@@ -188,21 +176,18 @@ def render_pivot_mensile(
         if not mostra_pct:
             pct_cols = [c for c in pivot_display.columns if c.endswith(' %')]
             pivot_display = pivot_display.drop(columns=pct_cols)
-            for pc in pct_cols:
-                column_config.pop(pc, None)
 
         num_righe = len(pivot_display)
         altezza = max(num_righe * 35 + 50, 200)
 
-        # FIX React #185: usa DataFrame puro invece di Styler.
-        # Styler + column_config in Streamlit 1.54 può causare "Maximum update depth".
-        # Lo styling di background colonne TOTALE/MEDIA viene sacrificato per stabilità.
+        # FIX DIAGNOSTICO React #185 (Streamlit 1.54 + Glide Data Grid):
+        # Usa st.dataframe SENZA column_config. Formattazione numerica sacrificata
+        # per stabilità: i valori sono float arrotondati a 2 decimali.
         st.dataframe(
             pivot_display,
             hide_index=True,
             use_container_width=True,
-            height=altezza,
-            column_config=column_config
+            height=altezza
         )
 
         totale = pivot['TOTALE'].sum()
