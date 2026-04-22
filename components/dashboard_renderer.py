@@ -887,8 +887,21 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
         st.stop()
 
     # Calcola variabili per i KPI
-    spesa_fb = df_food['TotaleRiga'].sum()
-    spesa_generale = df_spese_generali['TotaleRiga'].sum()
+    # Regola KPI: usa TotaleImponibile quando presente, altrimenti fallback a TotaleRiga.
+    def _sum_imponibile_fallback(df_source: pd.DataFrame) -> float:
+        if df_source is None or df_source.empty:
+            return 0.0
+
+        totale_riga = pd.to_numeric(df_source.get('TotaleRiga'), errors='coerce').fillna(0.0)
+        if 'TotaleImponibile' not in df_source.columns:
+            return float(totale_riga.sum())
+
+        totale_imponibile = pd.to_numeric(df_source.get('TotaleImponibile'), errors='coerce')
+        valore_effettivo = totale_imponibile.where(totale_imponibile.notna(), totale_riga)
+        return float(valore_effettivo.fillna(0.0).sum())
+
+    spesa_fb = _sum_imponibile_fallback(df_food)
+    spesa_generale = _sum_imponibile_fallback(df_spese_generali)
     num_fornitori = df_food['Fornitore'].nunique()
     num_fatture_spese = df_spese_generali['FileOrigine'].nunique() if not df_spese_generali.empty else 0
     num_fornitori_spese = df_spese_generali['Fornitore'].nunique() if not df_spese_generali.empty else 0

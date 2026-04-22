@@ -68,7 +68,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         max_pages = 200  # Safety guard: max 200k righe
         
         # 🚀 OTTIMIZZAZIONE: Select solo colonne necessarie (non "*")
-        columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria,codice_articolo,prezzo_standard,ristorante_id,needs_review,tipo_documento,sconto_percentuale,created_at"
+        columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,totale_documento,totale_imponibile,totale_iva,categoria,codice_articolo,prezzo_standard,ristorante_id,needs_review,tipo_documento,sconto_percentuale,created_at"
         
         while page < max_pages:
             offset = page * page_size
@@ -92,6 +92,9 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
                     "PrezzoUnitario": row["prezzo_unitario"],
                     "IVAPercentuale": row["iva_percentuale"],
                     "TotaleRiga": row["totale_riga"],
+                    "TotaleDocumento": row.get("totale_documento"),
+                    "TotaleImponibile": row.get("totale_imponibile"),
+                    "TotaleIVA": row.get("totale_iva"),
                     "Categoria": row["categoria"],
                     "CodiceArticolo": row["codice_articolo"],
                     "PrezzoStandard": row.get("prezzo_standard"),

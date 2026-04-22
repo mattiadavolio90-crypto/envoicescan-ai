@@ -90,6 +90,10 @@ def _get_supabase_credentials() -> tuple[str, str]:
         # fallback alla anon key per retrocompatibilità con deploy non aggiornati.
         key = st.secrets["supabase"].get("service_role_key")
         if not key:
+            # Se in esecuzione CLI ci sono env vars affidabili, preferiscile alla anon key.
+            env_service_role = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+            if env_service_role:
+                return url, env_service_role
             import logging as _logging
             _logging.getLogger(__name__).warning(
                 "⚠️ SUPABASE service_role_key NON trovata in st.secrets! "

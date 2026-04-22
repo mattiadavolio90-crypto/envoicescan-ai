@@ -63,6 +63,22 @@ from config.constants import MAX_FILE_SIZE_P7M, VISION_DAILY_LIMIT
 logger = get_logger('invoice')
 
 
+def _to_float_safe(value: Any, default: Optional[float] = None) -> Optional[float]:
+    """Converte valori numerici XML/DB in float gestendo virgola decimale."""
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip()
+    if not text:
+        return default
+    text = text.replace(',', '.')
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return default
+
+
 class VisionDailyLimitExceededError(RuntimeError):
     """Eccezione custom quando la quota Vision giornaliera del ristorante è esaurita."""
 
@@ -625,6 +641,39 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
             default='N/A',
             keep_list=False
         )
+
+        totale_documento = _to_float_safe(
+            safe_get(
+                fattura,
+                ['FatturaElettronicaBody', 'DatiGenerali', 'DatiGeneraliDocumento', 'ImportoTotaleDocumento'],
+                default=None,
+                keep_list=False,
+            )
+        )
+
+        dati_riepilogo = safe_get(
+            fattura,
+            ['FatturaElettronicaBody', 'DatiBeniServizi', 'DatiRiepilogo'],
+            default=[],
+            keep_list=True,
+        )
+        if isinstance(dati_riepilogo, dict):
+            dati_riepilogo = [dati_riepilogo]
+
+        totale_imponibile = 0.0
+        totale_iva = 0.0
+        for riepilogo in dati_riepilogo:
+            if not isinstance(riepilogo, dict):
+                continue
+            totale_imponibile += _to_float_safe(riepilogo.get('ImponibileImporto'), 0.0) or 0.0
+            totale_iva += _to_float_safe(riepilogo.get('Imposta'), 0.0) or 0.0
+
+        totale_imponibile = round(totale_imponibile, 2)
+        totale_iva = round(totale_iva, 2)
+        if totale_documento is None:
+            totale_documento = round(totale_imponibile + totale_iva, 2)
+        else:
+            totale_documento = round(totale_documento, 2)
         
         # ============================================================
         # ESTRAZIONE TIPO DOCUMENTO (fattura vs nota di credito)
@@ -927,6 +976,9 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     'tipo_documento': tipo_documento,  # TD01=Fattura, TD04=Nota Credito
                     'sconto_percentuale': round(sconto_percentuale, 2),  # % sconto applicato
                     'data_consegna': _riga_data_consegna,  # Data consegna DDT (solo TD24)
+                    'Totale_Documento': totale_documento,
+                    'Totale_Imponibile': totale_imponibile,
+                    'Totale_IVA': totale_iva,
                 })
             except Exception as e:
                 logger.warning(f"{file_caricato.name} - Riga {idx} skippata: {str(e)[:100]}")
@@ -1372,6 +1424,9 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     "tipo_documento": prod.get("tipo_documento", "TD01"),
                     "sconto_percentuale": prod.get("sconto_percentuale", 0.0),
                     "data_consegna": prod.get("data_consegna"),
+                    "totale_documento": prod.get("TotaleDocumento", prod.get("Totale_Documento")),
+                    "totale_imponibile": prod.get("TotaleImponibile", prod.get("Totale_Imponibile")),
+                    "totale_iva": prod.get("TotaleIVA", prod.get("Totale_IVA")),
                 })
             
 

@@ -1,0 +1,131 @@
+numero_fattura,campo,valore_xml,valore_supabase,match
+000260/T,fornitore,AZIENDA AGRICOLA CA' DEI FRATI DI DAL CERO PIETRO E FIGLI SOCIETA' AGRICOLA,AZIENDA AGRICOLA CA' DEI FRATI DI DAL CERO PIETRO E FIGLI SOCIETA' AGRICOLA,OK
+000260/T,data,2026-01-09,2026-01-09,OK
+000260/T,totale_imponibile,726.75,726.75,OK
+000260/T,totale_iva,159.89,159.89,OK
+000260/T,totale_documento,886.64,886.64,OK
+000260/T,righe[1].descrizione,DDT n. 000260/T - 09/01/2026,,DIFF
+000260/T,righe[1].quantita,,,DIFF
+000260/T,righe[1].prezzo_unitario,0.00,,DIFF
+000260/T,righe[1].importo,0.00,,DIFF
+000260/T,righe[1].descrizione_in_prodotti_utente,DDT n. 000260/T - 09/01/2026,NO,DIFF
+000260/T,righe[2].descrizione,Rif. Ordine 000241 del 08/01/2026,,DIFF
+000260/T,righe[2].quantita,,,DIFF
+000260/T,righe[2].prezzo_unitario,0.00,,DIFF
+000260/T,righe[2].importo,0.00,,DIFF
+000260/T,righe[2].descrizione_in_prodotti_utente,Rif. Ordine 000241 del 08/01/2026,NO,DIFF
+000260/T,righe[3].descrizione,ROSA dei FRATI vino rosato 2024,ROSA DEI FRATI VINO ROSATO 2024,OK
+000260/T,righe[3].quantita,6.00,6.00,OK
+000260/T,righe[3].prezzo_unitario,7.50,7.50,OK
+000260/T,righe[3].importo,0.00,45.00,DIFF
+000260/T,righe[3].descrizione_in_prodotti_utente,ROSA dei FRATI vino rosato 2024,SI,OK
+000260/T,righe[4].descrizione,ROSA dei FRATI vino rosato 2024,ROSA DEI FRATI VINO ROSATO 2024,OK
+000260/T,righe[4].quantita,60.00,60.00,OK
+000260/T,righe[4].prezzo_unitario,7.50,7.50,OK
+000260/T,righe[4].importo,450.00,450.00,OK
+000260/T,righe[4].descrizione_in_prodotti_utente,ROSA dei FRATI vino rosato 2024,SI,OK
+000260/T,righe[5].descrizione,I FRATI Lugana DOC 2024 vino bianco,I FRATI LUGANA DOC 2024 VINO BIANCO,OK
+000260/T,righe[5].quantita,42.00,42.00,OK
+000260/T,righe[5].prezzo_unitario,7.50,7.50,OK
+000260/T,righe[5].importo,315.00,315.00,OK
+000260/T,righe[5].descrizione_in_prodotti_utente,I FRATI Lugana DOC 2024 vino bianco,SI,OK
+000260/T,righe[6].descrizione,Sconti finali - 5.00%,SCONTI FINALI - 5.00%,OK
+000260/T,righe[6].quantita,,1.00,DIFF
+000260/T,righe[6].prezzo_unitario,-38.25,-38.25,OK
+000260/T,righe[6].importo,-38.25,-38.25,OK
+000260/T,righe[6].descrizione_in_prodotti_utente,Sconti finali - 5.00%,NO,DIFF
+000260/T,righe[7].descrizione,Sconto merce di 45.00 escluso dalla base imponibile ai sensi dell'Art.15/2 DPR 633/72,,DIFF
+000260/T,righe[7].quantita,,,DIFF
+000260/T,righe[7].prezzo_unitario,0.00,,DIFF
+000260/T,righe[7].importo,0.00,,DIFF
+000260/T,righe[7].descrizione_in_prodotti_utente,Sconto merce di 45.00 escluso dalla base imponibile ai sensi dell'Art.15/2 DPR 633/72,NO,DIFF
+000260/T,righe[8].descrizione,CONS 10-12,,DIFF
+000260/T,righe[8].quantita,,,DIFF
+000260/T,righe[8].prezzo_unitario,0.00,,DIFF
+000260/T,righe[8].importo,0.00,,DIFF
+000260/T,righe[8].descrizione_in_prodotti_utente,CONS 10-12,NO,DIFF
+000260/T,righe[9].descrizione,Corrispettivo comprensivo del Contributo ambientale Conai già assolto,,DIFF
+000260/T,righe[9].quantita,,,DIFF
+000260/T,righe[9].prezzo_unitario,0.00,,DIFF
+000260/T,righe[9].importo,0.00,,DIFF
+000260/T,righe[9].descrizione_in_prodotti_utente,Corrispettivo comprensivo del Contributo ambientale Conai già assolto,NO,DIFF
+9260076457,fornitore,S.I.A.E.,S.I.A.E,DIFF
+9260076457,data,2026-01-13,2026-01-13,OK
+9260076457,totale_imponibile,209.75,209.75,OK
+9260076457,totale_iva,46.15,46.15,OK
+9260076457,totale_documento,255.90,255.90,OK
+9260076457,righe[1].descrizione,TRATTENIMENTI DAL VIVO SENZA BALLO,TRATTENIMENTI DAL VIVO SENZA BALLO,OK
+9260076457,righe[1].quantita,1.00,1.00,OK
+9260076457,righe[1].prezzo_unitario,205.75,205.75,OK
+9260076457,righe[1].importo,205.75,205.75,OK
+9260076457,righe[1].descrizione_in_prodotti_utente,TRATTENIMENTI DAL VIVO SENZA BALLO,NO,DIFF
+9260076457,righe[2].descrizione,Diritti amministrativi di procedura,DIRITTI AMMINISTRATIVI DI PROCEDURA,OK
+9260076457,righe[2].quantita,1.00,1.00,OK
+9260076457,righe[2].prezzo_unitario,4.00,4.00,OK
+9260076457,righe[2].importo,4.00,4.00,OK
+9260076457,righe[2].descrizione_in_prodotti_utente,Diritti amministrativi di procedura,SI,OK
+9260159887,fornitore,S.I.A.E.,S.I.A.E,DIFF
+9260159887,data,2026-01-30,2026-01-30,OK
+9260159887,totale_imponibile,200.50,200.50,OK
+9260159887,totale_iva,44.11,44.11,OK
+9260159887,totale_documento,244.61,244.61,OK
+9260159887,righe[1].descrizione,MUSICA D'AMBIENTE.:APPAR. RIPROD. AUDIO,MUSICA D'AMBIENTE.:APPAR. RIPROD. AUDIO,OK
+9260159887,righe[1].quantita,1.00,1.00,OK
+9260159887,righe[1].prezzo_unitario,197.50,197.50,OK
+9260159887,righe[1].importo,197.50,197.50,OK
+9260159887,righe[1].descrizione_in_prodotti_utente,MUSICA D'AMBIENTE.:APPAR. RIPROD. AUDIO,SI,OK
+9260159887,righe[2].descrizione,Diritti amministrativi di procedura,DIRITTI AMMINISTRATIVI DI PROCEDURA,OK
+9260159887,righe[2].quantita,1.00,1.00,OK
+9260159887,righe[2].prezzo_unitario,3.00,3.00,OK
+9260159887,righe[2].importo,3.00,3.00,OK
+9260159887,righe[2].descrizione_in_prodotti_utente,Diritti amministrativi di procedura,SI,OK
+4260009018,fornitore,Esselunga S.p.A.,ESSELUNGA S.P.A,DIFF
+4260009018,data,2026-01-04,2026-01-04,OK
+4260009018,totale_imponibile,29.69,29.69,OK
+4260009018,totale_iva,6.53,6.53,OK
+4260009018,totale_documento,36.22,36.22,OK
+4260009018,righe[1].descrizione,SHOPPER-UN    1,SHOPPER-UN 1,OK
+4260009018,righe[1].quantita,4.00,4.00,OK
+4260009018,righe[1].prezzo_unitario,0.08,0.08,OK
+4260009018,righe[1].importo,0.33,0.33,OK
+4260009018,righe[1].descrizione_in_prodotti_utente,SHOPPER-UN    1,SI,OK
+4260009018,righe[2].descrizione,GHIACCIO IN CUBETTI-GR 1250,GHIACCIO IN CUBETTI-GR 1250,OK
+4260009018,righe[2].quantita,18.00,18.00,OK
+4260009018,righe[2].prezzo_unitario,1.63,1.63,OK
+4260009018,righe[2].importo,29.36,29.36,OK
+4260009018,righe[2].descrizione_in_prodotti_utente,GHIACCIO IN CUBETTI-GR 1250,SI,OK
+4260035108,fornitore,Esselunga S.p.A.,ESSELUNGA S.P.A,DIFF
+4260035108,data,2026-01-11,2026-01-11,OK
+4260035108,totale_imponibile,112.88,112.88,OK
+4260035108,totale_iva,16.59,16.59,OK
+4260035108,totale_documento,129.47,129.47,OK
+4260035108,righe[1].descrizione,DASH POLVERE 71-GR 3550,DASH POLVERE 71-GR 3550,OK
+4260035108,righe[1].quantita,3.00,3.00,OK
+4260035108,righe[1].prezzo_unitario,11.47,11.47,OK
+4260035108,righe[1].importo,34.41,34.41,OK
+4260035108,righe[1].descrizione_in_prodotti_utente,DASH POLVERE 71-GR 3550,NO,DIFF
+4260035108,righe[2].descrizione,FABR.CARTA COPY O.5PZ-UN    1,FABR.CARTA COPY O.5PZ-UN 1,OK
+4260035108,righe[2].quantita,2.00,2.00,OK
+4260035108,righe[2].prezzo_unitario,16.35,16.35,OK
+4260035108,righe[2].importo,32.70,32.70,OK
+4260035108,righe[2].descrizione_in_prodotti_utente,FABR.CARTA COPY O.5PZ-UN    1,SI,OK
+4260035108,righe[3].descrizione,LATTE INT. UHT ESS.-LT    1,LATTE INT. UHT ESS.-LT 1,OK
+4260035108,righe[3].quantita,40.00,40.00,OK
+4260035108,righe[3].prezzo_unitario,1.14,1.14,OK
+4260035108,righe[3].importo,45.77,45.77,OK
+4260035108,righe[3].descrizione_in_prodotti_utente,LATTE INT. UHT ESS.-LT    1,SI,OK
+4260062346,fornitore,Esselunga S.p.A.,ESSELUNGA S.P.A,DIFF
+4260062346,data,2026-01-18,2026-01-18,OK
+4260062346,totale_imponibile,49.28,49.28,OK
+4260062346,totale_iva,10.84,10.84,OK
+4260062346,totale_documento,60.12,60.12,OK
+4260062346,righe[1].descrizione,STA.MATITE FLUO CG.6P-PZ    6,STA.MATITE FLUO CG.6P-PZ 6,OK
+4260062346,righe[1].quantita,1.00,1.00,OK
+4260062346,righe[1].prezzo_unitario,1.50,1.50,OK
+4260062346,righe[1].importo,1.50,1.50,OK
+4260062346,righe[1].descrizione_in_prodotti_utente,STA.MATITE FLUO CG.6P-PZ    6,NO,DIFF
+4260062346,righe[2].descrizione,SOLE DET.POLVERE 61MS-GR 3050,SOLE DET.POLVERE 61MS-GR 3050,OK
+4260062346,righe[2].quantita,7.00,7.00,OK
+4260062346,righe[2].prezzo_unitario,6.83,6.83,OK
+4260062346,righe[2].importo,47.78,47.78,OK
+4260062346,righe[2].descrizione_in_prodotti_utente,SOLE DET.POLVERE 61MS-GR 3050,NO,DIFF
