@@ -887,18 +887,15 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
         st.stop()
 
     # Calcola variabili per i KPI
-    # Regola KPI: usa TotaleImponibile quando presente, altrimenti fallback a TotaleRiga.
+    # Regola KPI: somma sempre TotaleRiga (unico campo realmente per-riga e
+    # filtrabile per categoria). TotaleImponibile è header replicato su tutte
+    # le righe della fattura: sommarlo causerebbe inflazione N× (una volta per
+    # riga) e renderebbe il filtro "tipo prodotto" non reattivo.
     def _sum_imponibile_fallback(df_source: pd.DataFrame) -> float:
         if df_source is None or df_source.empty:
             return 0.0
-
         totale_riga = pd.to_numeric(df_source.get('TotaleRiga'), errors='coerce').fillna(0.0)
-        if 'TotaleImponibile' not in df_source.columns:
-            return float(totale_riga.sum())
-
-        totale_imponibile = pd.to_numeric(df_source.get('TotaleImponibile'), errors='coerce')
-        valore_effettivo = totale_imponibile.where(totale_imponibile.notna(), totale_riga)
-        return float(valore_effettivo.fillna(0.0).sum())
+        return float(totale_riga.sum())
 
     spesa_fb = _sum_imponibile_fallback(df_food)
     spesa_generale = _sum_imponibile_fallback(df_spese_generali)
