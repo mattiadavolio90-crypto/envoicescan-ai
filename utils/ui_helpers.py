@@ -180,6 +180,16 @@ def render_pivot_mensile(
         num_righe = len(pivot_display)
         altezza = max(num_righe * 35 + 50, 200)
 
+        # 🔬 DIAGNOSTIC: DataFrame minimale per isolare React #185
+        import numpy as np
+        df_test = pd.DataFrame({
+            'a': np.array([1.0, 2.0, 3.0], dtype=float),
+            'b': np.array([10.0, 20.0, 30.0], dtype=float),
+        })
+        st.caption("🔬 Diagnostic: tabella minimale (se crasha qui, il problema è Streamlit/browser, non i dati)")
+        st.dataframe(df_test, hide_index=True)
+        st.caption("👆 Sopra: tabella di test. Sotto: pivot reale.")
+
         # FIX DIAGNOSTICO React #185 (Streamlit 1.54 + Glide Data Grid):
         # Usa st.dataframe SENZA column_config. Formattazione numerica sacrificata
         # per stabilità: i valori sono float arrotondati a 2 decimali.
