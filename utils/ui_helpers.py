@@ -162,20 +162,16 @@ def render_pivot_mensile(
     pivot_display['MEDIA'] = pivot['MEDIA'].astype(float).round(2).values
 
     if not pivot_display.empty:
-        # Inizializza session_state per il checkbox se necessario
-        if f"mostra_incidenze_pct_{sezione_key}" not in st.session_state:
-            st.session_state[f"mostra_incidenze_pct_{sezione_key}"] = False
-        
-        # NOTA: non passare 'value=' quando si usa 'key=' con session_state già inizializzato
-        # (causa warning e potenziali rerun loop → React error #185)
-        mostra_pct = st.checkbox(
-            "📊 Visualizza incidenze %",
-            key=f"mostra_incidenze_pct_{sezione_key}"
-        )
-
-        if not mostra_pct:
-            pct_cols = [c for c in pivot_display.columns if c.endswith(' %')]
-            pivot_display = pivot_display.drop(columns=pct_cols)
+        # 🔬 DIAGNOSTIC AGGRESSIVO: rimuovo TUTTO tranne una tabella minimale
+        import numpy as np
+        df_test = pd.DataFrame({
+            'a': np.array([1.0, 2.0, 3.0], dtype=float),
+            'b': np.array([10.0, 20.0, 30.0], dtype=float),
+        })
+        st.caption(f"🔬 DIAG sezione={sezione_key}: se compare errore React #185 qui sotto, il problema NON è nel pivot ma a MONTE di render_pivot_mensile (tab/filtro esterno).")
+        st.dataframe(df_test, hide_index=True)
+        st.caption(f"✅ Se vedi questa caption, la tabella minimale è renderizzata. Sezione attiva: {sezione_key}")
+        return  # early return per isolare
 
         num_righe = len(pivot_display)
         altezza = max(num_righe * 35 + 50, 200)
