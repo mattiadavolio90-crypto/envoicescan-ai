@@ -5,8 +5,23 @@ Copertura: calcola_risultati, calcola_kpi_anno
 
 import pytest
 import pandas as pd
+import importlib
+import sys
+from datetime import date
+from types import SimpleNamespace
+from unittest.mock import patch, MagicMock
 
 from services.margine_service import calcola_risultati, calcola_kpi_anno, build_transposed_df, export_excel_margini, genera_commenti_kpi
+from services.margine_service import (
+    calcola_costi_automatici_per_anno,
+    carica_costi_per_categoria,
+    carica_margini_anno,
+    salva_fatturato_centri,
+    carica_fatturato_centri_periodo,
+    carica_fatturato_centri_mese,
+    salva_margini_anno,
+)
+from config.constants import CATEGORIE_FOOD, CATEGORIE_SPESE_GENERALI
 
 # ---------------------------------------------------------------------------
 # Helper: costruisce un DataFrame di input a 12 righe
@@ -609,4 +624,257 @@ class TestGeneraCommentiKpi:
 
         assert isinstance(commenti, list)
         assert commenti == []
+
+
+# ===========================================================================
+# Funzioni DB (mock Supabase)
+# ===========================================================================
+
+def _build_query_mock(execute_data=None):
+    """
+    Crea un mock query chain compatibile con il client Supabase Python.
+    """
+    query = MagicMock()
+    query.select.return_value = query
+    query.eq.return_value = query
+    query.gte.return_value = query
+    query.lte.return_value = query
+    query.lt.return_value = query
+    query.neq.return_value = query
+    query.is_.return_value = query
+    query.range.return_value = query
+    query.upsert.return_value = query
+    query.execute.return_value = SimpleNamespace(data=execute_data or [])
+    return query
+
+
+def _reload_margine_module_without_cache_wrapper():
+    """
+    Nel test environment streamlit è mockato: forziamo cache_data a decorator identità
+    e ricarichiamo il modulo per ottenere funzioni reali (non MagicMock).
+    """
+    import services.margine_service as margine_module
+
+    streamlit_mod = sys.modules.get("streamlit")
+    if streamlit_mod is not None:
+        streamlit_mod.cache_data = lambda *args, **kwargs: (lambda func: func)
+
+    return importlib.reload(margine_module)
+
+
+class TestMargineServiceDB:
+
+    def test_calcola_costi_automatici_per_anno(self):
+        """
+        Verifica aggregazione costi F&B e Spese Generali da dati mock fatture.
+        """
+        margine_module = _reload_margine_module_without_cache_wrapper()
+        food_cat = CATEGORIE_FOOD[0]
+        spese_cat = CATEGORIE_SPESE_GENERALI[0]
+
+        mock_client = MagicMock()
+
+        query = _build_query_mock()
+        query.execute.side_effect = [
+            SimpleNamespace(data=[
+                {"data_documento": "2026-01-10", "totale_riga": 100.0, "categoria": food_cat},
+                {"data_documento": "2026-01-15", "totale_riga": 80.0, "categoria": spese_cat},
+                {"data_documento": "2026-01-20", "totale_riga": 50.0, "categoria": food_cat},
+            ])
+        ]
+        mock_client.table.return_value = query
+
+        with patch("services.margine_service.get_supabase_client", return_value=mock_client):
+            costi_fb, costi_spese = margine_module.calcola_costi_automatici_per_anno(
+                user_id="test-uuid",
+                ristorante_id="rist-test",
+                anno=2026,
+            )
+
+        assert costi_fb.get(1) == 150.0
+        assert costi_spese.get(1) == 80.0
+
+    def test_carica_costi_per_categoria(self):
+        """
+        Verifica DataFrame aggregato per categoria/mese su sole categorie F&B.
+        """
+        margine_module = _reload_margine_module_without_cache_wrapper()
+        food_cat = CATEGORIE_FOOD[0]
+
+        mock_client = MagicMock()
+
+        query = _build_query_mock()
+        query.execute.side_effect = [
+            SimpleNamespace(data=[
+                {"data_documento": "2026-03-01", "totale_riga": 40.0, "categoria": food_cat},
+                {"data_documento": "2026-03-10", "totale_riga": 60.0, "categoria": food_cat},
+            ])
+        ]
+        mock_client.table.return_value = query
+
+        with patch("services.margine_service.get_supabase_client", return_value=mock_client):
+            df = margine_module.carica_costi_per_categoria(
+                user_id="test-uuid",
+                ristorante_id="rist-test",
+                date_from="2026-03-01",
+                date_to="2026-03-31",
+            )
+
+        assert not df.empty
+        assert set(df.columns) == {"categoria", "mese", "totale"}
+        assert float(df["totale"].sum()) == 100.0
+
+    @patch("services.margine_service.get_supabase_client")
+    def test_carica_margini_anno(self, mock_get_client):
+        """
+        Verifica mapping {mese: row_dict} da tabella margini_mensili.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        query = _build_query_mock(execute_data=[
+            {"mese": 1, "fatturato_iva10": 1100.0, "fatturato_iva22": 1220.0,
+             "altri_ricavi_noiva": 50.0, "altri_costi_fb": 10.0,
+             "altri_costi_spese": 20.0, "costo_dipendenti": 300.0},
+            {"mese": 2, "fatturato_iva10": 900.0, "fatturato_iva22": 1000.0,
+             "altri_ricavi_noiva": 0.0, "altri_costi_fb": 5.0,
+             "altri_costi_spese": 15.0, "costo_dipendenti": 250.0},
+        ])
+        mock_client.table.return_value = query
+
+        result = carica_margini_anno("test-uuid", "rist-test", 2026)
+
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {1, 2}
+        assert result[1]["fatturato_iva10"] == 1100.0
+
+    @patch("services.margine_service.get_supabase_client")
+    def test_salva_fatturato_centri(self, mock_get_client):
+        """
+        Verifica upsert split fatturato per centri su mese specifico.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        query = _build_query_mock(execute_data=[{"ok": True}])
+        mock_client.table.return_value = query
+
+        ok = salva_fatturato_centri(
+            user_id="test-uuid",
+            ristorante_id="rist-test",
+            anno=2026,
+            mese=4,
+            split_euro={"FOOD": 3000, "BAR": 500, "ALCOLICI": 700, "DOLCI": 200},
+        )
+
+        assert ok is True
+        query.upsert.assert_called_once()
+
+    @patch("services.margine_service.get_supabase_client")
+    def test_carica_fatturato_centri_periodo(self, mock_get_client):
+        """
+        Verifica aggregazione periodo multi-mese con ritorno dict centri.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        query = _build_query_mock()
+        query.execute.side_effect = [
+            SimpleNamespace(data=[
+                {
+                    "fatturato_food": 1000.0,
+                    "fatturato_bar": 200.0,
+                    "fatturato_alcolici": 150.0,
+                    "fatturato_dolci": 80.0,
+                },
+                {
+                    "fatturato_food": 900.0,
+                    "fatturato_bar": 180.0,
+                    "fatturato_alcolici": 120.0,
+                    "fatturato_dolci": 70.0,
+                },
+            ])
+        ]
+        mock_client.table.return_value = query
+
+        result = carica_fatturato_centri_periodo(
+            user_id="test-uuid",
+            ristorante_id="rist-test",
+            data_inizio=date(2026, 1, 1),
+            data_fine=date(2026, 2, 28),
+        )
+
+        assert result["FOOD"] == 1900.0
+        assert result["BAR"] == 380.0
+        assert result["ALCOLICI"] == 270.0
+        assert result["DOLCI"] == 150.0
+
+    @patch("services.margine_service.get_supabase_client")
+    def test_carica_fatturato_centri_mese(self, mock_get_client):
+        """
+        Verifica caricamento split centri per singolo mese.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        query = _build_query_mock(execute_data=[
+            {
+                "fatturato_food": 2200.0,
+                "fatturato_bar": 450.0,
+                "fatturato_alcolici": 300.0,
+                "fatturato_dolci": 120.0,
+            }
+        ])
+        mock_client.table.return_value = query
+
+        result = carica_fatturato_centri_mese(
+            user_id="test-uuid",
+            ristorante_id="rist-test",
+            anno=2026,
+            mese=4,
+        )
+
+        assert result == {
+            "FOOD": 2200.0,
+            "BAR": 450.0,
+            "ALCOLICI": 300.0,
+            "DOLCI": 120.0,
+        }
+
+    @patch("services.margine_service.get_supabase_client")
+    def test_salva_margini_anno(self, mock_get_client):
+        """
+        Verifica upsert di 12 record mensili in margini_mensili.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        query = _build_query_mock(execute_data=[{"ok": True}])
+        mock_client.table.return_value = query
+
+        df_input = _make_input(
+            fatt_iva10=1100.0,
+            fatt_iva22=1220.0,
+            altri_ricavi_noiva=100.0,
+            costi_fb_auto=300.0,
+            altri_fb=50.0,
+            costi_spese_auto=200.0,
+            altri_spese=30.0,
+            costo_dipendenti=400.0,
+        )
+        df_risultati = calcola_risultati(df_input)
+
+        ok = salva_margini_anno(
+            user_id="test-uuid",
+            ristorante_id="rist-test",
+            anno=2026,
+            df_input=df_input,
+            df_risultati=df_risultati,
+        )
+
+        assert ok is True
+        query.upsert.assert_called_once()
+        records_arg = query.upsert.call_args[0][0]
+        assert isinstance(records_arg, list)
+        assert len(records_arg) == 12
 

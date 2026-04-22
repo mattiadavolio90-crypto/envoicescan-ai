@@ -128,63 +128,63 @@ def render_category_editor(df_completo_filtrato, supabase):
     # 📦 SEZIONE DETTAGLIO ARTICOLI
     
     # ===== FILTRO TIPO PRODOTTI =====
-    col_tipo, col_search_type, col_search, col_save = st.columns([2, 2, 3, 2])
-    
-    with col_tipo:
-        tipo_filtro = st.selectbox(
-            "📦 Tipo Prodotti:",
-            options=["Food & Beverage", "Spese Generali", "Tutti"],
-            key="tipo_filtro_prodotti",
-            help="Filtra per tipologia di prodotto"
+    with st.container(key="category_editor_top_filters"):
+        col_tipo, col_search_type, col_search, col_save = st.columns(
+            [2, 2, 3, 2],
+            vertical_alignment="bottom"
         )
 
-    with col_search_type:
-        search_type = st.selectbox(
-            "🔍 Cerca per:",
-            options=["Prodotto", "Categoria", "Fornitore"],
-            key="search_type"
-        )
-
-
-    with col_search:
-        if search_type == "Prodotto":
-            search_term = st.text_input(
-                "🔍 Cerca nella descrizione:",
-                placeholder="Es: pollo, salmone, caffè...",
-                key="search_prodotto_text"
+        with col_tipo:
+            tipo_filtro = st.selectbox(
+                "📦 Tipo Prodotti:",
+                options=["Food & Beverage", "Spese Generali", "Tutti"],
+                key="tipo_filtro_prodotti"
             )
-        elif search_type == "Categoria":
-            # Lista categorie disponibili filtrate per tipo_filtro
-            if tipo_filtro == "Food & Beverage":
-                _df_opt = df_completo_filtrato[~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
-            elif tipo_filtro == "Spese Generali":
-                _df_opt = df_completo_filtrato[df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
-            else:
-                _df_opt = df_completo_filtrato
-            _cat_opts = ["— Tutte le categorie —"] + sorted(_df_opt['Categoria'].dropna().unique().tolist())
-            _cat_sel = st.selectbox("🔍 Cerca per categoria:", options=_cat_opts, key="search_prodotto_cat")
-            search_term = "" if _cat_sel == "— Tutte le categorie —" else _cat_sel
-        else:  # Fornitore
-            # Lista fornitori disponibili filtrati per tipo_filtro
-            if tipo_filtro == "Food & Beverage":
-                _df_opt = df_completo_filtrato[~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
-            elif tipo_filtro == "Spese Generali":
-                _df_opt = df_completo_filtrato[df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
-            else:
-                _df_opt = df_completo_filtrato
-            _forn_opts = ["— Tutti i fornitori —"] + sorted(_df_opt['Fornitore'].dropna().unique().tolist())
-            _forn_sel = st.selectbox("🔍 Cerca per fornitore:", options=_forn_opts, key="search_prodotto_forn")
-            search_term = "" if _forn_sel == "— Tutti i fornitori —" else _forn_sel
 
+        with col_search_type:
+            search_type = st.selectbox(
+                "🔍 Cerca per:",
+                options=["Prodotto", "Categoria", "Fornitore"],
+                key="search_type"
+            )
 
-    with col_save:
-        st.markdown("<br>", unsafe_allow_html=True)
-        salva_modifiche = st.button(
-            "💾 Salva Modifiche Categorie",
-            type="primary",
-            use_container_width=True,
-            key="salva_btn"
-        )
+        with col_search:
+            if search_type == "Prodotto":
+                search_term = st.text_input(
+                    "🔍 Cerca nella descrizione:",
+                    placeholder="Es: pollo, salmone, caffè...",
+                    key="search_prodotto_text"
+                )
+            elif search_type == "Categoria":
+                # Lista categorie disponibili filtrate per tipo_filtro
+                if tipo_filtro == "Food & Beverage":
+                    _df_opt = df_completo_filtrato[~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
+                elif tipo_filtro == "Spese Generali":
+                    _df_opt = df_completo_filtrato[df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
+                else:
+                    _df_opt = df_completo_filtrato
+                _cat_opts = ["— Tutte le categorie —"] + sorted(_df_opt['Categoria'].dropna().unique().tolist())
+                _cat_sel = st.selectbox("🔍 Cerca per categoria:", options=_cat_opts, key="search_prodotto_cat")
+                search_term = "" if _cat_sel == "— Tutte le categorie —" else _cat_sel
+            else:  # Fornitore
+                # Lista fornitori disponibili filtrati per tipo_filtro
+                if tipo_filtro == "Food & Beverage":
+                    _df_opt = df_completo_filtrato[~df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
+                elif tipo_filtro == "Spese Generali":
+                    _df_opt = df_completo_filtrato[df_completo_filtrato['Categoria'].isin(CATEGORIE_SPESE_GENERALI)]
+                else:
+                    _df_opt = df_completo_filtrato
+                _forn_opts = ["— Tutti i fornitori —"] + sorted(_df_opt['Fornitore'].dropna().unique().tolist())
+                _forn_sel = st.selectbox("🔍 Cerca per fornitore:", options=_forn_opts, key="search_prodotto_forn")
+                search_term = "" if _forn_sel == "— Tutti i fornitori —" else _forn_sel
+
+        with col_save:
+            salva_modifiche = st.button(
+                "💾 Salva Modifiche Categorie",
+                type="primary",
+                use_container_width=True,
+                key="salva_btn"
+            )
     
     # ✅ FILTRO DINAMICO IN BASE ALLA SELEZIONE - USA DATI FILTRATI PER PERIODO
     # NOTA: Filtriamo SOLO per categoria, NON per fornitore!
@@ -350,19 +350,23 @@ def render_category_editor(df_completo_filtrato, supabase):
     # ============================================================
     # 📦 TOGGLE VISTA / FILTRO NOVITÀ
     # ============================================================
-    col_flag_group, col_flag_new, _ = st.columns([2.6, 2.4, 5.0])
-    with col_flag_group:
-        vista_aggregata = st.checkbox(
-            "📦 Raggruppa prodotti unici",
-            value=True,
-            key="checkbox_raggruppa_prodotti"
+    with st.container(key="category_editor_toggle_row"):
+        col_flag_group, col_flag_new, _ = st.columns(
+            [2.6, 2.4, 5.0],
+            vertical_alignment="center"
         )
-    with col_flag_new:
-        filtra_nuovi = st.checkbox(
-            "🆕 Filtra nuovi inserimenti",
-            value=False,
-            key="checkbox_filtra_nuovi_inserimenti"
-        )
+        with col_flag_group:
+            vista_aggregata = st.checkbox(
+                "📦 Raggruppa prodotti unici",
+                value=True,
+                key="checkbox_raggruppa_prodotti"
+            )
+        with col_flag_new:
+            filtra_nuovi = st.checkbox(
+                "🆕 Filtra nuovi inserimenti",
+                value=False,
+                key="checkbox_filtra_nuovi_inserimenti"
+            )
 
     if filtra_nuovi and 'Novità' in df_editor.columns:
         df_editor = df_editor[df_editor['Novità'] == '🆕 Nuova'].copy()
