@@ -162,16 +162,18 @@ def render_pivot_mensile(
     pivot_display['MEDIA'] = pivot['MEDIA'].astype(float).round(2).values
 
     if not pivot_display.empty:
-        # 🔬 DIAGNOSTIC AGGRESSIVO: rimuovo TUTTO tranne una tabella minimale
-        import numpy as np
-        df_test = pd.DataFrame({
-            'a': np.array([1.0, 2.0, 3.0], dtype=float),
-            'b': np.array([10.0, 20.0, 30.0], dtype=float),
-        })
-        st.caption(f"🔬 DIAG sezione={sezione_key}: se compare errore React #185 qui sotto, il problema NON è nel pivot ma a MONTE di render_pivot_mensile (tab/filtro esterno).")
-        st.dataframe(df_test, hide_index=True)
-        st.caption(f"✅ Se vedi questa caption, la tabella minimale è renderizzata. Sezione attiva: {sezione_key}")
-        return  # early return per isolare
+        num_righe = len(pivot_display)
+        altezza = max(num_righe * 35 + 50, 200)
+
+        # 🔬 STEP 1: ripristino SOLO st.dataframe(pivot_display) puro
+        st.caption(f"🔬 STEP 1 [{sezione_key}]: pivot_display puro senza colonne % e senza column_config")
+        # Droppa colonne % (simula checkbox OFF) e resetta index
+        pct_cols = [c for c in pivot_display.columns if c.endswith(' %')]
+        pivot_clean = pivot_display.drop(columns=pct_cols).reset_index(drop=True)
+        st.write("Colonne:", list(pivot_clean.columns))
+        st.write("Dtypes:", {c: str(pivot_clean[c].dtype) for c in pivot_clean.columns})
+        st.dataframe(pivot_clean, hide_index=True, use_container_width=True, height=altezza)
+        return  # early return
 
         num_righe = len(pivot_display)
         altezza = max(num_righe * 35 + 50, 200)
