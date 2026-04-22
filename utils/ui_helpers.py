@@ -83,7 +83,24 @@ def render_pivot_mensile(
         sezione_key: Suffisso univoco per widget keys ('categorie' o 'fornitori')
         sheet_name: Nome del foglio Excel per export
     """
-    df_prep = df_source.copy()
+    # Validazione input
+    if df_source is None or df_source.empty:
+        st.warning("⚠️ Nessun dato disponibile per questa sezione.")
+        return
+    
+    required_cols = {index_col, 'Data_DT', 'TotaleRiga'}
+    missing_cols = required_cols - set(df_source.columns)
+    if missing_cols:
+        st.error(f"❌ Errore: colonne mancanti nel dataframe: {missing_cols}")
+        return
+    
+    # Filtra righe con Data_DT o TotaleRiga nulli
+    df_prep = df_source[df_source['Data_DT'].notna() & df_source['TotaleRiga'].notna()].copy()
+    if df_prep.empty:
+        st.info("📭 Nessun dato valido dopo validazione delle colonne.")
+        return
+
+    # Formato mese per visualizzazione (GENNAIO 2025)
 
     # Formato mese per visualizzazione (GENNAIO 2025)
     df_prep['Mese'] = df_prep['Data_DT'].apply(
@@ -148,8 +165,13 @@ def render_pivot_mensile(
     column_config['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
 
     if not pivot_display.empty:
+        # Inizializza session_state per il checkbox se necessario
+        if f"mostra_incidenze_pct_{sezione_key}" not in st.session_state:
+            st.session_state[f"mostra_incidenze_pct_{sezione_key}"] = False
+        
         mostra_pct = st.checkbox(
-            "📊 Visualizza incidenze %", value=False,
+            "📊 Visualizza incidenze %", 
+            value=st.session_state[f"mostra_incidenze_pct_{sezione_key}"],
             key=f"mostra_incidenze_pct_{sezione_key}"
         )
 

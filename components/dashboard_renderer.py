@@ -1032,7 +1032,11 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
             if df_cat_source.empty:
                 st.info(f"📊 Nessun dato per '{tipo_filtro_cat}' nel periodo selezionato")
             else:
-                render_pivot_mensile(df_cat_source, 'Categoria', MESI_ITA, 'categorie', 'Categorie')
+                try:
+                    render_pivot_mensile(df_cat_source, 'Categoria', MESI_ITA, 'categorie', 'Categorie')
+                except Exception as e:
+                    logger.error(f"Errore in render_pivot_mensile (categorie): {e}", exc_info=True)
+                    st.error(f"❌ Errore nel rendering della tabella categorie: {str(e)}")
 
     # ========================================================
     # SEZIONE 4: FORNITORI
@@ -1064,7 +1068,11 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
             if df_forn_source.empty:
                 st.info(f"📊 Nessun dato per '{tipo_filtro_forn}' nel periodo selezionato")
             else:
-                render_pivot_mensile(df_forn_source, 'Fornitore', MESI_ITA, 'fornitori', 'Fornitori')
+                try:
+                    render_pivot_mensile(df_forn_source, 'Fornitore', MESI_ITA, 'fornitori', 'Fornitori')
+                except Exception as e:
+                    logger.error(f"Errore in render_pivot_mensile (fornitori): {e}", exc_info=True)
+                    st.error(f"❌ Errore nel rendering della tabella fornitori: {str(e)}")
 
 
 
