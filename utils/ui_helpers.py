@@ -143,25 +143,31 @@ def render_pivot_mensile(
     for col in cols_sorted:
         pivot_display[col] = pivot[col].apply(lambda x: x if x > 0 else None).values
         ct = col_totals[col]
-        pivot_display[f'{col} %'] = (pivot[col] / ct * 100).round(1).values if ct > 0 else 0.0
+        # Clamp percentuali in [0, 100] per evitare valori fuori range che causano React #185 in ProgressColumn
+        if ct and ct > 0:
+            pct_vals = (pivot[col] / ct * 100).round(1).clip(lower=0, upper=100).fillna(0).values
+        else:
+            pct_vals = [0.0] * len(pivot)
+        pivot_display[f'{col} %'] = pct_vals
 
     pivot_display['TOTALE'] = pivot['TOTALE'].values
-    pivot_display['TOTALE %'] = (pivot['TOTALE'] / grand_total * 100).round(1).values if grand_total > 0 else 0.0
+    if grand_total and grand_total > 0:
+        pivot_display['TOTALE %'] = (pivot['TOTALE'] / grand_total * 100).round(1).clip(lower=0, upper=100).fillna(0).values
+    else:
+        pivot_display['TOTALE %'] = [0.0] * len(pivot)
     pivot_display['MEDIA'] = pivot['MEDIA'].values
 
     # Column config
+    # NOTA: Sostituito ProgressColumn con NumberColumn formattato "%" per evitare React error #185
+    # che si verificava con valori fuori range [0,100] o NaN in ProgressColumn.
     column_config = {
         index_col: st.column_config.TextColumn(index_col, width='medium'),
     }
     for col in cols_sorted:
         column_config[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-        column_config[f'{col} %'] = st.column_config.ProgressColumn(
-            '%', format="%.1f%%", min_value=0, max_value=100, width='small'
-        )
+        column_config[f'{col} %'] = st.column_config.NumberColumn('%', format="%.1f%%", width='small')
     column_config['TOTALE'] = st.column_config.NumberColumn('TOTALE', format="€ %.2f")
-    column_config['TOTALE %'] = st.column_config.ProgressColumn(
-        'Incid. %', format="%.1f%%", min_value=0, max_value=100, width='small'
-    )
+    column_config['TOTALE %'] = st.column_config.NumberColumn('Incid. %', format="%.1f%%", width='small')
     column_config['MEDIA'] = st.column_config.NumberColumn('MEDIA', format="€ %.2f")
 
     if not pivot_display.empty:

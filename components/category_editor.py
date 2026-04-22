@@ -618,8 +618,12 @@ def render_category_editor(df_completo_filtrato, supabase):
     
     # ⭐ Key dinamica: cambia dopo ogni salvataggio per forzare refresh widget
     # (evita che Streamlit cache il vecchio stato del data editor)
+    # FIX: include anche tipo_filtro nella key per evitare React #185 quando
+    # si cambia filtro (edited_rows dal vecchio DF vengono riapplicati al nuovo
+    # DF più corto causando "Maximum update depth exceeded").
     _editor_version = st.session_state.get('editor_refresh_counter', 0)
-    _editor_key = f"editor_dati_v{_editor_version}"
+    _filtro_slug = (tipo_filtro or "tutti").lower().replace(" ", "_").replace("&", "and")
+    _editor_key = f"editor_dati_v{_editor_version}_{_filtro_slug}"
     edited_df = st.data_editor(
         df_editor_paginato,
         column_config=column_config_dict,
