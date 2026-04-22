@@ -277,7 +277,10 @@ if st.session_state.cp_tab_attivo == "variazioni":
         if not df_alert.empty:
             st.info(f"⚠️ **{len(df_alert)} Variazioni Rilevate** (soglia ≥ {soglia_aumento}%) - Solo prodotti Food & Beverage")
         else:
-            st.success(f"✅ Nessuna variazione rilevata con soglia ≥ {soglia_aumento}%")
+            st.markdown(
+                f"<p style='margin:0; color:#0B3A82; font-weight:700;'>✅ Nessuna variazione rilevata con soglia ≥ {soglia_aumento}%</p>",
+                unsafe_allow_html=True,
+            )
 
     if not df_alert.empty:
 

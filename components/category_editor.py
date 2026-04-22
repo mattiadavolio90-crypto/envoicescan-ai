@@ -117,6 +117,34 @@ def _sort_detail_rows(df_source: pd.DataFrame) -> pd.DataFrame:
     return df_sorted.reset_index(drop=True)
 
 
+def _truncate_detail_text(value, max_len: int) -> str:
+    """Tronca il testo solo per la visualizzazione, preservando il dato reale altrove."""
+    if value is None or pd.isna(value):
+        return ''
+
+    text = str(value).strip()
+    if len(text) <= max_len:
+        return text
+    return f"{text[:max_len - 1].rstrip()}…"
+
+
+def _build_detail_view_df(df_source: pd.DataFrame) -> pd.DataFrame:
+    """Restituisce una copia compatta per la UI del dettaglio articoli."""
+    df_view = df_source.copy()
+
+    truncate_map = {
+        'FileOrigine': 28,
+        'Descrizione': 60,
+        'Fornitore': 26,
+    }
+
+    for col_name, max_len in truncate_map.items():
+        if col_name in df_view.columns:
+            df_view[col_name] = df_view[col_name].apply(lambda value: _truncate_detail_text(value, max_len))
+
+    return df_view
+
+
 def _render_spese_generali_fallback_editor(df_editor_paginato: pd.DataFrame, categorie_disponibili: list[str], editor_key: str) -> pd.DataFrame:
     """Editor stabile senza data_editor per aggirare React #185 su Streamlit 1.54."""
     edited_df = df_editor_paginato.copy().reset_index(drop=True)
@@ -145,6 +173,7 @@ def _render_spese_generali_fallback_editor(df_editor_paginato: pd.DataFrame, cat
     width: 100%;
     border-collapse: collapse;
     font-size: 0.92rem;
+    table-layout: fixed;
 }
 .ohh-detail-stable-table thead th {
     background: #f7f9fc;
@@ -158,30 +187,82 @@ def _render_spese_generali_fallback_editor(df_editor_paginato: pd.DataFrame, cat
     padding: 0.65rem 0.75rem;
     border-top: 1px solid #eef2f7;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ohh-detail-stable-table th:nth-child(1), .ohh-detail-stable-table td:nth-child(1) {
+    width: 11%;
+}
+.ohh-detail-stable-table th:nth-child(2), .ohh-detail-stable-table td:nth-child(2) {
+    width: 34%;
+}
+.ohh-detail-stable-table th:nth-child(3), .ohh-detail-stable-table td:nth-child(3) {
+    width: 20%;
+}
+.ohh-detail-stable-table th:nth-child(4), .ohh-detail-stable-table td:nth-child(4) {
+    width: 9%;
+}
+.ohh-detail-stable-table th:nth-child(5), .ohh-detail-stable-table td:nth-child(5) {
+    width: 11%;
+}
+.ohh-detail-stable-table th:nth-child(6), .ohh-detail-stable-table td:nth-child(6) {
+    width: 15%;
+}
+.ohh-detail-selector-meta {
+    padding: 0.55rem 0.15rem 0.8rem 0.1rem;
+}
+.ohh-detail-selector-title {
+    font-weight: 600;
+    color: #1f2937;
+    line-height: 1.25;
+    margin-bottom: 0.2rem;
+    word-break: break-word;
+}
+.ohh-detail-selector-subtitle {
+    font-size: 0.84rem;
+    color: #64748b;
+    line-height: 1.25;
 }
 </style>
 """,
         unsafe_allow_html=True,
     )
     st.markdown(f'<div class="ohh-detail-stable-wrap">{table_html}</div>', unsafe_allow_html=True)
-    st.caption("Modalità stabile: modifica categoria tramite selettori sotto la tabella.")
+    st.caption("Modalità stabile: tabella compatta sopra, categoria modificabile riga per riga qui sotto.")
 
     for idx in edited_df.index:
         descrizione = str(edited_df.at[idx, 'Descrizione']) if 'Descrizione' in edited_df.columns else f'Riga {idx + 1}'
         fornitore = str(edited_df.at[idx, 'Fornitore']) if 'Fornitore' in edited_df.columns else ''
-        label = f"{idx + 1}. {descrizione[:80]}"
-        if fornitore:
-            label = f"{label} | {fornitore[:40]}"
+        data_doc = str(edited_df.at[idx, 'DataDocumento']) if 'DataDocumento' in edited_df.columns else ''
+        totale = edited_df.at[idx, 'TotaleRiga'] if 'TotaleRiga' in edited_df.columns else None
+        totale_label = f"€ {float(totale):,.2f}" if pd.notna(totale) else ''
+
+        title_parts = [f"{idx + 1}. {descrizione}"]
+        meta_parts = [part for part in [fornitore, data_doc, totale_label] if str(part).strip()]
 
         current_value = str(edited_df.at[idx, 'Categoria']).strip() if 'Categoria' in edited_df.columns else 'Da Classificare'
         if current_value not in categorie_disponibili:
             current_value = 'Da Classificare'
-        edited_df.at[idx, 'Categoria'] = st.selectbox(
-            label,
-            options=categorie_disponibili,
-            index=categorie_disponibili.index(current_value),
-            key=f"{editor_key}_fallback_categoria_{idx}",
-        )
+
+        info_col, select_col = st.columns([4.6, 2.2], vertical_alignment="center")
+        with info_col:
+            st.markdown(
+                (
+                    f'<div class="ohh-detail-selector-meta">'
+                    f'<div class="ohh-detail-selector-title">{" ".join(title_parts)}</div>'
+                    f'<div class="ohh-detail-selector-subtitle">{" | ".join(meta_parts)}</div>'
+                    f'</div>'
+                ),
+                unsafe_allow_html=True,
+            )
+        with select_col:
+            edited_df.at[idx, 'Categoria'] = st.selectbox(
+                f"Categoria riga {idx + 1}",
+                options=categorie_disponibili,
+                index=categorie_disponibili.index(current_value),
+                key=f"{editor_key}_fallback_categoria_{idx}",
+                label_visibility="collapsed",
+            )
 
     return edited_df
 
@@ -611,13 +692,15 @@ def render_category_editor(df_completo_filtrato, supabase):
         _cols.insert(_cols.index('Categoria'), 'CatIcon')
         df_editor_paginato = df_editor_paginato[_cols]
 
+    df_editor_paginato_view = _build_detail_view_df(df_editor_paginato)
+
     # Configurazione colonne (ordine allineato tra vista normale e aggregata)
     # Niente tooltip hover sui titoli: devono restare facili da cliccare per l'ordinamento.
     column_config_dict = {
-        "FileOrigine": st.column_config.TextColumn("📄 File", disabled=True),
+        "FileOrigine": st.column_config.TextColumn("📄 File", disabled=True, width="small"),
         "NumeroRiga": st.column_config.NumberColumn("🔢 N.Riga", disabled=True, width="small"),
-        "DataDocumento": st.column_config.TextColumn("🗓️ Data", disabled=True),
-        "Descrizione": st.column_config.TextColumn("📝 Descrizione", disabled=True),
+        "DataDocumento": st.column_config.TextColumn("🗓️ Data", disabled=True, width="small"),
+        "Descrizione": st.column_config.TextColumn("📝 Descrizione", disabled=True, width="large"),
         "CatIcon": st.column_config.TextColumn(
             "🏷️",
             disabled=True,
@@ -629,10 +712,10 @@ def render_category_editor(df_completo_filtrato, supabase):
             options=categorie_disponibili,
             required=True
         ),
-        "Fornitore": st.column_config.TextColumn("🏭 Fornitore", disabled=True),
-        "Quantita": st.column_config.NumberColumn("📦 Q.tà", disabled=True),
-        "TotaleRiga": st.column_config.NumberColumn("💶 Totale (€)", format="€ %.2f", disabled=True),
-        "PrezzoUnitario": st.column_config.NumberColumn("💰 Prezzo Unit.", format="€ %.2f", disabled=True),
+        "Fornitore": st.column_config.TextColumn("🏭 Fornitore", disabled=True, width="medium"),
+        "Quantita": st.column_config.NumberColumn("📦 Q.tà", disabled=True, width="small"),
+        "TotaleRiga": st.column_config.NumberColumn("💶 Totale (€)", format="€ %.2f", disabled=True, width="small"),
+        "PrezzoUnitario": st.column_config.NumberColumn("💰 Prezzo Unit.", format="€ %.2f", disabled=True, width="small"),
         "UnitaMisura": st.column_config.TextColumn("📏 U.M.", disabled=True, width="small"),
         "IVAPercentuale": st.column_config.NumberColumn(
             "🧾 IVA %",
@@ -693,27 +776,16 @@ def render_category_editor(df_completo_filtrato, supabase):
     _editor_version = st.session_state.get('editor_refresh_counter', 0)
     _filtro_slug = (tipo_filtro or "tutti").lower().replace(" ", "_").replace("&", "and")
     _editor_key = f"editor_dati_v{_editor_version}_{_filtro_slug}"
-    use_stable_fallback_editor = tipo_filtro == "Spese Generali"
+    edited_df = st.data_editor(
+        df_editor_paginato_view,
+        column_config=column_config_dict,
+        hide_index=True,
+        use_container_width=False,
+        height=altezza_dinamica,
+        key=_editor_key
+    )
 
-    if use_stable_fallback_editor:
-        st.warning("⚠️ Modalità editor stabile attiva per evitare un bug React di Streamlit su questo filtro.")
-        edited_df = _render_spese_generali_fallback_editor(
-            df_editor_paginato=df_editor_paginato,
-            categorie_disponibili=categorie_disponibili,
-            editor_key=_editor_key,
-        )
-    else:
-        edited_df = st.data_editor(
-            df_editor_paginato,
-            column_config=column_config_dict,
-            hide_index=True,
-            use_container_width=True,
-            height=altezza_dinamica,
-            key=_editor_key
-        )
-    
-    if not use_stable_fallback_editor:
-        st.markdown("""
+    st.markdown("""
             <style>
             [data-testid="stDataFrame"] [data-testid="stDataFrameCell"] {
                 transition: background-color 0.3s ease;
@@ -758,37 +830,36 @@ def render_category_editor(df_completo_filtrato, supabase):
             logger.info("✅ CHECK OK: Nessuna cella bianca nella colonna Categoria")
 
     pending_category_changes = []
-    if not use_stable_fallback_editor:
-        _editor_state = st.session_state.get(_editor_key, {})
-        _edited_rows = _editor_state.get('edited_rows', {}) if isinstance(_editor_state, dict) else {}
+    _editor_state = st.session_state.get(_editor_key, {})
+    _edited_rows = _editor_state.get('edited_rows', {}) if isinstance(_editor_state, dict) else {}
 
-        for raw_idx, row_changes in _edited_rows.items():
-            if not isinstance(row_changes, dict) or 'Categoria' not in row_changes:
-                continue
+    for raw_idx, row_changes in _edited_rows.items():
+        if not isinstance(row_changes, dict) or 'Categoria' not in row_changes:
+            continue
 
-            try:
-                row_idx = int(raw_idx)
-            except (TypeError, ValueError):
-                row_idx = raw_idx
+        try:
+            row_idx = int(raw_idx)
+        except (TypeError, ValueError):
+            row_idx = raw_idx
 
-            if row_idx not in edited_df.index or row_idx not in df_editor_paginato.index:
-                continue
+        if row_idx not in edited_df.index or row_idx not in df_editor_paginato.index:
+            continue
 
-            nuova_cat = estrai_nome_categoria(edited_df.at[row_idx, 'Categoria'])
-            vecchia_cat = estrai_nome_categoria(df_editor_paginato.at[row_idx, 'Categoria'])
-            vecchia_cat = vecchia_cat or 'Da Classificare'
+        nuova_cat = estrai_nome_categoria(edited_df.at[row_idx, 'Categoria'])
+        vecchia_cat = estrai_nome_categoria(df_editor_paginato.at[row_idx, 'Categoria'])
+        vecchia_cat = vecchia_cat or 'Da Classificare'
 
-            if nuova_cat == vecchia_cat:
-                continue
+        if nuova_cat == vecchia_cat:
+            continue
 
-            pending_category_changes.append({
-                'index': row_idx,
-                'descrizione': edited_df.at[row_idx, 'Descrizione'],
-                'file_origine': edited_df.at[row_idx, 'FileOrigine'] if 'FileOrigine' in edited_df.columns else None,
-                'numero_riga': edited_df.at[row_idx, 'NumeroRiga'] if 'NumeroRiga' in edited_df.columns else None,
-                'vecchia_cat': vecchia_cat,
-                'nuova_cat': nuova_cat,
-            })
+        pending_category_changes.append({
+            'index': row_idx,
+            'descrizione': df_editor_paginato.at[row_idx, 'Descrizione'] if 'Descrizione' in df_editor_paginato.columns else None,
+            'file_origine': df_editor_paginato.at[row_idx, 'FileOrigine'] if 'FileOrigine' in df_editor_paginato.columns else None,
+            'numero_riga': df_editor_paginato.at[row_idx, 'NumeroRiga'] if 'NumeroRiga' in df_editor_paginato.columns else None,
+            'vecchia_cat': vecchia_cat,
+            'nuova_cat': nuova_cat,
+        })
 
     if not pending_category_changes and 'Categoria' in edited_df.columns and 'Categoria' in df_editor_paginato.columns:
         idx_comuni = edited_df.index.intersection(df_editor_paginato.index)
@@ -802,9 +873,9 @@ def render_category_editor(df_completo_filtrato, supabase):
 
             pending_category_changes.append({
                 'index': row_idx,
-                'descrizione': edited_df.at[row_idx, 'Descrizione'],
-                'file_origine': edited_df.at[row_idx, 'FileOrigine'] if 'FileOrigine' in edited_df.columns else None,
-                'numero_riga': edited_df.at[row_idx, 'NumeroRiga'] if 'NumeroRiga' in edited_df.columns else None,
+                'descrizione': df_editor_paginato.at[row_idx, 'Descrizione'] if 'Descrizione' in df_editor_paginato.columns else None,
+                'file_origine': df_editor_paginato.at[row_idx, 'FileOrigine'] if 'FileOrigine' in df_editor_paginato.columns else None,
+                'numero_riga': df_editor_paginato.at[row_idx, 'NumeroRiga'] if 'NumeroRiga' in df_editor_paginato.columns else None,
                 'vecchia_cat': vecchia_cat,
                 'nuova_cat': nuova_cat,
             })

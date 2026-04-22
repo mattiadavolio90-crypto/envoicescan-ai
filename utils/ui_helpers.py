@@ -9,7 +9,6 @@ Funzioni condivise per:
 import os
 import io
 import logging
-import textwrap
 import pandas as pd
 import streamlit as st
 from config.logger_setup import get_logger
@@ -34,43 +33,16 @@ def _format_pivot_value(col_name: str, value):
 
 def _render_static_table(df: pd.DataFrame, key: str):
     table_html = df.to_html(index=False, escape=True, classes=f"ohh-static-table ohh-static-table-{key}")
-    html = textwrap.dedent(
-        f"""
-        <style>
-        .ohh-static-wrap-{key} {{
-            overflow-x: auto;
-            border: 1px solid #dbe4f0;
-            border-radius: 10px;
-            background: #ffffff;
-            margin-bottom: 1rem;
-        }}
-        .ohh-static-table-{key} {{
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.92rem;
-        }}
-        .ohh-static-table-{key} thead th {{
-            position: sticky;
-            top: 0;
-            background: #f7f9fc;
-            color: #334155;
-            padding: 0.7rem 0.75rem;
-            border-bottom: 1px solid #dbe4f0;
-            text-align: left;
-            white-space: nowrap;
-        }}
-        .ohh-static-table-{key} tbody td {{
-            padding: 0.65rem 0.75rem;
-            border-top: 1px solid #eef2f7;
-            white-space: nowrap;
-        }}
-        .ohh-static-table-{key} tbody tr:nth-child(even) {{
-            background: #fbfdff;
-        }}
-        </style>
-        <div class="ohh-static-wrap-{key}">{table_html}</div>
-        """
-    ).strip()
+    html = (
+        f"<style>"
+        f".ohh-static-wrap-{key}{{overflow-x:auto;border:1px solid #dbe4f0;border-radius:10px;background:#ffffff;margin-bottom:1rem;}}"
+        f".ohh-static-table-{key}{{width:100%;border-collapse:collapse;font-size:0.92rem;}}"
+        f".ohh-static-table-{key} thead th{{position:sticky;top:0;background:#f7f9fc;color:#334155;padding:0.7rem 0.75rem;border-bottom:1px solid #dbe4f0;text-align:left;white-space:nowrap;}}"
+        f".ohh-static-table-{key} tbody td{{padding:0.65rem 0.75rem;border-top:1px solid #eef2f7;white-space:nowrap;}}"
+        f".ohh-static-table-{key} tbody tr:nth-child(even){{background:#fbfdff;}}"
+        f"</style>"
+        f"<div class=\"ohh-static-wrap-{key}\">{table_html}</div>"
+    )
     st.markdown(html, unsafe_allow_html=True)
 
 
@@ -161,9 +133,9 @@ def render_pivot_mensile(
         st.info("📭 Nessun dato valido dopo validazione delle colonne.")
         return
 
-    # Formato mese per visualizzazione (GENNAIO 2025)
+    # Formato mese per visualizzazione (solo nome, es. GENNAIO)
     df_prep['Mese'] = df_prep['Data_DT'].apply(
-        lambda x: f"{mesi_ita[x.month]} {x.year}" if pd.notna(x) else ''
+        lambda x: mesi_ita[x.month] if pd.notna(x) else ''
     )
     df_prep['Mese_Ordine'] = df_prep['Data_DT'].apply(
         lambda x: f"{x.year}-{x.month:02d}" if pd.notna(x) else ''
@@ -231,29 +203,85 @@ def render_pivot_mensile(
         if not mostra_pct:
             pct_cols = [c for c in pivot_display.columns if c.endswith(' %')]
             pivot_display = pivot_display.drop(columns=pct_cols)
+
+        # Ordine colonne: TOTALE e MEDIA sempre come ultime due (utile anche per stile CSS)
+        if mostra_pct:
+            ordered_cols = [index_col]
+            for col in cols_sorted:
+                ordered_cols.append(col)
+                pct_name = f'{col} %'
+                if pct_name in pivot_display.columns:
+                    ordered_cols.append(pct_name)
+            if 'TOTALE %' in pivot_display.columns:
+                ordered_cols.append('TOTALE %')
+            if 'TOTALE' in pivot_display.columns:
+                ordered_cols.append('TOTALE')
+            if 'MEDIA' in pivot_display.columns:
+                ordered_cols.append('MEDIA')
+            pivot_display = pivot_display[[c for c in ordered_cols if c in pivot_display.columns]]
+
         pivot_display = pivot_display.reset_index(drop=True)
 
         num_righe = len(pivot_display)
-        pivot_render = pivot_display.copy()
-        for col in pivot_render.columns:
-            pivot_render[col] = pivot_render[col].apply(lambda value, col_name=col: _format_pivot_value(col_name, value))
+        altezza_dinamica = min(max(num_righe * 35 + 50, 320), 760)
 
-        _render_static_table(pivot_render, sezione_key)
+        pivot_column_config = {
+            index_col: st.column_config.TextColumn(index_col, width='medium')
+        }
+        for col in pivot_display.columns:
+            if col == index_col:
+                continue
+            if col.endswith(' %'):
+                pivot_column_config[col] = st.column_config.ProgressColumn(
+                    col, format='%.1f%%', min_value=0, max_value=100, width='small'
+                )
+            else:
+                pivot_column_config[col] = st.column_config.NumberColumn(col, format='€ %.2f', width='small')
+
+        def _highlight_totale_media(df):
+            styles = pd.DataFrame('', index=df.index, columns=df.columns)
+            if 'TOTALE' in df.columns:
+                styles['TOTALE'] = 'background-color: #e0f2fe'
+            if 'MEDIA' in df.columns:
+                styles['MEDIA'] = 'background-color: #fef9c3'
+            return styles
+
+        styled_pivot = pivot_display.style.apply(_highlight_totale_media, axis=None)
+
+        st.dataframe(
+            styled_pivot,
+            column_config=pivot_column_config,
+            hide_index=True,
+            use_container_width=True,
+            height=altezza_dinamica,
+        )
 
         totale = pivot['TOTALE'].sum()
         media = totale / num_mesi if num_mesi > 0 else 0
-        st.info(f"📋 N. Righe: {num_righe:,} | 💰 Totale: € {totale:,.0f} | 📊 Media mensile: € {media:,.0f}")
+        riepilogo_text = f"📋 N. Righe: {num_righe:,} | 💰 Totale: € {totale:,.0f} | 📊 Media mensile: € {media:,.0f}"
 
-        # Export Excel (senza container key custom che era sospettato)
+        # Export Excel
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             pivot.reset_index().to_excel(writer, index=False, sheet_name=sheet_name)
-        st.download_button(
-            label="📥 Scarica Excel",
-            data=excel_buffer.getvalue(),
-            file_name=f"{sezione_key}_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            key=f"btn_excel_{sezione_key}",
-        )
+
+        col_info, col_excel = st.columns([9, 1])
+        with col_info:
+            st.markdown(f"""
+            <div style="background-color: #E3F2FD; padding: 0.6rem 1rem; border-radius: 8px; border: 2px solid #2196F3; width: fit-content;">
+                <p style="color: #1565C0; font-size: 0.95rem; font-weight: bold; margin: 0; white-space: nowrap;">
+                    {riepilogo_text}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        with col_excel:
+            st.download_button(
+                label="Excel",
+                data=excel_buffer.getvalue(),
+                file_name=f"{sezione_key}_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key=f"btn_excel_{sezione_key}",
+                use_container_width=True,
+            )
     else:
         st.info("📊 Nessun dato da visualizzare per il periodo selezionato")

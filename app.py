@@ -513,6 +513,17 @@ div[data-testid="stDataFrameGlideDataEditor"] > div,
     min-width: max-content !important;
 }
 
+/* Intestazioni tabelle: MAIUSCOLO + GRASSETTO */
+div[data-testid="stDataFrame"] div[role="columnheader"],
+div[data-testid="stDataFrame"] div[role="columnheader"] *,
+div[data-testid="stDataFrameGlideDataEditor"] div[role="columnheader"],
+div[data-testid="stDataFrameGlideDataEditor"] div[role="columnheader"] *,
+div[data-testid="stDataEditor"] div[role="columnheader"],
+div[data-testid="stDataEditor"] div[role="columnheader"] * {
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+}
+
 /* Plotly full width */
 [data-testid="stPlotlyChart"],
 [data-testid="stPlotlyChart"] > div,
