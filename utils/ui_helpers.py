@@ -162,71 +162,56 @@ def render_pivot_mensile(
     pivot_display['MEDIA'] = pivot['MEDIA'].astype(float).round(2).values
 
     if not pivot_display.empty:
-        # 🔬 STEP 4: solo st.dataframe SENZA st.write/st.caption prima
-        import numpy as np
-        df_test2 = pd.DataFrame({
-            'col_0': ['r0', 'r1', 'r2', 'r3', 'r4'],
-            'col_1': np.array([1030.09, 100.0, 200.0, 300.0, 400.0], dtype=float),
-            'col_2': np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=float),
-            'col_3': np.array([1030.09, 100.0, 200.0, 300.0, 400.0], dtype=float),
-            'col_4': np.array([515.04, 50.0, 100.0, 150.0, 200.0], dtype=float),
-        })
-        st.dataframe(df_test2, hide_index=True, use_container_width=True, height=250)
-        return
+        # Inizializza session_state per il checkbox se necessario
+        if f"mostra_incidenze_pct_{sezione_key}" not in st.session_state:
+            st.session_state[f"mostra_incidenze_pct_{sezione_key}"] = False
+
+        mostra_pct = st.checkbox(
+            "📊 Visualizza incidenze %",
+            key=f"mostra_incidenze_pct_{sezione_key}"
+        )
+
+        # Droppa colonne % se checkbox OFF e resetta index
+        if not mostra_pct:
+            pct_cols = [c for c in pivot_display.columns if c.endswith(' %')]
+            pivot_display = pivot_display.drop(columns=pct_cols)
+        pivot_display = pivot_display.reset_index(drop=True)
+
+        # Column config numerico: € per monetari, % per incidenze
+        column_config = {}
+        for col in pivot_display.columns:
+            if col == index_col:
+                column_config[col] = st.column_config.TextColumn(col, width='medium')
+            elif col.endswith(' %') or col == 'TOTALE %':
+                column_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width='small')
+            else:
+                column_config[col] = st.column_config.NumberColumn(col, format="€ %.2f")
 
         num_righe = len(pivot_display)
         altezza = max(num_righe * 35 + 50, 200)
 
-        # 🔬 DIAGNOSTIC: DataFrame minimale per isolare React #185
-        import numpy as np
-        df_test = pd.DataFrame({
-            'a': np.array([1.0, 2.0, 3.0], dtype=float),
-            'b': np.array([10.0, 20.0, 30.0], dtype=float),
-        })
-        st.caption("🔬 Diagnostic: tabella minimale (se crasha qui, il problema è Streamlit/browser, non i dati)")
-        st.dataframe(df_test, hide_index=True)
-
-        # 🔬 DIAGNOSTIC 2: pivot reale con nomi colonne SANIFICATI (no spazi, no %)
-        pivot_safe = pivot_display.copy()
-        # Rinomina colonne con caratteri ASCII-only per escludere bug di parsing Glide Data Grid
-        safe_cols = []
-        seen = {}
-        for c in pivot_safe.columns:
-            base = str(c).replace(' %', '_pct').replace(' ', '_').replace('€', 'EUR')
-            # Rimuovi caratteri non ASCII
-            base = ''.join(ch if ord(ch) < 128 else '_' for ch in base)
-            if base in seen:
-                seen[base] += 1
-                base = f"{base}_{seen[base]}"
-            else:
-                seen[base] = 0
-            safe_cols.append(base)
-        pivot_safe.columns = safe_cols
-        # Reset index per garantire RangeIndex
-        pivot_safe = pivot_safe.reset_index(drop=True)
-        st.caption(f"🔬 Diagnostic 2: pivot sanificata ({len(pivot_safe)} righe × {len(pivot_safe.columns)} col). Colonne: {list(pivot_safe.columns)[:5]}...")
-        try:
-            st.dataframe(pivot_safe, hide_index=True, use_container_width=True, height=altezza)
-        except Exception as exc_diag:
-            st.error(f"Errore rendering pivot_safe: {exc_diag}")
-            st.write("dtypes:", pivot_safe.dtypes.to_dict())
-            st.write("head:", pivot_safe.head().to_dict())
+        st.dataframe(
+            pivot_display,
+            hide_index=True,
+            use_container_width=True,
+            height=altezza,
+            column_config=column_config
+        )
 
         totale = pivot['TOTALE'].sum()
         media = totale / num_mesi if num_mesi > 0 else 0
-        # 🔬 DIAGNOSTIC: commentiamo il blocco col_left/col_right/markdown/download per isolare
         st.info(f"📋 N. Righe: {num_righe:,} | 💰 Totale: € {totale:,.0f} | 📊 Media mensile: € {media:,.0f}")
-        # col_left, col_right = st.columns([5, 1])
-        #
-        # with col_left:
-        #     st.markdown(f"""... """, unsafe_allow_html=True)
-        #
-        # with col_right:
-        #     st.markdown(f"""<style>...</style>""", unsafe_allow_html=True)
-        #     excel_buffer = io.BytesIO()
-        #     with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-        #         pivot.reset_index().to_excel(writer, index=False, sheet_name=sheet_name)
-        #     with st.container(key=f"download_excel_{sezione_key}"):
-        #         st.download_button(...)
+
+        # Export Excel (senza container key custom che era sospettato)
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            pivot.reset_index().to_excel(writer, index=False, sheet_name=sheet_name)
+        st.download_button(
+            label="📥 Scarica Excel",
+            data=excel_buffer.getvalue(),
+            file_name=f"{sezione_key}_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key=f"btn_excel_{sezione_key}",
+        )
     else:
         st.info("📊 Nessun dato da visualizzare per il periodo selezionato")
