@@ -177,25 +177,15 @@ def render_pivot_mensile(
             pivot_display = pivot_display.drop(columns=pct_cols)
         pivot_display = pivot_display.reset_index(drop=True)
 
-        # Column config numerico: € per monetari, % per incidenze
-        column_config = {}
-        for col in pivot_display.columns:
-            if col == index_col:
-                column_config[col] = st.column_config.TextColumn(col, width='medium')
-            elif col.endswith(' %') or col == 'TOTALE %':
-                column_config[col] = st.column_config.NumberColumn(col, format="%.1f%%", width='small')
-            else:
-                column_config[col] = st.column_config.NumberColumn(col, format="€ %.2f")
-
         num_righe = len(pivot_display)
         altezza = max(num_righe * 35 + 50, 200)
 
+        # Senza column_config: formattazione sacrificata per stabilità React #185
         st.dataframe(
             pivot_display,
             hide_index=True,
             use_container_width=True,
-            height=altezza,
-            column_config=column_config
+            height=altezza
         )
 
         totale = pivot['TOTALE'].sum()
