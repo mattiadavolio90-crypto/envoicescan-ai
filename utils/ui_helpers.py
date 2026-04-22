@@ -162,18 +162,16 @@ def render_pivot_mensile(
     pivot_display['MEDIA'] = pivot['MEDIA'].astype(float).round(2).values
 
     if not pivot_display.empty:
-        num_righe = len(pivot_display)
-        altezza = max(num_righe * 35 + 50, 200)
-
-        # 🔬 STEP 3: sostituisci col_0 string con valori innocui per escludere bug su stringhe
-        pct_cols = [c for c in pivot_display.columns if c.endswith(' %')]
-        pivot_clean = pivot_display.drop(columns=pct_cols).reset_index(drop=True)
-        pivot_clean.columns = [f"col_{i}" for i in range(len(pivot_clean.columns))]
-        # Sostituisci col_0 (string) con label innocue
-        pivot_clean['col_0'] = [f"row_{i}" for i in range(len(pivot_clean))]
-        st.caption(f"🔬 STEP 3 [{sezione_key}]: col_0 sostituita con 'row_N' innocua")
-        st.write("First row:", pivot_clean.iloc[0].to_dict() if len(pivot_clean) > 0 else {})
-        st.dataframe(pivot_clean, hide_index=True, use_container_width=True, height=altezza)
+        # 🔬 STEP 4: solo st.dataframe SENZA st.write/st.caption prima
+        import numpy as np
+        df_test2 = pd.DataFrame({
+            'col_0': ['r0', 'r1', 'r2', 'r3', 'r4'],
+            'col_1': np.array([1030.09, 100.0, 200.0, 300.0, 400.0], dtype=float),
+            'col_2': np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=float),
+            'col_3': np.array([1030.09, 100.0, 200.0, 300.0, 400.0], dtype=float),
+            'col_4': np.array([515.04, 50.0, 100.0, 150.0, 200.0], dtype=float),
+        })
+        st.dataframe(df_test2, hide_index=True, use_container_width=True, height=250)
         return
 
         num_righe = len(pivot_display)
