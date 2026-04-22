@@ -117,6 +117,37 @@ def _sort_detail_rows(df_source: pd.DataFrame) -> pd.DataFrame:
     return df_sorted.reset_index(drop=True)
 
 
+def _render_spese_generali_fallback_editor(df_editor_paginato: pd.DataFrame, categorie_disponibili: list[str], editor_key: str) -> pd.DataFrame:
+    """Editor stabile senza data_editor per aggirare React #185 su Streamlit 1.54."""
+    edited_df = df_editor_paginato.copy().reset_index(drop=True)
+
+    preview_cols = [
+        col for col in ['DataDocumento', 'Descrizione', 'Fornitore', 'Quantita', 'TotaleRiga', 'Categoria']
+        if col in edited_df.columns
+    ]
+    st.dataframe(edited_df[preview_cols], hide_index=True, use_container_width=True, height=min(max(len(edited_df) * 35 + 50, 280), 700))
+    st.caption("Modalità stabile: modifica categoria tramite selettori sotto la tabella.")
+
+    for idx in edited_df.index:
+        descrizione = str(edited_df.at[idx, 'Descrizione']) if 'Descrizione' in edited_df.columns else f'Riga {idx + 1}'
+        fornitore = str(edited_df.at[idx, 'Fornitore']) if 'Fornitore' in edited_df.columns else ''
+        label = f"{idx + 1}. {descrizione[:80]}"
+        if fornitore:
+            label = f"{label} | {fornitore[:40]}"
+
+        current_value = str(edited_df.at[idx, 'Categoria']).strip() if 'Categoria' in edited_df.columns else 'Da Classificare'
+        if current_value not in categorie_disponibili:
+            current_value = 'Da Classificare'
+        edited_df.at[idx, 'Categoria'] = st.selectbox(
+            label,
+            options=categorie_disponibili,
+            index=categorie_disponibili.index(current_value),
+            key=f"{editor_key}_fallback_categoria_{idx}",
+        )
+
+    return edited_df
+
+
 def render_category_editor(df_completo_filtrato, supabase):
     """Renderizza la sezione Dettaglio Articoli con data editor e logica di salvataggio."""
     # Placeholder se dataset mancanti/vuoti
@@ -624,14 +655,24 @@ def render_category_editor(df_completo_filtrato, supabase):
     _editor_version = st.session_state.get('editor_refresh_counter', 0)
     _filtro_slug = (tipo_filtro or "tutti").lower().replace(" ", "_").replace("&", "and")
     _editor_key = f"editor_dati_v{_editor_version}_{_filtro_slug}"
-    edited_df = st.data_editor(
-        df_editor_paginato,
-        column_config=column_config_dict,
-        hide_index=True,
-        use_container_width=True,
-        height=altezza_dinamica,
-        key=_editor_key
-    )
+    use_stable_fallback_editor = tipo_filtro == "Spese Generali"
+
+    if use_stable_fallback_editor:
+        st.warning("⚠️ Modalità editor stabile attiva per evitare un bug React di Streamlit su questo filtro.")
+        edited_df = _render_spese_generali_fallback_editor(
+            df_editor_paginato=df_editor_paginato,
+            categorie_disponibili=categorie_disponibili,
+            editor_key=_editor_key,
+        )
+    else:
+        edited_df = st.data_editor(
+            df_editor_paginato,
+            column_config=column_config_dict,
+            hide_index=True,
+            use_container_width=True,
+            height=altezza_dinamica,
+            key=_editor_key
+        )
     
     st.markdown("""
         <style>
@@ -678,36 +719,37 @@ def render_category_editor(df_completo_filtrato, supabase):
             logger.info("✅ CHECK OK: Nessuna cella bianca nella colonna Categoria")
 
     pending_category_changes = []
-    _editor_state = st.session_state.get(_editor_key, {})
-    _edited_rows = _editor_state.get('edited_rows', {}) if isinstance(_editor_state, dict) else {}
+    if not use_stable_fallback_editor:
+        _editor_state = st.session_state.get(_editor_key, {})
+        _edited_rows = _editor_state.get('edited_rows', {}) if isinstance(_editor_state, dict) else {}
 
-    for raw_idx, row_changes in _edited_rows.items():
-        if not isinstance(row_changes, dict) or 'Categoria' not in row_changes:
-            continue
+        for raw_idx, row_changes in _edited_rows.items():
+            if not isinstance(row_changes, dict) or 'Categoria' not in row_changes:
+                continue
 
-        try:
-            row_idx = int(raw_idx)
-        except (TypeError, ValueError):
-            row_idx = raw_idx
+            try:
+                row_idx = int(raw_idx)
+            except (TypeError, ValueError):
+                row_idx = raw_idx
 
-        if row_idx not in edited_df.index or row_idx not in df_editor_paginato.index:
-            continue
+            if row_idx not in edited_df.index or row_idx not in df_editor_paginato.index:
+                continue
 
-        nuova_cat = estrai_nome_categoria(edited_df.at[row_idx, 'Categoria'])
-        vecchia_cat = estrai_nome_categoria(df_editor_paginato.at[row_idx, 'Categoria'])
-        vecchia_cat = vecchia_cat or 'Da Classificare'
+            nuova_cat = estrai_nome_categoria(edited_df.at[row_idx, 'Categoria'])
+            vecchia_cat = estrai_nome_categoria(df_editor_paginato.at[row_idx, 'Categoria'])
+            vecchia_cat = vecchia_cat or 'Da Classificare'
 
-        if nuova_cat == vecchia_cat:
-            continue
+            if nuova_cat == vecchia_cat:
+                continue
 
-        pending_category_changes.append({
-            'index': row_idx,
-            'descrizione': edited_df.at[row_idx, 'Descrizione'],
-            'file_origine': edited_df.at[row_idx, 'FileOrigine'] if 'FileOrigine' in edited_df.columns else None,
-            'numero_riga': edited_df.at[row_idx, 'NumeroRiga'] if 'NumeroRiga' in edited_df.columns else None,
-            'vecchia_cat': vecchia_cat,
-            'nuova_cat': nuova_cat,
-        })
+            pending_category_changes.append({
+                'index': row_idx,
+                'descrizione': edited_df.at[row_idx, 'Descrizione'],
+                'file_origine': edited_df.at[row_idx, 'FileOrigine'] if 'FileOrigine' in edited_df.columns else None,
+                'numero_riga': edited_df.at[row_idx, 'NumeroRiga'] if 'NumeroRiga' in edited_df.columns else None,
+                'vecchia_cat': vecchia_cat,
+                'nuova_cat': nuova_cat,
+            })
 
     if not pending_category_changes and 'Categoria' in edited_df.columns and 'Categoria' in df_editor_paginato.columns:
         idx_comuni = edited_df.index.intersection(df_editor_paginato.index)

@@ -18,6 +18,61 @@ logger = get_logger('ui_helpers')
 _STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'static')
 
 
+def _format_pivot_value(col_name: str, value):
+    if pd.isna(value):
+        return ''
+    if col_name.endswith(' %') or col_name == 'TOTALE %':
+        return f"{float(value):.1f}%"
+    if col_name == 'MEDIA' or col_name == 'TOTALE' or col_name not in ('Categoria', 'Fornitore'):
+        try:
+            return f"€ {float(value):,.2f}"
+        except (TypeError, ValueError):
+            return str(value)
+    return str(value)
+
+
+def _render_static_table(df: pd.DataFrame, key: str):
+    table_html = df.to_html(index=False, escape=True, classes=f"ohh-static-table ohh-static-table-{key}")
+    st.markdown(
+        f"""
+        <style>
+        .ohh-static-wrap-{key} {{
+            overflow-x: auto;
+            border: 1px solid #dbe4f0;
+            border-radius: 10px;
+            background: #ffffff;
+            margin-bottom: 1rem;
+        }}
+        .ohh-static-table-{key} {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.92rem;
+        }}
+        .ohh-static-table-{key} thead th {{
+            position: sticky;
+            top: 0;
+            background: #f7f9fc;
+            color: #334155;
+            padding: 0.7rem 0.75rem;
+            border-bottom: 1px solid #dbe4f0;
+            text-align: left;
+            white-space: nowrap;
+        }}
+        .ohh-static-table-{key} tbody td {{
+            padding: 0.65rem 0.75rem;
+            border-top: 1px solid #eef2f7;
+            white-space: nowrap;
+        }}
+        .ohh-static-table-{key} tbody tr:nth-child(even) {{
+            background: #fbfdff;
+        }}
+        </style>
+        <div class="ohh-static-wrap-{key}">{table_html}</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def load_css(filename: str):
     """Carica un file CSS dalla cartella static/ e lo inietta via st.markdown."""
     path = os.path.join(_STATIC_DIR, filename)
@@ -178,15 +233,11 @@ def render_pivot_mensile(
         pivot_display = pivot_display.reset_index(drop=True)
 
         num_righe = len(pivot_display)
-        altezza = max(num_righe * 35 + 50, 200)
+        pivot_render = pivot_display.copy()
+        for col in pivot_render.columns:
+            pivot_render[col] = pivot_render[col].apply(lambda value, col_name=col: _format_pivot_value(col_name, value))
 
-        # Senza column_config: formattazione sacrificata per stabilità React #185
-        st.dataframe(
-            pivot_display,
-            hide_index=True,
-            use_container_width=True,
-            height=altezza
-        )
+        _render_static_table(pivot_render, sezione_key)
 
         totale = pivot['TOTALE'].sum()
         media = totale / num_mesi if num_mesi > 0 else 0
