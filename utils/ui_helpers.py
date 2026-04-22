@@ -165,15 +165,17 @@ def render_pivot_mensile(
         num_righe = len(pivot_display)
         altezza = max(num_righe * 35 + 50, 200)
 
-        # 🔬 STEP 1: ripristino SOLO st.dataframe(pivot_display) puro
-        st.caption(f"🔬 STEP 1 [{sezione_key}]: pivot_display puro senza colonne % e senza column_config")
-        # Droppa colonne % (simula checkbox OFF) e resetta index
+        # 🔬 STEP 2: rinomina prima colonna e cambia dtype per escludere collisioni
         pct_cols = [c for c in pivot_display.columns if c.endswith(' %')]
         pivot_clean = pivot_display.drop(columns=pct_cols).reset_index(drop=True)
+        # Rinomina TUTTE le colonne con nomi "neutri"
+        pivot_clean.columns = [f"col_{i}" for i in range(len(pivot_clean.columns))]
+        st.caption(f"🔬 STEP 2 [{sezione_key}]: colonne rinominate in col_0, col_1, ...")
         st.write("Colonne:", list(pivot_clean.columns))
-        st.write("Dtypes:", {c: str(pivot_clean[c].dtype) for c in pivot_clean.columns})
+        st.write("Shape:", pivot_clean.shape)
+        st.write("First row:", pivot_clean.iloc[0].to_dict() if len(pivot_clean) > 0 else {})
         st.dataframe(pivot_clean, hide_index=True, use_container_width=True, height=altezza)
-        return  # early return
+        return
 
         num_righe = len(pivot_display)
         altezza = max(num_righe * 35 + 50, 200)
