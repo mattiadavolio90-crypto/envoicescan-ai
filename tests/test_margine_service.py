@@ -6,7 +6,7 @@ Copertura: calcola_risultati, calcola_kpi_anno
 import pytest
 import pandas as pd
 
-from services.margine_service import calcola_risultati, calcola_kpi_anno, build_transposed_df, export_excel_margini
+from services.margine_service import calcola_risultati, calcola_kpi_anno, build_transposed_df, export_excel_margini, genera_commenti_kpi
 
 # ---------------------------------------------------------------------------
 # Helper: costruisce un DataFrame di input a 12 righe
@@ -458,4 +458,155 @@ class TestExportExcelMargini:
         result = export_excel_margini(df_vuoto, anno=2025, nome_ristorante="Vuoto")
         assert isinstance(result, bytes)
         assert len(result) > 0
+
+
+# ===========================================================================
+# genera_commenti_kpi
+# ===========================================================================
+
+def _make_df_risultati_minimale_commenti() -> pd.DataFrame:
+    """DataFrame minimale per genera_commenti_kpi (12 mesi + TOT ANNO)."""
+    rows = []
+    for i in range(12):
+        rows.append({
+            "Mese": MESI_NOMI[i],
+            "MeseNum": i + 1,
+            "Fatt_Netto": 1000.0,
+        })
+    rows.append({
+        "Mese": "TOT ANNO",
+        "MeseNum": 99,
+        "Fatt_Netto": 12000.0,
+    })
+    return pd.DataFrame(rows)
+
+
+class TestGeneraCommentiKpi:
+
+    def test_kpi_eccellente(self):
+        """
+        MOL % in fascia eccellente: commento MOL con colore verde ed emoji positiva.
+        """
+        df_ris = _make_df_risultati_minimale_commenti()
+        kpi = {
+            "num_mesi": 12,
+            "fc_medio": 25.0,
+            "primo_margine_perc_media": 75.0,
+            "spese_gen_perc_media": 14.0,
+            "mol_perc_medio": 25.0,
+            "personale_perc_media": 22.0,
+        }
+
+        commenti = genera_commenti_kpi(kpi, df_ris)
+        mol = next(c for c in commenti if c["kpi_nome"] == "MOL")
+
+        assert mol["emoji"] == "🟢"
+        assert mol["colore"] == "#16a34a"
+
+    def test_kpi_critico(self):
+        """
+        Food Cost in fascia critica: commento Food Cost rosso con emoji negativa.
+        """
+        df_ris = _make_df_risultati_minimale_commenti()
+        kpi = {
+            "num_mesi": 12,
+            "fc_medio": 80.0,
+            "primo_margine_perc_media": 60.0,
+            "spese_gen_perc_media": 20.0,
+            "mol_perc_medio": 10.0,
+            "personale_perc_media": 40.0,
+        }
+
+        commenti = genera_commenti_kpi(kpi, df_ris)
+        food = next(c for c in commenti if c["kpi_nome"] == "Food Cost")
+
+        assert food["emoji"] == "🔴"
+        assert food["colore"] == "#dc2626"
+
+    def test_kpi_norma(self):
+        """
+        KPI in fascia "nella norma": Food Cost deve risultare giallo/neutro.
+        """
+        df_ris = _make_df_risultati_minimale_commenti()
+        kpi = {
+            "num_mesi": 12,
+            "fc_medio": 31.0,
+            "primo_margine_perc_media": 68.0,
+            "spese_gen_perc_media": 18.0,
+            "mol_perc_medio": 18.0,
+            "personale_perc_media": 28.0,
+        }
+
+        commenti = genera_commenti_kpi(kpi, df_ris)
+        food = next(c for c in commenti if c["kpi_nome"] == "Food Cost")
+
+        assert food["emoji"] == "🟡"
+        assert food["colore"] == "#ca8a04"
+
+    def test_output_struttura(self):
+        """
+        Ogni elemento dell'output deve avere esattamente le chiavi richieste.
+        """
+        df_ris = _make_df_risultati_minimale_commenti()
+        kpi = {
+            "num_mesi": 12,
+            "fc_medio": 30.0,
+            "primo_margine_perc_media": 70.0,
+            "spese_gen_perc_media": 20.0,
+            "mol_perc_medio": 15.0,
+            "personale_perc_media": 30.0,
+        }
+
+        commenti = genera_commenti_kpi(kpi, df_ris)
+        chiavi_attese = {"kpi_nome", "percentuale", "commento", "emoji", "colore"}
+
+        assert isinstance(commenti, list)
+        assert len(commenti) > 0
+        for elemento in commenti:
+            assert set(elemento.keys()) == chiavi_attese
+
+    def test_mesi_filtro_none(self):
+        """
+        Chiamata con mesi_filtro=None: nessuna eccezione.
+        """
+        df_ris = _make_df_risultati_minimale_commenti()
+        kpi = {
+            "num_mesi": 12,
+            "fc_medio": 30.0,
+            "primo_margine_perc_media": 70.0,
+            "spese_gen_perc_media": 20.0,
+            "mol_perc_medio": 15.0,
+            "personale_perc_media": 30.0,
+        }
+
+        commenti = genera_commenti_kpi(kpi, df_ris, mesi_filtro=None)
+        assert isinstance(commenti, list)
+
+    def test_mesi_filtro_lista_vuota(self):
+        """
+        Chiamata con mesi_filtro=[]: gestita senza crash.
+        """
+        df_ris = _make_df_risultati_minimale_commenti()
+        kpi = {
+            "num_mesi": 12,
+            "fc_medio": 30.0,
+            "primo_margine_perc_media": 70.0,
+            "spese_gen_perc_media": 20.0,
+            "mol_perc_medio": 15.0,
+            "personale_perc_media": 30.0,
+        }
+
+        commenti = genera_commenti_kpi(kpi, df_ris, mesi_filtro=[])
+        assert isinstance(commenti, list)
+
+    def test_kpi_dict_vuoto(self):
+        """
+        kpi vuoto: deve restituire lista vuota senza eccezioni.
+        """
+        df_ris = _make_df_risultati_minimale_commenti()
+
+        commenti = genera_commenti_kpi({}, df_ris)
+
+        assert isinstance(commenti, list)
+        assert commenti == []
 

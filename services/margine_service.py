@@ -655,29 +655,29 @@ def genera_commenti_kpi(kpi: dict, df_risultati, mesi_filtro: list = None) -> li
     """
     commenti = []
     
-    if kpi['num_mesi'] == 0:
+    if kpi.get('num_mesi', 0) == 0:
         return commenti
     
     # Mappa colori per emoji
     colori = {'🟢': '#16a34a', '🟡': '#ca8a04', '🟠': '#ea580c', '🔴': '#dc2626', 'ℹ️': '#2563eb'}
     
     # 1. Food Cost %
-    fc = kpi['fc_medio']
+    fc = kpi.get('fc_medio', 0.0)
     emoji, testo = _valuta_soglia(fc, 'food_cost', crescente=True)
     commenti.append({'kpi_nome': 'Food Cost', 'percentuale': f'{fc:.1f}%', 'commento': testo, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
     
     # 2. 1° Margine %
-    pm = kpi['primo_margine_perc_media']
+    pm = kpi.get('primo_margine_perc_media', 0.0)
     emoji, testo = _valuta_soglia(pm, 'primo_margine', crescente=False)
     commenti.append({'kpi_nome': '1° Margine', 'percentuale': f'{pm:.1f}%', 'commento': testo, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
     
     # 3. Spese Generali %
-    sg = kpi['spese_gen_perc_media']
+    sg = kpi.get('spese_gen_perc_media', 0.0)
     emoji, testo = _valuta_soglia(sg, 'spese_generali', crescente=True)
     commenti.append({'kpi_nome': 'Spese Generali', 'percentuale': f'{sg:.1f}%', 'commento': testo, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
     
     # 4. MOL %
-    mol = kpi['mol_perc_medio']
+    mol = kpi.get('mol_perc_medio', 0.0)
     emoji, testo = _valuta_soglia(mol, 'mol', crescente=False)
     commenti.append({'kpi_nome': 'MOL', 'percentuale': f'{mol:.1f}%', 'commento': testo, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
 
