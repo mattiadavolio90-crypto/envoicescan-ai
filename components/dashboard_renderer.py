@@ -1011,6 +1011,10 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
         else:
             col_filtro_cat, _ = st.columns([2, 5])
             with col_filtro_cat:
+                # Inizializza con valore di default se non ancora in session_state
+                if "tipo_filtro_categorie" not in st.session_state:
+                    st.session_state.tipo_filtro_categorie = "Tutti"
+                
                 tipo_filtro_cat = st.selectbox(
                     "📦 Tipo Prodotti:",
                     options=["Food & Beverage", "Spese Generali", "Tutti"],
@@ -1039,6 +1043,10 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
         else:
             col_filtro_forn, _ = st.columns([2, 5])
             with col_filtro_forn:
+                # Inizializza con valore di default se non ancora in session_state
+                if "tipo_filtro_fornitori" not in st.session_state:
+                    st.session_state.tipo_filtro_fornitori = "Tutti"
+                
                 tipo_filtro_forn = st.selectbox(
                     "📦 Tipo Prodotti:",
                     options=["Food & Beverage", "Spese Generali", "Tutti"],
