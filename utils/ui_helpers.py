@@ -94,13 +94,16 @@ def render_pivot_mensile(
         st.error(f"❌ Errore: colonne mancanti nel dataframe: {missing_cols}")
         return
     
-    # Filtra righe con Data_DT o TotaleRiga nulli
-    df_prep = df_source[df_source['Data_DT'].notna() & df_source['TotaleRiga'].notna()].copy()
+    # Filtra righe con Data_DT o TotaleRiga nulli, e con index_col nullo
+    df_prep = df_source[
+        df_source['Data_DT'].notna()
+        & df_source['TotaleRiga'].notna()
+        & df_source[index_col].notna()
+        & (df_source[index_col].astype(str).str.strip() != '')
+    ].copy()
     if df_prep.empty:
         st.info("📭 Nessun dato valido dopo validazione delle colonne.")
         return
-
-    # Formato mese per visualizzazione (GENNAIO 2025)
 
     # Formato mese per visualizzazione (GENNAIO 2025)
     df_prep['Mese'] = df_prep['Data_DT'].apply(
@@ -175,9 +178,10 @@ def render_pivot_mensile(
         if f"mostra_incidenze_pct_{sezione_key}" not in st.session_state:
             st.session_state[f"mostra_incidenze_pct_{sezione_key}"] = False
         
+        # NOTA: non passare 'value=' quando si usa 'key=' con session_state già inizializzato
+        # (causa warning e potenziali rerun loop → React error #185)
         mostra_pct = st.checkbox(
-            "📊 Visualizza incidenze %", 
-            value=st.session_state[f"mostra_incidenze_pct_{sezione_key}"],
+            "📊 Visualizza incidenze %",
             key=f"mostra_incidenze_pct_{sezione_key}"
         )
 
@@ -190,17 +194,13 @@ def render_pivot_mensile(
         num_righe = len(pivot_display)
         altezza = max(num_righe * 35 + 50, 200)
 
-        # Evidenzia visivamente le colonne riepilogo senza alterare dati o calcoli.
-        df_styled = (
-            pivot_display.style
-            .set_properties(subset=['TOTALE'], **{'background-color': '#dbeafe'})
-            .set_properties(subset=['MEDIA'], **{'background-color': '#fef9c3'})
-        )
-
+        # FIX React #185: usa DataFrame puro invece di Styler.
+        # Styler + column_config in Streamlit 1.54 può causare "Maximum update depth".
+        # Lo styling di background colonne TOTALE/MEDIA viene sacrificato per stabilità.
         st.dataframe(
-            df_styled,
+            pivot_display,
             hide_index=True,
-            width='stretch',
+            use_container_width=True,
             height=altezza,
             column_config=column_config
         )

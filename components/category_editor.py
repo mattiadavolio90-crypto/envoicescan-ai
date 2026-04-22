@@ -628,7 +628,7 @@ def render_category_editor(df_completo_filtrato, supabase):
         df_editor_paginato,
         column_config=column_config_dict,
         hide_index=True,
-        width='stretch',
+        use_container_width=True,
         height=altezza_dinamica,
         key=_editor_key
     )
