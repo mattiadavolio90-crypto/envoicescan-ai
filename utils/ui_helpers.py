@@ -9,6 +9,7 @@ Funzioni condivise per:
 import os
 import io
 import logging
+import textwrap
 import pandas as pd
 import streamlit as st
 from config.logger_setup import get_logger
@@ -33,7 +34,7 @@ def _format_pivot_value(col_name: str, value):
 
 def _render_static_table(df: pd.DataFrame, key: str):
     table_html = df.to_html(index=False, escape=True, classes=f"ohh-static-table ohh-static-table-{key}")
-    st.markdown(
+    html = textwrap.dedent(
         f"""
         <style>
         .ohh-static-wrap-{key} {{
@@ -68,9 +69,9 @@ def _render_static_table(df: pd.DataFrame, key: str):
         }}
         </style>
         <div class="ohh-static-wrap-{key}">{table_html}</div>
-        """,
-        unsafe_allow_html=True,
-    )
+        """
+    ).strip()
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def load_css(filename: str):

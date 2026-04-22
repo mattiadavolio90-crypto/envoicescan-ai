@@ -125,7 +125,45 @@ def _render_spese_generali_fallback_editor(df_editor_paginato: pd.DataFrame, cat
         col for col in ['DataDocumento', 'Descrizione', 'Fornitore', 'Quantita', 'TotaleRiga', 'Categoria']
         if col in edited_df.columns
     ]
-    st.dataframe(edited_df[preview_cols], hide_index=True, use_container_width=True, height=min(max(len(edited_df) * 35 + 50, 280), 700))
+    preview_df = edited_df[preview_cols].copy()
+    if 'TotaleRiga' in preview_df.columns:
+        preview_df['TotaleRiga'] = preview_df['TotaleRiga'].apply(lambda value: f"€ {float(value):,.2f}" if pd.notna(value) else '')
+    if 'Quantita' in preview_df.columns:
+        preview_df['Quantita'] = preview_df['Quantita'].apply(lambda value: f"{float(value):,.2f}" if pd.notna(value) else '')
+    table_html = preview_df.to_html(index=False, escape=True, classes="ohh-detail-stable-table")
+    st.markdown(
+        """
+<style>
+.ohh-detail-stable-wrap {
+    overflow-x: auto;
+    border: 1px solid #dbe4f0;
+    border-radius: 10px;
+    background: #ffffff;
+    margin-bottom: 1rem;
+}
+.ohh-detail-stable-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+}
+.ohh-detail-stable-table thead th {
+    background: #f7f9fc;
+    color: #334155;
+    padding: 0.7rem 0.75rem;
+    border-bottom: 1px solid #dbe4f0;
+    text-align: left;
+    white-space: nowrap;
+}
+.ohh-detail-stable-table tbody td {
+    padding: 0.65rem 0.75rem;
+    border-top: 1px solid #eef2f7;
+    white-space: nowrap;
+}
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    st.markdown(f'<div class="ohh-detail-stable-wrap">{table_html}</div>', unsafe_allow_html=True)
     st.caption("Modalità stabile: modifica categoria tramite selettori sotto la tabella.")
 
     for idx in edited_df.index:
@@ -674,30 +712,31 @@ def render_category_editor(df_completo_filtrato, supabase):
             key=_editor_key
         )
     
-    st.markdown("""
-        <style>
-        [data-testid="stDataFrame"] [data-testid="stDataFrameCell"] {
-            transition: background-color 0.3s ease;
-        }
-        
-        /* 🔍 BADGE PIÙ LEGGIBILE nella colonna Novità */
-        /* Approccio 1: Targetta tutte le celle dell'ultima colonna */
-        div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(1),
-        div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(2):has(:only-child) {
-            font-size: clamp(1.1rem, 1vw + 0.8rem, 1.625rem) !important;
-            text-align: center !important;
-            line-height: 1.5 !important;
-        }
-        /* Approccio 2: Aumenta font per colonne con width="small" (Fonte e U.M.) */
-        div[data-testid="stDataFrame"] [data-baseweb="cell"]:has(span:only-child) {
-            font-size: clamp(1rem, 0.9vw + 0.8rem, 1.5rem) !important;
-        }
-        /* Approccio 3: Centra e ingrandisci celle contenenti solo emoji singole */
-        div[data-testid="stDataFrame"] div[role="gridcell"] > div:only-child {
-            font-size: inherit;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    if not use_stable_fallback_editor:
+        st.markdown("""
+            <style>
+            [data-testid="stDataFrame"] [data-testid="stDataFrameCell"] {
+                transition: background-color 0.3s ease;
+            }
+            
+            /* 🔍 BADGE PIÙ LEGGIBILE nella colonna Novità */
+            /* Approccio 1: Targetta tutte le celle dell'ultima colonna */
+            div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(1),
+            div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(2):has(:only-child) {
+                font-size: clamp(1.1rem, 1vw + 0.8rem, 1.625rem) !important;
+                text-align: center !important;
+                line-height: 1.5 !important;
+            }
+            /* Approccio 2: Aumenta font per colonne con width="small" (Fonte e U.M.) */
+            div[data-testid="stDataFrame"] [data-baseweb="cell"]:has(span:only-child) {
+                font-size: clamp(1rem, 0.9vw + 0.8rem, 1.5rem) !important;
+            }
+            /* Approccio 3: Centra e ingrandisci celle contenenti solo emoji singole */
+            div[data-testid="stDataFrame"] div[role="gridcell"] > div:only-child {
+                font-size: inherit;
+            }
+            </style>
+        """, unsafe_allow_html=True)
     
     totale_tabella = edited_df['TotaleRiga'].sum()
     num_righe = len(edited_df)
