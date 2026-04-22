@@ -684,7 +684,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         is_base_match = nome_base in file_su_supabase
         is_just_uploaded = nome_base in just_uploaded
         
-        if existing_saved_ok and not is_force_reimport:
+        if existing_saved_ok and (is_exact_match or is_base_match) and not is_force_reimport:
             file_gia_processati.append(filename)
             imported_at_label = _format_saved_ok_date(existing_saved_ok.get('created_at'))
             reason = [
