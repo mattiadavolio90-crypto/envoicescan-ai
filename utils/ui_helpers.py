@@ -188,17 +188,32 @@ def render_pivot_mensile(
         })
         st.caption("🔬 Diagnostic: tabella minimale (se crasha qui, il problema è Streamlit/browser, non i dati)")
         st.dataframe(df_test, hide_index=True)
-        st.caption("👆 Sopra: tabella di test. Sotto: pivot reale.")
 
-        # FIX DIAGNOSTICO React #185 (Streamlit 1.54 + Glide Data Grid):
-        # Usa st.dataframe SENZA column_config. Formattazione numerica sacrificata
-        # per stabilità: i valori sono float arrotondati a 2 decimali.
-        st.dataframe(
-            pivot_display,
-            hide_index=True,
-            use_container_width=True,
-            height=altezza
-        )
+        # 🔬 DIAGNOSTIC 2: pivot reale con nomi colonne SANIFICATI (no spazi, no %)
+        pivot_safe = pivot_display.copy()
+        # Rinomina colonne con caratteri ASCII-only per escludere bug di parsing Glide Data Grid
+        safe_cols = []
+        seen = {}
+        for c in pivot_safe.columns:
+            base = str(c).replace(' %', '_pct').replace(' ', '_').replace('€', 'EUR')
+            # Rimuovi caratteri non ASCII
+            base = ''.join(ch if ord(ch) < 128 else '_' for ch in base)
+            if base in seen:
+                seen[base] += 1
+                base = f"{base}_{seen[base]}"
+            else:
+                seen[base] = 0
+            safe_cols.append(base)
+        pivot_safe.columns = safe_cols
+        # Reset index per garantire RangeIndex
+        pivot_safe = pivot_safe.reset_index(drop=True)
+        st.caption(f"🔬 Diagnostic 2: pivot sanificata ({len(pivot_safe)} righe × {len(pivot_safe.columns)} col). Colonne: {list(pivot_safe.columns)[:5]}...")
+        try:
+            st.dataframe(pivot_safe, hide_index=True, use_container_width=True, height=altezza)
+        except Exception as exc_diag:
+            st.error(f"Errore rendering pivot_safe: {exc_diag}")
+            st.write("dtypes:", pivot_safe.dtypes.to_dict())
+            st.write("head:", pivot_safe.head().to_dict())
 
         totale = pivot['TOTALE'].sum()
         media = totale / num_mesi if num_mesi > 0 else 0
