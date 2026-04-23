@@ -314,13 +314,13 @@ if st.session_state.margine_tab == "analisi":
         # ============================================
         # SUDDIVISIONE FATTURATO PER CENTRO
         # ============================================
-        _centri_con_fatturato = ["FOOD", "BAR", "ALCOLICI", "DOLCI"]
+        _centri_con_fatturato = ["FOOD", "BEVERAGE", "ALCOLICI", "DOLCI"]
         _MESI_COMPLETI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
                           "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
         # Icone centri (unica mappa, usata anche nell'expander split)
         icone_centri = {
-            "FOOD": "🍖", "BAR": "☕", "ALCOLICI": "🍷",
+            "FOOD": "🍖", "BEVERAGE": "☕", "ALCOLICI": "🍷",
             "DOLCI": "🍰", "MATERIALE DI CONSUMO": "📦", "SHOP": "🛒"
         }
         _icone = icone_centri  # alias per retrocompatibilità
@@ -608,7 +608,7 @@ if st.session_state.margine_tab == "analisi":
         # Header — ordine: Centro | Fatturato | Costi | % Costi su Fatt. | Margine | Margine % | % su Costi F&B Tot
         h.append('<div class="aa-row aa-header"><div>Centro / Categoria</div><div>Fatturato (€)</div><div>Costi (€)</div><div>% Costi su Fatt.</div><div>Margine (€)</div><div>Margine (%)</div><div>% su Costi F&amp;B Tot</div></div>')
 
-        # Solo centri con fatturato (FOOD, BAR, ALCOLICI, DOLCI)
+        # Solo centri con fatturato (FOOD, BEVERAGE, ALCOLICI, DOLCI)
         for _, row_c in df_centri_main.iterrows():
             centro_nome = row_c['Centro']
             spesa_c = row_c['Spesa']
@@ -693,7 +693,7 @@ if st.session_state.margine_tab == "analisi":
 
                 # Calcola distribuzione proporzionale
                 _mc_rows = []
-                _centri_fatt_list = ["FOOD", "BAR", "ALCOLICI", "DOLCI"]
+                _centri_fatt_list = ["FOOD", "BEVERAGE", "ALCOLICI", "DOLCI"]
                 if fatturato_split_attivo and fatturato_totale_split > 0:
                     for c in _centri_fatt_list:
                         f_c = fatturato_per_centro.get(c, 0.0)
@@ -819,13 +819,13 @@ if st.session_state.margine_tab == "analisi":
                 st.metric("💰 Costi F&B Medi Mensili", _fmt_kpi_aa(_costi_fb_medi_aa), delta=" ", delta_color="off")
 
             with col_kpi_aa3:
-                st.metric("🍔 Food Cost Medio", f"{_fc_perc_aa:.1f}%", delta=" ", delta_color="off")
+                st.metric("🍔 Food Cost Medio", f"{_fc_perc_aa:.0f}%", delta=" ", delta_color="off")
 
             with col_kpi_aa4:
                 st.metric("💵 Margine Medio Mensile", _fmt_kpi_aa(_margine_medio_aa), delta=" ", delta_color="off")
 
             with col_kpi_aa5:
-                st.metric("📊 Margine % Medio", f"{_margine_perc_aa:.1f}%", delta=" ", delta_color="off")
+                st.metric("📊 Margine % Medio", f"{_margine_perc_aa:.0f}%", delta=" ", delta_color="off")
 
             # ============================================
             # ANALISI KPI PER CENTRO
@@ -1165,7 +1165,7 @@ if st.session_state.margine_tab == "centri":
                 # CENTRI ESPANDIBILI CON CATEGORIE
                 # ========================================================
                 icone_centri_cp = {
-                    "FOOD": "🍖", "BAR": "☕", "ALCOLICI": "🍷",
+                    "FOOD": "🍖", "BEVERAGE": "☕", "ALCOLICI": "🍷",
                     "DOLCI": "🍰", "MATERIALE DI CONSUMO": "📦", "SHOP": "🛒"
                 }
 

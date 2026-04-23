@@ -764,7 +764,7 @@ class TestMargineServiceDB:
             ristorante_id="rist-test",
             anno=2026,
             mese=4,
-            split_euro={"FOOD": 3000, "BAR": 500, "ALCOLICI": 700, "DOLCI": 200},
+            split_euro={"FOOD": 3000, "BEVERAGE": 500, "ALCOLICI": 700, "DOLCI": 200},
         )
 
         assert ok is True
@@ -783,13 +783,13 @@ class TestMargineServiceDB:
             SimpleNamespace(data=[
                 {
                     "fatturato_food": 1000.0,
-                    "fatturato_bar": 200.0,
+                    "fatturato_beverage": 200.0,
                     "fatturato_alcolici": 150.0,
                     "fatturato_dolci": 80.0,
                 },
                 {
                     "fatturato_food": 900.0,
-                    "fatturato_bar": 180.0,
+                    "fatturato_beverage": 180.0,
                     "fatturato_alcolici": 120.0,
                     "fatturato_dolci": 70.0,
                 },
@@ -805,7 +805,7 @@ class TestMargineServiceDB:
         )
 
         assert result["FOOD"] == 1900.0
-        assert result["BAR"] == 380.0
+        assert result["BEVERAGE"] == 380.0
         assert result["ALCOLICI"] == 270.0
         assert result["DOLCI"] == 150.0
 
@@ -820,7 +820,7 @@ class TestMargineServiceDB:
         query = _build_query_mock(execute_data=[
             {
                 "fatturato_food": 2200.0,
-                "fatturato_bar": 450.0,
+                "fatturato_beverage": 450.0,
                 "fatturato_alcolici": 300.0,
                 "fatturato_dolci": 120.0,
             }
@@ -836,7 +836,7 @@ class TestMargineServiceDB:
 
         assert result == {
             "FOOD": 2200.0,
-            "BAR": 450.0,
+            "BEVERAGE": 450.0,
             "ALCOLICI": 300.0,
             "DOLCI": 120.0,
         }

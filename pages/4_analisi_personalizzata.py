@@ -566,61 +566,79 @@ if st.session_state.ap_tab_attivo == "panoramica":
 
                         col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
                         with col_kpi1:
-                            st.metric("💰 Totale Spesa", f"€{kpi['spesa_totale']:,.2f}")
+                            st.metric("💰 Totale Spesa", f"€{kpi['spesa_totale']:,.0f}")
                         with col_kpi2:
-                            st.metric(kpi["quantita_label"], f"{kpi['quantita_norm_totale']:,.2f}")
+                            st.metric(kpi["quantita_label"], f"{kpi['quantita_norm_totale']:,.0f}")
                         with col_kpi3:
-                            st.metric(kpi["prezzo_label"], f"€{kpi['prezzo_medio_ponderato']:,.2f}" if kpi["prezzo_medio_ponderato"] is not None else "n.d.")
+                            st.metric(kpi["prezzo_label"], f"€{kpi['prezzo_medio_ponderato']:,.0f}" if kpi["prezzo_medio_ponderato"] is not None else "n.d.")
                         with col_kpi4:
                             st.metric("🏪 Fornitori Distinti", f"{kpi['num_fornitori']}")
                         with col_kpi5:
                             st.metric("🧾 Fatture Coinvolte", f"{kpi['num_fatture']}")
 
-                        st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
-                        st.markdown("### 📈 Trend Acquisti nel Periodo")
+                        st.markdown("<div style='margin-top: 1.75rem;'></div>", unsafe_allow_html=True)
+                        st.markdown("<h3 style='color:#1e40af; font-weight:700;'>📈 Trend Acquisti nel Periodo</h3>", unsafe_allow_html=True)
                         df_trend = df_tag_periodo.copy()
                         df_trend["Data_DT"] = pd.to_datetime(df_trend["Data_DT"], errors="coerce")
                         df_trend["PrezzoUnitario"] = pd.to_numeric(df_trend["PrezzoUnitario"], errors="coerce")
+                        df_trend["TotaleRigaNum"] = pd.to_numeric(df_trend.get("TotaleRigaNum"), errors="coerce")
+                        df_trend["QuantitaNorm"] = pd.to_numeric(df_trend.get("QuantitaNorm"), errors="coerce")
+                        df_trend["Quantita"] = pd.to_numeric(df_trend.get("Quantita"), errors="coerce")
                         df_trend = df_trend[df_trend["Data_DT"].notna() & df_trend["PrezzoUnitario"].notna()].copy()
                         df_trend = df_trend.sort_values(["Data_DT", "FileOrigine", "Descrizione"])
 
                         if not df_trend.empty:
-                            num_descrizioni = df_trend["Descrizione"].nunique()
-                            use_color = num_descrizioni > 1
-                            prezzo_medio_periodo = float(df_trend["PrezzoUnitario"].mean())
-                            if prezzo_medio_periodo > 0:
-                                df_trend["Var_Perc"] = ((df_trend["PrezzoUnitario"] - prezzo_medio_periodo) / prezzo_medio_periodo) * 100
-                            else:
-                                df_trend["Var_Perc"] = 0.0
-                            df_trend["VarPercLabel"] = df_trend["Var_Perc"].apply(lambda x: f"{x:+.1f}%")
-                            df_trend["DescrizioneShort"] = (
-                                df_trend["Descrizione"]
-                                .fillna("Prodotto sconosciuto")
-                                .astype(str)
-                                .str.strip()
-                                .apply(lambda s: s[:30] + "…" if len(s) > 30 else s)
+                            usa_quantita_norm_trend = (
+                                "QuantitaNorm" in df_trend.columns
+                                and df_trend["QuantitaNorm"].notna().any()
+                                and float(df_trend["QuantitaNorm"].fillna(0).sum()) > 0
                             )
 
-                            fig_prezzo = px.line(
-                                df_trend,
-                                x="Data_DT",
-                                y="PrezzoUnitario",
-                                color="Descrizione" if use_color else None,
-                                markers=True,
-                                title="Andamento prezzo di acquisto per fattura",
-                                labels={"Data_DT": "", "PrezzoUnitario": "Prezzo unitario (€)", "Descrizione": "Prodotto"},
-                                custom_data=["DescrizioneShort", "VarPercLabel"],
-                            )
-                            if not use_color:
-                                fig_prezzo.update_traces(
-                                    line=dict(color="#2563eb", width=2),
-                                    marker=dict(size=8, color="#1d4ed8"),
+                            if usa_quantita_norm_trend:
+                                df_linea_tag = (
+                                    df_trend.groupby("Data_DT", as_index=False)
+                                    .agg(
+                                        TotaleSpesa=("TotaleRigaNum", "sum"),
+                                        QuantitaTotale=("QuantitaNorm", "sum"),
+                                    )
                                 )
                             else:
-                                fig_prezzo.update_traces(marker=dict(size=8))
+                                df_linea_tag = (
+                                    df_trend.groupby("Data_DT", as_index=False)
+                                    .agg(
+                                        TotaleSpesa=("TotaleRigaNum", "sum"),
+                                        QuantitaTotale=("Quantita", "sum"),
+                                    )
+                                )
 
+                            df_linea_tag["PrezzoTag"] = df_linea_tag.apply(
+                                lambda r: (r["TotaleSpesa"] / r["QuantitaTotale"])
+                                if pd.notna(r["TotaleSpesa"]) and pd.notna(r["QuantitaTotale"]) and float(r["QuantitaTotale"]) > 0
+                                else None,
+                                axis=1,
+                            )
+                            df_linea_tag = df_linea_tag[df_linea_tag["PrezzoTag"].notna()].sort_values("Data_DT")
+
+                            prezzo_medio_periodo = float(df_linea_tag["PrezzoTag"].mean()) if not df_linea_tag.empty else 0.0
+                            if prezzo_medio_periodo > 0:
+                                df_linea_tag["Var_Perc"] = ((df_linea_tag["PrezzoTag"] - prezzo_medio_periodo) / prezzo_medio_periodo) * 100
+                            else:
+                                df_linea_tag["Var_Perc"] = 0.0
+                            df_linea_tag["VarPercLabel"] = df_linea_tag["Var_Perc"].apply(lambda x: f"{x:+.1f}%")
+
+                            fig_prezzo = px.line(
+                                df_linea_tag,
+                                x="Data_DT",
+                                y="PrezzoTag",
+                                markers=True,
+                                title="Andamento prezzo di acquisto del tag nel tempo",
+                                labels={"Data_DT": "", "PrezzoTag": "Prezzo unitario (€)"},
+                                custom_data=["VarPercLabel"],
+                            )
                             fig_prezzo.update_traces(
-                                hovertemplate="<b>Prodotto</b>: %{customdata[0]}<br><b>Prezzo acquisto</b>: €%{y:.2f}<br><b>Variazione vs media</b>: %{customdata[1]}<extra></extra>"
+                                line=dict(color="#2563eb", width=2),
+                                marker=dict(size=8, color="#1d4ed8"),
+                                hovertemplate="<b>Prezzo tag</b>: €%{y:.2f}<br><b>Variazione vs media</b>: %{customdata[0]}<extra></extra>",
                             )
                             fig_prezzo.add_hline(
                                 y=prezzo_medio_periodo,
@@ -628,11 +646,23 @@ if st.session_state.ap_tab_attivo == "panoramica":
                                 line_color="#dc2626",
                                 annotation_text=f"Media periodo €{prezzo_medio_periodo:.2f}",
                                 annotation_position="top left",
+                                annotation_font=dict(color="#dc2626", size=16, family="Arial Black"),
                             )
                             fig_prezzo.update_layout(
                                 height=420,
                                 hovermode="closest",
-                                title=dict(font=dict(size=24, color="#1e40af", family="Arial Black")),
+                                title=dict(font=dict(size=18, color="#111111", family="Arial Black")),
+                                xaxis=dict(
+                                    tickformat="%d/%m/%Y",
+                                    tickfont=dict(size=16, color="#1e40af", family="Arial Black")
+                                ),
+                                yaxis=dict(
+                                    tickfont=dict(size=16, color="#1e40af", family="Arial Black")
+                                ),
+                                font=dict(size=16, color="#1e40af", family="Arial"),
+                                yaxis_title_font=dict(size=18, color="#1e40af", family="Arial Black"),
+                                xaxis_title_font=dict(size=18, color="#1e40af", family="Arial Black"),
+                                showlegend=False,
                             )
                             st.plotly_chart(
                                 fig_prezzo,

@@ -763,7 +763,7 @@ if selected_tab == "📋 Analisi Ricette e Menù":
                     st.metric("💹 Margine Medio", f"€{margine_medio:.0f}")
                 with col_kpi5:
                     incidenza_media = df_con_prezzo['incidenza'].mean()
-                    st.metric("📈 Incidenza% Media FC", f"{incidenza_media:.1f}%")
+                    st.metric("📈 Incidenza% Media FC", f"{incidenza_media:.0f}%")
                 
                 if ricette_con_prezzo < len(response.data):
                     st.caption(f"⚠️ {len(response.data) - int(ricette_con_prezzo)} ricette senza prezzo di vendita — imposta il prezzo nel Lab Ricette per analisi complete")

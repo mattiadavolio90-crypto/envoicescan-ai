@@ -213,13 +213,47 @@ def carica_margini_anno(user_id: str, ristorante_id: str, anno: int) -> dict:
         return {}
 
 
-# Mappa centro → colonna DB
+# Mappa centro → colonna DB. BEVERAGE usa fallback legacy su fatturato_bar
 _CENTRO_COL_MAP = {
     "FOOD": "fatturato_food",
-    "BAR": "fatturato_bar",
+    "BEVERAGE": "fatturato_beverage",
     "ALCOLICI": "fatturato_alcolici",
     "DOLCI": "fatturato_dolci",
 }
+
+_CENTRO_COL_MAP_LEGACY = {
+    "FOOD": "fatturato_food",
+    "BEVERAGE": "fatturato_bar",
+    "ALCOLICI": "fatturato_alcolici",
+    "DOLCI": "fatturato_dolci",
+}
+
+
+def _split_value_for_centro(split_euro: dict, centro: str) -> float:
+    """Legge il valore del centro supportando la chiave legacy BAR durante il rename."""
+    if centro == "BEVERAGE":
+        return float(split_euro.get("BEVERAGE", split_euro.get("BAR", 0.0)) or 0.0)
+    return float(split_euro.get(centro, 0.0) or 0.0)
+
+
+def _is_missing_beverage_column_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "fatturato_beverage" in text and any(token in text for token in ["column", "schema cache", "does not exist", "pgrst"])
+
+
+def _select_centri_rows(query_builder, col_map: dict):
+    return query_builder.select(','.join(col_map.values())).execute()
+
+
+def _row_to_centri_dict(row: dict, col_map: dict) -> tuple:
+    result = {}
+    has_data = False
+    for centro, col in col_map.items():
+        val = float(row.get(col, 0) or 0)
+        result[centro] = val
+        if val > 0:
+            has_data = True
+    return result, has_data
 
 
 def salva_fatturato_centri(user_id: str, ristorante_id: str, anno: int, mese: int,
@@ -232,7 +266,7 @@ def salva_fatturato_centri(user_id: str, ristorante_id: str, anno: int, mese: in
         ristorante_id: UUID ristorante
         anno: Anno
         mese: Mese (1-12)
-        split_euro: dict {centro_nome: importo_euro} es. {"FOOD": 30000, "BAR": 5000, ...}
+        split_euro: dict {centro_nome: importo_euro} es. {"FOOD": 30000, "BEVERAGE": 5000, ...}
     
     Returns:
         bool: True se riuscito
@@ -248,11 +282,29 @@ def salva_fatturato_centri(user_id: str, ristorante_id: str, anno: int, mese: in
             'updated_at': datetime.now(timezone.utc).isoformat()
         }
         for centro, col in _CENTRO_COL_MAP.items():
-            record[col] = float(split_euro.get(centro, 0.0))
-        
-        supabase.table('margini_mensili') \
-            .upsert(record, on_conflict='ristorante_id,anno,mese') \
-            .execute()
+            record[col] = _split_value_for_centro(split_euro, centro)
+
+        try:
+            supabase.table('margini_mensili') \
+                .upsert(record, on_conflict='ristorante_id,anno,mese') \
+                .execute()
+        except Exception as e:
+            if not _is_missing_beverage_column_error(e):
+                raise
+
+            legacy_record = {
+                'user_id': user_id,
+                'ristorante_id': ristorante_id,
+                'anno': anno,
+                'mese': mese,
+                'updated_at': datetime.now(timezone.utc).isoformat()
+            }
+            for centro, col in _CENTRO_COL_MAP_LEGACY.items():
+                legacy_record[col] = _split_value_for_centro(split_euro, centro)
+
+            supabase.table('margini_mensili') \
+                .upsert(legacy_record, on_conflict='ristorante_id,anno,mese') \
+                .execute()
         
         logger.info(f"✅ Salvato fatturato centri per {anno}/{mese}")
         return True
@@ -289,18 +341,25 @@ def carica_fatturato_centri_periodo(user_id: str, ristorante_id: str,
             m_from = data_inizio.month if a == anno_start else 1
             m_to = data_fine.month if a == anno_end else 12
             
-            response = supabase.table('margini_mensili') \
-                .select(','.join(_CENTRO_COL_MAP.values())) \
+            query = supabase.table('margini_mensili') \
                 .eq('user_id', user_id) \
                 .eq('ristorante_id', ristorante_id) \
                 .eq('anno', a) \
                 .gte('mese', m_from) \
-                .lte('mese', m_to) \
-                .execute()
+                .lte('mese', m_to)
+
+            col_map = _CENTRO_COL_MAP
+            try:
+                response = _select_centri_rows(query, col_map)
+            except Exception as e:
+                if not _is_missing_beverage_column_error(e):
+                    raise
+                col_map = _CENTRO_COL_MAP_LEGACY
+                response = _select_centri_rows(query, col_map)
             
             if response.data:
                 for row in response.data:
-                    for centro, col in _CENTRO_COL_MAP.items():
+                    for centro, col in col_map.items():
                         val = float(row.get(col, 0) or 0)
                         if val > 0:
                             has_data = True
@@ -327,25 +386,26 @@ def carica_fatturato_centri_mese(user_id: str, ristorante_id: str,
     try:
         supabase = get_supabase_client()
         
-        response = supabase.table('margini_mensili') \
-            .select(','.join(_CENTRO_COL_MAP.values())) \
+        query = supabase.table('margini_mensili') \
             .eq('user_id', user_id) \
             .eq('ristorante_id', ristorante_id) \
             .eq('anno', anno) \
-            .eq('mese', mese) \
-            .execute()
+            .eq('mese', mese)
+
+        col_map = _CENTRO_COL_MAP
+        try:
+            response = _select_centri_rows(query, col_map)
+        except Exception as e:
+            if not _is_missing_beverage_column_error(e):
+                raise
+            col_map = _CENTRO_COL_MAP_LEGACY
+            response = _select_centri_rows(query, col_map)
         
         if not response.data:
             return {}
         
         row = response.data[0]
-        result = {}
-        has_data = False
-        for centro, col in _CENTRO_COL_MAP.items():
-            val = float(row.get(col, 0) or 0)
-            result[centro] = val
-            if val > 0:
-                has_data = True
+        result, has_data = _row_to_centri_dict(row, col_map)
         
         return result if has_data else {}
         

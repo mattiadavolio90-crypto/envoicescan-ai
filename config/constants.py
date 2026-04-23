@@ -196,7 +196,7 @@ CENTRI_DI_PRODUZIONE = {
         "VERDURE", "FRUTTA", "SALSE E CREME",
         "PRODOTTI DA FORNO", "SPEZIE E AROMI", "SUSHI VARIE"
     ],
-    "BAR": [
+    "BEVERAGE": [
         "ACQUA", "BEVANDE", "CAFFE E THE", "VARIE BAR"
     ],
     "ALCOLICI": [

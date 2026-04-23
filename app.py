@@ -2668,61 +2668,6 @@ else:
                 st.info("🔭 Nessuna fattura da eliminare.")
             
             st.caption("🗑️ Le fatture eliminate vengono spostate nel cestino per 30 giorni")
-            
-            # ========== CESTINO FATTURE ==========
-            st.markdown("---")
-            st.markdown("### 🗑️ Cestino")
-            
-            cestino_items = get_fatture_cestino(user_id, ristorante_id=st.session_state.get('ristorante_id'))
-            
-            if cestino_items:
-                st.info(f"📦 **{len(cestino_items)} fatture** nel cestino")
-                
-                for idx_c, item in enumerate(cestino_items):
-                    # Calcola giorni rimanenti
-                    try:
-                        from datetime import datetime, timezone
-                        deleted_dt = datetime.fromisoformat(item['deleted_at'].replace('Z', '+00:00'))
-                        giorni_passati = (datetime.now(timezone.utc) - deleted_dt).days
-                        giorni_rimasti = max(0, 30 - giorni_passati)
-                    except Exception:
-                        giorni_rimasti = "?"
-                    
-                    col_info, col_btn = st.columns([3, 1])
-                    with col_info:
-                        st.markdown(
-                            f"**{item['fornitore']}** — `{item['file_origine']}` "
-                            f"({item['num_righe']} righe, €{item['totale']:.2f}) "
-                            f"— ⏳ {giorni_rimasti} giorni rimasti"
-                        )
-                    with col_btn:
-                        if st.button("♻️ Ripristina", key=f"ripristina_{idx_c}", use_container_width=True):
-                            result_r = ripristina_fattura(
-                                item['file_origine'], user_id,
-                                ristorante_id=st.session_state.get('ristorante_id')
-                            )
-                            if result_r["success"]:
-                                clear_fatture_cache()
-                                st.success(f"✅ Fattura **{item['file_origine']}** ripristinata!")
-                                time.sleep(0.3)
-                                st.rerun()
-                            else:
-                                st.error(f"❌ Errore ripristino: {result_r['error']}")
-                
-                # Svuota cestino — solo admin
-                if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-                    st.markdown("---")
-                    if st.button("⚠️ Svuota Cestino (elimina tutto definitivamente)", type="secondary", key="btn_svuota_cestino"):
-                        result_s = svuota_cestino(user_id, ristorante_id=st.session_state.get('ristorante_id'))
-                        if result_s["success"]:
-                            clear_fatture_cache()
-                            st.success(f"✅ Cestino svuotato: {result_s['righe_eliminate']} righe eliminate definitivamente")
-                            time.sleep(0.3)
-                            st.rerun()
-                        else:
-                            st.error(f"❌ Errore: {result_s['error']}")
-            else:
-                st.caption("Il cestino è vuoto.")
 
 
 

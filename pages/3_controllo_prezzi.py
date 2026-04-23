@@ -430,7 +430,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
         st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
 
     # ── GRAFICO: Storico prezzo acquisto (sempre visibile) ──
-    st.markdown("### 📈 Storico prezzo acquisto")
+    st.markdown("<h3 style='color:#1e40af; font-weight:700;'>📈 Storico prezzo acquisto</h3>", unsafe_allow_html=True)
     st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
 
     # Toggle: solo prodotti con alert o tutti
@@ -467,9 +467,40 @@ if st.session_state.cp_tab_attivo == "variazioni":
     if not prodotti_grafico:
         st.info("📭 Nessun prodotto disponibile per il grafico.")
     else:
+        if scope_grafico == "Tutti i prodotti":
+            filtro_prodotto_grafico = st.text_input(
+                "Cerca prodotto",
+                value=st.session_state.get("cp_filtro_prodotto_grafico", ""),
+                key="cp_filtro_prodotto_grafico",
+                placeholder="Scrivi qui per filtrare l'elenco prodotti",
+                label_visibility="collapsed",
+            )
+            filtro_norm = filtro_prodotto_grafico.strip().lower()
+        else:
+            filtro_norm = ""
+
+        if filtro_norm:
+            prodotti_filtrati = [
+                prodotto for prodotto in prodotti_grafico
+                if filtro_norm in prodotto.lower()
+            ]
+        else:
+            prodotti_filtrati = prodotti_grafico
+
+        if not prodotti_filtrati:
+            st.info("🔎 Nessun prodotto trovato con questo filtro. Prova a scrivere meno caratteri o una parola diversa.")
+            st.stop()
+
+        if scope_grafico == "Tutti i prodotti":
+            st.caption(f"{len(prodotti_filtrati)} prodotti disponibili")
+
+        selected_prodotto = st.session_state.get("cp_prodotto_grafico")
+        selected_index = prodotti_filtrati.index(selected_prodotto) if selected_prodotto in prodotti_filtrati else 0
+
         prodotto_grafico = st.selectbox(
             "Seleziona prodotto",
-            options=prodotti_grafico,
+            options=prodotti_filtrati,
+            index=selected_index,
             key="cp_prodotto_grafico",
             label_visibility="collapsed"
         )
@@ -519,26 +550,19 @@ if st.session_state.cp_tab_attivo == "variazioni":
             df_trend['Var_Perc'] = ((df_trend['PrezzoUnitario'] - prezzo_medio) / prezzo_medio) * 100
             df_trend['VarPercLabel'] = df_trend['Var_Perc'].apply(lambda x: f"{x:+.1f}%")
 
-            num_fornitori_chart = df_trend['Fornitore'].fillna('Fornitore sconosciuto').nunique()
-            use_color = num_fornitori_chart > 1
-
             fig_prezzo = px.line(
                 df_trend,
                 x='Data_DT',
                 y='Var_Perc',
-                color='Fornitore' if use_color else None,
                 markers=True,
                 title=f"Variazione % prezzo — {prodotto_grafico}",
-                labels={'Data_DT': '', 'Var_Perc': 'Variazione %', 'Fornitore': 'Fornitore'},
+                labels={'Data_DT': '', 'Var_Perc': 'Variazione %'},
                 custom_data=['PrezzoUnitario', 'VarPercLabel'],
             )
-            if not use_color:
-                fig_prezzo.update_traces(
-                    line=dict(color='#2563eb', width=2),
-                    marker=dict(size=8, color='#1d4ed8'),
-                )
-            else:
-                fig_prezzo.update_traces(marker=dict(size=8))
+            fig_prezzo.update_traces(
+                line=dict(color='#2563eb', width=2),
+                marker=dict(size=8, color='#1d4ed8'),
+            )
 
             fig_prezzo.update_traces(
                 hovertemplate="<b>Prezzo acquisto</b>: €%{customdata[0]:.2f}<br><b>Variazione vs media</b>: %{customdata[1]}<extra></extra>"
@@ -546,9 +570,10 @@ if st.session_state.cp_tab_attivo == "variazioni":
             fig_prezzo.add_hline(
                 y=0,
                 line_dash='dash',
-                line_color='#6b7280',
+                line_color='#dc2626',
                 annotation_text=f"Prezzo medio di acquisto €{prezzo_medio:.2f}",
                 annotation_position='top left',
+                annotation_font=dict(color='#dc2626', size=16, family='Arial Black'),
             )
             fig_prezzo.update_layout(
                 height=420,
@@ -560,10 +585,11 @@ if st.session_state.cp_tab_attivo == "variazioni":
                 yaxis=dict(
                     tickfont=dict(size=16, color='#1e40af', family='Arial Black')
                 ),
-                title=dict(font=dict(size=24, color='#1e40af', family='Arial Black')),
+                title=dict(font=dict(size=18, color='#111111', family='Arial Black')),
                 font=dict(size=16, color='#1e40af', family='Arial'),
                 yaxis_title_font=dict(size=18, color='#1e40af', family='Arial Black'),
                 xaxis_title_font=dict(size=18, color='#1e40af', family='Arial Black'),
+                showlegend=False,
             )
             st.plotly_chart(
                 fig_prezzo,
