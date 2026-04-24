@@ -12,6 +12,7 @@ Funzioni per:
 import base64
 import fitz  # PyMuPDF
 import logging
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 from config.constants import (
@@ -448,6 +449,67 @@ def carica_categorie_da_db(supabase_client=None) -> list:
 # ============================================================
 # TD24 DATA CONSEGNA
 # ============================================================
+
+def _coerce_iso_date(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+
+    text = str(value).strip()
+    if not text:
+        return None
+
+    for fmt in (
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%d/%m/%Y",
+    ):
+        try:
+            return datetime.strptime(text, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+def normalizza_data_consegna_td24(items: Optional[List[Dict[str, Any]]]) -> Optional[List[Dict[str, Any]]]:
+    """Completa data_consegna delle TD24 usando la data documento quando manca."""
+    if not isinstance(items, list) or not items:
+        return items
+
+    default_tipo = str(items[0].get('tipo_documento', '') or '').upper().strip()
+    if default_tipo != 'TD24':
+        return items
+
+    fallback_count = 0
+    for row in items:
+        if not isinstance(row, dict):
+            continue
+
+        tipo_documento = str(row.get('tipo_documento', default_tipo) or default_tipo).upper().strip()
+        if tipo_documento != 'TD24':
+            continue
+
+        data_consegna = _coerce_iso_date(row.get('data_consegna'))
+        if data_consegna:
+            row['data_consegna'] = data_consegna
+            continue
+
+        data_documento = _coerce_iso_date(
+            row.get('Data_Documento') or row.get('DataDocumento') or row.get('data_documento')
+        )
+        if data_documento:
+            row['data_consegna'] = data_documento
+            fallback_count += 1
+
+    if fallback_count > 0:
+        logger.info("📅 TD24 fallback data_consegna applicato a %d righe", fallback_count)
+
+    return items
 
 def calcola_alert_data_consegna_td24(items: Optional[List[Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
     """

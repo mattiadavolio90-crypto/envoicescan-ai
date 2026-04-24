@@ -63,6 +63,16 @@ st.markdown("""
     flex-wrap: wrap;
     margin-bottom: 20px;
 }
+.admin-metrics-grid--tight {
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.admin-metrics-grid--review {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 14px;
+}
 .admin-metric-card {
     flex: 1 1 clamp(9.5rem, 18vw, 13rem);
     min-width: min(100%, clamp(9.5rem, 18vw, 13rem));
@@ -95,6 +105,14 @@ st.markdown("""
     margin-top: 4px;
     line-height: 1.4;
     overflow-wrap: anywhere;
+}
+.admin-table-note {
+    font-size: 0.85rem;
+    color: #6b7280;
+    margin: 0.1rem 0 0.35rem 0;
+}
+.stMarkdown hr {
+    margin: 0.75rem 0 0.95rem 0;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -1038,7 +1056,7 @@ if tab1:
             _tot_costi = df_clienti['totale_costi'].sum()
             
             st.markdown(f"""
-            <div class="admin-metrics-grid">
+            <div class="admin-metrics-grid admin-metrics-grid--tight">
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
                     <div class="admin-metric-label" style="color:#1976d2;">👥 Clienti</div>
                     <div class="admin-metric-value" style="color:#1565c0;">{_n_clienti}</div>
@@ -1818,31 +1836,21 @@ if tab2:
         except Exception:
             return []
     
-    # ============================================================
-    # FILTRO PER CLIENTE
-    # ============================================================
-    st.markdown("### 👥 Seleziona Cliente")
-    
     try:
         clienti = _carica_clienti_attivi_non_admin()
-        
-        # Opzione "Tutti" all'inizio
         opzioni_clienti = [{'id': 'TUTTI', 'email': 'Tutti i clienti', 'nome_ristorante': 'Tutti'}] + clienti
-        
-        cliente_selezionato = st.selectbox(
-            "Visualizza problemi di",
-            opzioni_clienti,
-            format_func=lambda x: f"🌐 {x['nome_ristorante']}" if x['id'] == 'TUTTI' else f"👤 {x['nome_ristorante']} ({x['email']})",
-            key="filtro_cliente_review"
-        )
-        
-        filtro_cliente_id = None if cliente_selezionato['id'] == 'TUTTI' else cliente_selezionato['id']
-        
     except Exception as e:
         st.error(f"Errore caricamento clienti: {e}")
-        filtro_cliente_id = None
-    
-    st.markdown("---")
+        opzioni_clienti = [{'id': 'TUTTI', 'email': 'Tutti i clienti', 'nome_ristorante': 'Tutti'}]
+
+    mappa_clienti = {c['id']: c for c in opzioni_clienti}
+    if 'filtro_cliente_review_id' not in st.session_state:
+        st.session_state.filtro_cliente_review_id = 'TUTTI'
+    if st.session_state.filtro_cliente_review_id not in mappa_clienti:
+        st.session_state.filtro_cliente_review_id = 'TUTTI'
+
+    cliente_selezionato = mappa_clienti[st.session_state.filtro_cliente_review_id]
+    filtro_cliente_id = None if cliente_selezionato['id'] == 'TUTTI' else cliente_selezionato['id']
     
     # ============================================================
     # CARICAMENTO RIGHE €0 CON FILTRO CLIENTE
@@ -1869,6 +1877,7 @@ if tab2:
                 query = supabase.table('fatture')\
                     .select('id, descrizione, categoria, fornitore, file_origine, data_documento, user_id, prezzo_unitario, needs_review, reviewed_at, reviewed_by')\
                     .or_('prezzo_unitario.eq.0,needs_review.eq.true')\
+                    .is_('deleted_at', 'null')\
                     .is_('reviewed_at', 'null')\
                     .order('id', desc=False)\
                     .range(offset, offset + page_size - 1)
@@ -1912,6 +1921,7 @@ if tab2:
     def _build_review_update_query(payload: dict, descrizione_target: str, cliente_id_target: str = None):
         query = supabase.table('fatture').update(payload)\
             .eq('descrizione', descrizione_target)\
+            .is_('deleted_at', 'null')\
             .or_('prezzo_unitario.eq.0,needs_review.eq.true')
         if cliente_id_target:
             query = query.eq('user_id', cliente_id_target)
@@ -1921,6 +1931,7 @@ if tab2:
         """Aggiorna N descrizioni in una singola query con .in_()"""
         query = supabase.table('fatture').update(payload)\
             .in_('descrizione', descrizioni)\
+            .is_('deleted_at', 'null')\
             .or_('prezzo_unitario.eq.0,needs_review.eq.true')
         if cliente_id_target:
             query = query.eq('user_id', cliente_id_target)
@@ -1931,12 +1942,6 @@ if tab2:
     if df_zero.empty:
         st.success("✅ Nessuna riga da revisionare!")
         st.stop()
-    
-    # ============================================================
-    # 🤖 AUTO-REVIEW INTELLIGENTE (riduce lavoro admin ~70%)
-    # ============================================================
-    st.markdown("### 🤖 Auto-Review Intelligente")
-    st.caption("Classifica automaticamente diciture sicure e sconti/omaggi riconoscibili")
     
     # Pre-calcola quante righe sarebbero auto-classificate
     _desc_uniche_zero = df_zero['descrizione'].unique()
@@ -1951,110 +1956,6 @@ if tab2:
         else:
             _ambigue.append(_d)
     
-    _col_prev1, _col_prev2, _col_prev3 = st.columns(3)
-    with _col_prev1:
-        st.metric("📝 Diciture auto-rilevate", len(_auto_diciture))
-    with _col_prev2:
-        st.metric("🎁 Sconti/Omaggi auto-rilevati", len(_auto_sconti))
-    with _col_prev3:
-        st.metric("❓ Ambigue (da revisionare)", len(_ambigue))
-    
-    if len(_auto_diciture) > 0 or len(_auto_sconti) > 0:
-        with st.expander("🔍 Anteprima auto-classificazione", expanded=False):
-            if _auto_diciture:
-                st.markdown("**📝 Diciture (saranno marcate NOTE E DICITURE):**")
-                for _d in _auto_diciture[:15]:
-                    st.caption(f"  • {_d[:80]}")
-                if len(_auto_diciture) > 15:
-                    st.caption(f"  ... e altre {len(_auto_diciture) - 15}")
-            if _auto_sconti:
-                st.markdown("**🎁 Sconti/Omaggi (categoria confermata):**")
-                for _d in _auto_sconti[:15]:
-                    _cat = df_zero[df_zero['descrizione'] == _d]['categoria'].iloc[0] if not df_zero[df_zero['descrizione'] == _d].empty else 'N/A'
-                    st.caption(f"  • {_d[:80]} → {_cat}")
-                if len(_auto_sconti) > 15:
-                    st.caption(f"  ... e altri {len(_auto_sconti) - 15}")
-        
-        _confirm_auto_review = st.checkbox(
-            "⚠️ Confermo l'esecuzione su tutti i clienti selezionati",
-            key="confirm_auto_review"
-        )
-        
-        if st.button("🤖 Esegui Auto-Review", type="primary", key="btn_auto_review", disabled=not _confirm_auto_review):
-            with st.spinner("Auto-classificazione in corso..."):
-                _auto_ok = 0
-                _auto_err = 0
-                _auto_mem_ok = 0
-                
-                # 1) Diciture sicure → NOTE E DICITURE + salva in memoria globale
-                if _auto_diciture:
-                    try:
-                        result = _build_review_batch_update({
-                            'categoria': '📝 NOTE E DICITURE',
-                            'needs_review': False,
-                            'reviewed_at': datetime.now(timezone.utc).isoformat(),
-                            'reviewed_by': 'auto-review'
-                        }, _auto_diciture, filtro_cliente_id).execute()
-                        _auto_ok += len(result.data) if result.data else len(_auto_diciture)
-                        
-                        # Salva in memoria globale come diciture verificate
-                        for _d in _auto_diciture:
-                            try:
-                                supabase.table('prodotti_master').upsert({
-                                    'descrizione': _d,
-                                    'categoria': '📝 NOTE E DICITURE',
-                                    'confidence': 'altissima',
-                                    'verified': True,
-                                    'classificato_da': 'auto-review',
-                                    'ultima_modifica': datetime.now(timezone.utc).isoformat()
-                                }, on_conflict='descrizione').execute()
-                                _auto_mem_ok += 1
-                            except Exception as e:
-                                _auto_err += 1
-                                logger.error(f"Errore salvataggio dicitura {_d[:40]}: {e}")
-                    except Exception as _e:
-                        _auto_err += 1
-                        logger.error(f"Errore auto-review diciture: {_e}")
-                
-                # 2) Sconti/omaggi → conferma categoria attuale + salva in memoria globale
-                if _auto_sconti:
-                    for _d in _auto_sconti:
-                        try:
-                            _cat_corrente = df_zero[df_zero['descrizione'] == _d]['categoria'].iloc[0]
-                            # Se categoria è ancora "Da Classificare", skip (non sappiamo quale assegnare)
-                            if not _cat_corrente or _cat_corrente == 'Da Classificare':
-                                continue
-                            
-                            result = _build_review_update_query({
-                                'needs_review': False,
-                                'reviewed_at': datetime.now(timezone.utc).isoformat(),
-                                'reviewed_by': 'auto-review'
-                            }, _d, filtro_cliente_id).execute()
-                            _auto_ok += len(result.data) if result.data else 1
-                            
-                            # Salva in memoria globale con categoria confermata
-                            supabase.table('prodotti_master').upsert({
-                                'descrizione': _d,
-                                'categoria': _cat_corrente,
-                                'confidence': 'alta',
-                                'verified': True,
-                                'classificato_da': 'auto-review',
-                                'ultima_modifica': datetime.now(timezone.utc).isoformat()
-                            }, on_conflict='descrizione').execute()
-                            _auto_mem_ok += 1
-                        except Exception as _e:
-                            _auto_err += 1
-                            logger.error(f"Errore auto-review sconto '{_d[:40]}': {_e}")
-                
-                invalida_cache_memoria()
-                st.success(f"🤖 Auto-Review completata: {_auto_ok} righe classificate, {_auto_mem_ok} salvate in memoria globale")
-                if _auto_err > 0:
-                    st.warning(f"⚠️ {_auto_err} errori durante auto-review")
-                time.sleep(1)
-                st.rerun()
-    else:
-        st.info("✅ Nessuna riga auto-classificabile. Tutte le righe richiedono revisione manuale.")
-    
     st.markdown("---")
     
     # ============================================================
@@ -2064,7 +1965,7 @@ if tab2:
     _cliente_label = _html.escape(cliente_selezionato['nome_ristorante'][:20]) if filtro_cliente_id else "Tutti"
     
     st.markdown(f"""
-    <div class="admin-metrics-grid">
+    <div class="admin-metrics-grid admin-metrics-grid--review">
         <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
             <div class="admin-metric-label" style="color:#e65100;">📋 Righe Totali €0</div>
             <div class="admin-metric-value" style="color:#e65100;">{len(df_zero)}</div>
@@ -2077,16 +1978,142 @@ if tab2:
             <div class="admin-metric-label" style="color:#1976d2;">👤 Cliente</div>
             <div class="admin-metric-value" style="color:#1565c0;">{_cliente_label}</div>
         </div>
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#ede9fe,#ddd6fe); border:2px solid #7c3aed;">
+            <div class="admin-metric-label" style="color:#5b21b6;">📝 Auto diciture</div>
+            <div class="admin-metric-value" style="color:#4c1d95;">{len(_auto_diciture)}</div>
+        </div>
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#fef9c3,#fde68a); border:2px solid #eab308;">
+            <div class="admin-metric-label" style="color:#a16207;">🎁 Auto omaggi</div>
+            <div class="admin-metric-value" style="color:#854d0e;">{len(_auto_sconti)}</div>
+        </div>
+        <div class="admin-metric-card" style="background:linear-gradient(135deg,#fee2e2,#fecaca); border:2px solid #ef4444;">
+            <div class="admin-metric-label" style="color:#b91c1c;">❓ Ambigue</div>
+            <div class="admin-metric-value" style="color:#991b1b;">{len(_ambigue)}</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
+
+    _show_auto_actions = len(_auto_diciture) > 0 or len(_auto_sconti) > 0
+    if _show_auto_actions:
+        _auto_col_action, _auto_col_confirm = st.columns([1.6, 2.4])
+        with _auto_col_confirm:
+            _confirm_auto_review = st.checkbox(
+                "⚠️ Confermo l'esecuzione Auto-Review sul filtro corrente",
+                key="confirm_auto_review"
+            )
+        with _auto_col_action:
+            if st.button("🤖 Esegui Auto-Review", type="primary", key="btn_auto_review", disabled=not _confirm_auto_review, use_container_width=True):
+                with st.spinner("Auto-classificazione in corso..."):
+                    _auto_ok = 0
+                    _auto_err = 0
+                    _auto_mem_ok = 0
+
+                    # 1) Diciture sicure → NOTE E DICITURE + salva in memoria globale
+                    if _auto_diciture:
+                        try:
+                            result = _build_review_batch_update({
+                                'categoria': '📝 NOTE E DICITURE',
+                                'needs_review': False,
+                                'reviewed_at': datetime.now(timezone.utc).isoformat(),
+                                'reviewed_by': 'auto-review'
+                            }, _auto_diciture, filtro_cliente_id).execute()
+                            _auto_ok += len(result.data) if result.data else len(_auto_diciture)
+
+                            # Salva in memoria globale come diciture verificate
+                            for _d in _auto_diciture:
+                                try:
+                                    supabase.table('prodotti_master').upsert({
+                                        'descrizione': _d,
+                                        'categoria': '📝 NOTE E DICITURE',
+                                        'confidence': 'altissima',
+                                        'verified': True,
+                                        'classificato_da': 'auto-review',
+                                        'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                                    }, on_conflict='descrizione').execute()
+                                    _auto_mem_ok += 1
+                                except Exception as e:
+                                    _auto_err += 1
+                                    logger.error(f"Errore salvataggio dicitura {_d[:40]}: {e}")
+                        except Exception as _e:
+                            _auto_err += 1
+                            logger.error(f"Errore auto-review diciture: {_e}")
+
+                    # 2) Sconti/omaggi → conferma categoria attuale + salva in memoria globale
+                    if _auto_sconti:
+                        for _d in _auto_sconti:
+                            try:
+                                _cat_corrente = df_zero[df_zero['descrizione'] == _d]['categoria'].iloc[0]
+                                # Se categoria è ancora "Da Classificare", skip (non sappiamo quale assegnare)
+                                if not _cat_corrente or _cat_corrente == 'Da Classificare':
+                                    continue
+
+                                result = _build_review_update_query({
+                                    'needs_review': False,
+                                    'reviewed_at': datetime.now(timezone.utc).isoformat(),
+                                    'reviewed_by': 'auto-review'
+                                }, _d, filtro_cliente_id).execute()
+                                _auto_ok += len(result.data) if result.data else 1
+
+                                # Salva in memoria globale con categoria confermata
+                                supabase.table('prodotti_master').upsert({
+                                    'descrizione': _d,
+                                    'categoria': _cat_corrente,
+                                    'confidence': 'alta',
+                                    'verified': True,
+                                    'classificato_da': 'auto-review',
+                                    'ultima_modifica': datetime.now(timezone.utc).isoformat()
+                                }, on_conflict='descrizione').execute()
+                                _auto_mem_ok += 1
+                            except Exception as _e:
+                                _auto_err += 1
+                                logger.error(f"Errore auto-review sconto '{_d[:40]}': {_e}")
+
+                    invalida_cache_memoria()
+                    st.success(f"🤖 Auto-Review completata: {_auto_ok} righe classificate, {_auto_mem_ok} salvate in memoria globale")
+                    if _auto_err > 0:
+                        st.warning(f"⚠️ {_auto_err} errori durante auto-review")
+                    time.sleep(1)
+                    st.rerun()
+
+        with st.expander("🔍 Anteprima Auto-Review", expanded=False):
+            if _auto_diciture:
+                st.markdown("**📝 Diciture (saranno marcate NOTE E DICITURE):**")
+                for _d in _auto_diciture[:15]:
+                    st.caption(f"• {_d[:100]}")
+                if len(_auto_diciture) > 15:
+                    st.caption(f"... e altre {len(_auto_diciture) - 15}")
+            if _auto_sconti:
+                st.markdown("**🎁 Sconti/Omaggi (categoria confermata):**")
+                for _d in _auto_sconti[:15]:
+                    _cat = df_zero[df_zero['descrizione'] == _d]['categoria'].iloc[0] if not df_zero[df_zero['descrizione'] == _d].empty else 'N/A'
+                    st.caption(f"• {_d[:100]} → {_cat}")
+                if len(_auto_sconti) > 15:
+                    st.caption(f"... e altri {len(_auto_sconti) - 15}")
+    else:
+        st.info("✅ Nessuna riga auto-classificabile nel filtro corrente.")
     
     # ============================================================
     # FILTRO PER CATEGORIA
     # ============================================================
     st.markdown("### 🔍 Filtri")
-    
-    col_cat, col_forn = st.columns(2)
-    
+
+    col_cli, col_cat, col_forn = st.columns([1.5, 1, 1])
+
+    with col_cli:
+        _ids_clienti = [x['id'] for x in opzioni_clienti]
+        _idx_cliente = _ids_clienti.index(st.session_state.filtro_cliente_review_id) if st.session_state.filtro_cliente_review_id in _ids_clienti else 0
+        _new_cliente = st.selectbox(
+            "Cliente",
+            opzioni_clienti,
+            index=_idx_cliente,
+            format_func=lambda x: f"🌐 {x['nome_ristorante']}" if x['id'] == 'TUTTI' else f"👤 {x['nome_ristorante']} ({x['email']})",
+            key="filtro_cliente_review_ui"
+        )
+        if _new_cliente['id'] != st.session_state.filtro_cliente_review_id:
+            st.session_state.filtro_cliente_review_id = _new_cliente['id']
+            st.session_state.pagina_review = 0
+            st.rerun()
+
     with col_cat:
         cat_uniche = ['Tutte'] + sorted(df_zero['categoria'].unique().tolist())
         filtro_categoria = st.selectbox(
@@ -2107,7 +2134,7 @@ if tab2:
     df_display = df_zero.copy()
     
     # Traccia filtri precedenti per reset pagina
-    filtri_correnti = f"{filtro_categoria}_{filtro_fornitore}"
+    filtri_correnti = f"{st.session_state.filtro_cliente_review_id}_{filtro_categoria}_{filtro_fornitore}"
     if 'filtri_review_prev' not in st.session_state:
         st.session_state.filtri_review_prev = filtri_correnti
     elif st.session_state.filtri_review_prev != filtri_correnti:
@@ -2184,7 +2211,9 @@ if tab2:
     # ============================================================
     # TABELLA CON AZIONI INLINE (selectbox + 2 bottoni per riga)
     # ============================================================
-    st.markdown("### 📝 Righe da Revisionare (raggruppate)")
+    col_title, col_sel_all, col_desel_all = st.columns([3.6, 1.2, 1.2])
+    with col_title:
+        st.markdown("### 📝 Righe da Revisionare (raggruppate)")
     
     # Prepara lista categorie (usata per ogni riga)
     _categorie_fb = sorted(CATEGORIE_FOOD_BEVERAGE)
@@ -2202,159 +2231,60 @@ if tab2:
 
     # Pulsanti selezione rapida
     _num_sel = len(st.session_state.review_zero_selezionate & _desc_pagina)
-    col_sel_all, col_desel_all, col_sel_info = st.columns([1.5, 1.5, 3])
     with col_sel_all:
-        if st.button(f"☑️ Seleziona Tutte ({len(_desc_pagina)})", use_container_width=True, key="rv_select_all"):
+        if st.button(f"☑️ Seleziona ({len(_desc_pagina)})", use_container_width=True, key="rv_select_all"):
             st.session_state.review_zero_selezionate.update(_desc_pagina)
             st.session_state.review_zero_cb_counter += 1
             st.rerun()
     with col_desel_all:
-        if st.button("⬜ Deseleziona Tutte", use_container_width=True, key="rv_deselect_all"):
+        if st.button("⬜ Deseleziona", use_container_width=True, key="rv_deselect_all"):
             st.session_state.review_zero_selezionate.difference_update(_desc_pagina)
             st.session_state.review_zero_cb_counter += 1
             st.rerun()
-    with col_sel_info:
-        if _num_sel > 0:
-            st.info(f"✅ {_num_sel} righe selezionate — usa le Azioni Massive in fondo")
+    if _num_sel > 0:
+        st.info(f"✅ {_num_sel} righe selezionate — usa le Azioni Massive in fondo")
 
-    st.markdown("---")
+    st.markdown("<div class='admin-table-note'>Seleziona e modifica categorie direttamente in tabella, poi usa le azioni massive sotto.</div>", unsafe_allow_html=True)
 
-    # HEADER
-    col_sel_h, col_desc, col_occur, col_cat_h, col_forn, col_azioni = st.columns([0.4, 2.5, 0.6, 2.5, 1.5, 1.2])
-    with col_sel_h:
-        st.markdown("**☑**")
-    with col_desc:
-        st.markdown("**Descrizione**")
-    with col_occur:
-        st.markdown("**N°**")
-    with col_cat_h:
-        st.markdown("**Categoria**")
-    with col_forn:
-        st.markdown("**Fornitore**")
-    with col_azioni:
-        st.markdown("**Azioni**")
-    
-    st.markdown("---")
-    
-    for idx, row in df_pagina.iterrows():
-        descrizione = row['descrizione']
-        categoria_corrente = row['categoria']
-        fornitore = row.get('fornitore', 'N/A')
-        occorrenze = row['occorrenze']
-        
-        col_sel, col_desc, col_occur, col_cat, col_forn, col_azioni = st.columns([0.4, 2.5, 0.6, 2.5, 1.5, 1.2])
+    _editor_df = df_pagina[['descrizione', 'occorrenze', 'categoria', 'fornitore']].copy()
+    _editor_df['seleziona'] = _editor_df['descrizione'].isin(st.session_state.review_zero_selezionate)
 
-        # CHECKBOX SELEZIONE
-        with col_sel:
-            _cb_key = f"rv_cb_{idx}_{st.session_state.review_zero_cb_counter}"
-            _checked = descrizione in st.session_state.review_zero_selezionate
-            if st.checkbox("", value=_checked, key=_cb_key, label_visibility="collapsed"):
-                st.session_state.review_zero_selezionate.add(descrizione)
-            else:
-                st.session_state.review_zero_selezionate.discard(descrizione)
+    def _tipo_descrizione(desc):
+        if is_dicitura_sicura(desc, 0, 1):
+            return "🏷️ Dicitura"
+        if is_sconto_omaggio_sicuro(desc):
+            return "🎁 Omaggio/Sconto"
+        return "❓ Ambigua"
 
-        # DESCRIZIONE + Badge review + Badge tipo sospetto
-        with col_desc:
-            needs_review_flag = row.get('needs_review', False) if 'needs_review' in df_pagina.columns else False
-            review_badge = "🔍 " if needs_review_flag else ""
-            # Badge tipo sospetto auto-rilevato
-            if is_dicitura_sicura(descrizione, 0, 1):
-                tipo_badge = "🏷️"
-                tipo_help = "Dicitura probabile"
-            elif is_sconto_omaggio_sicuro(descrizione):
-                tipo_badge = "🎁"
-                tipo_help = "Sconto/Omaggio probabile"
-            else:
-                tipo_badge = "❓"
-                tipo_help = "Ambiguo - revisione manuale"
-            desc_short = descrizione[:80] + "..." if len(descrizione) > 80 else descrizione
-            st.markdown(f"{tipo_badge} `{review_badge}{desc_short}`", help=f"{tipo_help} | Testo completo: {descrizione}")
-        
-        # OCCORRENZE
-        with col_occur:
-            st.markdown(f"`{occorrenze}×`")
-        
-        # SELECTBOX CATEGORIA INLINE
-        with col_cat:
-            # Pre-seleziona categoria corrente se presente nella lista
-            _cat_norm = categoria_corrente.replace("📝 ", "") if categoria_corrente else "NOTE E DICITURE"
-            _default_idx = 0
-            for _i, _c in enumerate(_categorie_review):
-                if _c == categoria_corrente or _c == _cat_norm:
-                    _default_idx = _i
-                    break
-            nuova_categoria = st.selectbox(
-                "",
-                _categorie_review,
-                index=_default_idx,
-                key=f"cat_{idx}",
-                label_visibility="collapsed"
-            )
-        
-        # FORNITORE
-        with col_forn:
-            forn_short = fornitore[:15] if fornitore else "N/A"
-            st.caption(forn_short)
-        
-        # AZIONI: ✅ Salva categoria selezionata | 📝 Dicitura (NOTE E DICITURE in 1 click)
-        with col_azioni:
-            col_a1, col_a2 = st.columns(2)
-            
-            with col_a1:
-                if st.button("✅", key=f"save_{idx}", help="Salva categoria selezionata + memoria globale"):
-                    try:
-                        result = _build_review_update_query({
-                            'categoria': nuova_categoria,
-                            'needs_review': False,
-                            'reviewed_at': datetime.now(timezone.utc).isoformat(),
-                            'reviewed_by': 'admin'
-                        }, descrizione, filtro_cliente_id).execute()
-                        # 💾 Salva in memoria globale (verificato da admin)
-                        supabase.table('prodotti_master').upsert({
-                            'descrizione': descrizione,
-                            'categoria': nuova_categoria,
-                            'confidence': 'altissima',
-                            'verified': True,
-                            'classificato_da': 'review-admin',
-                            'ultima_modifica': datetime.now(timezone.utc).isoformat()
-                        }, on_conflict='descrizione').execute()
-                        _n = len(result.data) if result.data else occorrenze
-                        logger.info(f"✅ REVIEW singola: '{descrizione[:60]}' → {nuova_categoria} ({_n} righe, cliente={filtro_cliente_id or 'TUTTI'})")  
-                        st.success(f"✅ {_n} righe → {nuova_categoria} (+ memoria globale)")
-                        invalida_cache_memoria()
-                        time.sleep(0.5)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Errore: {e}")
-            
-            with col_a2:
-                if st.button("📝", key=f"nota_{idx}", help="Segna come Nota/Dicitura + memoria globale"):
-                    try:
-                        result = _build_review_update_query({
-                            'categoria': '📝 NOTE E DICITURE',
-                            'needs_review': False,
-                            'reviewed_at': datetime.now(timezone.utc).isoformat(),
-                            'reviewed_by': 'admin'
-                        }, descrizione, filtro_cliente_id).execute()
-                        # 💾 Salva in memoria globale come dicitura verificata
-                        supabase.table('prodotti_master').upsert({
-                            'descrizione': descrizione,
-                            'categoria': '📝 NOTE E DICITURE',
-                            'confidence': 'altissima',
-                            'verified': True,
-                            'classificato_da': 'review-admin',
-                            'ultima_modifica': datetime.now(timezone.utc).isoformat()
-                        }, on_conflict='descrizione').execute()
-                        _n = len(result.data) if result.data else occorrenze
-                        logger.info(f"📝 REVIEW singola: '{descrizione[:60]}' → NOTE E DICITURE ({_n} righe, cliente={filtro_cliente_id or 'TUTTI'})")
-                        st.success(f"📝 {_n} righe → NOTE E DICITURE (+ memoria globale)")
-                        invalida_cache_memoria()
-                        time.sleep(0.5)
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Errore: {e}")
-        
-        st.markdown("---")
+    _editor_df['tipo'] = _editor_df['descrizione'].apply(_tipo_descrizione)
+    _editor_df['fornitore'] = _editor_df['fornitore'].fillna('N/A').astype(str).str.slice(0, 30)
+
+    _editor_df = _editor_df[['seleziona', 'tipo', 'descrizione', 'occorrenze', 'categoria', 'fornitore']]
+
+    _editor_height = 520 if len(df_pagina) >= 10 else max(360, 70 + (len(df_pagina) * 34))
+
+    edited_df = st.data_editor(
+        _editor_df,
+        hide_index=True,
+        use_container_width=True,
+        height=int(_editor_height),
+        row_height=34,
+        key=f"review_table_editor_{st.session_state.pagina_review}",
+        column_config={
+            'seleziona': st.column_config.CheckboxColumn('☑', help='Seleziona per azioni massive', width='small'),
+            'tipo': st.column_config.TextColumn('Tipo', width='medium', disabled=True),
+            'descrizione': st.column_config.TextColumn('Descrizione', width='large', disabled=True),
+            'occorrenze': st.column_config.NumberColumn('N°', width='small', disabled=True),
+            'categoria': st.column_config.SelectboxColumn('Categoria', options=_categorie_review, width='large'),
+            'fornitore': st.column_config.TextColumn('Fornitore', width='medium', disabled=True),
+        },
+        disabled=['tipo', 'descrizione', 'occorrenze', 'fornitore'],
+    )
+
+    _selected_desc = set(edited_df.loc[edited_df['seleziona'] == True, 'descrizione'].tolist())
+    st.session_state.review_zero_selezionate.difference_update(_desc_pagina)
+    st.session_state.review_zero_selezionate.update(_selected_desc)
+    _categoria_map_editor = dict(zip(edited_df['descrizione'], edited_df['categoria']))
 
     # ============================================================
     # AZIONI MASSIVE (mostrate solo se ci sono righe selezionate)
@@ -2376,9 +2306,11 @@ if tab2:
                         _batch_master = []
                         # Per ogni descrizione selezionata, conferma la SUA categoria corrente
                         for _d in _descs:
-                            # Recupera categoria corrente dal df
-                            _cat_row = df_grouped[df_grouped['descrizione'] == _d]
-                            _cat_corrente = _cat_row['categoria'].iloc[0] if not _cat_row.empty else None
+                            # Recupera categoria corrente dall'editor (se non visibile in pagina, fallback su df)
+                            _cat_corrente = _categoria_map_editor.get(_d)
+                            if not _cat_corrente:
+                                _cat_row = df_grouped[df_grouped['descrizione'] == _d]
+                                _cat_corrente = _cat_row['categoria'].iloc[0] if not _cat_row.empty else None
                             if not _cat_corrente or _cat_corrente == 'Da Classificare':
                                 continue
                             
@@ -2617,7 +2549,7 @@ def tab_memoria_globale_unificata():
     )
     
     st.markdown(f"""
-    <div class="admin-metrics-grid">
+    <div class="admin-metrics-grid admin-metrics-grid--tight">
         <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
             <div class="admin-metric-label" style="color:#1976d2;">🧠 Totali</div>
             <div class="admin-metric-value" style="color:#1565c0;">{totale_prodotti:,}</div>
@@ -3269,7 +3201,7 @@ def tab_personalizzazioni_clienti():
     _clienti_unici = int(df_personalizzazioni['user_id'].nunique())
     
     st.markdown(f"""
-    <div class="admin-metrics-grid">
+    <div class="admin-metrics-grid admin-metrics-grid--tight">
         <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
             <div class="admin-metric-label" style="color:#1976d2;">📝 Voci in Memoria</div>
             <div class="admin-metric-value" style="color:#1565c0;">{len(df_personalizzazioni):,}</div>
@@ -3290,7 +3222,18 @@ def tab_personalizzazioni_clienti():
     # ============================================================
     st.markdown("### 🔍 Filtri")
     
-    col_search, col_cat, col_reset = st.columns([3, 2, 1])
+    # Pre-carica mappa clienti per filtro inline
+    user_id_to_email = {}
+    try:
+        resp_utenti = supabase.table('users').select('id, email').execute()
+        user_id_to_email = {u['id']: u['email'] for u in (resp_utenti.data or [])}
+    except Exception:
+        pass
+
+    df_personalizzazioni['email_cliente'] = df_personalizzazioni['user_id'].map(user_id_to_email).fillna('Sconosciuto')
+    emails_disponibili = sorted(df_personalizzazioni['email_cliente'].unique().tolist())
+
+    col_search, col_cat, col_cliente, col_reset = st.columns([3, 2, 2, 1])
     
     with col_search:
         if 'search_personalizzazioni' not in st.session_state:
@@ -3313,6 +3256,16 @@ def tab_personalizzazioni_clienti():
             ["Tutte"] + categorie,
             key="filtro_cat_pers"
         )
+
+    with col_cliente:
+        if 'filtro_cliente_pers' not in st.session_state:
+            st.session_state.filtro_cliente_pers = "Tutti"
+
+        filtro_cliente = st.selectbox(
+            "👤 Filtra per cliente",
+            ["Tutti"] + emails_disponibili,
+            key="filtro_cliente_pers"
+        )
     
     with col_reset:
         st.markdown("<br>", unsafe_allow_html=True)
@@ -3321,26 +3274,6 @@ def tab_personalizzazioni_clienti():
             st.session_state.filtro_cat_pers = "Tutte"
             st.session_state.filtro_cliente_pers = "Tutti"
             st.rerun()
-    
-    # Filtro per cliente (mappa user_id → email)
-    user_id_to_email = {}
-    try:
-        resp_utenti = supabase.table('users').select('id, email').execute()
-        user_id_to_email = {u['id']: u['email'] for u in (resp_utenti.data or [])}
-    except Exception:
-        pass
-    
-    df_personalizzazioni['email_cliente'] = df_personalizzazioni['user_id'].map(user_id_to_email).fillna('Sconosciuto')
-    
-    emails_disponibili = sorted(df_personalizzazioni['email_cliente'].unique().tolist())
-    if 'filtro_cliente_pers' not in st.session_state:
-        st.session_state.filtro_cliente_pers = "Tutti"
-    
-    filtro_cliente = st.selectbox(
-        "👤 Filtra per cliente",
-        ["Tutti"] + emails_disponibili,
-        key="filtro_cliente_pers"
-    )
     
     # ============================================================
     # APPLICA FILTRI
@@ -3992,7 +3925,7 @@ def tab_da_fare_memoria_ai():
     totale_priorita = len(df_conflitti) + len(df_priorita)
     st.markdown(
         f"""
-        <div class="admin-metrics-grid">
+        <div class="admin-metrics-grid admin-metrics-grid--tight">
             <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
                 <div class="admin-metric-label" style="color:#ef6c00;">🔥 Da fare ora</div>
                 <div class="admin-metric-value" style="color:#e65100;">{totale_priorita:,}</div>
@@ -4012,7 +3945,7 @@ def tab_da_fare_memoria_ai():
 
     if len(df_conflitti) > 0:
         st.warning(
-            f"Priorita alta: {len(df_conflitti)} conflitti attivi. Sotto trovi solo le anomalie globali realmente prioritarie; il resto resta nel tab Globale."
+            f"Priorita alta: {len(df_conflitti)} conflitti attivi. In questo flusso i conflitti indicano override cliente su voci gia presenti in memoria globale (tipicamente modifica manuale locale)."
         )
     elif len(df_priorita) > 0:
         st.info(
@@ -4027,56 +3960,146 @@ def tab_da_fare_memoria_ai():
         f"{badge_alta} <span style='color:#666;'>I conflitti sono già inclusi qui e compaiono per primi</span>",
         unsafe_allow_html=True,
     )
-    st.caption("Prima risolvi i conflitti tra memoria cliente e globale, poi confermi o correggi le anomalie globali prioritarie.")
+    st.caption("Prima risolvi i conflitti cliente-vs-globale (override locale su voce gia globale), poi confermi o correggi le anomalie globali prioritarie.")
 
     if not df_conflitti.empty:
-        for _, row in df_conflitti.iterrows():
-            desc_short = row['descrizione'][:80] + '...' if len(row['descrizione']) > 80 else row['descrizione']
-            box1, box2, box3, box4 = st.columns([4.2, 1.25, 1.4, 1.4])
-            with box1:
-                st.markdown(f"{badge_alta} `{_html.escape(desc_short)}`", unsafe_allow_html=True)
-                st.caption(f"{row['email_cliente']} · locale {row['categoria_locale']} vs globale {row['categoria_globale']}")
-            with box2:
-                if st.button("Globale", key=f"dafare_promote_{row['local_id']}", help="Promuovi categoria cliente a globale", use_container_width=True):
+        if 'dafare_conflitti_selezionati' not in st.session_state:
+            st.session_state.dafare_conflitti_selezionati = set()
+
+        _conflitti_ids = set(df_conflitti['local_id'].tolist())
+
+        col_conf_title, col_conf_sel, col_conf_desel = st.columns([3.2, 1.2, 1.2])
+        with col_conf_title:
+            st.markdown("#### Conflitti cliente-vs-globale")
+        with col_conf_sel:
+            if st.button("☑️ Seleziona tutte", key="dafare_select_all_conflitti", use_container_width=True):
+                st.session_state.dafare_conflitti_selezionati.update(_conflitti_ids)
+                st.rerun()
+        with col_conf_desel:
+            if st.button("⬜ Deseleziona tutte", key="dafare_deselect_all_conflitti", use_container_width=True):
+                st.session_state.dafare_conflitti_selezionati.difference_update(_conflitti_ids)
+                st.rerun()
+
+        st.caption("Tabella conflitti: modifica la categoria target, seleziona le righe e usa le azioni massive sotto.")
+
+        _conf_editor_df = df_conflitti[[
+            'local_id', 'descrizione', 'email_cliente', 'categoria_locale', 'categoria_globale'
+        ]].copy()
+        _conf_editor_df['seleziona'] = _conf_editor_df['local_id'].isin(st.session_state.dafare_conflitti_selezionati)
+        _conf_editor_df['categoria_target'] = _conf_editor_df['local_id'].map(
+            lambda _lid: st.session_state.get(f"dafare_conf_target_{_lid}", estrai_nome_categoria(
+                _conf_editor_df.loc[_conf_editor_df['local_id'] == _lid, 'categoria_locale'].iloc[0]
+            ))
+        )
+
+        _conf_editor_df['categoria_locale'] = _conf_editor_df['categoria_locale'].map(estrai_nome_categoria)
+        _conf_editor_df['categoria_globale'] = _conf_editor_df['categoria_globale'].map(estrai_nome_categoria)
+        _conf_editor_df['descrizione'] = _conf_editor_df['descrizione'].astype(str).str.slice(0, 110)
+
+        _conf_editor_df = _conf_editor_df[[
+            'seleziona', 'local_id', 'descrizione', 'email_cliente', 'categoria_locale', 'categoria_globale', 'categoria_target'
+        ]]
+
+        _edited_conf_df = st.data_editor(
+            _conf_editor_df,
+            hide_index=True,
+            use_container_width=True,
+            height=520,
+            row_height=34,
+            key="dafare_conflitti_editor",
+            column_config={
+                'seleziona': st.column_config.CheckboxColumn('☑', width='small'),
+                'local_id': st.column_config.NumberColumn('ID', width='small', disabled=True),
+                'descrizione': st.column_config.TextColumn('Descrizione', width='large', disabled=True),
+                'email_cliente': st.column_config.TextColumn('Cliente', width='medium', disabled=True),
+                'categoria_locale': st.column_config.TextColumn('Locale', width='medium', disabled=True),
+                'categoria_globale': st.column_config.TextColumn('Globale', width='medium', disabled=True),
+                'categoria_target': st.column_config.SelectboxColumn('Categoria target', options=categorie, width='large'),
+            },
+            disabled=['local_id', 'descrizione', 'email_cliente', 'categoria_locale', 'categoria_globale'],
+        )
+
+        _conflitti_correnti = set(_edited_conf_df.loc[_edited_conf_df['seleziona'] == True, 'local_id'].astype(int).tolist())
+        st.session_state.dafare_conflitti_selezionati = _conflitti_correnti
+
+        _target_map = {}
+        for _, _r in _edited_conf_df.iterrows():
+            _lid = int(_r['local_id'])
+            _target = estrai_nome_categoria(_r['categoria_target'])
+            _target_map[_lid] = _target
+            st.session_state[f"dafare_conf_target_{_lid}"] = _target
+
+        _num_conf_sel = len(_conflitti_correnti)
+
+        if _num_conf_sel > 0:
+            st.markdown("### ⚡ Azioni massive conflitti")
+            st.info(f"Selezionate {_num_conf_sel} righe conflitto")
+
+            _df_conf_sel = df_conflitti[df_conflitti['local_id'].isin(_conflitti_correnti)].copy()
+            col_m1, col_m2, col_m3 = st.columns([2, 2, 2])
+
+            with col_m1:
+                if st.button(f"🌍 Promuovi a Globale ({_num_conf_sel})", key="dafare_conf_mass_promote", type="primary", use_container_width=True):
                     try:
-                        _promuovi_locale_a_globale(
-                            global_id=row['global_id'],
-                            local_id=row['local_id'],
-                            descrizione=row['descrizione'],
-                            categoria_locale=row['categoria_locale'],
-                            classificato_da='Admin (promozione da da-fare conflitti)',
-                        )
-                        invalida_cache_memoria()
-                        st.rerun()
+                        with st.spinner("Promozione massiva in corso..."):
+                            for _, _row in _df_conf_sel.iterrows():
+                                _cat_target = _target_map.get(int(_row['local_id']), estrai_nome_categoria(_row['categoria_locale']))
+                                _aggiorna_categoria_globale(
+                                    row_id=_row['global_id'],
+                                    descrizione=_row['descrizione'],
+                                    nuova_categoria=_cat_target,
+                                    verified=True,
+                                    classificato_da='Admin (promozione batch da-fare conflitti)',
+                                )
+                                _allinea_a_globale(
+                                    local_id=_row['local_id'],
+                                    descrizione=_row['descrizione'],
+                                    user_id=_row['user_id'],
+                                    categoria_globale=_cat_target,
+                                )
+                            st.session_state.dafare_conflitti_selezionati = set()
+                            invalida_cache_memoria()
+                            st.success("✅ Conflitti promossi a globale")
+                            st.rerun()
                     except Exception as e:
-                        st.error(f"Errore promozione: {e}")
-            with box3:
-                if st.button("Solo cliente", key=f"dafare_keep_local_{row['local_id']}", help="Mantieni questa categoria solo per questo cliente", use_container_width=True):
+                        st.error(f"Errore promozione massiva: {e}")
+
+            with col_m2:
+                if st.button(f"👤 Mantieni Override ({_num_conf_sel})", key="dafare_conf_mass_keep", use_container_width=True):
                     try:
-                        _mantieni_locale_solo_cliente(
-                            local_id=row['local_id'],
-                            descrizione=row['descrizione'],
-                            user_id=row['user_id'],
-                            categoria_locale=row['categoria_locale'],
-                        )
-                        invalida_cache_memoria()
-                        st.rerun()
+                        with st.spinner("Conferma override in corso..."):
+                            for _, _row in _df_conf_sel.iterrows():
+                                _cat_target = _target_map.get(int(_row['local_id']), estrai_nome_categoria(_row['categoria_locale']))
+                                _mantieni_locale_solo_cliente(
+                                    local_id=_row['local_id'],
+                                    descrizione=_row['descrizione'],
+                                    user_id=_row['user_id'],
+                                    categoria_locale=_cat_target,
+                                )
+                            st.session_state.dafare_conflitti_selezionati = set()
+                            invalida_cache_memoria()
+                            st.success("✅ Override locali confermati")
+                            st.rerun()
                     except Exception as e:
-                        st.error(f"Errore conferma locale: {e}")
-            with box4:
-                if st.button("Usa globale", key=f"dafare_align_{row['local_id']}", help="Rimuovi override locale e riallinea al globale", use_container_width=True):
+                        st.error(f"Errore conferma override massiva: {e}")
+
+            with col_m3:
+                if st.button(f"🧹 Rimuovi Override ({_num_conf_sel})", key="dafare_conf_mass_align", use_container_width=True):
                     try:
-                        _allinea_a_globale(
-                            local_id=row['local_id'],
-                            descrizione=row['descrizione'],
-                            user_id=row['user_id'],
-                            categoria_globale=row['categoria_globale'],
-                        )
-                        invalida_cache_memoria()
-                        st.rerun()
+                        with st.spinner("Riallineamento massivo in corso..."):
+                            for _, _row in _df_conf_sel.iterrows():
+                                _allinea_a_globale(
+                                    local_id=_row['local_id'],
+                                    descrizione=_row['descrizione'],
+                                    user_id=_row['user_id'],
+                                    categoria_globale=estrai_nome_categoria(_row['categoria_globale']),
+                                )
+                            st.session_state.dafare_conflitti_selezionati = set()
+                            invalida_cache_memoria()
+                            st.success("✅ Override rimossi e clienti riallineati al globale")
+                            st.rerun()
                     except Exception as e:
-                        st.error(f"Errore riallineamento: {e}")
-            st.markdown("---")
+                        st.error(f"Errore riallineamento massivo: {e}")
 
     st.markdown(
         f"{badge_media} <span style='color:#666;'>Sospette secondo le regole attuali</span> "
@@ -4270,13 +4293,17 @@ if tab4:
             _last_run_fmt = 'Mai eseguito'
 
         st.markdown("### 🧹 Retention automatica dati")
+        st.caption(
+            "Monitor dell'ultimo ciclo automatico del worker: controlla le fatture con più di 2 anni circa ogni 24 ore. "
+            "Aprire questo tab non avvia nessuna scansione manuale. Le righe già nel cestino vengono conteggiate a parte."
+        )
         col_ret1, col_ret2, col_ret3, col_ret4 = st.columns(4)
         with col_ret1:
             st.metric("Ultimo ciclo", _last_run_fmt)
         with col_ret2:
             st.metric("Righe eliminate", int(retention_status.get('rows_deleted') or 0))
         with col_ret3:
-            st.metric("Dal cestino", int(retention_status.get('rows_from_trash') or 0))
+            st.metric("Di cui dal cestino", int(retention_status.get('rows_from_trash') or 0))
         with col_ret4:
             st.metric("Stato", "OK" if retention_status.get('status') == 'ok' else 'Errore')
 
@@ -4321,7 +4348,7 @@ if tab4:
     # ============================================================
     st.markdown("### 🔍 Filtri")
     
-    col_email, col_periodo = st.columns(2)
+    col_email, col_periodo, col_refresh_integrity = st.columns([2.2, 1.4, 1])
     
     with col_email:
         # Carica lista clienti
@@ -4369,56 +4396,12 @@ if tab4:
             ["Ultimi 30 giorni", "Ultimi 90 giorni", "Ultimi 180 giorni", "Tutto"],
             key="filtro_periodo_integrity"
         )
+
+    with col_refresh_integrity:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄 Aggiorna", key="refresh_integrity_filters", use_container_width=True):
+            st.rerun()
     
-    st.markdown("---")
-
-    # ============================================================
-    # FILE SCARTATI (DUPLICATI) - da upload_events
-    # ============================================================
-    st.markdown("### 📋 File Scartati come Duplicati")
-    st.caption("File che i clienti hanno tentato di ricaricare ma erano già presenti nel database")
-
-    try:
-        query_dupl = supabase.table('upload_events')\
-            .select('user_email, file_name, created_at, status, details')\
-            .in_('status', ['DUPLICATE_SKIPPED', 'DUPLICATE_IN_SELECTION'])\
-            .order('created_at', desc=True)
-
-        if filtro_email:
-            query_dupl = query_dupl.eq('user_email', filtro_email)
-
-        if filtro_periodo == "Ultimi 30 giorni":
-            query_dupl = query_dupl.gte('created_at', (datetime.now() - timedelta(days=30)).isoformat())
-        elif filtro_periodo == "Ultimi 90 giorni":
-            query_dupl = query_dupl.gte('created_at', (datetime.now() - timedelta(days=90)).isoformat())
-        elif filtro_periodo == "Ultimi 180 giorni":
-            query_dupl = query_dupl.gte('created_at', (datetime.now() - timedelta(days=180)).isoformat())
-
-        resp_dupl = query_dupl.limit(500).execute()
-        dupl_data = resp_dupl.data if resp_dupl.data else []
-
-        if not dupl_data:
-            st.info("✅ Nessun file scartato nel periodo selezionato")
-        else:
-            st.warning(f"⚠️ **{len(dupl_data)} tentativi** di ricaricare file già presenti nel database")
-            df_dupl = pd.DataFrame(dupl_data)
-            if 'details' in df_dupl.columns:
-                df_dupl['motivo'] = df_dupl['details'].apply(
-                    lambda d: (d or {}).get('reason', '') if isinstance(d, dict) else ''
-                )
-            else:
-                df_dupl['motivo'] = ''
-            df_dupl = df_dupl.rename(columns={
-                'user_email': 'cliente',
-                'file_name': 'file',
-                'created_at': 'data tentativo',
-                'status': 'stato',
-            })
-            df_dupl['data tentativo'] = pd.to_datetime(df_dupl['data tentativo']).dt.strftime('%Y-%m-%d %H:%M')
-            st.dataframe(df_dupl[['cliente', 'file', 'stato', 'motivo', 'data tentativo']], use_container_width=True, hide_index=True)
-    except Exception as e:
-        st.warning(f"⚠️ Impossibile caricare log duplicati: {e}")
-
     st.markdown("---")
 
     # ============================================================
@@ -4633,7 +4616,7 @@ if tab4:
                             _n_totali = len(problemi['totali_errati'])
                             
                             st.markdown(f"""
-                            <div class="admin-metrics-grid" style="gap:10px;">
+                            <div class="admin-metrics-grid admin-metrics-grid--tight">
                                 <div class="admin-metric-card admin-metric-card--compact" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
                                     <div class="admin-metric-label" style="color:#e65100;">📅 Date Invalide</div>
                                     <div class="admin-metric-value" style="color:#e65100;">{_n_date}</div>
@@ -4705,129 +4688,6 @@ if tab4:
                 logger.exception("Errore verifica integrità DB")
                 with st.expander("🔍 Dettagli Tecnici"):
                     st.code(traceback.format_exc())
-
-    # ============================================================
-    # FATTURE TD24 — COPERTURA DATA CONSEGNA
-    # ============================================================
-    st.markdown("---")
-    with st.expander("📅 Fatture TD24 — Copertura Data Consegna", expanded=False):
-        st.caption("Fatture differite (TD24): percentuale di righe con data consegna estratta dal DDT.")
-        try:
-            # Query: conta righe TD24 per utente, con e senza data_consegna
-            _td24_query = supabase.table('fatture')\
-                .select('user_id, file_origine, fornitore, data_consegna, data_documento, totale_riga')\
-                .eq('tipo_documento', 'TD24')
-
-            if filtro_email:
-                # Cerca user_id dalla email
-                _user_resp = supabase.table('users').select('id').eq('email', filtro_email).execute()
-                if _user_resp.data:
-                    _td24_query = _td24_query.eq('user_id', _user_resp.data[0]['id'])
-
-            # Applica lo stesso filtro periodo del resto del pannello
-            _td24_days = None
-            if filtro_periodo == "Ultimi 30 giorni":
-                _td24_days = 30
-            elif filtro_periodo == "Ultimi 90 giorni":
-                _td24_days = 90
-            elif filtro_periodo == "Ultimi 180 giorni":
-                _td24_days = 180
-            if _td24_days is not None:
-                _cutoff_date = (datetime.now(timezone.utc) - timedelta(days=_td24_days)).strftime('%Y-%m-%d')
-                _td24_query = _td24_query.gte('data_documento', _cutoff_date)
-
-            _td24_rows = []
-            _offset = 0
-            _page = 1000
-            while True:
-                _resp = _td24_query.range(_offset, _offset + _page - 1).execute()
-                _batch = _resp.data if _resp.data else []
-                if not _batch:
-                    break
-                _td24_rows.extend(_batch)
-                if len(_batch) < _page:
-                    break
-                _offset += _page
-
-            if _td24_rows:
-                df_td24 = pd.DataFrame(_td24_rows)
-                df_td24['has_date'] = df_td24['data_consegna'].notna() & (df_td24['data_consegna'] != '')
-                df_td24['totale_riga'] = pd.to_numeric(df_td24.get('totale_riga'), errors='coerce').fillna(0)
-
-                # Aggregazione per user_id + file
-                agg = df_td24.groupby(['user_id', 'file_origine', 'fornitore']).agg(
-                    righe_totali=('has_date', 'count'),
-                    righe_con_data=('has_date', 'sum'),
-                    totale_eur=('totale_riga', 'sum'),
-                ).reset_index()
-                agg['pct_coperta'] = (agg['righe_con_data'] / agg['righe_totali'] * 100).round(1)
-                agg['status'] = agg['pct_coperta'].apply(
-                    lambda p: '🔴 Missing' if p < 50 else ('🟡 Parziale' if p < 95 else '🟢 OK')
-                )
-
-                # Riepilogo per utente
-                user_agg = agg.groupby('user_id').agg(
-                    file_td24=('file_origine', 'nunique'),
-                    righe_totali=('righe_totali', 'sum'),
-                    righe_con_data=('righe_con_data', 'sum'),
-                ).reset_index()
-                user_agg['pct_coperta'] = (user_agg['righe_con_data'] / user_agg['righe_totali'] * 100).round(1)
-
-                # Risolvi email da user_id
-                _uid_list = user_agg['user_id'].unique().tolist()
-                _email_map = {}
-                for _uid in _uid_list:
-                    try:
-                        _e_resp = supabase.table('users').select('email').eq('id', _uid).limit(1).execute()
-                        if _e_resp.data:
-                            _email_map[_uid] = _e_resp.data[0]['email']
-                    except Exception:
-                        pass
-                user_agg['email'] = user_agg['user_id'].map(_email_map).fillna('?')
-
-                # KPI
-                col1, col2, col3 = st.columns(3)
-                col1.metric("File TD24 totali", int(agg['file_origine'].nunique()))
-                col2.metric("Copertura media", f"{user_agg['pct_coperta'].mean():.1f}%")
-                _n_problem = len(agg[agg['pct_coperta'] < 95])
-                col3.metric("File con alert", _n_problem)
-
-                st.markdown("**Riepilogo per cliente:**")
-                st.dataframe(
-                    user_agg[['email', 'file_td24', 'righe_totali', 'righe_con_data', 'pct_coperta']].rename(columns={
-                        'email': 'Email',
-                        'file_td24': 'File TD24',
-                        'righe_totali': 'Righe Totali',
-                        'righe_con_data': 'Con Data',
-                        'pct_coperta': '% Coperta',
-                    }),
-                    use_container_width=True,
-                    hide_index=True,
-                )
-
-                # Dettaglio file con problemi
-                _problem_files = agg[agg['pct_coperta'] < 95].sort_values('pct_coperta')
-                if not _problem_files.empty:
-                    st.markdown("**Dettaglio file con copertura < 95%:**")
-                    _display = _problem_files[['fornitore', 'file_origine', 'righe_totali', 'righe_con_data', 'pct_coperta', 'totale_eur', 'status']].rename(columns={
-                        'fornitore': 'Fornitore',
-                        'file_origine': 'File',
-                        'righe_totali': 'Righe',
-                        'righe_con_data': 'Con Data',
-                        'pct_coperta': '% Coperta',
-                        'totale_eur': 'Totale €',
-                        'status': 'Status',
-                    })
-                    st.dataframe(_display, use_container_width=True, hide_index=True)
-                else:
-                    st.success("✅ Tutti i file TD24 hanno copertura data consegna ≥ 95%.")
-            else:
-                st.info("Nessuna fattura TD24 trovata nel database.")
-        except Exception as e:
-            st.error("❌ Errore durante il caricamento dati TD24.")
-            logger.exception("Errore sezione TD24 admin")
-
-
 # ============================================================
 # TAB 6: COSTI AI PER CLIENTE (era TAB 5)
 # ============================================================
@@ -4843,7 +4703,7 @@ if tab5:
             'Ultimi 90 giorni': 90,
             'Tutto': None,
         }
-        col_periodo, col_refresh = st.columns([2, 1])
+        col_periodo, col_refresh = st.columns([2.2, 1])
         with col_periodo:
             periodo_label = st.selectbox(
                 'Periodo',
@@ -4903,13 +4763,13 @@ if tab5:
             clienti_attivi = len(df_costs)
 
             st.markdown(f"""
-            <div class="admin-metrics-grid">
+            <div class="admin-metrics-grid admin-metrics-grid--tight">
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63;">
                     <div class="admin-metric-label" style="color:#c2185b;">💰 Totale Costi</div>
                     <div class="admin-metric-value" style="color:#880e4f;">${totale_costi:.4f}</div>
                 </div>
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
-                    <div class="admin-metric-label" style="color:#1976d2;">�️ Costo Vision</div>
+                    <div class="admin-metric-label" style="color:#1976d2;">👁️ Costo Vision</div>
                     <div class="admin-metric-value" style="color:#1565c0;">${totale_pdf_cost:.4f}</div>
                 </div>
                 <div class="admin-metric-card" style="background:linear-gradient(135deg,#f3e5f5,#e1bee7); border:2px solid #9c27b0;">

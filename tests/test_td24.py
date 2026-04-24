@@ -1,6 +1,7 @@
 """Test estrazione data_consegna da TD24 e notification builder."""
 import pytest
 from services.notification_service import build_td24_date_notifications
+from utils.formatters import normalizza_data_consegna_td24
 
 
 # ── Notification builder ─────────────────────────────────────────────
@@ -304,3 +305,42 @@ class TestTd24CoverageCalc:
         # Nessun DDT, nessuna data in descrizione → data_consegna=None ovunque
         items = [{'Totale_Riga': 10, 'data_consegna': None}] * 15
         assert self._compute_alert(items) == 'missing'
+
+
+class TestTd24FallbackNormalization:
+
+    def test_fallback_to_document_date_when_missing(self):
+        items = [{
+            'tipo_documento': 'TD24',
+            'Data_Documento': '2026-04-24',
+            'Totale_Riga': 10,
+            'data_consegna': None,
+        }]
+
+        normalizza_data_consegna_td24(items)
+
+        assert items[0]['data_consegna'] == '2026-04-24'
+
+    def test_preserves_existing_delivery_date(self):
+        items = [{
+            'tipo_documento': 'TD24',
+            'Data_Documento': '2026-04-24',
+            'Totale_Riga': 10,
+            'data_consegna': '2026-04-20',
+        }]
+
+        normalizza_data_consegna_td24(items)
+
+        assert items[0]['data_consegna'] == '2026-04-20'
+
+    def test_non_td24_is_unchanged(self):
+        items = [{
+            'tipo_documento': 'TD01',
+            'Data_Documento': '2026-04-24',
+            'Totale_Riga': 10,
+            'data_consegna': None,
+        }]
+
+        normalizza_data_consegna_td24(items)
+
+        assert items[0]['data_consegna'] is None

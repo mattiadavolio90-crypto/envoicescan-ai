@@ -129,7 +129,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         return pd.DataFrame()
 
 
-def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None, ristorante_id=None, include_review_rows: bool = False):
+def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None, ristorante_id=None, include_review_rows: bool = True):
     """
     🔥 SINGLE SOURCE OF TRUTH: Carica fatture SOLO da Supabase
     
@@ -184,7 +184,7 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
             df_result = df_result[~df_result[review_col].fillna(False).astype(bool)].copy()
             righe_nascoste = righe_prima_review - len(df_result)
             if righe_nascoste > 0:
-                logger.info(f"🙈 Nascoste {righe_nascoste} righe in review dalle viste standard cliente")
+                logger.info(f"🙈 Nascoste {righe_nascoste} righe in review (filtro esplicito include_review_rows=False)")
 
     if df_result.empty:
         return pd.DataFrame()

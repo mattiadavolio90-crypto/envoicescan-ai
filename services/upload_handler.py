@@ -182,6 +182,84 @@ def _find_existing_saved_ok_events(supabase_client, user_id: str, ristorante_id:
     return matches
 
 
+def _find_active_existing_files(supabase_client, user_id: str, ristorante_id: str | None) -> tuple[set[str], set[str]]:
+    """Restituisce i file attivi reali in fatture, escludendo sempre il cestino."""
+    if supabase_client is None or not user_id:
+        return set(), set()
+
+    page = 0
+    page_size = 1000
+    max_pages = 100
+    exact_names = set()
+    base_names = set()
+
+    while page < max_pages:
+        offset = page * page_size
+        query_files = (
+            supabase_client.table("fatture")
+            .select("file_origine")
+            .eq("user_id", user_id)
+            .is_("deleted_at", "null")
+        )
+        if ristorante_id:
+            query_files = query_files.eq("ristorante_id", ristorante_id)
+
+        response = query_files.range(offset, offset + page_size - 1).execute()
+        rows = response.data or []
+        if not rows:
+            break
+
+        for row in rows:
+            file_origine = str(row.get("file_origine") or "").strip()
+            if not file_origine:
+                continue
+            exact_lower = file_origine.lower()
+            exact_names.add(exact_lower)
+            base_names.add(get_nome_base_file(file_origine))
+
+        if len(rows) < page_size:
+            break
+        page += 1
+
+    return exact_names, base_names
+
+
+def _find_active_exact_files_for_targets(
+    supabase_client,
+    user_id: str,
+    ristorante_id: str | None,
+    file_names: list[str],
+) -> set[str]:
+    """Restituisce solo i nomi file target realmente attivi (match esatto)."""
+    if supabase_client is None or not user_id or not file_names:
+        return set()
+
+    raw_targets = [str(name).strip() for name in file_names if str(name).strip()]
+    if not raw_targets:
+        return set()
+
+    try:
+        query = (
+            supabase_client.table("fatture")
+            .select("file_origine")
+            .eq("user_id", user_id)
+            .is_("deleted_at", "null")
+            .in_("file_origine", list(set(raw_targets)))
+        )
+        if ristorante_id:
+            query = query.eq("ristorante_id", ristorante_id)
+
+        response = query.execute()
+        return {
+            str(row.get("file_origine") or "").strip().lower()
+            for row in (response.data or [])
+            if str(row.get("file_origine") or "").strip()
+        }
+    except Exception as e:
+        logger.warning(f"Errore controllo match esatto file attivi: {e}")
+        return set()
+
+
 def _format_saved_ok_date(created_at_value) -> str:
     try:
         return pd.to_datetime(created_at_value).strftime("%d/%m/%Y")
@@ -505,6 +583,19 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     """Gestisce l'elaborazione completa dei file caricati: deduplicazione, validazione, salvataggio."""
     # [DEBUG]
     t0_upload = time.perf_counter()
+    current_upload_token = "||".join(
+        sorted(
+            f"{str(getattr(f, 'name', '')).strip().lower()}::{int(getattr(f, 'size', 0) or 0)}"
+            for f in uploaded_files
+        )
+    )
+    if current_upload_token and st.session_state.get('_last_processed_upload_token') == current_upload_token:
+        # Evita loop: stesso batch ancora presente nel widget dopo un rerun/interazione UI.
+        logger.debug("[UPLOAD] Skip batch gia processato nella sessione corrente")
+        return
+    if current_upload_token:
+        st.session_state['_last_processed_upload_token'] = current_upload_token
+
     # Pulisci messaggi precedenti all'inizio di un nuovo caricamento
     st.session_state.upload_messages = []
     st.session_state.pop('last_upload_notification_context', None)
@@ -664,6 +755,21 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         st.session_state.get('ristorante_id'),
         [f.name for f in file_unici],
     )
+    verified_active_full, verified_active_base = _find_active_existing_files(
+        supabase,
+        user_id,
+        st.session_state.get('ristorante_id'),
+    )
+    # Guardrail: match esatto sui soli file target dell'upload corrente.
+    # Questo evita falsi positivi dovuti a storico eventi o confronti indiretti.
+    active_exact_targets = _find_active_exact_files_for_targets(
+        supabase,
+        user_id,
+        st.session_state.get('ristorante_id'),
+        [f.name for f in file_unici],
+    )
+    file_su_supabase_full = verified_active_full
+    file_su_supabase = verified_active_base
     
     for file in file_unici:
         filename = file.name
@@ -680,31 +786,32 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         # 1° LIVELLO: upload già confermato via upload_events
         # 2° LIVELLO: match ESATTO sul nome file completo nel DB
         # 3° LIVELLO: match sul nome base senza estensione
-        is_exact_match = filename_lower in file_su_supabase_full
+        is_exact_match = filename_lower in active_exact_targets
         is_base_match = nome_base in file_su_supabase
         is_just_uploaded = nome_base in just_uploaded
         
-        if existing_saved_ok and (is_exact_match or is_base_match) and not is_force_reimport:
+        # Regola hard: blocca come duplicato SOLO se il file esiste nel DB ATTIVO
+        # (upload_events è solo informativo e non deve bloccare da solo).
+        if is_exact_match and not is_force_reimport:
             file_gia_processati.append(filename)
-            imported_at_label = _format_saved_ok_date(existing_saved_ok.get('created_at'))
-            reason = [
-                f"File già importato il {imported_at_label}",
-                "usare 'Reimporta' per forzare l'aggiornamento",
-            ]
+            if existing_saved_ok:
+                imported_at_label = _format_saved_ok_date(existing_saved_ok.get('created_at'))
+                reason = [
+                    f"File già importato il {imported_at_label} (match attivo DB)",
+                    "usare 'Reimporta' per forzare l'aggiornamento",
+                ]
+                logger.info(f"📋 SKIP '{filename}' → presente in DB attivo, upload_events SAVED_OK del {imported_at_label}")
+            else:
+                reason = []
+                if is_exact_match:
+                    reason.append('nome esatto in DB')
+                logger.info(f"📋 SKIP '{filename}' → {', '.join(reason)}")
             file_gia_processati_reason[filename] = reason.copy()
-            logger.info(f"📋 SKIP '{filename}' → upload_events SAVED_OK del {imported_at_label}")
-        elif is_exact_match or is_base_match or is_just_uploaded:
+        elif is_just_uploaded and not is_force_reimport:
             file_gia_processati.append(filename)
-            # Log dettagliato per diagnosi
-            reason = []
-            if is_exact_match:
-                reason.append('nome esatto in DB')
-            if is_base_match and not is_exact_match:
-                reason.append(f'nome base "{nome_base}" in DB')
-            if is_just_uploaded:
-                reason.append('appena caricato')
+            reason = ['appena caricato']
             file_gia_processati_reason[filename] = reason.copy()
-            logger.info(f"📋 SKIP '{filename}' → {', '.join(reason)}")
+            logger.info(f"📋 SKIP '{filename}' → appena caricato")
         # Protezione: Salta file che hanno già dato errore in questa sessione
         elif filename in st.session_state.get('files_con_errori', set()):
             continue
@@ -1373,8 +1480,13 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         st.session_state.files_errori_report = {}
         st.session_state.files_con_errori = set()
         
-        if file_processati > 0 or tutti_problematici:
-            invalida_cache_memoria()
+        has_policy_blocks = bool(file_blocchi_policy) or bool(file_blocchi_formato_trial)
+        should_refresh_ui = file_processati > 0 or bool(tutti_problematici) or has_policy_blocks
+
+        if should_refresh_ui:
+            # Invalida cache solo quando c'e un impatto su dati attivi/diagnostica storica.
+            if file_processati > 0 or tutti_problematici:
+                invalida_cache_memoria()
             # [DEBUG]
             try:
                 verify = supabase.table("fatture") \

@@ -99,8 +99,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                 st.rerun()
     # ===== FINE DEBUG =====
     
-    # ===== FILTRA DICITURE E RIGHE IN REVIEW DA DASHBOARD =====
-    # Le righe needs_review=True vanno SOLO in Admin Panel
+    # ===== FILTRA DICITURE DA DASHBOARD =====
     righe_prima = len(df_completo)
     
     # Costruisci maschera esclusione
@@ -111,9 +110,9 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     mask_note = (_cat_col == '📝 NOTE E DICITURE') | (_cat_col == 'NOTE E DICITURE')
     mask_escludi = mask_escludi | mask_note
     
-    # 2. Escludi righe in review (qualsiasi categoria)
+    # 2. Escludi righe in attesa di revisione manuale (non ancora validate)
     if 'needs_review' in df_completo.columns:
-        mask_review = df_completo['needs_review'].fillna(False) == True
+        mask_review = df_completo['needs_review'].fillna(False).astype(bool)
         mask_escludi = mask_escludi | mask_review
     
     # Applica filtro (MANTIENI righe NON escluse)
@@ -121,12 +120,12 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     
     righe_dopo = len(df_completo)
     if righe_prima > righe_dopo:
-        logger.info(f"Escluse da dashboard: {righe_prima - righe_dopo} righe (NOTE + review)")
+        logger.info(f"Escluse da dashboard: {righe_prima - righe_dopo} righe (NOTE E DICITURE + needs_review)")
     
     if df_completo.empty:
         st.info("📭 Nessun dato disponibile dopo i filtri.")
         return
-    # ===== FINE FILTRO DICITURE E REVIEW =====
+    # ===== FINE FILTRO DICITURE =====
     
     # Recupera user_id da session_state (necessario per get_fatture_stats)
     try:
@@ -162,7 +161,10 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     
     # Conta dal DataFrame locale (istantaneo, nessuna query HTTP)
     righe_da_classificare = maschera_ai.sum()
-    descrizioni_da_classificare = set(df_completo[maschera_ai]['Descrizione'].dropna().unique())
+    if 'Descrizione' in df_completo.columns:
+        descrizioni_da_classificare = set(df_completo[maschera_ai]['Descrizione'].dropna().unique())
+    else:
+        descrizioni_da_classificare = set()
     
     # ============================================================
     # CATEGORIZZAZIONE AI (triggerata dal bottone nella sezione upload)

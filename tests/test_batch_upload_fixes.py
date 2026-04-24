@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from services.ai_service import applica_regole_categoria_forti
 from services.upload_handler import (
     _build_policy_block_messages,
+    _find_active_existing_files,
     _find_existing_saved_ok_events,
     _should_skip_post_upload_ai_for_row,
 )
@@ -97,6 +98,27 @@ def test_saved_ok_event_lookup_respects_ristorante_id():
 
     assert "dup.xml" in matches
     assert matches["dup.xml"]["details"]["ristorante_id"] == "rist-1"
+
+
+def test_active_existing_files_excludes_soft_deleted_rows():
+    query = MagicMock()
+    query.select.return_value = query
+    query.eq.return_value = query
+    query.is_.return_value = query
+    query.range.return_value = query
+    query.execute.return_value = MagicMock(data=[
+        {"file_origine": "dup.xml"},
+        {"file_origine": "dup.xml.p7m"},
+    ])
+
+    supabase = MagicMock()
+    supabase.table.return_value = query
+
+    exact_names, base_names = _find_active_existing_files(supabase, "user-1", "rist-1")
+
+    assert exact_names == {"dup.xml", "dup.xml.p7m"}
+    assert "dup" in base_names
+    query.is_.assert_called_once_with("deleted_at", "null")
 
 
 def test_salvataggio_fattura_e_idempotente_delete_before_insert():
@@ -236,6 +258,8 @@ def test_td24_upload_event_persists_alert_data_consegna():
 
     assert result["success"] is True
     payload = upload_events_table.insert.call_args[0][0]
+    fatture_payload = fatture_table.insert.call_args[0][0]
     assert payload["status"] == "SAVED_OK"
-    assert payload["alert_data_consegna"] == "missing"
-    assert payload["details"]["alert_data_consegna"] == "missing"
+    assert payload["alert_data_consegna"] == "ok"
+    assert payload["details"]["alert_data_consegna"] == "ok"
+    assert fatture_payload[0]["data_consegna"] == "2026-01-31"

@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import services.ai_service as ai_mod
-from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti, invalida_cache_memoria
+from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti, invalida_cache_memoria, _applica_guardrail_iva_bassa_spese_generali
 import json
 
 
@@ -70,6 +70,10 @@ class TestRegoleFortiCategorizzazione:
             ("CASTAGNE D' ACQUA CINESI AT *", "SCATOLAME E CONSERVE"),
             ("COPPA CIP CIOK X", "GELATI"),
             ("LMA VASC LIMONE", "GELATI"),
+            ("VASCHETTA GRAN GALA CREMA 2800 ML", "GELATI"),
+            ("VASCHETTA GRAN GALA PISTACCHIO 2800 ML", "GELATI"),
+            ("COCCO RIPIENO 1X15", "GELATI"),
+            ("LIMONE RIPIENO 1X12", "GELATI"),
             ("MARTINI BIANCO L1", "AMARI/LIQUORI"),
             ("FEVER TREE PINK GRAPEFRUIT CL20 VP", "BEVANDE"),
             ("SANTHE' PESCA 33CL-CL 33", "BEVANDE"),
@@ -79,6 +83,7 @@ class TestRegoleFortiCategorizzazione:
             ("PRODUCTS (::P887101::2026-01-16:2026-01-31)", "SERVIZI E CONSULENZE"),
             ("LAMPONI GR125 IL MERCATO", "FRUTTA"),
             ("SHOCK SENSOR", "MATERIALE DI CONSUMO"),
+            ("SAN BENEDETTO CHIANTI TRAD. DOCG ML 750", "VINI"),
             ("VAL D'OCA NERO DOCG ML 750 (5X6)", "VINI"),
             ("PANETTONE KG 1", "PASTICCERIA"),
             ("PANDORO 1 KG", "PASTICCERIA"),
@@ -199,6 +204,34 @@ class TestClassificaConAiFallback:
             ], openai_client=fake_client)
         assert result == ['Da Classificare', 'Da Classificare']
 
+    def test_guardrail_iva_bassa_blocca_spese_generali_ai(self):
+        fake_client = MagicMock()
+        with patch('services.ai_service._chiama_gpt_classificazione', return_value=['MATERIALE DI CONSUMO']):
+            result = ai_mod.classifica_con_ai(
+                ['HEINZ BUST. KETCHUP 10MLX200PZ 76023044'],
+                lista_iva=[10],
+                openai_client=fake_client,
+            )
+        assert result == ['SALSE E CREME']
+
+
+class TestGuardrailIvaBassaSoft:
+    def test_guardrail_recupera_food_da_spese_generali(self):
+        result = _applica_guardrail_iva_bassa_spese_generali(
+            'HEINZ BUST. KETCHUP 10MLX200PZ 76023044',
+            'MATERIALE DI CONSUMO',
+            10,
+        )
+        assert result == 'SALSE E CREME'
+
+    def test_guardrail_soft_mantiene_categoria_se_non_recupera(self):
+        result = _applica_guardrail_iva_bassa_spese_generali(
+            'ZHUYE',
+            'MATERIALE DI CONSUMO',
+            4,
+        )
+        assert result == 'MATERIALE DI CONSUMO'
+
 
 # ============================================================
 # GROUP B: priorità cache in-memory (ottieni_categoria_prodotto)
@@ -291,6 +324,7 @@ class TestPrioritaMemoria:
             unita_misura='PZ',
         )
         assert result == 'SCATOLAME E CONSERVE'
+
 
     def test_prodotti_master_fallback(self):
         """prodotti_master usato quando né classificazioni_manuali né prodotti_utente matchano."""

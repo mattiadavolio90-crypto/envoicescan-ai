@@ -70,7 +70,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError, APIError
 
 # Import da moduli interni
-from config.constants import DIZIONARIO_CORREZIONI, BRAND_AMBIGUI_NO_DICT, TUTTE_LE_CATEGORIE, MEMORIA_SESSION_CAP, MAX_DESC_LENGTH_DB, MAX_AI_CALLS_PER_DAY, LEGACY_CATEGORY_ALIASES
+from config.constants import DIZIONARIO_CORREZIONI, BRAND_AMBIGUI_NO_DICT, TUTTE_LE_CATEGORIE, MEMORIA_SESSION_CAP, MAX_DESC_LENGTH_DB, MAX_AI_CALLS_PER_DAY, LEGACY_CATEGORY_ALIASES, CATEGORIE_SPESE_GENERALI
 from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizza_stringa
 from utils.validation import is_dicitura_sicura
 
@@ -368,6 +368,18 @@ _CREMA_CATALANA_RE = re.compile(r"\bCREMA\s+CATALANA\b")
 _CASTAGNE_D_ACQUA_RE = re.compile(r"\bCASTAGN\w*\b.*\bD[' ]\s*ACQUA\b|\bD[' ]\s*ACQUA\b.*\bCASTAGN\w*\b")
 _LMA_VASC_RE = re.compile(r"\bLMA\b.*\bVASC\b|\bVASC\b.*\bLMA\b")
 _COPPA_GELATO_GUSTO_RE = re.compile(r"\bCOPPA\b.*\b(RABBIT|PAN\s*DAN|CIP\s*CIOK)\b|\b(RABBIT|PAN\s*DAN|CIP\s*CIOK)\b.*\bCOPPA\b")
+_VINO_BRAND_ACQUA_RE = re.compile(
+    r"\b(CHIANTI|MONTEPULCIANO|FRANCIACORTA|PROSECCO|MOSCATO|FALANGH\w*|GEWURZTRAMINER|PINOT|RIESLING|MERLOT|SYRAH|CABERNET|"
+    r"BRUT|CUVEE|LANGHE|BAROLO|BARBARESCO|AMARONE|PRIMITIVO|NEBBIOLO|SANGIOVESE|LAMBRUSCO|DOCG|DOC|IGT)\b"
+)
+_GELATI_LINEA_VASCHETTA_RE = re.compile(
+    r"\b(VASCHETT\w*|VASC)\b.*\b(GRAN\s*GALA|GELAT\w*|SORBET\w*|SEMIFREDD\w*|RIPIEN\w*)\b|"
+    r"\b(GRAN\s*GALA|GELAT\w*|SORBET\w*|SEMIFREDD\w*)\b.*\b(VASCHETT\w*|VASC)\b"
+)
+_GELATI_RIPIENO_DESSERT_RE = re.compile(
+    r"\b(COCCO|LIMONE|ARANCIA|MANDARINO|ANANAS)\b.*\bRIPIEN\w*\b|"
+    r"\bRIPIEN\w*\b.*\b(COCCO|LIMONE|ARANCIA|MANDARINO|ANANAS)\b"
+)
 _PRODUCTS_REPORT_RE = re.compile(r"\bPRODUCTS\b\s*\(::")
 _PEPE_MACINATO_RE = re.compile(r"PEPE\s+BIANCO\s+MACIN")
 _LAMPONI_FORMATO_RE = re.compile(r"\bLAMPONI\b\s*GR\d+")
@@ -472,6 +484,8 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "pasta_ripiena_secco",
     "surgital_secco",
     "piselli_verdura",
+    "gelato_analogo_vaschetta",
+    "gelato_ripieno_dessert",
 }
 
 
@@ -500,6 +514,12 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "SCATOLAME E CONSERVE"
         if cat != mapped:
             return mapped, "castagne_d_acqua_conserva"
+        return cat, None
+
+    if _ACQUA_CONFEZIONATA_RE.search(desc_u) and _VINO_BRAND_ACQUA_RE.search(desc_u):
+        mapped = "VINI"
+        if cat != mapped:
+            return mapped, "vino_brand_acqua"
         return cat, None
 
     if _ACQUA_CONFEZIONATA_RE.search(desc_u) and not _UTENZE_IDRICHE_RE.search(desc_u) and not _BEVANDE_ANALCOLICHE_RE.search(desc_u):
@@ -1065,6 +1085,20 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "GELATI"
         if cat != mapped:
             return mapped, "coppa_gelato_gusto"
+        return cat, None
+
+    # Linee gelato in vaschetta con gusti variabili (non solo keyword identiche)
+    if _GELATI_LINEA_VASCHETTA_RE.search(desc_u):
+        mapped = "GELATI"
+        if cat != mapped:
+            return mapped, "gelato_analogo_vaschetta"
+        return cat, None
+
+    # Dessert tipici "ripieni" (es. cocco/limone ripieno) -> GELATI
+    if _GELATI_RIPIENO_DESSERT_RE.search(desc_u):
+        mapped = "GELATI"
+        if cat != mapped:
+            return mapped, "gelato_ripieno_dessert"
         return cat, None
 
     if _CINGHIALE_RE.search(desc_u):
@@ -2020,6 +2054,91 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     return categoria_ai
 
 
+_LOW_FOOD_IVA_VALUES = {4, 5, 10}
+_LOW_IVA_NOTE_HINTS = (
+    'ARROTONDAMENTO IVA',
+    'SPESE VARIE',
+    'TOTALE IMPOSTE',
+    'SPESA PER ',
+    'N.C. A STORNO',
+)
+
+
+def _applica_guardrail_iva_bassa_spese_generali(
+    descrizione: str,
+    categoria: str,
+    iva_percentuale: Optional[float] = None,
+) -> str:
+    """Ultimo recupero soft: prova a correggere le spese generali sospette con IVA 4/5/10."""
+    categoria_norm = _normalize_category_name(categoria) or categoria
+    if categoria_norm not in CATEGORIE_SPESE_GENERALI:
+        return categoria_norm
+
+    try:
+        iva_norm = int(round(float(iva_percentuale)))
+    except (TypeError, ValueError):
+        return categoria_norm
+
+    if iva_norm not in _LOW_FOOD_IVA_VALUES:
+        return categoria_norm
+
+    desc = str(descrizione or '').strip()
+    desc_upper = desc.upper()
+
+    if is_dicitura_sicura(desc, 0, 1) or any(hint in desc_upper for hint in _LOW_IVA_NOTE_HINTS):
+        return '📝 NOTE E DICITURE'
+
+    categoria_forzata, _ = applica_regole_categoria_forti(desc, 'Da Classificare')
+    if categoria_forzata not in ('Da Classificare', *CATEGORIE_SPESE_GENERALI):
+        logger.info(
+            "🛡️ GUARDRAIL IVA: '%s' %s%% non puo' restare in %s -> %s (regola forte)",
+            desc[:60],
+            iva_norm,
+            categoria_norm,
+            categoria_forzata,
+        )
+        return categoria_forzata
+
+    categoria_dict = applica_correzioni_dizionario(desc, 'Da Classificare')
+    categoria_dict, motivo_override = applica_regole_categoria_forti(desc, categoria_dict)
+    if categoria_dict not in ('Da Classificare', *CATEGORIE_SPESE_GENERALI):
+        logger.info(
+            "🛡️ GUARDRAIL IVA: '%s' %s%% non puo' restare in %s -> %s%s",
+            desc[:60],
+            iva_norm,
+            categoria_norm,
+            categoria_dict,
+            f' [{motivo_override}]' if motivo_override else '',
+        )
+        return categoria_dict
+
+    for keyword, categoria_mappata in sorted(DIZIONARIO_CORREZIONI.items(), key=lambda item: len(item[0]), reverse=True):
+        if not keyword or len(keyword) < 4:
+            continue
+        if keyword.upper() not in desc_upper:
+            continue
+        categoria_kw = _normalize_category_name(categoria_mappata) or categoria_mappata
+        if categoria_kw in CATEGORIE_SPESE_GENERALI or categoria_kw == 'Da Classificare':
+            continue
+        logger.info(
+            "🛡️ GUARDRAIL IVA: '%s' %s%% non puo' restare in %s -> %s [keyword:%s]",
+            desc[:60],
+            iva_norm,
+            categoria_norm,
+            categoria_kw,
+            keyword,
+        )
+        return categoria_kw
+
+    logger.info(
+        "🛡️ GUARDRAIL IVA: '%s' %s%% sospetto in %s ma nessun recupero affidabile trovato -> mantengo categoria",
+        desc[:60],
+        iva_norm,
+        categoria_norm,
+    )
+    return categoria_norm
+
+
 def salva_correzione_in_memoria_locale(
     descrizione: str,
     nuova_categoria: str,
@@ -2253,7 +2372,8 @@ def categorizza_con_memoria(
     user_id: Optional[str] = None,
     supabase_client=None,
     fornitore: Optional[str] = None,
-    unita_misura: Optional[str] = None
+    unita_misura: Optional[str] = None,
+    iva_percentuale: Optional[float] = None
 ) -> str:
     """
     Categorizza usando memoria GLOBALE multi-livello con CACHE IN-MEMORY.
@@ -2370,6 +2490,7 @@ def categorizza_con_memoria(
     # LIVELLO 7: Dizionario keyword (fallback)
     categoria_keyword = applica_correzioni_dizionario(descrizione, "Da Classificare")
     categoria_keyword, motivo_override = applica_regole_categoria_forti(descrizione, categoria_keyword)
+    categoria_keyword = _applica_guardrail_iva_bassa_spese_generali(descrizione, categoria_keyword, iva_percentuale)
     if motivo_override:
         logger.info(
             f"🧭 OVERRIDE SICUREZZA (keyword): '{descrizione[:60]}' -> {categoria_keyword} [{motivo_override}]"
@@ -2752,14 +2873,28 @@ def classifica_con_ai(
             logger.info(f"✅ Tutte le {len(da_chiedere_gpt)} descrizioni classificate con successo")
         
         # Ritorna nell'ordine originale
-        return [risultati.get(d, "Da Classificare") for d in lista_descrizioni]
+        output = []
+        for idx, desc in enumerate(lista_descrizioni):
+            iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
+            output.append(_applica_guardrail_iva_bassa_spese_generali(desc, risultati.get(desc, "Da Classificare"), iva_value))
+        return output
         
     except json.JSONDecodeError as e:
         logger.error(f"Errore parsing JSON da OpenAI: {e}")
-        return [applica_correzioni_dizionario(d, "Da Classificare") for d in lista_descrizioni]
+        output = []
+        for idx, desc in enumerate(lista_descrizioni):
+            iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
+            categoria = applica_correzioni_dizionario(desc, "Da Classificare")
+            output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
+        return output
     except Exception as e:
         logger.error(f"Errore classificazione AI: {e}")
-        return [applica_correzioni_dizionario(d, "Da Classificare") for d in lista_descrizioni]
+        output = []
+        for idx, desc in enumerate(lista_descrizioni):
+            iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
+            categoria = applica_correzioni_dizionario(desc, "Da Classificare")
+            output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
+        return output
 
 
 # ============================================================

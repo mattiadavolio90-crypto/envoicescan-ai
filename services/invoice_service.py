@@ -46,7 +46,8 @@ from utils.formatters import (
     converti_in_base64,
     calcola_prezzo_standard_intelligente,
     calcola_alert_data_consegna_td24,
-    log_upload_event
+    log_upload_event,
+    normalizza_data_consegna_td24,
 )
 from utils.text_utils import (
     normalizza_stringa,
@@ -54,7 +55,8 @@ from utils.text_utils import (
     pulisci_caratteri_corrotti
 )
 from utils.validation import (
-    verifica_integrita_fattura
+    verifica_integrita_fattura,
+    is_sconto_omaggio_sicuro,
 )
 
 # Logger centralizzato
@@ -906,17 +908,30 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     quantita=quantita,
                     user_id=current_user_id,
                     fornitore=fornitore,
-                    unita_misura=unita_misura
+                    unita_misura=unita_misura,
+                    iva_percentuale=aliquota_iva
                 )
+
+                # Regole business specifiche: lavorazioni/omaggi non devono restare bloccate in review.
+                _desc_upper = (descrizione or '').upper().strip()
+                _is_zero_amount = abs(float(prezzo_unitario or 0)) < 1e-9 or abs(float(totale_riga or 0)) < 1e-9
+                if _is_zero_amount:
+                    if float(sconto_percentuale or 0) >= 99.0 and is_sconto_omaggio_sicuro(descrizione):
+                        categoria_finale = "OMAGGI"
+                    elif "SERVIZIO DI DISOSSO E LAVORAZIONE" in _desc_upper:
+                        categoria_finale = "📝 NOTE E DICITURE"
+                    elif ("ROAST BEEF BOVINO LAVORATO" in _desc_upper) or ("VITELLO LAVORATO" in _desc_upper):
+                        if float(sconto_percentuale or 0) >= 99.0:
+                            categoria_finale = "OMAGGI"
+                        else:
+                            categoria_finale = "📝 NOTE E DICITURE"
                 
-                # Strategia ibrida: salva tutto, marca per review se necessario
-                needs_review = needs_review_flag  # Inherit from prezzo==0 check above
-                
-                if prezzo_unitario == 0 or totale_riga == 0:
-                    if categoria_finale == "📝 NOTE E DICITURE":
-                        needs_review = True
-                    elif categoria_finale == "Da Classificare":
-                        needs_review = True
+                # Strategia scalabile: le righe entrano subito nel flusso normale.
+                # Manteniamo in review solo i casi realmente non classificati.
+                # needs_review_flag può essere True per righe a prezzo zero con descrizione valida.
+                needs_review = needs_review_flag
+                if categoria_finale == "Da Classificare":
+                    needs_review = True
                 elif categoria_finale == "📝 NOTE E DICITURE" and prezzo_unitario > 0:
                     needs_review = True
                     logger.warning(f"⚠️ NOTE con €{prezzo_unitario:.2f} → review: {descrizione[:50]}")
@@ -1393,6 +1408,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
             if not dati_prodotti:
                 return {"success": False, "error": "no_data", "righe": 0, "location": None}
             
+            normalizza_data_consegna_td24(dati_prodotti)
 
             # Prepara records
             records = []

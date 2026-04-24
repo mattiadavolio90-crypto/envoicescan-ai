@@ -122,13 +122,28 @@ def render_pivot_mensile(
         st.error(f"❌ Errore: colonne mancanti nel dataframe: {missing_cols}")
         return
     
-    # Filtra righe con Data_DT o TotaleRiga nulli, e con index_col nullo
-    df_prep = df_source[
-        df_source['Data_DT'].notna()
-        & df_source['TotaleRiga'].notna()
-        & df_source[index_col].notna()
-        & (df_source[index_col].astype(str).str.strip() != '')
+    # Normalizza i tipi per evitare payload non serializzabili lato frontend.
+    df_prep = df_source.copy()
+    df_prep['Data_DT'] = pd.to_datetime(df_prep['Data_DT'], errors='coerce')
+    df_prep['TotaleRiga'] = pd.to_numeric(df_prep['TotaleRiga'], errors='coerce')
+    df_prep[index_col] = df_prep[index_col].astype(str).str.strip()
+    df_prep.loc[df_prep[index_col].str.lower().isin({'', 'nan', 'none'}), index_col] = ''
+
+    # Filtra righe con Data_DT o TotaleRiga nulli, e con index_col nullo/vuoto.
+    righe_input = len(df_prep)
+    df_prep = df_prep[
+        df_prep['Data_DT'].notna()
+        & df_prep['TotaleRiga'].notna()
+        & (df_prep[index_col] != '')
     ].copy()
+    righe_scartate = righe_input - len(df_prep)
+    if righe_scartate > 0:
+        logger.info(
+            "[pivot:%s] Scartate %s righe non valide su %s",
+            sezione_key,
+            righe_scartate,
+            righe_input,
+        )
     if df_prep.empty:
         st.info("📭 Nessun dato valido dopo validazione delle colonne.")
         return
@@ -222,6 +237,18 @@ def render_pivot_mensile(
 
         pivot_display = pivot_display.reset_index(drop=True)
 
+        # Sanitizzazione finale anti-React/Arrow: solo numerici finiti nelle colonne valore.
+        for col in pivot_display.columns:
+            if col == index_col:
+                pivot_display[col] = pivot_display[col].astype(str).fillna('')
+                continue
+            col_numeric = pd.to_numeric(pivot_display[col], errors='coerce')
+            col_numeric = col_numeric.replace([float('inf'), float('-inf')], 0).fillna(0.0)
+            if col.endswith(' %'):
+                pivot_display[col] = col_numeric.clip(lower=0, upper=100).round(1).astype(float)
+            else:
+                pivot_display[col] = col_numeric.round(2).astype(float)
+
         num_righe = len(pivot_display)
         altezza_dinamica = min(max(num_righe * 35 + 50, 320), 760)
 
@@ -232,29 +259,25 @@ def render_pivot_mensile(
             if col == index_col:
                 continue
             if col.endswith(' %'):
-                pivot_column_config[col] = st.column_config.ProgressColumn(
-                    col, format='%.1f%%', min_value=0, max_value=100, width='small'
-                )
+                pivot_column_config[col] = st.column_config.NumberColumn(col, format='%.1f%%', width='small')
             else:
                 pivot_column_config[col] = st.column_config.NumberColumn(col, format='€ %.2f', width='small')
 
-        def _highlight_totale_media(df):
-            styles = pd.DataFrame('', index=df.index, columns=df.columns)
-            if 'TOTALE' in df.columns:
-                styles['TOTALE'] = 'background-color: #e0f2fe'
-            if 'MEDIA' in df.columns:
-                styles['MEDIA'] = 'background-color: #fef9c3'
-            return styles
-
-        styled_pivot = pivot_display.style.apply(_highlight_totale_media, axis=None)
-
-        st.dataframe(
-            styled_pivot,
-            column_config=pivot_column_config,
-            hide_index=True,
-            use_container_width=True,
-            height=altezza_dinamica,
-        )
+        try:
+            st.dataframe(
+                pivot_display,
+                column_config=pivot_column_config,
+                hide_index=True,
+                use_container_width=True,
+                height=altezza_dinamica,
+            )
+        except Exception as grid_error:
+            logger.exception("[pivot:%s] Fallback tabella statica per errore grid: %s", sezione_key, grid_error)
+            st.warning("⚠️ Visualizzazione semplificata attivata per questa tabella.")
+            fallback_df = pivot_display.copy()
+            for col in fallback_df.columns:
+                fallback_df[col] = fallback_df[col].apply(lambda value: _format_pivot_value(col, value))
+            _render_static_table(fallback_df, key=f"{sezione_key}_fallback")
 
         totale = pivot['TOTALE'].sum()
         media = totale / num_mesi if num_mesi > 0 else 0

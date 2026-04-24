@@ -2328,23 +2328,6 @@ else:
                     label_visibility="collapsed",
                     key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"
                 )
-                if uploaded_files and len(uploaded_files) > 0:
-                    st.markdown(
-                        """
-                        <style>
-                        div.st-key-main_documents_upload_section [data-testid="stFileUploader"] {
-                            visibility: hidden !important;
-                            height: 0 !important;
-                            min-height: 0 !important;
-                            margin: 0 !important;
-                            padding: 0 !important;
-                            overflow: hidden !important;
-                            pointer-events: none !important;
-                        }
-                        </style>
-                        """,
-                        unsafe_allow_html=True,
-                    )
                 st.markdown(
                     "<div class='upload-format-hint'>Formati accettati: XML, P7M, PDF, PNG, JPG, JPEG · Max 200MB</div>",
                     unsafe_allow_html=True,
@@ -2682,6 +2665,10 @@ if 'files_con_errori' not in st.session_state:
 
 if 'files_errori_report' not in st.session_state:
     st.session_state.files_errori_report = {}  # Dizionario persistente per mostrare report anche dopo rerun
+
+# Se l'uploader e vuoto, permetti nuovamente l'elaborazione dello stesso batch in futuro.
+if not uploaded_files:
+    st.session_state.pop('_last_processed_upload_token', None)
 
 
 # ============================================================

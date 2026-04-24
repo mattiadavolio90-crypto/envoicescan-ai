@@ -383,8 +383,8 @@ class TestNormalizzazioneCategorie:
         assert (result['Categoria'] == 'SALSE E CREME').all(), \
             f"Atteso 'SALSE E CREME', trovato: {result['Categoria'].unique()}"
 
-    def test_righe_needs_review_escluse_dal_dataframe_cliente(self):
-        """Le righe needs_review non devono comparire nelle viste standard cliente."""
+    def test_righe_needs_review_incluse_di_default(self):
+        """Le righe needs_review devono comparire nel flusso standard cliente (default)."""
         from services.db_service import carica_e_prepara_dataframe
 
         df_mock = _supabase_df_fixture('Da Classificare')
@@ -398,6 +398,26 @@ class TestNormalizzazioneCategorie:
             result = carica_e_prepara_dataframe(
                 user_id='user_test',
                 ristorante_id=None,
+            )
+
+        assert not result.empty
+
+    def test_righe_needs_review_escluse_con_filtro_esplicito(self):
+        """Con include_review_rows=False le righe needs_review restano nascoste."""
+        from services.db_service import carica_e_prepara_dataframe
+
+        df_mock = _supabase_df_fixture('Da Classificare')
+        df_mock.loc[0, 'NeedsReview'] = True
+        df_mock.loc[0, 'PrezzoUnitario'] = 0.0
+        df_mock.loc[0, 'TotaleRiga'] = 0.0
+
+        with patch('services.db_service._carica_fatture_da_supabase', return_value=df_mock), \
+             patch('services.db_service.st') as mock_st:
+            mock_st.session_state.get = MagicMock(return_value=False)
+            result = carica_e_prepara_dataframe(
+                user_id='user_test',
+                ristorante_id=None,
+                include_review_rows=False,
             )
 
         assert result.empty
