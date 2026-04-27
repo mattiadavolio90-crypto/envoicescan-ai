@@ -782,8 +782,10 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     descrizione_raw = pulisci_caratteri_corrotti(descrizione_raw)
                 
                 quantita_raw = riga.get('Quantita')
+                prezzo_totale_raw = riga.get('PrezzoTotale')
                 prezzo_base = float(riga.get('PrezzoUnitario', 0) or 0)
-                totale_riga = float(riga.get('PrezzoTotale', 0) or 0)
+                totale_riga = float(prezzo_totale_raw or 0)
+                xml_has_explicit_zero_total = prezzo_totale_raw not in (None, '') and abs(totale_riga) < 1e-9
                 
                 # ============================================================
                 # NOTA DI CREDITO: Inverti segno importi se positivi
@@ -890,7 +892,7 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     prezzo_unitario = totale_riga / quantita
                 else:
                     prezzo_unitario = prezzo_base
-                    if totale_riga == 0:
+                    if totale_riga == 0 and not xml_has_explicit_zero_total:
                         totale_riga = quantita * prezzo_unitario
                 
                 prezzo_unitario = round(prezzo_unitario, 4)
@@ -917,12 +919,13 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                 _is_zero_amount = abs(float(prezzo_unitario or 0)) < 1e-9 or abs(float(totale_riga or 0)) < 1e-9
                 if _is_zero_amount:
                     if float(sconto_percentuale or 0) >= 99.0 and is_sconto_omaggio_sicuro(descrizione):
-                        categoria_finale = "OMAGGI"
+                        # Non usiamo una categoria dedicata "OMAGGI": resta la categoria merceologica del prodotto.
+                        needs_review_flag = False
                     elif "SERVIZIO DI DISOSSO E LAVORAZIONE" in _desc_upper:
                         categoria_finale = "📝 NOTE E DICITURE"
                     elif ("ROAST BEEF BOVINO LAVORATO" in _desc_upper) or ("VITELLO LAVORATO" in _desc_upper):
                         if float(sconto_percentuale or 0) >= 99.0:
-                            categoria_finale = "OMAGGI"
+                            needs_review_flag = False
                         else:
                             categoria_finale = "📝 NOTE E DICITURE"
                 

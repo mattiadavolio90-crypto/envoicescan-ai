@@ -11,6 +11,13 @@ from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 
+# Evita crash su console Windows cp1252 (emoji/categorie con simboli Unicode).
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except Exception:
+        pass
+
 # Carica credenziali da .streamlit/secrets.toml verso env vars
 try:
     import tomllib  # Python 3.11+
@@ -35,12 +42,14 @@ from services import get_supabase_client  # noqa: E402
 
 CATEGORIE_UFFICIALI = {
     "ACQUA", "AMARI/LIQUORI", "BEVANDE", "BIRRE", "CAFFÈ E THE",
-    "CARNE", "DISTILLATI", "FRUTTA", "GELATI", "LATTICINI",
+    "CARNE", "DISTILLATI", "FRUTTA", "GELATI E DESSERT", "LATTICINI",
     "OLIO E CONDIMENTI", "PASTICCERIA", "PESCE", "PRODOTTI DA FORNO",
-    "SALSE E CREME", "SALUMI", "SCATOLAME E CONSERVE", "SECCO", "SHOP",
+    "SALSE E CREME", "SALUMI", "SCATOLAME E CONSERVE", "PASTA E CEREALI", "SHOP",
     "SPEZIE E AROMI", "SUSHI VARIE", "UOVA", "VARIE BAR", "VERDURE",
     "VINI", "MATERIALE DI CONSUMO", "SERVIZI E CONSULENZE",
     "UTENZE E LOCALI", "MANUTENZIONE E ATTREZZATURE", "Da Classificare",
+    # Alias legacy tollerati in audit (non devono risultare come anomalia).
+    "CAFFE E THE", "NOTE E DICITURE", "📝 NOTE E DICITURE",
 }
 
 

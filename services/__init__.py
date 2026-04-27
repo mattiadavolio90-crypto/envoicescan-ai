@@ -72,8 +72,73 @@ __all__ = [
 # SUPABASE SINGLETON (Cached Resource)
 # ============================================
 import os
+import re
+from pathlib import Path
 from supabase import create_client
 from supabase.lib.client_options import SyncClientOptions
+
+
+def _load_local_service_role_key_from_toml() -> str:
+    """Legge service_role_key da .streamlit/secrets.toml come fallback locale."""
+    def _extract_key_from_text(raw_text: str) -> str:
+        if not raw_text:
+            return ""
+
+        # 1) Formato [supabase] ... service_role_key = "..."
+        block_match = re.search(
+            r"\[\s*supabase\s*\](.*?)(?:\n\s*\[|\Z)",
+            raw_text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        if block_match:
+            block = block_match.group(1)
+            key_match = re.search(
+                r"^\s*service_role_key\s*=\s*([\"']?)([^\n\"'#]+)\1\s*$",
+                block,
+                flags=re.IGNORECASE | re.MULTILINE,
+            )
+            if key_match:
+                return key_match.group(2).strip()
+
+        # 2) Formato env-style SUPABASE_SERVICE_ROLE_KEY = "..."
+        env_match = re.search(
+            r"^\s*SUPABASE_SERVICE_ROLE_KEY\s*=\s*([\"']?)([^\n\"'#]+)\1\s*$",
+            raw_text,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        if env_match:
+            return env_match.group(2).strip()
+
+        return ""
+
+    try:
+        # Python 3.11+
+        import tomllib  # type: ignore
+    except Exception:
+        tomllib = None  # type: ignore
+
+    try:
+        project_root = Path(__file__).resolve().parent.parent
+        secrets_path = project_root / ".streamlit" / "secrets.toml"
+        if not secrets_path.exists():
+            return ""
+        raw_text = secrets_path.read_text(encoding="utf-8", errors="ignore")
+
+        if tomllib is not None:
+            try:
+                data = tomllib.loads(raw_text)
+                supabase_cfg = data.get("supabase", {}) if isinstance(data, dict) else {}
+                key = supabase_cfg.get("service_role_key", "") if isinstance(supabase_cfg, dict) else ""
+                key = str(key).strip()
+                if key:
+                    return key
+            except Exception:
+                # Fallback parser testuale sotto
+                pass
+
+        return _extract_key_from_text(raw_text)
+    except Exception:
+        return ""
 
 def _get_supabase_credentials() -> tuple[str, str]:
     """
@@ -94,6 +159,10 @@ def _get_supabase_credentials() -> tuple[str, str]:
             env_service_role = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
             if env_service_role:
                 return url, env_service_role
+            # Fallback robusto locale: leggi direttamente .streamlit/secrets.toml.
+            local_service_role = _load_local_service_role_key_from_toml()
+            if local_service_role:
+                return url, local_service_role
             import logging as _logging
             _logging.getLogger(__name__).warning(
                 "⚠️ SUPABASE service_role_key NON trovata in st.secrets! "

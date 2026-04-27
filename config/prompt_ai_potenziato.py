@@ -41,7 +41,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 9. **FRUTTA** - Frutta fresca, secca (non dolcificata in bar)
    Esempi: "MELE FUJI", "ARANCE", "BANANE", "FRAGOLE", "PESCHE N&C", "FRUTTA SECCA"
 
-10. **GELATI** - Gelati, sorbetti, semifreddi, coppa gelato
+10. **GELATI E DESSERT** - Gelati, sorbetti, semifreddi, monoporzioni e dessert pronti
     Esempi: "GELATO VANIGLIA KG2", "SORBETTO LIMONE", "SEMIFREDDO", "COPPA GELATO"
 
 11. **LATTICINI** - Formaggi, burro, panna, yogurt, latte
@@ -59,7 +59,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 15. **PESCE** - Pesce fresco, surgelato, conservato, in scatola, in lattina, in vaso, crostacei, molluschi
     Esempi: "SALMONE FRESCO KG1", "TONNO SCATOLA", "MAZZANCOLLE GR500", "CALAMARI", "SPIGOLA", "BRANZINO", "ORATA", "GAMBERI", "POLPO", "COZZE", "VONGOLE", "MERLUZZO", "SCAMPI"
     ⚠️ SALSA TONNATA → SALSE E CREME (eccezione: è una salsa, non pesce puro)
-    ⚠️ RAVIOLI DI PESCE/GAMBERI → SECCO (è pasta ripiena, non pesce)
+    ⚠️ RAVIOLI DI PESCE/GAMBERI → PASTA E CEREALI (è pasta ripiena, non pesce)
 
 16. **PRODOTTI DA FORNO** - Pane, focaccia, grissini, pizza, baguette
     Esempi: "PANE CASERECCIO", "FOCACCIA", "PIZZA SURGELATA", "BAGUETTE", "CIABATTA"
@@ -72,7 +72,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
     ⚠️ COPPA GELATO/COPPA MARTINI = recipiente, NON salume
     ⚠️ SALAME DI CIOCCOLATO → PASTICCERIA (non SALUMI)
 
-19. **SECCO** - Pasta secca, riso, farina, zucchero, biscotti secchi
+19. **PASTA E CEREALI** - Pasta secca, riso, farina, zucchero, biscotti secchi
     Esempi: "PASTA PENNE KG500", "RISO ARBORIO", "FARINA 00", "BISCOTTI"
 
 20. **SHOP** - Prodotti di compravendita (sigarette, caramelle, snack, patatine, gomme)
@@ -144,7 +144,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
    - OLIO OLIVA → OLIO E CONDIMENTI (condimento, non FRUTTA)
     - TONNO / ACCIUGHE / ALICI / PASTA DI ACCIUGHE → PESCE anche se conservati
     - PASTA PISTACCHIO / PASTA NOCI / PASTA NOCCIOLA → SALSE E CREME
-    - LEGUMI O VERDURE: scatola/vaso/sott'olio/sottaceto/salamoia → SCATOLAME E CONSERVE; secchi/decorticati/farina → SECCO; gelo/congelati/cong. → categoria naturale del prodotto
+    - LEGUMI O VERDURE: scatola/vaso/sott'olio/sottaceto/salamoia → SCATOLAME E CONSERVE; secchi/decorticati/farina → PASTA E CEREALI; gelo/congelati/cong. → categoria naturale del prodotto
     - VERDURE processate come in olio, secchi, caramellate o simili → SCATOLAME E CONSERVE; verdure gelo o fresche → VERDURE
     - AGLIO/CIPOLLA in treccia e verdure in vaschetta (es. valeriana) restano prodotti vegetali: → VERDURE
     - USA E GETTA / MONOUSO / CONSUMABILI → MATERIALE DI CONSUMO; forniture durevoli → MANUTENZIONE E ATTREZZATURE
@@ -152,7 +152,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
     - BICCHIERE / TAZZA senza materiale e senza contesto monouso → default MANUTENZIONE E ATTREZZATURE
     - SAC A POCHE e COPPETTE/CONTENITORI usati per produzione o asporto restano MATERIALE DI CONSUMO anche se la descrizione contiene CREMA
     - BASILICO, ROSMARINO, PEPERONCINO, PREZZEMOLO, CRESS, SHISO, MICROGREEN/MICROHERB/MICROLEAF e aromi simili → SPEZIE E AROMI anche se freschi, in busta, in vasetto o piantina
-    - DIMSUM e ravioli ripieni simili → SECCO
+    - DIMSUM e ravioli ripieni simili → PASTA E CEREALI
     - COPPE in vetro o linee di servizio come Martini, Elisia, Timeless, Bresk → MANUTENZIONE E ATTREZZATURE
     - COP/BICCH caffè in carta da asporto → MATERIALE DI CONSUMO
     - HACCP, adempimenti normativi, sicurezza sul lavoro, certificati, rinnovi, formazione → SERVIZI E CONSULENZE
@@ -162,7 +162,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
     - ARANCE DA SPREMUTA / ARANCE SPREMUTA → FRUTTA se si tratta del frutto da spremere, non di una bevanda pronta
     - TOFU → LATTICINI come sostituto/formaggio vegetale; GOMA WAKAME SALAD e wakame simili → SUSHI VARIE
     - CASTAGNE D'ACQUA / WATER CHESTNUTS → SCATOLAME E CONSERVE, non ACQUA
-    - COPPA CREMA CATALANA e dolci/coppe dessert simili → PASTICCERIA; coppe gusto gelato tipo RABBIT / PAN DAN / CIP CIOK o linee LMA VASC → GELATI
+    - COPPA CREMA CATALANA e dolci/coppe dessert simili → GELATI E DESSERT; coppe gusto gelato tipo RABBIT / PAN DAN / CIP CIOK o linee LMA VASC → GELATI E DESSERT
     - BRIOCHE, KRAPFEN, BOMBOLONI, ARAGOSTINE e altri dolci con crema restano PASTICCERIA
     - BEVANDA DI MANDORLA / SOIA / RISO / AVENA / COCCO e LATTE DI MANDORLA o simili vegetali pronti da bere → BEVANDE; conta il prodotto finale, non l'ingrediente base
 
@@ -197,7 +197,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ❌ NON mettere BICCHIERI/CALICI professionali in BEVANDE o VARIE BAR - sono MANUTENZIONE E ATTREZZATURE!
 ❌ NON mettere GINGER BEER/GINGER ALE in BIRRE - sono BEVANDE (analcoliche)!
 ❌ NON mettere SALSA TONNATA in PESCE - è SALSE E CREME!
-❌ NON mettere RAVIOLI DI PESCE/GAMBERI in PESCE - sono SECCO (pasta ripiena)!
+❌ NON mettere RAVIOLI DI PESCE/GAMBERI in PESCE - sono PASTA E CEREALI (pasta ripiena)!
 ❌ NON mettere COPPA GELATO/COPPA MARTINI in SALUMI - COPPA qui è un recipiente!
 ❌ NON mettere CANONE VODAFONE / CANONE RAI / ABBONAMENTI LINEA in UTENZE E LOCALI - sono SERVIZI E CONSULENZE!
 ❌ NON mettere ACQUA SAN BENEDETTO / PELLEGRINO / NATURALE / FRIZZANTE in UTENZE E LOCALI - è ACQUA!
@@ -208,11 +208,11 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ✅ PASTA PISTACCHIO / PASTA NOCI / PASTE BASE simili → SALSE E CREME
 ✅ LEGUMI E VERDURE in scatola/vaso/salamoia/sott'olio/sottaceto → SCATOLAME E CONSERVE
 ✅ VERDURE processate (in olio, secchi, caramellate) → SCATOLAME E CONSERVE
-✅ LEGUMI secchi/decorticati/in farina → SECCO
+✅ LEGUMI secchi/decorticati/in farina → PASTA E CEREALI
 ✅ LEGUMI E VERDURE gelo → categoria naturale del prodotto
 ✅ AGLIO/CIPOLLA in treccia e verdure in vaschetta come valeriana → VERDURE
 ✅ BASILICO / ROSMARINO / PEPERONCINO / PREZZEMOLO / CRESS / SHISO / MICROGREEN / MICROHERB / MICROLEAF → SPEZIE E AROMI anche se freschi
-✅ DIMSUM → SECCO
+✅ DIMSUM → PASTA E CEREALI
 ✅ TAZZE/BICCHIERI/PIATTI/SALVIETTE monouso → MATERIALE DI CONSUMO
 ✅ BICCHIERI/CALICI/CARAFFE professionali (vetro, cristallo, dotazione interna) → MANUTENZIONE E ATTREZZATURE
 ✅ COPPE in vetro o da servizio professionale → MANUTENZIONE E ATTREZZATURE
@@ -232,7 +232,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ✅ ARANCE DA SPREMUTA / ARANCE SPREMUTA → FRUTTA se è il frutto, non la bevanda pronta
 ✅ CASTAGNE D'ACQUA → SCATOLAME E CONSERVE
 ✅ TOFU → LATTICINI; WAKAME SALAD → SUSHI VARIE
-✅ LMA VASC gusto e COPPA gusto gelato → GELATI
+✅ LMA VASC gusto e COPPA gusto gelato → GELATI E DESSERT
 
 ═══════════════════════════════════════════════════════════════════
 📝 FORMATO RISPOSTA

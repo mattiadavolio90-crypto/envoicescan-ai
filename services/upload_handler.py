@@ -798,7 +798,6 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                 imported_at_label = _format_saved_ok_date(existing_saved_ok.get('created_at'))
                 reason = [
                     f"File già importato il {imported_at_label} (match attivo DB)",
-                    "usare 'Reimporta' per forzare l'aggiornamento",
                 ]
                 logger.info(f"📋 SKIP '{filename}' → presente in DB attivo, upload_events SAVED_OK del {imported_at_label}")
             else:
@@ -1398,7 +1397,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         if file_errore:
             tutti_problematici.update(file_errore)
         for fname in file_gia_processati:
-            tutti_problematici[fname] = _duplicate_reason_for_ui(fname, file_gia_processati_reason)
+            tutti_problematici[fname] = 'duplicate'
 
         problematic_entries = []
         for fname, motivo in file_errore.items():
@@ -1448,7 +1447,9 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             motivi_raggruppati = defaultdict(list)
             for fname, motivo in tutti_problematici.items():
                 # Normalizza motivi per raggruppamento leggibile
-                if motivo == "Già presente nel database":
+                if motivo == 'duplicate':
+                    motivo_label = "Già importate in precedenza"
+                elif motivo == "Già presente nel database":
                     motivo_label = "Già caricata in precedenza (duplicata)"
                 elif "già importato il" in motivo.lower():
                     motivo_label = motivo
@@ -1610,13 +1611,13 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         # Salva messaggio persistente per duplicati
         if file_gia_processati:
             nomi = ", ".join(
-                _html.escape(f"{f} ({_duplicate_reason_for_ui(f, file_gia_processati_reason)})")
+                _html.escape(f)
                 for f in file_gia_processati
             )
             n = len(file_gia_processati)
             lbl = "file già importato in precedenza" if n == 1 else "file già importati in precedenza"
             st.session_state.upload_messages = [
-                f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl} — usare "Reimporta" per forzare l\'aggiornamento.</span><br/><span style="font-size:0.78rem;color:#856404;">{nomi}</span></div>'
+                f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}</span><br/><span style="font-size:0.78rem;color:#856404;">{nomi}</span></div>'
             ]
             st.session_state.upload_messages_time = time.time()
             # Segna come processati

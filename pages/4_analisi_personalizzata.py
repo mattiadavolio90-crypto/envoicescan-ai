@@ -212,6 +212,8 @@ def _prepare_tag_dataframe(df_source: pd.DataFrame, associazioni_map: dict[str, 
     df_tag["UnitaNorm"] = conversioni[1]
     df_tag["TotaleRigaNum"] = pd.to_numeric(df_tag["TotaleRiga"], errors="coerce").fillna(0.0)
     df_tag["PrezzoUnitarioNum"] = pd.to_numeric(df_tag["PrezzoUnitario"], errors="coerce")
+    # Escludi righe con prezzo non positivo (sconti, rettifiche negative)
+    df_tag = df_tag[df_tag["PrezzoUnitarioNum"] > 0].copy()
     return df_tag
 
 

@@ -29,6 +29,21 @@ if not exist "%APP_FILE%" (
 	exit /b 1
 )
 
+set "PORT_PID="
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":%APP_PORT% .*LISTENING"') do (
+	if not defined PORT_PID set "PORT_PID=%%P"
+)
+
+if defined PORT_PID (
+	echo.
+	echo ATTENZIONE: La porta %APP_PORT% e' gia in uso.
+	echo PID in ascolto: %PORT_PID%
+	echo Apro comunque il browser locale.
+	start "" "http://localhost:%APP_PORT%"
+	echo.
+	exit /b 0
+)
+
 echo.
 echo ========================================
 echo   AVVIO OH YEAH! Hub
@@ -39,6 +54,12 @@ echo.
 
 echo Avvio su porta %APP_PORT%...
 echo.
+start "" "http://localhost:%APP_PORT%"
 
 "%PYTHON_EXE%" -m streamlit run "%APP_FILE%" --server.port %APP_PORT%
-pause
+set "APP_EXIT=%ERRORLEVEL%"
+if not "%APP_EXIT%"=="0" (
+	echo.
+	echo ERRORE: Streamlit si e' chiuso con codice %APP_EXIT%.
+	pause
+)

@@ -102,6 +102,7 @@ from services.invoice_service import (
 )
 
 from services.db_service import (
+    aggiorna_data_competenza_fattura,
     carica_e_prepara_dataframe,
     elimina_fattura_completa,
     elimina_tutte_fatture,
@@ -2077,7 +2078,19 @@ if st.session_state.get("hide_uploader", False):
         )
     uploaded_files = []  # Nessun file da elaborare in questo stato
 else:
-    if not df_cache.empty:
+    fatture_cestino_cache = []
+    try:
+        fatture_cestino_cache = get_fatture_cestino(
+            user_id,
+            ristorante_id=st.session_state.get('ristorante_id')
+        )
+    except Exception as e:
+        logger.error(f"Errore caricamento cestino fatture: {e}")
+        fatture_cestino_cache = []
+
+    mostra_expander_gestione = (not df_cache.empty) or bool(fatture_cestino_cache)
+
+    if mostra_expander_gestione:
         try:
             stats_db = get_fatture_stats(user_id, st.session_state.get('ristorante_id'))
         except Exception as e:
@@ -2398,7 +2411,7 @@ else:
         </style>
         """, unsafe_allow_html=True)
         with st.container(key="expander_gestione_fatture"):
-          with st.expander("🗂️ Apri per gestire le Fatture Caricate (Elimina)", expanded=False):
+          with st.expander("🗂️ Apri per gestire le Fatture Caricate (Elimina / Modifica Data)", expanded=False):
             
             # ========================================
             # BOX STATISTICHE
@@ -2412,6 +2425,7 @@ else:
 
             num_fatture_xml_p7m = 0
             num_altri_documenti = 0
+            num_righe_attive = len(df_cache)
             if 'FileOrigine' in df_cache.columns:
                 file_unici = {
                     str(file_name).strip()
@@ -2447,10 +2461,62 @@ else:
     ">
         <span style="color: #14532d; font-size: clamp(0.95rem, 1.3vw, 1.05rem); font-weight: 700; line-height: 1.45; overflow-wrap: anywhere;">
             📊 Fatture: <strong style="font-size: 1.2em; color: #166534;">{num_fatture_xml_p7m:,}</strong>{note_credito_html}{altri_documenti_html} | 
-            📋 Righe Totali: <strong style="font-size: 1.2em; color: #166534;">{stats_db["num_righe"]:,}</strong>
+            📋 Righe Attive: <strong style="font-size: 1.2em; color: #166534;">{num_righe_attive:,}</strong>
         </span>
     </div>
     """, unsafe_allow_html=True)
+
+            # Contatore fatture mensili (per file univoco XML/P7M)
+            if 'FileOrigine' in df_cache.columns and 'DataDocumento' in df_cache.columns:
+                df_month_counter = df_cache[['FileOrigine', 'DataDocumento']].copy()
+                df_month_counter['DataDocumento'] = pd.to_datetime(df_month_counter['DataDocumento'], errors='coerce')
+                df_month_counter = df_month_counter.dropna(subset=['FileOrigine', 'DataDocumento'])
+
+                if not df_month_counter.empty:
+                    df_month_counter['ext'] = df_month_counter['FileOrigine'].astype(str).apply(
+                        lambda x: os.path.splitext(x.strip())[1].lower()
+                    )
+                    df_month_counter = df_month_counter[df_month_counter['ext'].isin(estensioni_fatture)]
+
+                if not df_month_counter.empty:
+                    # Un solo mese per file: usiamo la data massima del file
+                    df_file_month = df_month_counter.groupby('FileOrigine', as_index=False)['DataDocumento'].max()
+                    df_file_month['Anno'] = df_file_month['DataDocumento'].dt.year
+                    df_file_month['MeseNum'] = df_file_month['DataDocumento'].dt.month
+
+                    monthly_counts = (
+                        df_file_month.groupby(['Anno', 'MeseNum'])
+                        .size()
+                        .reset_index(name='NumFatture')
+                        .sort_values(['Anno', 'MeseNum'])
+                    )
+
+                    parti_mensili = []
+                    for _, row in monthly_counts.iterrows():
+                        mese_label = MESI_ITA.get(int(row['MeseNum']), str(int(row['MeseNum'])))
+                        parti_mensili.append(
+                            f"{mese_label}: <strong style='color:#0f766e;'>{int(row['NumFatture'])}</strong>"
+                        )
+
+                    if parti_mensili:
+                        st.markdown(
+                            f"""
+    <div style="
+        background: rgba(20, 83, 45, 0.08);
+        border: 1px solid rgba(22, 101, 52, 0.22);
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin: -10px 0 16px 0;
+        width: min(100%, 44rem);
+        box-sizing: border-box;
+    ">
+        <span style="font-size: 0.9rem; color: #14532d; font-weight: 600; overflow-wrap: anywhere; line-height: 1.45;">
+            📅 Fatture Mensili: {' | '.join(parti_mensili)}
+        </span>
+    </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
             
             st.markdown("---")
             
@@ -2461,6 +2527,10 @@ else:
                 'NumeroRiga': 'count',
                 'DataDocumento': 'first'
             }
+            if 'DataDocumentoOriginale' in df_cache.columns:
+                _agg_dict['DataDocumentoOriginale'] = 'first'
+            if 'DataCompetenza' in df_cache.columns:
+                _agg_dict['DataCompetenza'] = 'first'
             if 'CreatedAt' in df_cache.columns:
                 _agg_dict['CreatedAt'] = 'max'
             fatture_summary = df_cache.groupby('FileOrigine').agg(_agg_dict).reset_index()
@@ -2468,12 +2538,27 @@ else:
             # 🔧 FIX: Reset index prima di rinominare (già fatto ma assicuriamo drop=True)
             fatture_summary = fatture_summary.reset_index(drop=True)
             
+            _columns_rename = {
+                'FileOrigine': 'File',
+                'TotaleRiga': 'Totale',
+                'NumeroRiga': 'NumProdotti',
+                'DataDocumento': 'Data',
+            }
+            fatture_summary = fatture_summary.rename(columns=_columns_rename)
+
+            _sort_dates = pd.to_datetime(fatture_summary.get('Data'), errors='coerce')
+            fatture_summary = fatture_summary.assign(_sort_data=_sort_dates)
             if 'CreatedAt' in fatture_summary.columns:
-                fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data', 'CreatedAt']
-                fatture_summary = fatture_summary.sort_values('CreatedAt', ascending=False)
+                _created_sort = pd.to_datetime(fatture_summary['CreatedAt'], errors='coerce')
+                fatture_summary = fatture_summary.assign(_sort_created=_created_sort).sort_values(
+                    by=['_sort_data', '_sort_created'],
+                    ascending=[False, False],
+                    na_position='last',
+                )
+                fatture_summary = fatture_summary.drop(columns=['_sort_created'])
             else:
-                fatture_summary.columns = ['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data']
-                fatture_summary = fatture_summary.sort_values('Data', ascending=False)
+                fatture_summary = fatture_summary.sort_values('_sort_data', ascending=False, na_position='last')
+            fatture_summary = fatture_summary.drop(columns=['_sort_data'])
             
             # 🔍 DEBUG TOOL: Rimosso - Usa Upload Events in Admin Panel per diagnostica
             
@@ -2488,11 +2573,18 @@ else:
                     key="btn_svuota_definitivo"
                 ):
                         with st.spinner("🗑️ Eliminazione in corso..."):
+                            is_impersonating = st.session_state.get('impersonating', False)
+                            use_soft_delete = not is_impersonating
+
                             # Progress bar per UX
                             progress = st.progress(0)
                             progress.progress(20, text="Eliminazione da Supabase...")
                             
-                            result = elimina_tutte_fatture(user_id, ristoranteid=st.session_state.get('ristorante_id'))
+                            result = elimina_tutte_fatture(
+                                user_id,
+                                ristoranteid=st.session_state.get('ristorante_id'),
+                                soft_delete=use_soft_delete,
+                            )
                             
                             # 🔥 INVALIDAZIONE CACHE: Forza reload dati dopo eliminazione
                             invalida_cache_memoria()  # Reset memoria AI
@@ -2544,21 +2636,33 @@ else:
                             
                             # Mostra risultato DENTRO lo spinner (indentazione corretta)
                             if result["success"]:
-                                st.success(f"✅ **{result['fatture_eliminate']} fatture** spostate nel cestino! ({result['righe_eliminate']} prodotti)")
-                                st.info("🗑️ Le fatture resteranno nel cestino per 30 giorni, poi verranno eliminate definitivamente.")
+                                if use_soft_delete:
+                                    st.success(f"✅ **{result['fatture_eliminate']} fatture** spostate nel cestino! ({result['righe_eliminate']} prodotti)")
+                                    st.info("🗑️ Le fatture resteranno nel cestino per 30 giorni, poi verranno eliminate definitivamente.")
+                                else:
+                                    st.success(f"✅ **{result['fatture_eliminate']} fatture** eliminate definitivamente! ({result['righe_eliminate']} prodotti)")
+                                    st.warning("⚠️ Operazione definitiva: fatture rimosse anche dall'archivio/cestino.")
                                 
                                 # LOG AUDIT: Verifica immediata post-delete
                                 try:
                                     verify_query = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id)
+                                    if use_soft_delete:
+                                        verify_query = verify_query.is_("deleted_at", "null")
                                     verify_query = add_ristorante_filter(verify_query)
                                     verify = verify_query.execute()
                                     num_residue = verify.count or 0
                                     if num_residue == 0:
                                         logger.info(f"✅ DELETE VERIFIED: 0 righe rimaste per user_id={user_id}")
-                                        st.success(f"✅ Verifica: Database pulito (0 righe)")
+                                        if use_soft_delete:
+                                            st.success("✅ Verifica: nessuna riga attiva rimasta")
+                                        else:
+                                            st.success("✅ Verifica: database pulito (0 righe)")
                                     else:
                                         logger.error(f"⚠️ DELETE INCOMPLETE: {num_residue} righe ancora presenti per user_id={user_id}")
-                                        st.error(f"⚠️ Attenzione: {num_residue} righe ancora presenti (possibile problema RLS)")
+                                        if use_soft_delete:
+                                            st.error(f"⚠️ Attenzione: {num_residue} righe attive ancora presenti (possibile problema RLS)")
+                                        else:
+                                            st.error(f"⚠️ Attenzione: {num_residue} righe ancora presenti (possibile problema RLS)")
                                 except Exception as e:
                                     logger.exception("Errore verifica post-delete")
                                 
@@ -2578,8 +2682,8 @@ else:
                 
                 st.markdown("---")
             
-            # ========== ELIMINA SINGOLA FATTURA ==========
-            st.markdown("### 🗑️ Elimina Fattura Singola")
+            # ========== GESTIONE SINGOLA FATTURA ==========
+            st.markdown("### 🧾 Gestione Fattura Singola")
             
             # Usa fatture_summary già creato sopra
             if len(fatture_summary) > 0:
@@ -2599,12 +2703,18 @@ else:
                 # Crea opzioni dropdown con dict per passare tutti i dati
                 fatture_options = []
                 for idx, row in fatture_filtrate.iterrows():
+                    _data_competenza_val = row['DataCompetenza'] if 'DataCompetenza' in row.index else None
+                    _data_originale_val = row['DataDocumentoOriginale'] if 'DataDocumentoOriginale' in row.index else row.get('Data')
+                    _has_data_competenza = bool(pd.notna(_data_competenza_val) and str(_data_competenza_val).strip() not in {'', 'NaT', 'None'})
                     fatture_options.append({
                         'File': row['File'],
                         'Fornitore': row['Fornitore'],
                         'NumProdotti': int(row['NumProdotti']),
                         'Totale': row['Totale'],
-                        'Data': row['Data']
+                        'Data': row['Data'],
+                        'DataOriginale': _data_originale_val,
+                        'DataCompetenza': _data_competenza_val,
+                        'HasDataCompetenza': _has_data_competenza,
                     })
                 
                 if not fatture_options:
@@ -2619,13 +2729,13 @@ else:
                             totale=x['Totale'],
                             num_righe=x['NumProdotti'],
                             data=x['Data'],
-                        ),
+                        ) + ("   |   🔴 DATA MODIFICATA 🔴" if x.get('HasDataCompetenza') else ""),
                         help="Il nome file viene mostrato completo e si adatta allo spazio disponibile",
                         key="select_fattura_elimina"
                     )
                     
-                    col_btn, col_spacer = st.columns([1, 3])
-                    with col_btn:
+                    col_btn_delete, col_btn_date, col_btn_reset, col_spacer = st.columns([1, 1, 1, 2])
+                    with col_btn_delete:
                         if st.button("🗑️ Elimina Fattura", type="secondary", use_container_width=True):
                             with st.spinner(f"🗑️ Eliminazione in corso..."):
                                 result = elimina_fattura_completa(fattura_selezionata['File'], user_id, ristoranteid=st.session_state.get('ristorante_id'))
@@ -2647,10 +2757,158 @@ else:
                                     st.rerun()
                                 else:
                                     st.error(f"❌ Errore: {result['error']}")
+
+                    with col_btn_date:
+                        if st.button("📅 Modifica Data", type="secondary", use_container_width=True):
+                            st.session_state['fattura_data_editor_file'] = fattura_selezionata['File']
+
+                    with col_btn_reset:
+                        if fattura_selezionata.get('HasDataCompetenza'):
+                            if st.button("↩️ Ripristina", use_container_width=True):
+                                with st.spinner("Ripristino in corso..."):
+                                    esito = aggiorna_data_competenza_fattura(
+                                        file_origine=fattura_selezionata['File'],
+                                        user_id=user_id,
+                                        data_competenza=None,
+                                        ristoranteid=st.session_state.get('ristorante_id'),
+                                    )
+                                    if esito.get("success"):
+                                        clear_fatture_cache()
+                                        invalida_cache_memoria()
+                                        st.success("✅ Ripristinata data documento originale")
+                                        st.session_state.pop('fattura_data_editor_file', None)
+                                        time.sleep(0.2)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ Errore: {esito.get('error', 'errore sconosciuto')}")
+
+                    if st.session_state.get('fattura_data_editor_file') == fattura_selezionata['File']:
+                        st.markdown("#### 📅 Mese di competenza")
+                        st.caption("La data documento originale resta invariata. Questa modifica impatta solo i riepiloghi gestionali.")
+
+                        _data_raw = fattura_selezionata.get('DataCompetenza') or fattura_selezionata.get('Data')
+                        _default_date = pd.Timestamp.now().date()
+                        if _data_raw is not None and str(_data_raw).strip() not in {'', 'NaT', 'None'}:
+                            try:
+                                _parsed = pd.to_datetime(_data_raw, errors='coerce')
+                                if pd.notna(_parsed):
+                                    _default_date = _parsed.date()
+                            except Exception:
+                                pass
+
+                        _mesi_it = {
+                            1: 'Gennaio', 2: 'Febbraio', 3: 'Marzo', 4: 'Aprile',
+                            5: 'Maggio', 6: 'Giugno', 7: 'Luglio', 8: 'Agosto',
+                            9: 'Settembre', 10: 'Ottobre', 11: 'Novembre', 12: 'Dicembre',
+                        }
+                        _anno_corrente = pd.Timestamp.now().year
+
+                        col_mese, col_save_date, col_cancel_date, col_empty = st.columns([2.2, 1, 1, 4])
+
+                        with col_mese:
+                            mese_selezionato = st.selectbox(
+                                "Mese-Anno",
+                                options=list(_mesi_it.keys()),
+                                index=max(0, min(11, _default_date.month - 1)),
+                                format_func=lambda m: f"{_mesi_it.get(m, str(m))} {_anno_corrente}",
+                                key="input_mese_competenza_fattura",
+                            )
+
+                        data_competenza = pd.Timestamp(year=int(_anno_corrente), month=int(mese_selezionato), day=1).date()
+
+                        with col_save_date:
+                            st.markdown("<div style='height: 1.9rem;'></div>", unsafe_allow_html=True)
+                            if st.button("💾 Salva", type="primary", use_container_width=True):
+                                with st.spinner("Aggiornamento data in corso..."):
+                                    esito = aggiorna_data_competenza_fattura(
+                                        file_origine=fattura_selezionata['File'],
+                                        user_id=user_id,
+                                        data_competenza=data_competenza.isoformat(),
+                                        ristoranteid=st.session_state.get('ristorante_id'),
+                                    )
+                                    if esito.get("success"):
+                                        clear_fatture_cache()
+                                        invalida_cache_memoria()
+                                        st.success(f"✅ Competenza impostata su {_mesi_it[mese_selezionato]} {_anno_corrente}")
+                                        st.session_state.pop('fattura_data_editor_file', None)
+                                        time.sleep(0.2)
+                                        st.rerun()
+                                    else:
+                                        st.error(f"❌ Errore: {esito.get('error', 'errore sconosciuto')}")
+
+                        with col_cancel_date:
+                            st.markdown("<div style='height: 1.9rem;'></div>", unsafe_allow_html=True)
+                            if st.button("✖️ Annulla", use_container_width=True):
+                                st.session_state.pop('fattura_data_editor_file', None)
+                                st.rerun()
             else:
                 st.info("🔭 Nessuna fattura da eliminare.")
+
+            st.markdown("---")
+            st.markdown("### ♻️ Cestino Fatture")
+
+            fatture_cestino = fatture_cestino_cache
+
+            if fatture_cestino:
+                file_cestino = st.selectbox(
+                    "Seleziona fattura dal cestino:",
+                    options=fatture_cestino,
+                    format_func=lambda x: format_fattura_label(
+                        file_name=x.get('file_origine', ''),
+                        fornitore=x.get('fornitore', ''),
+                        totale=x.get('totale', 0.0),
+                        num_righe=int(x.get('num_righe', 0) or 0),
+                        data=x.get('data_documento', ''),
+                    ),
+                    key="select_fattura_cestino"
+                )
+
+                col_restore, col_empty_trash = st.columns([1, 1])
+
+                with col_restore:
+                    if st.button("♻️ Ripristina Fattura", use_container_width=True, key="btn_ripristina_fattura"):
+                        with st.spinner("♻️ Ripristino in corso..."):
+                            result_restore = ripristina_fattura(
+                                file_cestino.get('file_origine', ''),
+                                user_id,
+                                ristorante_id=st.session_state.get('ristorante_id')
+                            )
+                            invalida_cache_memoria()
+                            clear_fatture_cache()
+                            if result_restore.get("success"):
+                                st.success(
+                                    f"✅ Fattura ripristinata ({result_restore.get('righe_ripristinate', 0)} prodotti)"
+                                )
+                                time.sleep(0.3)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Errore ripristino: {result_restore.get('error')}")
+
+                with col_empty_trash:
+                    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+                        if st.button("🗑️ Svuota Cestino", use_container_width=True, key="btn_svuota_cestino"):
+                            with st.spinner("🗑️ Svuotamento cestino in corso..."):
+                                result_empty = svuota_cestino(
+                                    user_id,
+                                    ristorante_id=st.session_state.get('ristorante_id')
+                                )
+                                invalida_cache_memoria()
+                                clear_fatture_cache()
+                                if result_empty.get("success"):
+                                    st.success(
+                                        f"✅ Cestino svuotato: {result_empty.get('righe_eliminate', 0)} righe eliminate definitivamente"
+                                    )
+                                    time.sleep(0.3)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Errore svuotamento: {result_empty.get('error')}")
+            else:
+                st.info("🗑️ Cestino vuoto")
             
-            st.caption("🗑️ Le fatture eliminate vengono spostate nel cestino per 30 giorni")
+            if st.session_state.get('impersonating', False):
+                st.caption("🗑️ In modalità impersona: 'ELIMINA TUTTO' è definitivo, mentre l'eliminazione singola passa dal cestino (30 giorni).")
+            else:
+                st.caption("🗑️ Le fatture eliminate vengono spostate nel cestino per 30 giorni")
 
 
 

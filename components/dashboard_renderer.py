@@ -45,6 +45,19 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     if df_completo is None or df_completo.empty:
         st.info("📭 Nessun dato disponibile. Carica le tue prime fatture!")
         return
+
+    # Header colonne in grassetto per tutte le tabelle dei tab Analisi Fatture AI.
+    st.markdown(
+        """
+        <style>
+        [data-testid="stDataFrame"] [role="columnheader"],
+        [data-testid="stDataEditor"] [role="columnheader"] {
+            font-weight: 700 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     
     # ===== 🔍 DEBUG CATEGORIZZAZIONE (SOLO ADMIN/IMPERSONIFICATO) =====
     if _is_admin_or_impersonating():
@@ -114,13 +127,28 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     if 'needs_review' in df_completo.columns:
         mask_review = df_completo['needs_review'].fillna(False).astype(bool)
         mask_escludi = mask_escludi | mask_review
+
+    # 3. Escludi righe con prezzo/totale non positivi dalla dashboard.
+    # Regola business: dashboard mostra solo acquisti con prezzo finale positivo.
+    if 'PrezzoUnitario' in df_completo.columns:
+        prezzo_unitario = pd.to_numeric(df_completo['PrezzoUnitario'], errors='coerce').fillna(0.0)
+        mask_prezzo_non_positivo = prezzo_unitario <= 0
+        mask_escludi = mask_escludi | mask_prezzo_non_positivo
+
+    if 'TotaleRiga' in df_completo.columns:
+        totale_riga = pd.to_numeric(df_completo['TotaleRiga'], errors='coerce').fillna(0.0)
+        mask_totale_non_positivo = totale_riga <= 0
+        mask_escludi = mask_escludi | mask_totale_non_positivo
     
     # Applica filtro (MANTIENI righe NON escluse)
     df_completo = df_completo[~mask_escludi].copy()
     
     righe_dopo = len(df_completo)
     if righe_prima > righe_dopo:
-        logger.info(f"Escluse da dashboard: {righe_prima - righe_dopo} righe (NOTE E DICITURE + needs_review)")
+        logger.info(
+            f"Escluse da dashboard: {righe_prima - righe_dopo} righe "
+            f"(NOTE E DICITURE + needs_review + prezzo/totale non positivi)"
+        )
     
     if df_completo.empty:
         st.info("📭 Nessun dato disponibile dopo i filtri.")

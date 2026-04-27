@@ -156,7 +156,10 @@ def carica_costi_per_categoria(user_id: str, ristorante_id: str,
         df = df.dropna(subset=['data_documento'])
         df['mese'] = df['data_documento'].dt.month
         df['totale_riga'] = pd.to_numeric(df['totale_riga'], errors='coerce').fillna(0)
-        
+
+        # Escludi righe con totale non positivo (sconti, rettifiche negative)
+        df = df[df['totale_riga'] > 0]
+
         # Filtra solo F&B
         df = df[df['categoria'].isin(CATEGORIE_FOOD)]
         

@@ -25,6 +25,14 @@ from services.db_service import (
 # Logger
 logger = get_logger('controllo_prezzi')
 
+
+def _fmt_int_migliaia(valore) -> str:
+    """Formato intero italiano: no decimali, separatore migliaia con punto."""
+    try:
+        return f"{int(round(float(valore))):,}".replace(",", ".")
+    except (TypeError, ValueError):
+        return "0"
+
 # ============================================
 # CONFIGURAZIONE PAGINA
 # ============================================
@@ -200,6 +208,11 @@ if df_all.empty:
     st.info("📊 Nessuna fattura disponibile. Carica le fatture dalla pagina Analisi Fatture AI.")
     st.stop()
 
+# Escludi righe con PrezzoUnitario <= 0 (sconti, rettifiche negative) — gestite nel tab Sconti/Omaggi
+if 'PrezzoUnitario' in df_all.columns:
+    _prezzo_num = pd.to_numeric(df_all['PrezzoUnitario'], errors='coerce').fillna(0.0)
+    df_all = df_all[_prezzo_num > 0].copy()
+
 # Filtro periodo
 df_all['Data_DT'] = pd.to_datetime(df_all['DataDocumento'], errors='coerce')
 mask_periodo = (
@@ -368,10 +381,10 @@ if st.session_state.cp_tab_attivo == "variazioni":
 
         if impatto_netto > 0:
             colore_impatto = "#dc2626"
-            impatto_label = f"+€{abs(impatto_netto):,}/mese"
+            impatto_label = f"+€{_fmt_int_migliaia(abs(impatto_netto))}/mese"
         elif impatto_netto < 0:
             colore_impatto = "#16a34a"
-            impatto_label = f"-€{abs(impatto_netto):,}/mese"
+            impatto_label = f"-€{_fmt_int_migliaia(abs(impatto_netto))}/mese"
         else:
             colore_impatto = "#1e40af"
             impatto_label = "€0/mese"
@@ -662,16 +675,17 @@ elif st.session_state.cp_tab_attivo == "sconti":
     _omaggi_ha_storico = valore_omaggi is not None and not (isinstance(valore_omaggi, float) and valore_omaggi == 0.0 and not df_omaggi.empty)
 
     with col_metric1:
+        _sconti_display = _fmt_int_migliaia(importo_sconti)
         st.markdown(f"""
         <div class="kpi-card-cp">
             <div class="kpi-label">💸 Sconti Applicati</div>
-            <div class="kpi-value">€{importo_sconti:,.2f}</div>
+            <div class="kpi-value">€{_sconti_display}</div>
             <div style="font-size: clamp(0.65rem, 1.4vw, 0.75rem); color: #6b7280; margin-top: 4px;">{len(df_sconti)} prodotti scontati</div>
         </div>
         """, unsafe_allow_html=True)
 
     with col_metric2:
-        _omaggi_display = f"€{valore_omaggi:,.2f}" if _omaggi_ha_storico else "N/D"
+        _omaggi_display = f"€{_fmt_int_migliaia(valore_omaggi)}" if _omaggi_ha_storico else "N/D"
         _omaggi_sub = f"{len(df_omaggi)} prodotti omaggio" if _omaggi_ha_storico else f"{len(df_omaggi)} omaggi — nessuno storico prezzi"
         st.markdown(f"""
         <div class="kpi-card-cp">
@@ -682,10 +696,11 @@ elif st.session_state.cp_tab_attivo == "sconti":
         """, unsafe_allow_html=True)
 
     with col_metric3:
+        _totale_risparmiato_display = _fmt_int_migliaia(totale_risparmiato)
         st.markdown(f"""
         <div class="kpi-card-cp">
             <div class="kpi-label">✅ Totale Risparmiato</div>
-            <div class="kpi-value">€{totale_risparmiato:,.2f}</div>
+            <div class="kpi-value">€{_totale_risparmiato_display}</div>
             <div style="font-size: clamp(0.65rem, 1.4vw, 0.75rem); color: #6b7280; margin-top: 4px;">{label_periodo}</div>
         </div>
         """, unsafe_allow_html=True)

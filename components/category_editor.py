@@ -28,14 +28,14 @@ CATEGORIA_ICONS: dict[str, str] = {
     "UOVA":                    "🥚",
     "SCATOLAME E CONSERVE":    "🥫",
     "OLIO E CONDIMENTI":       "🫙",
-    "SECCO":                   "🌾",
+    "PASTA E CEREALI":         "🌾",
     "VERDURE":                 "🥦",
     "FRUTTA":                  "🍓",
     "SALSE E CREME":           "🥣",
     "PRODOTTI DA FORNO":       "🍞",
     "SPEZIE E AROMI":          "🌿",
     "PASTICCERIA":             "🍰",
-    "GELATI":                  "🍦",
+    "GELATI E DESSERT":        "🍦",
     "SUSHI VARIE":             "🍣",
     "SHOP":                    "🛍️",
     # Bevande
@@ -429,7 +429,7 @@ def render_category_editor(df_completo_filtrato, supabase):
     # L'AI li categorizza correttamente quando si usa "AVVIA AI PER CATEGORIZZARE"
     if 'Categoria' in df_editor.columns:
         # Converti pd.NA, None, stringhe vuote in "Da Classificare"
-        # NON toccare "SECCO" perché è una categoria valida (pasta, riso, farina)
+        # NON toccare "PASTA E CEREALI" perché è una categoria valida (pasta, riso, farina)
         
         vuote_prima = df_editor['Categoria'].apply(lambda x: pd.isna(x) or x is None or str(x).strip() == '').sum()
         

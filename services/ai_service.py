@@ -438,6 +438,7 @@ _NON_FOOD_RE = re.compile(r"\bNON\s*FOOD\b")
 # --- Regole audit anomalie categorizzazione ---
 _SALVIETTA_TNT_RE = re.compile(r"\bSALV\w*\b.*\bTNT\b|\bTNT\b.*\bSALV\w*\b")
 _MOCCHI_MOCHI_RE = re.compile(r"\b(MOCCHI|MOCHI)\b")
+_DESSERT_PRONTO_RE = re.compile(r"\b(MONOPORZION\w*|DESSERT\w*|SEMIFREDD\w*)\b")
 _BURRATA_RE = re.compile(r"\bBURRAT[AE]\b")
 _OLIO_EXV_RE = re.compile(r"\bOLIO\s+EX(TRA)?V\w*\b")
 _RAVIOLI_GRIGLIA_CARNE_RE = re.compile(r"\bRAVIOLI\b.*\bGRIGLIA\b.*\b(CARNE|MAIALE)\b")
@@ -458,6 +459,13 @@ _TARTUFO_CARPACCIO_RE = re.compile(r"CARPACCIO.*TARTUF\w*|TARTUF\w*.*CARPACCIO")
 _ACETO_RISO_RE = re.compile(r"\bACETO\b.*\bRISO\b|\bRISO\b.*\bACETO\b")
 _UNAGI_RE = re.compile(r"\bUNAGI\b")
 _DIMSUM_SECCO_RE = re.compile(r"\b(RAVIOLI|SHAO\s?MAI|SIU\s?MAI|GYOZA|HAUKAU|HAR\s?GAU|DIMSUM|DIM\s*SUM)\b")
+_BAO_RIPIENO_RE = re.compile(r"\bBAO\b(?!\s+CREMA)")  # BAO ripieno (maiale, verdure, ecc.) → SECCO; BAO CREMA → PASTICCERIA
+_MANGO_TRASPORTO_RE = re.compile(r"\bMANGO\b.*\bTRASPORTO\s+AEREO\b|\bTRASPORTO\s+AEREO\b.*\bMANGO\b")
+_LOCAZIONE_AFFITTO_RE = re.compile(r"\b(LOCAZION\w*|AFFITTO)\b")
+_SALSE_MONODOSE_RE = re.compile(
+    r"\b(HEINZ|KETCHUP|MAIONESE|MAYONNAISE|SENAPE|MUSTARD)\b.*\b(BUST|MONODOSE|PORZION|DOSE)\w*\b|"
+    r"\b(BUST|MONODOSE|PORZION|DOSE)\w*\b.*\b(HEINZ|KETCHUP|MAIONESE|MAYONNAISE|SENAPE|MUSTARD)\b"
+)
 
 # --- Regole nuovi prodotti non coperti ---
 _LIQ_CL_RE = re.compile(r"\bLIQ\.?\b.*\bCL\.?\s*\d")
@@ -476,7 +484,11 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "tartufo_carpaccio_conserva",
     "aceto_riso_condimento",
     "unagi_pesce",
+    "mochi_gelato_dessert",
+    "dessert_pronto_gelato_dessert",
     "dimsum_secco",
+    "bao_ripieno_secco",
+    "germogli_soia_verdura",
     "salvietta_tnt_consumo",
     "liq_cl_liquore",
     "amaro_brand_liquore",
@@ -578,21 +590,21 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
 
     # Lievito (fresco/secco) → secco (ingrediente base panificazione)
     if _LIEVITO_RE.search(desc_u):
-        mapped = "SECCO"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "lievito_secco"
         return cat, None
 
     # Pasta ripiena italiana (tortelli, tortelloni, agnolotti…) → secco
     if _PASTA_RIPIENA_SECCO_RE.search(desc_u):
-        mapped = "SECCO"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "pasta_ripiena_secco"
         return cat, None
 
     # Surgital (brand pasta ripiena surgelata) → secco
     if _SURGITAL_RE.search(desc_u):
-        mapped = "SECCO"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "surgital_secco"
         return cat, None
@@ -605,11 +617,18 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "piselli_verdura"
         return cat, None
 
-    # MOCCHI/MOCHI (gelato/dessert) → pasticceria
+    # MOCCHI/MOCHI (gelato/dessert pronto) → GELATI E DESSERT
     if _MOCCHI_MOCHI_RE.search(desc_u):
-        mapped = "PASTICCERIA"
+        mapped = "GELATI E DESSERT"
         if cat != mapped:
-            return mapped, "mochi_pasticceria"
+            return mapped, "mochi_gelato_dessert"
+        return cat, None
+
+    # Monoporzioni e dessert pronti (non da cucinare) → GELATI E DESSERT
+    if _DESSERT_PRONTO_RE.search(desc_u):
+        mapped = "GELATI E DESSERT"
+        if cat != mapped:
+            return mapped, "dessert_pronto_gelato_dessert"
         return cat, None
 
     # Burrate → latticini (non servizi/materiale)
@@ -654,18 +673,25 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "olio_extravergine"
         return cat, None
 
+    # BAO ripieno (maiale, verdure, ecc.) → SECCO; BAO CREMA → PASTICCERIA (gestito dopo)
+    if _BAO_RIPIENO_RE.search(desc_u):
+        mapped = "PASTA E CEREALI"
+        if cat != mapped:
+            return mapped, "bao_ripieno_secco"
+        return cat, None
+
     # Ravioli / Shaomai / Gyoza / Haukau → secco (famiglia dimsum/ripieni)
-    if _DIMSUM_SECCO_RE.search(desc_u) and not _RAVIOLI_GRIGLIA_CARNE_RE.search(desc_u):
-        mapped = "SECCO"
+    if _DIMSUM_SECCO_RE.search(desc_u):
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "dimsum_secco"
         return cat, None
 
-    # Ravioli alla griglia di carne/maiale → carne (non manutenzione)
+    # Ravioli alla griglia di carne/maiale: restano SECCO (prodotto principale = raviolo)
     if _RAVIOLI_GRIGLIA_CARNE_RE.search(desc_u):
-        mapped = "CARNE"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
-            return mapped, "ravioli_griglia_carne"
+            return mapped, "ravioli_griglia_secco"
         return cat, None
 
     # Contributo/spese di consegna → servizi (non gelati)
@@ -738,11 +764,11 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "coda_smaria_pesce"
         return cat, None
 
-    # Granella di pistacchio → spezie e aromi (non materiale)
+    # Granella di pistacchio/top simili → secco
     if _GRANELLA_PISTACCHIO_RE.search(desc_u):
-        mapped = "SPEZIE E AROMI"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
-            return mapped, "granella_pistacchio_spezia"
+            return mapped, "granella_pistacchio_secco"
         return cat, None
 
     # Tofu/toufu/doufu generico → latticini (ma NON se è seafood/fish tofu)
@@ -754,7 +780,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
 
     # Breakfast flakes / cereali in fiocchi → secco
     if _BREAKFAST_FLAKES_SECCO_RE.search(desc_u):
-        mapped = "SECCO"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "flakes_secco"
         return cat, None
@@ -994,7 +1020,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         return cat, None
 
     if _SALE_ALIMENTARE_RE.search(desc_u):
-        mapped = "SECCO"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "sale_alimentare"
         return cat, None
@@ -1006,7 +1032,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         return cat, None
 
     if _NOCI_PISTACCHIO_SECCO_RE.search(desc_u):
-        mapped = "SECCO"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "frutta_secca_guscio"
         return cat, None
@@ -1076,27 +1102,27 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         return cat, None
 
     if _LMA_VASC_RE.search(desc_u):
-        mapped = "GELATI"
+        mapped = "GELATI E DESSERT"
         if cat != mapped:
             return mapped, "linea_gelato_vasca"
         return cat, None
 
     if _COPPA_GELATO_GUSTO_RE.search(desc_u):
-        mapped = "GELATI"
+        mapped = "GELATI E DESSERT"
         if cat != mapped:
             return mapped, "coppa_gelato_gusto"
         return cat, None
 
     # Linee gelato in vaschetta con gusti variabili (non solo keyword identiche)
     if _GELATI_LINEA_VASCHETTA_RE.search(desc_u):
-        mapped = "GELATI"
+        mapped = "GELATI E DESSERT"
         if cat != mapped:
             return mapped, "gelato_analogo_vaschetta"
         return cat, None
 
     # Dessert tipici "ripieni" (es. cocco/limone ripieno) -> GELATI
     if _GELATI_RIPIENO_DESSERT_RE.search(desc_u):
-        mapped = "GELATI"
+        mapped = "GELATI E DESSERT"
         if cat != mapped:
             return mapped, "gelato_ripieno_dessert"
         return cat, None
@@ -1173,6 +1199,12 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "rivalsa_bollo_servizio"
         return cat, None
 
+    if _MANGO_TRASPORTO_RE.search(desc_u):
+        mapped = "FRUTTA"
+        if cat != mapped:
+            return mapped, "mango_trasporto_frutta"
+        return cat, None
+
     if _INTERVENTO_TECNICO_ATTREZZATURE_RE.search(desc_u) and _APPARECCHI_CUCINA_RE.search(desc_u):
         mapped = "MANUTENZIONE E ATTREZZATURE"
         if cat != mapped:
@@ -1183,6 +1215,12 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "SERVIZI E CONSULENZE"
         if cat != mapped:
             return mapped, "servizio_accessorio"
+        return cat, None
+
+    if _LOCAZIONE_AFFITTO_RE.search(desc_u):
+        mapped = "UTENZE E LOCALI"
+        if cat != mapped:
+            return mapped, "locazione_affitto_utenze"
         return cat, None
 
     if _CANONE_LOCALE_RE.search(desc_u):
@@ -1251,6 +1289,12 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "bicchiere_o_caraffa_durevole"
         return cat, None
 
+    if _SALSE_MONODOSE_RE.search(desc_u):
+        mapped = "SALSE E CREME"
+        if cat != mapped:
+            return mapped, "salsa_monodose_alimentare"
+        return cat, None
+
     if _MATERIALE_CONSUMO_RE.search(desc_u):
         mapped = "MATERIALE DI CONSUMO"
         if cat != mapped:
@@ -1282,7 +1326,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         return cat, None
 
     if _FECOLA_RE.search(desc_u):
-        mapped = "SECCO"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "fecola_amido_secco"
         return cat, None
@@ -1318,7 +1362,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         return cat, None
 
     if _DIMSUM_RE.search(desc_u):
-        mapped = "SECCO"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "dimsum_come_raviolo"
         return cat, None
@@ -1372,7 +1416,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         return cat, None
 
     if _LEGUMI_RE.search(desc_u) and _SECCO_RE.search(desc_u):
-        mapped = "SECCO"
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
             return mapped, "legume_secco_o_farina"
         return cat, None

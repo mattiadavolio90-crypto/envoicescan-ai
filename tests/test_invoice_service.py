@@ -182,6 +182,49 @@ def _xml_td01_zero_price_blank_row():
 </p:FatturaElettronica>"""
 
 
+def _xml_td01_explicit_zero_total_with_discount():
+    """XML con PrezzoTotale esplicitamente a zero: deve restare zero nel parser."""
+    return b"""<?xml version="1.0" encoding="UTF-8"?>
+<p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+  <FatturaElettronicaHeader>
+    <CedentePrestatore>
+      <DatiAnagrafici>
+        <Anagrafica><Denominazione>FORNITORE TEST SRL</Denominazione></Anagrafica>
+      </DatiAnagrafici>
+    </CedentePrestatore>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA>
+      </DatiAnagrafici>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody>
+    <DatiGenerali>
+      <DatiGeneraliDocumento>
+        <TipoDocumento>TD01</TipoDocumento>
+        <Data>2025-01-15</Data>
+        <Numero>F003</Numero>
+      </DatiGeneraliDocumento>
+    </DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee>
+        <NumeroLinea>1</NumeroLinea>
+        <Descrizione>CAUZIONE FUSTI VINO</Descrizione>
+        <Quantita>11.00</Quantita>
+        <UnitaMisura>NR</UnitaMisura>
+        <PrezzoUnitario>30.98700000</PrezzoUnitario>
+        <ScontoMaggiorazione>
+          <Tipo>SC</Tipo>
+          <Percentuale>100.00</Percentuale>
+        </ScontoMaggiorazione>
+        <PrezzoTotale>0.00000000</PrezzoTotale>
+        <AliquotaIVA>0.00</AliquotaIVA>
+      </DettaglioLinee>
+    </DatiBeniServizi>
+  </FatturaElettronicaBody>
+</p:FatturaElettronica>"""
+
+
 def _run_estrai_xml(xml_bytes, user_id='user_test'):
     """
     Esegue estrai_dati_da_xml su xml_bytes con tutti gli esterni mockati.
@@ -268,3 +311,9 @@ class TestRighePrezzoZero:
     def test_riga_fantasma_tutto_zero_viene_scartata(self):
         righe = _run_estrai_xml(_xml_td01_zero_price_blank_row())
         assert righe == []
+
+    def test_prezzo_totale_zero_esplicito_non_viene_ricostruito(self):
+      righe = _run_estrai_xml(_xml_td01_explicit_zero_total_with_discount())
+      assert len(righe) == 1
+      assert righe[0]['Totale_Riga'] == 0.0
+      assert righe[0]['Prezzo_Unitario'] == 30.99

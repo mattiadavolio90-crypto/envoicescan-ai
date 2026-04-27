@@ -68,7 +68,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         max_pages = 200  # Safety guard: max 200k righe
         
         # 🚀 OTTIMIZZAZIONE: Select solo colonne necessarie (non "*")
-        columns = "file_origine,numero_riga,data_documento,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,totale_documento,totale_imponibile,totale_iva,categoria,codice_articolo,prezzo_standard,ristorante_id,needs_review,tipo_documento,sconto_percentuale,created_at"
+        columns = "file_origine,numero_riga,data_documento,data_competenza,fornitore,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,totale_documento,totale_imponibile,totale_iva,categoria,codice_articolo,prezzo_standard,ristorante_id,needs_review,tipo_documento,sconto_percentuale,created_at"
         
         while page < max_pages:
             offset = page * page_size
@@ -81,10 +81,13 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
                 break
             
             for row in response.data:
+                data_effettiva = row.get("data_competenza") or row.get("data_documento")
                 dati.append({
                     "FileOrigine": row["file_origine"],
                     "NumeroRiga": row["numero_riga"],
-                    "DataDocumento": row["data_documento"],
+                    "DataDocumento": data_effettiva,
+                    "DataDocumentoOriginale": row.get("data_documento"),
+                    "DataCompetenza": row.get("data_competenza"),
                     "Fornitore": row["fornitore"],
                     "Descrizione": row["descrizione"],
                     "Quantita": row["quantita"],
@@ -841,14 +844,78 @@ def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=No
         return {"success": False, "error": str(e), "righe_eliminate": 0}
 
 
-def elimina_tutte_fatture(user_id: str, supabase_client=None, ristoranteid: str = None) -> Dict[str, Any]:
+def aggiorna_data_competenza_fattura(
+    file_origine: str,
+    user_id: str,
+    data_competenza: str | None,
+    supabase_client=None,
+    ristoranteid: str = None,
+) -> Dict[str, Any]:
+    """Aggiorna la data di competenza su tutte le righe della fattura selezionata."""
+    if supabase_client is None:
+        try:
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
+        except Exception as e:
+            logger.error(f"❌ Impossibile inizializzare Supabase: {e}")
+            return {"success": False, "error": "connection_error", "righe_aggiornate": 0}
+
+    try:
+        if not user_id:
+            return {"success": False, "error": "not_authenticated", "righe_aggiornate": 0}
+
+        ristorante_id = ristoranteid
+        if not ristorante_id:
+            logger.warning("ristorante_id mancante in aggiorna_data_competenza_fattura - filtro solo per user_id")
+
+        query_count = (
+            supabase_client.table("fatture")
+            .select("id", count="exact")
+            .eq("user_id", user_id)
+            .eq("file_origine", file_origine)
+            .is_("deleted_at", "null")
+        )
+        if ristorante_id:
+            query_count = query_count.eq("ristorante_id", ristorante_id)
+        count_response = query_count.execute()
+        num_righe = count_response.count if count_response.count is not None else (len(count_response.data) if count_response.data else 0)
+
+        if num_righe == 0:
+            return {"success": False, "error": "not_found", "righe_aggiornate": 0}
+
+        query_update = (
+            supabase_client.table("fatture")
+            .update({"data_competenza": data_competenza})
+            .eq("user_id", user_id)
+            .eq("file_origine", file_origine)
+            .is_("deleted_at", "null")
+        )
+        if ristorante_id:
+            query_update = query_update.eq("ristorante_id", ristorante_id)
+        query_update.execute()
+
+        logger.info(
+            "📅 Data competenza aggiornata file=%s user=%s righe=%s valore=%s",
+            file_origine,
+            user_id,
+            num_righe,
+            data_competenza,
+        )
+        return {"success": True, "error": None, "righe_aggiornate": int(num_righe)}
+    except Exception as e:
+        logger.exception("Errore aggiornamento data competenza")
+        return {"success": False, "error": str(e), "righe_aggiornate": 0}
+
+
+def elimina_tutte_fatture(user_id: str, supabase_client=None, ristoranteid: str = None, soft_delete: bool = True) -> Dict[str, Any]:
     """
-    Sposta TUTTE le fatture attive dell'utente nel cestino (soft-delete).
+    Elimina TUTTE le fatture dell'utente.
     
     Args:
         user_id: ID utente (per controllo sicurezza)
         supabase_client: Client Supabase (opzionale, usa st.secrets se None)
         ristoranteid: ID ristorante per filtro multi-tenant
+        soft_delete: True = sposta nel cestino (default), False = hard-delete definitivo
     
     Returns:
         dict: {"success": bool, "error": str, "righe_eliminate": int, "fatture_eliminate": int}
@@ -865,15 +932,17 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None, ristoranteid: str 
         if not user_id:
             return {"success": False, "error": "not_authenticated", "righe_eliminate": 0, "fatture_eliminate": 0}
         
-        # Prima conta quante righe e fatture attive verranno spostate nel cestino
+        # Prima conta quante righe/fatture verranno interessate
         ristorante_id = ristoranteid
 
         if not ristorante_id:
             logger.warning("ristorante_id mancante in elimina_tutte_fatture - filtro solo per user_id")
         
-        query_count = supabase_client.table("fatture").select("id, file_origine", count="exact").eq("user_id", user_id).is_("deleted_at", "null")
+        query_count = supabase_client.table("fatture").select("id, file_origine", count="exact").eq("user_id", user_id)
         if ristorante_id:
             query_count = query_count.eq("ristorante_id", ristorante_id)
+        if soft_delete:
+            query_count = query_count.is_("deleted_at", "null")
         count_response = query_count.execute()
         num_righe = count_response.count if count_response.count else 0
         files_set = set()
@@ -893,71 +962,98 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None, ristoranteid: str 
                 logger.warning(f"RPC get_distinct_files fallita, uso conteggio parziale: {rpc_err}")
         num_fatture = len(files_set)
         
-        logger.info(f"SOFT-DELETE MASSIVO: user_id={user_id} ristorante_id={ristorante_id}, {num_fatture} fatture ({num_righe} righe)")
+        op_label = "SOFT-DELETE" if soft_delete else "HARD-DELETE"
+        logger.info(f"{op_label} MASSIVO: user_id={user_id} ristorante_id={ristorante_id}, {num_fatture} fatture ({num_righe} righe)")
         
         if num_righe == 0:
             return {"success": False, "error": "no_data", "righe_eliminate": 0, "fatture_eliminate": 0}
         
-        # Esegui SOFT-DELETE: imposta deleted_at su tutte le righe attive
-        logger.info(f"🗑️ Esecuzione SOFT-DELETE per user_id={user_id} ristorante_id={ristorante_id}...")
-        
-        try:
-            query_update = supabase_client.table("fatture").update({"deleted_at": "now()"}).eq("user_id", user_id).is_("deleted_at", "null")
-            if ristorante_id:
-                query_update = query_update.eq("ristorante_id", ristorante_id)
-            query_update.execute()
-            logger.info(f"📊 SOFT-DELETE executed for user_id={user_id}")
-        except Exception as update_error:
-            logger.error(f"❌ ERRORE SOFT-DELETE: {update_error}")
-            raise
-        
-        # Verifica post-update: conta righe ancora attive
-        query_verify = supabase_client.table("fatture").select("id", count="exact").eq("user_id", user_id).is_("deleted_at", "null")
-        if ristorante_id:
-            query_verify = query_verify.eq("ristorante_id", ristorante_id)
-        verify_response = query_verify.execute()
-        num_rimaste = verify_response.count if verify_response.count else 0
-        
-        logger.info(f"✅ Verifica post-soft-delete: {num_rimaste} righe attive rimaste")
-        
-        if num_rimaste > 0:
-            logger.error(f"❌ SOFT-DELETE PARZIALE: {num_rimaste} righe ancora attive per user {user_id}")
-            
-            # Tentativo 2: Re-UPDATE
+        if soft_delete:
+            # Esegui SOFT-DELETE: imposta deleted_at su tutte le righe attive
+            logger.info(f"🗑️ Esecuzione SOFT-DELETE per user_id={user_id} ristorante_id={ristorante_id}...")
+
             try:
-                logger.info(f"🔄 TENTATIVO 2: Ri-esecuzione SOFT-DELETE per {num_rimaste} righe rimaste...")
-                query_update2 = supabase_client.table("fatture").update({"deleted_at": "now()"}).eq("user_id", user_id).is_("deleted_at", "null")
+                query_update = supabase_client.table("fatture").update({"deleted_at": "now()"}).eq("user_id", user_id).is_("deleted_at", "null")
                 if ristorante_id:
-                    query_update2 = query_update2.eq("ristorante_id", ristorante_id)
-                query_update2.execute()
-                
-                # Verifica finale
-                query_verify_final = supabase_client.table("fatture").select("id", count="exact").eq("user_id", user_id).is_("deleted_at", "null")
-                if ristorante_id:
-                    query_verify_final = query_verify_final.eq("ristorante_id", ristorante_id)
-                verify_final = query_verify_final.execute()
-                num_finali = verify_final.count if verify_final.count else 0
-                
-                if num_finali > 0:
-                    logger.critical(f"🚨 SOFT-DELETE FALLITO ANCHE DOPO RETRY: {num_finali} righe ancora attive")
+                    query_update = query_update.eq("ristorante_id", ristorante_id)
+                query_update.execute()
+                logger.info(f"📊 SOFT-DELETE executed for user_id={user_id}")
+            except Exception as update_error:
+                logger.error(f"❌ ERRORE SOFT-DELETE: {update_error}")
+                raise
+
+            # Verifica post-update: conta righe ancora attive
+            query_verify = supabase_client.table("fatture").select("id", count="exact").eq("user_id", user_id).is_("deleted_at", "null")
+            if ristorante_id:
+                query_verify = query_verify.eq("ristorante_id", ristorante_id)
+            verify_response = query_verify.execute()
+            num_rimaste = verify_response.count if verify_response.count else 0
+
+            logger.info(f"✅ Verifica post-soft-delete: {num_rimaste} righe attive rimaste")
+
+            if num_rimaste > 0:
+                logger.error(f"❌ SOFT-DELETE PARZIALE: {num_rimaste} righe ancora attive per user {user_id}")
+
+                # Tentativo 2: Re-UPDATE
+                try:
+                    logger.info(f"🔄 TENTATIVO 2: Ri-esecuzione SOFT-DELETE per {num_rimaste} righe rimaste...")
+                    query_update2 = supabase_client.table("fatture").update({"deleted_at": "now()"}).eq("user_id", user_id).is_("deleted_at", "null")
+                    if ristorante_id:
+                        query_update2 = query_update2.eq("ristorante_id", ristorante_id)
+                    query_update2.execute()
+
+                    # Verifica finale
+                    query_verify_final = supabase_client.table("fatture").select("id", count="exact").eq("user_id", user_id).is_("deleted_at", "null")
+                    if ristorante_id:
+                        query_verify_final = query_verify_final.eq("ristorante_id", ristorante_id)
+                    verify_final = query_verify_final.execute()
+                    num_finali = verify_final.count if verify_final.count else 0
+
+                    if num_finali > 0:
+                        logger.critical(f"🚨 SOFT-DELETE FALLITO ANCHE DOPO RETRY: {num_finali} righe ancora attive")
+                        return {
+                            "success": False,
+                            "error": f"Soft-delete parziale: {num_finali} righe non spostate",
+                            "righe_eliminate": num_righe - num_finali,
+                            "fatture_eliminate": num_fatture
+                        }
+                    else:
+                        logger.info(f"✅ SOFT-DELETE completato al secondo tentativo")
+                except Exception as retry_error:
+                    logger.critical(f"❌ ERRORE nel retry SOFT-DELETE: {retry_error}")
                     return {
-                        "success": False, 
-                        "error": f"Soft-delete parziale: {num_finali} righe non spostate", 
-                        "righe_eliminate": num_righe - num_finali, 
-                        "fatture_eliminate": num_fatture
+                        "success": False,
+                        "error": f"Soft-delete fallito: {str(retry_error)}",
+                        "righe_eliminate": 0,
+                        "fatture_eliminate": 0
                     }
-                else:
-                    logger.info(f"✅ SOFT-DELETE completato al secondo tentativo")
-            except Exception as retry_error:
-                logger.critical(f"❌ ERRORE nel retry SOFT-DELETE: {retry_error}")
+
+            logger.warning(f"⚠️ SOFT-DELETE MASSIVO SUCCESSO: {num_fatture} fatture ({num_righe} righe) spostate nel cestino per user {user_id}")
+        else:
+            # Esegui HARD-DELETE: elimina definitivamente anche le righe già nel cestino
+            logger.warning(f"🗑️ HARD-DELETE MASSIVO per user_id={user_id} ristorante_id={ristorante_id}...")
+            query_delete = supabase_client.table("fatture").delete().eq("user_id", user_id)
+            if ristorante_id:
+                query_delete = query_delete.eq("ristorante_id", ristorante_id)
+            query_delete.execute()
+
+            # Verifica finale: non deve rimanere nulla nel perimetro
+            verify_hard = supabase_client.table("fatture").select("id", count="exact").eq("user_id", user_id)
+            if ristorante_id:
+                verify_hard = verify_hard.eq("ristorante_id", ristorante_id)
+            verify_hard_resp = verify_hard.execute()
+            num_rimaste_hard = verify_hard_resp.count if verify_hard_resp.count else 0
+
+            if num_rimaste_hard > 0:
+                logger.error(f"❌ HARD-DELETE PARZIALE: {num_rimaste_hard} righe ancora presenti")
                 return {
-                    "success": False, 
-                    "error": f"Soft-delete fallito: {str(retry_error)}", 
-                    "righe_eliminate": 0, 
-                    "fatture_eliminate": 0
+                    "success": False,
+                    "error": f"Hard-delete parziale: {num_rimaste_hard} righe ancora presenti",
+                    "righe_eliminate": num_righe - num_rimaste_hard,
+                    "fatture_eliminate": num_fatture,
                 }
-        
-        logger.warning(f"⚠️ SOFT-DELETE MASSIVO SUCCESSO: {num_fatture} fatture ({num_righe} righe) spostate nel cestino per user {user_id}")
+
+            logger.warning(f"🧨 HARD-DELETE MASSIVO SUCCESSO: {num_fatture} fatture ({num_righe} righe) eliminate definitivamente per user {user_id}")
         
         try:
             from services.ai_service import invalida_cache_memoria
@@ -1695,6 +1791,7 @@ __all__ = [
     'calcola_alert',
     'carica_sconti_e_omaggi',
     'elimina_fattura_completa',
+    'aggiorna_data_competenza_fattura',
     'elimina_tutte_fatture',
     'get_fatture_stats',
     'clear_fatture_cache',

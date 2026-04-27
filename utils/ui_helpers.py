@@ -25,7 +25,7 @@ def _format_pivot_value(col_name: str, value):
         return f"{float(value):.1f}%"
     if col_name == 'MEDIA' or col_name == 'TOTALE' or col_name not in ('Categoria', 'Fornitore'):
         try:
-            return f"€ {float(value):,.2f}"
+            return f"€ {float(value):,.0f}".replace(",", ".")
         except (TypeError, ValueError):
             return str(value)
     return str(value)
@@ -37,13 +37,31 @@ def _render_static_table(df: pd.DataFrame, key: str):
         f"<style>"
         f".ohh-static-wrap-{key}{{overflow-x:auto;border:1px solid #dbe4f0;border-radius:10px;background:#ffffff;margin-bottom:1rem;}}"
         f".ohh-static-table-{key}{{width:100%;border-collapse:collapse;font-size:0.92rem;}}"
-        f".ohh-static-table-{key} thead th{{position:sticky;top:0;background:#f7f9fc;color:#334155;padding:0.7rem 0.75rem;border-bottom:1px solid #dbe4f0;text-align:left;white-space:nowrap;}}"
+        f".ohh-static-table-{key} thead th{{position:sticky;top:0;background:#f7f9fc;color:#334155;padding:0.7rem 0.75rem;border-bottom:1px solid #dbe4f0;text-align:left;white-space:nowrap;font-weight:700;}}"
         f".ohh-static-table-{key} tbody td{{padding:0.65rem 0.75rem;border-top:1px solid #eef2f7;white-space:nowrap;}}"
         f".ohh-static-table-{key} tbody tr:nth-child(even){{background:#fbfdff;}}"
         f"</style>"
         f"<div class=\"ohh-static-wrap-{key}\">{table_html}</div>"
     )
     st.markdown(html, unsafe_allow_html=True)
+
+
+def _format_euro_migliaia(value):
+    if pd.isna(value):
+        return ''
+    try:
+        return f"€ {float(value):,.0f}".replace(",", ".")
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _format_percentuale(value):
+    if pd.isna(value):
+        return ''
+    try:
+        return f"{float(value):.1f}%"
+    except (TypeError, ValueError):
+        return str(value)
 
 
 def load_css(filename: str):
@@ -205,6 +223,25 @@ def render_pivot_mensile(
     pivot_display['MEDIA'] = pivot['MEDIA'].astype(float).round(2).values
 
     if not pivot_display.empty:
+        st.markdown(
+            (
+                f"<h4 style='margin:0 0 0.45rem 0; color:#1e3a5f; "
+                f"font-weight:800;'>📋 Tabella {sheet_name}</h4>"
+            ),
+            unsafe_allow_html=True,
+        )
+
+        def _evidenzia_colonne_riepilogo(_row):
+            styles = []
+            for _col in pivot_display.columns:
+                if _col == 'TOTALE':
+                    styles.append('background-color: #E3F2FD; color: #1565C0; font-weight: 700;')
+                elif _col == 'MEDIA':
+                    styles.append('background-color: #FFF3CD; color: #856404; font-weight: 700;')
+                else:
+                    styles.append('')
+            return styles
+
         # Inizializza session_state per il checkbox se necessario
         if f"mostra_incidenze_pct_{sezione_key}" not in st.session_state:
             st.session_state[f"mostra_incidenze_pct_{sezione_key}"] = False
@@ -259,13 +296,29 @@ def render_pivot_mensile(
             if col == index_col:
                 continue
             if col.endswith(' %'):
-                pivot_column_config[col] = st.column_config.NumberColumn(col, format='%.1f%%', width='small')
+                pivot_column_config[col] = st.column_config.NumberColumn(col, format='%.1f %%', width='small')
             else:
-                pivot_column_config[col] = st.column_config.NumberColumn(col, format='€ %.2f', width='small')
+                # Nessun format= per evitare il bug sprintf con '€ %,.0f':
+                # la formattazione visiva è gestita dallo Styler via _format_euro_migliaia.
+                pivot_column_config[col] = st.column_config.NumberColumn(col, width='small')
 
         try:
+            style_formatters = {}
+            for col in pivot_display.columns:
+                if col == index_col:
+                    continue
+                if col.endswith(' %'):
+                    style_formatters[col] = _format_percentuale
+                else:
+                    style_formatters[col] = _format_euro_migliaia
+
+            pivot_styled = (
+                pivot_display.style
+                .apply(_evidenzia_colonne_riepilogo, axis=1)
+                .format(style_formatters)
+            )
             st.dataframe(
-                pivot_display,
+                pivot_styled,
                 column_config=pivot_column_config,
                 hide_index=True,
                 use_container_width=True,
