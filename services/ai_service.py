@@ -104,6 +104,21 @@ _memoria_cache = {
 # Flag per disabilitare la memoria globale (solo sessione)
 _disable_global_memory = False
 
+# P3: Cache della UNION brand_ambigui per evitare ricalcolo ad ogni descrizione in batch.
+# Invalidata automaticamente quando cambia _memoria_cache['version'].
+_brand_union_cache: set = set()
+_brand_union_version: int = -1
+
+
+def _get_brand_union_set() -> set:
+    """Ritorna BRAND_AMBIGUI_NO_DICT | brand_ambigui dinamici, con cache invalidation lazy."""
+    global _brand_union_cache, _brand_union_version
+    current_version = _memoria_cache.get('version', 0)
+    if current_version != _brand_union_version:
+        _brand_union_cache = BRAND_AMBIGUI_NO_DICT | _memoria_cache.get('brand_ambigui', set())
+        _brand_union_version = current_version
+    return _brand_union_cache
+
 
 def _normalize_category_name(categoria: str | None) -> str | None:
     """Converte alias storici cliente nella categoria canonica attuale."""
@@ -243,6 +258,50 @@ _BICCHIERI_MONOUSO_RE = re.compile(
     r"\b(PLASTICA|CARTA|CARTONE|MONOUSO|ASPORTO|USA\s*E\s*GETTA)\b.*\b(BICCHIER[EI]?|CALICE|CALICI|TAZZA|TAZZE|COPPA|COPPE)\b"
 )
 _BICCHIERI_DUREVOLI_RE = re.compile(r"\b(BICCHIER[EI]?|CALICE|CALICI|TAZZA|TAZZE|CARAFFA|CARAFFE|BROCCA|BROCCHE)\b")
+# Piatti/stoviglie durevoli (ceramica, porcellana, gres, ardesia, melamina, bamboo) → MANUTENZIONE
+_PIATTO_DUREVOLE_RE = re.compile(
+    r"\bPIATT(?:IN[OI]|[OI])\b.*\b(CERAMICA|PORCELLANA|GRES|ARDESIA|MELAMINA|BAMBOO|BAMBU|ARGILLA)\b"
+    r"|\b(CERAMICA|PORCELLANA|GRES|ARDESIA|MELAMINA|BAMBOO|BAMBU|ARGILLA)\b.*\bPIATT(?:IN[OI]|[OI])\b",
+    re.IGNORECASE,
+)
+# Piatti con formato quantità (es. 50x20) → MATERIALE DI CONSUMO (stoviglie monouso in bulk)
+_PIATTO_FORMATO_QUANTITA_RE = re.compile(
+    r"\bPIATT(?:IN[OI]|[OI])\b.*\b\d+\s*[Xx]\s*\d+\b|\b\d+\s*[Xx]\s*\d+\b.*\bPIATT(?:IN[OI]|[OI])\b",
+    re.IGNORECASE,
+)
+_LECCA_LECCA_SHOP_RE = re.compile(r"\bLECCA\s*LECCA\b|\bLOLLIPOP\b|\bM\.?LOLL\b", re.IGNORECASE)
+# Utensili/stoviglie leggere ma durevoli emersi dalle correzioni manuali recenti.
+_ATTREZZATURA_LEGGERA_DUREVOLE_RE = re.compile(
+    r"\bFRUSTA\b|\bPENNELL\w*\b"
+    r"|\bCUCCHIAI\w*\b.*\bMELAMINA\b|\bMELAMINA\b.*\bCUCCHIAI\w*\b"
+    r"|\bCOPERCH(?:IO|I)\b.*\b(ALBLACK|ACCIAIO|INOX|VETRO|GHISA|ALLUMINIO)\b"
+    r"|\b(ALBLACK|ACCIAIO|INOX|VETRO|GHISA|ALLUMINIO)\b.*\bCOPERCH(?:IO|I)\b",
+    re.IGNORECASE,
+)
+# Posate durevoli (acciaio, inox, argento) → MANUTENZIONE
+_POSATE_DUREVOLI_RE = re.compile(
+    r"\bPOSATE\b.*\b(ACCIAIO|INOX|ARGENTO|METALL\w*)\b"
+    r"|\b(ACCIAIO|INOX|ARGENTO|METALL\w*)\b.*\bPOSATE\b",
+    re.IGNORECASE,
+)
+# Rotoli carta calcolatrice/POS → MATERIALE DI CONSUMO, non servizio POS.
+_CARTA_CALCOLATRICE_RE = re.compile(
+    r"\b(ROTOLO|ROTOLI)\w*\b.*\b(CARTA\s*CALCOLATRICE|CALCOLATRICE|POS)\b"
+    r"|\b(CARTA\s*CALCOLATRICE|CALCOLATRICE)\b.*\b(ROTOLO|ROTOLI)\w*\b",
+    re.IGNORECASE,
+)
+# Bustine/sacchetti forno → MATERIALE DI CONSUMO.
+_BUSTINA_FORNO_RE = re.compile(
+    r"\b(BUSTINA|BUSTINE|SACCHETTO|SACCHETTI)\b.*\bFORNO\b|\bFORNO\b.*\b(BUSTINA|BUSTINE|SACCHETTO|SACCHETTI)\b",
+    re.IGNORECASE,
+)
+# Sac à poche / saccapoche (consumabile da pasticceria/cucina) → MATERIALE DI CONSUMO
+_SAC_A_POCHE_RE = re.compile(
+    r"\bSAC\s*[AÀ]\s*POCHE\b|\bSACCA\s*POCHE\b|\bSAC-A-POCHE\b|\bSACCAPOCHE\b",
+    re.IGNORECASE,
+)
+# Utensili da cucina → MANUTENZIONE (non si ricomprano se non si rompono)
+_UTENSILI_CUCINA_RE = re.compile(r"\bUTENSIL[EI]\b", re.IGNORECASE)
 _COPPA_DUREVOLE_RE = re.compile(
     r"\b(COPPA|COPPE)\b.*\b(MARTINI|VETRO|TIMELESS|ELISIA|BRESK|AMBRA)\b|\b(MARTINI|VETRO|TIMELESS|ELISIA|BRESK|AMBRA)\b.*\b(COPPA|COPPE)\b"
 )
@@ -344,6 +403,9 @@ _MANUTENZIONE_LIGHT_RE = re.compile(r"\b(ACCENDIGAS|ZOCCOLINO)\b")
 _VARIE_BAR_SERVICE_RE = re.compile(
     r"\b(ZUCCH(?:ERO)?\s*BUSTIN\w*|BUSTIN\w*\s*ZUCCH(?:ERO)?|CIOK\d+\b|CIOCCOLATA\s+(COCCO|PISTACCHIO|FONDENTE))\b"
 )
+_ESTATHE_RE = re.compile(
+    r"\b(?:E\s*STA\s*THE|ESTATHE|ESTATHE['’]?|THE\s+ESTATHE)\b"
+)
 _SANTHE_RE = re.compile(r"\bSAN\s*TH[EÉ']\b|\bSANTHE['’]?\b")
 _SUSHI_VARIE_RE = re.compile(r"\b(BAMBU|BAMBOO|NORI|WASABI|PANKO|MASAGO|TOBIKO)\b")
 _TAZZE_PIATTI_RE = re.compile(r"\bTAZZE?\b.*\bPIAT\w*\b|\bPIAT\w*\b.*\bTAZZE?\b")
@@ -366,6 +428,19 @@ _DETERGENTE_BRAND_RE = re.compile(r"\b(CIF|CANDEG\w*)\b")
 _CROIS_RE = re.compile(r"\bCROIS\b")
 _CREMA_CATALANA_RE = re.compile(r"\bCREMA\s+CATALANA\b")
 _CASTAGNE_D_ACQUA_RE = re.compile(r"\bCASTAGN\w*\b.*\bD[' ]\s*ACQUA\b|\bD[' ]\s*ACQUA\b.*\bCASTAGN\w*\b")
+
+# Brodo granulare/in polvere/concentrato -> SCATOLAME E CONSERVE (non SALSE E CREME)
+_BRODO_GRANULARE_RE = re.compile(
+    r"\bBRODO\b.*\b(GRANULARE|POLVERE|LIOFILIZZAT|CONCENTRAT|DADO|IN\s+POLVERE)\b"
+    r"|\b(GRANULARE|DADO)\b.*\bBRODO\b",
+    re.IGNORECASE,
+)
+
+# Vino di riso / Shaoxing -> VINI (non ALCOLICI/DISTILLATI generici)
+_VINO_RISO_RE = re.compile(
+    r"\bVINO\s+(?:DI\s+)?RISO\b|\bSHAOXING\b|\bLAOJIU\b",
+    re.IGNORECASE,
+)
 _LMA_VASC_RE = re.compile(r"\bLMA\b.*\bVASC\b|\bVASC\b.*\bLMA\b")
 _COPPA_GELATO_GUSTO_RE = re.compile(r"\bCOPPA\b.*\b(RABBIT|PAN\s*DAN|CIP\s*CIOK)\b|\b(RABBIT|PAN\s*DAN|CIP\s*CIOK)\b.*\bCOPPA\b")
 _VINO_BRAND_ACQUA_RE = re.compile(
@@ -478,6 +553,8 @@ _SURGITAL_RE = re.compile(r"\bSURGITAL\b")
 # Regole forti che devono battere cache locali/globali automatiche errate.
 # Non include la memoria admin, che resta prioritaria e intenzionale.
 _NON_NEGOZIABILI_CACHE_OVERRIDE = {
+    "estathe_bevanda",
+    "santhe_bevanda",
     "ingrediente_bar_specifico",
     "capricciosa_secchio_conserva",
     "topping_bar_specifico",
@@ -498,6 +575,16 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "piselli_verdura",
     "gelato_analogo_vaschetta",
     "gelato_ripieno_dessert",
+    "brodo_granulare_conserva",
+    "vino_riso_vini",
+    "piatto_durevole_attrezzatura",
+    "piatto_formato_quantita_consumo",
+    "posate_durevoli_attrezzatura",
+    "sac_a_poche_consumo",
+    "utensili_attrezzatura",
+    "attrezzatura_leggera_durevole",
+    "carta_calcolatrice_consumo",
+    "bustina_forno_consumo",
 }
 
 
@@ -638,11 +725,32 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "burrata_latticino"
         return cat, None
 
+    # Estathe (anche varianti abbreviate/sporche) -> BEVANDE, non CAFFE E THE
+    if _ESTATHE_RE.search(desc_u):
+        mapped = "BEVANDE"
+        if cat != mapped:
+            return mapped, "estathe_bevanda"
+        return cat, None
+
     # Santhe/SanThé pesca-limone → bevande (non frutta)
     if _SANTHE_RE.search(desc_u):
         mapped = "BEVANDE"
         if cat != mapped:
             return mapped, "santhe_bevanda"
+        return cat, None
+
+    # Brodo granulare/dado/in polvere → conserva (non salsa)
+    if _BRODO_GRANULARE_RE.search(desc_u):
+        mapped = "SCATOLAME E CONSERVE"
+        if cat != mapped:
+            return mapped, "brodo_granulare_conserva"
+        return cat, None
+
+    # Vino di riso / Shaoxing / Laojiu → VINI (usato in cucina asiatica)
+    if _VINO_RISO_RE.search(desc_u):
+        mapped = "VINI"
+        if cat != mapped:
+            return mapped, "vino_riso_vini"
         return cat, None
 
     # Carpaccio di tartufo nero → conserva/scatolame
@@ -1229,7 +1337,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "canone_immobile"
         return cat, None
 
-    if _SERVIZI_CANONI_RE.search(desc_u) and not _CANONE_LOCALE_RE.search(desc_u):
+    if _SERVIZI_CANONI_RE.search(desc_u) and not _CANONE_LOCALE_RE.search(desc_u) and not _CARTA_CALCOLATRICE_RE.search(desc_u):
         mapped = "SERVIZI E CONSULENZE"
         if cat != mapped:
             return mapped, "canone_o_servizio"
@@ -1239,6 +1347,13 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "UTENZE E LOCALI"
         if cat != mapped:
             return mapped, "utenza_o_locazione"
+        return cat, None
+
+    # Rotoli POS / carta calcolatrice sono consumabili, non canoni di servizio.
+    if _CARTA_CALCOLATRICE_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "carta_calcolatrice_consumo"
         return cat, None
 
     if _TAPPI_FORMATO_RE.search(desc_u):
@@ -1259,7 +1374,7 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "servizio_bar"
         return cat, None
 
-    if _TAZZE_PIATTI_RE.search(desc_u):
+    if _TAZZE_PIATTI_RE.search(desc_u) and not _BICCHIERI_MONOUSO_RE.search(desc_u):
         mapped = "MANUTENZIONE E ATTREZZATURE"
         if cat != mapped:
             return mapped, "servizio_tazze_piatti"
@@ -1287,6 +1402,53 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "MANUTENZIONE E ATTREZZATURE"
         if cat != mapped:
             return mapped, "bicchiere_o_caraffa_durevole"
+        return cat, None
+
+    # Piatti durevoli (ceramica/porcellana/gres/ardesia/melamina/bamboo) → MANUTENZIONE
+    if _PIATTO_DUREVOLE_RE.search(desc_u) and not _LECCA_LECCA_SHOP_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "piatto_durevole_attrezzatura"
+        return cat, None
+
+    # Piatti con formato quantità (50x20, 100x50 …) → MATERIALE DI CONSUMO (monouso in bulk)
+    if _PIATTO_FORMATO_QUANTITA_RE.search(desc_u) and not _LECCA_LECCA_SHOP_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "piatto_formato_quantita_consumo"
+        return cat, None
+
+    # Posate durevoli (acciaio, inox) → MANUTENZIONE; le posate generiche/plastica restano in _MATERIALE_CONSUMO_RE
+    if _POSATE_DUREVOLI_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "posate_durevoli_attrezzatura"
+        return cat, None
+
+    if _ATTREZZATURA_LEGGERA_DUREVOLE_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "attrezzatura_leggera_durevole"
+        return cat, None
+
+    if _BUSTINA_FORNO_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "bustina_forno_consumo"
+        return cat, None
+
+    # Sac à poche → MATERIALE DI CONSUMO (si comprano in confezioni e si buttano)
+    if _SAC_A_POCHE_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "sac_a_poche_consumo"
+        return cat, None
+
+    # Utensili da cucina → MANUTENZIONE (non si ricomprano se non si rompono)
+    if _UTENSILI_CUCINA_RE.search(desc_u):
+        mapped = "MANUTENZIONE E ATTREZZATURE"
+        if cat != mapped:
+            return mapped, "utensili_attrezzatura"
         return cat, None
 
     if _SALSE_MONODOSE_RE.search(desc_u):
@@ -2077,8 +2239,9 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
 
     # Brand multi-categoria → bypass dizionario, forza AI per classificazione per-prodotto.
     # Check ibrido: set statico (constants.py) UNION set dinamico (Supabase brand_ambigui).
+    # P3: usa cache lazy della UNION (evita ricalcolo O(n) ad ogni riga in batch)
     desc_upper = descrizione.upper()
-    _brand_set = BRAND_AMBIGUI_NO_DICT | _memoria_cache.get('brand_ambigui', set())
+    _brand_set = _get_brand_union_set()
     if any(brand in desc_upper for brand in _brand_set):
         return categoria_ai
 
@@ -2181,6 +2344,50 @@ def _applica_guardrail_iva_bassa_spese_generali(
         categoria_norm,
     )
     return categoria_norm
+
+
+def _applica_guardrail_note_con_importo(
+    descrizione: str,
+    categoria: str,
+    prezzo: float,
+) -> str:
+    """NOTE E DICITURE e' consentita solo per righe a importo non positivo."""
+    categoria_norm = _normalize_category_name(categoria) or categoria
+    if categoria_norm not in {"📝 NOTE E DICITURE", "NOTE E DICITURE"}:
+        return categoria_norm
+
+    try:
+        prezzo_val = float(prezzo or 0)
+    except (TypeError, ValueError):
+        return "📝 NOTE E DICITURE"
+
+    if prezzo_val > 0:
+        logger.info(
+            "🛡️ GUARDRAIL NOTE: '%s' con importo positivo (%.2f) non puo' restare in NOTE E DICITURE -> SERVIZI E CONSULENZE",
+            str(descrizione or "")[:60],
+            prezzo_val,
+        )
+        return "SERVIZI E CONSULENZE"
+
+    return "📝 NOTE E DICITURE"
+
+
+def _applica_tutti_guardrail(
+    descrizione: str,
+    categoria: str,
+    prezzo: float,
+    iva_percentuale: Optional[float] = None,
+) -> str:
+    """A1: helper centralizzato che applica tutti i guardrail in sequenza.
+
+    Ordine: IVA bassa spese generali → NOTE con importo positivo.
+    Usare questo al posto delle due chiamate separate dove entrambe servono.
+    Per i soli check NOTE/prezzo (FORNITORE, UM) usare direttamente
+    _applica_guardrail_note_con_importo.
+    """
+    cat = _applica_guardrail_iva_bassa_spese_generali(descrizione, categoria, iva_percentuale)
+    cat = _applica_guardrail_note_con_importo(descrizione, cat, prezzo)
+    return cat
 
 
 def salva_correzione_in_memoria_locale(
@@ -2470,15 +2677,15 @@ def categorizza_con_memoria(
             record = cache['classificazioni_manuali'][desc_stripped]
             if record.get('is_dicitura'):
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → DICITURA (validata admin)")
-                return "📝 NOTE E DICITURE"
+                return _applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", prezzo)
             else:
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → {record['categoria']} (validata admin)")
-                return record['categoria']
+                return _applica_guardrail_note_con_importo(descrizione, record['categoria'], prezzo)
 
         # LIVELLO 1.5: Override forti non negoziabili prima della memoria automatica.
         categoria_forzata, motivo_forzato = applica_regole_categoria_forti(descrizione, "Da Classificare")
         if motivo_forzato in _NON_NEGOZIABILI_CACHE_OVERRIDE:
-            return categoria_forzata
+            return _applica_guardrail_note_con_importo(descrizione, categoria_forzata, prezzo)
     
     except Exception as e:
         logger.warning(f"Errore check memoria admin (cache): {e}")
@@ -2490,7 +2697,7 @@ def categorizza_con_memoria(
             if descrizione in locale_dict:
                 categoria = locale_dict[descrizione]
                 logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
-                return categoria
+                return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
     
     except Exception as e:
         logger.warning(f"Errore check memoria locale utente (cache): {e}")
@@ -2504,14 +2711,14 @@ def categorizza_con_memoria(
             if desc_normalized in cache['prodotti_master']:
                 categoria = cache['prodotti_master'][desc_normalized]
                 logger.info(f"🟢 MEMORIA GLOBALE (cache): '{descrizione}' → {categoria} (norm: '{desc_normalized}')")
-                return categoria
+                return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
     
     except Exception as e:
         logger.warning(f"Errore check memoria globale (cache): {e}")
     
     # LIVELLO 4: Check dicitura (se prezzo = 0)
     if prezzo == 0 and is_dicitura_sicura(descrizione, prezzo, quantita):
-        return "📝 NOTE E DICITURE"
+        return _applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", prezzo)
     
     # LIVELLO 5: Regola FORNITORE specifico (priorità ALTA)
     if fornitore:
@@ -2520,7 +2727,8 @@ def categorizza_con_memoria(
         for fornitore_key, categoria in CATEGORIA_PER_FORNITORE.items():
             if fornitore_key.upper() in fornitore_upper or fornitore_upper in fornitore_key.upper():
                 logger.info(f"🏭 FORNITORE: '{descrizione}' → {categoria} (fornitore: {fornitore})")
-                return categoria
+                # BUG4 FIX: guardrail applicato anche su uscite FORNITORE/UM (difensivo)
+                return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
     
     # LIVELLO 6: Regola UNITÀ MISURA (priorità ALTA)
     if unita_misura:
@@ -2529,12 +2737,14 @@ def categorizza_con_memoria(
         if unita_upper in UNITA_MISURA_CATEGORIA:
             categoria = UNITA_MISURA_CATEGORIA[unita_upper]
             logger.info(f"📏 UNITÀ MISURA: '{descrizione}' → {categoria} (U.M.: {unita_misura})")
-            return categoria
+            # BUG4 FIX: guardrail applicato anche su uscite FORNITORE/UM (difensivo)
+            return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
     
     # LIVELLO 7: Dizionario keyword (fallback)
     categoria_keyword = applica_correzioni_dizionario(descrizione, "Da Classificare")
     categoria_keyword, motivo_override = applica_regole_categoria_forti(descrizione, categoria_keyword)
-    categoria_keyword = _applica_guardrail_iva_bassa_spese_generali(descrizione, categoria_keyword, iva_percentuale)
+    # A1: usa helper centralizzato per applicare entrambi i guardrail in sequenza
+    categoria_keyword = _applica_tutti_guardrail(descrizione, categoria_keyword, prezzo, iva_percentuale)
     if motivo_override:
         logger.info(
             f"🧭 OVERRIDE SICUREZZA (keyword): '{descrizione[:60]}' -> {categoria_keyword} [{motivo_override}]"

@@ -868,7 +868,7 @@ def build_transposed_df(df_input: pd.DataFrame) -> pd.DataFrame:
         ('Fatt. IVA 10%',            lambda i: float(df_input.at[i, 'Fatt_IVA10']),           None),
         ('Fatt. IVA 22%',            lambda i: float(df_input.at[i, 'Fatt_IVA22']),           None),
         ('Altri ricavi (no iva)',    lambda i: float(df_input.at[i, 'Altri_Ricavi_NoIVA']),   None),
-        ('= Fatturato Netto',        lambda i: calc[i]['fatt_netto'],                          None),
+        ('= Fatturato Netto',        lambda i: calc[i]['fatt_netto'],                          lambda i: 100.0 if calc[i]['fatt_netto'] > 0 else None),
         ('Costi F&B (da Fatture)',   lambda i: float(df_input.at[i, 'Costi_FB_Auto']),        lambda i: calc[i]['fb_auto_perc']),
         ('Altri Costi F&B',          lambda i: float(df_input.at[i, 'Altri_FB']),             lambda i: calc[i]['altri_fb_perc']),
         ('= Costi F&B Totali',       lambda i: calc[i]['costi_fb_tot'],                       lambda i: calc[i]['fb_tot_perc']),
@@ -886,7 +886,7 @@ def build_transposed_df(df_input: pd.DataFrame) -> pd.DataFrame:
             row[f'{mese} €'] = val_getter(mese_idx)
             if perc_getter:
                 p = perc_getter(mese_idx)
-                row[f'{mese} %'] = round(p, 1)
+                row[f'{mese} %'] = None if p is None else round(p, 1)
             else:
                 row[f'{mese} %'] = None
         rows.append(row)

@@ -156,6 +156,8 @@ LEGACY_CATEGORY_ALIASES = {
     "MATERIALI CONSUMO": "MATERIALE DI CONSUMO",
     "SECCO": "PASTA E CEREALI",
     "GELATI": "GELATI E DESSERT",
+    # BUG6 FIX: normalizza alias senza emoji alla variante canonica con emoji
+    "NOTE E DICITURE": "📝 NOTE E DICITURE",
 }
 
 
@@ -1655,6 +1657,7 @@ ORPHAN_CHECK_DAYS = 90           # Finestra giorni per warning "potenzialmente o
 CUSTOM_TAG_SUGGESTION_LIMIT = 20  # Max suggerimenti automatici iniziali
 CUSTOM_TAG_SEARCH_RESULT_LIMIT = 100  # Max risultati ricerca descrizioni in UI
 CUSTOM_TAG_ALERT_SOGLIA_DEFAULT = 5.0  # Soglia alert % predefinita per trend tag
+PRICE_ALERT_THRESHOLD_DEFAULT = 5.0    # Soglia alert % predefinita per notifiche variazione prezzi
 CUSTOM_TAG_COLOR_DEFAULT = "#2563EB"   # Colore default tag
 CUSTOM_TAG_UNITA_KG = {"KG", "GR"}     # Unita normalizzate riconducibili a KG
 CUSTOM_TAG_UNITA_LT = {"LT", "ML", "CL"}  # Unita normalizzate riconducibili a LT

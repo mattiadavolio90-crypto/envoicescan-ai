@@ -34,7 +34,12 @@ from services.invoice_service import (
     VisionDailyLimitExceededError,
 )
 from services.worker_client import parse_file_via_worker, classifica_via_worker
-from services.db_service import calcola_alert, carica_e_prepara_dataframe, clear_fatture_cache
+from services.db_service import (
+    calcola_alert,
+    carica_e_prepara_dataframe,
+    clear_fatture_cache,
+    get_price_alert_threshold,
+)
 from utils.validation import is_dicitura_sicura
 
 
@@ -1423,6 +1428,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             'credit_note_files': list(file_note_credito),
             'problematic_files': problematic_entries,
             'problematic_count': len(problematic_entries),
+            'price_alert_threshold_pct': get_price_alert_threshold(user_id),
             'price_alerts': [],
             'td24_date_alerts': td24_date_alerts,
             'stats': dict(upload_summary),
@@ -1465,12 +1471,21 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             
             # Costruisci HTML con dettaglio per motivo
             lbl = "fattura scartata" if n == 1 else "fatture scartate"
-            dettaglio_html = ""
+            dettaglio_parts = []
             for motivo, files_list in motivi_raggruppati.items():
                 nomi_files = ", ".join(_html.escape(f) for f in files_list)
-                dettaglio_html += f'<div style="margin-top:6px;"><span style="font-size:0.82rem;font-weight:600;color:#856404;">📌 {_html.escape(motivo)} ({len(files_list)}):</span><br/><span style="font-size:0.78rem;color:#856404;">{nomi_files}</span></div>'
-            
-            _messages.append(f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}:</span>{dettaglio_html}</div>')
+                dettaglio_parts.append(
+                    f'<span style="font-size:0.82rem;font-weight:600;color:#856404;">📌 {_html.escape(motivo)} ({len(files_list)}):</span> '
+                    f'<span style="font-size:0.78rem;color:#856404;">{nomi_files}</span>'
+                )
+
+            dettaglio_html = " <span style=\"color:#c9a227;\">|</span> ".join(dettaglio_parts)
+            _messages.append(
+                f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;">'
+                f'<span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}: </span>'
+                f'{dettaglio_html}'
+                f'</div>'
+            )
             # Segna come processati per evitare ri-elaborazione
             for nome_file in tutti_problematici:
                 st.session_state.files_processati_sessione.add(nome_file)
@@ -1501,15 +1516,18 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             # Invalida la cache fatture prima del rerun per mostrare subito i nuovi dati.
             if file_ok:
                 try:
+                    price_alert_threshold = get_price_alert_threshold(user_id)
+                    upload_notification_context['price_alert_threshold_pct'] = price_alert_threshold
+
                     df_post_upload = carica_e_prepara_dataframe(
                         user_id,
                         force_refresh=True,
                         ristorante_id=st.session_state.get('ristorante_id'),
                     )
-                    df_alert = calcola_alert(df_post_upload, soglia_minima=5.0)
+                    df_alert = calcola_alert(df_post_upload, soglia_minima=price_alert_threshold)
                     if not df_alert.empty:
                         filtered_alerts = df_alert[
-                            (df_alert['Aumento_Perc'] >= 5.0) &
+                            (df_alert['Aumento_Perc'] >= price_alert_threshold) &
                             (df_alert['N_Fattura'].isin(file_ok))
                         ]
                         upload_notification_context['price_alerts'] = [
@@ -1603,6 +1621,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             'credit_note_files': [],
             'problematic_files': problematic_entries,
             'problematic_count': len(problematic_entries),
+            'price_alert_threshold_pct': get_price_alert_threshold(user_id),
             'price_alerts': [],
             'td24_date_alerts': [],
             'stats': dict(upload_summary),

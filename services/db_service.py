@@ -18,7 +18,7 @@ import pandas as pd
 import streamlit as st
 
 # Import config
-from config.constants import CATEGORIE_SPESE_GENERALI, LEGACY_CATEGORY_ALIASES
+from config.constants import CATEGORIE_SPESE_GENERALI, LEGACY_CATEGORY_ALIASES, PRICE_ALERT_THRESHOLD_DEFAULT
 
 # Logger centralizzato
 from config.logger_setup import get_logger
@@ -26,6 +26,77 @@ logger = get_logger('db')
 
 RETENTION_JOB_NAME = "fatture_retention_2y"
 RETENTION_BATCH_SIZE = 500
+
+
+def _clamp_price_alert_threshold(value: float | int | None) -> float:
+    """Normalizza la soglia alert prezzo nel range [0, 100]."""
+    try:
+        raw = float(value)
+    except (TypeError, ValueError):
+        return float(PRICE_ALERT_THRESHOLD_DEFAULT)
+    return max(0.0, min(100.0, raw))
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def get_price_alert_threshold(user_id: str) -> float:
+    """Legge la soglia alert prezzo utente da users.price_alert_threshold con fallback default."""
+    user_id_norm = str(user_id or '').strip()
+    if not user_id_norm:
+        return float(PRICE_ALERT_THRESHOLD_DEFAULT)
+
+    try:
+        from services import get_supabase_client
+        supabase_client = get_supabase_client()
+        if supabase_client is None:
+            return float(PRICE_ALERT_THRESHOLD_DEFAULT)
+
+        response = (
+            supabase_client.table("users")
+            .select("price_alert_threshold")
+            .eq("id", user_id_norm)
+            .limit(1)
+            .execute()
+        )
+        if response.data:
+            value = response.data[0].get("price_alert_threshold")
+            return _clamp_price_alert_threshold(value)
+    except Exception as e:
+        logger.warning(f"Errore lettura price_alert_threshold user_id={user_id_norm}: {e}")
+
+    return float(PRICE_ALERT_THRESHOLD_DEFAULT)
+
+
+def set_price_alert_threshold(user_id: str, threshold_pct: float, supabase_client=None) -> bool:
+    """Salva la soglia alert prezzo in users.price_alert_threshold."""
+    user_id_norm = str(user_id or '').strip()
+    if not user_id_norm:
+        return False
+
+    value = _clamp_price_alert_threshold(threshold_pct)
+
+    if supabase_client is None:
+        try:
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
+        except Exception as e:
+            logger.error(f"Impossibile inizializzare client Supabase: {e}")
+            return False
+
+    if supabase_client is None:
+        return False
+
+    try:
+        (
+            supabase_client.table("users")
+            .update({"price_alert_threshold": value})
+            .eq("id", user_id_norm)
+            .execute()
+        )
+        get_price_alert_threshold.clear()
+        return True
+    except Exception as e:
+        logger.error(f"Errore salvataggio price_alert_threshold user_id={user_id_norm}: {e}")
+        return False
 
 
 def _normalize_custom_tag_key(text: str) -> str:
@@ -1789,6 +1860,8 @@ __all__ = [
     'carica_e_prepara_dataframe',
     'ricalcola_prezzi_con_sconti',
     'calcola_alert',
+    'get_price_alert_threshold',
+    'set_price_alert_threshold',
     'carica_sconti_e_omaggi',
     'elimina_fattura_completa',
     'aggiorna_data_competenza_fattura',

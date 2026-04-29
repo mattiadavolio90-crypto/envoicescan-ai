@@ -2022,6 +2022,20 @@ if tab2:
                             # Salva in memoria globale come diciture verificate
                             for _d in _auto_diciture:
                                 try:
+                                    # BUG1 GUARD: verifica che NESSUNA occorrenza di questa
+                                    # descrizione in df_zero abbia prezzo_unitario > 0.
+                                    # df_zero include anche righe needs_review=True con prezzo positivo,
+                                    # quindi senza questo check si propagherebbe una DICITURA errata
+                                    # nella memoria globale condivisa.
+                                    _prezzi_desc = df_zero[df_zero['descrizione'] == _d]['prezzo_unitario']
+                                    _prezzo_max = float(_prezzi_desc.max()) if not _prezzi_desc.empty else 0.0
+                                    if _prezzo_max > 0:
+                                        logger.error(
+                                            f"⛔ BUG1 BLOCKED: '{_d[:50]}' ha prezzo_unitario={_prezzo_max:.2f} > 0 "
+                                            f"→ NON salvata come DICITURA in memoria globale (violazione regola business)"
+                                        )
+                                        _auto_err += 1
+                                        continue
                                     supabase.table('prodotti_master').upsert({
                                         'descrizione': _d,
                                         'categoria': '📝 NOTE E DICITURE',

@@ -60,7 +60,6 @@ from services.auth_service import (
     disattiva_trial_scaduta as _disattiva_trial,
 )
 from services.db_service import (
-    aggiorna_data_competenza_fattura,
     carica_e_prepara_dataframe,
     clear_fatture_cache,
     elimina_fattura_completa,
@@ -73,14 +72,6 @@ from services.ai_service import invalida_cache_memoria, mostra_loading_ai
 # ============================================================
 # HELPER
 # ============================================================
-
-
-def _fmt_int_migliaia(val) -> str:
-    """Formatta numeri interi senza decimali con separatore migliaia a punto."""
-    try:
-        return f"{int(round(float(val))):,}".replace(",", ".")
-    except (TypeError, ValueError):
-        return "0"
 
 def is_admin_or_impersonating() -> bool:
     """
@@ -1278,7 +1269,7 @@ def render_dashboard_ui(supabase, logger, user):
     </style>
     """, unsafe_allow_html=True)
         with st.container(key="expander_gestione_fatture"):
-            with st.expander("🗂️ Apri per gestire le Fatture Caricate (Elimina / Modifica Data)", expanded=False):
+            with st.expander("🗂️ Apri per gestire le Fatture Caricate (Elimina)", expanded=False):
 
                 # ========================================
                 # BOX STATISTICHE
@@ -1294,7 +1285,7 @@ def render_dashboard_ui(supabase, logger, user):
                 num_note_credito = 0
                 if 'TipoDocumento' in df_cache.columns and 'FileOrigine' in df_cache.columns:
                     num_note_credito = df_cache[df_cache['TipoDocumento'].str.upper().str.strip() == 'TD04']['FileOrigine'].nunique()
-                note_credito_html = f' | 📝 Note di Credito: <strong style="font-size: 1.2em; color: #FF5500;">{_fmt_int_migliaia(num_note_credito)}</strong>' if num_note_credito > 0 else ' | 📝 Note di Credito: <strong style="font-size: 1.2em; color: #FF5500;">0</strong>'
+                note_credito_html = f' | 📝 Note di Credito: <strong style="font-size: 1.2em; color: #FF5500;">{num_note_credito:,}</strong>' if num_note_credito > 0 else ' | 📝 Note di Credito: <strong style="font-size: 1.2em; color: #FF5500;">0</strong>'
                 st.markdown(f"""
 <div style="
     background: linear-gradient(135deg, rgba(255, 140, 0, 0.15) 0%, rgba(255, 165, 0, 0.20) 100%);
@@ -1310,8 +1301,8 @@ def render_dashboard_ui(supabase, logger, user):
     backdrop-filter: blur(10px);
 ">
     <span style="color: #FF6B00; font-size: clamp(0.95rem, 1.3vw, 1.05rem); font-weight: 700; line-height: 1.45; overflow-wrap: anywhere;">
-        📊 Fatture: <strong style="font-size: 1.2em; color: #FF5500;">{_fmt_int_migliaia(stats_db["num_uniche"])}</strong>{note_credito_html} |
-        📋 Righe Totali: <strong style="font-size: 1.2em; color: #FF5500;">{_fmt_int_migliaia(stats_db["num_righe"])}</strong>
+        📊 Fatture: <strong style="font-size: 1.2em; color: #FF5500;">{stats_db["num_uniche"]:,}</strong>{note_credito_html} |
+        📋 Righe Totali: <strong style="font-size: 1.2em; color: #FF5500;">{stats_db["num_righe"]:,}</strong>
     </span>
 </div>
 """, unsafe_allow_html=True)
@@ -1448,8 +1439,8 @@ def render_dashboard_ui(supabase, logger, user):
 
                     st.markdown("---")
 
-                # ========== GESTIONE SINGOLA FATTURA ==========
-                st.markdown("### 🧾 Gestione Fattura Singola")
+                # ========== ELIMINA SINGOLA FATTURA ==========
+                st.markdown("### 🗑️ Elimina Fattura Singola")
 
                 if len(fatture_summary) > 0:
                     # 🔍 FILTRO FORNITORE
@@ -1492,8 +1483,8 @@ def render_dashboard_ui(supabase, logger, user):
                             key="select_fattura_elimina"
                         )
 
-                        col_btn_delete, col_btn_date, col_spacer = st.columns([1, 1, 2])
-                        with col_btn_delete:
+                        col_btn, col_spacer = st.columns([1, 3])
+                        with col_btn:
                             if st.button("🗑️ Elimina Fattura", type="secondary", use_container_width=True):
                                 with st.spinner("🗑️ Eliminazione in corso..."):
                                     result = elimina_fattura_completa(fattura_selezionata['File'], user_id, ristoranteid=st.session_state.get('ristorante_id'))
@@ -1514,77 +1505,6 @@ def render_dashboard_ui(supabase, logger, user):
                                         st.rerun()
                                     else:
                                         st.error(f"❌ Errore: {result['error']}")
-
-                        with col_btn_date:
-                            if st.button("📅 Modifica Data", type="secondary", use_container_width=True):
-                                st.session_state['fattura_data_editor_file'] = fattura_selezionata['File']
-
-                        if st.session_state.get('fattura_data_editor_file') == fattura_selezionata['File']:
-                            st.markdown("#### 📅 Data di competenza")
-                            st.caption("La data documento originale resta invariata. Questa modifica impatta solo i riepiloghi gestionali.")
-
-                            _data_raw = fattura_selezionata.get('Data')
-                            _default_date = datetime.now().date()
-                            if _data_raw is not None and str(_data_raw).strip() not in {'', 'NaT', 'None'}:
-                                try:
-                                    _default_date = datetime.fromisoformat(str(_data_raw).replace('Z', '+00:00')).date()
-                                except Exception:
-                                    try:
-                                        _default_date = datetime.strptime(str(_data_raw)[:10], "%Y-%m-%d").date()
-                                    except Exception:
-                                        pass
-
-                            data_competenza = st.date_input(
-                                "Seleziona la data di competenza",
-                                value=_default_date,
-                                format="DD/MM/YYYY",
-                                key="input_data_competenza_fattura",
-                            )
-
-                            col_save_date, col_reset_date, col_cancel_date = st.columns([1, 1, 1])
-
-                            with col_save_date:
-                                if st.button("💾 Salva Data", type="primary", use_container_width=True):
-                                    with st.spinner("Aggiornamento data in corso..."):
-                                        esito = aggiorna_data_competenza_fattura(
-                                            file_origine=fattura_selezionata['File'],
-                                            user_id=user_id,
-                                            data_competenza=data_competenza.isoformat(),
-                                            ristoranteid=st.session_state.get('ristorante_id'),
-                                        )
-                                        if esito.get("success"):
-                                            clear_fatture_cache()
-                                            invalida_cache_memoria()
-                                            st.success("✅ Data competenza aggiornata")
-                                            st.session_state.pop('fattura_data_editor_file', None)
-                                            time.sleep(0.2)
-                                            st.rerun()
-                                        else:
-                                            st.error(f"❌ Errore: {esito.get('error', 'errore sconosciuto')}")
-
-                            with col_reset_date:
-                                if st.button("↩️ Ripristina Originale", use_container_width=True):
-                                    with st.spinner("Ripristino in corso..."):
-                                        esito = aggiorna_data_competenza_fattura(
-                                            file_origine=fattura_selezionata['File'],
-                                            user_id=user_id,
-                                            data_competenza=None,
-                                            ristoranteid=st.session_state.get('ristorante_id'),
-                                        )
-                                        if esito.get("success"):
-                                            clear_fatture_cache()
-                                            invalida_cache_memoria()
-                                            st.success("✅ Ripristinata data documento originale")
-                                            st.session_state.pop('fattura_data_editor_file', None)
-                                            time.sleep(0.2)
-                                            st.rerun()
-                                        else:
-                                            st.error(f"❌ Errore: {esito.get('error', 'errore sconosciuto')}")
-
-                            with col_cancel_date:
-                                if st.button("✖️ Annulla", use_container_width=True):
-                                    st.session_state.pop('fattura_data_editor_file', None)
-                                    st.rerun()
                 else:
                     st.info("🔭 Nessuna fattura da eliminare.")
 

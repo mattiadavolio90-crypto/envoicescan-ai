@@ -355,8 +355,8 @@ class TestBuildTransposedDf:
         fatt_netto_atteso = round(1100.0 / 1.10 + 1220.0 / 1.22 + 500.0, 2)
         assert round(riga_fn.iloc[0]["Gen €"], 2) == fatt_netto_atteso
 
-        # La riga Fatturato Netto non ha percentuale (None o NaN)
-        assert pd.isna(riga_fn.iloc[0]["Gen %"])
+        # Fatturato Netto deve mostrare 100% quando il valore del mese è > 0
+        assert round(float(riga_fn.iloc[0]["Gen %"]), 1) == 100.0
 
     def test_build_transposed_df_tutti_zero(self):
         """
@@ -374,6 +374,7 @@ class TestBuildTransposedDf:
         riga_fn = df[df["Voce"] == "= Fatturato Netto"].iloc[0]
         assert round(riga_fn["Gen €"], 2) == 0.0
         assert round(riga_fn["Dic €"], 2) == 0.0
+        assert pd.isna(riga_fn["Gen %"])
 
 
 # ===========================================================================

@@ -20,6 +20,8 @@ from services.db_service import (
     calcola_alert,
     carica_sconti_e_omaggi,
     get_custom_tags,
+    get_price_alert_threshold,
+    set_price_alert_threshold,
 )
 
 # Logger
@@ -267,38 +269,86 @@ st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
 # ================================================================
 if st.session_state.cp_tab_attivo == "variazioni":
 
-    # ── Riga filtro: Soglia + Badge conteggio ──
-    col_soglia, col_badge = st.columns([1, 3])
+    st.markdown(
+        """
+        <style>
+        div.st-key-cp_btn_salva_soglia_alert .stButton button {
+            background: linear-gradient(135deg, #0ea5e9, #2563eb) !important;
+            color: #ffffff !important;
+            border: none !important;
+            font-weight: 700 !important;
+        }
+        div.st-key-cp_btn_salva_soglia_alert .stButton button:hover {
+            background: linear-gradient(135deg, #0284c7, #1d4ed8) !important;
+            color: #ffffff !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # Inizializza soglia da DB una sola volta per utente in sessione.
+    _cp_threshold_user_key = f"cp_threshold_loaded_user:{user_id}"
+    if not st.session_state.get(_cp_threshold_user_key):
+        st.session_state.cp_soglia_alert = float(get_price_alert_threshold(user_id))
+        st.session_state[_cp_threshold_user_key] = True
+
+    # ── Riga filtro: Soglia + Salva + testo guida ──
+    col_soglia, col_salva, col_help = st.columns([0.9, 0.5, 5.4])
 
     with col_soglia:
         soglia_aumento = st.number_input(
             "Soglia %",
-            min_value=0,
-            max_value=100,
-            value=5,
-            step=1,
+            min_value=0.0,
+            max_value=100.0,
+            step=0.5,
             key="cp_soglia_alert",
             help="Mostra solo variazioni con valore assoluto ≥ X%"
         )
 
-    # Calcola alert (solo F&B, storico completo)
-    df_alert_source = df_all
+    with col_salva:
+        st.markdown("<div style='margin-top: 27px;'></div>", unsafe_allow_html=True)
+        if st.button("SALVA", key="cp_btn_salva_soglia_alert", use_container_width=True):
+            saved = set_price_alert_threshold(user_id, soglia_aumento)
+            if saved:
+                st.toast(f"Soglia alert salvata: {soglia_aumento:.1f}%", icon="✅")
+            else:
+                st.toast("Impossibile salvare la soglia alert. Riprova.", icon="⚠️")
+
+    with col_help:
+        st.markdown(
+            "<div style='margin-top: 34px; color:#1e3a8a; font-weight:600; white-space: nowrap;'>"
+            "🚨 Imposta la soglia minima di variazione prezzo che attiva le notifiche alert in dashboard principale (Analisi Fatture AI)."
+            "</div>",
+            unsafe_allow_html=True,
+        )
+
+    # Calcola alert (solo F&B, periodo selezionato)
+    df_alert_source = df_filtrato
     df_alert = calcola_alert(df_alert_source, soglia_aumento)
 
-    with col_badge:
-        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-        if not df_alert.empty:
-            st.info(f"⚠️ **{len(df_alert)} Variazioni Rilevate** (soglia ≥ {soglia_aumento}%) - Solo prodotti Food & Beverage")
-        else:
-            st.markdown(
-                f"<p style='margin:0; color:#0B3A82; font-weight:700;'>✅ Nessuna variazione rilevata con soglia ≥ {soglia_aumento}%</p>",
-                unsafe_allow_html=True,
-            )
+    # Badge conteggio sotto la selezione soglia
+    if not df_alert.empty:
+        st.markdown(
+            f"""
+            <div style="display:inline-block; width:fit-content; background:linear-gradient(135deg,#dbeafe,#eff6ff);
+                        border:1px solid #93c5fd; color:#1e40af; border-radius:8px; padding:10px 14px;
+                        font-weight:700; margin-top:4px; margin-bottom:4px;">
+                ⚠️ {len(df_alert)} Variazioni Rilevate
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            "<p style='margin:0; color:#0B3A82; font-weight:700;'>✅ Nessuna variazione rilevata</p>",
+            unsafe_allow_html=True,
+        )
 
     if not df_alert.empty:
 
         # ── TABELLA ──
-        st.caption("📖 **Storico**: ultimi 5 prezzi incluso l'ultimo | **Trend**: andamento recente | **Imp. €/mese**: stima peso economico del rincaro o ribasso | ⏰ Confronto su tutto lo storico, indipendente dal filtro periodo")
+        st.caption("📖 **Storico**: ultimi 5 prezzi incluso l'ultimo | **Trend**: andamento recente | **Imp. €/mese**: stima peso economico del rincaro o ribasso | 📅 Dati filtrati in base al periodo selezionato in alto")
 
         df_display = df_alert.copy()
         df_display['Data'] = pd.to_datetime(df_display['Data']).dt.strftime('%d/%m/%y')

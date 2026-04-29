@@ -104,6 +104,7 @@ from services.invoice_service import (
 from services.db_service import (
     aggiorna_data_competenza_fattura,
     carica_e_prepara_dataframe,
+    get_price_alert_threshold,
     elimina_fattura_completa,
     elimina_tutte_fatture,
     get_fatture_stats,
@@ -226,7 +227,7 @@ def _render_operational_notifications(notifications, user_id, dismissed_ids, sup
             for idx, notification in enumerate(notifications):
                 palette = styles.get(notification.get('level'), styles['info'])
                 _n_title = _html.escape(notification.get('title', 'Notifica'))
-                _n_body = _html.escape(notification.get('body', ''))
+                _n_body = _html.escape(notification.get('body', '')).replace('\n', '<br/>')
                 cols = st.columns([5, 1, 1])
                 with cols[0]:
                     st.markdown(
@@ -1815,35 +1816,42 @@ if not _is_admin_session:
 
 operational_notifications = []
 if not _is_admin_session:
+    _user_id_notifications = st.session_state.get('user_data', {}).get('id')
+    _upload_ctx = st.session_state.get('last_upload_notification_context') or {}
+    _price_alert_threshold = float(
+        _upload_ctx.get('price_alert_threshold_pct')
+        or get_price_alert_threshold(_user_id_notifications)
+    )
+
     operational_notifications = build_monthly_data_notifications(
-        user_id=st.session_state.get('user_data', {}).get('id'),
+        user_id=_user_id_notifications,
         ristorante_id=st.session_state.get('ristorante_id'),
         reference_dt=datetime.now(timezone.utc),
     )
     operational_notifications.extend(
         build_upload_outcome_notifications(
-            st.session_state.get('last_upload_notification_context')
+            _upload_ctx
         )
     )
     operational_notifications.extend(
         build_upload_quality_notifications(
-            st.session_state.get('last_upload_notification_context')
+            _upload_ctx
         )
     )
     operational_notifications.extend(
         build_price_alert_notifications(
-            st.session_state.get('last_upload_notification_context'),
-            threshold_pct=5.0,
+            _upload_ctx,
+            threshold_pct=_price_alert_threshold,
         )
     )
     operational_notifications.extend(
         build_credit_note_notifications(
-            st.session_state.get('last_upload_notification_context')
+            _upload_ctx
         )
     )
     operational_notifications.extend(
         build_td24_date_notifications(
-            st.session_state.get('last_upload_notification_context')
+            _upload_ctx
         )
     )
 

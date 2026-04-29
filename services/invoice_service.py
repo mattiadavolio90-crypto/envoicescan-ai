@@ -936,8 +936,15 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                 if categoria_finale == "Da Classificare":
                     needs_review = True
                 elif categoria_finale == "📝 NOTE E DICITURE" and prezzo_unitario > 0:
+                    # BUG3 FIX: remap categoria nel DB oltre a settare needs_review.
+                    # Senza questo, il DB salva DICITURA mentre l'app mostra SERVIZI E CONSULENZE
+                    # (il guardrail a runtime correggeva il display ma non il record).
                     needs_review = True
-                    logger.warning(f"⚠️ NOTE con €{prezzo_unitario:.2f} → review: {descrizione[:50]}")
+                    categoria_finale = "SERVIZI E CONSULENZE"
+                    logger.warning(
+                        f"⚠️ GUARDRAIL NOTE→SERVIZI: '{descrizione[:50]}' con €{prezzo_unitario:.2f} "
+                        f"non può restare NOTE E DICITURE → categoria corretta nel DB"
+                    )
                 
                 # Calcolo prezzo standard (skip per omaggi/prezzo zero - non significativo)
                 if prezzo_unitario != 0:

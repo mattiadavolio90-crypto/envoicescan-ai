@@ -1508,10 +1508,18 @@ if st.session_state.margine_tab == "calcolo":
 
     df_display_render['Totale %'] = df_display_render.apply(_compute_total_pct, axis=1)
 
+    def _fmt_euro_compatto(value):
+        if pd.isna(value):
+            return ''
+        v = float(value)
+        if abs(v) < 0.5:
+            return ''
+        return f"€ {int(round(v)):,}".replace(',', '.')
+
     for col in euro_cols_all:
         if col in df_display_render.columns:
             df_display_render[col] = df_display_render[col].map(
-                    lambda value: '' if pd.isna(value) or abs(float(value)) < 0.5 else f'€ {float(value):.0f}'
+                    _fmt_euro_compatto
             )
     for col in pct_cols_all:
         if col in df_display_render.columns:
@@ -1519,7 +1527,7 @@ if st.session_state.margine_tab == "calcolo":
                 lambda value: '' if pd.isna(value) or abs(float(value)) < 0.05 else f'{float(value):.1f}%'
             )
     df_display_render['Totale €'] = df_display_render['Totale €'].map(
-            lambda value: '' if pd.isna(value) or abs(float(value)) < 0.5 else f'€ {float(value):.0f}'
+            _fmt_euro_compatto
     )
     df_display_render['Totale %'] = df_display_render['Totale %'].map(
         lambda value: '' if pd.isna(value) or abs(float(value)) < 0.05 else f'{float(value):.1f}%'
@@ -1555,7 +1563,7 @@ if st.session_state.margine_tab == "calcolo":
         {'selector': 'thead th', 'props': [('color', '#111827'), ('font-weight', '800'), ('padding', '11px 12px'), ('border-bottom', '2px solid #94a3b8'), ('text-align', 'right'), ('background', '#eef2f7'), ('border-top', '1px solid #d7dde6')]},
         {'selector': 'thead th:first-child', 'props': [('text-align', 'left'), ('width', '280px'), ('border-top-left-radius', '10px')]},
         {'selector': 'thead th:last-child', 'props': [('border-top-right-radius', '10px')]},
-        {'selector': 'tbody td', 'props': [('padding', '10px 12px'), ('border-bottom', '1px solid #d3dde8'), ('text-align', 'right'), ('background', 'transparent')]},
+        {'selector': 'tbody td', 'props': [('padding', '10px 12px'), ('border-bottom', '1px solid #d3dde8'), ('text-align', 'right'), ('background', 'transparent'), ('white-space', 'nowrap')]},
         {'selector': 'tbody td:first-child', 'props': [('text-align', 'left'), ('white-space', 'nowrap'), ('font-weight', '600'), ('padding-right', '16px')]},
         {'selector': 'tbody tr:hover td', 'props': [('background', '#fafcff')]},
         {'selector': 'tbody tr:last-child td', 'props': [('border-bottom', 'none')]},

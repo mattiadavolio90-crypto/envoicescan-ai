@@ -24,8 +24,8 @@ def _format_price_alert_summary(price_alerts: List[Dict[str, Any]], max_items: i
     for alert in price_alerts[:max_items]:
         product = _html.escape(str(alert.get('product') or 'Prodotto').strip())
         increase_pct = float(alert.get('increase_pct') or 0.0)
-        snippets.append(f"{product} (+{increase_pct:.1f}%)")
-    return ', '.join(snippets)
+        snippets.append(f"• {product} (+{increase_pct:.1f}%)")
+    return '\n'.join(snippets)
 
 
 def build_upload_outcome_notifications(upload_context: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -152,7 +152,7 @@ def build_price_alert_notifications(
         "all'acquisto precedente."
     )
     if summary:
-        body += f" Alert principali: {summary}."
+        body += f"\nAlert principali:\n{summary}"
 
     return [{
         'id': f'price-alerts-{upload_id}',

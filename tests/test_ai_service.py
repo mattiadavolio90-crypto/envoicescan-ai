@@ -59,6 +59,11 @@ class TestRegoleFortiCategorizzazione:
         categoria = applica_correzioni_dizionario(descrizione, "Da Classificare")
         return applica_regole_categoria_forti(descrizione, categoria)
 
+    def test_lecca_lecca_piatto_non_scambia_per_stoviglia(self):
+        categoria, motivo = applica_regole_categoria_forti("LECCA LECCA PIATTO G.5 X200 M.LOLL", "SHOP")
+        assert categoria == "SHOP"
+        assert motivo is None
+
     @pytest.mark.parametrize(
         ("descrizione", "attesa"),
         [
@@ -77,6 +82,41 @@ class TestRegoleFortiCategorizzazione:
             ("MARTINI BIANCO L1", "AMARI/LIQUORI"),
             ("FEVER TREE PINK GRAPEFRUIT CL20 VP", "BEVANDE"),
             ("SANTHE' PESCA 33CL-CL 33", "BEVANDE"),
+            ("ESTATHE LIM. LATT.", "BEVANDE"),
+            ("THE ESTATHE LIMONE LATT", "BEVANDE"),
+            ("E STA THE PESCA LATT", "BEVANDE"),
+            # ESTATHE varianti con "33" (stale keyword-auto CAFFE E THE risolte)
+            ("THE ESTATHE LIMONE 33 LATT", "BEVANDE"),
+            ("THE ESTATHE PESCA 33 LATT", "BEVANDE"),
+            # SANTHE (brand diverso, stesso comportamento)
+            ("SANTHE' PESCA 33CL CL", "BEVANDE"),
+            # BRODO granulare/dado -> SCATOLAME E CONSERVE (non SALSE E CREME)
+            ("BRODO GRANULARE AL POLLO TTL", "SCATOLAME E CONSERVE"),
+            ("DADO BRODO VEGETALE", "SCATOLAME E CONSERVE"),
+            # Vino di riso / Shaoxing -> VINI
+            ("VINO RISO SHAOXING (LAOJIU) *10LT", "VINI"),
+            ("SHAOXING WINE 640ML", "VINI"),
+            # Stoviglie durevoli -> MANUTENZIONE E ATTREZZATURE
+            ("PIATTO CERAMICA 26CM", "MANUTENZIONE E ATTREZZATURE"),
+            ("PIATTO PORCELLANA BIANCO", "MANUTENZIONE E ATTREZZATURE"),
+            ("PIATTINO ARDESIA RETTANGOLARE", "MANUTENZIONE E ATTREZZATURE"),
+            # Stoviglie monouso/formato quantità -> MATERIALE DI CONSUMO
+            ("PIATTO CARTA 50X20", "MATERIALE DI CONSUMO"),
+            ("PIATTO PLASTICA MONOUSO 50X100", "MATERIALE DI CONSUMO"),
+            # Posate durevoli -> MANUTENZIONE E ATTREZZATURE
+            ("POSATE ACCIAIO INOX SET 24PZ", "MANUTENZIONE E ATTREZZATURE"),
+            # Altri utensili/stoviglie durevoli emersi dalle correzioni manuali
+            ("CUCCHIAIO MELAMINA BIANCA CM 5X4 5X1 H", "MANUTENZIONE E ATTREZZATURE"),
+            ("FRUSTA ANTISLIP 8FILI CM21 MP", "MANUTENZIONE E ATTREZZATURE"),
+            ("COPERCHIO CM ALBLACK", "MANUTENZIONE E ATTREZZATURE"),
+            ("PENNELLO PAST SILIC21X4CM MPRO", "MANUTENZIONE E ATTREZZATURE"),
+            # Sac à poche -> MATERIALE DI CONSUMO
+            ("SAC A POCHE MONOUSO 45CM PZ100", "MATERIALE DI CONSUMO"),
+            ("SACCAPOCHE PASTICCERIA", "MATERIALE DI CONSUMO"),
+            ("ROTOLIIN CARTA CALCOLATRICE 10X10PZ MM57X40MT POS", "MATERIALE DI CONSUMO"),
+            ("BUSTINA FORNO 12CMX27CM", "MATERIALE DI CONSUMO"),
+            # Utensili -> MANUTENZIONE E ATTREZZATURE
+            ("UTENSILI CUCINA SET", "MANUTENZIONE E ATTREZZATURE"),
             ("KG1 ALBUME MC", "UOVA"),
             ("INS. ROMANA PAD. (IT II)", "VERDURE"),
             ("TABASCO BT ML60 (12) MC.ILHENNY", "SALSE E CREME"),
@@ -324,6 +364,160 @@ class TestPrioritaMemoria:
             unita_misura='PZ',
         )
         assert result == 'SCATOLAME E CONSERVE'
+
+    def test_categorizza_con_memoria_dicitura_admin_con_importo_positivo_va_in_servizi(self):
+        """Una dicitura con importo positivo non puo' restare NOTE E DICITURE."""
+        self._inject_cache(
+            classificazioni_manuali={
+                'FATTURA DI ACCONTO FORNITURA MERCE': {'categoria': 'QUALSIASI', 'is_dicitura': True}
+            },
+            prodotti_utente={},
+            prodotti_master={},
+        )
+        result = ai_mod.categorizza_con_memoria(
+            descrizione='FATTURA DI ACCONTO FORNITURA MERCE',
+            prezzo=2701.64,
+            quantita=1,
+            user_id='user_test',
+            supabase_client=None,
+            fornitore='FORNITORE TEST',
+            unita_misura='PZ',
+        )
+        assert result == 'SERVIZI E CONSULENZE'
+
+    def test_categorizza_con_memoria_dicitura_admin_importo_zero_restano_note(self):
+        """Le vere diciture a importo zero restano NOTE E DICITURE."""
+        self._inject_cache(
+            classificazioni_manuali={
+                'RIGA FATTURA': {'categoria': 'QUALSIASI', 'is_dicitura': True}
+            },
+            prodotti_utente={},
+            prodotti_master={},
+        )
+        result = ai_mod.categorizza_con_memoria(
+            descrizione='RIGA FATTURA',
+            prezzo=0.0,
+            quantita=1,
+            user_id='user_test',
+            supabase_client=None,
+            fornitore='FORNITORE TEST',
+            unita_misura='PZ',
+        )
+        assert result == '📝 NOTE E DICITURE'
+
+    # ----------------------------------------------------------------
+    # TEST T1: guardrail NOTE su memoria locale con prezzo positivo
+    # ----------------------------------------------------------------
+    def test_memoria_locale_dicitura_con_importo_positivo_va_in_servizi(self):
+        """T1: memoria locale ha DICITURA stale; con prezzo>0 il guardrail deve convertire."""
+        self._inject_cache(
+            classificazioni_manuali={},
+            prodotti_utente={'FATTURA DI ACCONTO': '📝 NOTE E DICITURE'},
+            prodotti_master={},
+        )
+        result = ai_mod.categorizza_con_memoria(
+            descrizione='FATTURA DI ACCONTO',
+            prezzo=500.0,
+            quantita=1,
+            user_id='user_test',
+            supabase_client=None,
+        )
+        assert result == 'SERVIZI E CONSULENZE', (
+            "La memoria locale stale (DICITURA) con prezzo>0 deve essere corretta dal guardrail"
+        )
+
+    def test_memoria_locale_dicitura_con_importo_zero_resta_nota(self):
+        """T1b: memoria locale DICITURA con prezzo=0 deve restare NOTE E DICITURE."""
+        self._inject_cache(
+            classificazioni_manuali={},
+            prodotti_utente={'RIGA TECNICA DDT': '📝 NOTE E DICITURE'},
+            prodotti_master={},
+        )
+        result = ai_mod.categorizza_con_memoria(
+            descrizione='RIGA TECNICA DDT',
+            prezzo=0.0,
+            quantita=1,
+            user_id='user_test',
+            supabase_client=None,
+        )
+        assert result == '📝 NOTE E DICITURE'
+
+    # ----------------------------------------------------------------
+    # TEST T3: memoria locale batte FORNITORE (by design)
+    # ----------------------------------------------------------------
+    def test_memoria_locale_batte_fornitore_per_design(self):
+        """T3: personalizzazione cliente (memoria locale) ha priorità su regola FORNITORE.
+        Questo è DESIGN INTENZIONALE: l'utente sceglie la sua categoria, non viene sovrascritta.
+        """
+        self._inject_cache(
+            classificazioni_manuali={},
+            prodotti_utente={'CARNE BOVINA KG1': 'SHOP'},
+            prodotti_master={},
+        )
+        result = ai_mod.categorizza_con_memoria(
+            descrizione='CARNE BOVINA KG1',
+            prezzo=10.0,
+            quantita=1,
+            user_id='user_test',
+            supabase_client=None,
+            fornitore='MACELLERIA TEST SRL',
+        )
+        # La memoria locale (SHOP, scelta manuale utente) deve vincere sul fornitore
+        assert result == 'SHOP', (
+            "La memoria locale manuale cliente deve sempre prevalere sulle regole automatiche FORNITORE"
+        )
+
+    # ----------------------------------------------------------------
+    # TEST BUG4: guardrail applicato dopo FORNITORE e UM
+    # ----------------------------------------------------------------
+    def test_guardrail_applicato_dopo_fornitore(self):
+        """BUG4: se FORNITORE restituisse DICITURA (caso ipotetico futuro), il guardrail deve correggere."""
+        # Patcha CATEGORIA_PER_FORNITORE con un fornitore che mappa a DICITURA
+        from unittest.mock import patch
+        with patch('config.constants.CATEGORIA_PER_FORNITORE', {'FORNITORE SPECIALE': '📝 NOTE E DICITURE'}):
+            self._inject_cache(
+                classificazioni_manuali={},
+                prodotti_utente={},
+                prodotti_master={},
+            )
+            result = ai_mod.categorizza_con_memoria(
+                descrizione='PRODOTTO QUALSIASI',
+                prezzo=150.0,
+                quantita=1,
+                user_id='user_test',
+                supabase_client=None,
+                fornitore='FORNITORE SPECIALE',
+            )
+        assert result == 'SERVIZI E CONSULENZE', (
+            "Il guardrail deve correggere DICITURA→SERVIZI anche quando arriva dal livello FORNITORE"
+        )
+
+    # ----------------------------------------------------------------
+    # TEST BUG3: categoria_finale corretta nel DB (via invoice_service flow)
+    # ----------------------------------------------------------------
+    def test_guardrail_note_con_importo_non_salva_dicitura_positiva(self):
+        """BUG3/T4: _applica_guardrail_note_con_importo deve convertire DICITURA+prezzo>0."""
+        from services.ai_service import _applica_guardrail_note_con_importo
+        result = _applica_guardrail_note_con_importo(
+            descrizione='SERVIZIO DI DISOSSO E LAVORAZIONE',
+            categoria='📝 NOTE E DICITURE',
+            prezzo=250.0,
+        )
+        assert result == 'SERVIZI E CONSULENZE', (
+            "Una riga DISOSSO con prezzo>0 non può restare NOTE E DICITURE"
+        )
+
+    def test_guardrail_note_alias_senza_emoji(self):
+        """BUG6: l'alias 'NOTE E DICITURE' (senza emoji) deve essere normalizzato e correggere su prezzo>0."""
+        from services.ai_service import _applica_guardrail_note_con_importo
+        result = _applica_guardrail_note_con_importo(
+            descrizione='RIGA DI CREDITO',
+            categoria='NOTE E DICITURE',
+            prezzo=100.0,
+        )
+        assert result == 'SERVIZI E CONSULENZE', (
+            "L'alias senza emoji deve essere riconosciuto come DICITURA e convertito su prezzo>0"
+        )
 
 
     def test_prodotti_master_fallback(self):
