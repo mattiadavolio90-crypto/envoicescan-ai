@@ -15,7 +15,6 @@ import json
 import re
 import html as _html
 from datetime import datetime, timezone, timedelta
-import time
 import traceback
 import plotly.express as px
 import extra_streamlit_components as stx
@@ -27,8 +26,17 @@ patch_streamlit_width_api()
 
 # Import corretto da utils (non da app.py per evitare esecuzione interfaccia)
 from utils.formatters import carica_categorie_da_db
-from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria, pulisci_caratteri_corrotti
-from utils.validation import is_dicitura_sicura, is_sconto_omaggio_sicuro
+from utils.text_utils import estrai_nome_categoria, aggiungi_icona_categoria, pulisci_caratteri_corrotti, normalizza_descrizione
+from utils.validation import (
+    SPECIAL_ROW_DA_VERIFICARE,
+    SPECIAL_ROW_DICITURA,
+    SPECIAL_ROW_NORMALE,
+    SPECIAL_ROW_SCONTO_OMAGGIO,
+    SPECIAL_ROW_STORNO,
+    classify_special_row,
+    is_dicitura_sicura,
+    is_sconto_omaggio_sicuro,
+)
 from utils.piva_validator import valida_formato_piva, normalizza_piva
 from services.auth_service import crea_cliente_con_token, verifica_sessione_da_cookie
 from services.db_service import get_retention_last_status
@@ -579,7 +587,7 @@ if 'categorie_cached' not in st.session_state:
     logger.info(f"✅ Categorie caricate in cache: {len(st.session_state.categorie_cached)} categorie")
 
 # Usa radio buttons nascosti per mantenere tab attivo
-tab_names = ["📊 Gestione Clienti", "💰 Review Righe €0", "🧠 Memoria AI", "🔍 Integrità Database", "💳 Costi AI"]
+tab_names = ["📊 Gestione Clienti", "💰 Review Righe", "🧠 Memoria AI", "🔍 Integrità Database", "💳 Costi AI"]
 
 if st.session_state.active_tab >= len(tab_names):
     st.session_state.active_tab = 0
@@ -824,7 +832,6 @@ if tab1:
                         
                         logger.info(f"✅ Nuovo cliente creato da admin: {new_email} | P.IVA: {normalizza_piva(new_piva)} | Email: {email_inviata}")
                         _carica_stats_clienti_admin.clear()
-                        time.sleep(2)
                         st.rerun()
                         
                 except Exception as e:
@@ -952,7 +959,6 @@ if tab1:
                                                         st.session_state.form_ristorante_key += 1
                                                         
                                                         _carica_stats_clienti_admin.clear()
-                                                        time.sleep(1)
                                                         st.rerun()
                                                 except Exception as e:
                                                     st.error(f"❌ Errore creazione: {e}")
@@ -1017,7 +1023,6 @@ if tab1:
                                                 logger.warning(f"🗑️ Sede eliminata: {rist_da_eliminare['nome_ristorante']} di {cliente_selezionato}")
                                                 st.success("✅ Sede eliminata!")
                                                 _carica_stats_clienti_admin.clear()
-                                                time.sleep(1)
                                                 st.rerun()
                                             except Exception as e:
                                                 st.error(f"❌ Errore eliminazione: {e}")
@@ -1204,7 +1209,6 @@ if tab1:
                             
                             logger.info(f"� IMPERSONATION START: admin={st.session_state.admin_original_user['email']} → client={row['email']}")
                             st.success(f"✅ Accesso come: {row['email']}")
-                            time.sleep(0.8)
                             st.switch_page("app.py")
                     
                     with col_menu:
@@ -1224,7 +1228,6 @@ if tab1:
                                         logger.info(f"🔴 Account disattivato: {row['email']} | admin={user.get('email')}")
                                         st.success(f"Account {row['email']} disattivato")
                                         _carica_stats_clienti_admin.clear()
-                                        time.sleep(1)
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Errore: {e}")
@@ -1239,7 +1242,6 @@ if tab1:
                                         logger.info(f"🟢 Account attivato: {row['email']} | admin={user.get('email')}")
                                         st.success(f"Account {row['email']} attivato")
                                         _carica_stats_clienti_admin.clear()
-                                        time.sleep(1)
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Errore: {e}")
@@ -1296,7 +1298,6 @@ if tab1:
                                     else:
                                         st.warning(f"⚠️ Token generato ma email non inviata. Link: {reset_url}")
                                     
-                                    time.sleep(1.5)
                                     st.rerun()
                                 except Exception as e:
                                     if '42703' in str(e) or 'does not exist' in str(e):
@@ -1363,7 +1364,6 @@ if tab1:
                                                     f"old_email={old_email}, new_email={new_email}, session_token_invalidato=True"
                                                 )
                                                 st.success(f"✅ Email aggiornata: {old_email} → {new_email}")
-                                                time.sleep(1)
                                                 st.rerun()
                                         except Exception as e:
                                             st.error(f"Errore cambio email: {e}")
@@ -1396,7 +1396,6 @@ if tab1:
                                     
                                     logger.info(f"📄 Pagine aggiornate per {row['email']} (user_id={row['user_id']}): salvato={new_pagine}, verifica_db={_verify_val}")
                                     st.success(f"✅ Foodcost {'attivato' if new_workspace else 'disattivato'} per {row['email']}")
-                                    time.sleep(2)
                                     st.rerun()
                                 except Exception as e:
                                     if 'pagine_abilitate' in str(e) or 'PGRST204' in str(e):
@@ -1422,7 +1421,6 @@ if tab1:
                                     )
                                     logger.info(f"📊 Calcolo Margine {'attivato' if new_calcolo_margine else 'disattivato'} per {row['email']}")
                                     st.success(f"✅ Calcolo Margine {'attivato' if new_calcolo_margine else 'disattivato'} per {row['email']}")
-                                    time.sleep(2)
                                     st.rerun()
                                 except Exception as e:
                                     if 'pagine_abilitate' in str(e) or 'PGRST204' in str(e):
@@ -1448,7 +1446,6 @@ if tab1:
                                     )
                                     logger.info(f"💰 Controllo Prezzi {'attivato' if new_controllo_prezzi else 'disattivato'} per {row['email']}")
                                     st.success(f"✅ Controllo Prezzi {'attivato' if new_controllo_prezzi else 'disattivato'} per {row['email']}")
-                                    time.sleep(2)
                                     st.rerun()
                                 except Exception as e:
                                     if 'pagine_abilitate' in str(e) or 'PGRST204' in str(e):
@@ -1482,7 +1479,6 @@ if tab1:
                                         f"{'attivata' if new_analisi_personalizzata else 'disattivata'} "
                                         f"per {row['email']}"
                                     )
-                                    time.sleep(2)
                                     st.rerun()
                                 except Exception as e:
                                     if 'pagine_abilitate' in str(e) or 'PGRST204' in str(e):
@@ -1514,7 +1510,6 @@ if tab1:
                                     stato = "ATTIVATO" if new_blocco else "DISATTIVATO"
                                     logger.info(f"📅 Blocco anno precedente {stato} per {row['email']}")
                                     st.success(f"✅ Blocco fatture anno precedente {stato.lower()}")
-                                    time.sleep(1)
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Errore: {e}")
@@ -1543,7 +1538,6 @@ if tab1:
                                     stato_mesi = "ATTIVATO" if new_blocco_mesi else "DISATTIVATO"
                                     logger.info(f"📆 Blocco mesi precedenti {stato_mesi} per {row['email']}")
                                     st.success(f"✅ Blocco mesi precedenti {stato_mesi.lower()}")
-                                    time.sleep(1)
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Errore: {e}")
@@ -1595,7 +1589,6 @@ if tab1:
                                             f"{user.get('email')} → {row['email']}"
                                         )
                                         _carica_stats_clienti_admin.clear()
-                                        time.sleep(1)
                                         st.rerun()
                                     else:
                                         st.error(f"❌ {_msg}")
@@ -1806,7 +1799,6 @@ if tab1:
                             st.session_state['_show_delete_dialog'] = False
                             st.session_state.pop('_delete_target', None)
                             _carica_stats_clienti_admin.clear()
-                            time.sleep(2)
                             st.rerun()
 
                     except Exception as e:
@@ -1820,8 +1812,48 @@ if tab1:
 # ============================================================
 
 if tab2:
-    st.markdown("## 📊 Review Righe Prezzo €0")
-    st.caption("Verifica righe con prezzo €0 - potrebbero essere omaggi o diciture")
+    st.markdown("## 📊 Righe Speciali")
+    st.caption("Diciture, sconti/omaggi, storni e casi da verificare, tutti modificabili da un unico tab")
+
+    # ------------------------------------------------------------
+    # Storico: righe €0 già verificate (decisioni passate)
+    # ------------------------------------------------------------
+    with st.expander("📚 Righe €0 già verificate (storico decisioni)", expanded=False):
+        try:
+            _resp_zero_ver = (
+                supabase.table('prodotti_master')
+                .select('id, descrizione, categoria, volte_visto, classificato_da')
+                .eq('verified', True)
+                .eq('classificato_da', 'review-admin')
+                .order('descrizione', desc=False)
+                .limit(2000)
+                .execute()
+            )
+            _rows_zero_ver = _resp_zero_ver.data or []
+        except Exception as _e_zero:
+            logger.warning(f"Errore caricamento righe €0 verificate: {_e_zero}")
+            _rows_zero_ver = []
+
+        if not _rows_zero_ver:
+            st.info("Nessuna riga €0 risulta ancora verificata.")
+        else:
+            _df_zero_ver = pd.DataFrame(_rows_zero_ver)
+            _df_zero_ver['descrizione'] = _df_zero_ver['descrizione'].astype(str).str.slice(0, 120)
+            _df_zero_ver['categoria'] = _df_zero_ver['categoria'].map(estrai_nome_categoria)
+            st.caption(f"{len(_df_zero_ver)} righe verificate dalla review €0 (sola lettura)")
+            st.dataframe(
+                _df_zero_ver[['descrizione', 'categoria', 'volte_visto']],
+                hide_index=True,
+                use_container_width=True,
+                height=320,
+                column_config={
+                    'descrizione': st.column_config.TextColumn('Descrizione', width='large'),
+                    'categoria': st.column_config.TextColumn('Categoria', width='medium'),
+                    'volte_visto': st.column_config.NumberColumn('×', width='small'),
+                },
+            )
+
+    st.markdown("---")
 
     @st.cache_data(ttl=60, show_spinner=False)
     def _carica_clienti_attivi_non_admin():
@@ -1853,13 +1885,12 @@ if tab2:
     filtro_cliente_id = None if cliente_selezionato['id'] == 'TUTTI' else cliente_selezionato['id']
     
     # ============================================================
-    # CARICAMENTO RIGHE €0 CON FILTRO CLIENTE
+    # CARICAMENTO RIGHE SPECIALI CON FILTRO CLIENTE
     # ============================================================
     @st.cache_data(ttl=60, show_spinner=False)
-    def carica_righe_zero_con_filtro(cliente_id=None):
+    def carica_righe_speciali_con_filtro(cliente_id=None):
         """
-        Carica righe da validare: €0 OPPURE needs_review=true.
-        Query singola ottimizzata con OR.
+        Carica tutte le righe speciali attive e le classifica localmente.
         
         Args:
             cliente_id: UUID cliente o None per tutti
@@ -1868,17 +1899,14 @@ if tab2:
             DataFrame con righe da validare
         """
         try:
-            # Query singola con OR per entrambe le condizioni
             all_data = []
             page_size = 1000
             offset = 0
             
             while True:
                 query = supabase.table('fatture')\
-                    .select('id, descrizione, categoria, fornitore, file_origine, data_documento, user_id, prezzo_unitario, needs_review, reviewed_at, reviewed_by')\
-                    .or_('prezzo_unitario.eq.0,needs_review.eq.true')\
+                    .select('id, descrizione, categoria, fornitore, file_origine, data_documento, user_id, prezzo_unitario, totale_riga, quantita, tipo_documento, needs_review, reviewed_at, reviewed_by')\
                     .is_('deleted_at', 'null')\
-                    .is_('reviewed_at', 'null')\
                     .order('id', desc=False)\
                     .range(offset, offset + page_size - 1)
                 
@@ -1905,46 +1933,77 @@ if tab2:
                 df['descrizione'] = df['descrizione'].apply(
                     lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x
                 )
+
+                _special_meta = df.apply(
+                    lambda row: classify_special_row(
+                        descrizione=row.get('descrizione', ''),
+                        categoria=row.get('categoria', ''),
+                        prezzo=row.get('prezzo_unitario', 0),
+                        totale_riga=row.get('totale_riga', 0),
+                        quantita=row.get('quantita', 1),
+                        tipo_documento=row.get('tipo_documento', ''),
+                        needs_review=bool(row.get('needs_review', False)),
+                    ),
+                    axis=1,
+                    result_type='expand',
+                )
+                df['bucket_raw'] = _special_meta['bucket']
+                df['bucket_ui'] = df.apply(
+                    lambda row: SPECIAL_ROW_DA_VERIFICARE if bool(row.get('needs_review')) else row.get('bucket_raw'),
+                    axis=1,
+                )
+                df = df[(df['bucket_ui'] != SPECIAL_ROW_NORMALE)].copy()
             
             # Log statistiche
             if not df.empty:
-                n_zero = len(df[df['prezzo_unitario'] == 0]) if 'prezzo_unitario' in df.columns else 0
-                n_review = len(df[df['needs_review'] == True]) if 'needs_review' in df.columns else 0
-                logger.info(f"🔍 Righe da validare: {n_zero} €0 | {n_review} needs_review | {len(df)} totali (dedup)")
+                logger.info(
+                    "🔍 Righe speciali: %s totali | breakdown=%s",
+                    len(df),
+                    df['bucket_ui'].value_counts(dropna=False).to_dict(),
+                )
             
             return df
             
         except Exception as e:
-            logger.error(f"Errore caricamento righe review: {e}")
+            logger.error(f"Errore caricamento righe speciali: {e}")
             return pd.DataFrame()
 
-    def _build_review_update_query(payload: dict, descrizione_target: str, cliente_id_target: str = None):
+    def _build_review_update_query(payload: dict, row_ids: list[int]):
         query = supabase.table('fatture').update(payload)\
-            .eq('descrizione', descrizione_target)\
-            .is_('deleted_at', 'null')\
-            .or_('prezzo_unitario.eq.0,needs_review.eq.true')
-        if cliente_id_target:
-            query = query.eq('user_id', cliente_id_target)
+            .in_('id', row_ids)\
+            .is_('deleted_at', 'null')
         return query
 
-    def _build_review_batch_update(payload: dict, descrizioni: list, cliente_id_target: str = None):
-        """Aggiorna N descrizioni in una singola query con .in_()"""
+    def _build_review_batch_update(payload: dict, row_ids: list[int]):
+        """Aggiorna N righe speciali in una singola query con .in_()."""
         query = supabase.table('fatture').update(payload)\
-            .in_('descrizione', descrizioni)\
-            .is_('deleted_at', 'null')\
-            .or_('prezzo_unitario.eq.0,needs_review.eq.true')
-        if cliente_id_target:
-            query = query.eq('user_id', cliente_id_target)
+            .in_('id', row_ids)\
+            .is_('deleted_at', 'null')
         return query
+
+    def _ids_for_descriptions(df_source: pd.DataFrame, descrizioni: list[str]) -> list[int]:
+        if df_source.empty or not descrizioni:
+            return []
+        return df_source[df_source['descrizione'].isin(descrizioni)]['id'].dropna().astype(int).unique().tolist()
+
+    _SECTION_LABELS = {
+        SPECIAL_ROW_DICITURA: '📝 Diciture',
+        SPECIAL_ROW_SCONTO_OMAGGIO: '🎁 Sconti e Omaggi',
+        SPECIAL_ROW_STORNO: '↩️ Storni / Note di Credito',
+        SPECIAL_ROW_DA_VERIFICARE: '❓ Da Verificare',
+    }
     
-    df_zero = carica_righe_zero_con_filtro(filtro_cliente_id)
+    df_zero = carica_righe_speciali_con_filtro(filtro_cliente_id)
     
     if df_zero.empty:
-        st.success("✅ Nessuna riga da revisionare!")
+        st.success("✅ Nessuna riga speciale nel filtro corrente!")
         st.stop()
+
+    df_zero['tipo_speciale'] = df_zero['bucket_ui'].map(_SECTION_LABELS).fillna('Altro')
+    sezione_options = ['Tutte'] + list(_SECTION_LABELS.values())
     
-    # Pre-calcola quante righe sarebbero auto-classificate
-    _desc_uniche_zero = df_zero['descrizione'].unique()
+    _df_da_verificare = df_zero[df_zero['bucket_ui'] == SPECIAL_ROW_DA_VERIFICARE].copy()
+    _desc_uniche_zero = _df_da_verificare['descrizione'].unique()
     _auto_diciture = []
     _auto_sconti = []
     _ambigue = []
@@ -1961,13 +2020,13 @@ if tab2:
     # ============================================================
     # STATISTICHE (CARD STILIZZATE)
     # ============================================================
-    cat_sospette = df_zero[~df_zero['categoria'].isin(['NOTE E DICITURE', 'Da Classificare'])]
+    cat_sospette = df_zero[df_zero['bucket_ui'] == SPECIAL_ROW_SCONTO_OMAGGIO]
     _cliente_label = _html.escape(cliente_selezionato['nome_ristorante'][:20]) if filtro_cliente_id else "Tutti"
     
     st.markdown(f"""
     <div class="admin-metrics-grid admin-metrics-grid--review">
         <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
-            <div class="admin-metric-label" style="color:#e65100;">📋 Righe Totali €0</div>
+            <div class="admin-metric-label" style="color:#e65100;">📋 Righe Speciali</div>
             <div class="admin-metric-value" style="color:#e65100;">{len(df_zero)}</div>
         </div>
         <div class="admin-metric-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50;">
@@ -2016,7 +2075,7 @@ if tab2:
                                 'needs_review': False,
                                 'reviewed_at': datetime.now(timezone.utc).isoformat(),
                                 'reviewed_by': 'auto-review'
-                            }, _auto_diciture, filtro_cliente_id).execute()
+                            }, _ids_for_descriptions(_df_da_verificare, _auto_diciture)).execute()
                             _auto_ok += len(result.data) if result.data else len(_auto_diciture)
 
                             # Salva in memoria globale come diciture verificate
@@ -2065,7 +2124,7 @@ if tab2:
                                     'needs_review': False,
                                     'reviewed_at': datetime.now(timezone.utc).isoformat(),
                                     'reviewed_by': 'auto-review'
-                                }, _d, filtro_cliente_id).execute()
+                                }, _ids_for_descriptions(_df_da_verificare, [_d])).execute()
                                 _auto_ok += len(result.data) if result.data else 1
 
                                 # Salva in memoria globale con categoria confermata
@@ -2086,7 +2145,6 @@ if tab2:
                     st.success(f"🤖 Auto-Review completata: {_auto_ok} righe classificate, {_auto_mem_ok} salvate in memoria globale")
                     if _auto_err > 0:
                         st.warning(f"⚠️ {_auto_err} errori durante auto-review")
-                    time.sleep(1)
                     st.rerun()
 
         with st.expander("🔍 Anteprima Auto-Review", expanded=False):
@@ -2111,7 +2169,7 @@ if tab2:
     # ============================================================
     st.markdown("### 🔍 Filtri")
 
-    col_cli, col_cat, col_forn = st.columns([1.5, 1, 1])
+    col_cli, col_tipo, col_cat, col_forn = st.columns([1.3, 1.2, 1, 1])
 
     with col_cli:
         _ids_clienti = [x['id'] for x in opzioni_clienti]
@@ -2127,6 +2185,13 @@ if tab2:
             st.session_state.filtro_cliente_review_id = _new_cliente['id']
             st.session_state.pagina_review = 0
             st.rerun()
+
+    with col_tipo:
+        filtro_tipo = st.selectbox(
+            "Sezione",
+            sezione_options,
+            key="filtro_tipo_speciali"
+        )
 
     with col_cat:
         cat_uniche = ['Tutte'] + sorted(df_zero['categoria'].unique().tolist())
@@ -2148,7 +2213,7 @@ if tab2:
     df_display = df_zero.copy()
     
     # Traccia filtri precedenti per reset pagina
-    filtri_correnti = f"{st.session_state.filtro_cliente_review_id}_{filtro_categoria}_{filtro_fornitore}"
+    filtri_correnti = f"{st.session_state.filtro_cliente_review_id}_{filtro_tipo}_{filtro_categoria}_{filtro_fornitore}"
     if 'filtri_review_prev' not in st.session_state:
         st.session_state.filtri_review_prev = filtri_correnti
     elif st.session_state.filtri_review_prev != filtri_correnti:
@@ -2156,6 +2221,9 @@ if tab2:
         st.session_state.pagina_review = 0
         st.session_state.filtri_review_prev = filtri_correnti
     
+    if filtro_tipo != 'Tutte':
+        df_display = df_display[df_display['tipo_speciale'] == filtro_tipo]
+
     if filtro_categoria != 'Tutte':
         df_display = df_display[df_display['categoria'] == filtro_categoria]
     
@@ -2168,6 +2236,7 @@ if tab2:
     df_grouped = df_display.groupby('descrizione', as_index=False).agg({
         'id': 'first',  # Prendi primo ID (per chiave bottone)
         'categoria': 'first',  # Prima categoria trovata
+        'tipo_speciale': 'first',
         'fornitore': 'first',  # Primo fornitore
         'file_origine': lambda x: ', '.join(set(x.dropna().astype(str)))[:30]  # File unici (max 30 char)
     })
@@ -2227,7 +2296,7 @@ if tab2:
     # ============================================================
     col_title, col_sel_all, col_desel_all = st.columns([3.6, 1.2, 1.2])
     with col_title:
-        st.markdown("### 📝 Righe da Revisionare (raggruppate)")
+        st.markdown("### 📝 Righe Speciali (raggruppate)")
     
     # Prepara lista categorie (usata per ogni riga)
     _categorie_fb = sorted(CATEGORIE_FOOD_BEVERAGE)
@@ -2263,14 +2332,8 @@ if tab2:
     _editor_df = df_pagina[['descrizione', 'occorrenze', 'categoria', 'fornitore']].copy()
     _editor_df['seleziona'] = _editor_df['descrizione'].isin(st.session_state.review_zero_selezionate)
 
-    def _tipo_descrizione(desc):
-        if is_dicitura_sicura(desc, 0, 1):
-            return "🏷️ Dicitura"
-        if is_sconto_omaggio_sicuro(desc):
-            return "🎁 Omaggio/Sconto"
-        return "❓ Ambigua"
-
-    _editor_df['tipo'] = _editor_df['descrizione'].apply(_tipo_descrizione)
+    _tipo_map_editor = dict(zip(df_pagina['descrizione'], df_pagina['tipo_speciale']))
+    _editor_df['tipo'] = _editor_df['descrizione'].map(_tipo_map_editor).fillna('Altro')
     _editor_df['fornitore'] = _editor_df['fornitore'].fillna('N/A').astype(str).str.slice(0, 30)
 
     _editor_df = _editor_df[['seleziona', 'tipo', 'descrizione', 'occorrenze', 'categoria', 'fornitore']]
@@ -2329,11 +2392,12 @@ if tab2:
                                 continue
                             
                             # Aggiorna fatture: segna come reviewato
+                            _ids = _ids_for_descriptions(df_display, [_d])
                             result = _build_review_update_query({
                                 'needs_review': False,
                                 'reviewed_at': datetime.now(timezone.utc).isoformat(),
                                 'reviewed_by': 'admin'
-                            }, _d, filtro_cliente_id).execute()
+                            }, _ids).execute()
                             _ok_count += len(result.data) if result.data else 1
                             
                             # Accumula per batch upsert
@@ -2363,7 +2427,6 @@ if tab2:
                 st.session_state.review_zero_selezionate = set()
                 st.session_state.review_zero_cb_counter += 1
                 invalida_cache_memoria()
-                time.sleep(0.8)
                 st.rerun()
 
         with col_mass_btn2:
@@ -2376,7 +2439,7 @@ if tab2:
                             'needs_review': False,
                             'reviewed_at': datetime.now(timezone.utc).isoformat(),
                             'reviewed_by': 'admin'
-                        }, _descs, filtro_cliente_id).execute()
+                        }, _ids_for_descriptions(df_display, _descs)).execute()
                         _ok = len(result.data) if result.data else len(_descs)
                         # 💾 Salva tutte in memoria globale come diciture (batch)
                         _batch_diciture = [
@@ -2405,7 +2468,6 @@ if tab2:
                 st.session_state.review_zero_selezionate = set()
                 st.session_state.review_zero_cb_counter += 1
                 invalida_cache_memoria()
-                time.sleep(0.8)
                 st.rerun()
 
         with col_mass_cancel:
@@ -2518,7 +2580,28 @@ def tab_memoria_globale_unificata():
     
     df_memoria, campo_verified_exists = carica_memoria_globale()
     df_sospette = _carica_globale_sospette_dataset() if is_admin and campo_verified_exists else pd.DataFrame()
-    
+
+    # Badge informativo: override clienti divergenti dalla globale (solo lettura).
+    # Le modifiche manuali dei clienti restano private: nessuna azione di promozione.
+    if is_admin:
+        try:
+            df_conflitti_info = _carica_conflitti_memoria_dataset()
+            _n_conf = 0 if df_conflitti_info.empty else int(df_conflitti_info.shape[0])
+            _n_clienti_conf = 0
+            if not df_conflitti_info.empty and 'user_id' in df_conflitti_info.columns:
+                _n_clienti_conf = int(df_conflitti_info['user_id'].nunique())
+            if _n_conf > 0:
+                st.info(
+                    f"ℹ️ **{_n_conf} override cliente** divergono dalla categoria globale "
+                    f"(coinvolti **{_n_clienti_conf} clienti**). "
+                    "Sono modifiche private intenzionali: rimangono solo nei rispettivi profili. "
+                    "Se vedi una categoria globale che molti clienti correggono allo stesso modo, "
+                    "potrebbe essere il segnale di un errore nella regola globale.",
+                    icon="ℹ️",
+                )
+        except Exception as _e_conf:
+            logger.warning(f"Impossibile calcolare badge conflitti: {_e_conf}")
+
     if df_memoria.empty:
         st.warning("📭 Memoria vuota. Inizia a caricare fatture per popolarla!")
         return
@@ -2580,6 +2663,15 @@ def tab_memoria_globale_unificata():
     """, unsafe_allow_html=True)
 
     if is_admin and campo_verified_exists:
+        # ── Progress bar avanzamento review ──────────────────────
+        if totale_prodotti > 0:
+            _perc_verificati = int(verificati / totale_prodotti * 100)
+            st.markdown(
+                f"<div style='margin:0.5rem 0 0.25rem 0;font-size:0.85rem;color:#555;'>"
+                f"📊 Avanzamento review: <b>{verificati:,} / {totale_prodotti:,}</b> ({_perc_verificati}%)</div>",
+                unsafe_allow_html=True,
+            )
+            st.progress(_perc_verificati / 100)
         if non_verificati > 0:
             st.warning(
                 f"Ci sono {non_verificati} righe da verificare. Considerale backlog storico: molte sono state classificate prima delle regole nuove, quindi conviene ricontrollarle prima di considerare pulita la memoria globale."
@@ -2594,13 +2686,53 @@ def tab_memoria_globale_unificata():
         st.markdown("---")
         st.markdown("### ⚠️ Azioni Amministratore")
 
-        col_btn, col_spacer = st.columns([2, 8])
+        col_btn, col_bulk, col_spacer = st.columns([2, 3.5, 4.5])
         with col_btn:
             if st.button("🔄 Invalida Cache", type="secondary", use_container_width=True):
                 invalida_cache_memoria()
                 st.success("✅ Cache invalidata (Streamlit + in-memory)!")
                 st.rerun()
-    
+
+        with col_bulk:
+            if campo_verified_exists:
+                # Righe non verificate che NON sono sospette → sicuro da approvare in blocco
+                _ids_sospette_set = set(df_sospette['id'].tolist()) if not df_sospette.empty else set()
+                _df_sicure = df_memoria[
+                    (df_memoria['verified'] == False) &
+                    (~df_memoria['id'].isin(_ids_sospette_set)) &
+                    (df_memoria['categoria'] != 'Da Classificare')
+                ]
+                _n_sicure = len(_df_sicure)
+                if _n_sicure > 0:
+                    if st.button(
+                        f"🚀 Conferma {_n_sicure:,} voci sicure",
+                        type="primary",
+                        use_container_width=True,
+                        help="Approva in blocco tutte le voci non sospette e con categoria definita",
+                        key="bulk_confirm_sicure",
+                    ):
+                        with st.spinner(f"Conferma {_n_sicure:,} voci in corso..."):
+                            try:
+                                _ids_sicure = _df_sicure['id'].tolist()
+                                _batch_size = 1000
+                                _confermati = 0
+                                for _i in range(0, len(_ids_sicure), _batch_size):
+                                    _batch = _ids_sicure[_i:_i + _batch_size]
+                                    supabase.table('prodotti_master')\
+                                        .update({'verified': True})\
+                                        .in_('id', _batch)\
+                                        .execute()
+                                    _confermati += len(_batch)
+                                invalida_cache_memoria()
+                                logger.info(f"🚀 BULK CONFIRM SICURE: {_confermati} voci verificate")
+                                st.success(f"✅ {_confermati:,} voci confermate!")
+                                st.rerun()
+                            except Exception as _bulk_e:
+                                logger.error(f"❌ Bulk confirm fallita: {_bulk_e}")
+                                st.error(f"Errore: {_bulk_e}")
+                else:
+                    st.caption("✅ Nessuna voce sicura rimasta")
+
     st.markdown("---")
     
     # ============================================================
@@ -2646,7 +2778,7 @@ def tab_memoria_globale_unificata():
             
             filtro_verified = st.selectbox(
                 "Stato verifica",
-                ["Da Verificare", "Sospette (regole attuali)", "Già Verificate", "Righe €0 Verificate", "Tutte"],
+                ["Da Verificare", "Sospette (regole attuali)", "Già Verificate", "Tutte"],
                 key="filtro_verified"
             )
         else:
@@ -2716,27 +2848,19 @@ def tab_memoria_globale_unificata():
                 )
         elif filtro_verified == "Già Verificate":
             df_filtrato = df_filtrato[df_filtrato['verified'] == True]
-        elif filtro_verified == "Righe €0 Verificate":
-            if 'classificato_da' in df_filtrato.columns:
-                df_filtrato = df_filtrato[
-                    (df_filtrato['verified'] == True) &
-                    (df_filtrato['classificato_da'] == 'review-admin')
-                ]
-            else:
-                df_filtrato = df_filtrato.iloc[0:0]  # Nessun risultato se colonna mancante
     
     # Per il backlog da verificare conviene ordinare per impatto, non solo alfabeticamente.
     if is_admin and campo_verified_exists and filtro_verified in ("Da Verificare", "Sospette (regole attuali)"):
         df_filtrato = df_filtrato.sort_values(['volte_visto', 'descrizione'], ascending=[False, True]).reset_index(drop=True)
     else:
         df_filtrato = df_filtrato.sort_values('descrizione').reset_index(drop=True)
-    
+
     # ============================================================
     # INFO SEMPLICE + PAGINAZIONE
     # ============================================================
     
-    # Paginazione per performance (50 righe per pagina)
-    RIGHE_PER_PAGINA = 50
+    # Paginazione per performance (100 righe per pagina)
+    RIGHE_PER_PAGINA = 100
     totale_righe = len(df_filtrato)
     
     num_pagine = (totale_righe + RIGHE_PER_PAGINA - 1) // RIGHE_PER_PAGINA
@@ -2766,813 +2890,342 @@ def tab_memoria_globale_unificata():
     df_pagina = df_filtrato.iloc[inizio:fine]
     
     # ============================================================
-    # INIZIALIZZA MODIFICHE PENDENTI E SELEZIONE
+    # INIZIALIZZA STATO
     # ============================================================
-    if 'modifiche_memoria' not in st.session_state:
-        st.session_state.modifiche_memoria = {}
-    
-    # Inizializza selezione righe per verifica (SOLO per admin)
     if 'righe_selezionate' not in st.session_state:
         st.session_state.righe_selezionate = set()
-    
-    # Contatore refresh per forzare ricreazione checkbox dopo selezione massiva
-    if 'checkbox_refresh_counter' not in st.session_state:
-        st.session_state.checkbox_refresh_counter = 0
-    
-    # ============================================================
-    # TABELLA - TUTTE LE RIGHE FILTRATE
-    # ============================================================
+    if 'glob_cat_changes' not in st.session_state:
+        st.session_state.glob_cat_changes = {}  # {row_id: nuova_categoria}
 
-    # HEADER TABELLA (con checkbox solo se admin, campo exists e filtro da verificare)
-    mostra_checkbox = is_admin and campo_verified_exists and filtro_verified == "Da Verificare"
-    
-    if mostra_checkbox:
-        # Selezione rapida + info righe
-        col_sel_title, col_sel_info = st.columns([2, 3])
-        with col_sel_title:
-            st.markdown("#### Selezione Rapida")
-        with col_sel_info:
-            st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe}")
-
-        st.markdown(
-            f"{badge_review} <span style='color:#666;'>Qui stai guardando il backlog storico non ancora confermato</span>",
-            unsafe_allow_html=True,
-        )
-
-        # Bottoni compatti, ravvicinati e allineati a sinistra
-        col_actions_left, _spacer = st.columns([2.2, 5.8])
-        with col_actions_left:
-            col_sel_all, col_desel_all = st.columns([1, 1])
-
-            with col_sel_all:
-                righe_pagina_ids = set(df_pagina['id'].tolist())
-                if st.button("☑️ Seleziona", use_container_width=False, key="btn_select_all"):
-                    st.session_state.righe_selezionate.update(righe_pagina_ids)
-                    st.session_state.checkbox_refresh_counter += 1  # Forza refresh checkbox
-                    st.rerun()
-
-            with col_desel_all:
-                if st.button("⬜ Deseleziona", use_container_width=False, key="btn_deselect_all"):
-                    st.session_state.righe_selezionate.difference_update(righe_pagina_ids)
-                    st.session_state.checkbox_refresh_counter += 1  # Forza refresh checkbox
-                    st.rerun()
-
-        st.markdown("---")
-        col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
-    elif is_admin and campo_verified_exists and filtro_verified == "Sospette (regole attuali)":
-        st.markdown(
-            f"{badge_review} <span style='color:#666;'>Subset automatico: righe non verificate che oggi il motore classificherebbe diversamente</span>",
-            unsafe_allow_html=True,
-        )
-        if not df_sospette.empty:
-            st.warning(
-                f"Sono state individuate {len(df_sospette)} righe sospette secondo le regole attuali. Questa vista serve per concentrare la review manuale dove la logica nuova segnala una divergenza reale."
-            )
-
-        st.markdown("---")
-        col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
-    else:
-        st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe}")
-        col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
-    
-    with col_desc:
-        st.markdown("**Descrizione**")
-    
-    with col_cat:
-        st.markdown("**Categoria**")
-    
-    with col_azioni:
-        st.markdown("**Azioni**")
-    
-    st.markdown("---")
-    
-    # CICLO SOLO SULLE RIGHE DELLA PAGINA CORRENTE (per performance)
-    # Usa categorie da cache
-    categorie = st.session_state.categorie_cached
-    
-    for idx, row in df_pagina.iterrows():
-        row_id = row['id']
-        descrizione = row['descrizione']
-        categoria_corrente = row['categoria']
-        volte_visto = row['volte_visto']
-        verified = row.get('verified', True)
-        
-        # Prepara colonne (con o senza checkbox)
-        if mostra_checkbox:
-            col_check, col_desc, col_cat, col_azioni = st.columns([0.5, 3.5, 2.5, 1])
-        else:
-            col_desc, col_cat, col_azioni = st.columns([4, 2.5, 1])
-        
-        # CHECKBOX (solo se admin e mostra righe da verificare)
-        if mostra_checkbox:
-            with col_check:
-                is_checked = row_id in st.session_state.righe_selezionate
-                # Key dinamica con refresh counter per forzare ricreazione dopo selezione massiva
-                checked = st.checkbox(
-                    "sel",
-                    value=is_checked,
-                    key=f"chk_{row_id}_r{st.session_state.checkbox_refresh_counter}",
-                    label_visibility="collapsed"
-                )
-                # Aggiorna stato in tempo reale
-                if checked:
-                    st.session_state.righe_selezionate.add(row_id)
-                else:
-                    st.session_state.righe_selezionate.discard(row_id)
-        
-        # DESCRIZIONE
-        with col_desc:
-            desc_short = descrizione[:80] + "..." if len(descrizione) > 80 else descrizione
-            # Emoji stato verifica
-            if filtro_verified == "Sospette (regole attuali)":
-                categoria_suggerita = row.get('categoria_suggerita', '')
-                motivo_sospetto = row.get('motivo_sospetto', 'dizionario_attuale')
-                st.markdown(
-                    f"<div style='margin:0.15rem 0 0.4rem 0;padding:0.35rem 0.65rem;background:#fff8f1;border-left:4px solid #fb923c;border-radius:8px;font-size:0.82rem;font-weight:700;color:#9a3412;'>Sospetta: oggi il motore propone {categoria_suggerita} ({motivo_sospetto})</div>",
-                    unsafe_allow_html=True,
-                )
-                st.markdown(f"⚠️ `{desc_short}`", help=f"Testo completo: {descrizione}")
-            elif not verified:
-                st.markdown(
-                    "<div style='margin:0.15rem 0 0.4rem 0;padding:0.35rem 0.65rem;background:#fff8f1;border-left:4px solid #fb923c;border-radius:8px;font-size:0.82rem;font-weight:700;color:#9a3412;'>Da verificare: voce storica da ricontrollare</div>",
-                    unsafe_allow_html=True,
-                )
-                st.markdown(f"⚠️ `{desc_short}`", help=f"Testo completo: {descrizione}")
-            else:
-                st.markdown(
-                    "<div style='margin:0.15rem 0 0.4rem 0;padding:0.35rem 0.65rem;background:#f3fbf4;border-left:4px solid #4ade80;border-radius:8px;font-size:0.82rem;font-weight:700;color:#166534;'>Verificata: voce già confermata</div>",
-                    unsafe_allow_html=True,
-                )
-                st.markdown(f"✅ `{desc_short}`", help=f"Testo completo: {descrizione}")
-        
-        # DROPDOWN CATEGORIA (modifica inline)
-        with col_cat:
-            # Controlla se c'è una modifica pendente
-            if descrizione in st.session_state.modifiche_memoria:
-                cat_default = st.session_state.modifiche_memoria[descrizione]['nuova_categoria']
-            else:
-                cat_default = categoria_corrente
-            
-            # Estrai nome categoria SENZA emoji
-            cat_pulita = estrai_nome_categoria(cat_default)
-            index_default = categorie.index(cat_pulita) if cat_pulita in categorie else 0
-            
-            nuova_cat = st.selectbox(
-                "cat",
-                categorie,
-                index=index_default,
-                key=f"cat_{row_id}",
-                label_visibility="collapsed"
-            )
-            
-            # Traccia modifica se diversa
-            cat_clean = estrai_nome_categoria(nuova_cat)
-            if cat_clean != categoria_corrente:
-                st.session_state.modifiche_memoria[descrizione] = {
-                    'nuova_categoria': cat_clean,
-                    'occorrenze': volte_visto,
-                    'categoria_originale': categoria_corrente,
-                    'row_id': row_id  # Serve per auto-verificare quando salvi
-                }
-            elif descrizione in st.session_state.modifiche_memoria:
-                # Ripristinata categoria originale, rimuovi da pendenti
-                del st.session_state.modifiche_memoria[descrizione]
-        
-        # AZIONI - Badge modifica o info volte visto
-        with col_azioni:
-            # Mostra badge se c'è modifica pendente, altrimenti volte visto
-            if descrizione in st.session_state.modifiche_memoria:
-                st.markdown("🔸 **Mod**")
-            else:
-                st.caption(f"{volte_visto}×")
-        
-        st.markdown("---")
-    
     # ============================================================
-    # BARRA AZIONI UNIFICATA (Verifiche + Modifiche)
+    # PROPOSTA 2: BREAKDOWN PER CATEGORIA
     # ============================================================
-    # Ricalcola num_selezionate DOPO il ciclo (quando le checkbox hanno aggiornato lo stato)
-    num_selezionate = len(st.session_state.righe_selezionate)
-    num_modifiche = len(st.session_state.modifiche_memoria)
-    
-    # ✅ PULSANTE UNICO: Gestisce entrambe le operazioni (verifiche checkbox + modifiche categorie)
-    if is_admin and campo_verified_exists and (num_selezionate > 0 or num_modifiche > 0):
-        st.markdown("---")
-        st.markdown("### 💾 Salvataggio e Conferma")
-        
-        # Info riassuntiva
-        info_parts = []
-        if num_modifiche > 0:
-            totale_righe_affected = sum(m['occorrenze'] for m in st.session_state.modifiche_memoria.values())
-            info_parts.append(f"**{num_modifiche}** modifiche categorie → **{totale_righe_affected}** righe")
-        if num_selezionate > 0:
-            info_parts.append(f"**{num_selezionate}** verifiche checkbox")
-        
-        st.info(f"📊 Azioni pendenti: {' | '.join(info_parts)}")
-        
-        # Preview modifiche (se esistono)
-        if num_modifiche > 0:
-            with st.expander("🔍 Preview Modifiche Categorie", expanded=False):
-                for desc, info in list(st.session_state.modifiche_memoria.items())[:10]:
-                    desc_short = desc[:80] + "..." if len(desc) > 80 else desc
-                    st.markdown(f"- `{desc_short}` ({info['occorrenze']}×): {info['categoria_originale']} → **{info['nuova_categoria']}**")
-                if num_modifiche > 10:
-                    st.caption(f"... e altre {num_modifiche - 10} modifiche")
-        
-        # Bottoni azione unificati
-        col_save, col_cancel, col_export = st.columns([2, 1, 1.5])
-        
-        with col_save:
-            # Label dinamica
-            label_parts = []
-            if num_modifiche > 0:
-                label_parts.append(f"{num_modifiche} modifiche")
-            if num_selezionate > 0:
-                label_parts.append(f"{num_selezionate} verifiche")
-            
-            button_label = f"💾 Salva e Conferma ({' + '.join(label_parts)})"
-            
-            if st.button(button_label, type="primary", use_container_width=True, key="save_unified"):
-                with st.spinner("💾 Salvataggio in corso..."):
-                    success_messages = []
-                    
-                    try:
-                        # STEP 1: Salva modifiche categorie (se esistono)
-                        if num_modifiche > 0:
-                            success_count = 0
-                            total_rows = 0
-                            
-                            for descrizione, info in st.session_state.modifiche_memoria.items():
-                                try:
-                                    # Admin: aggiorna memoria globale + auto-verifica
-                                    supabase.table('prodotti_master')\
-                                        .update({
-                                            'categoria': info['nuova_categoria'],
-                                            'verified': True  # ✅ Auto-verifica: correzione manuale = già controllata
-                                        })\
-                                        .eq('descrizione', descrizione)\
-                                        .execute()
-                                    
-                                    # 🛡️ PROTEZIONE PRIORITÀ: Aggiorna fatture SOLO per utenti 
-                                    # che NON hanno personalizzazione locale (prodotti_utente)
-                                    # Se un cliente ha override locale, le sue fatture NON vengono toccate
-                                    try:
-                                        # Trova user_id con override locale per questa descrizione
-                                        override_resp = supabase.table('prodotti_utente')\
-                                            .select('user_id')\
-                                            .eq('descrizione', descrizione)\
-                                            .execute()
-                                        
-                                        user_ids_con_override = set()
-                                        if override_resp.data:
-                                            user_ids_con_override = {row['user_id'] for row in override_resp.data}
-                                        
-                                        if user_ids_con_override:
-                                            # Aggiorna fatture ESCLUDENDO utenti con override locale
-                                            # PostgREST non supporta NOT IN direttamente, quindi usiamo approccio iterativo
-                                            # Prima: aggiorna TUTTE le fatture con questa descrizione
-                                            result = supabase.table('fatture')\
-                                                .update({'categoria': info['nuova_categoria']})\
-                                                .eq('descrizione', descrizione)\
-                                                .execute()
-                                            
-                                            # Poi: RIPRISTINA le fatture degli utenti con override locale
-                                            for uid in user_ids_con_override:
-                                                try:
-                                                    cat_locale = supabase.table('prodotti_utente')\
-                                                        .select('categoria')\
-                                                        .eq('user_id', uid)\
-                                                        .eq('descrizione', descrizione)\
-                                                        .limit(1)\
-                                                        .execute()
-                                                    if cat_locale.data:
-                                                        supabase.table('fatture')\
-                                                            .update({'categoria': cat_locale.data[0]['categoria']})\
-                                                            .eq('descrizione', descrizione)\
-                                                            .eq('user_id', uid)\
-                                                            .execute()
-                                                except Exception as uid_err:
-                                                    logger.error(f"Errore ripristino override locale per uid={uid}, desc='{descrizione[:40]}': {uid_err}")
-                                            
-                                            logger.info(f"🛡️ Protetti {len(user_ids_con_override)} utenti con override locale per '{descrizione[:40]}'")
-                                        else:
-                                            # Nessun override locale: aggiorna tutte le fatture normalmente
-                                            result = supabase.table('fatture')\
-                                                .update({'categoria': info['nuova_categoria']})\
-                                                .eq('descrizione', descrizione)\
-                                                .execute()
-                                    except Exception as prot_err:
-                                        logger.warning(f"⚠️ Errore protezione override, fallback update globale: {prot_err}")
-                                        result = supabase.table('fatture')\
-                                            .update({'categoria': info['nuova_categoria']})\
-                                            .eq('descrizione', descrizione)\
-                                            .execute()
-                                    
-                                    num_updated = len(result.data) if result.data else info['occorrenze']
-                                    success_count += 1
-                                    total_rows += num_updated
-                                    
-                                except Exception as e:
-                                    logger.error(f"Errore salvataggio '{descrizione}': {e}")
-                            
-                            logger.info(f"✅ MEMORIA GLOBALE: {success_count} categorie modificate, {total_rows} righe fatture aggiornate")
-                            success_messages.append(f"✅ {success_count} modifiche salvate ({total_rows} righe aggiornate)")
-                            
-                            # Reset modifiche
-                            st.session_state.modifiche_memoria = {}
-                        
-                        # STEP 2: Conferma verifiche checkbox (se esistono)
-                        if num_selezionate > 0:
-                            righe_ids = list(st.session_state.righe_selezionate)
-                            
-                            supabase.table('prodotti_master')\
-                                .update({'verified': True})\
-                                .in_('id', righe_ids)\
-                                .execute()
-                            
-                            logger.info(f"✅ MEMORIA GLOBALE: {num_selezionate} prodotti verificati (checkbox)")
-                            success_messages.append(f"✅ {num_selezionate} verifiche confermate")
-                            
-                            # Reset selezione
-                            st.session_state.righe_selezionate = set()
-                        
-                        # Refresh cache (Streamlit + in-memory)
-                        invalida_cache_memoria()
-                        
-                        # Mostra success unificato
-                        st.success("\n\n".join(success_messages))
-                        time.sleep(1.5)
-                        st.rerun()
-                        
-                    except Exception as e:
-                        logger.error(f"Errore salvataggio unificato: {e}")
-                        st.error(f"❌ Errore durante il salvataggio: {e}")
-        
-        with col_cancel:
-            if st.button("❌ Annulla Tutte", use_container_width=True, key="cancel_unified"):
-                st.session_state.modifiche_memoria = {}
-                st.session_state.righe_selezionate = set()
-                st.rerun()
-        
-        with col_export:
-            # Export solo se ci sono modifiche
-            if num_modifiche > 0:
-                export_data = []
-                for desc, info in st.session_state.modifiche_memoria.items():
-                    export_data.append({
-                        'Descrizione': desc,
-                        'Occorrenze': info['occorrenze'],
-                        'Categoria Originale': info['categoria_originale'],
-                        'Nuova Categoria': info['nuova_categoria']
-                    })
-                df_export = pd.DataFrame(export_data)
-                csv = df_export.to_csv(index=False).encode('utf-8')
-                
-                st.download_button(
-                    label="📄 Export CSV",
-                    data=csv,
-                    file_name=f"modifiche_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv",
-                    use_container_width=True,
-                    key="export_unified_csv"
-                )
-
-# ============================================================
-# VISTA MEMORIA CLIENTI (prodotti_utente)
-# ============================================================
-
-def tab_personalizzazioni_clienti():
-    """
-    TAB Memoria Clienti - VERSIONE UNIFICATA
-    Replica del tab Memoria Globale ma con dati da prodotti_utente
-    - Interfaccia semplice (Descrizione + Categoria)
-    - Checkbox per selezione multipla
-    - Bottoni "Applica Globalmente" e "Elimina Selezionati"
-    """
-    st.markdown("## 📝 Memoria Clienti")
-    st.caption("Gestisci le modifiche manuali che ogni cliente ha fatto alle categorie")
-    
-    st.info("""
-    🔧 **Gestione Memoria Clienti**: 
-    
-    ℹ️ **Comportamento:**
-    - Queste personalizzazioni sono **locali** (solo per il cliente specifico)
-    - Hanno **priorità** sulla memoria globale per quel cliente
-    - Puoi **promuoverle** a memoria globale per condividerle con tutti 
-    - Puoi **eliminarle** per far usare la memoria globale al cliente
-    """)
-    
-    # ============================================================
-    # CARICAMENTO DATI
-    # ============================================================
-    @st.cache_data(ttl=60, show_spinner=False)
-    def carica_personalizzazioni_completa():
-        """Carica TUTTE le personalizzazioni con paginazione (supera limite 1000 Supabase)."""
-        try:
-            all_data = []
-            page_size = 1000
-            offset = 0
-            
-            while True:
-                response = supabase.table('prodotti_utente')\
-                    .select('id, descrizione, categoria, volte_visto, created_at, user_id')\
-                    .order('id', desc=False)\
-                    .range(offset, offset + page_size - 1)\
-                    .execute()
-                
-                if not response.data:
-                    break
-                    
-                all_data.extend(response.data)
-                
-                if len(response.data) < page_size:
-                    break
-                    
-                offset += page_size
-            
-            logger.info(f"📊 Memoria Clienti caricata: {len(all_data)} personalizzazioni")
-            df = pd.DataFrame(all_data)
-            # Pulisci descrizioni corrotte (encoding errato da fatture CJK)
-            if not df.empty and 'descrizione' in df.columns:
-                df['descrizione'] = df['descrizione'].apply(
-                    lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x
-                )
-            return df
-        except Exception as e:
-            logger.error(f"Errore caricamento personalizzazioni: {e}")
-            return pd.DataFrame()
-    
-    df_personalizzazioni = carica_personalizzazioni_completa()
-    
-    if df_personalizzazioni.empty:
-        st.warning("📭 Nessuna personalizzazione trovata. I clienti non hanno ancora modificato categorie manualmente.")
-        return
-    
-    # ============================================================
-    # METRICHE (CARD STILIZZATE)
-    # ============================================================
-    _tot_utilizzi_clienti = int(df_personalizzazioni['volte_visto'].sum())
-    _clienti_unici = int(df_personalizzazioni['user_id'].nunique())
-    
-    st.markdown(f"""
-    <div class="admin-metrics-grid admin-metrics-grid--tight">
-        <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
-            <div class="admin-metric-label" style="color:#1976d2;">📝 Voci in Memoria</div>
-            <div class="admin-metric-value" style="color:#1565c0;">{len(df_personalizzazioni):,}</div>
-        </div>
-        <div class="admin-metric-card" style="background:linear-gradient(135deg,#e8f5e9,#c8e6c9); border:2px solid #4caf50;">
-            <div class="admin-metric-label" style="color:#2e7d32;">📊 Totale Utilizzi</div>
-            <div class="admin-metric-value" style="color:#1b5e20;">{_tot_utilizzi_clienti:,}</div>
-        </div>
-        <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
-            <div class="admin-metric-label" style="color:#e65100;">👥 Clienti Attivi</div>
-            <div class="admin-metric-value" style="color:#e65100;">{_clienti_unici}</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # ============================================================
-    # FILTRI
-    # ============================================================
-    st.markdown("### 🔍 Filtri")
-    
-    # Pre-carica mappa clienti per filtro inline
-    user_id_to_email = {}
-    try:
-        resp_utenti = supabase.table('users').select('id, email').execute()
-        user_id_to_email = {u['id']: u['email'] for u in (resp_utenti.data or [])}
-    except Exception:
-        pass
-
-    df_personalizzazioni['email_cliente'] = df_personalizzazioni['user_id'].map(user_id_to_email).fillna('Sconosciuto')
-    emails_disponibili = sorted(df_personalizzazioni['email_cliente'].unique().tolist())
-
-    col_search, col_cat, col_cliente, col_reset = st.columns([3, 2, 2, 1])
-    
-    with col_search:
-        if 'search_personalizzazioni' not in st.session_state:
-            st.session_state.search_personalizzazioni = ""
-        
-        search_text = st.text_input(
-            "🔍 Cerca descrizione",
-            value=st.session_state.search_personalizzazioni,
-            placeholder="es: POMODORO, OLIO, PASTA",
-            key="search_personalizzazioni"
-        )
-    
-    with col_cat:
-        categorie = st.session_state.categorie_cached
-        if 'filtro_cat_pers' not in st.session_state:
-            st.session_state.filtro_cat_pers = "Tutte"
-        
-        filtro_cat = st.selectbox(
-            "Filtra categoria",
-            ["Tutte"] + categorie,
-            key="filtro_cat_pers"
-        )
-
-    with col_cliente:
-        if 'filtro_cliente_pers' not in st.session_state:
-            st.session_state.filtro_cliente_pers = "Tutti"
-
-        filtro_cliente = st.selectbox(
-            "👤 Filtra per cliente",
-            ["Tutti"] + emails_disponibili,
-            key="filtro_cliente_pers"
-        )
-    
-    with col_reset:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 Reset", key="reset_filtri_pers"):
-            st.session_state.search_personalizzazioni = ""
-            st.session_state.filtro_cat_pers = "Tutte"
-            st.session_state.filtro_cliente_pers = "Tutti"
-            st.rerun()
-    
-    # ============================================================
-    # APPLICA FILTRI
-    # ============================================================
-    df_filtrato = df_personalizzazioni.copy()
-    
-    # Traccia filtri precedenti per reset pagina
-    filtri_correnti = f"{search_text}_{filtro_cat}_{filtro_cliente}"
-    if 'filtri_pers_prev' not in st.session_state:
-        st.session_state.filtri_pers_prev = filtri_correnti
-    elif st.session_state.filtri_pers_prev != filtri_correnti:
-        st.session_state.pagina_pers = 0
-        st.session_state.filtri_pers_prev = filtri_correnti
-    
-    if search_text:
-        # Ricerca SMART: parola per parola, ignora numeri (normalizzazione li rimuove dal DB)
-        parole = [p for p in search_text.strip().split() if len(p) >= 2 and not re.match(r'^\d+$', p)]
-        
-        if parole:
-            filtro_ricerca = pd.Series([True] * len(df_filtrato), index=df_filtrato.index)
-            for parola in parole:
-                filtro_ricerca = filtro_ricerca & df_filtrato['descrizione'].str.contains(parola, case=False, na=False, regex=False)
-            df_filtrato = df_filtrato[filtro_ricerca]
-    
-    if filtro_cat != "Tutte":
-        cat_clean = estrai_nome_categoria(filtro_cat)
-        df_filtrato = df_filtrato[df_filtrato['categoria'] == cat_clean]
-    
-    if filtro_cliente != "Tutti":
-        df_filtrato = df_filtrato[df_filtrato['email_cliente'] == filtro_cliente]
-    
-    # ORDINA ALFABETICAMENTE per descrizione
-    df_filtrato = df_filtrato.sort_values('descrizione').reset_index(drop=True)
-    
-    # ============================================================
-    # INFO + PAGINAZIONE
-    # ============================================================
-    RIGHE_PER_PAGINA = 25
-    totale_righe = len(df_filtrato)
-    
-    if 'pagina_pers' not in st.session_state:
-        st.session_state.pagina_pers = 0
-    
-    num_pagine = (totale_righe + RIGHE_PER_PAGINA - 1) // RIGHE_PER_PAGINA
-    
-    col_info, col_pag = st.columns([2, 1])
-    
-    with col_info:
-        st.info(f"📊 Mostrando {totale_righe} voci")
-    
-    with col_pag:
-        if num_pagine > 1:
-            pagina = st.number_input(
-                f"Pag. (max {num_pagine})",
-                min_value=1,
-                max_value=num_pagine,
-                value=st.session_state.pagina_pers + 1,
-                step=1,
-                key="input_pagina_pers",
-                label_visibility="visible"
-            )
-            st.session_state.pagina_pers = pagina - 1
-    
-    if df_filtrato.empty:
-        st.warning("⚠️ Nessuna memoria trovata con questi filtri")
-        return
-    
-    # Applica paginazione
-    inizio = st.session_state.pagina_pers * RIGHE_PER_PAGINA
-    fine = min(inizio + RIGHE_PER_PAGINA, totale_righe)
-    df_pagina = df_filtrato.iloc[inizio:fine]
-    
-    if num_pagine > 1:
-        st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe}")
-    
-    # ============================================================
-    # INIZIALIZZA SELEZIONE
-    # ============================================================
-    if 'righe_pers_selezionate' not in st.session_state:
-        st.session_state.righe_pers_selezionate = set()
-    
-    if 'checkbox_pers_refresh_counter' not in st.session_state:
-        st.session_state.checkbox_pers_refresh_counter = 0
-    
-    st.markdown("---")
-    
-    # ============================================================
-    # TABELLA
-    # ============================================================
-    st.markdown("### 📋 Memoria Clienti")
-    
-    # Bottoni selezione massiva
-    st.markdown("#### Selezione Rapida")
-    col_sel_all, col_desel_all = st.columns(2)
-    
-    with col_sel_all:
-        righe_pagina_ids = set(df_pagina['id'].tolist())
-        if st.button(f"☑️ Seleziona Tutte ({len(righe_pagina_ids)} righe)", use_container_width=True, key="btn_select_all_pers"):
-            st.session_state.righe_pers_selezionate.update(righe_pagina_ids)
-            st.session_state.checkbox_pers_refresh_counter += 1
-            st.rerun()
-    
-    with col_desel_all:
-        if st.button("⬜ Deseleziona Tutte", use_container_width=True, key="btn_deselect_all_pers"):
-            st.session_state.righe_pers_selezionate.difference_update(righe_pagina_ids)
-            st.session_state.checkbox_pers_refresh_counter += 1
-            st.rerun()
-    
-    st.markdown("---")
-    
-    # HEADER TABELLA
-    col_check, col_desc, col_cat, col_save = st.columns([0.5, 3.5, 2.2, 1.1])
-    
-    with col_desc:
-        st.markdown("**Descrizione**")
-    
-    with col_cat:
-        st.markdown("**Categoria**")
-
-    with col_save:
-        st.markdown("**Salva**")
-    
-    st.markdown("---")
-    
-    # CICLO RIGHE
-    for idx, row in df_pagina.iterrows():
-        row_id = row['id']
-        descrizione = row['descrizione']
-        categoria_corrente = row['categoria']
-        volte_visto = row['volte_visto']
-        
-        user_id = row['user_id']
-        email_cliente = row.get('email_cliente', 'Sconosciuto')
-
-        col_check, col_desc, col_cat, col_save = st.columns([0.5, 3.5, 2.2, 1.1])
-        
-        # CHECKBOX
-        with col_check:
-            is_checked = row_id in st.session_state.righe_pers_selezionate
-            checked = st.checkbox(
-                "sel",
-                value=is_checked,
-                key=f"chk_pers_{row_id}_r{st.session_state.checkbox_pers_refresh_counter}",
-                label_visibility="collapsed"
-            )
-            if checked:
-                st.session_state.righe_pers_selezionate.add(row_id)
-            else:
-                st.session_state.righe_pers_selezionate.discard(row_id)
-        
-        # DESCRIZIONE
-        with col_desc:
-            desc_short = descrizione[:60] + "..." if len(descrizione) > 60 else descrizione
-            st.markdown(f"`{desc_short}` ({volte_visto}×)")
-            st.caption(email_cliente)
-        
-        # CATEGORIA con editing inline
-        with col_cat:
-            cat_pulita = estrai_nome_categoria(categoria_corrente)
-            index_default = categorie.index(cat_pulita) if cat_pulita in categorie else 0
-            nuova_cat = st.selectbox(
-                "Categoria cliente",
-                categorie,
-                index=index_default,
-                key=f"cat_pers_{row_id}",
-                label_visibility="collapsed"
-            )
-
-        with col_save:
-            if st.button("💾", key=f"save_pers_{row_id}", use_container_width=True, help="Salva categoria locale"):
-                try:
-                    nuova_cat_clean = estrai_nome_categoria(nuova_cat)
-                    _aggiorna_categoria_locale(
-                        local_id=row_id,
-                        descrizione=descrizione,
-                        user_id=user_id,
-                        nuova_categoria=nuova_cat_clean,
+    if is_admin and campo_verified_exists and filtro_verified == "Da Verificare" and filtro_cat == "Tutte" and not search_text:
+        _cat_counts = df_filtrato.groupby('categoria').size().sort_values(ascending=False)
+        if len(_cat_counts) > 0:
+            with st.expander(f"📊 Backlog per categoria — clicca per espandere ({len(_cat_counts)} categorie)", expanded=False):
+                _html_cats = ""
+                for _cat_name, _cnt in _cat_counts.items():
+                    _color = "#ff6b35" if _cnt > 100 else "#e65100" if _cnt > 50 else "#555"
+                    _html_cats += (
+                        f"<span style='display:inline-block;padding:0.2rem 0.6rem;margin:0.2rem;border-radius:6px;"
+                        f"background:#fff3e0;border:1px solid #ffcc02;font-size:0.82rem;color:{_color};font-weight:600;'>"
+                        f"{_cat_name}: <b>{_cnt}</b></span>"
                     )
-                    invalida_cache_memoria()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Errore salvataggio categoria: {e}")
-        
-        st.markdown("---")
+                st.markdown(f"<div style='display:flex;flex-wrap:wrap;gap:0.2rem;'>{_html_cats}</div>", unsafe_allow_html=True)
+                st.caption("💡 Filtra per categoria nel menu 'Filtra categoria' sopra per vedere solo quella categoria.")
+
+    # ============================================================
+    # PROPOSTA 3: APPROVA INTERA CATEGORIA
+    # ============================================================
+    if is_admin and campo_verified_exists and filtro_cat != "Tutte" and filtro_verified == "Da Verificare":
+        _n_da_approvare = len(df_filtrato)
+        if _n_da_approvare > 0:
+            _cat_nome = estrai_nome_categoria(filtro_cat)
+            col_appcat, _ = st.columns([3.5, 6.5])
+            with col_appcat:
+                if st.button(
+                    f"✅ Approva tutte le {_n_da_approvare} '{_cat_nome}' non verificate",
+                    type="primary",
+                    use_container_width=True,
+                    key="approva_categoria_bulk",
+                    help=f"Marca verified=True tutte le {_n_da_approvare} righe di '{_cat_nome}' ancora da verificare",
+                ):
+                    with st.spinner(f"Approvazione {_n_da_approvare} voci '{_cat_nome}'..."):
+                        try:
+                            _ids_approva = df_filtrato['id'].tolist()
+                            for _i in range(0, len(_ids_approva), 1000):
+                                supabase.table('prodotti_master')\
+                                    .update({'verified': True})\
+                                    .in_('id', _ids_approva[_i:_i + 1000])\
+                                    .execute()
+                            invalida_cache_memoria()
+                            st.success(f"✅ {_n_da_approvare} voci '{_cat_nome}' approvate!")
+                            st.rerun()
+                        except Exception as _approva_e:
+                            st.error(f"Errore: {_approva_e}")
     
     # ============================================================
-    # BARRA AZIONI
+    # PROPOSTA 1: TABELLA data_editor
     # ============================================================
-    num_selezionate = len(st.session_state.righe_pers_selezionate)
-    
-    if num_selezionate > 0:
-        st.markdown("---")
-        st.markdown("### 💾 Azioni su Selezionati")
-        
-        st.info(f"📊 {num_selezionate} voci selezionate")
-        
-        col_global, col_delete, col_cancel = st.columns([2, 2, 1])
-        
-        with col_global:
-            if st.button(f"🌍 Applica Globalmente ({num_selezionate})", type="primary", use_container_width=True, key="apply_global_batch"):
-                with st.spinner("🌍 Applicazione globale in corso..."):
+    categorie = st.session_state.categorie_cached
+
+    if filtro_verified == "Sospette (regole attuali)" and not df_sospette.empty:
+        st.markdown(
+            f"{badge_review} <span style='color:#666;'>Subset automatico: righe che il motore attuale classificherebbe diversamente</span>",
+            unsafe_allow_html=True,
+        )
+        st.warning(f"{len(df_sospette)} righe sospette. Correggi la categoria e salva.")
+
+    col_sel_all, col_desel_all, _ = st.columns([1, 1, 6])
+    _glob_all_page_ids = set(df_pagina['id'].tolist())
+    with col_sel_all:
+        if st.button("☑️ Seleziona tutti", key="glob_select_all", use_container_width=True):
+            st.session_state.righe_selezionate.update(_glob_all_page_ids)
+            st.rerun()
+    with col_desel_all:
+        if st.button("⬜ Deseleziona tutti", key="glob_deselect_all", use_container_width=True):
+            st.session_state.righe_selezionate.difference_update(_glob_all_page_ids)
+            st.rerun()
+
+    st.caption(f"Righe {inizio + 1}-{fine} di {totale_righe} | Modifica categoria nel dropdown, spunta ☑ le righe da verificare, poi salva in basso.")
+
+    _glob_display_df = df_pagina[['id', 'descrizione', 'categoria', 'volte_visto']].copy()
+    _glob_display_df['seleziona'] = _glob_display_df['id'].isin(st.session_state.righe_selezionate)
+    _glob_display_df['categoria'] = _glob_display_df['categoria'].map(estrai_nome_categoria)
+
+    # Mappa descrizione → fornitore (top per occorrenze).
+    # IMPORTANTE: il lookup va fatto PRIMA del troncamento e usando la descrizione
+    # già normalizzata (prodotti_master.descrizione è già normalizzata, le mappe
+    # sono indicizzate sulla stessa chiave).
+    try:
+        _fornitori_map = _carica_top_fornitore_per_descrizione()
+    except Exception as _ef:
+        logger.warning(f"Mappa fornitori non disponibile: {_ef}")
+        _fornitori_map = {}
+    # Normalizza anche la descrizione lato prodotti_master prima del lookup,
+    # perché alcune righe potrebbero non essere state normalizzate al momento del salvataggio.
+    _glob_display_df['fornitore'] = (
+        _glob_display_df['descrizione'].astype(str).str.strip().map(
+            lambda d: _fornitori_map.get(
+                normalizza_descrizione(d) or d,  # prima prova chiave normalizzata
+                _fornitori_map.get(d, '—')       # fallback: chiave raw
+            )
+        )
+    )
+
+    # Solo ora tronchiamo la descrizione per la visualizzazione
+    _glob_display_df['descrizione'] = _glob_display_df['descrizione'].astype(str).str.slice(0, 100)
+
+    # Applica modifiche categoria pendenti dalla sessione corrente
+    for _rid, _ncat in st.session_state.glob_cat_changes.items():
+        _mask = _glob_display_df['id'] == _rid
+        if _mask.any():
+            _glob_display_df.loc[_mask, 'categoria'] = _ncat
+
+    _glob_show_df = _glob_display_df[['seleziona', 'descrizione', 'fornitore', 'categoria', 'volte_visto']].copy()
+
+    _edited_glob_df = st.data_editor(
+        _glob_show_df,
+        hide_index=True,
+        use_container_width=True,
+        height=540,
+        row_height=34,
+        key="globale_editor",
+        column_config={
+            'seleziona': st.column_config.CheckboxColumn('☑', width='small'),
+            'descrizione': st.column_config.TextColumn('Descrizione', width='large', disabled=True),
+            'fornitore': st.column_config.TextColumn('Fornitore', width='medium', disabled=True, help='Fornitore più frequente per questa descrizione (+N se ce ne sono altri)'),
+            'categoria': st.column_config.SelectboxColumn('Categoria', options=categorie, width='large'),
+            'volte_visto': st.column_config.NumberColumn('×', width='small', disabled=True),
+        },
+        disabled=['descrizione', 'fornitore', 'volte_visto'],
+    )
+
+    # Leggi selezioni e modifiche categoria dal widget state interno
+    _glob_widget_state = st.session_state.get("globale_editor") or {}
+    _glob_edited_rows = _glob_widget_state.get("edited_rows", {}) if isinstance(_glob_widget_state, dict) else {}
+
+    _glob_sel_baseline = {i: bool(_glob_show_df.iloc[i]['seleziona']) for i in range(len(_glob_show_df))}
+    for _ridx, _changes in _glob_edited_rows.items():
+        _ridx_int = int(_ridx)
+        if "seleziona" in _changes:
+            _glob_sel_baseline[_ridx_int] = bool(_changes["seleziona"])
+        if "categoria" in _changes and _ridx_int < len(_glob_display_df):
+            _row_id_chg = int(_glob_display_df.iloc[_ridx_int]['id'])
+            _ncat_chg = estrai_nome_categoria(_changes["categoria"])
+            _orig_cat_chg = estrai_nome_categoria(df_pagina.iloc[_ridx_int]['categoria'])
+            if _ncat_chg != _orig_cat_chg:
+                st.session_state.glob_cat_changes[_row_id_chg] = _ncat_chg
+            else:
+                st.session_state.glob_cat_changes.pop(_row_id_chg, None)
+
+    _prev_selected = set(st.session_state.righe_selezionate)
+    _current_page_ids = set(_glob_display_df['id'].astype(int).tolist())
+    _righe_sel_new = set()
+    for _ridx, _is_sel in _glob_sel_baseline.items():
+        if _is_sel and _ridx < len(_glob_display_df):
+            _righe_sel_new.add(int(_glob_display_df.iloc[_ridx]['id']))
+    # Mantieni le selezioni delle altre pagine, aggiorna solo la pagina corrente.
+    st.session_state.righe_selezionate = (_prev_selected - _current_page_ids) | _righe_sel_new
+
+    _num_sel = len(st.session_state.righe_selezionate)
+    _num_mod = len(st.session_state.glob_cat_changes)
+
+    # ============================================================
+    # BARRA AZIONI UNIFICATA
+    # ============================================================
+    st.markdown("### 💾 Salvataggio e Conferma")
+    if _num_sel == 0 and _num_mod == 0:
+        st.caption("Modifica categorie nel dropdown o spunta le righe ☑, poi clicca Salva.")
+    else:
+        _info_parts = []
+        if _num_mod > 0:
+            _info_parts.append(f"**{_num_mod}** modifiche categoria")
+        if _num_sel > 0:
+            _info_parts.append(f"**{_num_sel}** righe da marcare verificate")
+        st.info(f"📊 Azioni pendenti: {' | '.join(_info_parts)}")
+
+    col_save, col_cancel = st.columns([3, 1])
+    with col_save:
+        _label_parts = []
+        if _num_mod > 0:
+            _label_parts.append(f"{_num_mod} modifiche")
+        if _num_sel > 0:
+            _label_parts.append(f"{_num_sel} verifiche")
+        _btn_label = f"💾 Salva e Conferma ({' + '.join(_label_parts)})" if _label_parts else "💾 Salva e Conferma"
+
+        if st.button(_btn_label, type="primary", use_container_width=True, key="save_unified"):
+            if _num_sel == 0 and _num_mod == 0:
+                st.warning("⚠️ Nessuna modifica o selezione da salvare.")
+            else:
+                with st.spinner("💾 Salvataggio in corso..."):
+                    _success_messages = []
                     try:
-                        righe_ids = list(st.session_state.righe_pers_selezionate)
-                        df_selezionate = df_filtrato[df_filtrato['id'].isin(righe_ids)]
-                        
-                        success_count = 0
-                        for idx, row in df_selezionate.iterrows():
-                            try:
-                                # Upsert in prodotti_master
-                                supabase.table('prodotti_master').upsert({
-                                    'descrizione': row['descrizione'],
-                                    'categoria': row['categoria'],
-                                    'volte_visto': 1,
-                                    'verified': True,
-                                    'classificato_da': "Admin (promozione da personalizzazione)"
-                                }, on_conflict='descrizione').execute()
-                                
-                                success_count += 1
-                            except Exception as e:
-                                logger.error(f"Errore promozione '{row['descrizione']}': {e}")
-                        
-                        # Elimina da memoria clienti (ora gestite da globale)
-                        supabase.table('prodotti_utente')\
-                            .delete()\
-                            .in_('id', righe_ids)\
-                            .execute()
-                        
-                        st.session_state.righe_pers_selezionate = set()
+                        if _num_mod > 0:
+                            _saved_count = 0
+                            for _row_id_sv, _nuova_cat_sv in st.session_state.glob_cat_changes.items():
+                                try:
+                                    _desc_row = df_memoria[df_memoria['id'] == _row_id_sv]
+                                    if _desc_row.empty:
+                                        continue
+                                    _descrizione_sv = _desc_row.iloc[0]['descrizione']
+                                    supabase.table('prodotti_master').update({
+                                        'categoria': _nuova_cat_sv,
+                                        'verified': True,
+                                    }).eq('id', _row_id_sv).execute()
+                                    # Aggiorna fatture con protezione override locale
+                                    try:
+                                        _override_r = supabase.table('prodotti_utente').select('user_id').eq('descrizione', _descrizione_sv).execute()
+                                        _uids_override = {r['user_id'] for r in (_override_r.data or [])}
+                                        supabase.table('fatture').update({'categoria': _nuova_cat_sv}).eq('descrizione', _descrizione_sv).execute()
+                                        for _uid_sv in _uids_override:
+                                            try:
+                                                _cat_loc = supabase.table('prodotti_utente').select('categoria').eq('user_id', _uid_sv).eq('descrizione', _descrizione_sv).limit(1).execute()
+                                                if _cat_loc.data:
+                                                    supabase.table('fatture').update({'categoria': _cat_loc.data[0]['categoria']}).eq('descrizione', _descrizione_sv).eq('user_id', _uid_sv).execute()
+                                            except Exception as _uid_e:
+                                                logger.error(f"Errore ripristino override: {_uid_e}")
+                                    except Exception as _prot_e:
+                                        logger.warning(f"Fallback update fatture: {_prot_e}")
+                                        supabase.table('fatture').update({'categoria': _nuova_cat_sv}).eq('descrizione', _descrizione_sv).execute()
+                                    _saved_count += 1
+                                except Exception as _sv_e:
+                                    logger.error(f"Errore salvataggio riga {_row_id_sv}: {_sv_e}")
+                            _success_messages.append(f"✅ {_saved_count} categorie modificate e verificate")
+                            st.session_state.glob_cat_changes = {}
+
+                        if _num_sel > 0:
+                            _ids_ver = list(st.session_state.righe_selezionate)
+                            for _i in range(0, len(_ids_ver), 1000):
+                                supabase.table('prodotti_master').update({'verified': True}).in_('id', _ids_ver[_i:_i + 1000]).execute()
+                            _success_messages.append(f"✅ {_num_sel} righe verificate")
+                            st.session_state.righe_selezionate = set()
+
                         invalida_cache_memoria()
-                        st.success(f"✅ {success_count} voci applicate globalmente!")
-                        time.sleep(1.5)
+                        st.success("\n\n".join(_success_messages))
                         st.rerun()
-                        
-                    except Exception as e:
-                        logger.error(f"Errore applicazione globale: {e}")
-                        st.error(f"❌ Errore: {e}")
-        
-        with col_delete:
-            if st.button(f"🗑️ Elimina Selezionati ({num_selezionate})", type="secondary", use_container_width=True, key="delete_batch_pers"):
-                with st.spinner("🗑️ Eliminazione in corso..."):
-                    try:
-                        righe_ids = list(st.session_state.righe_pers_selezionate)
-                        
-                        supabase.table('prodotti_utente')\
-                            .delete()\
-                            .in_('id', righe_ids)\
-                            .execute()
-                        
-                        st.session_state.righe_pers_selezionate = set()
-                        invalida_cache_memoria()
-                        st.success(f"✅ {num_selezionate} voci eliminate!")
-                        time.sleep(1)
-                        st.rerun()
-                        
-                    except Exception as e:
-                        logger.error(f"Errore eliminazione: {e}")
-                        st.error(f"❌ Errore: {e}")
-        
-        with col_cancel:
-            if st.button("❌ Annulla", use_container_width=True, key="cancel_pers"):
-                st.session_state.righe_pers_selezionate = set()
-                st.rerun()
+                    except Exception as _e:
+                        logger.error(f"Errore salvataggio: {_e}")
+                        st.error(f"❌ Errore: {_e}")
+
+    with col_cancel:
+        if st.button("❌ Annulla", use_container_width=True, key="cancel_unified"):
+            st.session_state.glob_cat_changes = {}
+            st.session_state.righe_selezionate = set()
+            st.rerun()
 
 
-@st.cache_data(ttl=60, show_spinner=False)
-def _load_all_rows_paginated(table_name: str, select_fields: str):
+def _load_all_rows_paginated(table_name: str, select_clause: str):
+    """Carica tutte le righe da una tabella Supabase usando paginazione a blocchi."""
     rows = []
     offset = 0
     page_size = 1000
+
     while True:
         response = (
             supabase.table(table_name)
-            .select(select_fields)
+            .select(select_clause)
             .order('id', desc=False)
             .range(offset, offset + page_size - 1)
             .execute()
         )
-        batch = response.data or []
-        if not batch:
+        chunk = response.data or []
+        if not chunk:
             break
-        rows.extend(batch)
-        if len(batch) < page_size:
+        rows.extend(chunk)
+        if len(chunk) < page_size:
             break
         offset += page_size
+
     return rows
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _carica_top_fornitore_per_descrizione() -> dict:
+    """Mappa descrizione NORMALIZZATA → fornitore più frequente.
+
+    Le descrizioni in `prodotti_master` sono salvate già normalizzate
+    (vedi `normalizza_descrizione`), mentre in `fatture` sono raw.
+    Per matchare correttamente, qui normalizziamo le descrizioni di `fatture`
+    prima di aggregare. Se ci sono più fornitori per la stessa descrizione,
+    al fornitore più frequente viene aggiunto " (+N)".
+    """
+    from utils.text_utils import normalizza_descrizione
+
+    rows = []
+    offset = 0
+    page_size = 1000
+    while True:
+        try:
+            resp = (
+                supabase.table('fatture')
+                .select('descrizione, fornitore')
+                .is_('deleted_at', 'null')
+                .order('id', desc=False)
+                .range(offset, offset + page_size - 1)
+                .execute()
+            )
+        except Exception as e:
+            logger.warning(f"Errore caricamento fornitori per memoria globale: {e}")
+            break
+        chunk = resp.data or []
+        if not chunk:
+            break
+        rows.extend(chunk)
+        if len(chunk) < page_size:
+            break
+        offset += page_size
+
+    if not rows:
+        return {}
+
+    df = pd.DataFrame(rows)
+    df = df.dropna(subset=['descrizione'])
+    df['fornitore'] = df['fornitore'].fillna('').astype(str).str.strip()
+    df = df[df['fornitore'] != '']
+    if df.empty:
+        return {}
+
+    # Normalizza la descrizione delle fatture per allinearla a prodotti_master
+    df['descrizione_norm'] = df['descrizione'].astype(str).map(
+        lambda d: (normalizza_descrizione(d) or d).strip()
+    )
+    df = df[df['descrizione_norm'] != '']
+    if df.empty:
+        return {}
+
+    counts = df.groupby(['descrizione_norm', 'fornitore']).size().reset_index(name='n')
+    counts = counts.sort_values(['descrizione_norm', 'n'], ascending=[True, False])
+    n_unique = counts.groupby('descrizione_norm')['fornitore'].nunique()
+    top = counts.drop_duplicates(subset='descrizione_norm', keep='first').set_index('descrizione_norm')['fornitore']
+
+    out = {}
+    for desc, forn in top.items():
+        extra = int(n_unique.get(desc, 1)) - 1
+        out[desc] = f"{forn} (+{extra})" if extra > 0 else forn
+    return out
+
+
 
 
 @st.cache_data(ttl=60, show_spinner=False)
@@ -3658,41 +3311,6 @@ def _carica_globale_review_dataset():
 
 
 @st.cache_data(ttl=60, show_spinner=False)
-def _carica_audit_mismatch_prodotti_master():
-    from services.ai_service import applica_regole_categoria_forti
-
-    try:
-        rows = _load_all_rows_paginated('prodotti_master', 'id, descrizione, categoria, volte_visto, verified')
-    except Exception:
-        rows = _load_all_rows_paginated('prodotti_master', 'id, descrizione, categoria, volte_visto')
-    if not rows:
-        return pd.DataFrame()
-
-    mismatches = []
-    for row in rows:
-        # Salta voci verificate manualmente dall'admin — decisioni intenzionali
-        if row.get('verified'):
-            continue
-        desc = row.get('descrizione') or ''
-        cat_attuale = row.get('categoria') or 'Da Classificare'
-        nuova_cat, motivo = applica_regole_categoria_forti(desc, cat_attuale)
-        if motivo and nuova_cat != cat_attuale:
-            mismatches.append({
-                'id': row['id'],
-                'descrizione': pulisci_caratteri_corrotti(desc) if isinstance(desc, str) else desc,
-                'categoria_attuale': cat_attuale,
-                'categoria_proposta': nuova_cat,
-                'motivo': motivo,
-                'volte_visto': int(row.get('volte_visto') or 0),
-            })
-
-    if not mismatches:
-        return pd.DataFrame()
-
-    return pd.DataFrame(mismatches).sort_values(['volte_visto', 'descrizione'], ascending=[False, True]).reset_index(drop=True)
-
-
-@st.cache_data(ttl=60, show_spinner=False)
 def _carica_globale_sospette_dataset():
     from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti
 
@@ -3734,550 +3352,16 @@ def _carica_globale_sospette_dataset():
 
 
 # ============================================================
-# AZIONI CONDIVISE: Promozione e Allineamento con cascade fatture
-# ============================================================
-
-def _promuovi_locale_a_globale(global_id: int, local_id: int, descrizione: str,
-                                categoria_locale: str, classificato_da: str):
-    """
-    Promuove una categoria cliente a memoria globale:
-    1. Aggiorna prodotti_master.categoria
-    2. Aggiorna fatture di TUTTI gli utenti SENZA override locale per questa descrizione
-    3. Rimuove l'override locale (prodotti_utente) del cliente promotore
-    """
-    # 1. Aggiorna prodotti_master
-    supabase.table('prodotti_master').update({
-        'categoria': categoria_locale,
-        'verified': True,
-        'classificato_da': classificato_da,
-    }).eq('id', global_id).execute()
-
-    # 2. Cascade fatture con protezione override
-    try:
-        override_resp = supabase.table('prodotti_utente')\
-            .select('user_id, categoria')\
-            .eq('descrizione', descrizione)\
-            .execute()
-
-        user_ids_con_override = {}
-        for row in (override_resp.data or []):
-            uid = row['user_id']
-            if uid:
-                user_ids_con_override[uid] = row['categoria']
-
-        # Aggiorna TUTTE le fatture con questa descrizione
-        supabase.table('fatture')\
-            .update({'categoria': categoria_locale})\
-            .eq('descrizione', descrizione)\
-            .execute()
-
-        # Ripristina fatture degli utenti che hanno ALTRI override locali (non il promotore)
-        for uid, cat_override in user_ids_con_override.items():
-            if cat_override != categoria_locale:
-                supabase.table('fatture')\
-                    .update({'categoria': cat_override})\
-                    .eq('descrizione', descrizione)\
-                    .eq('user_id', uid)\
-                    .execute()
-    except Exception as e:
-        logger.warning(f"⚠️ Errore cascade fatture per '{descrizione[:40]}': {e}")
-
-    # 3. Rimuove l'override locale del promotore
-    supabase.table('prodotti_utente').delete().eq('id', local_id).execute()
-
-
-def _allinea_a_globale(local_id: int, descrizione: str, user_id: str, categoria_globale: str):
-    """
-    Rimuove override locale e riallinea il cliente alla memoria globale:
-    1. Elimina la riga da prodotti_utente
-    2. Aggiorna le fatture del cliente con la categoria globale
-    """
-    # 1. Rimuove override locale
-    supabase.table('prodotti_utente').delete().eq('id', local_id).execute()
-
-    # 2. Aggiorna fatture del cliente
-    try:
-        supabase.table('fatture')\
-            .update({'categoria': categoria_globale})\
-            .eq('descrizione', descrizione)\
-            .eq('user_id', user_id)\
-            .execute()
-    except Exception as e:
-        logger.warning(f"⚠️ Errore aggiornamento fatture cliente per '{descrizione[:40]}': {e}")
-
-
-def _aggiorna_categoria_globale(row_id: int, descrizione: str, nuova_categoria: str,
-                               verified: bool = False, classificato_da: str | None = None):
-    """
-    Aggiorna la categoria globale e propaga la modifica alle fatture,
-    preservando eventuali override locali in prodotti_utente.
-    """
-    payload = {'categoria': nuova_categoria}
-    if verified:
-        payload['verified'] = True
-    if classificato_da:
-        payload['classificato_da'] = classificato_da
-
-    supabase.table('prodotti_master').update(payload).eq('id', row_id).execute()
-
-    try:
-        override_resp = supabase.table('prodotti_utente')\
-            .select('user_id, categoria')\
-            .eq('descrizione', descrizione)\
-            .execute()
-
-        supabase.table('fatture')\
-            .update({'categoria': nuova_categoria})\
-            .eq('descrizione', descrizione)\
-            .execute()
-
-        for ov_row in (override_resp.data or []):
-            supabase.table('fatture')\
-                .update({'categoria': ov_row['categoria']})\
-                .eq('descrizione', descrizione)\
-                .eq('user_id', ov_row['user_id'])\
-                .execute()
-    except Exception as e:
-        logger.warning(f"⚠️ Errore cascade globale per '{descrizione[:40]}': {e}")
-
-
-def _aggiorna_categoria_locale(local_id: int, descrizione: str, user_id: str, nuova_categoria: str):
-    """Aggiorna una categoria locale e propaga la modifica alle fatture del cliente."""
-    supabase.table('prodotti_utente').update({
-        'categoria': nuova_categoria,
-        'classificato_da': 'Admin (edit memoria clienti)',
-        'updated_at': datetime.now(timezone.utc).isoformat(),
-    }).eq('id', local_id).execute()
-
-    try:
-        supabase.table('fatture')\
-            .update({'categoria': nuova_categoria})\
-            .eq('descrizione', descrizione)\
-            .eq('user_id', user_id)\
-            .execute()
-    except Exception as e:
-        logger.warning(f"⚠️ Errore cascade locale per '{descrizione[:40]}': {e}")
-
-
-def _mantieni_locale_solo_cliente(local_id: int, descrizione: str, user_id: str, categoria_locale: str):
-    """Conferma che il conflitto e' intenzionale e deve restare solo per quel cliente."""
-    supabase.table('prodotti_utente').update({
-        'categoria': categoria_locale,
-        'classificato_da': 'Admin (eccezione locale accettata)',
-        'updated_at': datetime.now(timezone.utc).isoformat(),
-    }).eq('id', local_id).execute()
-
-    try:
-        supabase.table('fatture')\
-            .update({'categoria': categoria_locale})\
-            .eq('descrizione', descrizione)\
-            .eq('user_id', user_id)\
-            .execute()
-    except Exception as e:
-        logger.warning(f"⚠️ Errore conferma eccezione locale per '{descrizione[:40]}': {e}")
-
-
-def tab_da_fare_memoria_ai():
-    """Coda operativa prioritaria del nuovo hub Memoria AI."""
-    st.markdown("## ✅ Da fare")
-    st.caption("Qui trovi solo conflitti e anomalie prioritarie. Il resto del backlog resta nel tab Globale.")
-
-    def _priority_badge(label, bg_color, text_color, border_color):
-        return (
-            f"<span style=\"display:inline-block;padding:0.15rem 0.55rem;border-radius:999px;"
-            f"background:{bg_color};color:{text_color};border:1px solid {border_color};"
-            f"font-size:0.78rem;font-weight:700;letter-spacing:0.01em;\">{label}</span>"
-        )
-
-    badge_alta = _priority_badge("ALTA PRIORITA", "#fff3e0", "#e65100", "#ff9800")
-    badge_media = _priority_badge("SOSPETTA", "#fce4ec", "#ad1457", "#e91e63")
-    badge_bassa = _priority_badge("ERRORE", "#e8f5e9", "#1b5e20", "#43a047")
-
-    df_conflitti = _carica_conflitti_memoria_dataset()
-    df_globale, campo_verified_exists = _carica_globale_review_dataset()
-    df_sospette = _carica_globale_sospette_dataset() if campo_verified_exists else pd.DataFrame()
-    df_audit = _carica_audit_mismatch_prodotti_master()
-    categorie = st.session_state.categorie_cached
-
-    non_verificati_totali = 0
-    if not df_globale.empty and campo_verified_exists:
-        non_verificati_totali = int((df_globale['verified'] == False).sum())
-
-    priorita_frames = []
-    ids_sospette = set()
-
-    if not df_sospette.empty:
-        df_sospette_queue = df_sospette.copy()
-        df_sospette_queue['queue_tipo'] = 'Sospetta'
-        df_sospette_queue['categoria_attesa'] = df_sospette_queue['categoria_suggerita']
-        ids_sospette = set(df_sospette_queue['id'].tolist())
-        priorita_frames.append(df_sospette_queue[[
-            'id', 'descrizione', 'categoria_attuale', 'categoria_attesa',
-            'motivo_sospetto', 'classificato_da', 'volte_visto', 'queue_tipo'
-        ]])
-
-    if not df_audit.empty:
-        df_audit_queue = df_audit[~df_audit['id'].isin(ids_sospette)].copy()
-        if not df_audit_queue.empty:
-            df_audit_queue['queue_tipo'] = 'Errore'
-            df_audit_queue['categoria_attesa'] = df_audit_queue['categoria_proposta']
-            df_audit_queue['motivo_sospetto'] = df_audit_queue['motivo']
-            df_audit_queue['classificato_da'] = 'audit'
-            priorita_frames.append(df_audit_queue[[
-                'id', 'descrizione', 'categoria_attuale', 'categoria_attesa',
-                'motivo_sospetto', 'classificato_da', 'volte_visto', 'queue_tipo'
-            ]])
-
-    df_priorita = pd.concat(priorita_frames, ignore_index=True) if priorita_frames else pd.DataFrame(
-        columns=['id', 'descrizione', 'categoria_attuale', 'categoria_attesa', 'motivo_sospetto', 'classificato_da', 'volte_visto', 'queue_tipo']
-    )
-    if not df_priorita.empty:
-        df_priorita = df_priorita.sort_values(['queue_tipo', 'volte_visto', 'descrizione'], ascending=[True, False, True]).reset_index(drop=True)
-
-    backlog_restante_globale = max(non_verificati_totali - df_priorita['id'].nunique(), 0) if campo_verified_exists else 0
-
-    totale_priorita = len(df_conflitti) + len(df_priorita)
-    st.markdown(
-        f"""
-        <div class="admin-metrics-grid admin-metrics-grid--tight">
-            <div class="admin-metric-card" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2); border:2px solid #ff9800;">
-                <div class="admin-metric-label" style="color:#ef6c00;">🔥 Da fare ora</div>
-                <div class="admin-metric-value" style="color:#e65100;">{totale_priorita:,}</div>
-            </div>
-            <div class="admin-metric-card" style="background:linear-gradient(135deg,#fce4ec,#f8bbd0); border:2px solid #e91e63;">
-                <div class="admin-metric-label" style="color:#c2185b;">⚔️ Conflitti inclusi</div>
-                <div class="admin-metric-value" style="color:#880e4f;">{len(df_conflitti):,}</div>
-            </div>
-            <div class="admin-metric-card" style="background:linear-gradient(135deg,#e3f2fd,#bbdefb); border:2px solid #2196f3;">
-                <div class="admin-metric-label" style="color:#1976d2;">🌍 Nel tab Globale</div>
-                <div class="admin-metric-value" style="color:#1565c0;">{backlog_restante_globale:,}</div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    if len(df_conflitti) > 0:
-        st.warning(
-            f"Priorita alta: {len(df_conflitti)} conflitti attivi. In questo flusso i conflitti indicano override cliente su voci gia presenti in memoria globale (tipicamente modifica manuale locale)."
-        )
-    elif len(df_priorita) > 0:
-        st.info(
-            f"Nessun conflitto attivo. Restano {len(df_priorita)} verifiche prioritarie e {backlog_restante_globale} righe non verificate consultabili nel tab Globale."
-        )
-    else:
-        st.success("Nessuna attivita prioritaria pendente nella memoria AI.")
-
-    st.markdown("---")
-    st.markdown("### 🔥 Coda prioritaria")
-    st.markdown(
-        f"{badge_alta} <span style='color:#666;'>I conflitti sono già inclusi qui e compaiono per primi</span>",
-        unsafe_allow_html=True,
-    )
-    st.caption("Prima risolvi i conflitti cliente-vs-globale (override locale su voce gia globale), poi confermi o correggi le anomalie globali prioritarie.")
-
-    if not df_conflitti.empty:
-        if 'dafare_conflitti_selezionati' not in st.session_state:
-            st.session_state.dafare_conflitti_selezionati = set()
-
-        _conflitti_ids = set(df_conflitti['local_id'].tolist())
-
-        col_conf_title, col_conf_sel, col_conf_desel = st.columns([3.2, 1.2, 1.2])
-        with col_conf_title:
-            st.markdown("#### Conflitti cliente-vs-globale")
-        with col_conf_sel:
-            if st.button("☑️ Seleziona tutte", key="dafare_select_all_conflitti", use_container_width=True):
-                st.session_state.dafare_conflitti_selezionati.update(_conflitti_ids)
-                st.rerun()
-        with col_conf_desel:
-            if st.button("⬜ Deseleziona tutte", key="dafare_deselect_all_conflitti", use_container_width=True):
-                st.session_state.dafare_conflitti_selezionati.difference_update(_conflitti_ids)
-                st.rerun()
-
-        st.caption("Tabella conflitti: modifica la categoria target, seleziona le righe e usa le azioni massive sotto.")
-
-        _conf_editor_df = df_conflitti[[
-            'local_id', 'descrizione', 'email_cliente', 'categoria_locale', 'categoria_globale'
-        ]].copy()
-        _conf_editor_df['seleziona'] = _conf_editor_df['local_id'].isin(st.session_state.dafare_conflitti_selezionati)
-        _conf_editor_df['categoria_target'] = _conf_editor_df['local_id'].map(
-            lambda _lid: st.session_state.get(f"dafare_conf_target_{_lid}", estrai_nome_categoria(
-                _conf_editor_df.loc[_conf_editor_df['local_id'] == _lid, 'categoria_locale'].iloc[0]
-            ))
-        )
-
-        _conf_editor_df['categoria_locale'] = _conf_editor_df['categoria_locale'].map(estrai_nome_categoria)
-        _conf_editor_df['categoria_globale'] = _conf_editor_df['categoria_globale'].map(estrai_nome_categoria)
-        _conf_editor_df['descrizione'] = _conf_editor_df['descrizione'].astype(str).str.slice(0, 110)
-
-        _conf_editor_df = _conf_editor_df[[
-            'seleziona', 'local_id', 'descrizione', 'email_cliente', 'categoria_locale', 'categoria_globale', 'categoria_target'
-        ]]
-
-        _edited_conf_df = st.data_editor(
-            _conf_editor_df,
-            hide_index=True,
-            use_container_width=True,
-            height=520,
-            row_height=34,
-            key="dafare_conflitti_editor",
-            column_config={
-                'seleziona': st.column_config.CheckboxColumn('☑', width='small'),
-                'local_id': st.column_config.NumberColumn('ID', width='small', disabled=True),
-                'descrizione': st.column_config.TextColumn('Descrizione', width='large', disabled=True),
-                'email_cliente': st.column_config.TextColumn('Cliente', width='medium', disabled=True),
-                'categoria_locale': st.column_config.TextColumn('Locale', width='medium', disabled=True),
-                'categoria_globale': st.column_config.TextColumn('Globale', width='medium', disabled=True),
-                'categoria_target': st.column_config.SelectboxColumn('Categoria target', options=categorie, width='large'),
-            },
-            disabled=['local_id', 'descrizione', 'email_cliente', 'categoria_locale', 'categoria_globale'],
-        )
-
-        _conflitti_correnti = set(_edited_conf_df.loc[_edited_conf_df['seleziona'] == True, 'local_id'].astype(int).tolist())
-        st.session_state.dafare_conflitti_selezionati = _conflitti_correnti
-
-        _target_map = {}
-        for _, _r in _edited_conf_df.iterrows():
-            _lid = int(_r['local_id'])
-            _target = estrai_nome_categoria(_r['categoria_target'])
-            _target_map[_lid] = _target
-            st.session_state[f"dafare_conf_target_{_lid}"] = _target
-
-        _num_conf_sel = len(_conflitti_correnti)
-
-        if _num_conf_sel > 0:
-            st.markdown("### ⚡ Azioni massive conflitti")
-            st.info(f"Selezionate {_num_conf_sel} righe conflitto")
-
-            _df_conf_sel = df_conflitti[df_conflitti['local_id'].isin(_conflitti_correnti)].copy()
-            col_m1, col_m2, col_m3 = st.columns([2, 2, 2])
-
-            with col_m1:
-                if st.button(f"🌍 Promuovi a Globale ({_num_conf_sel})", key="dafare_conf_mass_promote", type="primary", use_container_width=True):
-                    try:
-                        with st.spinner("Promozione massiva in corso..."):
-                            for _, _row in _df_conf_sel.iterrows():
-                                _cat_target = _target_map.get(int(_row['local_id']), estrai_nome_categoria(_row['categoria_locale']))
-                                _aggiorna_categoria_globale(
-                                    row_id=_row['global_id'],
-                                    descrizione=_row['descrizione'],
-                                    nuova_categoria=_cat_target,
-                                    verified=True,
-                                    classificato_da='Admin (promozione batch da-fare conflitti)',
-                                )
-                                _allinea_a_globale(
-                                    local_id=_row['local_id'],
-                                    descrizione=_row['descrizione'],
-                                    user_id=_row['user_id'],
-                                    categoria_globale=_cat_target,
-                                )
-                            st.session_state.dafare_conflitti_selezionati = set()
-                            invalida_cache_memoria()
-                            st.success("✅ Conflitti promossi a globale")
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Errore promozione massiva: {e}")
-
-            with col_m2:
-                if st.button(f"👤 Mantieni Override ({_num_conf_sel})", key="dafare_conf_mass_keep", use_container_width=True):
-                    try:
-                        with st.spinner("Conferma override in corso..."):
-                            for _, _row in _df_conf_sel.iterrows():
-                                _cat_target = _target_map.get(int(_row['local_id']), estrai_nome_categoria(_row['categoria_locale']))
-                                _mantieni_locale_solo_cliente(
-                                    local_id=_row['local_id'],
-                                    descrizione=_row['descrizione'],
-                                    user_id=_row['user_id'],
-                                    categoria_locale=_cat_target,
-                                )
-                            st.session_state.dafare_conflitti_selezionati = set()
-                            invalida_cache_memoria()
-                            st.success("✅ Override locali confermati")
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Errore conferma override massiva: {e}")
-
-            with col_m3:
-                if st.button(f"🧹 Rimuovi Override ({_num_conf_sel})", key="dafare_conf_mass_align", use_container_width=True):
-                    try:
-                        with st.spinner("Riallineamento massivo in corso..."):
-                            for _, _row in _df_conf_sel.iterrows():
-                                _allinea_a_globale(
-                                    local_id=_row['local_id'],
-                                    descrizione=_row['descrizione'],
-                                    user_id=_row['user_id'],
-                                    categoria_globale=estrai_nome_categoria(_row['categoria_globale']),
-                                )
-                            st.session_state.dafare_conflitti_selezionati = set()
-                            invalida_cache_memoria()
-                            st.success("✅ Override rimossi e clienti riallineati al globale")
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Errore riallineamento massivo: {e}")
-
-    st.markdown(
-        f"{badge_media} <span style='color:#666;'>Sospette secondo le regole attuali</span> "
-        f"{badge_bassa} <span style='color:#666;'>Mismatch audit da correggere</span>",
-        unsafe_allow_html=True,
-    )
-    st.caption("Dopo i conflitti trovi solo errori e sospette prioritarie. Tutte le altre righe non verificate restano nel tab Globale.")
-
-    if df_priorita.empty:
-        if df_conflitti.empty:
-            st.success("Nessuna attivita prioritaria da gestire")
-            return
-        st.info("Non restano altre anomalie prioritarie oltre ai conflitti.")
-
-    if 'dafare_priorita_selezionate' not in st.session_state:
-        st.session_state.dafare_priorita_selezionate = set()
-    if 'dafare_priorita_refresh' not in st.session_state:
-        st.session_state.dafare_priorita_refresh = 0
-
-    righe_priorita_ids = set(df_priorita['id'].tolist())
-
-    col_sel_title, col_sel_info = st.columns([2, 4])
-    with col_sel_title:
-        st.markdown("#### Selezione rapida")
-    with col_sel_info:
-        st.caption(f"Righe prioritarie mostrate: {len(df_priorita)}")
-
-    col_sel_all, col_desel_all, col_hint = st.columns([1.2, 1.2, 4.6])
-    with col_sel_all:
-        if st.button("☑️ Seleziona tutte", key="dafare_select_all_priorita", use_container_width=True):
-            st.session_state.dafare_priorita_selezionate.update(righe_priorita_ids)
-            st.session_state.dafare_priorita_refresh += 1
-            st.rerun()
-    with col_desel_all:
-        if st.button("⬜ Deseleziona tutte", key="dafare_deselect_all_priorita", use_container_width=True):
-            st.session_state.dafare_priorita_selezionate.difference_update(righe_priorita_ids)
-            st.session_state.dafare_priorita_refresh += 1
-            st.rerun()
-    with col_hint:
-        st.caption("Seleziona le righe che vuoi confermare in blocco, poi salva tutto in fondo.")
-
-    st.markdown("---")
-
-    col_check_h, col_desc_h, col_cat_h, col_info_h = st.columns([0.55, 4.1, 2.3, 1.5])
-    with col_desc_h:
-        st.markdown("**Descrizione**")
-    with col_cat_h:
-        st.markdown("**Categoria**")
-    with col_info_h:
-        st.markdown("**Info**")
-    st.markdown("---")
-
-    selezionate_correnti = set()
-    for _, row in df_priorita.iterrows():
-        row_id = row['id']
-        categoria_default = estrai_nome_categoria(row['categoria_attesa'])
-        index_default = categorie.index(categoria_default) if categoria_default in categorie else 0
-        badge = badge_media if row['queue_tipo'] == 'Sospetta' else badge_bassa
-
-        col_check, col_desc, col_cat, col_info = st.columns([0.55, 4.1, 2.3, 1.5])
-        with col_check:
-            checked = st.checkbox(
-                "sel",
-                value=row_id in st.session_state.dafare_priorita_selezionate,
-                key=f"dafare_chk_{row_id}_r{st.session_state.dafare_priorita_refresh}",
-                label_visibility="collapsed",
-            )
-            if checked:
-                selezionate_correnti.add(row_id)
-
-        with col_desc:
-            desc_short = row['descrizione'][:90] + '...' if len(row['descrizione']) > 90 else row['descrizione']
-            st.markdown(f"{badge} `{_html.escape(desc_short)}`", unsafe_allow_html=True)
-            st.caption(
-                f"{row['queue_tipo']} · {row['categoria_attuale']} → {row['categoria_attesa']} · {row['motivo_sospetto']} · {int(row['volte_visto'])}×"
-            )
-
-        with col_cat:
-            st.selectbox(
-                "Categoria prioritaria",
-                categorie,
-                index=index_default,
-                key=f"dafare_priorita_cat_{row_id}",
-                label_visibility="collapsed",
-            )
-
-        with col_info:
-            sorgente = (row.get('classificato_da') or 'N/D').replace('keyword-auto', 'keyword').replace('AI', 'AI')
-            st.caption(sorgente)
-
-        st.markdown("---")
-
-    st.session_state.dafare_priorita_selezionate = selezionate_correnti
-    num_selezionate = len(selezionate_correnti)
-
-    if num_selezionate == 0:
-        st.info("Seleziona una o più righe prioritarie per salvarle in blocco.")
-        return
-
-    righe_selezionate_df = df_priorita[df_priorita['id'].isin(selezionate_correnti)].copy()
-    num_modifiche = 0
-    for _, row in righe_selezionate_df.iterrows():
-        nuova_cat = estrai_nome_categoria(st.session_state.get(f"dafare_priorita_cat_{row['id']}", row['categoria_attesa']))
-        if nuova_cat != row['categoria_attuale']:
-            num_modifiche += 1
-
-    st.markdown("### 💾 Salvataggio massivo")
-    st.info(
-        f"Hai selezionato {num_selezionate} righe prioritarie. Tra queste, {num_modifiche} avranno una categoria diversa da quella attuale."
-    )
-
-    col_save, col_cancel = st.columns([2, 1])
-    with col_save:
-        if st.button(f"💾 Salva e conferma ({num_selezionate})", type="primary", use_container_width=True, key="dafare_save_massivo"):
-            try:
-                with st.spinner("Salvataggio massivo in corso..."):
-                    success_count = 0
-                    for _, row in righe_selezionate_df.iterrows():
-                        nuova_cat = estrai_nome_categoria(st.session_state.get(f"dafare_priorita_cat_{row['id']}", row['categoria_attesa']))
-                        _aggiorna_categoria_globale(
-                            row_id=row['id'],
-                            descrizione=row['descrizione'],
-                            nuova_categoria=nuova_cat,
-                            verified=True,
-                            classificato_da=f"Admin (da fare {str(row['queue_tipo']).lower()})",
-                        )
-                        success_count += 1
-
-                    invalida_cache_memoria()
-                    st.session_state.dafare_priorita_selezionate = set()
-                    st.session_state.dafare_priorita_refresh += 1
-                    st.success(f"✅ {success_count} righe prioritarie salvate e confermate")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Errore salvataggio massivo: {e}")
-    with col_cancel:
-        if st.button("❌ Annulla selezione", use_container_width=True, key="dafare_cancel_massivo"):
-            st.session_state.dafare_priorita_selezionate = set()
-            st.session_state.dafare_priorita_refresh += 1
-            st.rerun()
 def tab_memoria_ai_hub():
-    """Hub unificato e semplificato per memoria AI."""
-    st.markdown("## 🧠 Memoria AI")
-    st.caption("Accesso semplice e immediato: da fare, memoria globale, memoria clienti")
+    """Vista unica Memoria Globale (semplificata).
 
-    if 'vista_memoria_ai' not in st.session_state:
-        st.session_state.vista_memoria_ai = "✅ Da fare"
-
-    vista_memoria = st.radio(
-        "Vista Memoria AI",
-        ["✅ Da fare", "🌍 Globale", "👤 Clienti"],
-        horizontal=True,
-        key="vista_memoria_ai",
-        label_visibility="collapsed",
-    )
-
-    st.markdown("---")
-
-    if vista_memoria == "✅ Da fare":
-        tab_da_fare_memoria_ai()
-    elif vista_memoria == "🌍 Globale":
-        tab_memoria_globale_unificata()
-    else:
-        tab_personalizzazioni_clienti()
+    Le precedenti viste 'Da Fare' e 'Clienti' sono state rimosse:
+    - Sospette/Errori sono accessibili dal filtro Stato della Globale.
+    - Le modifiche manuali dei clienti restano private (prodotti_utente) e
+      non si promuovono mai a globali. Un badge informativo in cima alla
+      Globale segnala quanti override divergono, senza azioni.
+    """
+    tab_memoria_globale_unificata()
 
 
 # Chiama il nuovo hub unificato

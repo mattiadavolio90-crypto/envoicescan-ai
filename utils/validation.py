@@ -3,6 +3,7 @@ Modulo validation per OH YEAH! Hub.
 
 Funzioni per:
 - Validazione diciture vs prodotti
+- Classificazione righe speciali (diciture / omaggi / storni)
 - Validazione integrità fatture
 - Validazione prezzi
 """
@@ -17,6 +18,149 @@ from config.constants import (
 from config.logger_setup import get_logger
 
 logger = get_logger('validation')
+
+
+SPECIAL_ROW_DICITURA = 'dicitura'
+SPECIAL_ROW_SCONTO_OMAGGIO = 'sconto_omaggio'
+SPECIAL_ROW_STORNO = 'storno'
+SPECIAL_ROW_NORMALE = 'normale'
+SPECIAL_ROW_DA_VERIFICARE = 'da_verificare'
+
+_NOTE_EQUIVALENTS = {'📝 NOTE E DICITURE', 'NOTE E DICITURE'}
+
+_PURE_DICITURE_EXACT = {
+    'FUSTI',
+    'CASSA 750/LITRO X12',
+    'COSTI DI SPEDIZIONE',
+}
+
+_PURE_DICITURE_PREFIXES = (
+    'DDT ',
+    'BOLLA ',
+    'RIF. FATTURA',
+    'DOCUMENTO ',
+    'ORDINE ',
+)
+
+_ECONOMIC_SERVICE_KEYWORDS = (
+    'LAVORAZ',
+    'DISOSSO',
+    'PORZIONAT',
+    'FILETT',
+    'AFFETT',
+    'NOLEGG',
+    'DIRITTO DI CHIAMATA',
+    'USCITA TECNICA',
+    'INTERVENTO',
+    'ASSISTENZA',
+    'INSTALLAZ',
+    'CAUZION',
+    'VUOTO A RENDERE',
+)
+
+_ZERO_DISCOUNT_KEYWORDS = (
+    'OMAGGIO',
+    'OMAGGI',
+    'CAMPIONE GRATUITO',
+    'MERCE IN OMAGGIO',
+    'PRODOTTO IN OMAGGIO',
+    'SCONTO',
+    'PROMO',
+)
+
+_STORNO_KEYWORDS = (
+    'RESO',
+    'ACCREDITO',
+    'NOTA CREDITO',
+    'N.C.',
+    'STORNO',
+    'ABBUONO',
+    'PREMIO POSTICIPATO',
+)
+
+
+def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
+    return any(keyword in text for keyword in keywords)
+
+
+def is_note_e_diciture(categoria: str) -> bool:
+    return str(categoria or '').strip() in _NOTE_EQUIVALENTS
+
+
+def _is_pure_dicitura_extra(desc_upper: str) -> bool:
+    if desc_upper in _PURE_DICITURE_EXACT:
+        return True
+    return desc_upper.startswith(_PURE_DICITURE_PREFIXES)
+
+
+def classify_special_row(
+    descrizione: str,
+    categoria: str = '',
+    prezzo: float = 0.0,
+    totale_riga: float = 0.0,
+    quantita: float = 1.0,
+    tipo_documento: str = '',
+    needs_review: bool = False,
+) -> Dict[str, object]:
+    """Classifica una riga speciale senza richiedere colonne aggiuntive nel DB."""
+    desc_upper = str(descrizione or '').strip().upper()
+    categoria_clean = str(categoria or '').strip()
+
+    try:
+        prezzo_num = float(prezzo or 0)
+    except (TypeError, ValueError):
+        prezzo_num = 0.0
+
+    try:
+        totale_num = float(totale_riga or 0)
+    except (TypeError, ValueError):
+        totale_num = 0.0
+
+    try:
+        quantita_num = float(quantita or 1)
+    except (TypeError, ValueError):
+        quantita_num = 1.0
+
+    tipo_documento = str(tipo_documento or '').strip().upper()
+
+    is_zero_amount = abs(prezzo_num) < 1e-9 or abs(totale_num) < 1e-9
+    is_negative_amount = prezzo_num < -1e-9 or totale_num < -1e-9 or tipo_documento == 'TD04'
+    note_category = is_note_e_diciture(categoria_clean)
+    meaningful_category = categoria_clean not in {'', 'Da Classificare', *list(_NOTE_EQUIVALENTS)}
+
+    strong_dicitura = is_dicitura_sicura(descrizione, prezzo_num, quantita_num) or _is_pure_dicitura_extra(desc_upper)
+    economic_service = _contains_any(desc_upper, _ECONOMIC_SERVICE_KEYWORDS)
+    omaggio_marker = _contains_any(desc_upper, _ZERO_DISCOUNT_KEYWORDS)
+    storno_marker = _contains_any(desc_upper, _STORNO_KEYWORDS)
+    economic_hint = economic_service or omaggio_marker or storno_marker or meaningful_category
+
+    if is_negative_amount:
+        bucket = SPECIAL_ROW_DICITURA if strong_dicitura and not economic_hint else SPECIAL_ROW_STORNO
+    elif is_zero_amount:
+        if storno_marker and not omaggio_marker:
+            bucket = SPECIAL_ROW_STORNO
+        elif strong_dicitura and not economic_hint:
+            bucket = SPECIAL_ROW_DICITURA
+        elif note_category and not (economic_service or omaggio_marker or storno_marker):
+            bucket = SPECIAL_ROW_DICITURA
+        elif economic_hint:
+            bucket = SPECIAL_ROW_SCONTO_OMAGGIO
+        else:
+            bucket = SPECIAL_ROW_DA_VERIFICARE
+    else:
+        if strong_dicitura and not economic_hint:
+            bucket = SPECIAL_ROW_DICITURA
+        else:
+            bucket = SPECIAL_ROW_NORMALE
+
+    return {
+        'bucket': bucket,
+        'is_special': bucket != SPECIAL_ROW_NORMALE,
+        'include_in_dashboard': bucket in {SPECIAL_ROW_NORMALE, SPECIAL_ROW_SCONTO_OMAGGIO},
+        'include_in_price_average': bucket in {SPECIAL_ROW_NORMALE, SPECIAL_ROW_SCONTO_OMAGGIO},
+        'should_review': bool(needs_review) or bucket == SPECIAL_ROW_DA_VERIFICARE,
+        'force_categoria': '📝 NOTE E DICITURE' if bucket == SPECIAL_ROW_DICITURA else None,
+    }
 
 
 # ============================================================

@@ -341,6 +341,117 @@ class TestCaricaScontiEOmaggi:
         assert float(result['omaggi'].iloc[0]['valore_stimato']) == 15.0
         assert float(result['totale_omaggi']) == 15.0
 
+    def test_esclude_diciture_zero_e_storni_dal_tab_omaggi(self):
+        class _Response:
+            def __init__(self, data):
+                self.data = data
+
+        class _Query:
+            def __init__(self, table_name, period_rows, hist_rows):
+                self.table_name = table_name
+                self.period_rows = period_rows
+                self.hist_rows = hist_rows
+                self._offset = 0
+                self._is_history = False
+
+            def select(self, *args, **kwargs):
+                return self
+
+            def eq(self, *args, **kwargs):
+                return self
+
+            def gte(self, *args, **kwargs):
+                return self
+
+            def lte(self, *args, **kwargs):
+                return self
+
+            def gt(self, *args, **kwargs):
+                self._is_history = True
+                return self
+
+            def in_(self, *args, **kwargs):
+                return self
+
+            def order(self, *args, **kwargs):
+                return self
+
+            def range(self, start, end):
+                self._offset = start
+                return self
+
+            def execute(self):
+                if self._offset > 0:
+                    return _Response([])
+                return _Response(self.hist_rows if self._is_history else self.period_rows)
+
+        class _Supabase:
+            def __init__(self, period_rows, hist_rows):
+                self.period_rows = period_rows
+                self.hist_rows = hist_rows
+
+            def table(self, table_name):
+                return _Query(table_name, self.period_rows, self.hist_rows)
+
+        period_rows = [
+            {
+                'id': 1,
+                'descrizione': 'OMAGGIO PRODOTTO TEST',
+                'categoria': 'BEVANDE',
+                'fornitore': 'FORNITORE TEST',
+                'prezzo_unitario': 0.0,
+                'quantita': 1.0,
+                'totale_riga': 0.0,
+                'data_documento': '2026-01-30',
+                'file_origine': 'omaggio.xml',
+                'tipo_documento': 'TD01',
+                'needs_review': False,
+            },
+            {
+                'id': 2,
+                'descrizione': 'DDT N. 56 DEL 03/02/2026',
+                'categoria': 'NOTE E DICITURE',
+                'fornitore': 'FORNITORE TEST',
+                'prezzo_unitario': 0.0,
+                'quantita': 1.0,
+                'totale_riga': 0.0,
+                'data_documento': '2026-01-30',
+                'file_origine': 'dicitura.xml',
+                'tipo_documento': 'TD01',
+                'needs_review': False,
+            },
+            {
+                'id': 3,
+                'descrizione': 'RESO MERCE BISCOTTI',
+                'categoria': 'BEVANDE',
+                'fornitore': 'FORNITORE TEST',
+                'prezzo_unitario': -5.0,
+                'quantita': 1.0,
+                'totale_riga': -5.0,
+                'data_documento': '2026-01-30',
+                'file_origine': 'storno.xml',
+                'tipo_documento': 'TD01',
+                'needs_review': False,
+            },
+        ]
+        hist_rows = [{
+            'descrizione': 'OMAGGIO PRODOTTO TEST',
+            'fornitore': 'FORNITORE TEST',
+            'prezzo_unitario': 4.0,
+            'data_documento': '2026-01-10',
+        }]
+
+        result = carica_sconti_e_omaggi(
+            user_id='user_test',
+            data_inizio='2026-01-01',
+            data_fine='2026-01-31',
+            ristorante_id='rist_test',
+            supabase_client=_Supabase(period_rows, hist_rows),
+        )
+
+        assert list(result['omaggi']['descrizione']) == ['OMAGGIO PRODOTTO TEST']
+        assert result['sconti'].empty
+
 
 class TestNormalizzazioneCategorie:
 

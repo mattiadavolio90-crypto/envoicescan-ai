@@ -1636,6 +1636,19 @@ def render_dashboard_ui(supabase, logger, user):
             key=f"file_uploader_{st.session_state.get('uploader_key', 0)}"
         )
 
+    if uploaded_files and len(uploaded_files) > 0:
+        # Durante l'elaborazione nasconde il rettangolo drag&drop in trasparenza.
+        st.markdown(
+            """
+            <style>
+            div.st-key-upload_hint_row {
+                display: none !important;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
     with col_ai_right:
         st.markdown("<div style='height: 34px;'></div>", unsafe_allow_html=True)
 

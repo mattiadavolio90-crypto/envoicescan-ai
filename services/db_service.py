@@ -19,6 +19,7 @@ import streamlit as st
 
 # Import config
 from config.constants import CATEGORIE_SPESE_GENERALI, LEGACY_CATEGORY_ALIASES, PRICE_ALERT_THRESHOLD_DEFAULT
+from utils.validation import SPECIAL_ROW_SCONTO_OMAGGIO, classify_special_row
 
 # Logger centralizzato
 from config.logger_setup import get_logger
@@ -643,7 +644,7 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
             offset = page * page_size
             # Usa .lte (<=) per includere le fatture del giorno finale del periodo.
             query = supabase_client.table('fatture')\
-                .select('id, descrizione, categoria, fornitore, prezzo_unitario, quantita, totale_riga, data_documento, file_origine')\
+                .select('id, descrizione, categoria, fornitore, prezzo_unitario, quantita, totale_riga, data_documento, file_origine, tipo_documento, needs_review')\
                 .eq('user_id', user_id)\
                 .gte('data_documento', data_inizio)\
                 .lte('data_documento', data_fine)
@@ -675,6 +676,10 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
         # ============================================================
         # FILTRO: ESCLUDI SOLO LE CATEGORIE SPESE GENERALI definite in constants.py
         # ============================================================
+        df['prezzo_unitario'] = pd.to_numeric(df['prezzo_unitario'], errors='coerce').fillna(0.0)
+        df['totale_riga'] = pd.to_numeric(df['totale_riga'], errors='coerce').fillna(0.0)
+        df['quantita'] = pd.to_numeric(df['quantita'], errors='coerce').fillna(1.0)
+
         df_food = df[~df['categoria'].isin(CATEGORIE_SPESE_GENERALI)].copy()
         
         # 🔒 FILTRO AGGIUNTIVO: Escludi anche fornitori SEMPRE spese generali (utenze, tech)
@@ -685,16 +690,40 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
         pattern = '|'.join(re.escape(k) for k in FORNITORI_SPESE_GENERALI_KEYWORDS)
         df_food = df_food[~df_food['fornitore'].str.contains(pattern, case=False, na=False, regex=True)].copy()
         
+        special_meta = df_food.apply(
+            lambda row: classify_special_row(
+                descrizione=row.get('descrizione', ''),
+                categoria=row.get('categoria', ''),
+                prezzo=row.get('prezzo_unitario', 0),
+                totale_riga=row.get('totale_riga', 0),
+                quantita=row.get('quantita', 1),
+                tipo_documento=row.get('tipo_documento', ''),
+                needs_review=bool(row.get('needs_review', False)),
+            ),
+            axis=1,
+            result_type='expand',
+        )
+        df_food['special_bucket'] = special_meta['bucket']
+
         # Logging conteggi per verifica filtro
         logger.info(f"Sconti/Omaggi - Righe totali: {len(df)}")
         logger.info(f"Sconti/Omaggi - Righe FOOD filtrate: {len(df_food)}")
-        logger.info(f"Sconti/Omaggi - Righe con prezzo <0: {len(df[df['prezzo_unitario'] < 0])}")
-        logger.info(f"Sconti/Omaggi - Righe FOOD con prezzo <0: {len(df_food[df_food['prezzo_unitario'] < 0])}")
+        logger.info(
+            "Sconti/Omaggi - Breakdown bucket FOOD: %s",
+            df_food['special_bucket'].value_counts(dropna=False).to_dict(),
+        )
         
         # ============================================================
-        # SCONTI: Prezzi negativi (SOLO F&B)
+        # SCONTI / OMAGGI: usa il classificatore condiviso.
+        # Manteniamo qui solo le righe bucket=sconto_omaggio, separando
+        # sconti (importo negativo) da omaggi (tipicamente a zero).
         # ============================================================
-        df_sconti = df_food[df_food['prezzo_unitario'] < 0].copy()
+        df_special_discount = df_food[df_food['special_bucket'] == SPECIAL_ROW_SCONTO_OMAGGIO].copy()
+        mask_importo_negativo = (
+            (df_special_discount['prezzo_unitario'] < -1e-9)
+            | (df_special_discount['totale_riga'] < -1e-9)
+        )
+        df_sconti = df_special_discount[mask_importo_negativo].copy()
         
         if not df_sconti.empty:
             # Calcola valore assoluto sconto
@@ -704,11 +733,11 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
             df_sconti = df_sconti.sort_values('data_documento', ascending=False)
         
         # ============================================================
-        # OMAGGI: Prezzi €0 (INCLUDE descrizioni con parole omaggio/gratis)
+        # OMAGGI: righe bucket=sconto_omaggio con importo non negativo.
         # ============================================================
-        df_omaggi = df_food[
-            (df_food['prezzo_unitario'] == 0) &
-            (df_food['descrizione'].str.strip().str.len() > 3)  # Escludi righe senza descrizione significativa
+        df_omaggi = df_special_discount[
+            ~mask_importo_negativo
+            & (df_special_discount['descrizione'].astype(str).str.strip().str.len() > 3)
         ].copy()
         
         if not df_omaggi.empty:

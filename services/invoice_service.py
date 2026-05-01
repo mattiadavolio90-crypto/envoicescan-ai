@@ -55,13 +55,14 @@ from utils.text_utils import (
     pulisci_caratteri_corrotti
 )
 from utils.validation import (
+    classify_special_row,
     verifica_integrita_fattura,
     is_sconto_omaggio_sicuro,
 )
 
 # Logger centralizzato
 from config.logger_setup import get_logger
-from config.constants import MAX_FILE_SIZE_P7M, VISION_DAILY_LIMIT
+from config.constants import MAX_FILE_SIZE_P7M, VISION_DAILY_LIMIT, CATEGORIE_FOOD_BEVERAGE
 logger = get_logger('invoice')
 
 
@@ -562,7 +563,8 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
         # Import services solo quando necessario per evitare circular imports
         from services.ai_service import (
             carica_memoria_completa,
-            categorizza_con_memoria
+            categorizza_con_memoria,
+            enforce_no_unclassified_category,
         )
         
         # Risolvi user_id: parametro esplicito ha priorità su session_state
@@ -913,29 +915,27 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     unita_misura=unita_misura,
                     iva_percentuale=aliquota_iva
                 )
+                categoria_finale, fallback_forzato = enforce_no_unclassified_category(
+                    categoria_finale,
+                    descrizione,
+                    source="estrai_dati_da_xml",
+                )
 
-                # Regole business specifiche: lavorazioni/omaggi non devono restare bloccate in review.
-                _desc_upper = (descrizione or '').upper().strip()
-                _is_zero_amount = abs(float(prezzo_unitario or 0)) < 1e-9 or abs(float(totale_riga or 0)) < 1e-9
-                if _is_zero_amount:
-                    if float(sconto_percentuale or 0) >= 99.0 and is_sconto_omaggio_sicuro(descrizione):
-                        # Non usiamo una categoria dedicata "OMAGGI": resta la categoria merceologica del prodotto.
-                        needs_review_flag = False
-                    elif "SERVIZIO DI DISOSSO E LAVORAZIONE" in _desc_upper:
-                        categoria_finale = "📝 NOTE E DICITURE"
-                    elif ("ROAST BEEF BOVINO LAVORATO" in _desc_upper) or ("VITELLO LAVORATO" in _desc_upper):
-                        if float(sconto_percentuale or 0) >= 99.0:
-                            needs_review_flag = False
-                        else:
-                            categoria_finale = "📝 NOTE E DICITURE"
-                
-                # Strategia scalabile: le righe entrano subito nel flusso normale.
-                # Manteniamo in review solo i casi realmente non classificati.
-                # needs_review_flag può essere True per righe a prezzo zero con descrizione valida.
-                needs_review = needs_review_flag
-                if categoria_finale == "Da Classificare":
-                    needs_review = True
-                elif categoria_finale == "📝 NOTE E DICITURE" and prezzo_unitario > 0:
+                special_row = classify_special_row(
+                    descrizione=descrizione,
+                    categoria=categoria_finale,
+                    prezzo=prezzo_unitario,
+                    totale_riga=totale_riga,
+                    quantita=quantita,
+                    tipo_documento=tipo_documento,
+                    needs_review=needs_review_flag or fallback_forzato,
+                )
+
+                if special_row['force_categoria']:
+                    categoria_finale = str(special_row['force_categoria'])
+
+                needs_review = bool(special_row['should_review'])
+                if categoria_finale == "📝 NOTE E DICITURE" and prezzo_unitario > 0:
                     # BUG3 FIX: remap categoria nel DB oltre a settare needs_review.
                     # Senza questo, il DB salva DICITURA mentre l'app mostra SERVIZI E CONSULENZE
                     # (il guardrail a runtime correggeva il display ma non il record).
@@ -947,7 +947,7 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     )
                 
                 # Calcolo prezzo standard (skip per omaggi/prezzo zero - non significativo)
-                if prezzo_unitario != 0:
+                if prezzo_unitario != 0 and special_row['include_in_price_average']:
                     prezzo_std = calcola_prezzo_standard_intelligente(
                         descrizione=descrizione,
                         um=unita_misura,
@@ -1098,7 +1098,8 @@ def estrai_dati_da_scontrino_vision(file_caricato, openai_client=None):
         # Import services
         from services.ai_service import (
             ottieni_categoria_prodotto,
-            carica_memoria_completa
+            carica_memoria_completa,
+            enforce_no_unclassified_category,
         )
         from openai import OpenAI
         
@@ -1292,16 +1293,34 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
             
             # Categorizzazione (usa stesso sistema moderno del path XML)
             categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id) if current_user_id else "Da Classificare"
-            
-            # needs_review: True se non classificato (allineato con path XML)
-            needs_review = (categoria_iniziale == "Da Classificare")
+            categoria_iniziale, fallback_forzato = enforce_no_unclassified_category(
+                categoria_iniziale,
+                descrizione,
+                source="estrai_dati_da_pdf",
+            )
+
+            special_row = classify_special_row(
+                descrizione=descrizione,
+                categoria=categoria_iniziale,
+                prezzo=prezzo_unitario,
+                totale_riga=totale_riga,
+                quantita=quantita,
+                needs_review=fallback_forzato,
+            )
+
+            if special_row['force_categoria']:
+                categoria_iniziale = str(special_row['force_categoria'])
+
+            needs_review = bool(special_row['should_review'])
             
             # Prezzo standard
-            prezzo_std = calcola_prezzo_standard_intelligente(
-                descrizione=descrizione,
-                um=unita_misura,
-                prezzo_unitario=prezzo_unitario
-            )
+            prezzo_std = None
+            if special_row['include_in_price_average'] and prezzo_unitario != 0:
+                prezzo_std = calcola_prezzo_standard_intelligente(
+                    descrizione=descrizione,
+                    um=unita_misura,
+                    prezzo_unitario=prezzo_unitario
+                )
             
             righe_prodotti.append({
                 'Numero_Riga': idx,
@@ -1380,6 +1399,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
         - Logging automatico su tabella upload_events
     """
     from services import get_supabase_client
+    from services.ai_service import enforce_no_unclassified_category
 
     # Sanitizza nome file: previene path traversal nel campo file_origine del DB
     nome_file = nome_file.replace('..', '').replace('/', '').replace('\\', '').replace('%2F', '').replace('%2f', '').replace('\x00', '')
@@ -1427,8 +1447,11 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 
                 # Forza categoria valida
                 categoria_raw = prod.get("Categoria", "Da Classificare")
-                if not categoria_raw or pd.isna(categoria_raw) or str(categoria_raw).strip() == '':
-                    categoria_raw = "Da Classificare"
+                categoria_raw, fallback_forzato = enforce_no_unclassified_category(
+                    categoria_raw,
+                    prod.get("Descrizione", ""),
+                    source="salva_fattura_processata",
+                )
                 
                 records.append({
                     "user_id": user_id,
@@ -1446,7 +1469,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     "categoria": categoria_raw,
                     "codice_articolo": prod.get("CodiceArticolo", prod.get("Codice_Articolo", "")),
                     "prezzo_standard": float(prezzo_std) if prezzo_std and pd.notna(prezzo_std) else None,
-                    "needs_review": prod.get("needs_review", False),
+                    "needs_review": bool(prod.get("needs_review", False) or fallback_forzato),
                     "tipo_documento": prod.get("tipo_documento", "TD01"),
                     "sconto_percentuale": prod.get("sconto_percentuale", 0.0),
                     "data_consegna": prod.get("data_consegna"),

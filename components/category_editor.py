@@ -135,7 +135,6 @@ def _build_detail_view_df(df_source: pd.DataFrame) -> pd.DataFrame:
     truncate_map = {
         'FileOrigine': 28,
         'Descrizione': 60,
-        'Fornitore': 26,
     }
 
     for col_name, max_len in truncate_map.items():
@@ -273,6 +272,14 @@ def render_category_editor(df_completo_filtrato, supabase):
     if df_completo_filtrato is None or df_completo_filtrato.empty:
         st.info("📊 Nessun dato disponibile. Carica le tue prime fatture!")
         st.stop()
+
+    # Flash message post-rerun: conferma sempre visibile dopo il salvataggio.
+    _save_flash = st.session_state.pop('category_save_flash', None)
+    if _save_flash and isinstance(_save_flash, dict):
+        _save_msg = str(_save_flash.get('message', '')).strip()
+        if _save_msg:
+            st.success(_save_msg)
+            st.toast(_save_msg)
 
     
     # 📦 SEZIONE DETTAGLIO ARTICOLI
@@ -1208,11 +1215,17 @@ def render_category_editor(df_completo_filtrato, supabase):
                 prodotti_spostati = edited_df[edited_df['Categoria'].apply(
                     lambda cat: estrai_nome_categoria(cat) in CATEGORIE_SPESE_GENERALI
                 )].shape[0]
-                
+
                 if prodotti_spostati > 0:
-                    st.toast(f"✅ {categorie_modificate_count} categorie modificate! {prodotti_spostati} prodotti spostati in Spese Generali.")
+                    success_msg = (
+                        f"✅ {categorie_modificate_count} categorie modificate! "
+                        f"{prodotti_spostati} prodotti spostati in Spese Generali."
+                    )
                 else:
-                    st.toast(f"✅ {categorie_modificate_count} categorie modificate! L'AI imparerà da questo.")
+                    success_msg = f"✅ {categorie_modificate_count} categorie modificate! L'AI imparerà da questo."
+
+                # Salva messaggio in session_state prima del rerun per mostrarlo in modo affidabile.
+                st.session_state['category_save_flash'] = {'message': success_msg}
                 
                 invalida_cache_memoria()
                 # Invalida anche la cache Fonte (prodotti_master) per forzare rilettura

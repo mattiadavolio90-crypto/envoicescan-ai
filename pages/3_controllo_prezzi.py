@@ -23,6 +23,7 @@ from services.db_service import (
     get_price_alert_threshold,
     set_price_alert_threshold,
 )
+from utils.validation import SPECIAL_ROW_STORNO, classify_special_row
 
 # Logger
 logger = get_logger('controllo_prezzi')
@@ -210,10 +211,21 @@ if df_all.empty:
     st.info("📊 Nessuna fattura disponibile. Carica le fatture dalla pagina Analisi Fatture AI.")
     st.stop()
 
-# Escludi righe con PrezzoUnitario <= 0 (sconti, rettifiche negative) — gestite nel tab Sconti/Omaggi
-if 'PrezzoUnitario' in df_all.columns:
-    _prezzo_num = pd.to_numeric(df_all['PrezzoUnitario'], errors='coerce').fillna(0.0)
-    df_all = df_all[_prezzo_num > 0].copy()
+special_meta = df_all.apply(
+    lambda row: classify_special_row(
+        descrizione=row.get('Descrizione', ''),
+        categoria=row.get('Categoria', ''),
+        prezzo=row.get('PrezzoUnitario', 0),
+        totale_riga=row.get('TotaleRiga', 0),
+        quantita=row.get('Quantita', 1),
+        tipo_documento=row.get('TipoDocumento', ''),
+        needs_review=bool(row.get('NeedsReview', row.get('needs_review', False))),
+    ),
+    axis=1,
+    result_type='expand',
+)
+df_all['_special_bucket'] = special_meta['bucket']
+df_all['_include_in_price_average'] = special_meta['include_in_price_average'].fillna(False).astype(bool)
 
 # Filtro periodo
 df_all['Data_DT'] = pd.to_datetime(df_all['DataDocumento'], errors='coerce')
@@ -222,6 +234,12 @@ mask_periodo = (
     (df_all['Data_DT'].dt.date <= data_fine_filtro)
 )
 df_filtrato = df_all[mask_periodo].copy()
+
+_prezzo_periodo = pd.to_numeric(df_filtrato.get('PrezzoUnitario'), errors='coerce').fillna(0.0)
+df_filtrato_variazioni = df_filtrato[
+    df_filtrato['_include_in_price_average']
+    & (_prezzo_periodo > 0)
+].copy()
 
 if df_filtrato.empty:
     st.warning(f"📊 Nessun dato disponibile per il periodo: {label_periodo}")
@@ -324,7 +342,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
         )
 
     # Calcola alert (solo F&B, periodo selezionato)
-    df_alert_source = df_filtrato
+    df_alert_source = df_filtrato_variazioni
     df_alert = calcola_alert(df_alert_source, soglia_aumento)
 
     # Badge conteggio sotto la selezione soglia
@@ -895,19 +913,9 @@ elif st.session_state.cp_tab_attivo == "sconti":
 # ================================================================
 elif st.session_state.cp_tab_attivo == "nc":
 
-    # Filtra note di credito: TD04 oppure importi negativi (per dati pre-migrazione)
-    # NOTA: TipoDocumento ha default 'TD01' nel caricamento, quindi per fatture
-    # pre-migrazione il campo esiste ma vale 'TD01'. Serve combinare entrambi i criteri.
-    # NC = documenti TD04 oppure INTERO documento con totale negativo (non singole righe sconto)
-    mask_td04 = (df_filtrato['TipoDocumento'] == 'TD04') if 'TipoDocumento' in df_filtrato.columns else pd.Series(False, index=df_filtrato.index)
-    # Per documenti non-TD04, consideriamo NC solo se il totale del documento è negativo
-    _totale_per_doc = df_filtrato.groupby('FileOrigine')['TotaleRiga'].transform('sum')
-    mask_doc_negativo = (_totale_per_doc < 0) & ~mask_td04
-    mask_nc = mask_td04 | mask_doc_negativo
-    
-    df_nc = df_filtrato[mask_nc].copy()
+    df_nc = df_filtrato[df_filtrato['_special_bucket'] == SPECIAL_ROW_STORNO].copy()
 
-    st.caption("📖 **Note di Credito**: documenti TD04 o fatture con totale complessivo negativo. Le singole righe sconto all'interno di fatture normali sono mostrate nel tab Sconti e Omaggi.")
+    st.caption("📖 **Storni / Note di Credito**: righe classificate come storno dal motore condiviso, incluse TD04 e rettifiche economiche. Le righe omaggio/sconto restano nel tab Sconti e Omaggi.")
 
     # ============================================================
     # FILTRI NOTE DI CREDITO

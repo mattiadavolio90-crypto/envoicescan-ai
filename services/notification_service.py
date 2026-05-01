@@ -152,7 +152,7 @@ def build_price_alert_notifications(
         "all'acquisto precedente."
     )
     if summary:
-        body += f"\nAlert principali:\n{summary}"
+        body += f"\n{summary}"
 
     return [{
         'id': f'price-alerts-{upload_id}',

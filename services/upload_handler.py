@@ -40,7 +40,8 @@ from services.db_service import (
     clear_fatture_cache,
     get_price_alert_threshold,
 )
-from utils.validation import is_dicitura_sicura
+from utils.validation import classify_special_row, is_dicitura_sicura
+from utils.text_utils import get_descrizione_normalizzata_e_originale
 
 
 logger = logging.getLogger("fci_app")
@@ -350,7 +351,7 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
     try:
         query = (
             supabase_client.table('fatture')
-            .select('id, descrizione, fornitore, iva_percentuale, prezzo_unitario, quantita, categoria, needs_review, file_origine')
+            .select('id, descrizione, fornitore, iva_percentuale, prezzo_unitario, totale_riga, quantita, categoria, needs_review, tipo_documento, file_origine')
             .eq('user_id', user_id)
             .in_('file_origine', list({str(name).strip() for name in file_names if str(name).strip()}))
         )
@@ -456,51 +457,92 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     remaining_descs.append(desc)
                     continue
 
-                nonzero_ids = []
-                zero_ids = []
+                update_groups: dict[tuple[str, bool], list[int]] = {}
+                memory_candidate_ids = []
                 for row in meta['rows']:
                     try:
                         prezzo = float(row.get('prezzo_unitario') or 0)
                     except (TypeError, ValueError):
                         prezzo = 0.0
+                    try:
+                        totale_riga = float(row.get('totale_riga') or 0)
+                    except (TypeError, ValueError):
+                        totale_riga = 0.0
                     row_id = row.get('id')
                     if row_id is None:
                         continue
-                    if abs(prezzo) < 1e-9:
-                        zero_ids.append(row_id)
-                    else:
-                        nonzero_ids.append(row_id)
+                    special_row = classify_special_row(
+                        descrizione=desc,
+                        categoria=categoria_finale,
+                        prezzo=prezzo,
+                        totale_riga=totale_riga,
+                        quantita=row.get('quantita') or 1,
+                        tipo_documento=row.get('tipo_documento') or '',
+                        needs_review=bool(row.get('needs_review')),
+                    )
+                    categoria_target = str(special_row['force_categoria'] or categoria_finale)
+                    needs_review_target = bool(special_row['should_review'])
+                    update_groups.setdefault((categoria_target, needs_review_target), []).append(row_id)
+                    if special_row['include_in_dashboard']:
+                        memory_candidate_ids.append(row_id)
 
-                if nonzero_ids:
+                for (categoria_target, needs_review_target), row_ids in update_groups.items():
                     q = supabase_client.table('fatture').update({
-                        'categoria': categoria_finale,
-                        'needs_review': False,
-                    }).eq('user_id', user_id).in_('id', nonzero_ids)
+                        'categoria': categoria_target,
+                        'needs_review': needs_review_target,
+                    }).eq('user_id', user_id).in_('id', row_ids)
                     q = add_ristorante_filter(q, ristorante_id)
                     q.execute()
-                    summary['resolved_rows'] += len(nonzero_ids)
+                    summary['resolved_rows'] += len(row_ids)
 
-                if zero_ids:
-                    q_zero = supabase_client.table('fatture').update({
-                        'categoria': categoria_finale,
-                        'needs_review': True,
-                    }).eq('user_id', user_id).in_('id', zero_ids)
-                    q_zero = add_ristorante_filter(q_zero, ristorante_id)
-                    q_zero.execute()
-                    summary['resolved_rows'] += len(zero_ids)
-
-                if nonzero_ids:
-                    ai_memory_upserts.append({
-                        'user_id': user_id,
-                        'descrizione': desc,
-                        'categoria': categoria_finale,
-                        'volte_visto': 1,
-                        'classificato_da': 'AI (auto-upload)',
-                        'updated_at': datetime.now(timezone.utc).isoformat(),
-                        'created_at': datetime.now(timezone.utc).isoformat(),
-                    })
+                if memory_candidate_ids:
+                    # 🔑 BUG-3 FIX: chiave normalizzata per coerenza con auto-save keyword
+                    # e con salva_correzione_in_memoria_locale.
+                    try:
+                        desc_for_memory, _ = get_descrizione_normalizzata_e_originale(desc.strip())
+                    except Exception:
+                        desc_for_memory = desc.strip()
+                    desc_for_memory = (desc_for_memory or '').replace('\x00', '').strip()
+                    if desc_for_memory:
+                        ai_memory_upserts.append({
+                            'user_id': user_id,
+                            'descrizione': desc_for_memory,
+                            'categoria': categoria_finale,
+                            'volte_visto': 1,
+                            'classificato_da': 'AI (auto-upload)',
+                            'updated_at': datetime.now(timezone.utc).isoformat(),
+                            'created_at': datetime.now(timezone.utc).isoformat(),
+                        })
 
                 summary['resolved_descriptions'] += 1
+
+            if ai_memory_upserts:
+                # 🛡️ BUG-4 FIX: filtra le descrizioni con override manuale del cliente già esistenti
+                # in prodotti_utente. Le auto-categorizzazioni AI non devono mai sovrascrivere
+                # le scelte manuali (priorità MAX del cliente).
+                try:
+                    descs_in_batch = list({u['descrizione'] for u in ai_memory_upserts})
+                    if descs_in_batch:
+                        manual_resp = (
+                            supabase_client.table('prodotti_utente')
+                            .select('descrizione,classificato_da')
+                            .eq('user_id', user_id)
+                            .in_('descrizione', descs_in_batch)
+                            .execute()
+                        )
+                        manual_descs = {
+                            row.get('descrizione')
+                            for row in (manual_resp.data or [])
+                            if str(row.get('classificato_da') or '').startswith('Manuale')
+                        }
+                        if manual_descs:
+                            ai_memory_upserts = [u for u in ai_memory_upserts if u['descrizione'] not in manual_descs]
+                            logger.info(
+                                f"[UPLOAD AI] 🛡️ Skip {len(manual_descs)} upsert su prodotti_utente: "
+                                f"override manuale del cliente preservato"
+                            )
+                except Exception as _flt_err:
+                    logger.warning(f"[UPLOAD AI] filtro override manuale fallito (non bloccante): {_flt_err}")
 
             if ai_memory_upserts:
                 supabase_client.table('prodotti_utente').upsert(
@@ -600,6 +642,17 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         return
     if current_upload_token:
         st.session_state['_last_processed_upload_token'] = current_upload_token
+
+    # 🔄 CACHE FRESH AT UPLOAD START
+    # Invalida la cache memoria AI prima della categorizzazione iniziale per evitare
+    # che modifiche manuali fatte durante la sessione (es. STRUDEL: PASTICCERIA → GELATI E DESSERT)
+    # vengano ignorate al successivo upload, costringendo il trigger DB a riallineare le righe
+    # post-insert (causando flicker UI e log di "modifiche" ricorrenti).
+    try:
+        invalida_cache_memoria()
+        logger.debug("[UPLOAD] Cache memoria AI invalidata all'inizio del batch")
+    except Exception as _cache_err:  # pragma: no cover - difensivo
+        logger.warning(f"[UPLOAD] Invalidazione cache fallita (non bloccante): {_cache_err}")
 
     # Pulisci messaggi precedenti all'inizio di un nuovo caricamento
     st.session_state.upload_messages = []

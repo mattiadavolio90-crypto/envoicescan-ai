@@ -18,6 +18,7 @@ from config.constants import (
 from utils.text_utils import normalizza_stringa, estrai_nome_categoria, escape_ilike as _escape_ilike
 from utils.ui_helpers import load_css, render_pivot_mensile
 from utils.ristorante_helper import add_ristorante_filter
+from utils.validation import classify_special_row
 
 from services.ai_service import (
     carica_memoria_completa,
@@ -115,30 +116,29 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     # ===== FILTRA DICITURE DA DASHBOARD =====
     righe_prima = len(df_completo)
     
-    # Costruisci maschera esclusione
-    mask_escludi = pd.Series([False] * len(df_completo), index=df_completo.index)
-    
-    # 1. Escludi TUTTE le NOTE E DICITURE (validate o meno, con o senza emoji prefisso)
-    _cat_col = df_completo['Categoria'].fillna('')
-    mask_note = (_cat_col == '📝 NOTE E DICITURE') | (_cat_col == 'NOTE E DICITURE')
-    mask_escludi = mask_escludi | mask_note
-    
-    # 2. Escludi righe in attesa di revisione manuale (non ancora validate)
+    special_meta = df_completo.apply(
+        lambda row: classify_special_row(
+            descrizione=row.get('Descrizione', ''),
+            categoria=row.get('Categoria', ''),
+            prezzo=row.get('PrezzoUnitario', 0),
+            totale_riga=row.get('TotaleRiga', 0),
+            quantita=row.get('Quantita', 1),
+            tipo_documento=row.get('TipoDocumento', row.get('tipo_documento', '')),
+            needs_review=bool(row.get('needs_review', False)),
+        ),
+        axis=1,
+        result_type='expand',
+    )
+
+    mask_escludi = ~special_meta['include_in_dashboard'].fillna(False).astype(bool)
+
+    # Fallback difensivo: su DataFrame minimali (test/migrazioni) il classificatore
+    # puo' non avere abbastanza contesto; escludiamo comunque righe note/review.
     if 'needs_review' in df_completo.columns:
-        mask_review = df_completo['needs_review'].fillna(False).astype(bool)
-        mask_escludi = mask_escludi | mask_review
-
-    # 3. Escludi righe con prezzo/totale non positivi dalla dashboard.
-    # Regola business: dashboard mostra solo acquisti con prezzo finale positivo.
-    if 'PrezzoUnitario' in df_completo.columns:
-        prezzo_unitario = pd.to_numeric(df_completo['PrezzoUnitario'], errors='coerce').fillna(0.0)
-        mask_prezzo_non_positivo = prezzo_unitario <= 0
-        mask_escludi = mask_escludi | mask_prezzo_non_positivo
-
-    if 'TotaleRiga' in df_completo.columns:
-        totale_riga = pd.to_numeric(df_completo['TotaleRiga'], errors='coerce').fillna(0.0)
-        mask_totale_non_positivo = totale_riga <= 0
-        mask_escludi = mask_escludi | mask_totale_non_positivo
+        mask_escludi = mask_escludi | df_completo['needs_review'].fillna(False).astype(bool)
+    if 'Categoria' in df_completo.columns:
+        categoria_norm = df_completo['Categoria'].fillna('').astype(str).str.upper().str.strip()
+        mask_escludi = mask_escludi | categoria_norm.isin({'📝 NOTE E DICITURE', 'NOTE E DICITURE'})
     
     # Applica filtro (MANTIENI righe NON escluse)
     df_completo = df_completo[~mask_escludi].copy()
@@ -147,7 +147,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     if righe_prima > righe_dopo:
         logger.info(
             f"Escluse da dashboard: {righe_prima - righe_dopo} righe "
-            f"(NOTE E DICITURE + needs_review + prezzo/totale non positivi)"
+            f"(diciture + storni + righe da verificare)"
         )
     
     if df_completo.empty:
@@ -818,8 +818,14 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     if 'periodo_dropdown' not in st.session_state:
         st.session_state.periodo_dropdown = "🗓️ Anno in Corso"
     
-    # Layout: selectbox + info box sulla stessa riga
-    col_periodo, col_info_periodo = st.columns([1, 4])
+    # Layout: selectbox + info box sulla stessa riga.
+    # In alcuni test con mock incompleti st.columns puo' restituire una lista vuota.
+    _cols_periodo = st.columns([1, 4])
+    if isinstance(_cols_periodo, (list, tuple)) and len(_cols_periodo) >= 2:
+        col_periodo, col_info_periodo = _cols_periodo[0], _cols_periodo[1]
+    else:
+        col_periodo = st.container()
+        col_info_periodo = st.container()
     
     with col_periodo:
         periodo_selezionato = st.selectbox(
@@ -829,6 +835,9 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
             index=PERIODO_OPTIONS.index(st.session_state.periodo_dropdown) if st.session_state.periodo_dropdown in PERIODO_OPTIONS else 0,
             key="filtro_periodo_main"
         )
+
+    if periodo_selezionato not in PERIODO_OPTIONS:
+        periodo_selezionato = st.session_state.periodo_dropdown
     
     # Aggiorna session state
     st.session_state.periodo_dropdown = periodo_selezionato

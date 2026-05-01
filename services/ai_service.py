@@ -89,8 +89,14 @@ RETRIABLE_ERRORS = (RateLimitError, APITimeoutError, APIConnectionError, APIErro
 # ============================================================
 _cache_lock = threading.Lock()
 _CACHE_TTL_SECONDS = 3600  # Ricarica la cache globale dopo 1 ora (evita memory leak a lungo termine)
+_REMOTE_VERSION_TTL_SECONDS = 30  # Polling cache_version DB ogni 30s per invalidazione cross-process
+_remote_version_state = {
+    'last_seen_version': 0,    # ultima versione vista dal DB (sopravvive a invalida_cache_memoria)
+    'last_checked_at': 0.0,    # timestamp ultimo SELECT su public.cache_version
+}
 _memoria_cache = {
     'prodotti_utente': {},         # {user_id: {descrizione: categoria}}
+    'prodotti_utente_norm': {},    # {user_id: {descrizione_normalizzata: categoria}}
     'prodotti_master': {},         # {descrizione: categoria} — solo confidence alta/altissima → bypass AI
     'prodotti_master_hint': {},    # {descrizione: categoria} — confidence media/None → hint per AI
     'classificazioni_manuali': {},  # {descrizione: {categoria, is_dicitura}}
@@ -200,6 +206,32 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
 ]
 
 _CATEGORIE_PLACEHOLDER = {"", "DA CLASSIFICARE"}
+_FALLBACK_CATEGORIA_NON_CLASSIFICATO = "Da Classificare"
+
+
+def enforce_no_unclassified_category(
+    categoria: str | None,
+    descrizione: str | None,
+    *,
+    source: str = "pipeline",
+) -> tuple[str, bool]:
+    """Garantisce che la categoria non sia mai vuota/'Da Classificare'.
+
+    Returns:
+        (categoria_finale, fallback_forzato)
+    """
+    cat = str(categoria or "").strip()
+    if cat and cat.upper() != "DA CLASSIFICARE":
+        return cat, False
+
+    fallback = _FALLBACK_CATEGORIA_NON_CLASSIFICATO
+    logger.warning(
+        "🛟 FALLBACK CATEGORIA: source=%s, descrizione='%s' -> %s",
+        source,
+        (descrizione or "")[:80],
+        fallback,
+    )
+    return fallback, True
 
 # Eccezioni: pattern nel descrizione che BLOCCANO una specifica regola forte.
 # Se (desc matcha eccezione_pattern) E (regola target == regola_bloccata) → skip.
@@ -379,6 +411,11 @@ _UTENZE_LOCALI_RE = re.compile(
     r"SPESA\s*PER\s*LA\s*TARIFFA|RISCALDAMENTO|CLIMATIZZAZIONE)\b"
 )
 _CANONE_LOCALE_RE = re.compile(r"\b(CANONE|LOCAZION[EI]|AFFITTO)\b.*\b(LOCALE|LOCALI|IMMOBILE|NEGOZIO|BOX|MAGAZZINO|CONDOMINIO)\b|\b(CANONE\s+LOCAZIONE|AFFITTO\s+LOCALE)\b")
+# Fornitori telecomunicazioni/utenze: SEMPRE → "UTENZE E LOCALI" (mai SERVIZI E CONSULENZE)
+# Regola FORTE appresa dalle correzioni cliente TIME CAFE (2026-04-29)
+_FORNITORI_TELECOM_UTENZE_RE = re.compile(
+    r"\b(VODAFONE|TIM\s+(?:S\.?P\.?A)?|TELECOM\s*(?:ITALIA)?|WIND|ILIAD|FASTWEB|SWISSCOM|SKY\s+(?:ITALIA)?|ENEL|SORGENIA|TERNA|HERA|AQUA|ACEA)\b"
+)
 _SERVIZI_CANONI_RE = re.compile(
     r"\b(CANONE|ABBONAMENTO|SERVIZIO|LINEA|FIBRA|ADSL|INTERNET|TELEFONO|TELEFONIA|MOBILE|SIM|VOCE|DATI|POS|RAI|"
     r"VODAFONE|TIM\b|TELECOM|WIND|ILIAD|FASTWEB|VERISURE)\b"
@@ -1337,6 +1374,14 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
             return mapped, "canone_immobile"
         return cat, None
 
+    # REGOLA FORTE (priorità MASSIMA): fornitori telecomunicazioni → SEMPRE UTENZE E LOCALI
+    # Appresa dalle correzioni manuali cliente (TIM: 11 righe corrette il 2026-04-29)
+    if _FORNITORI_TELECOM_UTENZE_RE.search(desc_u):
+        mapped = "UTENZE E LOCALI"
+        if cat != mapped:
+            return mapped, "fornitore_telecom_utenze"
+        return cat, None
+
     if _SERVIZI_CANONI_RE.search(desc_u) and not _CANONE_LOCALE_RE.search(desc_u) and not _CARTA_CALCOLATRICE_RE.search(desc_u):
         mapped = "SERVIZI E CONSULENZE"
         if cat != mapped:
@@ -1687,6 +1732,37 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
     """
     global _memoria_cache
     
+    # 🔄 FIX 4: invalidazione cross-process via tabella public.cache_version.
+    # Polling con TTL 30s: se un altro worker ha scritto su prodotti_utente/master/classificazioni_manuali,
+    # la `version` lato DB è stata bumpata da trigger. Confrontiamo con l'ultima vista da questo processo.
+    try:
+        now_ts = time.time()
+        if (now_ts - _remote_version_state.get('last_checked_at', 0.0)) > _REMOTE_VERSION_TTL_SECONDS:
+            sb_for_check = supabase_client
+            if sb_for_check is None:
+                try:
+                    from services import get_supabase_client
+                    sb_for_check = get_supabase_client()
+                except Exception:
+                    sb_for_check = None
+            if sb_for_check is not None:
+                resp = sb_for_check.table('cache_version').select('version').eq('key', 'memoria_classificazione').limit(1).execute()
+                if resp.data:
+                    remote_v = int(resp.data[0].get('version') or 0)
+                    last_seen = int(_remote_version_state.get('last_seen_version') or 0)
+                    if remote_v > last_seen:
+                        if last_seen > 0:
+                            logger.info(f"🔄 Cache version DB cambiata ({last_seen} → {remote_v}): invalidazione cross-process")
+                            with _cache_lock:
+                                _memoria_cache['loaded'] = False
+                                _memoria_cache['_loaded_at'] = 0.0
+                                _memoria_cache['_loaded_user_ids'] = set()
+                        _remote_version_state['last_seen_version'] = remote_v
+                _remote_version_state['last_checked_at'] = now_ts
+    except Exception as _ver_err:
+        # Non bloccante: se la tabella non esiste (migration non eseguita) o errore di rete, log e prosegui.
+        logger.debug(f"cache_version poll fallito (non bloccante): {_ver_err}")
+
     with _cache_lock:
         global_loaded = _memoria_cache['loaded']
         # TTL eviction: se la cache globale è scaduta, forza ricaricamento
@@ -1722,13 +1798,24 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
             )
 
             if rows_locale:
-                _memoria_cache['prodotti_utente'][user_id] = {
-                    row['descrizione']: (_normalize_category_name(row.get('categoria')) or row.get('categoria'))
-                    for row in rows_locale
-                }
+                locale_raw = {}
+                locale_norm = {}
+                for row in rows_locale:
+                    desc = str(row.get('descrizione') or '').strip()
+                    if not desc:
+                        continue
+                    categoria = _normalize_category_name(row.get('categoria')) or row.get('categoria')
+                    locale_raw[desc] = categoria
+                    desc_normalized, _ = get_descrizione_normalizzata_e_originale(desc)
+                    if desc_normalized:
+                        locale_norm[desc_normalized] = categoria
+
+                _memoria_cache['prodotti_utente'][user_id] = locale_raw
+                _memoria_cache['prodotti_utente_norm'][user_id] = locale_norm
                 logger.info(f"📦 Cache LOCALE caricata: {len(rows_locale)} prodotti per user {user_id[:8]}")
             else:
                 _memoria_cache['prodotti_utente'][user_id] = {}
+                _memoria_cache['prodotti_utente_norm'][user_id] = {}
 
             _memoria_cache.setdefault('_loaded_user_ids', set()).add(user_id)
         except Exception as e:
@@ -1817,6 +1904,7 @@ def invalida_cache_memoria():
         _memoria_cache = {
             'loaded': False,
             'prodotti_utente': {},
+            'prodotti_utente_norm': {},
             'prodotti_master': {},
             'prodotti_master_hint': {},
             'classificazioni_manuali': {},
@@ -2079,6 +2167,63 @@ def ottieni_hint_per_ai(descrizione: str, user_id: str) -> Optional[str]:
         return None
 
 
+def _esiste_override_manuale_locale(
+    user_id: str,
+    descrizione: str,
+    supabase_client=None,
+) -> bool:
+    """
+    Ritorna True se in `prodotti_utente` esiste già una entry per (user_id, descrizione)
+    classificata manualmente dal cliente o da admin impersonato.
+    Usata per impedire che le auto-categorizzazioni (keyword/AI) sovrascrivano
+    le scelte manuali del cliente (BUG-4).
+
+    Match strategy:
+      - chiave esatta: (user_id, descrizione.strip())
+      - fallback: (user_id, descrizione_normalizzata)
+    Considera "Manuale" se `classificato_da` inizia con 'Manuale'
+    (formato salvato da `salva_correzione_in_memoria_locale`).
+    """
+    if not user_id or not descrizione or supabase_client is None:
+        return False
+
+    # 1) prova prima dalla cache in-memory (zero query)
+    try:
+        cache = _memoria_cache
+        locale_dict = cache.get('prodotti_utente', {}).get(user_id, {})
+        # La cache non distingue keyword-auto da Manuale, quindi serve la query DB.
+        # Skip cache fast-path e vai diretto alla query mirata.
+    except Exception:
+        pass
+
+    desc_stripped = (descrizione or '').strip()
+    try:
+        desc_normalized, _ = get_descrizione_normalizzata_e_originale(desc_stripped)
+    except Exception:
+        desc_normalized = desc_stripped
+
+    candidati = list({d for d in (desc_stripped, desc_normalized) if d})
+    if not candidati:
+        return False
+
+    try:
+        resp = (
+            supabase_client.table('prodotti_utente')
+            .select('descrizione,classificato_da')
+            .eq('user_id', user_id)
+            .in_('descrizione', candidati)
+            .execute()
+        )
+        for row in (resp.data or []):
+            cd = str(row.get('classificato_da') or '')
+            if cd.startswith('Manuale'):
+                return True
+        return False
+    except Exception as e:  # pragma: no cover - difensivo
+        logger.warning(f"check override manuale fallito per '{desc_stripped[:40]}': {e}")
+        return False
+
+
 def _traccia_memoria_categorizzata(descrizione: str):
     """Traccia descrizione come categorizzata da memoria (icona 🧠), cap a _MEMORIA_CAP."""
     if 'righe_memoria_appena_categorizzate' not in st.session_state:
@@ -2142,8 +2287,15 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
         # 1️⃣ Check memoria LOCALE utente (da cache, 0 query!)
         if user_id in cache['prodotti_utente']:
             locale_dict = cache['prodotti_utente'][user_id]
-            if descrizione in locale_dict:
-                categoria = locale_dict[descrizione]
+            if desc_stripped in locale_dict:
+                categoria = locale_dict[desc_stripped]
+                _traccia_memoria_categorizzata(descrizione)
+                return categoria
+
+            desc_normalized, _ = get_descrizione_normalizzata_e_originale(desc_stripped)
+            locale_dict_norm = cache.get('prodotti_utente_norm', {}).get(user_id, {})
+            if desc_normalized in locale_dict_norm:
+                categoria = locale_dict_norm[desc_normalized]
                 _traccia_memoria_categorizzata(descrizione)
                 return categoria
         
@@ -2162,12 +2314,12 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
                 _traccia_memoria_categorizzata(descrizione)
                 return categoria
         
-        # 3️⃣ Fallback
-        return "Da Classificare"
+        # 3️⃣ Fallback hard: mai restituire "Da Classificare"
+        return enforce_no_unclassified_category("Da Classificare", descrizione, source="ottieni_categoria_prodotto")[0]
         
     except Exception as e:
         logger.warning(f"Errore ottieni_categoria (cache) per '{descrizione[:40]}...': {e}")
-        return "Da Classificare"
+        return enforce_no_unclassified_category("Da Classificare", descrizione, source="ottieni_categoria_prodotto_except")[0]
 
 
 # ============================================================
@@ -2507,6 +2659,125 @@ def salva_correzione_in_memoria_locale(
         return False
 
 
+def _propaga_global_override_a_fatture_storiche(
+    desc_normalized: str,
+    nuova_categoria: str,
+    supabase_client,
+) -> int:
+    """
+    Propaga una promozione globale (admin → memoria globale) alle fatture storiche
+    di TUTTI gli utenti che NON hanno una personalizzazione locale (prodotti_utente)
+    per la stessa descrizione normalizzata.
+
+    Pipeline:
+        1. Raccoglie l'insieme degli `user_id` che hanno un override locale matching
+           (la chiave su `prodotti_utente` può essere raw o normalizzata → controlliamo entrambe).
+        2. Recupera le righe `fatture` candidate filtrando con ILIKE sui token più lunghi
+           della desc_normalized per ridurre il volume (e poi confermando lato Python).
+        3. UPDATE batch delle righe non protette da override locale.
+
+    Returns: numero di righe `fatture` aggiornate.
+    """
+    if not desc_normalized or not nuova_categoria or not supabase_client:
+        return 0
+    nuova_categoria = (_normalize_category_name(nuova_categoria) or nuova_categoria)
+
+    try:
+        # 1. Utenti con override locale per questa descrizione
+        users_with_override: set[str] = set()
+        try:
+            override_rows = _fetch_all_rows(
+                supabase_client, 'prodotti_utente',
+                'user_id, descrizione, classificato_da'
+            )
+            for r in (override_rows or []):
+                d_raw = (r.get('descrizione') or '').strip()
+                if not d_raw:
+                    continue
+                # Solo override Manuale del cliente devono bloccare la propagazione globale
+                # (keyword-auto/AI auto-upload sono auto-categorizzazioni che vogliamo aggiornare)
+                if not str(r.get('classificato_da') or '').startswith('Manuale'):
+                    continue
+                try:
+                    d_n, _ = get_descrizione_normalizzata_e_originale(d_raw)
+                except Exception:
+                    d_n = d_raw
+                if (d_n or '').strip() == desc_normalized or d_raw == desc_normalized:
+                    users_with_override.add(r['user_id'])
+        except Exception as _ovr_err:
+            logger.warning(f"propaga_global: lettura prodotti_utente fallita ({_ovr_err}), procedo senza esclusioni")
+
+        # 2. Token ILIKE per ridurre il volume di fatture caricate
+        tokens = [t for t in re.findall(r'[A-Z0-9]+', desc_normalized.upper()) if len(t) >= 4]
+        # max 2 token più lunghi per evitare query troppo costose; se nessuno usabile, usiamo desc intera
+        tokens = sorted(set(tokens), key=len, reverse=True)[:2]
+
+        candidate_ids: list = []
+        page_size = 1000
+        page = 0
+        while page < 50:  # safety cap a 50_000 righe scansionate
+            q = (
+                supabase_client.table('fatture')
+                .select('id,user_id,descrizione,categoria')
+                .is_('deleted_at', 'null')
+                .neq('categoria', nuova_categoria)
+            )
+            if tokens:
+                for t in tokens:
+                    q = q.ilike('descrizione', f'%{t}%')
+            else:
+                q = q.ilike('descrizione', f'%{desc_normalized[:20]}%')
+            q = q.range(page * page_size, page * page_size + page_size - 1)
+            try:
+                resp = q.execute()
+            except Exception as _q_err:
+                logger.warning(f"propaga_global: query fatture fallita ({_q_err})")
+                break
+            chunk = resp.data or []
+            if not chunk:
+                break
+            for row in chunk:
+                if row.get('user_id') in users_with_override:
+                    continue
+                d_raw = (row.get('descrizione') or '').strip()
+                if not d_raw:
+                    continue
+                try:
+                    d_n, _ = get_descrizione_normalizzata_e_originale(d_raw)
+                except Exception:
+                    d_n = d_raw
+                if (d_n or '').strip() == desc_normalized:
+                    candidate_ids.append(row['id'])
+            if len(chunk) < page_size:
+                break
+            page += 1
+
+        if not candidate_ids:
+            return 0
+
+        # 3. UPDATE batch
+        updated_total = 0
+        for i in range(0, len(candidate_ids), 500):
+            ids_chunk = candidate_ids[i:i + 500]
+            try:
+                supabase_client.table('fatture').update({
+                    'categoria': nuova_categoria,
+                    'classificato_da': 'admin-global-propagation',
+                }).in_('id', ids_chunk).execute()
+                updated_total += len(ids_chunk)
+            except Exception as _upd_err:
+                logger.warning(f"propaga_global: UPDATE batch fallito ({_upd_err})")
+        logger.info(
+            f"🌍 ADMIN PROPAGATION: aggiornate {updated_total} righe fatture per "
+            f"'{desc_normalized}' → {nuova_categoria} "
+            f"(esclusi {len(users_with_override)} utenti con override locale Manuale)"
+        )
+        return updated_total
+    except Exception as e:
+        logger.warning(f"propaga_global_override fallita: {e}")
+        return 0
+
+
 def salva_correzione_in_memoria_globale(
     descrizione: str,
     vecchia_categoria: str,
@@ -2585,6 +2856,15 @@ def salva_correzione_in_memoria_globale(
             # Log con prefisso corretto
             prefisso = "🔧 ADMIN" if is_admin else "🟢 GLOBALE"
             logger.info(f"{prefisso}: '{desc_normalized}' {vecchia_categoria} → {nuova_categoria} (by {user_email})")
+
+            # 🌍 ADMIN PROPAGATION (C/3=b): se la modifica è dell'admin, propaga la nuova
+            # categoria alle fatture storiche di TUTTI gli utenti che non hanno un override
+            # locale Manuale per questa descrizione.
+            if is_admin:
+                try:
+                    _propaga_global_override_a_fatture_storiche(desc_normalized, nuova_categoria, supabase_client)
+                except Exception as _prop_err:
+                    logger.warning(f"propagation post-update fallita: {_prop_err}")
         
         else:
             # INSERISCI nuovo record con categoria corretta
@@ -2608,6 +2888,13 @@ def salva_correzione_in_memoria_globale(
             # Log con prefisso corretto
             prefisso = "🔧 ADMIN" if is_admin else "🟢 GLOBALE"
             logger.info(f"{prefisso}: '{desc_normalized}' → {nuova_categoria} (by {user_email})")
+
+            # 🌍 ADMIN PROPAGATION (C/3=b): vedi sopra
+            if is_admin:
+                try:
+                    _propaga_global_override_a_fatture_storiche(desc_normalized, nuova_categoria, supabase_client)
+                except Exception as _prop_err:
+                    logger.warning(f"propagation post-insert fallita: {_prop_err}")
         
         return True
     
@@ -2694,8 +2981,15 @@ def categorizza_con_memoria(
     try:
         if user_id and user_id in cache['prodotti_utente']:
             locale_dict = cache['prodotti_utente'][user_id]
-            if descrizione in locale_dict:
-                categoria = locale_dict[descrizione]
+            if desc_stripped in locale_dict:
+                categoria = locale_dict[desc_stripped]
+                logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
+                return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
+
+            desc_normalized, _ = get_descrizione_normalizzata_e_originale(desc_stripped)
+            locale_dict_norm = cache.get('prodotti_utente_norm', {}).get(user_id, {})
+            if desc_normalized in locale_dict_norm:
+                categoria = locale_dict_norm[desc_normalized]
                 logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
                 return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
     
@@ -2753,20 +3047,34 @@ def categorizza_con_memoria(
     # 💾 SALVATAGGIO AUTOMATICO IN MEMORIA LOCALE UTENTE
     # Evita contaminazione cross-tenant: i suggerimenti automatici non entrano nella memoria globale.
     # 🛡️ QUARANTENA: NON salvare righe con prezzo = 0 in memoria locale automatica.
+    # 🛡️ BUG-4 FIX: NON sovrascrivere override manuali del cliente (priorità MAX).
     if categoria_keyword != "Da Classificare" and supabase_client and prezzo != 0:
         try:
-            desc_local = descrizione.strip()
+            # 🔑 BUG-3 FIX: chiave coerente con `salva_correzione_in_memoria_locale`:
+            # salvo sempre la descrizione normalizzata, così i match L1 (raw e norm)
+            # combaciano sempre con le entry create manualmente dal cliente.
+            desc_norm, _ = get_descrizione_normalizzata_e_originale(descrizione.strip())
+            desc_local = desc_norm.replace('\x00', '').strip()[:MAX_DESC_LENGTH_DB]
+            if not desc_local:
+                logger.warning("Descrizione vuota dopo normalizzazione, skip auto-save locale")
+                return categoria_keyword
 
-            supabase_client.table('prodotti_utente').upsert({
-                'user_id': user_id,
-                'descrizione': desc_local,
-                'categoria': categoria_keyword,
-                'volte_visto': 1,
-                'classificato_da': 'keyword-auto',
-                'created_at': datetime.now(timezone.utc).isoformat(),
-                'updated_at': datetime.now(timezone.utc).isoformat()
-            }, on_conflict='user_id,descrizione').execute()
-            logger.info(f"💾 MEMORIA LOCALE (auto-save): '{desc_local}' → {categoria_keyword} (keyword-auto)")
+            if _esiste_override_manuale_locale(user_id, desc_local, supabase_client):
+                logger.info(
+                    f"🛡️ SKIP auto-save: override manuale del cliente già presente per '{desc_local[:60]}' "
+                    f"(keyword-auto NON sovrascrive)"
+                )
+            else:
+                supabase_client.table('prodotti_utente').upsert({
+                    'user_id': user_id,
+                    'descrizione': desc_local,
+                    'categoria': categoria_keyword,
+                    'volte_visto': 1,
+                    'classificato_da': 'keyword-auto',
+                    'created_at': datetime.now(timezone.utc).isoformat(),
+                    'updated_at': datetime.now(timezone.utc).isoformat()
+                }, on_conflict='user_id,descrizione').execute()
+                logger.info(f"💾 MEMORIA LOCALE (auto-save): '{desc_local}' → {categoria_keyword} (keyword-auto)")
         except Exception as e:
             logger.warning(f"❌ Errore salvataggio memoria locale per '{descrizione[:40]}': {e}")
     elif categoria_keyword != "Da Classificare" and prezzo == 0:
@@ -2776,8 +3084,13 @@ def categorizza_con_memoria(
     else:
         # AUTO-CATEGORIZZAZIONE FALLITA: nessun match nel dizionario
         logger.info(f"⚠️ AUTO-CATEGORIZZAZIONE FALLITA: '{descrizione[:60]}' rimasto 'Da Classificare' (NON salvato in memoria globale)")
-    
-    return categoria_keyword
+
+    categoria_finale, _ = enforce_no_unclassified_category(
+        categoria_keyword,
+        descrizione,
+        source="categorizza_con_memoria",
+    )
+    return categoria_finale
 
 
 # ============================================================

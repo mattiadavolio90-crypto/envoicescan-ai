@@ -61,6 +61,15 @@ except Exception:  # pragma: no cover - fallback per worker CLI senza dipendenze
     def aggiorna_streak_classificazione(*_args, **_kwargs):
         return None
 
+try:
+    from services.ai_service import enforce_no_unclassified_category
+except Exception:  # pragma: no cover - fallback difensivo
+    def enforce_no_unclassified_category(categoria, _descrizione, source="worker_queue"):
+        cat = str(categoria or "").strip()
+        if cat and cat.upper() != "DA CLASSIFICARE":
+            return cat, False
+        return "SERVIZI E CONSULENZE", True
+
 logger = logging.getLogger(__name__)
 
 
@@ -149,12 +158,17 @@ def _auto_classify_saved_rows(
         )
 
         for desc, cat in zip(chunk, categorie):
-            categoria = str(cat or "").strip()
-            if not categoria or categoria == "Da Classificare":
-                continue
+            categoria, fallback_forzato = enforce_no_unclassified_category(
+                cat,
+                desc,
+                source="worker_queue_auto_classify",
+            )
             resp = (
                 supabase.table("fatture")
-                .update({"categoria": categoria})
+                .update({
+                    "categoria": categoria,
+                    "needs_review": bool(fallback_forzato),
+                })
                 .eq("user_id", user_id)
                 .eq("ristorante_id", ristorante_id)
                 .eq("file_origine", nome_file)
