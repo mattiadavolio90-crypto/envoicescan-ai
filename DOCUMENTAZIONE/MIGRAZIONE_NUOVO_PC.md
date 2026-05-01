@@ -45,6 +45,11 @@ Oh Yeah! Hub/
 ├── tests/
 ├── static/
 ├── migrations/
+├── supabase/            ← migrazioni Supabase Edge
+├── worker/              ← worker fatture automatico
+├── tools/               ← strumenti CLI (check_migrations.py, ecc.)
+├── docker/              ← docker-compose e Dockerfile
+├── scripts/             ← script PowerShell dev/test
 ├── DOCUMENTAZIONE/
 ├── .streamlit/
 │   ├── secrets.toml        ← ⚠️ FILE CRITICO (contiene le chiavi API)
@@ -112,6 +117,7 @@ Le librerie installate sono:
 | `sib-api-v3-sdk` (Brevo) | Invio email |
 | `plotly` | Grafici |
 | `tenacity` | Retry automatico connessioni |
+| `defusedxml` | Parsing sicuro file XML fatture |
 
 > Il download può richiedere 3–5 minuti.
 
@@ -213,4 +219,4 @@ Aprilo con Notepad e verifica che il percorso Python punti al `.venv` locale:
 
 ---
 
-*Documento generato il 20/03/2026 — aggiornato il 15/04/2026 — versione progetto con 330 test passati.*
+*Documento generato il 20/03/2026 — aggiornato il 01/05/2026 — versione progetto v5.4 con 330 test passati.*

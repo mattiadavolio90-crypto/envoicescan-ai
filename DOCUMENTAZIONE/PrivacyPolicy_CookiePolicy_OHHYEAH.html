@@ -276,8 +276,8 @@
 
     <div class="header-meta">
       <div class="header-meta-item"><label>Titolare</label><span>Recoma System S.r.l.</span></div>
-      <div class="header-meta-item"><label>Ultimo aggiornamento</label><span>15 Aprile 2026</span></div>
-      <div class="header-meta-item"><label>Versione</label><span>v3.3</span></div>
+      <div class="header-meta-item"><label>Ultimo aggiornamento</label><span>1 Maggio 2026</span></div>
+      <div class="header-meta-item"><label>Versione</label><span>v3.4</span></div>
       <div class="header-meta-item"><label>Applicativo</label><span>OH YEAH! v3.1</span></div>
     </div>
   </div>
@@ -417,14 +417,15 @@
         <div class="cookie-chip">
           <strong>impersonation_user_id</strong>
           Tipo: tecnico / amministrativo<br>
-          Scadenza: 30 giorni<br>
+          Scadenza: 30 minuti<br>
           Solo account admin (supporto tecnico)
         </div>
         <div class="cookie-chip">
           <strong>Secure + SameSite=Strict</strong>
           Solo HTTPS<br>
           Nessun dato PII in chiaro<br>
-          Non condiviso tra tenant
+          Non condiviso tra tenant<br>
+          HttpOnly non disponibile nel CookieManager Streamlit
         </div>
         <div class="cookie-chip">
           <strong>Nessun tracker</strong>
@@ -458,7 +459,7 @@
           <tr><td>Controllo accessi</td><td>Row-Level Security PostgreSQL + filtro applicativo user_id + ristorante_id su ogni query</td></tr>
           <tr><td>Rate limiting login</td><td>5 tentativi / 15 minuti per coppia IP+email — persistente su DB</td></tr>
           <tr><td>Rate limiting reset pw</td><td>1 richiesta / 5 minuti per email — persistente su DB (migration 046)</td></tr>
-          <tr><td>Sessioni</td><td>Token opaco ad alta entropia (secrets.token_urlsafe), TTL 30 giorni, scadenza inattività 8h, invalidazione al logout e su token non valido. Cookie Secure + SameSite=Strict</td></tr>
+          <tr><td>Sessioni</td><td>Token opaco ad alta entropia (secrets.token_urlsafe), TTL 30 giorni, scadenza inattività 8h, invalidazione al logout e su token non valido. Cookie Secure + SameSite=Strict; per limiti del CookieManager Streamlit il flag HttpOnly non è impostabile.</td></tr>
           <tr><td>IDOR protection</td><td>Filtro .eq('userid', user_id) su tutte le operazioni UPDATE/DELETE — nessuna modifica su record altrui anche con RLS permissivo</td></tr>
           <tr><td>Path traversal</td><td>Sanitizzazione nome file e File_Origine prima della persistenza su DB (strip ../ e path separator)</td></tr>
           <tr><td>XSS output</td><td>html.escape() su tutti i valori DB interpolati in HTML con unsafe_allow_html (sidebar, admin panel, categorie, P.IVA)</td></tr>
@@ -519,7 +520,7 @@
         <div class="article-title">Modifiche alla Privacy Policy</div>
       </div>
       <p>Il Titolare si riserva il diritto di modificare la presente informativa in qualsiasi momento. Le modifiche sostanziali verranno comunicate all'utente tramite notifica nell'applicazione con almeno <strong>15 giorni di preavviso</strong>. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione delle modifiche.</p>
-      <p><em>Ultimo aggiornamento: <strong>15 Aprile 2026</strong> — versione 3.3</em></p>
+      <p><em>Ultimo aggiornamento: <strong>1 Maggio 2026</strong> — versione 3.4</em></p>
     </div>
 
   </div><!-- /section-wrap privacy -->
@@ -638,7 +639,7 @@
         <div class="article-title">Modifiche ai Termini</div>
       </div>
       <p>Il Titolare si riserva il diritto di modificare i presenti Termini. Le modifiche sostanziali saranno comunicate tramite notifica nell'applicazione con almeno <strong>15 giorni di preavviso</strong>. L'uso continuato del Servizio dopo la comunicazione costituisce accettazione.</p>
-      <p><em>Ultimo aggiornamento: <strong>15 Aprile 2026</strong></em></p>
+      <p><em>Ultimo aggiornamento: <strong>1 Maggio 2026</strong></em></p>
     </div>
 
     <hr>
@@ -663,8 +664,8 @@
        FOOTER
   ══════════════════════════════════════════ -->
   <div class="doc-footer">
-    <span><strong>OH YEAH!</strong> — Privacy Policy &amp; Cookie Policy v3.2</span>
-    <span>Recoma System S.r.l. — Ultimo aggiornamento: 15 Aprile 2026</span>
+    <span><strong>OH YEAH!</strong> — Privacy Policy &amp; Cookie Policy v3.4</span>
+    <span>Recoma System S.r.l. — Ultimo aggiornamento: 1 Maggio 2026</span>
     <span>D.Lgs. 196/2003 + GDPR UE 2016/679</span>
   </div>
 

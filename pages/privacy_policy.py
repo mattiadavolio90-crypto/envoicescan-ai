@@ -115,9 +115,10 @@ with tab_privacy:
     | Cookie | Tipo | Scadenza | Contenuto | Note |
     |--------|------|----------|-----------|------|
     | `session_token` | Tecnico / sessione | 30 giorni | Token opaco generato lato server | Mantenimento sessione di login |
-    | `impersonation_user_id` | Tecnico / amministrativo | 30 giorni | UUID utente impersonato | Solo per account amministratori; consente il supporto tecnico |
+    | `impersonation_user_id` | Tecnico / amministrativo | 30 minuti | UUID utente impersonato | Solo per account amministratori; supporto tecnico temporaneo |
 
     Tutti i cookie sono impostati con `SameSite=Strict` e flag `Secure` (trasmessi solo su HTTPS), senza dati personali in chiaro.
+    Nota tecnica: il componente cookie di Streamlit non espone il flag `HttpOnly`; la mitigazione applicata e' `SameSite=Strict` + HTTPS obbligatorio + token opachi lato server.
 
     **NON utilizziamo:**
     - Cookie di profilazione o marketing
@@ -170,7 +171,7 @@ with tab_privacy:
     ---
 
     ### Modifiche alla Privacy Policy
-    Ultimo aggiornamento: **15 Aprile 2026**
+    Ultimo aggiornamento: **1 Maggio 2026**
 
     Ci riserviamo il diritto di modificare questa informativa. Gli utenti registrati verranno informati tramite notifica nell'applicazione in caso di modifiche sostanziali, con preavviso di almeno 15 giorni.
 

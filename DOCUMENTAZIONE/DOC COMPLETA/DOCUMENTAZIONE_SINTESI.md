@@ -2,7 +2,7 @@
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 5.3 | Ultimo aggiornamento: 15 Aprile 2026 | Autore: Mattia D'Avolio  
+Versione: 5.4 | Ultimo aggiornamento: 1 Maggio 2026 | Autore: Mattia D'Avolio  
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato) | URL: https://ohyeah.streamlit.app/
 
 ---
@@ -14,13 +14,15 @@ OH YEAH! Hub è una piattaforma SaaS web-based per ristoratori italiani che anal
 **Funzionalità principali:**
 - Caricamento fatture (XML/FatturaPA, P7M, PDF, JPG/PNG)
 - Ricezione automatica fatture via Invoicetronic (codice dest. `7HD37X0`)
-- Classificazione automatica AI in 29 categorie merceologiche (600+ keyword + GPT-4o-mini)
+- Classificazione automatica AI in 31 categorie merceologiche (600+ keyword + GPT-4o-mini)
 - Dashboard KPI, grafici Plotly, pivot mensili per categoria e fornitore
 - Notifiche in-app per upload, prezzi, dati mancanti (6 tipologie)
-- Calcolo Margine Operativo Lordo (MOL) con centri di produzione
+- Calcolo Margine Operativo Lordo (MOL) con centri di produzione (FOOD, BEVERAGE, ALCOLICI, DOLCI)
 - Gestione multi-ristorante (un account, più locali)
-- Controllo variazioni prezzi, sconti, note di credito
-- Export Excel, Privacy Policy GDPR v3.3, Terms of Service
+- Soft-delete fatture (cestino 30 gg) + retention automatica 2 anni
+- Custom Tags: aggregazione prodotti personalizzata per ristorante
+- Controllo variazioni prezzi con soglia personalizzabile, sconti, note di credito
+- Export Excel, Privacy Policy GDPR v3.4, Terms of Service
 
 **Pubblico target:** ristoratori, piccole catene (2–5 locali), consulenti F&B
 
@@ -57,7 +59,7 @@ Oh Yeah! Hub/
 │   ├── 2_foodcost.py         # Foodcost, ricette, ingredienti, diario (~2.139 righe)
 │   ├── 3_controllo_prezzi.py # Variazioni prezzi, sconti, NC (~586 righe)
 │   ├── gestione_account.py   # Cambio password, export GDPR (~457 righe)
-│   └── privacy_policy.py     # Privacy Policy v3.3 + Terms of Service
+│   └── privacy_policy.py     # Privacy Policy v3.4 + Terms of Service
 ├── services/
 │   ├── ai_service.py         # Classificazione AI + memoria 3 livelli (~1.908 righe)
 │   ├── ai_cost_service.py    # Tracking costi OpenAI per ristorante (~94 righe)
@@ -122,7 +124,7 @@ Oh Yeah! Hub/
 - **Tab Export**: Excel con ricette espanse e foodcost
 
 ### pages/3_controllo_prezzi.py — Prezzi
-- Variazioni prezzo: storico ultimi 5 prezzi, alert soglia configurabile (default 5%)
+- Variazioni prezzo: storico ultimi 5 prezzi, alert soglia configurabile per utente (default 5%, colonna `users.price_alert_threshold`)
 - Sconti e omaggi: KPI totale risparmiato, valore stimato omaggi
 - Note di credito (TD04): KPI, ricerca, export Excel
 
@@ -176,6 +178,7 @@ Oh Yeah! Hub/
 | Rate limiting login | 5 tentativi → 15 min lockout (persistente su DB `login_attempts`) |
 | Rate limiting reset | 1 richiesta / 5 min (in-memory thread-safe) |
 | Session cookie | Token opaco ad alta entropia (`secrets.token_urlsafe`), Secure=True, SameSite=Strict, 30 giorni |
+| Cookie impersonazione | Admin only, TTL 30 minuti, Secure+SameSite=Strict |
 | Inattività sessione | Auto-logout dopo 8 ore (`SESSION_INACTIVITY_HOURS = 8`) |
 | Token invalido | Sessione revocata immediatamente se token non in DB |
 | Reset token | `secrets.token_urlsafe(32)` — 256 bit entropia, verifica HMAC constant-time |
@@ -188,6 +191,7 @@ Oh Yeah! Hub/
 | Autenticazione | Argon2id | m=65536, parametri default libreria (OWASP) |
 | Sessioni | Token opaco ad alta entropia + Cookie 30gg | Auto-logout inattività 8h, invalidazione su token mancante |
 | Cookie | Secure + SameSite=Strict | `extra-streamlit-components` non supporta HttpOnly |
+| Cookie impersonazione | Secure + SameSite=Strict, 30 min | Solo admin |
 | Rate Limiting | Login DB + Reset in-memory | Tabella `login_attempts`; dict thread-safe |
 | IDOR | `.eq('userid', user_id)` su UPDATE/DELETE | Ogni scrittura workspace include filtro owner |
 | XSS | `html.escape()` | Su tutti gli output user-generated in HTML (sidebar, admin, categorie, P.IVA) |
@@ -239,11 +243,11 @@ Oh Yeah! Hub/
 |---------|-------|
 | `users` | Utenti: email, password_hash, session_token, pagine_abilitate, login/logout timestamps |
 | `ristoranti` | Locali: user_id, nome, P.IVA, attivo |
-| `fatture` | Righe fattura: user_id, ristorante_id, fornitore, descrizione, prezzo, categoria, tipo_documento |
+| `fatture` | Righe fattura: user_id, ristorante_id, fornitore, descrizione, prezzo, categoria, tipo_documento, data_consegna, data_competenza, totali header XML, deleted_at |
 | `prodotti_master` | Memoria globale AI: descrizione→categoria, verified, volte_visto |
 | `prodotti_utente` | Memoria locale per cliente: UNIQUE(user_id, descrizione) |
 | `classificazioni_manuali` | Override admin: descrizione→categoria, flag `is_dicitura` |
-| `margini_mensili` | MOL mensile: fatturato manuale + costi auto + KPI calcolati + centri produzione |
+| `margini_mensili` | MOL mensile: fatturato manuale + costi auto + KPI calcolati + centri produzione (FOOD, BEVERAGE, ALCOLICI, DOLCI) |
 | `login_attempts` | Rate limiting persistente: email, attempted_at, success |
 | `upload_events` | Log upload: file, status, rows_parsed/saved/excluded, error details |
 | `ricette` | Ricette: ingredienti JSON, foodcost, prezzo_vendita |
@@ -253,8 +257,13 @@ Oh Yeah! Hub/
 | `fatture_queue` | Buffer webhook Invoicetronic (pending → processing → done) |
 | `brand_ambigui` | Tracking brand multi-categoria (machine learning) |
 | `ai_usage_events` | Ledger costi OpenAI: token, costi per operazione AI |
+| `categorie` | Elenco centralizzato 31 categorie standard (NUOVO v5.4) |
+| `custom_tags` + `custom_tag_prodotti` | Tag personalizzati per ristorante + associazioni prodotti (NUOVO v5.4) |
+| `cache_version` | Cache versioning cross-process per invalidazione memoria classificazione (NUOVO v5.4) |
+| `category_change_log` | Storico append-only modifiche categoria per audit (NUOVO v5.4) |
+| `system_maintenance_status` | Stato job retention automatica fatture > 2 anni (NUOVO v5.4) |
 
-**58 migrazioni SQL** (001→053): aggiunta colonne, nuove tabelle, RLS policy, stored procedure RPC, indici performance, fix retroattivi, hardening sicurezza.
+**85 file SQL totali** (68 legacy 001→068 + 17 timestamp-based Supabase) aggiunta colonne, nuove tabelle, RLS policy, stored procedure RPC, indici performance, fix retroattivi, hardening sicurezza.
 
 ---
 
@@ -337,7 +346,7 @@ pytest tests/ --cov=services --cov=utils --cov-report=html  # con coverage
 
 ---
 
-*Documento sintetico v5.3 — 15 Aprile 2026*
+*Documento sintetico v5.4 — 1 Maggio 2026*
 *Per la documentazione completa, vedere `DOCUMENTAZIONE_COMPLETA.md`*
 
 ---
@@ -352,9 +361,9 @@ pytest tests/ --cov=services --cov=utils --cov-report=html  # con coverage
 
 ## 13. Compliance GDPR
 
-- **Privacy Policy + ToS**: pagina in-app (`privacy_policy.py`), versione HTML (`PrivacyPolicy_CookiePolicy_OHHYEAH.html`)
-- **Data retention**: fatture nel DB finché l'utente le elimina esplicitamente
-- **Diritto all'oblio**: funzione "Elimina Account" self-service — eliminazione permanente a cascata su 14 tabelle
+- **Privacy Policy + ToS**: pagina in-app (`privacy_policy.py`), versione HTML (`PrivacyPolicy_CookiePolicy_OHHYEAH.html`) — v3.4 (1 Maggio 2026, cookie impersonazione 30 min)
+- **Data retention**: fatture nel DB finché l'utente le elimina; soft-delete cestino 30 gg → retention automatica 2 anni
+- **Diritto all'oblio**: funzione "Elimina Account" self-service — eliminazione permanente a cascata su 16 tabelle (incluse custom_tags, category_change_log)
 - **Portabilità**: export JSON dati da `gestione_account.py` (Art. 20 GDPR) — 10 tabelle incluse
 - **Creazione client GDPR**: l'admin non conosce mai la password del cliente (token attivazione via email)
 - **Nota legale**: "Non costituisce sistema di Conservazione Sostitutiva ai sensi del D.M. 17 giugno 2014"
@@ -404,9 +413,28 @@ streamlit run app.py          # avvia in locale (porta 8501)
 pytest tests/ -v --tb=short   # esegui test
 .\scripts\run-tests.ps1       # test via script
 python -c "import app"        # verifica import
+python tools/check_migrations.py  # verifica 65 oggetti DB da migration legacy
 ```
 
 ---
 
-*Documentazione sintetica — per il dettaglio completo vedere `DOCUMENTAZIONE_COMPLETA.md`*  
+## 17. Novità v5.4 (1 Maggio 2026)
+
+| Funzionalità | Descrizione |
+|-------------|-------------|
+| Tabella `categorie` | 31 righe nel DB, allineate a `config/constants.py` |
+| Soft-delete fatture | `deleted_at` + cestino 30 gg + retention automatica 2 anni |
+| Custom Tags | `custom_tags` + `custom_tag_prodotti`: aggregazione prodotti per ristorante |
+| Cache versioning | `cache_version` + triggers DB: invalidazione memoria classificazione cross-process |
+| Category change log | Storico append-only modifiche categoria per audit |
+| Nuove colonne `fatture` | `data_consegna` (TD24), `data_competenza`, `totale_documento/imponibile/iva` |
+| `fatturato_beverage` | Rinominato da `fatturato_bar` in `margini_mensili` |
+| `price_alert_threshold` | Soglia alert prezzi personalizzabile per utente (default 5%) |
+| Privacy Policy v3.4 | Cookie impersonazione corretto a 30 minuti |
+| `tools/check_migrations.py` | Verifica 65 oggetti DB (65/65 OK al 1 Maggio 2026) |
+
+---
+
+*Documento sintetico v5.4 — 1 Maggio 2026*
+*Per la documentazione completa, vedere `DOCUMENTAZIONE_COMPLETA.md`*
 *Contatti: mattiadavolio90@gmail.com*
