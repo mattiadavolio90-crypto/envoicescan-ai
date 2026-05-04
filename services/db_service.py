@@ -1251,6 +1251,12 @@ def clear_fatture_cache() -> None:
     logger.debug(f"[CACHE] clear_fatture_cache() chiamata — ts={time.time():.3f}")
     _carica_fatture_da_supabase.clear()
     get_fatture_stats.clear()
+    try:
+        from services.margine_service import calcola_costi_automatici_per_anno, carica_costi_per_categoria
+        calcola_costi_automatici_per_anno.clear()
+        carica_costi_per_categoria.clear()
+    except Exception:
+        pass
 
 
 # ============================================================

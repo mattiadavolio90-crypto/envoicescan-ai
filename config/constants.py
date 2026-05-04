@@ -229,6 +229,26 @@ FORNITORI_SPESE_GENERALI_KEYWORDS = [
 ]
 
 
+# Fornitori utility/telecom/energia da forzare sempre in UTENZE E LOCALI.
+# Usati come hard override a livello fornitore in ai_service.
+FORNITORI_UTENZE_SEMPRE = [
+    'FASTWEB',
+    'TIM',
+    'TELECOM',
+    'VODAFONE',
+    'WIND',
+    'WINDTRE',
+    'ILIAD',
+    'ENI',
+    'A2A',
+    'ENEL',
+    'EDISON',
+    'ACEA',
+    'HERA',
+    'SORGENIA',
+]
+
+
 # ============================================
 # REGOLE CATEGORIZZAZIONE PER FORNITORE
 # ============================================
@@ -372,6 +392,7 @@ DIZIONARIO_CORREZIONI = {
     "CORBEZZOLO": "FRUTTA",
     "SCIROPPATO": "FRUTTA",
     "SCIROPPATA": "FRUTTA",
+    "NAVEL": "FRUTTA",
     
     # ===== LATTICINI =====
     "GRANA PADANO": "LATTICINI",
@@ -584,6 +605,8 @@ DIZIONARIO_CORREZIONI = {
     # ===== PROBLEMI AI: Aggiunti al dizionario =====
     # Prodotti che l'AI non riesce a classificare correttamente
     "MIXYBAR": "VARIE BAR",
+    "ALPRO": "BEVANDE",
+    "SOYA DRINK": "BEVANDE",
     "GRANATINA": "BEVANDE",
     "SCHWEPPES": "BEVANDE",
     "CRODINO": "BEVANDE",
@@ -1059,16 +1082,16 @@ DIZIONARIO_CORREZIONI = {
     "TELEFONO": "UTENZE E LOCALI",
     "TELECOM": "UTENZE E LOCALI",
     "TIM": "UTENZE E LOCALI",
-    "VODAFONE": "SERVIZI E CONSULENZE",
-    "WIND": "SERVIZI E CONSULENZE",
-    "ILIAD": "SERVIZI E CONSULENZE",
-    "FASTWEB": "SERVIZI E CONSULENZE",
+    "VODAFONE": "UTENZE E LOCALI",
+    "WIND": "UTENZE E LOCALI",
+    "ILIAD": "UTENZE E LOCALI",
+    "FASTWEB": "UTENZE E LOCALI",
     "INTERNET": "UTENZE E LOCALI",
     "ADSL": "UTENZE E LOCALI",
     "FIBRA": "UTENZE E LOCALI",
     "SUPERFIBRA": "UTENZE E LOCALI",
     "TUTTOFIBRA": "UTENZE E LOCALI",
-    "TIM GUARDIAN": "SERVIZI E CONSULENZE",
+    "TIM GUARDIAN": "UTENZE E LOCALI",
     "5G POWER": "UTENZE E LOCALI",
     "RISCALDAMENTO": "UTENZE E LOCALI",
     "CLIMATIZZAZIONE": "UTENZE E LOCALI",

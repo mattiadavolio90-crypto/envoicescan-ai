@@ -156,7 +156,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
     - COPPE in vetro o linee di servizio come Martini, Elisia, Timeless, Bresk → MANUTENZIONE E ATTREZZATURE
     - COP/BICCH caffè in carta da asporto → MATERIALE DI CONSUMO
     - HACCP, adempimenti normativi, sicurezza sul lavoro, certificati, rinnovi, formazione → SERVIZI E CONSULENZE
-    - CANONE va letto nel contesto: locazione/immobile → UTENZE E LOCALI; RAI, Vodafone, internet, linee e servizi ricorrenti → SERVIZI E CONSULENZE
+    - CANONE va letto nel contesto: locazione/immobile → UTENZE E LOCALI; per fornitori utility/telecom (TIM, Vodafone, Fastweb, Wind, Iliad, ENI, A2A, Enel) tutte le righe → UTENZE E LOCALI
     - ACQUA in bottiglia, naturale, frizzante o di brand minerale → ACQUA; servizio idrico/acquedotto/depurazione → UTENZE E LOCALI
     - ODK / DE KUYPER / FABBRI MIXYBAR, SCIROPPO DI MANDORLA e sciroppi cocktail simili → sempre VARIE BAR
     - ARANCE DA SPREMUTA / ARANCE SPREMUTA → FRUTTA se si tratta del frutto da spremere, non di una bevanda pronta
@@ -199,7 +199,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ❌ NON mettere SALSA TONNATA in PESCE - è SALSE E CREME!
 ❌ NON mettere RAVIOLI DI PESCE/GAMBERI in PESCE - sono PASTA E CEREALI (pasta ripiena)!
 ❌ NON mettere COPPA GELATO/COPPA MARTINI in SALUMI - COPPA qui è un recipiente!
-❌ NON mettere CANONE VODAFONE / CANONE RAI / ABBONAMENTI LINEA in UTENZE E LOCALI - sono SERVIZI E CONSULENZE!
+❌ NON mettere righe di fornitori utility/telecom (TIM, Vodafone, Fastweb, Wind, Iliad, ENI, A2A, Enel) in SERVIZI E CONSULENZE - sono UTENZE E LOCALI!
 ❌ NON mettere ACQUA SAN BENEDETTO / PELLEGRINO / NATURALE / FRIZZANTE in UTENZE E LOCALI - è ACQUA!
 ❌ NON mettere BOMBOLONI ALLA CREMA o BRIOCHE FARCITE in SALSE E CREME - sono PASTICCERIA!
 ✅ CORNETTI/CROISSANT/BRIOCHES/CROSTATINE sempre → PASTICCERIA
@@ -220,7 +220,7 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 ✅ SAC A POCHE / COPPETTE accessorie alla produzione → MATERIALE DI CONSUMO
 ✅ BICCHIERE / TAZZA senza contesto monouso → default MANUTENZIONE E ATTREZZATURE
 ✅ GAS / LUCE / SERVIZIO IDRICO / AFFITTO / LOCAZIONE / MUTUO IMMOBILE → UTENZE E LOCALI
-✅ CANONE RAI / VODAFONE / TIM / FASTWEB / INTERNET / LINEA / ABBONAMENTO SERVIZIO → SERVIZI E CONSULENZE
+✅ Se il fornitore è utility/telecom (TIM, Vodafone, Fastweb, Wind, Iliad, ENI, A2A, Enel), tutte le righe della fattura → UTENZE E LOCALI
 ✅ ACQUA NATURALE / FRIZZANTE / SAN BENEDETTO / PELLEGRINO → ACQUA
 ✅ DOLCI/BISCOTTI/CANNOLI sempre → PASTICCERIA
 ✅ BEVANDE ALCOLICHE SPECIFICHE → categoria alcol appropriata

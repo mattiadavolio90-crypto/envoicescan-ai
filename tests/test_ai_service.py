@@ -492,6 +492,59 @@ class TestPrioritaMemoria:
             "Il guardrail deve correggere DICITURA→SERVIZI anche quando arriva dal livello FORNITORE"
         )
 
+    def test_fornitore_utility_euristico_energia_idrico(self):
+        """Riconosce fornitori utility anche fuori dalla lista esplicita (energia/idrico/rifiuti)."""
+        self._inject_cache(
+            classificazioni_manuali={},
+            prodotti_utente={},
+            prodotti_master={},
+        )
+
+        assert ai_mod.categorizza_con_memoria(
+            descrizione='QUOTA VARIABILE',
+            prezzo=120.0,
+            quantita=1,
+            user_id='user_test',
+            supabase_client=None,
+            fornitore='RETI ENERGIA E GAS NORD S.P.A.',
+        ) == 'UTENZE E LOCALI'
+
+        assert ai_mod.categorizza_con_memoria(
+            descrizione='SERVIZIO ACQUEDOTTO',
+            prezzo=55.0,
+            quantita=1,
+            user_id='user_test',
+            supabase_client=None,
+            fornitore='CONSORZIO SERVIZI IDRICI INTEGRATI',
+        ) == 'UTENZE E LOCALI'
+
+        assert ai_mod.categorizza_con_memoria(
+            descrizione='TARIFFA RIFIUTI',
+            prezzo=80.0,
+            quantita=1,
+            user_id='user_test',
+            supabase_client=None,
+            fornitore='AZIENDA AMBIENTE RIFIUTI URBANI',
+        ) == 'UTENZE E LOCALI'
+
+    def test_fornitore_non_utility_non_forzato(self):
+        """Evita falsi positivi: fornitore non utility non deve essere forzato in UTENZE E LOCALI."""
+        self._inject_cache(
+            classificazioni_manuali={},
+            prodotti_utente={},
+            prodotti_master={},
+        )
+
+        result = ai_mod.categorizza_con_memoria(
+            descrizione='PASTA PENNE',
+            prezzo=10.0,
+            quantita=1,
+            user_id='user_test',
+            supabase_client=None,
+            fornitore='CENTRO ALIMENTARE NORD SRL',
+        )
+        assert result != 'UTENZE E LOCALI'
+
     # ----------------------------------------------------------------
     # TEST BUG3: categoria_finale corretta nel DB (via invoice_service flow)
     # ----------------------------------------------------------------

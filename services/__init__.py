@@ -14,6 +14,7 @@ from .ai_service import (
     invalida_cache_memoria,
     ottieni_categoria_prodotto,
     categorizza_con_memoria,
+    flush_pending_local_saves,
     applica_correzioni_dizionario,
     salva_correzione_in_memoria_globale,
     salva_correzione_in_memoria_locale,
@@ -51,6 +52,7 @@ __all__ = [
     'salva_correzione_in_memoria_locale',
     'classifica_con_ai',
     'mostra_loading_ai',
+    'flush_pending_local_saves',
     # Auth functions
     'verify_and_migrate_password',
     'verifica_credenziali',

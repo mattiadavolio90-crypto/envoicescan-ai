@@ -565,6 +565,7 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
             carica_memoria_completa,
             categorizza_con_memoria,
             enforce_no_unclassified_category,
+            flush_pending_local_saves,
         )
         
         # Risolvi user_id: parametro esplicito ha priorità su session_state
@@ -768,6 +769,10 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
             linee = [linee]
         
         righe_prodotti = []
+        # PROP-1: buffer per batch upsert auto-keyword in memoria locale.
+        # Riempito da categorizza_con_memoria, flushato a fine loop con UNA sola
+        # SELECT bulk + UNA sola UPSERT batch (vs N+1 query per riga).
+        _pending_local_saves: list = []
         for idx, riga in enumerate(linee, start=1):
             if not isinstance(riga, dict):
                 continue
@@ -913,7 +918,8 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     user_id=current_user_id,
                     fornitore=fornitore,
                     unita_misura=unita_misura,
-                    iva_percentuale=aliquota_iva
+                    iva_percentuale=aliquota_iva,
+                    pending_local_saves=_pending_local_saves,
                 )
                 categoria_finale, fallback_forzato = enforce_no_unclassified_category(
                     categoria_finale,
@@ -1010,7 +1016,17 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                 continue
         
         logger.info(f"✅ {file_caricato.name}: {len(righe_prodotti)} righe estratte")
-        
+
+        # PROP-1: flush batch dei salvataggi auto-keyword in memoria locale.
+        # Best-effort: errori loggati ma non bloccano il return delle righe.
+        if _pending_local_saves and current_user_id:
+            try:
+                from services import get_supabase_client
+                _sb = get_supabase_client()
+                flush_pending_local_saves(_pending_local_saves, current_user_id, _sb)
+            except Exception as _flush_err:
+                logger.warning(f"Flush batch memoria locale fallito (non bloccante): {_flush_err}")
+
         return righe_prodotti
         
     except Exception as e:

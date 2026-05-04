@@ -70,7 +70,23 @@ from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_excep
 from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError, APIError
 
 # Import da moduli interni
-from config.constants import DIZIONARIO_CORREZIONI, BRAND_AMBIGUI_NO_DICT, TUTTE_LE_CATEGORIE, MEMORIA_SESSION_CAP, MAX_DESC_LENGTH_DB, MAX_AI_CALLS_PER_DAY, LEGACY_CATEGORY_ALIASES, CATEGORIE_SPESE_GENERALI
+from config.constants import (
+    DIZIONARIO_CORREZIONI,
+    BRAND_AMBIGUI_NO_DICT,
+    TUTTE_LE_CATEGORIE,
+    MEMORIA_SESSION_CAP,
+    MAX_DESC_LENGTH_DB,
+    MAX_AI_CALLS_PER_DAY,
+    LEGACY_CATEGORY_ALIASES,
+    CATEGORIE_SPESE_GENERALI,
+    FORNITORI_UTENZE_SEMPRE,
+    CATEGORIA_PER_FORNITORE,
+    UNITA_MISURA_CATEGORIA,
+)
+# PROP-6: pre-normalizza chiavi fornitore una volta sola (evita .upper() per riga)
+_CATEGORIA_PER_FORNITORE_NORM: tuple[tuple[str, str], ...] = tuple(
+    (str(k).strip().upper(), v) for k, v in CATEGORIA_PER_FORNITORE.items()
+)
 from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizza_stringa
 from utils.validation import is_dicitura_sicura
 
@@ -98,6 +114,7 @@ _memoria_cache = {
     'prodotti_utente': {},         # {user_id: {descrizione: categoria}}
     'prodotti_utente_norm': {},    # {user_id: {descrizione_normalizzata: categoria}}
     'prodotti_master': {},         # {descrizione: categoria} — solo confidence alta/altissima → bypass AI
+    'prodotti_master_canon': {},   # {chiave_canonica: categoria} — solo match non ambiguo
     'prodotti_master_hint': {},    # {descrizione: categoria} — confidence media/None → hint per AI
     'classificazioni_manuali': {},  # {descrizione: {categoria, is_dicitura}}
     'brand_ambigui': set(),        # set di brand dinamici da Supabase (UNION con BRAND_AMBIGUI_NO_DICT)
@@ -134,6 +151,189 @@ def _normalize_category_name(categoria: str | None) -> str | None:
     if not cat:
         return None
     return LEGACY_CATEGORY_ALIASES.get(cat, cat)
+
+
+def _normalize_supplier_name_for_match(fornitore: str) -> str:
+    """Normalizza il nome fornitore per matching robusto e stabile."""
+    norm = normalizza_stringa(fornitore or '')
+    norm = re.sub(r'[^A-Z0-9 ]+', ' ', norm)
+    norm = ' '.join(norm.split())
+    return norm
+
+
+_SUPPLIER_LEGAL_STOPWORDS = {
+    'SPA', 'S', 'P', 'A', 'SRL', 'SRL', 'SNC', 'SAS', 'SAPA', 'SCARL', 'COOP', 'SOCIETA',
+    'COOPERATIVA', 'CONSORTILE', 'CONSORZIO', 'GROUP', 'HOLDING', 'ITALIA', 'ITALIAN',
+}
+
+_FORNITORI_UTENZE_BRAND_STEMS = {
+    # Telecom / internet
+    'FASTWEB', 'TIM', 'TELECOM', 'VODAFONE', 'WIND', 'WINDTRE', 'ILIAD', 'OPEN FIBER',
+    # Energia / multi-utility
+    'ENEL', 'ENI', 'PLENITUDE', 'A2A', 'ACEA', 'EDISON', 'SORGENIA', 'HERA', 'IREN',
+    'DOLOMITI ENERGIA', 'ESTRA', 'AGSM', 'ASM', 'TERNA', 'E DISTRIBUZIONE',
+}
+
+_SUPPLIER_TELECOM_TOKENS = {
+    'TELECOM', 'TELEFONIA', 'TELEFONICO', 'TELEFONICI', 'MOBILE', 'FIBRA', 'INTERNET',
+    'ADSL', 'TLC', 'BROADBAND', 'VOIP',
+}
+
+_SUPPLIER_ENERGY_TOKENS = {
+    'ENERGIA', 'ELETTRICA', 'ELETTRICITA', 'ELETTRICHE', 'LUCE', 'GAS', 'METANO',
+    'POWER', 'ELETTRICO',
+}
+
+_SUPPLIER_WATER_TOKENS = {
+    'ACQUA', 'IDRICO', 'IDRICA', 'IDRICI', 'IDRICHE', 'ACQUEDOTTO', 'FOGNATURA', 'DEPURAZIONE',
+}
+
+_SUPPLIER_WASTE_TOKENS = {
+    'RIFIUTI', 'AMBIENTE', 'AMBIENTALE', 'AMBIENTALI', 'ECOLOGIA', 'IGIENE', 'URBANA',
+}
+
+_SUPPLIER_INFRA_SUPPORT_TOKENS = {
+    'RETI', 'RETE', 'DISTRIBUZIONE', 'DISTRIBUTION', 'UTILITY', 'UTILITIES', 'SERVIZI',
+    'NETWORK',
+}
+
+
+def _supplier_tokens(fornitore: str) -> list[str]:
+    norm = _normalize_supplier_name_for_match(fornitore)
+    if not norm:
+        return []
+    raw_tokens = re.findall(r'[A-Z0-9]+', norm)
+    tokens = []
+    for tok in raw_tokens:
+        if tok.isdigit():
+            continue
+        if tok in _SUPPLIER_LEGAL_STOPWORDS:
+            continue
+        tokens.append(tok)
+    return tokens
+
+
+def _is_fornitore_utenze_sempre(fornitore: str) -> tuple[bool, str | None]:
+    """Riconosce fornitori utility/telecom con logica ibrida seed+euristica."""
+    norm = _normalize_supplier_name_for_match(fornitore)
+    if not norm:
+        return False, None
+
+    # 1) Seed list esplicita (alta precisione)
+    for key in FORNITORI_UTENZE_SEMPRE:
+        key_norm = _normalize_supplier_name_for_match(key)
+        if not key_norm:
+            continue
+        if re.search(rf'(?:^| ){re.escape(key_norm)}(?: |$)', norm):
+            return True, key
+
+    # 2) Brand stems noti del settore (copre varianti societarie)
+    for stem in _FORNITORI_UTENZE_BRAND_STEMS:
+        stem_norm = _normalize_supplier_name_for_match(stem)
+        if not stem_norm:
+            continue
+        if re.search(rf'(?:^| ){re.escape(stem_norm)}(?: |$)', norm):
+            return True, stem
+
+    # 3) Euristica semantica su token fornitore (copertura ampia ma controllata)
+    tokens = set(_supplier_tokens(fornitore))
+    if not tokens:
+        return False, None
+
+    telecom_hits = len(tokens & _SUPPLIER_TELECOM_TOKENS)
+    energy_hits = len(tokens & _SUPPLIER_ENERGY_TOKENS)
+    water_hits = len(tokens & _SUPPLIER_WATER_TOKENS)
+    waste_hits = len(tokens & _SUPPLIER_WASTE_TOKENS)
+    support_hits = len(tokens & _SUPPLIER_INFRA_SUPPORT_TOKENS)
+
+    domain_hits = telecom_hits + energy_hits + water_hits + waste_hits
+
+    # Regola prudente: almeno 2 segnali dominio, oppure 1 dominio + 1 supporto infrastrutturale
+    if domain_hits >= 2:
+        return True, 'heuristic-domain>=2'
+    if domain_hits >= 1 and support_hits >= 1:
+        return True, 'heuristic-domain+support'
+
+    return False, None
+
+
+# Token da ignorare nella chiave canonica per evitare match troppo larghi
+# (formati, unita di misura, marcatori generici di confezione).
+_CANON_IGNORED_TOKENS = {
+    'KG', 'GR', 'G', 'MG', 'ML', 'CL', 'DL', 'L', 'LT',
+    'PZ', 'PZX', 'NR', 'N', 'NR', 'CONF', 'CONFEZ', 'CONFEZIONE',
+    'BUSTA', 'BUSTE', 'SCATOLA', 'SCATOLE', 'PACCO', 'CARTONE',
+}
+
+
+def _build_master_canonical_key(descrizione: str) -> str:
+    """Crea una chiave canonica robusta ma prudente per match simili.
+
+    Obiettivo: catturare varianti di formato/quantita senza aprire troppo.
+    Regole conservative:
+    - normalizza testo come il resto della pipeline
+    - rimuove token numerici e unita/confezioni generiche
+    - richiede almeno 2 token "forti" (len>=3)
+    """
+    if not descrizione:
+        return ''
+
+    try:
+        normalized, _ = get_descrizione_normalizzata_e_originale(str(descrizione).strip())
+    except Exception:
+        normalized = str(descrizione).strip().upper()
+
+    if not normalized:
+        return ''
+
+    tokens = []
+    for tok in re.split(r'\s+', normalized):
+        t = (tok or '').strip().upper()
+        if not t:
+            continue
+        if t.isdigit():
+            continue
+        if t in _CANON_IGNORED_TOKENS:
+            continue
+        if len(t) < 3:
+            continue
+        tokens.append(t)
+
+    if len(tokens) < 2:
+        return ''
+
+    # Manteniamo ordine per non collassare prodotti semanticamente diversi
+    # con stessi token ma ordine differente.
+    return ' '.join(tokens)
+
+
+def _build_master_canonical_map(master_bypass: dict[str, str]) -> tuple[dict[str, str], int]:
+    """Costruisce mappa canonica non ambigua: chiave -> categoria.
+
+    Se una stessa chiave canonica compare con categorie diverse, viene scartata
+    dalla mappa per evitare falsi positivi.
+    """
+    key_to_cat: dict[str, str] = {}
+    conflicted_keys: set[str] = set()
+
+    for desc, cat in (master_bypass or {}).items():
+        key = _build_master_canonical_key(desc)
+        if not key:
+            continue
+
+        existing = key_to_cat.get(key)
+        if existing is None:
+            key_to_cat[key] = cat
+            continue
+
+        if existing != cat:
+            conflicted_keys.add(key)
+
+    if conflicted_keys:
+        for key in conflicted_keys:
+            key_to_cat.pop(key, None)
+
+    return key_to_cat, len(conflicted_keys)
 
 
 # Regole forti: proteggono da errori grossolani AI/dizionario.
@@ -206,7 +406,7 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
 ]
 
 _CATEGORIE_PLACEHOLDER = {"", "DA CLASSIFICARE"}
-_FALLBACK_CATEGORIA_NON_CLASSIFICATO = "Da Classificare"
+_FALLBACK_CATEGORIA_NON_CLASSIFICATO = "SERVIZI E CONSULENZE"
 
 
 def enforce_no_unclassified_category(
@@ -1845,9 +2045,16 @@ def carica_memoria_completa(user_id: str, supabase_client=None) -> Dict[str, Any
                             _streak_promo += 1
                     else:
                         _hint[desc] = cat
+                _bypass_canon, canon_conflicts = _build_master_canonical_map(_bypass)
                 _memoria_cache['prodotti_master'] = _bypass
+                _memoria_cache['prodotti_master_canon'] = _bypass_canon
                 _memoria_cache['prodotti_master_hint'] = _hint
-                logger.info(f"📦 Cache GLOBALE caricata: {len(_bypass)} bypass (alta/altissima + {_streak_promo} streak>=3), {len(_hint)} hint (media/None)")
+                logger.info(
+                    f"📦 Cache GLOBALE caricata: {len(_bypass)} bypass "
+                    f"(alta/altissima + {_streak_promo} streak>=3), "
+                    f"{len(_bypass_canon)} canonici (conflicts={canon_conflicts}), "
+                    f"{len(_hint)} hint (media/None)"
+                )
         except Exception as e:
             logger.warning(f"Query 2 (prodotti_master) fallita: {e}")
 
@@ -1906,6 +2113,7 @@ def invalida_cache_memoria():
             'prodotti_utente': {},
             'prodotti_utente_norm': {},
             'prodotti_master': {},
+            'prodotti_master_canon': {},
             'prodotti_master_hint': {},
             'classificazioni_manuali': {},
             'brand_ambigui': set(),
@@ -2224,6 +2432,110 @@ def _esiste_override_manuale_locale(
         return False
 
 
+def flush_pending_local_saves(
+    pending: List[Dict[str, Any]],
+    user_id: str,
+    supabase_client=None,
+) -> int:
+    """
+    PROP-1: esegue il flush BATCH dei salvataggi locali accumulati da
+    `categorizza_con_memoria(..., pending_local_saves=...)`.
+
+    Strategia (per fattura intera, non per riga):
+      1. Deduplica candidati (per descrizione, ultimo categoria-vince).
+      2. UNA query SELECT per identificare override manuali del cliente già esistenti.
+         Le righe con `classificato_da` che inizia con 'Manuale' NON vengono
+         sovrascritte (BUG-4 FIX preservato).
+      3. UNA upsert batch con i restanti.
+
+    Ritorna il numero di righe effettivamente upserted.
+
+    Nota: in caso di errore loggato, ritorna 0 e non solleva — il salvataggio
+    in memoria locale è best-effort (non deve mai bloccare l'estrazione XML).
+    """
+    if not pending or not user_id or supabase_client is None:
+        return 0
+
+    try:
+        # 1) Dedup per (user_id, descrizione) — keep last
+        dedup: Dict[str, str] = {}
+        for item in pending:
+            desc = str(item.get('descrizione') or '').strip()
+            cat = item.get('categoria')
+            if not desc or not cat:
+                continue
+            dedup[desc] = cat
+        if not dedup:
+            return 0
+
+        # 2) Query bulk override manuali esistenti
+        candidati = list(dedup.keys())
+        protetti: set = set()
+        try:
+            # Supabase: chunk per stare entro limiti URL/JSON
+            CHUNK = 200
+            for i in range(0, len(candidati), CHUNK):
+                chunk = candidati[i:i + CHUNK]
+                resp = (
+                    supabase_client.table('prodotti_utente')
+                    .select('descrizione,classificato_da')
+                    .eq('user_id', user_id)
+                    .in_('descrizione', chunk)
+                    .execute()
+                )
+                for row in (resp.data or []):
+                    cd = str(row.get('classificato_da') or '')
+                    if cd.startswith('Manuale'):
+                        protetti.add(str(row.get('descrizione') or ''))
+        except Exception as sel_err:
+            # In caso di errore SELECT non rischiamo: meglio skippare l'auto-save
+            # piuttosto che sovrascrivere override manuali del cliente.
+            logger.warning(f"flush_pending_local_saves: SELECT bulk fallita, skip upsert ({sel_err})")
+            return 0
+
+        # 3) Filtra protetti e prepara payload
+        now_iso = datetime.now(timezone.utc).isoformat()
+        payload = [
+            {
+                'user_id': user_id,
+                'descrizione': desc,
+                'categoria': cat,
+                'volte_visto': 1,
+                'classificato_da': 'keyword-auto',
+                'created_at': now_iso,
+                'updated_at': now_iso,
+            }
+            for desc, cat in dedup.items()
+            if desc not in protetti
+        ]
+        if not payload:
+            logger.info(
+                f"💾 BATCH auto-save: 0/{len(dedup)} righe upserted "
+                f"(tutte protette da override manuali)"
+            )
+            return 0
+
+        # 4) Upsert batch (chunked)
+        upserted = 0
+        UPSERT_CHUNK = 500
+        for i in range(0, len(payload), UPSERT_CHUNK):
+            chunk = payload[i:i + UPSERT_CHUNK]
+            supabase_client.table('prodotti_utente').upsert(
+                chunk, on_conflict='user_id,descrizione'
+            ).execute()
+            upserted += len(chunk)
+
+        logger.info(
+            f"💾 BATCH auto-save: {upserted}/{len(dedup)} righe upserted "
+            f"(skipped {len(dedup) - upserted} protette da override manuali)"
+        )
+        return upserted
+
+    except Exception as e:
+        logger.warning(f"flush_pending_local_saves fallito (best-effort): {e}")
+        return 0
+
+
 def _traccia_memoria_categorizzata(descrizione: str):
     """Traccia descrizione come categorizzata da memoria (icona 🧠), cap a _MEMORIA_CAP."""
     if 'righe_memoria_appena_categorizzate' not in st.session_state:
@@ -2313,13 +2625,23 @@ def ottieni_categoria_prodotto(descrizione: str, user_id: str, supabase_client=N
                 categoria = cache['prodotti_master'][desc_normalized]
                 _traccia_memoria_categorizzata(descrizione)
                 return categoria
+
+            # Fuzzy calibrato: chiave canonica (simile ma non identica), solo se non ambiguo
+            canon_key = _build_master_canonical_key(descrizione)
+            if canon_key:
+                categoria = cache.get('prodotti_master_canon', {}).get(canon_key)
+                if categoria:
+                    _traccia_memoria_categorizzata(descrizione)
+                    logger.info(f"🧠 Match canonico prodotti_master: '{descrizione[:40]}' -> {categoria}")
+                    return categoria
         
-        # 3️⃣ Fallback hard: mai restituire "Da Classificare"
-        return enforce_no_unclassified_category("Da Classificare", descrizione, source="ottieni_categoria_prodotto")[0]
+        # 3️⃣ Fallback memoria: questa funzione deve poter restituire "Da Classificare"
+        # (la forzatura anti-placeholder è gestita nella pipeline di salvataggio/categorizzazione).
+        return "Da Classificare"
         
     except Exception as e:
         logger.warning(f"Errore ottieni_categoria (cache) per '{descrizione[:40]}...': {e}")
-        return enforce_no_unclassified_category("Da Classificare", descrizione, source="ottieni_categoria_prodotto_except")[0]
+        return "Da Classificare"
 
 
 # ============================================================
@@ -2911,13 +3233,15 @@ def categorizza_con_memoria(
     supabase_client=None,
     fornitore: Optional[str] = None,
     unita_misura: Optional[str] = None,
-    iva_percentuale: Optional[float] = None
+    iva_percentuale: Optional[float] = None,
+    pending_local_saves: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """
     Categorizza usando memoria GLOBALE multi-livello con CACHE IN-MEMORY.
     ELIMINA N+1 QUERY: usa cache invece di query ripetute.
     
     PRIORITÀ CORRETTA:
+    0. Hard override FORNITORE utility (Fastweb/TIM/Vodafone/ENI/A2A/...) → UTENZE E LOCALI
     1. Memoria correzioni admin (classificazioni_manuali) - PRIORITÀ ASSOLUTA
     2. Memoria LOCALE utente (prodotti_utente) - personalizzazioni cliente
     3. Memoria GLOBALE prodotti (prodotti_master) - condivisa tra tutti
@@ -2948,6 +3272,24 @@ def categorizza_con_memoria(
         except Exception as e:
             logger.warning(f"Impossibile inizializzare Supabase client: {e}")
 
+    # LIVELLO 0: Hard override a livello fornitore per utility/telecom.
+    # Regola business: tutte le righe di questi fornitori vanno in UTENZE E LOCALI.
+    if fornitore:
+        is_utility_supplier, matched_key = _is_fornitore_utenze_sempre(fornitore)
+        if is_utility_supplier:
+            logger.info(
+                f"⚡ FORNITORE UTENZE HARD OVERRIDE: '{descrizione[:60]}' -> UTENZE E LOCALI "
+                f"(fornitore: {fornitore}, match: {matched_key})"
+            )
+            return _applica_guardrail_note_con_importo(descrizione, "UTENZE E LOCALI", prezzo)
+
+    # PROP-5: snapshot normalizzazione una sola volta (riusato in L2 + L3 + canon)
+    desc_stripped = descrizione.strip()
+    try:
+        desc_normalized, _ = get_descrizione_normalizzata_e_originale(desc_stripped)
+    except Exception:
+        desc_normalized = desc_stripped
+
     try:
         # Carica cache se non già caricata per questo utente
         if user_id and (not _memoria_cache['loaded'] or user_id not in _memoria_cache.get('_loaded_user_ids', set())):
@@ -2959,7 +3301,6 @@ def categorizza_con_memoria(
         cache = _memoria_cache
 
         # LIVELLO 1: Check memoria admin (da cache, 0 query!)
-        desc_stripped = descrizione.strip()
         if desc_stripped in cache['classificazioni_manuali']:
             record = cache['classificazioni_manuali'][desc_stripped]
             if record.get('is_dicitura'):
@@ -2986,7 +3327,6 @@ def categorizza_con_memoria(
                 logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
                 return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
 
-            desc_normalized, _ = get_descrizione_normalizzata_e_originale(desc_stripped)
             locale_dict_norm = cache.get('prodotti_utente_norm', {}).get(user_id, {})
             if desc_normalized in locale_dict_norm:
                 categoria = locale_dict_norm[desc_normalized]
@@ -2998,14 +3338,23 @@ def categorizza_con_memoria(
     
     # LIVELLO 3: Check memoria GLOBALE (da cache, 0 query!)
     try:
-        # Normalizza descrizione per matching intelligente
-        desc_normalized, desc_original = get_descrizione_normalizzata_e_originale(descrizione)
-        
         if not _disable_global_memory:
             if desc_normalized in cache['prodotti_master']:
                 categoria = cache['prodotti_master'][desc_normalized]
                 logger.info(f"🟢 MEMORIA GLOBALE (cache): '{descrizione}' → {categoria} (norm: '{desc_normalized}')")
                 return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
+
+            # PROP-2: fallback canonico (chiave robusta a varianti formato/quantita)
+            master_canon = cache.get('prodotti_master_canon') or {}
+            if master_canon:
+                canon_key = _build_master_canonical_key(descrizione)
+                if canon_key and canon_key in master_canon:
+                    categoria = master_canon[canon_key]
+                    logger.info(
+                        f"🟢 MEMORIA GLOBALE CANON (cache): '{descrizione}' → {categoria} "
+                        f"(canon: '{canon_key}')"
+                    )
+                    return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
     
     except Exception as e:
         logger.warning(f"Errore check memoria globale (cache): {e}")
@@ -3016,17 +3365,16 @@ def categorizza_con_memoria(
     
     # LIVELLO 5: Regola FORNITORE specifico (priorità ALTA)
     if fornitore:
-        from config.constants import CATEGORIA_PER_FORNITORE
         fornitore_upper = fornitore.strip().upper()
-        for fornitore_key, categoria in CATEGORIA_PER_FORNITORE.items():
-            if fornitore_key.upper() in fornitore_upper or fornitore_upper in fornitore_key.upper():
+        # PROP-6: usa tuple pre-normalizzata (no .upper() per riga, no import in hot path)
+        for fornitore_key_upper, categoria in _CATEGORIA_PER_FORNITORE_NORM:
+            if fornitore_key_upper in fornitore_upper or fornitore_upper in fornitore_key_upper:
                 logger.info(f"🏭 FORNITORE: '{descrizione}' → {categoria} (fornitore: {fornitore})")
                 # BUG4 FIX: guardrail applicato anche su uscite FORNITORE/UM (difensivo)
                 return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
     
     # LIVELLO 6: Regola UNITÀ MISURA (priorità ALTA)
     if unita_misura:
-        from config.constants import UNITA_MISURA_CATEGORIA
         unita_upper = unita_misura.strip().upper()
         if unita_upper in UNITA_MISURA_CATEGORIA:
             categoria = UNITA_MISURA_CATEGORIA[unita_upper]
@@ -3048,33 +3396,42 @@ def categorizza_con_memoria(
     # Evita contaminazione cross-tenant: i suggerimenti automatici non entrano nella memoria globale.
     # 🛡️ QUARANTENA: NON salvare righe con prezzo = 0 in memoria locale automatica.
     # 🛡️ BUG-4 FIX: NON sovrascrivere override manuali del cliente (priorità MAX).
-    if categoria_keyword != "Da Classificare" and supabase_client and prezzo != 0:
+    # PROP-1: se `pending_local_saves` è una lista, accumula i candidati invece di
+    # eseguire SELECT+UPSERT per riga. Il chiamante (es. estrai_dati_da_xml) farà
+    # un singolo flush batch via flush_pending_local_saves() a fine elaborazione.
+    if categoria_keyword != "Da Classificare" and prezzo != 0 and user_id:
         try:
             # 🔑 BUG-3 FIX: chiave coerente con `salva_correzione_in_memoria_locale`:
             # salvo sempre la descrizione normalizzata, così i match L1 (raw e norm)
             # combaciano sempre con le entry create manualmente dal cliente.
-            desc_norm, _ = get_descrizione_normalizzata_e_originale(descrizione.strip())
-            desc_local = desc_norm.replace('\x00', '').strip()[:MAX_DESC_LENGTH_DB]
+            desc_norm_save, _ = get_descrizione_normalizzata_e_originale(descrizione.strip())
+            desc_local = desc_norm_save.replace('\x00', '').strip()[:MAX_DESC_LENGTH_DB]
             if not desc_local:
                 logger.warning("Descrizione vuota dopo normalizzazione, skip auto-save locale")
-                return categoria_keyword
-
-            if _esiste_override_manuale_locale(user_id, desc_local, supabase_client):
-                logger.info(
-                    f"🛡️ SKIP auto-save: override manuale del cliente già presente per '{desc_local[:60]}' "
-                    f"(keyword-auto NON sovrascrive)"
-                )
-            else:
-                supabase_client.table('prodotti_utente').upsert({
+            elif pending_local_saves is not None:
+                # Modalità batch: rimanda il salvataggio al flush finale.
+                pending_local_saves.append({
                     'user_id': user_id,
                     'descrizione': desc_local,
                     'categoria': categoria_keyword,
-                    'volte_visto': 1,
-                    'classificato_da': 'keyword-auto',
-                    'created_at': datetime.now(timezone.utc).isoformat(),
-                    'updated_at': datetime.now(timezone.utc).isoformat()
-                }, on_conflict='user_id,descrizione').execute()
-                logger.info(f"💾 MEMORIA LOCALE (auto-save): '{desc_local}' → {categoria_keyword} (keyword-auto)")
+                })
+            elif supabase_client:
+                if _esiste_override_manuale_locale(user_id, desc_local, supabase_client):
+                    logger.info(
+                        f"🛡️ SKIP auto-save: override manuale del cliente già presente per '{desc_local[:60]}' "
+                        f"(keyword-auto NON sovrascrive)"
+                    )
+                else:
+                    supabase_client.table('prodotti_utente').upsert({
+                        'user_id': user_id,
+                        'descrizione': desc_local,
+                        'categoria': categoria_keyword,
+                        'volte_visto': 1,
+                        'classificato_da': 'keyword-auto',
+                        'created_at': datetime.now(timezone.utc).isoformat(),
+                        'updated_at': datetime.now(timezone.utc).isoformat()
+                    }, on_conflict='user_id,descrizione').execute()
+                    logger.info(f"💾 MEMORIA LOCALE (auto-save): '{desc_local}' → {categoria_keyword} (keyword-auto)")
         except Exception as e:
             logger.warning(f"❌ Errore salvataggio memoria locale per '{descrizione[:40]}': {e}")
     elif categoria_keyword != "Da Classificare" and prezzo == 0:

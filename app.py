@@ -2884,7 +2884,7 @@ else:
                     key="select_fattura_cestino"
                 )
 
-                col_restore, col_empty_trash = st.columns([1, 1])
+                col_restore, col_empty_trash, col_trash_spacer = st.columns([1, 1, 3])
 
                 with col_restore:
                     if st.button("♻️ Ripristina Fattura", use_container_width=True, key="btn_ripristina_fattura"):
@@ -2906,23 +2906,22 @@ else:
                                 st.error(f"❌ Errore ripristino: {result_restore.get('error')}")
 
                 with col_empty_trash:
-                    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
-                        if st.button("🗑️ Svuota Cestino", use_container_width=True, key="btn_svuota_cestino"):
-                            with st.spinner("🗑️ Svuotamento cestino in corso..."):
-                                result_empty = svuota_cestino(
-                                    user_id,
-                                    ristorante_id=st.session_state.get('ristorante_id')
+                    if st.button("🗑️ Svuota Cestino", use_container_width=True, key="btn_svuota_cestino"):
+                        with st.spinner("🗑️ Svuotamento cestino in corso..."):
+                            result_empty = svuota_cestino(
+                                user_id,
+                                ristorante_id=st.session_state.get('ristorante_id')
+                            )
+                            invalida_cache_memoria()
+                            clear_fatture_cache()
+                            if result_empty.get("success"):
+                                st.success(
+                                    f"✅ Cestino svuotato: {result_empty.get('righe_eliminate', 0)} righe eliminate definitivamente"
                                 )
-                                invalida_cache_memoria()
-                                clear_fatture_cache()
-                                if result_empty.get("success"):
-                                    st.success(
-                                        f"✅ Cestino svuotato: {result_empty.get('righe_eliminate', 0)} righe eliminate definitivamente"
-                                    )
-                                    time.sleep(0.3)
-                                    st.rerun()
-                                else:
-                                    st.error(f"❌ Errore svuotamento: {result_empty.get('error')}")
+                                time.sleep(0.3)
+                                st.rerun()
+                            else:
+                                st.error(f"❌ Errore svuotamento: {result_empty.get('error')}")
             else:
                 st.info("🗑️ Cestino vuoto")
             
