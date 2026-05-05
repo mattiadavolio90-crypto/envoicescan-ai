@@ -369,17 +369,30 @@ if st.session_state.margine_tab == "analisi":
                 for m in range(m_from, m_to + 1):
                     _mesi_options.append((a, m, f"{_MESI_COMPLETI[m-1]} {a}"))
 
+            # Guardia: nessun mese disponibile nel range (edge case filtro mal configurato)
+            if not _mesi_options:
+                st.warning("⚠️ Nessun mese disponibile nel periodo selezionato. Modifica il filtro date in alto.")
+                st.stop()
+
+            _mesi_labels = [x[2] for x in _mesi_options]
+            # Bug #3: se il valore in session_state non è più valido (periodo cambiato), resettarlo
+            if st.session_state.get("aa_split_mese_sel") not in _mesi_labels:
+                st.session_state.pop("aa_split_mese_sel", None)
+
             col_mese_sel, col_fatt_netto = st.columns([1.5, 4.5])
             with col_mese_sel:
                 idx_default = 0
                 mese_label_sel = st.selectbox(
                     "📅 Mese",
-                    options=[x[2] for x in _mesi_options],
+                    options=_mesi_labels,
                     index=idx_default,
                     key="aa_split_mese_sel"
                 )
-            # Trova anno/mese selezionato
-            _sel_idx = [x[2] for x in _mesi_options].index(mese_label_sel)
+            # Trova anno/mese selezionato — .index() sicuro: valore già validato sopra
+            try:
+                _sel_idx = _mesi_labels.index(mese_label_sel)
+            except ValueError:
+                _sel_idx = 0
             _anno_sel_split = _mesi_options[_sel_idx][0]
             _mese_sel_split = _mesi_options[_sel_idx][1]
 
@@ -432,13 +445,15 @@ if st.session_state.margine_tab == "analisi":
 
             for i, centro in enumerate(_centri_con_fatturato):
                 with cols_split[i]:
+                    # Bug #1: chiave include anno+mese → widget fresco ad ogni cambio mese
+                    _input_key = f"aa_split_{_anno_sel_split}_{_mese_sel_split}_{centro}"
                     if modo_split == "€ Valore Assoluto":
                         _valori_inseriti[centro] = st.number_input(
                             f"{_icone.get(centro, '')} {centro}",
                             min_value=0.0,
                             step=1000.0,
                             format="%.2f",
-                            key=f"aa_split_{centro}",
+                            key=_input_key,
                             value=_defaults_euro.get(centro, 0.0)
                         )
                     else:
@@ -448,7 +463,7 @@ if st.session_state.margine_tab == "analisi":
                             max_value=100.0,
                             step=1.0,
                             format="%.1f",
-                            key=f"aa_split_{centro}",
+                            key=_input_key,
                             value=min(_defaults_pct.get(centro, 0.0), 100.0)
                         )
 
