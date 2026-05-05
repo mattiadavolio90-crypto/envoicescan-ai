@@ -1231,18 +1231,30 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                     try:
                                         _dt_doc_mesi = pd.to_datetime(_data_doc_mesi)
                                         _now_mesi = pd.Timestamp.now()
-                                        if _dt_doc_mesi.year == _now_mesi.year and _dt_doc_mesi.month < _now_mesi.month:
+                                        # Calcola il mese precedente (gestisce cambio anno)
+                                        _prev_month_mesi = _now_mesi.replace(day=1) - pd.Timedelta(days=1)
+                                        # Consenti mese corrente e mese precedente
+                                        _ok_corrente = (
+                                            _dt_doc_mesi.year == _now_mesi.year
+                                            and _dt_doc_mesi.month == _now_mesi.month
+                                        )
+                                        _ok_precedente = (
+                                            _dt_doc_mesi.year == _prev_month_mesi.year
+                                            and _dt_doc_mesi.month == _prev_month_mesi.month
+                                        )
+                                        if not _ok_corrente and not _ok_precedente:
                                             from config.constants import MESI_ITA as _MESI_BLK
-                                            _mese_nome = _MESI_BLK[_now_mesi.month - 1]
+                                            _mese_corrente_nome = _MESI_BLK[_now_mesi.month - 1]
+                                            _mese_prec_nome = _MESI_BLK[_prev_month_mesi.month - 1]
                                             logger.warning(
                                                 f"📅 UPLOAD BLOCCATO MESE PRECEDENTE {file.name} - Data {_data_doc_mesi} "
-                                                f"precedente a {_mese_nome} {_now_mesi.year} "
+                                                f"non in {_mese_prec_nome}/{_mese_corrente_nome} {_now_mesi.year} "
                                                 f"(user: {st.session_state.get('user_data', {}).get('email')})"
                                             )
                                             raise ValueError(
-                                                f"MESE PRECEDENTE \u2014 La data documento ({_data_doc_mesi}) è precedente al "
-                                                f"mese corrente ({_mese_nome} {_now_mesi.year}). "
-                                                f"È possibile caricare solo fatture del mese in corso."
+                                                f"MESE NON CONSENTITO \u2014 La data documento ({_data_doc_mesi}) non rientra nei "
+                                                f"mesi consentiti ({_mese_prec_nome} o {_mese_corrente_nome} {_now_mesi.year}). "
+                                                f"È possibile caricare solo fatture del mese corrente o del mese precedente."
                                             )
                                     except ValueError:
                                         raise

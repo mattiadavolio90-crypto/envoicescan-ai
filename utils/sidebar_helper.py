@@ -199,15 +199,15 @@ def render_sidebar(user_data: dict):
                      type="primary" if current_script == '1_calcolo_margine.py' else "secondary"):
             st.switch_page("pages/1_calcolo_margine.py")
         
-        if workspace_enabled:
-            if st.button("🍴 Foodcost", use_container_width=True, key="sidebar_workspace",
-                         type="primary" if current_script == '2_foodcost.py' else "secondary"):
-                st.switch_page("pages/2_foodcost.py")
-
         if analisi_personalizzata_enabled:
             if st.button("🏷️ Analisi e Tag", use_container_width=True, key="sidebar_analisi_personalizzata",
                          type="primary" if current_script == '4_analisi_personalizzata.py' else "secondary"):
                 st.switch_page("pages/4_analisi_personalizzata.py")
+
+        if workspace_enabled:
+            if st.button("🍴 Foodcost", use_container_width=True, key="sidebar_workspace",
+                         type="primary" if current_script == '2_foodcost.py' else "secondary"):
+                st.switch_page("pages/2_foodcost.py")
         
         st.markdown("---")
         

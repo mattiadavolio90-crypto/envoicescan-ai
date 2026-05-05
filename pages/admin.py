@@ -1518,11 +1518,14 @@ if tab1:
                             st.markdown("---")
 
                             # AZIONE 2c-bis: Blocco Fatture Mesi Precedenti (anno corrente)
-                            mese_corrente_nome = datetime.now().strftime('%B').capitalize()
+                            _now_admin = datetime.now()
+                            mese_corrente_nome = _now_admin.strftime('%B').capitalize()
+                            _prev_admin = (_now_admin.replace(day=1) - timedelta(days=1))
+                            mese_precedente_nome = _prev_admin.strftime('%B').capitalize()
                             
                             blocco_mesi_attivo = pagine.get('blocco_mesi_precedenti', False)
                             new_blocco_mesi = st.checkbox(
-                                f"Blocca fatture dei mesi precedenti (attuale: {'attivo' if blocco_mesi_attivo else 'disattivo'} - consente solo {mese_corrente_nome} {anno_corrente}; non si applica ai trial)",
+                                f"Blocca fatture dei mesi precedenti (attuale: {'attivo' if blocco_mesi_attivo else 'disattivo'} - consente solo {mese_precedente_nome} e {mese_corrente_nome} {anno_corrente}; non si applica ai trial)",
                                 value=blocco_mesi_attivo,
                                 key=f"blocco_mesi_{row_key}"
                             )

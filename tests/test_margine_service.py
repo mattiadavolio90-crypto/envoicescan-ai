@@ -787,13 +787,17 @@ class TestMargineServiceDB:
                     "fatturato_beverage": 200.0,
                     "fatturato_alcolici": 150.0,
                     "fatturato_dolci": 80.0,
+                    "updated_at": "2026-01-31T10:00:00Z",
                 },
+            ]),
+            SimpleNamespace(data=[
                 {
                     "fatturato_food": 900.0,
                     "fatturato_beverage": 180.0,
                     "fatturato_alcolici": 120.0,
                     "fatturato_dolci": 70.0,
-                },
+                    "updated_at": "2026-02-28T10:00:00Z",
+                }
             ])
         ]
         mock_client.table.return_value = query
@@ -833,6 +837,49 @@ class TestMargineServiceDB:
             ristorante_id="rist-test",
             anno=2026,
             mese=4,
+        )
+
+        assert result == {
+            "FOOD": 2200.0,
+            "BEVERAGE": 450.0,
+            "ALCOLICI": 300.0,
+            "DOLCI": 120.0,
+        }
+
+    @patch("services.margine_service.get_supabase_client")
+    def test_carica_fatturato_centri_mese_duplica_riga_vuota_e_tiene_quella_con_dati(self, mock_get_client):
+        """
+        Se esistono piu' righe stesso mese, ignora la riga recente senza payload
+        centri (valori null) e usa la riga valida con dati split.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        query = _build_query_mock(execute_data=[
+            {
+                "fatturato_food": None,
+                "fatturato_beverage": None,
+                "fatturato_bar": None,
+                "fatturato_alcolici": None,
+                "fatturato_dolci": None,
+                "updated_at": "2026-05-05T10:00:00Z",
+            },
+            {
+                "fatturato_food": 2200.0,
+                "fatturato_beverage": 450.0,
+                "fatturato_bar": None,
+                "fatturato_alcolici": 300.0,
+                "fatturato_dolci": 120.0,
+                "updated_at": "2026-01-31T10:00:00Z",
+            },
+        ])
+        mock_client.table.return_value = query
+
+        result = carica_fatturato_centri_mese(
+            user_id="test-uuid",
+            ristorante_id="rist-test",
+            anno=2026,
+            mese=1,
         )
 
         assert result == {

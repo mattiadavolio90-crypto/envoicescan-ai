@@ -252,11 +252,55 @@ def _row_to_centri_dict(row: dict, col_map: dict) -> tuple:
     result = {}
     has_data = False
     for centro, col in col_map.items():
-        val = float(row.get(col, 0) or 0)
+        raw_val = row.get(col, None)
+        # Compatibilita' rename BAR -> BEVERAGE: se la nuova colonna e' null,
+        # prova a leggere la legacy fatturato_bar.
+        if centro == "BEVERAGE" and raw_val is None:
+            raw_val = row.get("fatturato_bar", None)
+        val = float(raw_val or 0)
         result[centro] = val
         if val > 0:
             has_data = True
     return result, has_data
+
+
+def _parse_updated_at(value):
+    if not value:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        return pd.to_datetime(value, utc=True).to_pydatetime()
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _row_has_centri_payload(row: dict, col_map: dict) -> bool:
+    """True se la riga contiene almeno un valore centro valorizzato (anche 0)."""
+    for centro, col in col_map.items():
+        if row.get(col, None) is not None:
+            return True
+        if centro == "BEVERAGE" and row.get("fatturato_bar", None) is not None:
+            return True
+    return False
+
+
+def _pick_best_centri_row(rows: list, col_map: dict) -> dict:
+    """
+    Seleziona in modo deterministico la riga piu' affidabile quando esistono
+    duplicati per stesso (ristorante, anno, mese).
+
+    Regola:
+    1) ordina per updated_at desc
+    2) sceglie la prima riga con payload centri presente (anche se a zero)
+    3) fallback: prima riga ordinata
+    """
+    if not rows:
+        return {}
+
+    rows_sorted = sorted(rows, key=lambda r: _parse_updated_at(r.get("updated_at")), reverse=True)
+    for row in rows_sorted:
+        if _row_has_centri_payload(row, col_map):
+            return row
+    return rows_sorted[0]
 
 
 def salva_fatturato_centri(user_id: str, ristorante_id: str, anno: int, mese: int,
@@ -334,8 +378,6 @@ def carica_fatturato_centri_periodo(user_id: str, ristorante_id: str,
         dict: {centro_nome: totale_euro_nel_periodo} o {} se nessun dato
     """
     try:
-        supabase = get_supabase_client()
-        
         anno_start = data_inizio.year
         anno_end = data_fine.year
         
@@ -345,33 +387,15 @@ def carica_fatturato_centri_periodo(user_id: str, ristorante_id: str,
         for a in range(anno_start, anno_end + 1):
             m_from = data_inizio.month if a == anno_start else 1
             m_to = data_fine.month if a == anno_end else 12
-            
-            # NOTA: il vincolo univoco DB è su (ristorante_id, anno, mese),
-            # quindi filtrare per user_id può nascondere record validi in scenari
-            # di ownership/impersonazione senza benefici funzionali.
-            query = supabase.table('margini_mensili') \
-                .eq('ristorante_id', ristorante_id) \
-                .eq('anno', a) \
-                .gte('mese', m_from) \
-                .lte('mese', m_to)
-
-            col_map = _CENTRO_COL_MAP
-            try:
-                response = _select_centri_rows(query, col_map)
-            except Exception as first_exc:
-                col_map = _CENTRO_COL_MAP_LEGACY
-                try:
-                    response = _select_centri_rows(query, col_map)
-                except Exception:
-                    raise first_exc
-            
-            if response.data:
-                for row in response.data:
-                    for centro, col in col_map.items():
-                        val = float(row.get(col, 0) or 0)
-                        if val > 0:
-                            has_data = True
-                        totali[centro] += val
+            for m in range(m_from, m_to + 1):
+                _d_mese = carica_fatturato_centri_mese(user_id, ristorante_id, a, m)
+                if not _d_mese:
+                    continue
+                for centro in _CENTRO_COL_MAP.keys():
+                    val = float(_d_mese.get(centro, 0.0) or 0.0)
+                    if val > 0:
+                        has_data = True
+                    totali[centro] += val
         
         if not has_data:
             return {}
@@ -401,18 +425,27 @@ def carica_fatturato_centri_mese(user_id: str, ristorante_id: str,
 
         col_map = _CENTRO_COL_MAP
         try:
-            response = _select_centri_rows(query, col_map)
+            response = query.select(
+                'fatturato_food,fatturato_beverage,fatturato_bar,fatturato_alcolici,fatturato_dolci,updated_at'
+            ).execute()
         except Exception as first_exc:
             col_map = _CENTRO_COL_MAP_LEGACY
             try:
-                response = _select_centri_rows(query, col_map)
+                response = query.select(
+                    'fatturato_food,fatturato_bar,fatturato_alcolici,fatturato_dolci,updated_at'
+                ).execute()
             except Exception:
                 raise first_exc
         
         if not response.data:
             return {}
-        
-        row = response.data[0]
+
+        if len(response.data) > 1:
+            logger.warning(
+                f"⚠️ Trovate {len(response.data)} righe split centri per {ristorante_id} {anno}/{mese}; selezione deterministica della riga valida piu' recente"
+            )
+
+        row = _pick_best_centri_row(response.data, col_map)
         result, has_data = _row_to_centri_dict(row, col_map)
         
         return result if has_data else {}

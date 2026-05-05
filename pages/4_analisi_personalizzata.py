@@ -174,6 +174,11 @@ def _conversione_quantita_normalizzata(row: pd.Series, fattore_kg: float | None)
     if unita_misura == "CL":
         return quantita / 100, "LT"
 
+    # Fallback per unità a pezzo/confezione (PZ, NR, CF, BT, SC, ecc.)
+    # Usa la quantità grezza come unità intera
+    if quantita > 0:
+        return quantita, "PZ"
+
     return None, None
 
 
@@ -239,12 +244,15 @@ def _compute_kpi(df_tag_periodo: pd.DataFrame) -> dict:
     num_fatture = int(df_tag_periodo["FileOrigine"].nunique())
 
     unita_norm_set = set(df_convertibili["UnitaNorm"].dropna().unique().tolist())
-    if "KG" in unita_norm_set and "LT" not in unita_norm_set:
+    if "KG" in unita_norm_set and "LT" not in unita_norm_set and "PZ" not in unita_norm_set:
         quantita_label = "⚖️ Quantità Totale KG"
         prezzo_label = "💶 Prezzo Medio €/KG"
-    elif "LT" in unita_norm_set and "KG" not in unita_norm_set:
+    elif "LT" in unita_norm_set and "KG" not in unita_norm_set and "PZ" not in unita_norm_set:
         quantita_label = "🧴 Quantità Totale LT"
         prezzo_label = "💶 Prezzo Medio €/LT"
+    elif unita_norm_set == {"PZ"} or ("PZ" in unita_norm_set and "KG" not in unita_norm_set and "LT" not in unita_norm_set):
+        quantita_label = "📦 Quantità Totale (pz)"
+        prezzo_label = "💶 Prezzo Medio €/pz"
     else:
         quantita_label = "⚖️ Quantità Normalizzata"
         prezzo_label = "💶 Prezzo Medio €/unità norm."
@@ -372,20 +380,20 @@ if 'ap_tab_attivo' not in st.session_state:
 col_t1, col_t2, col_t3 = st.columns(3)
 
 with col_t1:
-    if st.button("📊 ANALISI\nTAG", key="ap_btn_panoramica", use_container_width=True,
-                 type="primary" if st.session_state.ap_tab_attivo == "panoramica" else "secondary"):
-        if st.session_state.ap_tab_attivo != "panoramica":
-            st.session_state.ap_tab_attivo = "panoramica"
+    if st.button("🏷️ GESTIONE\nTAG", key="ap_btn_gestione", use_container_width=True,
+                 type="primary" if st.session_state.ap_tab_attivo == "gestione" else "secondary"):
+        if st.session_state.ap_tab_attivo != "gestione":
+            st.session_state.ap_tab_attivo = "gestione"
             st.session_state.pop("ap_excel_bytes", None)
             for _k in [k for k in st.session_state if k.startswith("ap_confirm_delete_")]:
                 st.session_state.pop(_k, None)
             st.rerun()
 
 with col_t2:
-    if st.button("🏷️ GESTIONE\nTAG", key="ap_btn_gestione", use_container_width=True,
-                 type="primary" if st.session_state.ap_tab_attivo == "gestione" else "secondary"):
-        if st.session_state.ap_tab_attivo != "gestione":
-            st.session_state.ap_tab_attivo = "gestione"
+    if st.button("📊 ANALISI\nTAG", key="ap_btn_panoramica", use_container_width=True,
+                 type="primary" if st.session_state.ap_tab_attivo == "panoramica" else "secondary"):
+        if st.session_state.ap_tab_attivo != "panoramica":
+            st.session_state.ap_tab_attivo = "panoramica"
             st.session_state.pop("ap_excel_bytes", None)
             for _k in [k for k in st.session_state if k.startswith("ap_confirm_delete_")]:
                 st.session_state.pop(_k, None)
@@ -628,13 +636,22 @@ if st.session_state.ap_tab_attivo == "panoramica":
                                 df_linea_tag["Var_Perc"] = 0.0
                             df_linea_tag["VarPercLabel"] = df_linea_tag["Var_Perc"].apply(lambda x: f"{x:+.1f}%")
 
+                            x_tickvals = df_linea_tag["Data_DT"].dropna().drop_duplicates().tolist()
+                            y_tickvals = sorted(
+                                {
+                                    round(float(v), 2)
+                                    for v in df_linea_tag["PrezzoTag"].dropna().tolist()
+                                }
+                            )
+                            y_ticktext = [f"€{v:.2f}" for v in y_tickvals]
+
                             fig_prezzo = px.line(
                                 df_linea_tag,
                                 x="Data_DT",
                                 y="PrezzoTag",
                                 markers=True,
                                 title="Andamento prezzo di acquisto del tag nel tempo",
-                                labels={"Data_DT": "", "PrezzoTag": "Prezzo unitario (€)"},
+                                labels={"Data_DT": "", "PrezzoTag": ""},
                                 custom_data=["VarPercLabel"],
                             )
                             fig_prezzo.update_traces(
@@ -647,7 +664,7 @@ if st.session_state.ap_tab_attivo == "panoramica":
                                 line_dash="dash",
                                 line_color="#dc2626",
                                 annotation_text=f"Media periodo €{prezzo_medio_periodo:.2f}",
-                                annotation_position="top left",
+                                annotation_position="top right",
                                 annotation_font=dict(color="#dc2626", size=16, family="Arial Black"),
                             )
                             fig_prezzo.update_layout(
@@ -656,14 +673,20 @@ if st.session_state.ap_tab_attivo == "panoramica":
                                 title=dict(font=dict(size=18, color="#111111", family="Arial Black")),
                                 xaxis=dict(
                                     tickformat="%d/%m/%Y",
-                                    tickfont=dict(size=16, color="#1e40af", family="Arial Black")
+                                    tickmode="array",
+                                    tickvals=x_tickvals,
+                                    tickfont=dict(size=16, color="#000000", family="Arial")
                                 ),
                                 yaxis=dict(
-                                    tickfont=dict(size=16, color="#1e40af", family="Arial Black")
+                                    tickmode="array",
+                                    tickvals=y_tickvals,
+                                    ticktext=y_ticktext,
+                                    tickfont=dict(size=16, color="#000000", family="Arial")
                                 ),
-                                font=dict(size=16, color="#1e40af", family="Arial"),
-                                yaxis_title_font=dict(size=18, color="#1e40af", family="Arial Black"),
-                                xaxis_title_font=dict(size=18, color="#1e40af", family="Arial Black"),
+                                font=dict(size=16, color="#000000", family="Arial"),
+                                yaxis_title="",
+                                yaxis_title_font=dict(size=18, color="#000000", family="Arial"),
+                                xaxis_title_font=dict(size=18, color="#000000", family="Arial"),
                                 showlegend=False,
                             )
                             st.plotly_chart(
