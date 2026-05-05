@@ -274,11 +274,12 @@ def _parse_updated_at(value):
 
 
 def _row_has_centri_payload(row: dict, col_map: dict) -> bool:
-    """True se la riga contiene almeno un valore centro valorizzato (anche 0)."""
+    """True se la riga contiene almeno un valore centro > 0 (dati reali, non solo il DEFAULT 0 del DB)."""
     for centro, col in col_map.items():
-        if row.get(col, None) is not None:
-            return True
-        if centro == "BEVERAGE" and row.get("fatturato_bar", None) is not None:
+        val = row.get(col, None)
+        if centro == "BEVERAGE" and val is None:
+            val = row.get("fatturato_bar", None)
+        if val is not None and float(val or 0) > 0:
             return True
     return False
 
@@ -417,21 +418,23 @@ def carica_fatturato_centri_mese(user_id: str, ristorante_id: str,
     """
     try:
         supabase = get_supabase_client()
-        
-        query = supabase.table('margini_mensili') \
-            .eq('ristorante_id', ristorante_id) \
-            .eq('anno', anno) \
-            .eq('mese', mese)
+
+        def _build_query(cols: str):
+            return supabase.table('margini_mensili') \
+                .select(cols) \
+                .eq('ristorante_id', ristorante_id) \
+                .eq('anno', anno) \
+                .eq('mese', mese)
 
         col_map = _CENTRO_COL_MAP
         try:
-            response = query.select(
-                'fatturato_food,fatturato_beverage,fatturato_bar,fatturato_alcolici,fatturato_dolci,updated_at'
+            response = _build_query(
+                'fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci,updated_at'
             ).execute()
         except Exception as first_exc:
             col_map = _CENTRO_COL_MAP_LEGACY
             try:
-                response = query.select(
+                response = _build_query(
                     'fatturato_food,fatturato_bar,fatturato_alcolici,fatturato_dolci,updated_at'
                 ).execute()
             except Exception:
@@ -447,7 +450,6 @@ def carica_fatturato_centri_mese(user_id: str, ristorante_id: str,
 
         row = _pick_best_centri_row(response.data, col_map)
         result, has_data = _row_to_centri_dict(row, col_map)
-        
         return result if has_data else {}
         
     except Exception as e:
@@ -480,10 +482,43 @@ def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
             logger.error(f"dfrisultati ha solo {len(df_risultati)} righe, attese 12")
             return False
 
+        # PRESERVA centri di costo: rileggi i valori esistenti per ogni mese
+        # PRIMA dell'upsert e re-includili nei record. Il bulk-upsert di
+        # postgrest costruisce il param `columns=` come UNIONE delle chiavi
+        # presenti in TUTTI i 12 record: se anche solo 1 mese ha
+        # fatturato_food=X, allora `fatturato_food` finisce nel SET dell'UPDATE
+        # ON CONFLICT e gli altri 11 mesi (privi di quella chiave)
+        # ricevono NULL → cancellazione dei dati centri salvati prima.
+        # Soluzione robusta: includere SEMPRE le 4 colonne centri in TUTTI i
+        # 12 record, leggendo i valori correnti dal DB.
+        existing_centri_per_mese = {}
+        centri_cols_present = True
+        try:
+            resp = supabase.table('margini_mensili') \
+                .select('mese,fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci') \
+                .eq('ristorante_id', ristorante_id) \
+                .eq('anno', anno) \
+                .execute()
+            for row in (resp.data or []):
+                existing_centri_per_mese[int(row['mese'])] = row
+        except Exception as exc_centri:
+            # Schema legacy (fatturato_bar) o errore colonna: ritenta con map legacy
+            try:
+                resp = supabase.table('margini_mensili') \
+                    .select('mese,fatturato_food,fatturato_bar,fatturato_alcolici,fatturato_dolci') \
+                    .eq('ristorante_id', ristorante_id) \
+                    .eq('anno', anno) \
+                    .execute()
+                for row in (resp.data or []):
+                    existing_centri_per_mese[int(row['mese'])] = row
+                centri_cols_present = False  # usa schema legacy
+            except Exception:
+                logger.warning(f"⚠️ Impossibile rileggere centri prima del salva_margini_anno: {exc_centri}")
+                centri_cols_present = None  # non includere colonne centri
+
         for i in range(12):
             mese_num = i + 1
-            
-            records.append({
+            rec = {
                 'user_id': user_id,
                 'ristorante_id': ristorante_id,
                 'anno': anno,
@@ -508,7 +543,23 @@ def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
                 'personale_perc': float(df_risultati.at[i, 'Pers_Perc']),
                 'mol_perc': float(df_risultati.at[i, 'MOL_Perc']),
                 'updated_at': datetime.now(timezone.utc).isoformat()
-            })
+            }
+
+            # Re-includi SEMPRE le colonne centri (con valore esistente o 0)
+            # in TUTTI i 12 record per evitare che il bulk-upsert le azzeri.
+            existing = existing_centri_per_mese.get(mese_num, {})
+            if centri_cols_present is True:
+                rec['fatturato_food'] = float(existing.get('fatturato_food') or 0)
+                rec['fatturato_beverage'] = float(existing.get('fatturato_beverage') or 0)
+                rec['fatturato_alcolici'] = float(existing.get('fatturato_alcolici') or 0)
+                rec['fatturato_dolci'] = float(existing.get('fatturato_dolci') or 0)
+            elif centri_cols_present is False:
+                rec['fatturato_food'] = float(existing.get('fatturato_food') or 0)
+                rec['fatturato_bar'] = float(existing.get('fatturato_bar') or 0)
+                rec['fatturato_alcolici'] = float(existing.get('fatturato_alcolici') or 0)
+                rec['fatturato_dolci'] = float(existing.get('fatturato_dolci') or 0)
+
+            records.append(rec)
         
         # Upsert atomico su constraint UNIQUE(ristorante_id, anno, mese)
         supabase.table('margini_mensili') \

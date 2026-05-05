@@ -1,8 +1,8 @@
 ﻿#  OH YEAH! Hub - Gestione Costi Ristorante
 
-**Versione:** 4.0  
+**Versione:** 4.1  
 **Status:**  Produzione  
-**Ultimo aggiornamento:** Marzo 2026
+**Ultimo aggiornamento:** Maggio 2026
 
 ---
 
@@ -19,12 +19,17 @@ Analizza fatture elettroniche (XML, P7M, PDF), categorizza i prodotti con intell
 - Ricezione automatica fatture SDI via Invoicetronic
 - Categorizzazione prodotti con AI (OpenAI GPT-4o-mini)
 - Dashboard margini mensili (Food, Beverage, Spese Generali)
-- Confronto prezzi fornitori
+- Confronto prezzi fornitori con alert configurabili per soglia
 - Gestione multi-ristorante
 - Sistema autenticazione sicuro (Argon2, sessioni con scadenza 30 giorni)
 - Pannello amministratore per gestione clienti
 - Recupero password via email
 - Diario note per ristorante
+- Sistema trial utenti con scadenza e gestione pagine abilitate
+- Custom tag per classificazione manuale fatture
+- Soft delete fatture con retention status
+- Data competenza fattura separata dalla data documento
+- Cache versioning per invalidazione coerente lato client
 - Privacy Policy e Termini di Servizio integrati
 
 ---
@@ -97,7 +102,7 @@ Su Windows il lockfile esclude automaticamente uvloop, che non e' supportato dal
 python -m pytest tests/ -v
 ```
 
-330 test automatici.
+557 test automatici.
 
 ---
 

@@ -847,6 +847,50 @@ class TestMargineServiceDB:
         }
 
     @patch("services.margine_service.get_supabase_client")
+    def test_carica_fatturato_centri_mese_chiama_select_prima_di_eq(self, mock_get_client):
+        """
+        Regression: postgrest SyncRequestBuilder NON espone .eq() direttamente,
+        si DEVE chiamare .select() prima. Se la chain è invertita, in produzione
+        viene sollevato AttributeError → silenziato da except → ritorna {} anche
+        quando i dati esistono. Questo test mocka il vero contratto del client.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        # Builder restituito da .select(): qui .eq() è disponibile
+        select_builder = MagicMock()
+        select_builder.eq.return_value = select_builder
+        select_builder.execute.return_value = SimpleNamespace(data=[{
+            "fatturato_food": 1000.0,
+            "fatturato_beverage": 200.0,
+            "fatturato_alcolici": 0,
+            "fatturato_dolci": 0,
+            "updated_at": "2026-01-31T10:00:00Z",
+        }])
+
+        # Builder restituito da .table(): solo select/insert/update/upsert/delete,
+        # NIENTE .eq() (riproduce il vero SyncRequestBuilder)
+        table_builder = MagicMock(spec=["select", "insert", "update", "upsert", "delete"])
+        table_builder.select.return_value = select_builder
+        mock_client.table.return_value = table_builder
+
+        result = carica_fatturato_centri_mese(
+            user_id="test-uuid",
+            ristorante_id="rist-test",
+            anno=2026,
+            mese=1,
+        )
+
+        assert result == {
+            "FOOD": 1000.0,
+            "BEVERAGE": 200.0,
+            "ALCOLICI": 0.0,
+            "DOLCI": 0.0,
+        }
+        table_builder.select.assert_called()
+        select_builder.eq.assert_called()
+
+    @patch("services.margine_service.get_supabase_client")
     def test_carica_fatturato_centri_mese_duplica_riga_vuota_e_tiene_quella_con_dati(self, mock_get_client):
         """
         Se esistono piu' righe stesso mese, ignora la riga recente senza payload
@@ -855,13 +899,15 @@ class TestMargineServiceDB:
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 
+        # La riga recente è stata inserita da salva_margini_anno (senza centri):
+        # le colonne centri hanno il DEFAULT 0 del DB, NON None.
         query = _build_query_mock(execute_data=[
             {
-                "fatturato_food": None,
-                "fatturato_beverage": None,
-                "fatturato_bar": None,
-                "fatturato_alcolici": None,
-                "fatturato_dolci": None,
+                "fatturato_food": 0,
+                "fatturato_beverage": 0,
+                "fatturato_bar": 0,
+                "fatturato_alcolici": 0,
+                "fatturato_dolci": 0,
                 "updated_at": "2026-05-05T10:00:00Z",
             },
             {

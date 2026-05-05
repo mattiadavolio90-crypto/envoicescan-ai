@@ -413,7 +413,6 @@ if st.session_state.margine_tab == "analisi":
             _dati_mese_db = carica_fatturato_centri_mese(
                 user_id, current_ristorante, _anno_sel_split, _mese_sel_split
             )
-
             # Fallback UX: se il DB non ha ancora restituito i valori appena salvati,
             # usa l'ultimo split salvato in sessione (stesso ristorante/anno/mese).
             _last_saved_split = st.session_state.get("aa_split_last_saved")
