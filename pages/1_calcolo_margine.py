@@ -30,7 +30,6 @@ from services.margine_service import (
     build_transposed_df,
     carica_costi_per_categoria,
     salva_fatturato_centri,
-    carica_fatturato_centri_periodo,
     carica_fatturato_centri_mese,
     MESI_NOMI,
 )
@@ -325,11 +324,25 @@ if st.session_state.margine_tab == "analisi":
         }
         _icone = icone_centri  # alias per retrocompatibilità
 
-        # Carica dati dal DB aggregati per il periodo selezionato
-        fatturato_per_centro_db = carica_fatturato_centri_periodo(
-            user_id, current_ristorante, data_inizio_aa, data_fine_aa
-        )
-        fatturato_split_attivo = len(fatturato_per_centro_db) > 0
+        # Aggregazione deterministica mese-per-mese nel range selezionato.
+        # Evita mismatch tra endpoint "periodo" e rendering tabella: la colonna
+        # Fatturato per centro usa sempre gli stessi dati realmente salvati per mese.
+        fatturato_per_centro_db = {c: 0.0 for c in _centri_con_fatturato}
+        _split_has_data = False
+        for a in range(data_inizio_aa.year, data_fine_aa.year + 1):
+            m_from = data_inizio_aa.month if a == data_inizio_aa.year else 1
+            m_to = data_fine_aa.month if a == data_fine_aa.year else 12
+            for m in range(m_from, m_to + 1):
+                _d_mese = carica_fatturato_centri_mese(user_id, current_ristorante, a, m)
+                if not _d_mese:
+                    continue
+                for c in _centri_con_fatturato:
+                    _v = float(_d_mese.get(c, 0.0) or 0.0)
+                    fatturato_per_centro_db[c] += _v
+                    if _v > 0:
+                        _split_has_data = True
+
+        fatturato_split_attivo = _split_has_data
         fatturato_per_centro = fatturato_per_centro_db if fatturato_split_attivo else {}
         fatturato_totale_split = sum(fatturato_per_centro.values()) if fatturato_per_centro else 0.0
 
@@ -400,6 +413,32 @@ if st.session_state.margine_tab == "analisi":
             _dati_mese_db = carica_fatturato_centri_mese(
                 user_id, current_ristorante, _anno_sel_split, _mese_sel_split
             )
+
+            # Fallback UX: se il DB non ha ancora restituito i valori appena salvati,
+            # usa l'ultimo split salvato in sessione (stesso ristorante/anno/mese).
+            _last_saved_split = st.session_state.get("aa_split_last_saved")
+            if (not _dati_mese_db) and _last_saved_split:
+                _is_same_target = (
+                    _last_saved_split.get("ristorante_id") == current_ristorante and
+                    int(_last_saved_split.get("anno", -1)) == int(_anno_sel_split) and
+                    int(_last_saved_split.get("mese", -1)) == int(_mese_sel_split)
+                )
+                if _is_same_target:
+                    _dati_mese_db = {
+                        c: float(_last_saved_split.get("split", {}).get(c, 0.0) or 0.0)
+                        for c in _centri_con_fatturato
+                    }
+
+            # Se il periodo non ha split aggregato ma il mese selezionato ha valori,
+            # popola comunque la tabella per mostrare subito la suddivisione per centro.
+            if (not fatturato_split_attivo) and _dati_mese_db:
+                _mese_tot = sum(float(_dati_mese_db.get(c, 0.0) or 0.0) for c in _centri_con_fatturato)
+                if _mese_tot > 0:
+                    fatturato_per_centro = {
+                        c: float(_dati_mese_db.get(c, 0.0) or 0.0) for c in _centri_con_fatturato
+                    }
+                    fatturato_totale_split = _mese_tot
+                    fatturato_split_attivo = True
 
             # Fatturato netto del mese selezionato (dal tab calcolo)
             _dati_margini_mese = carica_margini_anno(user_id, current_ristorante, _anno_sel_split)
@@ -482,17 +521,28 @@ if st.session_state.margine_tab == "analisi":
                 color_tot = "#16a34a" if is_valid else "#dc2626"
                 st.markdown(f'<p style="font-weight:600;color:{color_tot};font-size:0.95rem;">Totale: {label_tot} {"✅" if is_valid else "❌ Il totale non corrisponde"}</p>', unsafe_allow_html=True)
 
+            _split_save_disabled = not (is_valid and totale_inserito > 0)
+            if modo_split == "% Percentuale" and _fatt_netto_mese <= 0:
+                _split_save_disabled = True
+                st.info("ℹ️ In modalità % è necessario avere un Fatturato Netto del mese > 0 nel tab Calcolo Ricavi-Costi-Margini.")
+
             # --- Bottoni ---
             col_btn_split, col_btn_reset, _col_split_empty = st.columns([1, 1, 4])
             with col_btn_split:
                 if st.button("💾 Salva mese", use_container_width=True, key="aa_applica_split",
-                             disabled=not (is_valid and totale_inserito > 0)):
+                             disabled=_split_save_disabled):
                     if modo_split == "% Percentuale":
                         _euro_da_salvare = {c: _fatt_netto_mese * v / 100.0 for c, v in _valori_inseriti.items()}
                     else:
                         _euro_da_salvare = _valori_inseriti.copy()
                     ok = salva_fatturato_centri(user_id, current_ristorante, _anno_sel_split, _mese_sel_split, _euro_da_salvare)
                     if ok:
+                        st.session_state["aa_split_last_saved"] = {
+                            "ristorante_id": current_ristorante,
+                            "anno": _anno_sel_split,
+                            "mese": _mese_sel_split,
+                            "split": {c: float(_euro_da_salvare.get(c, 0.0) or 0.0) for c in _centri_con_fatturato}
+                        }
                         st.success(f"✅ Fatturato centri salvato per {mese_label_sel}")
                         time.sleep(0.5)
                         st.rerun()
@@ -502,6 +552,12 @@ if st.session_state.margine_tab == "analisi":
                 if st.button("🗑️ Azzera mese", use_container_width=True, key="aa_reset_split"):
                     salva_fatturato_centri(user_id, current_ristorante, _anno_sel_split, _mese_sel_split,
                                            {c: 0.0 for c in _centri_con_fatturato})
+                    st.session_state["aa_split_last_saved"] = {
+                        "ristorante_id": current_ristorante,
+                        "anno": _anno_sel_split,
+                        "mese": _mese_sel_split,
+                        "split": {c: 0.0 for c in _centri_con_fatturato}
+                    }
                     st.rerun()
 
             # Mostra riepilogo mesi già compilati nel periodo

@@ -291,10 +291,9 @@ def salva_fatturato_centri(user_id: str, ristorante_id: str, anno: int, mese: in
             supabase.table('margini_mensili') \
                 .upsert(record, on_conflict='ristorante_id,anno,mese') \
                 .execute()
-        except Exception as e:
-            if not _is_missing_beverage_column_error(e):
-                raise
-
+        except Exception as first_exc:
+            # Fallback robusto: tenta sempre schema legacy (fatturato_bar)
+            # anche quando il testo errore non matcha perfettamente.
             legacy_record = {
                 'user_id': user_id,
                 'ristorante_id': ristorante_id,
@@ -305,9 +304,12 @@ def salva_fatturato_centri(user_id: str, ristorante_id: str, anno: int, mese: in
             for centro, col in _CENTRO_COL_MAP_LEGACY.items():
                 legacy_record[col] = _split_value_for_centro(split_euro, centro)
 
-            supabase.table('margini_mensili') \
-                .upsert(legacy_record, on_conflict='ristorante_id,anno,mese') \
-                .execute()
+            try:
+                supabase.table('margini_mensili') \
+                    .upsert(legacy_record, on_conflict='ristorante_id,anno,mese') \
+                    .execute()
+            except Exception:
+                raise first_exc
         
         logger.info(f"✅ Salvato fatturato centri per {anno}/{mese}")
         return True
@@ -344,8 +346,10 @@ def carica_fatturato_centri_periodo(user_id: str, ristorante_id: str,
             m_from = data_inizio.month if a == anno_start else 1
             m_to = data_fine.month if a == anno_end else 12
             
+            # NOTA: il vincolo univoco DB è su (ristorante_id, anno, mese),
+            # quindi filtrare per user_id può nascondere record validi in scenari
+            # di ownership/impersonazione senza benefici funzionali.
             query = supabase.table('margini_mensili') \
-                .eq('user_id', user_id) \
                 .eq('ristorante_id', ristorante_id) \
                 .eq('anno', a) \
                 .gte('mese', m_from) \
@@ -354,11 +358,12 @@ def carica_fatturato_centri_periodo(user_id: str, ristorante_id: str,
             col_map = _CENTRO_COL_MAP
             try:
                 response = _select_centri_rows(query, col_map)
-            except Exception as e:
-                if not _is_missing_beverage_column_error(e):
-                    raise
+            except Exception as first_exc:
                 col_map = _CENTRO_COL_MAP_LEGACY
-                response = _select_centri_rows(query, col_map)
+                try:
+                    response = _select_centri_rows(query, col_map)
+                except Exception:
+                    raise first_exc
             
             if response.data:
                 for row in response.data:
@@ -390,7 +395,6 @@ def carica_fatturato_centri_mese(user_id: str, ristorante_id: str,
         supabase = get_supabase_client()
         
         query = supabase.table('margini_mensili') \
-            .eq('user_id', user_id) \
             .eq('ristorante_id', ristorante_id) \
             .eq('anno', anno) \
             .eq('mese', mese)
@@ -398,11 +402,12 @@ def carica_fatturato_centri_mese(user_id: str, ristorante_id: str,
         col_map = _CENTRO_COL_MAP
         try:
             response = _select_centri_rows(query, col_map)
-        except Exception as e:
-            if not _is_missing_beverage_column_error(e):
-                raise
+        except Exception as first_exc:
             col_map = _CENTRO_COL_MAP_LEGACY
-            response = _select_centri_rows(query, col_map)
+            try:
+                response = _select_centri_rows(query, col_map)
+            except Exception:
+                raise first_exc
         
         if not response.data:
             return {}
