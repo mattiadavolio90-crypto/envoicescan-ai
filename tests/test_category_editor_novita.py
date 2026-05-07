@@ -66,6 +66,32 @@ def test_resolve_novita_badge_matches_invoicetronic_files_even_with_p7m_suffix()
     assert _resolve_novita_badge('fattura_123.xml', '2026-04-10T10:00:00+00:00', '2026-04-18T20:00:00+00:00', recent_files) == '🆕 Nuova'
 
 
+def test_resolve_novita_badge_marks_alert_for_generic_td04_in_review():
+    result = _resolve_novita_badge(
+        'fattura.xml',
+        '2026-04-19T10:00:00+00:00',
+        '2026-04-18T20:00:00+00:00',
+        set(),
+        True,
+        'TD04',
+        'RIGA FATTURA',
+    )
+    assert result == '🚨 ALERT'
+
+
+def test_resolve_novita_badge_alert_has_priority_over_nuova():
+    result = _resolve_novita_badge(
+        'fattura_nuova.xml',
+        '2026-04-19T10:00:00+00:00',
+        '2026-04-18T20:00:00+00:00',
+        {'fattura_nuova.xml'},
+        True,
+        'TD04',
+        'NOTA CREDITO',
+    )
+    assert result == '🚨 ALERT'
+
+
 def test_sort_detail_rows_prefers_created_at_desc_and_fallbacks_to_data_documento():
     df = pd.DataFrame([
         {'Descrizione': 'B', 'CreatedAt': '2026-04-19T09:00:00+00:00', 'DataDocumento': '2026-04-10'},

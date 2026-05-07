@@ -62,7 +62,7 @@ from utils.validation import (
 
 # Logger centralizzato
 from config.logger_setup import get_logger
-from config.constants import MAX_FILE_SIZE_P7M, VISION_DAILY_LIMIT, CATEGORIE_FOOD_BEVERAGE
+from config.constants import MAX_FILE_SIZE_P7M, VISION_DAILY_LIMIT, CATEGORIE_FOOD_BEVERAGE, FORNITORI_NEEDS_REVIEW_SEMPRE
 logger = get_logger('invoice')
 
 
@@ -941,10 +941,21 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     categoria_finale = str(special_row['force_categoria'])
 
                 needs_review = bool(special_row['should_review'])
-                if categoria_finale == "📝 NOTE E DICITURE" and prezzo_unitario > 0:
-                    # BUG3 FIX: remap categoria nel DB oltre a settare needs_review.
-                    # Senza questo, il DB salva DICITURA mentre l'app mostra SERVIZI E CONSULENZE
-                    # (il guardrail a runtime correggeva il display ma non il record).
+
+                # FORNITORE NEEDS_REVIEW: fornitore mono-categoria con possibile diversificazione futura.
+                # L'AI classifica normalmente, ma la riga finisce sempre in revisione manuale.
+                if fornitore and any(
+                    fnr.upper() in fornitore.upper()
+                    for fnr in FORNITORI_NEEDS_REVIEW_SEMPRE
+                ):
+                    needs_review = True
+                    logger.info(
+                        f"🔍 NEEDS_REVIEW (fornitore sorvegliato): '{fornitore}' → needs_review=True, cat={categoria_finale}"
+                    )
+
+                if categoria_finale == "📝 NOTE E DICITURE" and prezzo_unitario != 0:
+                    # GUARDRAIL: NOTE E DICITURE consentita solo per righe a importo zero.
+                    # Esteso a importi negativi (oltre ai positivi già coperti) per coerenza.
                     needs_review = True
                     categoria_finale = "SERVIZI E CONSULENZE"
                     logger.warning(

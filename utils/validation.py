@@ -78,6 +78,20 @@ _STORNO_KEYWORDS = (
     'PREMIO POSTICIPATO',
 )
 
+# Descrizioni placeholder usate da alcuni fornitori (es. METRO) nelle note di credito TD04
+# quando non disaggregano le righe. Non classificabili per merceologia:
+# vanno sempre in needs_review per revisione manuale.
+_NC_GENERIC_DESCRIPTIONS = {
+    'RIGA FATTURA',
+    'STORNO FATTURA',
+    'NOTA DI CREDITO',
+    'NOTA CREDITO',
+    'NC',
+    'N/C',
+    'ACCREDITO FATTURA',
+    'ACCREDITO',
+}
+
 
 def _contains_any(text: str, keywords: tuple[str, ...]) -> bool:
     return any(keyword in text for keyword in keywords)
@@ -153,12 +167,18 @@ def classify_special_row(
         else:
             bucket = SPECIAL_ROW_NORMALE
 
+    # NC con descrizione generica/placeholder (es. TD04 METRO "RIGA FATTURA"):
+    # non classificabile per merceologia, sempre in revisione manuale.
+    is_nc_generic = tipo_documento == 'TD04' and desc_upper in _NC_GENERIC_DESCRIPTIONS
+    if is_nc_generic:
+        logger.info(f"⚠️ NC_GENERIC: TD04 con descrizione placeholder '{descrizione}' → needs_review=True")
+
     return {
         'bucket': bucket,
         'is_special': bucket != SPECIAL_ROW_NORMALE,
         'include_in_dashboard': bucket in {SPECIAL_ROW_NORMALE, SPECIAL_ROW_SCONTO_OMAGGIO},
         'include_in_price_average': bucket in {SPECIAL_ROW_NORMALE, SPECIAL_ROW_SCONTO_OMAGGIO},
-        'should_review': bool(needs_review) or bucket == SPECIAL_ROW_DA_VERIFICARE,
+        'should_review': bool(needs_review) or bucket == SPECIAL_ROW_DA_VERIFICARE or is_nc_generic,
         'force_categoria': '📝 NOTE E DICITURE' if bucket == SPECIAL_ROW_DICITURA else None,
     }
 

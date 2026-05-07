@@ -229,6 +229,13 @@ FORNITORI_SPESE_GENERALI_KEYWORDS = [
 ]
 
 
+# Fornitori che l'AI classifica normalmente, ma ogni riga viene flaggata con
+# needs_review=True per revisione manuale. Usare per fornitori con assortimento
+# tipicamente mono-categoria ma con rischio di diversificazione futura.
+FORNITORI_NEEDS_REVIEW_SEMPRE = [
+    'CASIMIROLAB',   # Gelati/dessert pronti — mono-categoria confermata, revisione per sicurezza
+]
+
 # Fornitori utility/telecom/energia da forzare sempre in UTENZE E LOCALI.
 # Usati come hard override a livello fornitore in ai_service.
 FORNITORI_UTENZE_SEMPRE = [

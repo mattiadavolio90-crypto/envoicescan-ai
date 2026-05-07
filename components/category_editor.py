@@ -67,8 +67,37 @@ def _compute_novita_badge(created_at_value, login_reference_value) -> str:
     return '🆕 Nuova' if created_ts > login_ts else ''
 
 
-def _resolve_novita_badge(file_origine_value, created_at_value, login_reference_value, recent_file_origini=None) -> str:
-    """Mostra il badge sui file recenti (manuali o Invoicetronic) anche se cambia l'estensione/nome base."""
+def _resolve_novita_badge(
+    file_origine_value,
+    created_at_value,
+    login_reference_value,
+    recent_file_origini=None,
+    needs_review_value=False,
+    tipo_documento_value='',
+    descrizione_value='',
+) -> str:
+    """Mostra un badge di stato nel dettaglio articoli.
+
+    Priorita:
+    1) 🚨 ALERT per NC generiche (TD04 + needs_review)
+    2) 🆕 Nuova per file/righe recenti
+    """
+    _nc_generic_descriptions = {
+        'RIGA FATTURA',
+        'STORNO FATTURA',
+        'NOTA DI CREDITO',
+        'NOTA CREDITO',
+        'NC',
+        'N/C',
+        'ACCREDITO FATTURA',
+        'ACCREDITO',
+    }
+
+    tipo_documento = str(tipo_documento_value or '').strip().upper()
+    descrizione = str(descrizione_value or '').strip().upper()
+    if bool(needs_review_value) and tipo_documento == 'TD04' and descrizione in _nc_generic_descriptions:
+        return '🚨 ALERT'
+
     recent_files = set()
     for fname in (recent_file_origini or set()):
         fname_str = str(fname).strip()
@@ -403,23 +432,18 @@ def render_category_editor(df_completo_filtrato, supabase):
         if str(fname).strip()
     )
 
-    if 'CreatedAt' in df_editor.columns:
-        if 'FileOrigine' in df_editor.columns:
-            df_editor['Novità'] = df_editor.apply(
-                lambda row: _resolve_novita_badge(
-                    row.get('FileOrigine'),
-                    row.get('CreatedAt'),
-                    _novita_reference,
-                    _recent_file_origini,
-                ),
-                axis=1,
-            )
-        else:
-            df_editor['Novità'] = df_editor['CreatedAt'].apply(
-                lambda value: _compute_novita_badge(value, _novita_reference)
-            )
-    else:
-        df_editor['Novità'] = ''
+    df_editor['Novità'] = df_base.apply(
+        lambda row: _resolve_novita_badge(
+            row.get('FileOrigine'),
+            row.get('CreatedAt'),
+            _novita_reference,
+            _recent_file_origini,
+            row.get('NeedsReview', row.get('needs_review', False)),
+            row.get('TipoDocumento', ''),
+            row.get('Descrizione', ''),
+        ),
+        axis=1,
+    )
     
     # 🧪 TEST AGGREGAZIONE (diagnostico - zero impatto UI)
     if 'Descrizione' in df_editor.columns:
@@ -1119,7 +1143,7 @@ def render_category_editor(df_completo_filtrato, supabase):
 
                         for start in range(0, len(descrizioni), 100):
                             chunk_descrizioni = descrizioni[start:start + 100]
-                            query_batch = supabase.table("fatture").update({"categoria": nuova_cat}).eq(
+                            query_batch = supabase.table("fatture").update({"categoria": nuova_cat, "needs_review": False}).eq(
                                 "user_id", user_id
                             ).in_(
                                 "descrizione", chunk_descrizioni
@@ -1143,7 +1167,7 @@ def render_category_editor(df_completo_filtrato, supabase):
                                 righe_aggiornate = 0
 
                                 if descrizione and str(descrizione).strip() != str(descrizione):
-                                    query_update_trim = supabase.table("fatture").update({"categoria": nuova_cat}).eq(
+                                    query_update_trim = supabase.table("fatture").update({"categoria": nuova_cat, "needs_review": False}).eq(
                                         "user_id", user_id
                                     ).eq(
                                         "descrizione", str(descrizione).strip()
@@ -1154,7 +1178,7 @@ def render_category_editor(df_completo_filtrato, supabase):
                                         righe_aggiornate = len(result_trim.data)
 
                                 if righe_aggiornate == 0 and descrizione and str(descrizione).strip():
-                                    query_update_ilike = supabase.table("fatture").update({"categoria": nuova_cat}).eq(
+                                    query_update_ilike = supabase.table("fatture").update({"categoria": nuova_cat, "needs_review": False}).eq(
                                         "user_id", user_id
                                     ).ilike(
                                         "descrizione", str(descrizione).strip()
@@ -1166,7 +1190,7 @@ def render_category_editor(df_completo_filtrato, supabase):
 
                                 if righe_aggiornate == 0 and f_name and riga_idx is not None:
                                     ristorante_id = st.session_state.get('ristorante_id')
-                                    query_update_fallback = supabase.table("fatture").update({"categoria": nuova_cat}).eq(
+                                    query_update_fallback = supabase.table("fatture").update({"categoria": nuova_cat, "needs_review": False}).eq(
                                         "user_id", user_id
                                     ).eq(
                                         "file_origine", f_name

@@ -2825,7 +2825,7 @@ def _applica_guardrail_note_con_importo(
     categoria: str,
     prezzo: float,
 ) -> str:
-    """NOTE E DICITURE e' consentita solo per righe a importo non positivo."""
+    """NOTE E DICITURE e' consentita solo per righe a importo zero."""
     categoria_norm = _normalize_category_name(categoria) or categoria
     if categoria_norm not in {"📝 NOTE E DICITURE", "NOTE E DICITURE"}:
         return categoria_norm
@@ -2835,10 +2835,12 @@ def _applica_guardrail_note_con_importo(
     except (TypeError, ValueError):
         return "📝 NOTE E DICITURE"
 
-    if prezzo_val > 0:
+    if prezzo_val != 0:
+        label = "importo positivo" if prezzo_val > 0 else "importo negativo"
         logger.info(
-            "🛡️ GUARDRAIL NOTE: '%s' con importo positivo (%.2f) non puo' restare in NOTE E DICITURE -> SERVIZI E CONSULENZE",
+            "🛡️ GUARDRAIL NOTE: '%s' con %s (%.2f) non puo' restare in NOTE E DICITURE -> SERVIZI E CONSULENZE",
             str(descrizione or "")[:60],
+            label,
             prezzo_val,
         )
         return "SERVIZI E CONSULENZE"
