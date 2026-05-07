@@ -1184,6 +1184,7 @@ if st.session_state.margine_tab == "centri":
                 # Report
                 st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
                 st.markdown("### 🏭 Spesa per Centro di Costo mensile")
+                st.markdown("<div style='margin-bottom: 0.75rem;'></div>", unsafe_allow_html=True)
 
                 # Costruisci display DataFrame
                 mesi_cols = [c for c in pivot.columns if c not in ['TOTALE', 'MEDIA']]
