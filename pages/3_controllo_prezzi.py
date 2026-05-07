@@ -148,57 +148,54 @@ st.session_state.cp_periodo_dropdown = periodo_selezionato
 data_inizio_filtro, data_fine_filtro, label_periodo = risolvi_periodo(periodo_selezionato, date_periodo)
 
 if data_inizio_filtro is None:
-    # Periodo Personalizzato
-    st.markdown("##### Seleziona Range Date")
-    col_da, col_a = st.columns(2)
-
+    # inizializza session state se necessario (picker renderizzato sotto)
     if 'cp_data_inizio' not in st.session_state:
         st.session_state.cp_data_inizio = inizio_anno
     if 'cp_data_fine' not in st.session_state:
         st.session_state.cp_data_fine = oggi_date
 
-    with col_da:
-        data_inizio_custom = st.date_input(
-            "📅 Da",
-            value=st.session_state.cp_data_inizio,
-            min_value=inizio_anno,
-            key="cp_data_da_custom"
-        )
-
-    with col_a:
-        data_fine_custom = st.date_input(
-            "📅 A",
-            value=st.session_state.cp_data_fine,
-            min_value=inizio_anno,
-            key="cp_data_a_custom"
-        )
-
-    if data_inizio_custom > data_fine_custom:
-        st.error("⚠️ La data iniziale deve essere precedente alla data finale!")
-        data_inizio_filtro = st.session_state.cp_data_inizio
-        data_fine_filtro = st.session_state.cp_data_fine
-    else:
-        st.session_state.cp_data_inizio = data_inizio_custom
-        st.session_state.cp_data_fine = data_fine_custom
-        data_inizio_filtro = data_inizio_custom
-        data_fine_filtro = data_fine_custom
-
-    label_periodo = f"{data_inizio_filtro.strftime('%d/%m/%Y')} → {data_fine_filtro.strftime('%d/%m/%Y')}"
-
 with col_info_periodo:
-    st.markdown(f"""
-    <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
-                padding: 10px 16px;
-                border-radius: 8px;
-                border: 1px solid #93c5fd;
-                color: #1e3a8a;
-                font-size: clamp(0.78rem, 1.8vw, 0.88rem);
-                font-weight: 500;
-                line-height: 1.5;
-                margin-top: 0px;">
-        📊 {label_periodo}
-    </div>
-    """, unsafe_allow_html=True)
+    if data_inizio_filtro is None:
+        # Periodo Personalizzato: range picker inline
+        _col_range, _col_empty = st.columns([1.2, 1.8])
+        with _col_range:
+            _range = st.date_input(
+                "Periodo",
+                value=(st.session_state.cp_data_inizio, st.session_state.cp_data_fine),
+                min_value=inizio_anno,
+                format="DD/MM/YYYY",
+                key="cp_data_range_custom",
+                label_visibility="collapsed",
+            )
+        if isinstance(_range, (list, tuple)) and len(_range) == 2:
+            data_inizio_custom, data_fine_custom = _range[0], _range[1]
+            if data_inizio_custom > data_fine_custom:
+                st.error("⚠️ La data iniziale deve essere precedente alla data finale.")
+                data_inizio_filtro = st.session_state.cp_data_inizio
+                data_fine_filtro = st.session_state.cp_data_fine
+            else:
+                st.session_state.cp_data_inizio = data_inizio_custom
+                st.session_state.cp_data_fine = data_fine_custom
+                data_inizio_filtro = data_inizio_custom
+                data_fine_filtro = data_fine_custom
+        else:
+            data_inizio_filtro = st.session_state.cp_data_inizio
+            data_fine_filtro = st.session_state.cp_data_fine
+        label_periodo = f"{data_inizio_filtro.strftime('%d/%m/%Y')} → {data_fine_filtro.strftime('%d/%m/%Y')}"
+    else:
+        st.markdown(f"""
+        <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%);
+                    padding: 10px 16px;
+                    border-radius: 8px;
+                    border: 1px solid #93c5fd;
+                    color: #1e3a8a;
+                    font-size: clamp(0.78rem, 1.8vw, 0.88rem);
+                    font-weight: 500;
+                    line-height: 1.5;
+                    margin-top: 0px;">
+            📊 {label_periodo}
+        </div>
+        """, unsafe_allow_html=True)
 
 # ============================================
 # CARICAMENTO DATI
@@ -631,45 +628,81 @@ if st.session_state.cp_tab_attivo == "variazioni":
             df_trend['Var_Perc'] = ((df_trend['PrezzoUnitario'] - prezzo_medio) / prezzo_medio) * 100
             df_trend['VarPercLabel'] = df_trend['Var_Perc'].apply(lambda x: f"{x:+.1f}%")
 
+            n_punti_cp = len(df_trend)
+
+            if n_punti_cp > 20:
+                x_axis_cp = dict(
+                    tickformat='%d/%m/%y',
+                    nticks=12,
+                    tickangle=45,
+                    tickfont=dict(size=13, color='#6b7280', family='Arial'),
+                    showgrid=False,
+                    linecolor='#e5e7eb',
+                )
+            elif n_punti_cp > 10:
+                x_axis_cp = dict(
+                    tickformat='%d/%m/%y',
+                    tickmode='array',
+                    tickvals=df_trend['Data_DT'].dropna().drop_duplicates().tolist(),
+                    tickangle=40,
+                    tickfont=dict(size=13, color='#6b7280', family='Arial'),
+                    showgrid=False,
+                    linecolor='#e5e7eb',
+                )
+            else:
+                x_axis_cp = dict(
+                    tickformat='%d/%m/%Y',
+                    tickmode='array',
+                    tickvals=df_trend['Data_DT'].dropna().drop_duplicates().tolist(),
+                    tickangle=0,
+                    tickfont=dict(size=14, color='#6b7280', family='Arial'),
+                    showgrid=False,
+                    linecolor='#e5e7eb',
+                )
+
+            y_axis_cp = dict(
+                nticks=7,
+                ticksuffix='%',
+                tickformat='.1f',
+                tickfont=dict(size=14, color='#6b7280', family='Arial'),
+                gridcolor='rgba(229,231,235,0.7)',
+                gridwidth=1,
+                zeroline=False,
+            )
+
             fig_prezzo = px.line(
                 df_trend,
                 x='Data_DT',
                 y='Var_Perc',
                 markers=True,
-                title=f"Variazione % prezzo — {prodotto_grafico}",
-                labels={'Data_DT': '', 'Var_Perc': 'Variazione %'},
+                labels={'Data_DT': '', 'Var_Perc': ''},
                 custom_data=['PrezzoUnitario', 'VarPercLabel'],
             )
             fig_prezzo.update_traces(
-                line=dict(color='#2563eb', width=2),
-                marker=dict(size=8, color='#1d4ed8'),
-            )
-
-            fig_prezzo.update_traces(
-                hovertemplate="<b>Prezzo acquisto</b>: €%{customdata[0]:.2f}<br><b>Variazione vs media</b>: %{customdata[1]}<extra></extra>"
+                line=dict(color='#2563eb', width=2.5, shape='spline'),
+                marker=dict(size=7, color='#2563eb', line=dict(color='#ffffff', width=1.5)),
+                fill='tozeroy',
+                fillcolor='rgba(37,99,235,0.07)',
+                hovertemplate='<b>%{x|%d/%m/%Y}</b><br>Variazione: <b>%{customdata[1]}</b><br>Prezzo: €%{customdata[0]:.2f}<extra></extra>',
             )
             fig_prezzo.add_hline(
                 y=0,
                 line_dash='dash',
                 line_color='#dc2626',
-                annotation_text=f"Prezzo medio di acquisto €{prezzo_medio:.2f}",
-                annotation_position='top left',
-                annotation_font=dict(color='#dc2626', size=16, family='Arial Black'),
+                line_width=1.5,
+                annotation_text=f'  Media €{prezzo_medio:.2f}',
+                annotation_position='right',
+                annotation_font=dict(color='#dc2626', size=13, family='Arial'),
             )
             fig_prezzo.update_layout(
-                height=420,
-                hovermode='closest',
-                xaxis=dict(
-                    tickformat='%d/%m/%Y',
-                    tickfont=dict(size=16, color='#1e40af', family='Arial Black')
-                ),
-                yaxis=dict(
-                    tickfont=dict(size=16, color='#1e40af', family='Arial Black')
-                ),
-                title=dict(font=dict(size=18, color='#111111', family='Arial Black')),
-                font=dict(size=16, color='#1e40af', family='Arial'),
-                yaxis_title_font=dict(size=18, color='#1e40af', family='Arial Black'),
-                xaxis_title_font=dict(size=18, color='#1e40af', family='Arial Black'),
+                height=380,
+                hovermode='x unified',
+                plot_bgcolor='#f9fafb',
+                paper_bgcolor='#ffffff',
+                margin=dict(t=20, b=10, l=10, r=80),
+                xaxis=x_axis_cp,
+                yaxis=y_axis_cp,
+                font=dict(size=13, color='#374151', family='Arial'),
                 showlegend=False,
             )
             st.plotly_chart(

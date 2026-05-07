@@ -296,7 +296,7 @@ def render_pivot_mensile(
             if col == index_col:
                 continue
             if col.endswith(' %'):
-                pivot_column_config[col] = st.column_config.NumberColumn(col, format='%.1f %%', width='small')
+                pivot_column_config[col] = st.column_config.ProgressColumn(col, format='%.1f%%', min_value=0, max_value=100, width='small')
             else:
                 # Nessun format= per evitare il bug sprintf con '€ %,.0f':
                 # la formattazione visiva è gestita dallo Styler via _format_euro_migliaia.
@@ -308,7 +308,8 @@ def render_pivot_mensile(
                 if col == index_col:
                     continue
                 if col.endswith(' %'):
-                    style_formatters[col] = _format_percentuale
+                    # ProgressColumn legge il valore float direttamente — non passare per lo Styler
+                    pass
                 else:
                     style_formatters[col] = _format_euro_migliaia
 

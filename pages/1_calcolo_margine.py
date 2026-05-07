@@ -194,59 +194,56 @@ if st.session_state.margine_tab == "analisi":
     data_inizio_aa, data_fine_aa, label_periodo = risolvi_periodo(periodo_sel_aa, date_periodo)
     anno_aa = oggi_date_aa.year  # default
 
-    if data_inizio_aa is None:
-        # Periodo Personalizzato
-        st.markdown("##### Seleziona Range Date")
-        col_da_aa, col_a_aa = st.columns(2)
-
-        if 'aa_data_inizio' not in st.session_state:
-            st.session_state.aa_data_inizio = inizio_anno_aa
-        if 'aa_data_fine' not in st.session_state:
-            st.session_state.aa_data_fine = oggi_date_aa
-
-        with col_da_aa:
-            data_inizio_custom_aa = st.date_input(
-                "📅 Da",
-                value=st.session_state.aa_data_inizio,
-                min_value=inizio_anno_aa,
-                key="aa_data_da_custom"
-            )
-        with col_a_aa:
-            data_fine_custom_aa = st.date_input(
-                "📅 A",
-                value=st.session_state.aa_data_fine,
-                min_value=inizio_anno_aa,
-                key="aa_data_a_custom"
-            )
-
-        if data_inizio_custom_aa > data_fine_custom_aa:
-            st.error("⚠️ La data iniziale deve essere precedente alla data finale!")
-            data_inizio_aa = st.session_state.aa_data_inizio
-            data_fine_aa = st.session_state.aa_data_fine
-        else:
-            st.session_state.aa_data_inizio = data_inizio_custom_aa
-            st.session_state.aa_data_fine = data_fine_custom_aa
-            data_inizio_aa = data_inizio_custom_aa
-            data_fine_aa = data_fine_custom_aa
-
-        anno_aa = data_inizio_aa.year
-        label_periodo = f"{data_inizio_aa.strftime('%d/%m/%Y')} → {data_fine_aa.strftime('%d/%m/%Y')}"
-
     # Info periodo
-    giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
     with col_info_aa:
-        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-        st.markdown(f"""
-        <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
-                    padding: 10px 16px;
-                    border-radius: 8px;
-                    border: 1px solid #fde047;
-                    font-size: clamp(0.78rem, 1.8vw, 0.88rem);
-                    font-weight: 500;
-                    line-height: 1.5;">
-            🗓️ {label_periodo} ({giorni_aa} giorni)
-        </div>
-        """, unsafe_allow_html=True)
+        if data_inizio_aa is None:
+            # Periodo Personalizzato: range picker inline
+            if 'aa_data_inizio' not in st.session_state:
+                st.session_state.aa_data_inizio = inizio_anno_aa
+            if 'aa_data_fine' not in st.session_state:
+                st.session_state.aa_data_fine = oggi_date_aa
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            _col_range, _col_empty = st.columns([1.2, 1.8])
+            with _col_range:
+                _range = st.date_input(
+                    "Periodo",
+                    value=(st.session_state.aa_data_inizio, st.session_state.aa_data_fine),
+                    min_value=inizio_anno_aa,
+                    format="DD/MM/YYYY",
+                    key="aa_data_range_custom",
+                    label_visibility="collapsed",
+                )
+            if isinstance(_range, (list, tuple)) and len(_range) == 2:
+                data_inizio_custom_aa, data_fine_custom_aa = _range[0], _range[1]
+                if data_inizio_custom_aa > data_fine_custom_aa:
+                    st.error("⚠️ La data iniziale deve essere precedente alla data finale.")
+                    data_inizio_aa = st.session_state.aa_data_inizio
+                    data_fine_aa = st.session_state.aa_data_fine
+                else:
+                    st.session_state.aa_data_inizio = data_inizio_custom_aa
+                    st.session_state.aa_data_fine = data_fine_custom_aa
+                    data_inizio_aa = data_inizio_custom_aa
+                    data_fine_aa = data_fine_custom_aa
+            else:
+                data_inizio_aa = st.session_state.aa_data_inizio
+                data_fine_aa = st.session_state.aa_data_fine
+            anno_aa = data_inizio_aa.year
+            label_periodo = f"{data_inizio_aa.strftime('%d/%m/%Y')} → {data_fine_aa.strftime('%d/%m/%Y')}"
+            giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
+        else:
+            giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+            st.markdown(f"""
+            <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
+                        padding: 10px 16px;
+                        border-radius: 8px;
+                        border: 1px solid #fde047;
+                        font-size: clamp(0.78rem, 1.8vw, 0.88rem);
+                        font-weight: 500;
+                        line-height: 1.5;">
+                🗓️ {label_periodo} ({giorni_aa} giorni)
+            </div>
+            """, unsafe_allow_html=True)
 
     # Converti date in stringhe per le query
     date_from_str = data_inizio_aa.strftime('%Y-%m-%d')
@@ -697,15 +694,13 @@ if st.session_state.margine_tab == "analisi":
             _margine_c = _fatt_c - spesa_c
             _margine_pct_c = (_margine_c / _fatt_c * 100) if _fatt_c > 0 else 0.0
 
-            h.append('<details class="aa-details">')
-            h.append('<summary>')
             # Centro | Fatturato | Costi | % Costi su Fatt. | Margine | Margine % | % su Costi F&B Tot
-            h.append(f'<div class="aa-row"><div><span class="aa-arrow">▶</span>{icona}  {centro_nome}</div>')
+            h.append(f'<div class="aa-row" style="background:#fff;"><div style="font-weight:700;color:#1e40af;font-size:0.9rem;">{icona}  {centro_nome}</div>')
             if fatturato_split_attivo and _fatt_c > 0:
-                h.append(f'<div>€ {_fatt_c:,.0f}</div>')
+                h.append(f'<div style="font-weight:600;">€ {_fatt_c:,.0f}</div>')
             else:
                 h.append(f'<div style="color:#94a3b8;">—</div>')
-            h.append(f'<div>€ {spesa_c:,.0f}</div>')
+            h.append(f'<div style="font-weight:600;">€ {spesa_c:,.0f}</div>')
             h.append(f'<div>{_bar_html(pct_fatt_c, "#0ea5e9")}</div>')
             if fatturato_split_attivo and _fatt_c > 0:
                 h.append(f'<div>{_margine_html(_margine_c)}</div>')
@@ -713,26 +708,7 @@ if st.session_state.margine_tab == "analisi":
             else:
                 h.append(f'<div style="color:#94a3b8;">—</div>')
                 h.append(f'<div style="color:#94a3b8;">—</div>')
-            h.append(f'<div>{_bar_html(pct_fb_c, "#f97316")}</div></div>')
-            h.append('</summary>')
-
-            # Righe categorie
-            _fatt_denom_centro = fatturato_per_centro.get(centro_nome, 0.0) if fatturato_split_attivo else fatturato_netto_periodo
-            for _, row_cat in df_cat_agg.iterrows():
-                cat_nome = row_cat['Categoria']
-                cat_nome_safe = _html.escape(str(cat_nome))
-                spesa_cat = row_cat['Spesa']
-                pct_cat_fatt = (spesa_cat / _fatt_denom_centro * 100) if _fatt_denom_centro > 0 else 0.0
-                pct_cat_centro = (spesa_cat / spesa_c * 100) if spesa_c > 0 else 0.0
-                h.append(f'<div class="aa-cat"><div class="aa-row"><div>↳ {cat_nome_safe}</div>')
-                h.append(f'<div style="color:#94a3b8;">—</div>')
-                h.append(f'<div>€ {spesa_cat:,.0f}</div>')
-                h.append(f'<div>{_bar_html(pct_cat_fatt, "#94a3b8")}</div>')
-                h.append(f'<div style="color:#94a3b8;">—</div>')
-                h.append(f'<div style="color:#94a3b8;">—</div>')
-                h.append(f'<div>{_bar_html(pct_cat_centro, "#94a3b8")}</div></div></div>')
-
-            h.append('</details>')
+            h.append(f'<div style="font-weight:600;">{_bar_html(pct_fb_c, "#f97316")}</div></div>')
 
         # Riga TOTALE
         tot_pct_fatt = (totale_costi_fb / fatturato_netto_periodo * 100) if fatturato_netto_periodo > 0 else 0.0
@@ -749,40 +725,7 @@ if st.session_state.margine_tab == "analisi":
 
         st.markdown(''.join(h), unsafe_allow_html=True)
 
-        # ========================================================
-        # SEZIONE COSTI SENZA FATTURATO DIRETTO — expander con totale e suddivisione
-        # ========================================================
-        if spesa_extra_tot > 0:
-            st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
-            with st.expander(f"🛍️ Costi senza fatturato diretto — Totale: € {spesa_extra_tot:,.0f}", expanded=False):
-                st.markdown(f"""
-                <p style="font-size:0.85rem;color:#475569;margin-bottom:10px;">
-                    Costo distribuito proporzionalmente {'al fatturato' if fatturato_split_attivo and fatturato_totale_split > 0 else 'ai costi'} dei centri F&amp;B.
-                </p>
-                """, unsafe_allow_html=True)
-
-                # Calcola distribuzione proporzionale
-                _mc_rows = []
-                _centri_fatt_list = ["FOOD", "BEVERAGE", "ALCOLICI", "DOLCI"]
-                if fatturato_split_attivo and fatturato_totale_split > 0:
-                    for c in _centri_fatt_list:
-                        f_c = fatturato_per_centro.get(c, 0.0)
-                        if f_c > 0:
-                            quota = spesa_extra_tot * f_c / fatturato_totale_split
-                            pct = f_c / fatturato_totale_split * 100
-                            _mc_rows.append({"Centro": f"{icone_centri.get(c, '')} {c}", "Quota Fatturato": f"{pct:.1f}%", "Costo Attribuito": f"€ {quota:,.0f}"})
-                else:
-                    _centri_presenti = [c for c in _centri_fatt_list if c in df_centri_main['Centro'].values]
-                    _spese_centri = {row['Centro']: row['Spesa'] for _, row in df_centri_main.iterrows()}
-                    _tot_spese_centri = sum(_spese_centri.values())
-                    for c in _centri_presenti:
-                        sp_c = _spese_centri.get(c, 0.0)
-                        pct = (sp_c / _tot_spese_centri * 100) if _tot_spese_centri > 0 else 0.0
-                        quota = spesa_extra_tot * sp_c / _tot_spese_centri if _tot_spese_centri > 0 else 0.0
-                        _mc_rows.append({"Centro": f"{icone_centri.get(c, '')} {c}", "Quota (prop. costi)": f"{pct:.1f}%", "Costo Attribuito": f"€ {quota:,.0f}"})
-
-                if _mc_rows:
-                    st.dataframe(pd.DataFrame(_mc_rows), hide_index=True, use_container_width=False)
+        # SEZIONE COSTI SENZA FATTURATO DIRETTO — rimossa (non più visibile in tabella)
 
         # Excel export - a destra, sotto le tabelle, prima dei KPI
         _col_excel_spacer, _col_excel_btn = st.columns([5, 1])
@@ -1103,45 +1046,59 @@ if st.session_state.margine_tab == "centri":
         data_inizio_cp = inizio_semestre_cp
     elif periodo_sel_cp == "🗓️ Anno in Corso":
         data_inizio_cp = inizio_anno_cp
-    elif periodo_sel_cp == "⚙️ Periodo Personalizzato":
-        st.markdown("##### Seleziona Range Date")
-        col_da_cp, col_a_cp = st.columns(2)
-        if 'cp_centri_data_inizio' not in st.session_state:
-            st.session_state.cp_centri_data_inizio = inizio_anno_cp
-        if 'cp_centri_data_fine' not in st.session_state:
-            st.session_state.cp_centri_data_fine = oggi_date_cp
-        with col_da_cp:
-            data_inizio_custom_cp = st.date_input("📅 Da", value=st.session_state.cp_centri_data_inizio, min_value=inizio_anno_cp, key="cp_centri_data_da")
-        with col_a_cp:
-            data_fine_custom_cp = st.date_input("📅 A", value=st.session_state.cp_centri_data_fine, min_value=inizio_anno_cp, key="cp_centri_data_a")
-        if data_inizio_custom_cp > data_fine_custom_cp:
-            st.error("⚠️ La data iniziale deve essere precedente alla data finale!")
-            data_inizio_cp = st.session_state.cp_centri_data_inizio
-            data_fine_cp = st.session_state.cp_centri_data_fine
+
+    with col_info_cp:
+        if periodo_sel_cp == "⚙️ Periodo Personalizzato":
+            # Periodo Personalizzato: range picker inline
+            if 'cp_centri_data_inizio' not in st.session_state:
+                st.session_state.cp_centri_data_inizio = inizio_anno_cp
+            if 'cp_centri_data_fine' not in st.session_state:
+                st.session_state.cp_centri_data_fine = oggi_date_cp
+            _col_range, _col_empty = st.columns([1.2, 1.8])
+            with _col_range:
+                _range = st.date_input(
+                    "Periodo",
+                    value=(st.session_state.cp_centri_data_inizio, st.session_state.cp_centri_data_fine),
+                    min_value=inizio_anno_cp,
+                    format="DD/MM/YYYY",
+                    key="cp_centri_data_range_custom",
+                    label_visibility="collapsed",
+                )
+            if isinstance(_range, (list, tuple)) and len(_range) == 2:
+                data_inizio_custom_cp, data_fine_custom_cp = _range[0], _range[1]
+                if data_inizio_custom_cp > data_fine_custom_cp:
+                    st.error("⚠️ La data iniziale deve essere precedente alla data finale.")
+                    data_inizio_cp = st.session_state.cp_centri_data_inizio
+                    data_fine_cp = st.session_state.cp_centri_data_fine
+                else:
+                    st.session_state.cp_centri_data_inizio = data_inizio_custom_cp
+                    st.session_state.cp_centri_data_fine = data_fine_custom_cp
+                    data_inizio_cp = data_inizio_custom_cp
+                    data_fine_cp = data_fine_custom_cp
+            else:
+                data_inizio_cp = st.session_state.cp_centri_data_inizio
+                data_fine_cp = st.session_state.cp_centri_data_fine
+            giorni_cp = (data_fine_cp - data_inizio_cp).days + 1
         else:
-            st.session_state.cp_centri_data_inizio = data_inizio_custom_cp
-            st.session_state.cp_centri_data_fine = data_fine_custom_cp
-            data_inizio_cp = data_inizio_custom_cp
-            data_fine_cp = data_fine_custom_cp
+            if data_inizio_cp is None:
+                data_inizio_cp = inizio_anno_cp
+            giorni_cp = (data_fine_cp - data_inizio_cp).days + 1
+            st.markdown(f"""
+            <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
+                        padding: 10px 16px;
+                        border-radius: 8px;
+                        border: 1px solid #fde047;
+                        font-size: clamp(0.78rem, 1.8vw, 0.88rem);
+                        font-weight: 500;
+                        line-height: 1.5;
+                        margin-top: 0px;
+                        vertical-align: middle;">
+                📆 {data_inizio_cp.strftime('%d/%m/%Y')} → {data_fine_cp.strftime('%d/%m/%Y')} ({giorni_cp} giorni)
+            </div>
+            """, unsafe_allow_html=True)
 
     if data_inizio_cp is None:
         data_inizio_cp = inizio_anno_cp
-
-    giorni_cp = (data_fine_cp - data_inizio_cp).days + 1
-    with col_info_cp:
-        st.markdown(f"""
-        <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
-                    padding: 10px 16px;
-                    border-radius: 8px;
-                    border: 1px solid #fde047;
-                    font-size: clamp(0.78rem, 1.8vw, 0.88rem);
-                    font-weight: 500;
-                    line-height: 1.5;
-                    margin-top: 0px;
-                    vertical-align: middle;">
-            📆 {data_inizio_cp.strftime('%d/%m/%Y')} → {data_fine_cp.strftime('%d/%m/%Y')} ({giorni_cp} giorni)
-        </div>
-        """, unsafe_allow_html=True)
 
     # ============================================
     # CARICA DATI E FILTRA

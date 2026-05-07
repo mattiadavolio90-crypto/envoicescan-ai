@@ -844,47 +844,40 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     
     # Gestione logica periodo
     data_inizio_filtro, data_fine_filtro, label_periodo = risolvi_periodo(periodo_selezionato, date_periodo)
-    
-    if data_inizio_filtro is None:
-        # Periodo Personalizzato
-        st.markdown("##### Seleziona Range Date")
-        col_da, col_a = st.columns(2)
-        
-        if 'data_inizio_filtro' not in st.session_state:
-            st.session_state.data_inizio_filtro = inizio_anno
-        if 'data_fine_filtro' not in st.session_state:
-            st.session_state.data_fine_filtro = oggi_date
-        
-        with col_da:
-            data_inizio_custom = st.date_input(
-                "📅 Da", 
-                value=st.session_state.data_inizio_filtro,
-                min_value=inizio_anno,
-                max_value=st.session_state.get('data_fine_filtro', oggi_date),
-                key="data_da_custom"
-            )
-        
-        with col_a:
-            data_fine_custom = st.date_input(
-                "📅 A", 
-                value=st.session_state.data_fine_filtro,
-                min_value=inizio_anno,
-                max_value=datetime.now(timezone.utc).date(),
-                key="data_a_custom"
-            )
-        
-        if data_inizio_custom > data_fine_custom:
-            st.error("⚠️ La data iniziale deve essere precedente alla data finale!")
-            data_inizio_filtro = st.session_state.data_inizio_filtro
-            data_fine_filtro = st.session_state.data_fine_filtro
-        else:
-            st.session_state.data_inizio_filtro = data_inizio_custom
-            st.session_state.data_fine_filtro = data_fine_custom
-            data_inizio_filtro = data_inizio_custom
-            data_fine_filtro = data_fine_custom
-        
-        label_periodo = f"{data_inizio_filtro.strftime('%d/%m/%Y')} → {data_fine_filtro.strftime('%d/%m/%Y')}"
-    
+    _is_personalizzato = data_inizio_filtro is None
+
+    with col_info_periodo:
+        if _is_personalizzato:
+            if 'data_inizio_filtro' not in st.session_state:
+                st.session_state.data_inizio_filtro = inizio_anno
+            if 'data_fine_filtro' not in st.session_state:
+                st.session_state.data_fine_filtro = oggi_date
+            _col_range, _col_empty = st.columns([1.2, 1.8])
+            with _col_range:
+                _range = st.date_input(
+                    "Periodo",
+                    value=(st.session_state.data_inizio_filtro, st.session_state.data_fine_filtro),
+                    min_value=inizio_anno,
+                    format="DD/MM/YYYY",
+                    key="data_range_custom",
+                    label_visibility="collapsed",
+                )
+            if isinstance(_range, (list, tuple)) and len(_range) == 2:
+                data_inizio_custom, data_fine_custom = _range[0], _range[1]
+                if data_inizio_custom > data_fine_custom:
+                    st.error("⚠️ La data iniziale deve essere precedente alla data finale.")
+                    data_inizio_filtro = st.session_state.data_inizio_filtro
+                    data_fine_filtro = st.session_state.data_fine_filtro
+                else:
+                    st.session_state.data_inizio_filtro = data_inizio_custom
+                    st.session_state.data_fine_filtro = data_fine_custom
+                    data_inizio_filtro = data_inizio_custom
+                    data_fine_filtro = data_fine_custom
+            else:
+                data_inizio_filtro = st.session_state.data_inizio_filtro
+                data_fine_filtro = st.session_state.data_fine_filtro
+            label_periodo = f"{data_inizio_filtro.strftime('%d/%m/%Y')} → {data_fine_filtro.strftime('%d/%m/%Y')}"
+
     # APPLICA FILTRO AI DATI
     # ⚡ Data_DT già calcolata prima dello split - le viste la ereditano automaticamente
     mask = (df_food_completo["Data_DT"] >= data_inizio_filtro) & (df_food_completo["Data_DT"] <= data_fine_filtro)
@@ -905,21 +898,22 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     df_completo_filtrato = df_completo[mask_completo]
     num_doc_filtrati = df_completo_filtrato['FileOrigine'].nunique()
     
-    # Mostra info periodo nel box accanto al selettore
+    # Mostra info periodo nel box accanto al selettore (solo per periodi preimpostati)
     info_testo = f"🗓️ {label_periodo} ({giorni} giorni) | 🍽️ Righe F&B: {len(df_food):,} | 📊 Righe Totali: {num_righe_totali_df:,} | 📄 Fatture: {num_doc_filtrati} di {num_fatture_totali_df}"
-    with col_info_periodo:
-        st.markdown(f"""
-        <div style="margin-top: 0; background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%); 
-                    padding: 10px 16px; 
-                    border-radius: 8px; 
-                    border: 1px solid #93c5fd;
-                    font-size: clamp(0.78rem, 1.8vw, 0.88rem);
-                    font-weight: 500;
-                    line-height: 1.5;
-                    word-wrap: break-word;">
-            {info_testo}
-        </div>
-        """, unsafe_allow_html=True)
+    if not _is_personalizzato:
+        with col_info_periodo:
+            st.markdown(f"""
+            <div style="margin-top: 0; background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%); 
+                        padding: 10px 16px; 
+                        border-radius: 8px; 
+                        border: 1px solid #93c5fd;
+                        font-size: clamp(0.78rem, 1.8vw, 0.88rem);
+                        font-weight: 500;
+                        line-height: 1.5;
+                        word-wrap: break-word;">
+                {info_testo}
+            </div>
+            """, unsafe_allow_html=True)
     
     if df_food.empty and df_spese_generali.empty:
         st.warning("⚠️ Nessuna fattura nel periodo selezionato")
