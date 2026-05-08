@@ -115,6 +115,9 @@ div.st-key-cm_download_excel_centri .stDownloadButton button:hover,
 div.st-key-margine_download .stDownloadButton button:hover {
     background-color: #16a34a !important;
 }
+div.st-key-aa_download_centri {
+    margin-top: 8px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -124,7 +127,11 @@ div.st-key-margine_download .stDownloadButton button:hover {
 if 'margine_tab' not in st.session_state:
     st.session_state.margine_tab = "calcolo"
 
-col_tab1, col_tab2, col_tab3 = st.columns(3)
+# Migrazione: il vecchio tab "centri" è stato integrato in "analisi"
+if st.session_state.margine_tab == "centri":
+    st.session_state.margine_tab = "analisi"
+
+col_tab1, col_tab2 = st.columns(2)
 with col_tab1:
     if st.button("📊 CALCOLO\nRICAVI-COSTI-MARGINI", key="btn_tab_calcolo", use_container_width=True,
                  type="primary" if st.session_state.margine_tab == "calcolo" else "secondary"):
@@ -132,12 +139,6 @@ with col_tab1:
             st.session_state.margine_tab = "calcolo"
             st.rerun()
 with col_tab2:
-    if st.button("🏭 CENTRI DI\nCOSTO", key="btn_tab_centri", use_container_width=True,
-                 type="primary" if st.session_state.margine_tab == "centri" else "secondary"):
-        if st.session_state.margine_tab != "centri":
-            st.session_state.margine_tab = "centri"
-            st.rerun()
-with col_tab3:
     if st.button("🔬 ANALISI\nAVANZATE", key="btn_tab_analisi", use_container_width=True,
                  type="primary" if st.session_state.margine_tab == "analisi" else "secondary"):
         if st.session_state.margine_tab != "analisi":
@@ -380,6 +381,9 @@ if st.session_state.margine_tab == "analisi":
             background: #ffffff !important;
             border-radius: 0 0 8px 8px !important;
             padding: 12px !important;
+        }
+        div.st-key-expander_fatturato_centri {
+            margin-bottom: 28px !important;
         }
         </style>
         """, unsafe_allow_html=True)
@@ -779,7 +783,7 @@ if st.session_state.margine_tab == "analisi":
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="aa_download_centri",
                 type="primary",
-                use_container_width=False,
+                use_container_width=True,
             )
 
         # ============================================
@@ -1015,133 +1019,24 @@ if st.session_state.margine_tab == "analisi":
             st.info("📊 Nessun dato disponibile per il calcolo dei KPI del periodo.")
 
 # ============================================
-# TAB: CENTRI DI PRODUZIONE (F&B)
+# SOTTO-SEZIONE: ANDAMENTO MENSILE PER CENTRO (F&B)
+# (integrato nel tab Analisi Avanzate, riusa filtro periodo)
 # ============================================
-if st.session_state.margine_tab == "centri":
+if st.session_state.margine_tab == "analisi":
 
     from config.constants import CENTRI_DI_PRODUZIONE, CATEGORIE_SPESE_GENERALI, MESI_ITA
     from services.db_service import carica_e_prepara_dataframe
 
-    st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin: 32px 0 24px 0; border: none; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
+    st.markdown("""
+    <h3 style='color: #1e3a8a; font-weight: 700; margin-bottom: 6px;'>
+        📅 Dettaglio categorie per Centro di Costo
+    </h3>
+    """, unsafe_allow_html=True)
 
-    # ============================================
-    # FILTRO TEMPORALE
-    # ============================================
-    oggi_cp = pd.Timestamp.now()
-    oggi_date_cp = oggi_cp.date()
-    inizio_mese_cp = oggi_cp.replace(day=1).date()
-    inizio_trimestre_cp = oggi_cp.replace(month=((oggi_cp.month-1)//3)*3+1, day=1).date()
-    inizio_semestre_cp = oggi_cp.replace(month=1 if oggi_cp.month <= 6 else 7, day=1).date()
-    inizio_anno_cp = oggi_cp.replace(month=1, day=1).date()
-
-    periodo_options_cp = [
-        "📅 Mese in Corso",
-        "📊 Trimestre in Corso",
-        "📈 Semestre in Corso",
-        "🗓️ Anno in Corso",
-        "📆 Seleziona Mese",
-        "⚙️ Periodo Personalizzato"
-    ]
-
-    if 'cm_centri_periodo_dropdown' not in st.session_state:
-        st.session_state.cm_centri_periodo_dropdown = "🗓️ Anno in Corso"
-
-    col_periodo_cp, col_info_cp = st.columns([1, 3])
-
-    with col_periodo_cp:
-        periodo_sel_cp = st.selectbox(
-            "Periodo",
-            options=periodo_options_cp,
-            label_visibility="collapsed",
-            index=periodo_options_cp.index(st.session_state.cm_centri_periodo_dropdown) if st.session_state.cm_centri_periodo_dropdown in periodo_options_cp else 3,
-            key="cm_centri_filtro_periodo"
-        )
-
-    st.session_state.cm_centri_periodo_dropdown = periodo_sel_cp
-
-    data_inizio_cp = None
-    data_fine_cp = oggi_date_cp
-
-    if periodo_sel_cp == "📅 Mese in Corso":
-        data_inizio_cp = inizio_mese_cp
-    elif periodo_sel_cp == "📊 Trimestre in Corso":
-        data_inizio_cp = inizio_trimestre_cp
-    elif periodo_sel_cp == "📈 Semestre in Corso":
-        data_inizio_cp = inizio_semestre_cp
-    elif periodo_sel_cp == "🗓️ Anno in Corso":
-        data_inizio_cp = inizio_anno_cp
-
-    with col_info_cp:
-        if periodo_sel_cp == "📆 Seleziona Mese":
-            from utils.period_helper import get_mesi_disponibili_fatture, risolvi_mese_selezionato
-            from services import get_supabase_client as _get_sb_cpc
-            _sb_cpc = _get_sb_cpc()
-            _mesi_cpc = get_mesi_disponibili_fatture(user_id, current_ristorante, _sb_cpc)
-            _mesi_labels_cpc = [x[2] for x in _mesi_cpc]
-            if not _mesi_labels_cpc:
-                _mesi_labels_cpc = [inizio_anno_cp.strftime("%B %Y")]
-            _col_mese_cpc, _col_empty_cpc = st.columns([1.2, 1.8])
-            with _col_mese_cpc:
-                _mese_sel_cpc = st.selectbox(
-                    "Mese",
-                    options=_mesi_labels_cpc,
-                    index=len(_mesi_labels_cpc) - 1,
-                    key="cp_centri_mese_sel",
-                    label_visibility="collapsed",
-                )
-            data_inizio_cp, data_fine_cp = risolvi_mese_selezionato(_mese_sel_cpc, _mesi_cpc)
-            giorni_cp = (data_fine_cp - data_inizio_cp).days + 1
-        elif periodo_sel_cp == "⚙️ Periodo Personalizzato":
-            # Periodo Personalizzato: range picker inline
-            if 'cp_centri_data_inizio' not in st.session_state:
-                st.session_state.cp_centri_data_inizio = inizio_anno_cp
-            if 'cp_centri_data_fine' not in st.session_state:
-                st.session_state.cp_centri_data_fine = oggi_date_cp
-            _col_range, _col_empty = st.columns([1.2, 1.8])
-            with _col_range:
-                _range = st.date_input(
-                    "Periodo",
-                    value=(st.session_state.cp_centri_data_inizio, st.session_state.cp_centri_data_fine),
-                    min_value=inizio_anno_cp,
-                    format="DD/MM/YYYY",
-                    key="cp_centri_data_range_custom",
-                    label_visibility="collapsed",
-                )
-            if isinstance(_range, (list, tuple)) and len(_range) == 2:
-                data_inizio_custom_cp, data_fine_custom_cp = _range[0], _range[1]
-                if data_inizio_custom_cp > data_fine_custom_cp:
-                    st.error("⚠️ La data iniziale deve essere precedente alla data finale.")
-                    data_inizio_cp = st.session_state.cp_centri_data_inizio
-                    data_fine_cp = st.session_state.cp_centri_data_fine
-                else:
-                    st.session_state.cp_centri_data_inizio = data_inizio_custom_cp
-                    st.session_state.cp_centri_data_fine = data_fine_custom_cp
-                    data_inizio_cp = data_inizio_custom_cp
-                    data_fine_cp = data_fine_custom_cp
-            else:
-                data_inizio_cp = st.session_state.cp_centri_data_inizio
-                data_fine_cp = st.session_state.cp_centri_data_fine
-            giorni_cp = (data_fine_cp - data_inizio_cp).days + 1
-        else:
-            if data_inizio_cp is None:
-                data_inizio_cp = inizio_anno_cp
-            giorni_cp = (data_fine_cp - data_inizio_cp).days + 1
-            st.markdown(f"""
-            <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
-                        padding: 10px 16px;
-                        border-radius: 8px;
-                        border: 1px solid #fde047;
-                        font-size: clamp(0.78rem, 1.8vw, 0.88rem);
-                        font-weight: 500;
-                        line-height: 1.5;
-                        margin-top: 0px;
-                        vertical-align: middle;">
-                📆 {data_inizio_cp.strftime('%d/%m/%Y')} → {data_fine_cp.strftime('%d/%m/%Y')} ({giorni_cp} giorni)
-            </div>
-            """, unsafe_allow_html=True)
-
-    if data_inizio_cp is None:
-        data_inizio_cp = inizio_anno_cp
+    # Riusa il filtro periodo già definito sopra (data_inizio_aa, data_fine_aa)
+    data_inizio_cp = data_inizio_aa
+    data_fine_cp = data_fine_aa
 
     # ============================================
     # CARICA DATI E FILTRA
@@ -1226,7 +1121,7 @@ if st.session_state.margine_tab == "centri":
 
                 # Report
                 st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
-                st.markdown("### 🏭 Spesa per Centro di Costo mensile")
+
                 st.markdown("<div style='margin-bottom: 0.75rem;'></div>", unsafe_allow_html=True)
 
                 # Costruisci display DataFrame
@@ -1319,15 +1214,15 @@ if st.session_state.margine_tab == "centri":
                 _col_centri_left, _col_centri_right = st.columns([5, 1])
                 with _col_centri_left:
                     st.markdown(f"""
-                    <div style="background-color: #E3F2FD; padding: clamp(0.75rem, 1.5vw, 0.9rem) clamp(0.9rem, 2vw, 1.25rem); border-radius: 8px; border: 2px solid #2196F3; margin-top: 8px; width: min(100%, fit-content); max-width: 100%; box-sizing: border-box;">
-                        <span style="color: #1565C0; font-weight: bold; font-size: clamp(0.85rem, 2vw, 1rem); white-space: normal; overflow-wrap: anywhere; line-height: 1.4;">
+                    <div style="display:inline-block; background-color: #E3F2FD; padding: 10px 16px; border-radius: 8px; border: 2px solid #2196F3; margin-top: 8px;">
+                        <span style="color: #1565C0; font-weight: bold; font-size: 0.9rem; white-space: nowrap;">
                             📊 N. Centri: {n_centri} | 💰 Totale: € {tot_centri:,.0f} | 📊 Media mensile: € {media_centri:,.0f}
                         </span>
                     </div>
                     """, unsafe_allow_html=True)
 
                 with _col_centri_right:
-                    st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
+                    st.markdown("<div style='margin-top: 6px;'></div>", unsafe_allow_html=True)
                     st.download_button(
                         label="Excel",
                         data=excel_data_centri,
@@ -1335,7 +1230,7 @@ if st.session_state.margine_tab == "centri":
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="cm_download_excel_centri",
                         type="primary",
-                        use_container_width=False,
+                        use_container_width=True,
                     )
 
 if st.session_state.margine_tab == "calcolo":
