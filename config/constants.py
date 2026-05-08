@@ -16,6 +16,10 @@ import re
 SESSION_INACTIVITY_HOURS = 8        # Ore: sessione scade dopo inattività prolungata
 LAST_SEEN_WRITE_THROTTLE_SECONDS = 300  # Secondi minimi tra due scritture di last_seen_at
 
+# Automazione data competenza — suggerimento per fatture di inizio mese
+COMPETENZA_AUTO_SOGLIA_GIORNI = 7   # Fatture emesse entro il giorno X → sospette del mese precedente
+COMPETENZA_AUTO_ABILITA = True       # Abilita/disabilita il suggerimento automatico
+
 
 # ============================================================
 # REGEX PRECOMPILATE (OTTIMIZZAZIONE PERFORMANCE)

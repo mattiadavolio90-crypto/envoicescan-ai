@@ -147,7 +147,7 @@ st.session_state.cp_periodo_dropdown = periodo_selezionato
 # Gestione logica periodo
 data_inizio_filtro, data_fine_filtro, label_periodo = risolvi_periodo(periodo_selezionato, date_periodo)
 
-if data_inizio_filtro is None:
+if data_inizio_filtro is None and periodo_selezionato != "📆 Seleziona Mese":
     # inizializza session state se necessario (picker renderizzato sotto)
     if 'cp_data_inizio' not in st.session_state:
         st.session_state.cp_data_inizio = inizio_anno
@@ -155,7 +155,26 @@ if data_inizio_filtro is None:
         st.session_state.cp_data_fine = oggi_date
 
 with col_info_periodo:
-    if data_inizio_filtro is None:
+    if periodo_selezionato == "📆 Seleziona Mese":
+        from utils.period_helper import get_mesi_disponibili_fatture, risolvi_mese_selezionato
+        from services import get_supabase_client as _get_sb_cp
+        _sb_cp = _get_sb_cp()
+        _mesi_cp = get_mesi_disponibili_fatture(user_id, current_ristorante, _sb_cp)
+        _mesi_labels_cp = [x[2] for x in _mesi_cp]
+        if not _mesi_labels_cp:
+            _mesi_labels_cp = [oggi_date.replace(day=1).strftime("%B %Y")]
+        _col_mese_cp, _col_empty_cp = st.columns([1.2, 1.8])
+        with _col_mese_cp:
+            _mese_sel_cp = st.selectbox(
+                "Mese",
+                options=_mesi_labels_cp,
+                index=len(_mesi_labels_cp) - 1,
+                key="cp_mese_sel",
+                label_visibility="collapsed",
+            )
+        data_inizio_filtro, data_fine_filtro = risolvi_mese_selezionato(_mese_sel_cp, _mesi_cp)
+        label_periodo = _mese_sel_cp
+    elif data_inizio_filtro is None:
         # Periodo Personalizzato: range picker inline
         _col_range, _col_empty = st.columns([1.2, 1.8])
         with _col_range:

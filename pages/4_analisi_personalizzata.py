@@ -376,15 +376,17 @@ st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
 # ============================================
 if 'ap_tab_attivo' not in st.session_state:
     st.session_state.ap_tab_attivo = "panoramica" if custom_tags else "gestione"
+# Guard: il tab "export" è stato rimosso — reindirizza
+if st.session_state.ap_tab_attivo == "export":
+    st.session_state.ap_tab_attivo = "panoramica" if custom_tags else "gestione"
 
-col_t1, col_t2, col_t3 = st.columns(3)
+col_t1, col_t2 = st.columns(2)
 
 with col_t1:
     if st.button("🏷️ GESTIONE\nTAG", key="ap_btn_gestione", use_container_width=True,
                  type="primary" if st.session_state.ap_tab_attivo == "gestione" else "secondary"):
         if st.session_state.ap_tab_attivo != "gestione":
             st.session_state.ap_tab_attivo = "gestione"
-            st.session_state.pop("ap_excel_bytes", None)
             for _k in [k for k in st.session_state if k.startswith("ap_confirm_delete_")]:
                 st.session_state.pop(_k, None)
             st.rerun()
@@ -394,17 +396,6 @@ with col_t2:
                  type="primary" if st.session_state.ap_tab_attivo == "panoramica" else "secondary"):
         if st.session_state.ap_tab_attivo != "panoramica":
             st.session_state.ap_tab_attivo = "panoramica"
-            st.session_state.pop("ap_excel_bytes", None)
-            for _k in [k for k in st.session_state if k.startswith("ap_confirm_delete_")]:
-                st.session_state.pop(_k, None)
-            st.rerun()
-
-with col_t3:
-    if st.button("📤 EXPORT\nEXCEL", key="ap_btn_export", use_container_width=True,
-                 type="primary" if st.session_state.ap_tab_attivo == "export" else "secondary"):
-        if st.session_state.ap_tab_attivo != "export":
-            st.session_state.ap_tab_attivo = "export"
-            st.session_state.pop("ap_excel_bytes", None)
             for _k in [k for k in st.session_state if k.startswith("ap_confirm_delete_")]:
                 st.session_state.pop(_k, None)
             st.rerun()
@@ -449,7 +440,26 @@ else:
     data_inizio_filtro, data_fine_filtro, label_periodo = risolvi_periodo(periodo_selezionato, date_periodo)
 
     with col_info_periodo:
-        if data_inizio_filtro is None:
+        if periodo_selezionato == "📆 Seleziona Mese":
+            from utils.period_helper import get_mesi_disponibili_fatture, risolvi_mese_selezionato
+            from services import get_supabase_client as _get_sb_ap
+            _sb_ap = _get_sb_ap()
+            _mesi_ap = get_mesi_disponibili_fatture(user_id, current_ristorante, _sb_ap)
+            _mesi_labels_ap = [x[2] for x in _mesi_ap]
+            if not _mesi_labels_ap:
+                _mesi_labels_ap = [inizio_anno.strftime("%B %Y")]
+            _col_mese_ap, _col_empty_ap = st.columns([1.2, 1.8])
+            with _col_mese_ap:
+                _mese_sel_ap = st.selectbox(
+                    "Mese",
+                    options=_mesi_labels_ap,
+                    index=len(_mesi_labels_ap) - 1,
+                    key="ap_mese_sel",
+                    label_visibility="collapsed",
+                )
+            data_inizio_filtro, data_fine_filtro = risolvi_mese_selezionato(_mese_sel_ap, _mesi_ap)
+            label_periodo = _mese_sel_ap
+        elif data_inizio_filtro is None:
             # Periodo Personalizzato: range picker inline — larghezza contenuta con sotto-colonne
             _col_range, _col_empty = st.columns([1.2, 1.8])
             with _col_range:
@@ -517,7 +527,68 @@ if st.session_state.ap_tab_attivo == "panoramica":
             """,
             unsafe_allow_html=True,
         )
-        _col_tag, _col_tag_empty = st.columns([1.5, 1.5])
+        st.markdown("""
+        <style>
+        [class*="st-key-ap_download_inline"] button {
+            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
+            color: #ffffff !important;
+            border: 1px solid #15803d !important;
+        }
+        [class*="st-key-ap_download_inline"] button:hover {
+            background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
+            color: #ffffff !important;
+            border: 1px solid #166534 !important;
+        }
+        [class*="st-key-ap_download_inline"] {
+            margin-top: -12px;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        # Calcola excel bytes PRIMA delle colonne per poter renderizzare inline
+        _excel_bytes = None
+        if not df_all_cached.empty:
+            _exp_riepilogo, _exp_dettaglio = [], []
+            for _exp_tag in custom_tags:
+                _exp_tag_id = int(_exp_tag["id"])
+                _exp_assoc = tag_associazioni_map.get(_exp_tag_id, [])
+                if not _exp_assoc:
+                    continue
+                _exp_df = _prepare_tag_dataframe(df_all_cached, _build_associazioni_map(_exp_assoc))
+                if _exp_df.empty:
+                    continue
+                _exp_df_p = _filter_periodo(_exp_df, data_inizio_filtro, data_fine_filtro)
+                if _exp_df_p.empty:
+                    continue
+                _exp_kpi = _compute_kpi(_exp_df_p)
+                _exp_riepilogo.append({
+                    "Tag": _tag_label(_exp_tag),
+                    "Spesa Totale (\u20ac)": round(_exp_kpi["spesa_totale"], 2),
+                    "Quantit\u00e0 Normalizzata": round(_exp_kpi["quantita_norm_totale"], 3),
+                    "Prezzo Medio Ponderato": round(_exp_kpi["prezzo_medio_ponderato"], 4) if _exp_kpi["prezzo_medio_ponderato"] is not None else None,
+                    "Fornitori Distinti": _exp_kpi["num_fornitori"],
+                    "Fatture Coinvolte": _exp_kpi["num_fatture"],
+                })
+                _exp_df_out = _exp_df_p.copy()
+                _exp_df_out["Tag"] = _tag_label(_exp_tag)
+                _exp_dettaglio.append(
+                    _exp_df_out[[
+                        "Tag", "DataDocumento", "Fornitore", "Descrizione",
+                        "Quantita", "UnitaMisura", "QuantitaNorm",
+                        "PrezzoUnitarioNum", "TotaleRigaNum", "FileOrigine",
+                    ]].rename(columns={
+                        "DataDocumento": "Data", "Quantita": "Quantit\u00e0", "UnitaMisura": "U.M.",
+                        "QuantitaNorm": "Q.t\u00e0 Norm.", "PrezzoUnitarioNum": "Prezzo Unit.",
+                        "TotaleRigaNum": "Totale Riga", "FileOrigine": "Fattura",
+                    })
+                )
+            if _exp_riepilogo and _exp_dettaglio:
+                _excel_bytes = _build_export_workbook(
+                    pd.DataFrame(_exp_riepilogo),
+                    pd.concat(_exp_dettaglio, ignore_index=True),
+                )
+
+        # Layout inline: selectbox tag | bottone Excel
+        _col_tag, _col_export_btn, _col_tag_empty = st.columns([2.2, 0.45, 0.85])
         with _col_tag:
             selected_label = st.selectbox(
                 "Seleziona Tag da Analizzare",
@@ -526,8 +597,19 @@ if st.session_state.ap_tab_attivo == "panoramica":
                 key="ap_select_tag_panoramica",
                 label_visibility="collapsed",
             )
-        st.session_state.ap_tag_selezionato_id = tag_options[selected_label]
-        selected_tag_id = st.session_state.ap_tag_selezionato_id
+            st.session_state.ap_tag_selezionato_id = tag_options[selected_label]
+            selected_tag_id = st.session_state.ap_tag_selezionato_id
+        with _col_export_btn:
+            if _excel_bytes:
+                st.download_button(
+                    label="Excel",
+                    data=_excel_bytes,
+                    file_name=f"analisi_tag_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="ap_download_inline",
+                    type="primary",
+                    use_container_width=True,
+                )
 
         associazioni_tag = tag_associazioni_map.get(selected_tag_id, [])
         if not associazioni_tag:
@@ -1350,109 +1432,3 @@ elif st.session_state.ap_tab_attivo == "gestione":
                             st.rerun()
     else:
         st.info("📭 Nessun tag creato.")
-else:
-    st.markdown("### 📤 Export Excel")
-
-    if not custom_tags:
-        st.info("📭 Nessun tag disponibile da esportare.")
-    else:
-        tag_export_options = {"Tutti i tag": "ALL"}
-        tag_export_options.update({_tag_label(tag): int(tag["id"]) for tag in custom_tags})
-
-        selected_export_label = st.selectbox(
-            "Ambito export",
-            options=list(tag_export_options.keys()),
-            key="ap_export_scope",
-        )
-        selected_export_scope = tag_export_options[selected_export_label]
-
-        righe_stimate = 0
-        riepilogo_rows = []
-        dettaglio_frames = []
-
-        if not df_all_cached.empty:
-            for tag in custom_tags:
-                tag_id = int(tag["id"])
-                if selected_export_scope != "ALL" and tag_id != selected_export_scope:
-                    continue
-
-                associazioni_tag = tag_associazioni_map.get(tag_id, [])
-                if not associazioni_tag:
-                    continue
-
-                associazioni_map = _build_associazioni_map(associazioni_tag)
-                df_tag = _prepare_tag_dataframe(df_all_cached, associazioni_map)
-                if df_tag.empty:
-                    continue
-
-                df_tag_periodo = _filter_periodo(df_tag, data_inizio_filtro, data_fine_filtro)
-                if df_tag_periodo.empty:
-                    continue
-
-                kpi = _compute_kpi(df_tag_periodo)
-                righe_stimate += len(df_tag_periodo)
-                riepilogo_rows.append(
-                    {
-                        "Tag": _tag_label(tag),
-                        "Spesa Totale (€)": round(kpi["spesa_totale"], 2),
-                        "Quantità Normalizzata": round(kpi["quantita_norm_totale"], 3),
-                        "Prezzo Medio Ponderato": round(kpi["prezzo_medio_ponderato"], 4) if kpi["prezzo_medio_ponderato"] is not None else None,
-                        "Fornitori Distinti": kpi["num_fornitori"],
-                        "Fatture Coinvolte": kpi["num_fatture"],
-                    }
-                )
-
-                df_export = df_tag_periodo.copy()
-                df_export["Tag"] = _tag_label(tag)
-                dettaglio_frames.append(
-                    df_export[
-                        [
-                            "Tag",
-                            "DataDocumento",
-                            "Fornitore",
-                            "Descrizione",
-                            "Quantita",
-                            "UnitaMisura",
-                            "QuantitaNorm",
-                            "PrezzoUnitarioNum",
-                            "TotaleRigaNum",
-                            "FileOrigine",
-                        ]
-                    ].rename(
-                        columns={
-                            "DataDocumento": "Data",
-                            "Quantita": "Quantità",
-                            "UnitaMisura": "U.M.",
-                            "QuantitaNorm": "Q.tà Norm.",
-                            "PrezzoUnitarioNum": "Prezzo Unit.",
-                            "TotaleRigaNum": "Totale Riga",
-                            "FileOrigine": "Fattura",
-                        }
-                    )
-                )
-
-        st.info(
-            f"📦 Export limitato al periodo selezionato: {data_inizio_filtro.strftime('%d/%m/%Y')} "
-            f"→ {data_fine_filtro.strftime('%d/%m/%Y')}"
-        )
-        st.caption(f"Stima righe dettaglio: {righe_stimate}")
-
-        if not riepilogo_rows or not dettaglio_frames:
-            st.info("📭 Nessun dato disponibile per l'export nel periodo selezionato.")
-        else:
-            if st.button("Preparare file Excel", key="ap_prepare_export", type="primary"):
-                with st.spinner("Preparazione workbook Excel in corso..."):
-                    df_riepilogo_export = pd.DataFrame(riepilogo_rows)
-                    df_dettaglio_export = pd.concat(dettaglio_frames, ignore_index=True)
-                    st.session_state.ap_excel_bytes = _build_export_workbook(df_riepilogo_export, df_dettaglio_export)
-                st.rerun()
-
-            if st.session_state.get("ap_excel_bytes"):
-                st.download_button(
-                    label="📥 Scarica Excel",
-                    data=st.session_state.ap_excel_bytes,
-                    file_name=f"analisi_personalizzata_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="ap_download_export",
-                    type="primary",
-                )

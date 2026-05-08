@@ -197,39 +197,62 @@ if st.session_state.margine_tab == "analisi":
     # Info periodo
     with col_info_aa:
         if data_inizio_aa is None:
-            # Periodo Personalizzato: range picker inline
-            if 'aa_data_inizio' not in st.session_state:
-                st.session_state.aa_data_inizio = inizio_anno_aa
-            if 'aa_data_fine' not in st.session_state:
-                st.session_state.aa_data_fine = oggi_date_aa
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            _col_range, _col_empty = st.columns([1.2, 1.8])
-            with _col_range:
-                _range = st.date_input(
-                    "Periodo",
-                    value=(st.session_state.aa_data_inizio, st.session_state.aa_data_fine),
-                    min_value=inizio_anno_aa,
-                    format="DD/MM/YYYY",
-                    key="aa_data_range_custom",
-                    label_visibility="collapsed",
-                )
-            if isinstance(_range, (list, tuple)) and len(_range) == 2:
-                data_inizio_custom_aa, data_fine_custom_aa = _range[0], _range[1]
-                if data_inizio_custom_aa > data_fine_custom_aa:
-                    st.error("⚠️ La data iniziale deve essere precedente alla data finale.")
+            if periodo_sel_aa == "📆 Seleziona Mese":
+                from utils.period_helper import get_mesi_disponibili_fatture, risolvi_mese_selezionato
+                from services import get_supabase_client as _get_sb_aa
+                _sb_aa = _get_sb_aa()
+                _mesi_aa = get_mesi_disponibili_fatture(user_id, current_ristorante, _sb_aa)
+                _mesi_labels_aa = [x[2] for x in _mesi_aa]
+                if not _mesi_labels_aa:
+                    _mesi_labels_aa = [inizio_anno_aa.strftime("%B %Y")]
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                _col_mese_aa, _col_empty_aa = st.columns([1.2, 1.8])
+                with _col_mese_aa:
+                    _mese_sel_aa = st.selectbox(
+                        "Mese",
+                        options=_mesi_labels_aa,
+                        index=len(_mesi_labels_aa) - 1,
+                        key="aa_mese_sel",
+                        label_visibility="collapsed",
+                    )
+                data_inizio_aa, data_fine_aa = risolvi_mese_selezionato(_mese_sel_aa, _mesi_aa)
+                anno_aa = data_inizio_aa.year
+                label_periodo = _mese_sel_aa
+                giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
+            else:
+                # Periodo Personalizzato: range picker inline
+                if 'aa_data_inizio' not in st.session_state:
+                    st.session_state.aa_data_inizio = inizio_anno_aa
+                if 'aa_data_fine' not in st.session_state:
+                    st.session_state.aa_data_fine = oggi_date_aa
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                _col_range, _col_empty = st.columns([1.2, 1.8])
+                with _col_range:
+                    _range = st.date_input(
+                        "Periodo",
+                        value=(st.session_state.aa_data_inizio, st.session_state.aa_data_fine),
+                        min_value=inizio_anno_aa,
+                        format="DD/MM/YYYY",
+                        key="aa_data_range_custom",
+                        label_visibility="collapsed",
+                    )
+                if isinstance(_range, (list, tuple)) and len(_range) == 2:
+                    data_inizio_custom_aa, data_fine_custom_aa = _range[0], _range[1]
+                    if data_inizio_custom_aa > data_fine_custom_aa:
+                        st.error("⚠️ La data iniziale deve essere precedente alla data finale.")
+                        data_inizio_aa = st.session_state.aa_data_inizio
+                        data_fine_aa = st.session_state.aa_data_fine
+                    else:
+                        st.session_state.aa_data_inizio = data_inizio_custom_aa
+                        st.session_state.aa_data_fine = data_fine_custom_aa
+                        data_inizio_aa = data_inizio_custom_aa
+                        data_fine_aa = data_fine_custom_aa
+                else:
                     data_inizio_aa = st.session_state.aa_data_inizio
                     data_fine_aa = st.session_state.aa_data_fine
-                else:
-                    st.session_state.aa_data_inizio = data_inizio_custom_aa
-                    st.session_state.aa_data_fine = data_fine_custom_aa
-                    data_inizio_aa = data_inizio_custom_aa
-                    data_fine_aa = data_fine_custom_aa
-            else:
-                data_inizio_aa = st.session_state.aa_data_inizio
-                data_fine_aa = st.session_state.aa_data_fine
-            anno_aa = data_inizio_aa.year
-            label_periodo = f"{data_inizio_aa.strftime('%d/%m/%Y')} → {data_fine_aa.strftime('%d/%m/%Y')}"
-            giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
+                anno_aa = data_inizio_aa.year
+                label_periodo = f"{data_inizio_aa.strftime('%d/%m/%Y')} → {data_fine_aa.strftime('%d/%m/%Y')}"
+                giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
         else:
             giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
             st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
@@ -1016,6 +1039,7 @@ if st.session_state.margine_tab == "centri":
         "📊 Trimestre in Corso",
         "📈 Semestre in Corso",
         "🗓️ Anno in Corso",
+        "📆 Seleziona Mese",
         "⚙️ Periodo Personalizzato"
     ]
 
@@ -1048,7 +1072,26 @@ if st.session_state.margine_tab == "centri":
         data_inizio_cp = inizio_anno_cp
 
     with col_info_cp:
-        if periodo_sel_cp == "⚙️ Periodo Personalizzato":
+        if periodo_sel_cp == "📆 Seleziona Mese":
+            from utils.period_helper import get_mesi_disponibili_fatture, risolvi_mese_selezionato
+            from services import get_supabase_client as _get_sb_cpc
+            _sb_cpc = _get_sb_cpc()
+            _mesi_cpc = get_mesi_disponibili_fatture(user_id, current_ristorante, _sb_cpc)
+            _mesi_labels_cpc = [x[2] for x in _mesi_cpc]
+            if not _mesi_labels_cpc:
+                _mesi_labels_cpc = [inizio_anno_cp.strftime("%B %Y")]
+            _col_mese_cpc, _col_empty_cpc = st.columns([1.2, 1.8])
+            with _col_mese_cpc:
+                _mese_sel_cpc = st.selectbox(
+                    "Mese",
+                    options=_mesi_labels_cpc,
+                    index=len(_mesi_labels_cpc) - 1,
+                    key="cp_centri_mese_sel",
+                    label_visibility="collapsed",
+                )
+            data_inizio_cp, data_fine_cp = risolvi_mese_selezionato(_mese_sel_cpc, _mesi_cpc)
+            giorni_cp = (data_fine_cp - data_inizio_cp).days + 1
+        elif periodo_sel_cp == "⚙️ Periodo Personalizzato":
             # Periodo Personalizzato: range picker inline
             if 'cp_centri_data_inizio' not in st.session_state:
                 st.session_state.cp_centri_data_inizio = inizio_anno_cp

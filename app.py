@@ -2930,6 +2930,99 @@ else:
             else:
                 st.caption("🗑️ Le fatture eliminate vengono spostate nel cestino per 30 giorni")
 
+            # ============================================================
+            # 📅 RIVEDI COMPETENZE PREGRESSE
+            # ============================================================
+            st.markdown("---")
+            st.markdown("### 📅 Rivedi Competenze Pregresse")
+            st.caption(
+                "Cerca tra le fatture già importate quelle emesse nei primi giorni del mese "
+                "che potrebbero riferirsi al mese precedente e non hanno ancora una data di competenza impostata."
+            )
+            if st.button("🔍 Analizza fatture senza competenza", key="btn_analizza_competenze_pregresse"):
+                st.session_state['show_rivedi_competenze'] = True
+
+            if st.session_state.get('show_rivedi_competenze'):
+                from config.constants import COMPETENZA_AUTO_SOGLIA_GIORNI as _SOGLIA_PREG, MESI_ITA as _MESI_PREG
+                _candidati_preg = []
+                if not df_cache.empty and 'DataDocumentoOriginale' in df_cache.columns:
+                    _df_preg = df_cache.copy()
+                    _df_preg['_dt_orig'] = pd.to_datetime(_df_preg['DataDocumentoOriginale'], errors='coerce')
+                    _df_preg['_comp_null'] = _df_preg['DataCompetenza'].apply(
+                        lambda v: pd.isna(v) or str(v).strip() in ('', 'NaT', 'None', 'nan')
+                    )
+                    _df_preg = _df_preg[
+                        _df_preg['_dt_orig'].notna() &
+                        (_df_preg['_dt_orig'].dt.day <= _SOGLIA_PREG) &
+                        _df_preg['_comp_null']
+                    ]
+                    # Raggruppa per file, prendi prima riga
+                    if not _df_preg.empty:
+                        _grp = _df_preg.groupby('FileOrigine').first().reset_index()
+                        for _, _row in _grp.iterrows():
+                            _dt_val = _row['_dt_orig']
+                            _prev = _dt_val.replace(day=1) - pd.Timedelta(days=1)
+                            _mese_l = f"{_MESI_PREG.get(_prev.month, '?').capitalize()} {_prev.year}"
+                            _candidati_preg.append({
+                                'file': str(_row['FileOrigine']),
+                                'fornitore': str(_row.get('Fornitore', '')).strip() or 'Sconosciuto',
+                                'data_documento': _dt_val.strftime('%d/%m/%Y'),
+                                'mese_suggerito': _mese_l,
+                                'data_competenza_suggerita': _prev.replace(day=1).date().isoformat(),
+                            })
+
+                if not _candidati_preg:
+                    st.success("✅ Nessuna fattura pregressa da rivedere — tutte le date di competenza risultano già corrette.")
+                else:
+                    st.warning(
+                        f"Trovate **{len(_candidati_preg)} fatture** emesse nei primi {_SOGLIA_PREG} giorni del mese "
+                        f"senza data di competenza impostata."
+                    )
+                    _sel_preg = {}
+                    for _item_p in _candidati_preg:
+                        _col_c, _col_i = st.columns([0.05, 0.95])
+                        with _col_c:
+                            _sel_preg[_item_p['file']] = st.checkbox(
+                                "", value=True, key=f"preg_chk_{_item_p['file']}"
+                            )
+                        with _col_i:
+                            st.markdown(
+                                f"**{_item_p['fornitore']}** — `{_item_p['file']}`  \n"
+                                f"Data documento: **{_item_p['data_documento']}** &nbsp;→&nbsp; "
+                                f"Competenza suggerita: **{_item_p['mese_suggerito']}**"
+                            )
+                    st.markdown("---")
+                    _col_ap, _col_ch, _col_sp = st.columns([1, 1, 4])
+                    with _col_ap:
+                        if st.button("✅ Applica selezione", type="primary", use_container_width=True, key="btn_applica_preg"):
+                            _sel_items = [_i for _i in _candidati_preg if _sel_preg.get(_i['file'], False)]
+                            if _sel_items:
+                                _err_preg = []
+                                for _i in _sel_items:
+                                    _r = aggiorna_data_competenza_fattura(
+                                        file_origine=_i['file'],
+                                        user_id=user_id,
+                                        data_competenza=_i['data_competenza_suggerita'],
+                                        ristoranteid=st.session_state.get('ristorante_id'),
+                                    )
+                                    if not _r.get('success'):
+                                        _err_preg.append(_i['file'])
+                                clear_fatture_cache()
+                                invalida_cache_memoria()
+                                st.session_state.pop('show_rivedi_competenze', None)
+                                if _err_preg:
+                                    st.warning(f"⚠️ Errore su: {', '.join(_err_preg)}")
+                                else:
+                                    st.success(f"✅ {len(_sel_items)} fattura/e aggiornata/e")
+                                time.sleep(0.2)
+                                st.rerun()
+                            else:
+                                st.info("Nessuna fattura selezionata.")
+                    with _col_ch:
+                        if st.button("✖️ Chiudi", use_container_width=True, key="btn_chiudi_preg"):
+                            st.session_state.pop('show_rivedi_competenze', None)
+                            st.rerun()
+
 
 
 # ============================================================
@@ -2997,6 +3090,81 @@ if uploaded_files:
     handle_uploaded_files(uploaded_files, supabase, user_id)
     # [DEBUG]
     _debug_session_snap("POST_UPLOAD")
+
+# 📅 SUGGERIMENTO COMPETENZA: mostra UI di conferma se ci sono fatture di inizio mese
+_pending_competenza = st.session_state.get('pending_competenza_review')
+if _pending_competenza:
+    from config.constants import COMPETENZA_AUTO_SOGLIA_GIORNI
+    st.markdown("""
+    <style>
+    div.st-key-competenza_review_box [data-testid="stExpander"] details summary {
+        background: linear-gradient(135deg, rgba(255, 243, 205, 0.97) 0%, rgba(255, 230, 155, 0.97) 100%) !important;
+        border-radius: 8px !important; padding: 10px 14px !important;
+        color: #856404 !important; font-weight: 700 !important;
+        border: 1px solid #ffc107 !important;
+    }
+    div.st-key-competenza_review_box [data-testid="stExpander"] details {
+        background: rgba(255, 249, 230, 0.97) !important;
+        border: 1px solid #ffc107 !important; border-radius: 8px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    with st.container(key="competenza_review_box"):
+        with st.expander(
+            f"⚠️ {len(_pending_competenza)} fattura/e emessa/e nei primi {COMPETENZA_AUTO_SOGLIA_GIORNI} giorni del mese — Verifica data di competenza",
+            expanded=True
+        ):
+            st.markdown(
+                "Le fatture sotto sono state emesse a inizio mese e potrebbero riferirsi al **mese precedente**. "
+                "Spunta quelle da assegnare al mese indicato e clicca **Applica**. Lascia deselezionate le altre."
+            )
+            _selections = {}
+            import pandas as _pd_comp
+            for _item in _pending_competenza:
+                _col_check, _col_info = st.columns([0.05, 0.95])
+                with _col_check:
+                    _selections[_item['file']] = st.checkbox(
+                        "", value=True,
+                        key=f"comp_chk_{_item['file']}",
+                    )
+                with _col_info:
+                    _badge = "🔴 DATA MODIFICATA" if False else ""
+                    st.markdown(
+                        f"**{_item['fornitore']}** — `{_item['file']}`  \n"
+                        f"Data documento: **{_item['data_documento']}** &nbsp;→&nbsp; "
+                        f"Competenza suggerita: **{_item['mese_suggerito']}**"
+                    )
+            st.markdown("---")
+            _col_apply, _col_skip, _col_spacer = st.columns([1, 1, 4])
+            with _col_apply:
+                if st.button("✅ Applica competenze selezionate", type="primary", use_container_width=True, key="btn_applica_competenza"):
+                    _files_selezionati = [_item for _item in _pending_competenza if _selections.get(_item['file'], False)]
+                    if _files_selezionati:
+                        _errori_comp = []
+                        for _item in _files_selezionati:
+                            _esito = aggiorna_data_competenza_fattura(
+                                file_origine=_item['file'],
+                                user_id=user_id,
+                                data_competenza=_item['data_competenza_suggerita'],
+                                ristoranteid=st.session_state.get('ristorante_id'),
+                            )
+                            if not _esito.get('success'):
+                                _errori_comp.append(_item['file'])
+                        clear_fatture_cache()
+                        invalida_cache_memoria()
+                        del st.session_state['pending_competenza_review']
+                        if _errori_comp:
+                            st.warning(f"⚠️ Errore su: {', '.join(_errori_comp)}")
+                        else:
+                            _n_ok = len(_files_selezionati)
+                            st.success(f"✅ {_n_ok} fattura/e assegnata/e al mese precedente")
+                        st.rerun()
+                    else:
+                        st.info("Nessuna fattura selezionata.")
+            with _col_skip:
+                if st.button("✖️ Ignora", use_container_width=True, key="btn_skip_competenza"):
+                    del st.session_state['pending_competenza_review']
+                    st.rerun()
 
 # 🔥 CARICA E MOSTRA STATISTICHE SEMPRE (da Supabase)
 # ⚡ RIUSA df_cache caricato sopra (evita doppia query DB)

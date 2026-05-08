@@ -657,6 +657,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     # Pulisci messaggi precedenti all'inizio di un nuovo caricamento
     st.session_state.upload_messages = []
     st.session_state.pop('last_upload_notification_context', None)
+    # Reset suggerimenti competenza precedenti (nuovo batch annulla quelli del batch precedente)
+    st.session_state.pop('pending_competenza_review', None)
     # 🚫 BLOCCO POST-DELETE: Se c'è flag force_empty, ignora file caricati
     if st.session_state.get('force_empty_until_upload', False):
         st.warning("⚠️ **Hai appena eliminato tutte le fatture.** Clicca su 'Ripristina upload' prima di caricare nuovi file.")
@@ -1335,6 +1337,30 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                             # Aggiungi anche nome base per prevenire duplicati con estensione diversa
                             st.session_state.files_processati_sessione.add(get_nome_base_file(file.name))
                             
+                            # 📅 DETECTION COMPETENZA: fattura emessa nei primi N giorni del mese?
+                            try:
+                                from config.constants import COMPETENZA_AUTO_SOGLIA_GIORNI, COMPETENZA_AUTO_ABILITA, MESI_ITA
+                                if COMPETENZA_AUTO_ABILITA and isinstance(items, list) and len(items) > 0:
+                                    _data_doc_raw = items[0].get('Data_Documento') or items[0].get('data_documento')
+                                    if _data_doc_raw and str(_data_doc_raw).strip() not in ('', 'N/A', 'None'):
+                                        _dt_comp = pd.to_datetime(_data_doc_raw, errors='coerce')
+                                        if pd.notna(_dt_comp) and _dt_comp.day <= COMPETENZA_AUTO_SOGLIA_GIORNI:
+                                            _fornitore_comp = str(items[0].get('Fornitore', '')).strip() or 'Sconosciuto'
+                                            _prev_month_comp = _dt_comp.replace(day=1) - pd.Timedelta(days=1)
+                                            _mese_label = f"{MESI_ITA.get(_prev_month_comp.month, '?').capitalize()} {_prev_month_comp.year}"
+                                            if 'pending_competenza_review' not in st.session_state:
+                                                st.session_state['pending_competenza_review'] = []
+                                            st.session_state['pending_competenza_review'].append({
+                                                'file': file.name,
+                                                'fornitore': _fornitore_comp,
+                                                'data_documento': _dt_comp.strftime('%d/%m/%Y'),
+                                                'mese_suggerito': _mese_label,
+                                                'data_competenza_suggerita': _prev_month_comp.replace(day=1).date().isoformat(),
+                                            })
+                                            logger.debug(f"[COMPETENZA] {file.name} — giorno {_dt_comp.day} ≤ {COMPETENZA_AUTO_SOGLIA_GIORNI} → suggerito {_mese_label}")
+                            except Exception as _comp_err:
+                                logger.warning(f"[COMPETENZA] Errore detection per {file.name}: {_comp_err}")
+
                             # 🔥 FIX BUG #1: Rimuovi da files_con_errori se presente (file ora ha successo)
                             st.session_state.files_con_errori.discard(file.name)
                         else:

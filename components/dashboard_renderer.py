@@ -844,10 +844,31 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     
     # Gestione logica periodo
     data_inizio_filtro, data_fine_filtro, label_periodo = risolvi_periodo(periodo_selezionato, date_periodo)
-    _is_personalizzato = data_inizio_filtro is None
+    _is_widget_mode = data_inizio_filtro is None  # True per Seleziona Mese e Periodo Personalizzato
 
     with col_info_periodo:
-        if _is_personalizzato:
+        if periodo_selezionato == "📆 Seleziona Mese":
+            from utils.period_helper import get_mesi_disponibili_fatture, risolvi_mese_selezionato
+            from services import get_supabase_client as _get_sb
+            _sb_dash = _get_sb()
+            _uid_dash = st.session_state.user_data.get('id') if st.session_state.get('user_data') else None
+            _rid_dash = st.session_state.get('ristorante_id')
+            _mesi_dash = get_mesi_disponibili_fatture(_uid_dash, _rid_dash, _sb_dash)
+            _mesi_labels_dash = [x[2] for x in _mesi_dash]
+            if not _mesi_labels_dash:
+                _mesi_labels_dash = [oggi_date.replace(day=1).strftime("%B %Y")]
+            _col_mese_dash, _col_empty_dash = st.columns([1.2, 1.8])
+            with _col_mese_dash:
+                _mese_sel_dash = st.selectbox(
+                    "Mese",
+                    options=_mesi_labels_dash,
+                    index=len(_mesi_labels_dash) - 1,
+                    key="dash_mese_sel",
+                    label_visibility="collapsed",
+                )
+            data_inizio_filtro, data_fine_filtro = risolvi_mese_selezionato(_mese_sel_dash, _mesi_dash)
+            label_periodo = _mese_sel_dash
+        elif _is_widget_mode:
             if 'data_inizio_filtro' not in st.session_state:
                 st.session_state.data_inizio_filtro = inizio_anno
             if 'data_fine_filtro' not in st.session_state:
@@ -900,7 +921,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     
     # Mostra info periodo nel box accanto al selettore (solo per periodi preimpostati)
     info_testo = f"🗓️ {label_periodo} ({giorni} giorni) | 🍽️ Righe F&B: {len(df_food):,} | 📊 Righe Totali: {num_righe_totali_df:,} | 📄 Fatture: {num_doc_filtrati} di {num_fatture_totali_df}"
-    if not _is_personalizzato:
+    if not _is_widget_mode:
         with col_info_periodo:
             st.markdown(f"""
             <div style="margin-top: 0; background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%); 

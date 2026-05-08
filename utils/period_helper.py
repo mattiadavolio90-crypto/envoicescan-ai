@@ -3,7 +3,13 @@ Helper centralizzato per calcolo date periodo.
 Evita duplicazione della logica mese/trimestre/semestre/anno in ogni pagina.
 """
 from datetime import date
+import calendar as _calendar
 
+
+_MESI_ITA = [
+    "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+    "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"
+]
 
 # Opzioni dropdown condivise
 PERIODO_OPTIONS = [
@@ -11,6 +17,7 @@ PERIODO_OPTIONS = [
     "📊 Trimestre in Corso",
     "📈 Semestre in Corso",
     "🗓️ Anno in Corso",
+    "📆 Seleziona Mese",
     "⚙️ Periodo Personalizzato"
 ]
 
@@ -59,5 +66,71 @@ def risolvi_periodo(periodo_selezionato: str, date_periodo: dict) -> tuple:
         d = date_periodo['inizio_anno']
         return d, oggi, f"Anno in corso ({d.strftime('%d/%m/%Y')} → {oggi.strftime('%d/%m/%Y')})"
     
+    elif periodo_selezionato == "📆 Seleziona Mese":
+        return None, oggi, None
+
     else:  # Periodo Personalizzato
         return None, oggi, None
+
+
+def get_mesi_disponibili_fatture(user_id: str, ristorante_id: str, supabase_client=None) -> list:
+    """
+    Restituisce una lista di (anno, mese, label) per tutti i mesi dalla prima fattura
+    del ristorante fino al mese corrente incluso.
+    Se non ci sono fatture o la query fallisce, parte dal mese corrente.
+    """
+    oggi = date.today()
+    prima_data = None
+
+    if supabase_client and user_id and ristorante_id:
+        try:
+            resp = (
+                supabase_client.table('fatture')
+                .select('data_documento')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .is_('deleted_at', 'null')
+                .not_.is_('data_documento', 'null')
+                .order('data_documento', desc=False)
+                .limit(1)
+                .execute()
+            )
+            if resp.data and resp.data[0].get('data_documento'):
+                from datetime import datetime as _dt
+                prima_data = _dt.fromisoformat(resp.data[0]['data_documento'][:10]).date()
+        except Exception:
+            pass
+
+    if prima_data is None:
+        prima_data = oggi.replace(day=1)
+
+    mesi = []
+    anno, mese = prima_data.year, prima_data.month
+    anno_end, mese_end = oggi.year, oggi.month
+
+    while (anno, mese) <= (anno_end, mese_end):
+        label = f"{_MESI_ITA[mese - 1]} {anno}"
+        mesi.append((anno, mese, label))
+        mese += 1
+        if mese > 12:
+            mese = 1
+            anno += 1
+
+    return mesi
+
+
+def risolvi_mese_selezionato(mese_label: str, mesi_list: list) -> tuple:
+    """
+    Dato il label di un mese (es. "Febbraio 2026") e la lista restituita da
+    get_mesi_disponibili_fatture, ritorna (data_inizio, data_fine) del mese solare.
+    """
+    for anno, mese, label in mesi_list:
+        if label == mese_label:
+            primo = date(anno, mese, 1)
+            ultimo = date(anno, mese, _calendar.monthrange(anno, mese)[1])
+            return primo, ultimo
+    # fallback: mese corrente
+    oggi = date.today()
+    primo = oggi.replace(day=1)
+    ultimo = date(oggi.year, oggi.month, _calendar.monthrange(oggi.year, oggi.month)[1])
+    return primo, ultimo
