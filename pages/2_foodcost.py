@@ -1973,7 +1973,7 @@ if selected_tab == "📊 Export Excel":
                         data=output.getvalue(),
                         file_name=filename,
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=False
+                        use_container_width=True
                     )
             
             except Exception as e:

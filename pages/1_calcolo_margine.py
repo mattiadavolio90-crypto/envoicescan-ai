@@ -1751,7 +1751,7 @@ if st.session_state.margine_tab == "calcolo":
                 file_name=f"Margini_{anno}_{nome_rist.replace(' ', '_')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="margine_download",
-                use_container_width=False,
+                use_container_width=True,
             )
 
 
