@@ -1246,17 +1246,24 @@ def get_fatture_stats(user_id: str, ristorante_id: str = None) -> Dict[str, Any]
 
 
 def clear_fatture_cache() -> None:
-    """Invalida solo la cache fatture (non tutte le cache Streamlit)."""
-    # [DEBUG]
+    """Invalida tutti i cache fatture e dati derivati (righe, costi, etc.)."""
+    import sys
     logger.debug(f"[CACHE] clear_fatture_cache() chiamata — ts={time.time():.3f}")
     _carica_fatture_da_supabase.clear()
     get_fatture_stats.clear()
-    try:
-        from services.margine_service import calcola_costi_automatici_per_anno, carica_costi_per_categoria
-        calcola_costi_automatici_per_anno.clear()
-        carica_costi_per_categoria.clear()
-    except Exception:
-        pass
+    get_descrizioni_distinte.clear()
+    # Usa sys.modules per evitare import circolari — funziona se il modulo è già caricato
+    _margine_mod = sys.modules.get('services.margine_service')
+    if _margine_mod is not None:
+        for _fn_name in ('calcola_costi_automatici_per_anno', 'carica_costi_per_categoria'):
+            _fn = getattr(_margine_mod, _fn_name, None)
+            if _fn is not None and hasattr(_fn, 'clear'):
+                _fn.clear()
+    _foodcost_mod = sys.modules.get('pages.foodcost')
+    if _foodcost_mod is not None:
+        _fn = getattr(_foodcost_mod, 'get_articoli_da_fatture', None)
+        if _fn is not None and hasattr(_fn, 'clear'):
+            _fn.clear()
 
 
 # ============================================================

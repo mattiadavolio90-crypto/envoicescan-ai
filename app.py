@@ -2963,12 +2963,14 @@ else:
                             _dt_val = _row['_dt_orig']
                             _prev = _dt_val.replace(day=1) - pd.Timedelta(days=1)
                             _mese_l = f"{_MESI_PREG.get(_prev.month, '?').capitalize()} {_prev.year}"
+                            _importo = float(_row.get('TotaleRiga', 0.0)) if pd.notna(_row.get('TotaleRiga')) else 0.0
                             _candidati_preg.append({
                                 'file': str(_row['FileOrigine']),
                                 'fornitore': str(_row.get('Fornitore', '')).strip() or 'Sconosciuto',
                                 'data_documento': _dt_val.strftime('%d/%m/%Y'),
                                 'mese_suggerito': _mese_l,
                                 'data_competenza_suggerita': _prev.replace(day=1).date().isoformat(),
+                                'importo': _importo,
                             })
 
                 if not _candidati_preg:
@@ -2988,7 +2990,7 @@ else:
                         with _col_i:
                             st.markdown(
                                 f"**{_item_p['fornitore']}** — `{_item_p['file']}`  \n"
-                                f"Data documento: **{_item_p['data_documento']}** &nbsp;→&nbsp; "
+                                f"Data documento: **{_item_p['data_documento']}** | 💰 **€ {_item_p['importo']:,.2f}** &nbsp;→&nbsp; "
                                 f"Competenza suggerita: **{_item_p['mese_suggerito']}**"
                             )
                     st.markdown("---")

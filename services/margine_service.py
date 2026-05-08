@@ -44,60 +44,111 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
         tuple: (costi_fb_mensili, costi_spese_mensili)
                Entrambi dict {mese_int: somma_float}
     """
-    try:
-        supabase = get_supabase_client()
-        
-        # Query con paginazione per dataset grandi
+    def _fetch_paginated(base_query):
+        """Esegue query con paginazione e restituisce tutti i risultati."""
         page_size = 1000
-        all_data = []
+        results = []
         offset = 0
-        
         while True:
-            response = supabase.table('fatture') \
-                .select('data_documento, totale_riga, categoria') \
-                .eq('user_id', user_id) \
-                .eq('ristorante_id', ristorante_id) \
-                .is_('deleted_at', 'null') \
-                .gte('data_documento', f'{anno}-01-01') \
-                .lt('data_documento', f'{anno + 1}-01-01') \
-                .neq('categoria', 'Da Classificare') \
-                .range(offset, offset + page_size - 1) \
-                .execute()
-            
-            if not response.data:
+            resp = base_query.range(offset, offset + page_size - 1).execute()
+            if not resp.data:
                 break
-            
-            all_data.extend(response.data)
-            
-            if len(response.data) < page_size:
+            results.extend(resp.data)
+            if len(resp.data) < page_size:
                 break
             offset += page_size
-        
+        return results
+
+    try:
+        supabase = get_supabase_client()
+
+        _base_q = (
+            supabase.table('fatture')
+            .select('id, data_documento, data_competenza, totale_riga, categoria')
+            .eq('user_id', user_id)
+            .eq('ristorante_id', ristorante_id)
+            .is_('deleted_at', 'null')
+            .neq('categoria', 'Da Classificare')
+        )
+
+        # Query 1: fatture con data_documento nell'anno (comportamento storico)
+        q1 = (
+            _base_q
+            .gte('data_documento', f'{anno}-01-01')
+            .lt('data_documento', f'{anno + 1}-01-01')
+        )
+        data_q1 = _fetch_paginated(q1)
+
+        # Query 2: fatture con data_competenza nell'anno ma data_documento fuori anno
+        # (reclassificazioni cross-anno: es. fattura Dec 2025 → competenza Jan 2026)
+        # Best-effort: se fallisce non rompe il calcolo principale.
+        data_q2 = []
+        try:
+            q2 = (
+                _base_q
+                .gte('data_competenza', f'{anno}-01-01')
+                .lt('data_competenza', f'{anno + 1}-01-01')
+            )
+            data_q2 = _fetch_paginated(q2)
+        except Exception as _e_q2:
+            logger.debug(f"Query Q2 (data_competenza cross-anno) saltata: {_e_q2}")
+            data_q2 = []
+
+        # Merge e deduplicazione per id
+        all_data = data_q1.copy()
+        if data_q2:
+            ids_q1 = {r['id'] for r in data_q1 if r.get('id')}
+            for row in data_q2:
+                if row.get('id') not in ids_q1:
+                    all_data.append(row)
+            logger.debug(
+                f"📅 calcola_costi anno {anno}: Q1={len(data_q1)} righe, "
+                f"Q2={len(data_q2)} righe, merge={len(all_data)} righe totali"
+            )
+
         if not all_data:
             logger.info(f"📊 Nessuna fattura trovata per anno {anno}")
             return {}, {}
-        
+
         df = pd.DataFrame(all_data)
+        # Robustezza: garantisci che le colonne data esistano (mock/test legacy possono ometterle)
+        if 'data_documento' not in df.columns:
+            df['data_documento'] = pd.NaT
+        if 'data_competenza' not in df.columns:
+            df['data_competenza'] = pd.NaT
         df['data_documento'] = pd.to_datetime(df['data_documento'], errors='coerce')
-        df = df.dropna(subset=['data_documento'])
-        df['mese'] = df['data_documento'].dt.month
-        
+        df['data_competenza'] = pd.to_datetime(df['data_competenza'], errors='coerce')
+        # Usa data_competenza se disponibile, altrimenti fallback a data_documento
+        df['data_riferimento'] = df['data_competenza'].fillna(df['data_documento'])
+        df = df.dropna(subset=['data_riferimento'])
+        # Filtra solo l'anno richiesto sull'effective date
+        df = df[df['data_riferimento'].dt.year == anno]
+        df['mese'] = df['data_riferimento'].dt.month
+
         # Assicurati che totale_riga sia numerico
         df['totale_riga'] = pd.to_numeric(df['totale_riga'], errors='coerce').fillna(0)
-        
+
         # Split F&B vs Spese usando costanti dell'app
         df_fb = df[df['categoria'].isin(CATEGORIE_FOOD)]
         df_spese = df[df['categoria'].isin(CATEGORIE_SPESE_GENERALI)]
-        
+
+        logger.debug(
+            f"📅 calcola_costi {anno}: {len(df)} righe, "
+            f"data_competenza non-null: {df['data_competenza'].notna().sum()}, "
+            f"F&B: {len(df_fb)}, Spese: {len(df_spese)}"
+        )
+
         # Aggrega per mese
         costi_fb_mensili = df_fb.groupby('mese')['totale_riga'].sum().to_dict()
         costi_spese_mensili = df_spese.groupby('mese')['totale_riga'].sum().to_dict()
-        
-        logger.info(f"📊 Costi auto {anno}: {len(all_data)} righe fatture, "
-                     f"F&B in {len(costi_fb_mensili)} mesi, Spese in {len(costi_spese_mensili)} mesi")
-        
+
+        logger.info(
+            f"📊 Costi auto {anno}: {len(all_data)} righe fetched, "
+            f"F&B in {len(costi_fb_mensili)} mesi, Spese in {len(costi_spese_mensili)} mesi"
+        )
+
         return costi_fb_mensili, costi_spese_mensili
-        
+
     except Exception as e:
         logger.exception(f"❌ Errore calcolo costi automatici anno {anno}: {e}")
         return {}, {}
@@ -131,7 +182,7 @@ def carica_costi_per_categoria(user_id: str, ristorante_id: str,
         
         while True:
             response = supabase.table('fatture') \
-                .select('data_documento, totale_riga, categoria') \
+                .select('data_documento, data_competenza, totale_riga, categoria') \
                 .eq('user_id', user_id) \
                 .eq('ristorante_id', ristorante_id) \
                 .is_('deleted_at', 'null') \
@@ -152,9 +203,17 @@ def carica_costi_per_categoria(user_id: str, ristorante_id: str,
             return pd.DataFrame(columns=['categoria', 'mese', 'totale'])
         
         df = pd.DataFrame(all_data)
+        # Robustezza: garantisci che le colonne data esistano (mock/test legacy possono ometterle)
+        if 'data_documento' not in df.columns:
+            df['data_documento'] = pd.NaT
+        if 'data_competenza' not in df.columns:
+            df['data_competenza'] = pd.NaT
         df['data_documento'] = pd.to_datetime(df['data_documento'], errors='coerce')
-        df = df.dropna(subset=['data_documento'])
-        df['mese'] = df['data_documento'].dt.month
+        df['data_competenza'] = pd.to_datetime(df['data_competenza'], errors='coerce')
+        # Usa data_competenza se disponibile, altrimenti fallback a data_documento
+        df['data_riferimento'] = df['data_competenza'].fillna(df['data_documento'])
+        df = df.dropna(subset=['data_riferimento'])
+        df['mese'] = df['data_riferimento'].dt.month
         df['totale_riga'] = pd.to_numeric(df['totale_riga'], errors='coerce').fillna(0)
 
         # Escludi righe con totale non positivo (sconti, rettifiche negative)
