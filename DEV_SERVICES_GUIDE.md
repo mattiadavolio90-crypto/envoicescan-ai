@@ -1,6 +1,6 @@
 # 🚀 Dev Services Integration Guide
 
-**Data setup**: 2 aprile 2026  
+**Data setup**: 2 aprile 2026 | **Ultimo aggiornamento**: 9 maggio 2026  
 **Status**: ✅ GitHub CLI, Railway CLI, Supabase CLI - ALL CONNECTED
 
 ---

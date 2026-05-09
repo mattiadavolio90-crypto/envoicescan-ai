@@ -171,7 +171,7 @@ with tab_privacy:
     ---
 
     ### Modifiche alla Privacy Policy
-    Ultimo aggiornamento: **1 Maggio 2026**
+    Ultimo aggiornamento: **1 Maggio 2026** — versione 3.4
 
     Ci riserviamo il diritto di modificare questa informativa. Gli utenti registrati verranno informati tramite notifica nell'applicazione in caso di modifiche sostanziali, con preavviso di almeno 15 giorni.
 

@@ -188,6 +188,47 @@ def _find_existing_saved_ok_events(supabase_client, user_id: str, ristorante_id:
     return matches
 
 
+def _find_active_existing_files(supabase_client, user_id: str, ristorante_id: str | None) -> tuple[set[str], set[str]]:
+    """Compatibilità test: restituisce file attivi reali (nomi esatti + nomi base)."""
+    if supabase_client is None or not user_id:
+        return set(), set()
+
+    page = 0
+    page_size = 1000
+    max_pages = 100
+    exact_names = set()
+    base_names = set()
+
+    while page < max_pages:
+        offset = page * page_size
+        query_files = (
+            supabase_client.table("fatture")
+            .select("file_origine")
+            .eq("user_id", user_id)
+            .is_("deleted_at", "null")
+        )
+        if ristorante_id:
+            query_files = query_files.eq("ristorante_id", ristorante_id)
+
+        response = query_files.range(offset, offset + page_size - 1).execute()
+        rows = response.data or []
+        if not rows:
+            break
+
+        for row in rows:
+            file_origine = str(row.get("file_origine") or "").strip()
+            if not file_origine:
+                continue
+            exact_names.add(file_origine.lower())
+            base_names.add(get_nome_base_file(file_origine))
+
+        if len(rows) < page_size:
+            break
+        page += 1
+
+    return exact_names, base_names
+
+
 def _find_active_exact_files_for_targets(
     supabase_client,
     user_id: str,

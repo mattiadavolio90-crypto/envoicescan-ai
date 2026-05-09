@@ -2708,18 +2708,67 @@ else:
             
             # Usa fatture_summary già creato sopra
             if len(fatture_summary) > 0:
-                # 🔍 FILTRO FORNITORE — selectbox con lista fornitori disponibili
+                # 🔍 FILTRI — Fornitore + Mese su due colonne affiancate
+                col_filtro_fornitore, col_filtro_mese = st.columns([1.2, 1.2])
+                
                 fornitori_disponibili = sorted(fatture_summary['Fornitore'].dropna().unique().tolist())
                 opzioni_fornitore = ["— Tutti i fornitori —"] + fornitori_disponibili
-                filtro_fornitore_sel = st.selectbox(
-                    "🔍 Filtra per Fornitore:",
-                    options=opzioni_fornitore,
-                    key="filtro_fornitore_gestione"
-                )
+                
+                with col_filtro_fornitore:
+                    filtro_fornitore_sel = st.selectbox(
+                        "🔍 Filtra per Fornitore:",
+                        options=opzioni_fornitore,
+                        key="filtro_fornitore_gestione"
+                    )
+                
                 if filtro_fornitore_sel == "— Tutti i fornitori —":
-                    fatture_filtrate = fatture_summary
+                    fatture_filtrate_temp = fatture_summary
                 else:
-                    fatture_filtrate = fatture_summary[fatture_summary['Fornitore'] == filtro_fornitore_sel]
+                    fatture_filtrate_temp = fatture_summary[fatture_summary['Fornitore'] == filtro_fornitore_sel]
+                
+                # Estrai mesi unici dalle fatture filtrate per fornitore
+                mesi_disponibili = []
+                if len(fatture_filtrate_temp) > 0:
+                    try:
+                        date_vals = pd.to_datetime(fatture_filtrate_temp['Data'], errors='coerce')
+                        # Ordina per data decrescente (più recenti prima)
+                        mesi_disponibili = sorted(
+                            [(d.strftime('%B %Y'), d.year, d.month) for d in date_vals.dropna()],
+                            key=lambda x: (x[1], x[2]),
+                            reverse=True
+                        )
+                        # Deduplica mantenendo ordine
+                        mesi_visti = set()
+                        mesi_disponibili = [
+                            m for m in mesi_disponibili 
+                            if not (m in mesi_visti or mesi_visti.add(m))
+                        ]
+                    except Exception as _e_mesi:
+                        logger.debug(f"Errore estrazione mesi: {_e_mesi}")
+                        mesi_disponibili = []
+                
+                opzioni_mese = ["— Tutti i mesi —"] + [m[0] for m in mesi_disponibili]
+                
+                with col_filtro_mese:
+                    filtro_mese_sel = st.selectbox(
+                        "📅 Filtra per Mese:",
+                        options=opzioni_mese,
+                        key="filtro_mese_gestione"
+                    )
+                
+                # Applica filtro mese a fatture_filtrate_temp
+                if filtro_mese_sel == "— Tutti i mesi —":
+                    fatture_filtrate = fatture_filtrate_temp
+                else:
+                    # Estrai anno e mese dal string selezionato (es "May 2026")
+                    mese_target = next((m for m in mesi_disponibili if m[0] == filtro_mese_sel), None)
+                    if mese_target:
+                        _, anno_target, mese_num = mese_target
+                        fatture_filtrate = fatture_filtrate_temp[
+                            pd.to_datetime(fatture_filtrate_temp['Data'], errors='coerce').dt.month == mese_num
+                        ]
+                    else:
+                        fatture_filtrate = fatture_filtrate_temp
                 
                 # Crea opzioni dropdown con dict per passare tutti i dati
                 fatture_options = []

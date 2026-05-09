@@ -1,8 +1,8 @@
 ﻿#  OH YEAH! Hub - Gestione Costi Ristorante
 
-**Versione:** 4.1  
+**Versione:** 5.4  
 **Status:**  Produzione  
-**Ultimo aggiornamento:** Maggio 2026
+**Ultimo aggiornamento:** 9 Maggio 2026
 
 ---
 
@@ -102,7 +102,7 @@ Su Windows il lockfile esclude automaticamente uvloop, che non e' supportato dal
 python -m pytest tests/ -v
 ```
 
-557 test automatici.
+637 test automatici (636 passed, 1 skipped).
 
 ---
 
