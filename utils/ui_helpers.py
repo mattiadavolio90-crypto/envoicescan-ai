@@ -222,6 +222,17 @@ def render_pivot_mensile(
         pivot_display['TOTALE %'] = [0.0] * len(pivot)
     pivot_display['MEDIA'] = pivot['MEDIA'].astype(float).round(2).values
 
+    # Riga riepilogo finale: totale per ogni mese e totale complessivo.
+    total_row = {index_col: 'TOTALE MESE'}
+    for col in cols_sorted:
+        col_total_value = float(col_totals.get(col, 0.0) or 0.0)
+        total_row[col] = round(col_total_value, 2)
+        total_row[f'{col} %'] = 100.0 if col_total_value > 0 else 0.0
+    total_row['TOTALE'] = round(float(grand_total or 0.0), 2)
+    total_row['TOTALE %'] = 100.0 if (grand_total and grand_total > 0) else 0.0
+    total_row['MEDIA'] = round(float((grand_total / num_mesi) if num_mesi > 0 else 0.0), 2)
+    pivot_display = pd.concat([pivot_display, pd.DataFrame([total_row])], ignore_index=True)
+
     if not pivot_display.empty:
         st.markdown(
             (
@@ -233,8 +244,14 @@ def render_pivot_mensile(
 
         def _evidenzia_colonne_riepilogo(_row):
             styles = []
+            is_total_row = str(_row.get(index_col, '')).strip().upper() == 'TOTALE MESE'
             for _col in pivot_display.columns:
-                if _col == 'TOTALE':
+                if is_total_row:
+                    if _col == index_col:
+                        styles.append('background-color: #EAF4FF; color: #0f4fa8; font-weight: 800; border-top: 2px solid #2196F3;')
+                    else:
+                        styles.append('background-color: #F3F9FF; color: #0f4fa8; font-weight: 700; border-top: 2px solid #2196F3;')
+                elif _col == 'TOTALE':
                     styles.append('background-color: #E3F2FD; color: #1565C0; font-weight: 700;')
                 elif _col == 'MEDIA':
                     styles.append('background-color: #FFF3CD; color: #856404; font-weight: 700;')
@@ -339,8 +356,15 @@ def render_pivot_mensile(
 
         # Export Excel
         excel_buffer = io.BytesIO()
+        excel_export = pivot.reset_index().copy()
+        total_export_row = {index_col: 'TOTALE MESE'}
+        for col in cols_sorted:
+            total_export_row[col] = round(float(col_totals.get(col, 0.0) or 0.0), 2)
+        total_export_row['TOTALE'] = round(float(grand_total or 0.0), 2)
+        total_export_row['MEDIA'] = round(float((grand_total / num_mesi) if num_mesi > 0 else 0.0), 2)
+        excel_export = pd.concat([excel_export, pd.DataFrame([total_export_row])], ignore_index=True)
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-            pivot.reset_index().to_excel(writer, index=False, sheet_name=sheet_name)
+            excel_export.to_excel(writer, index=False, sheet_name=sheet_name)
 
         col_info, col_excel = st.columns([9, 1])
         with col_info:
