@@ -223,7 +223,8 @@ def render_pivot_mensile(
     pivot_display['MEDIA'] = pivot['MEDIA'].astype(float).round(2).values
 
     # Riga riepilogo finale: totale per ogni mese e totale complessivo.
-    total_row = {index_col: 'TOTALE MESE'}
+    total_row_label = '∑ TOTALE MESE'
+    total_row = {index_col: total_row_label}
     for col in cols_sorted:
         col_total_value = float(col_totals.get(col, 0.0) or 0.0)
         total_row[col] = round(col_total_value, 2)
@@ -244,13 +245,17 @@ def render_pivot_mensile(
 
         def _evidenzia_colonne_riepilogo(_row):
             styles = []
-            is_total_row = str(_row.get(index_col, '')).strip().upper() == 'TOTALE MESE'
+            is_total_row = str(_row.get(index_col, '')).strip() == total_row_label
             for _col in pivot_display.columns:
                 if is_total_row:
                     if _col == index_col:
-                        styles.append('background-color: #EAF4FF; color: #0f4fa8; font-weight: 800; border-top: 2px solid #2196F3;')
+                        styles.append('background-color: #DCEEFF; color: #0B3B91; font-weight: 900; border-top: 3px solid #1D4ED8; border-bottom: 2px solid #1D4ED8;')
+                    elif _col == 'TOTALE':
+                        styles.append('background-color: #DBECFF; color: #0B3B91; font-weight: 800; border-top: 3px solid #1D4ED8; border-bottom: 2px solid #1D4ED8;')
+                    elif _col == 'MEDIA':
+                        styles.append('background-color: #FFF1C9; color: #7A4E00; font-weight: 800; border-top: 3px solid #1D4ED8; border-bottom: 2px solid #1D4ED8;')
                     else:
-                        styles.append('background-color: #F3F9FF; color: #0f4fa8; font-weight: 700; border-top: 2px solid #2196F3;')
+                        styles.append('background-color: #F2F8FF; color: #0B3B91; font-weight: 700; border-top: 3px solid #1D4ED8; border-bottom: 2px solid #1D4ED8;')
                 elif _col == 'TOTALE':
                     styles.append('background-color: #E3F2FD; color: #1565C0; font-weight: 700;')
                 elif _col == 'MEDIA':
@@ -357,7 +362,7 @@ def render_pivot_mensile(
         # Export Excel
         excel_buffer = io.BytesIO()
         excel_export = pivot.reset_index().copy()
-        total_export_row = {index_col: 'TOTALE MESE'}
+        total_export_row = {index_col: total_row_label}
         for col in cols_sorted:
             total_export_row[col] = round(float(col_totals.get(col, 0.0) or 0.0), 2)
         total_export_row['TOTALE'] = round(float(grand_total or 0.0), 2)
