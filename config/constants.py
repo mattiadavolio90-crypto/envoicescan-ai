@@ -1653,7 +1653,7 @@ TRUNCATE_ERROR_DISPLAY = 150
 
 # Limiti upload e batch
 MAX_FILE_SIZE_P7M = 50_000_000  # 50 MB
-MAX_FILES_PER_UPLOAD = 150       # Max file per singolo upload
+MAX_FILES_PER_UPLOAD = 250       # Max file per singolo upload
 MAX_UPLOAD_TOTAL_MB = 200        # Max dimensione totale upload (MB)
 MAX_DESC_LENGTH_DB = 500
 

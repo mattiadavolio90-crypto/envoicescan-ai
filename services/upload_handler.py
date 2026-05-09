@@ -188,48 +188,6 @@ def _find_existing_saved_ok_events(supabase_client, user_id: str, ristorante_id:
     return matches
 
 
-def _find_active_existing_files(supabase_client, user_id: str, ristorante_id: str | None) -> tuple[set[str], set[str]]:
-    """Restituisce i file attivi reali in fatture, escludendo sempre il cestino."""
-    if supabase_client is None or not user_id:
-        return set(), set()
-
-    page = 0
-    page_size = 1000
-    max_pages = 100
-    exact_names = set()
-    base_names = set()
-
-    while page < max_pages:
-        offset = page * page_size
-        query_files = (
-            supabase_client.table("fatture")
-            .select("file_origine")
-            .eq("user_id", user_id)
-            .is_("deleted_at", "null")
-        )
-        if ristorante_id:
-            query_files = query_files.eq("ristorante_id", ristorante_id)
-
-        response = query_files.range(offset, offset + page_size - 1).execute()
-        rows = response.data or []
-        if not rows:
-            break
-
-        for row in rows:
-            file_origine = str(row.get("file_origine") or "").strip()
-            if not file_origine:
-                continue
-            exact_lower = file_origine.lower()
-            exact_names.add(exact_lower)
-            base_names.add(get_nome_base_file(file_origine))
-
-        if len(rows) < page_size:
-            break
-        page += 1
-
-    return exact_names, base_names
-
-
 def _find_active_exact_files_for_targets(
     supabase_client,
     user_id: str,
@@ -279,6 +237,35 @@ def _duplicate_reason_for_ui(file_name: str, reasons_map: dict) -> str:
         reason_text = " — ".join(str(r) for r in reasons if r)
         return reason_text or "Già presente nel database"
     return str(reasons)
+
+
+def _get_just_uploaded_for_current_ristorante() -> set[str]:
+    """Restituisce i file appena caricati solo se coerenti col ristorante attivo."""
+    payload = st.session_state.get('just_uploaded_files', set())
+    current_ristorante_id = st.session_state.get('ristorante_id')
+    stored_ristorante_id = st.session_state.get('just_uploaded_ristorante_id')
+
+    # Compatibilita': in futuro possiamo salvare anche come dict strutturato.
+    if isinstance(payload, dict):
+        files = {
+            str(name).strip()
+            for name in payload.get('files', [])
+            if str(name).strip()
+        }
+        stored_ristorante_id = payload.get('ristorante_id') or stored_ristorante_id
+    else:
+        files = {str(name).strip() for name in payload if str(name).strip()}
+
+    # Migrazione soft: per sessioni legacy senza contesto ristorante, fissiamo il contesto corrente.
+    if files and not stored_ristorante_id and current_ristorante_id:
+        st.session_state.just_uploaded_ristorante_id = current_ristorante_id
+        stored_ristorante_id = current_ristorante_id
+
+    if stored_ristorante_id and current_ristorante_id:
+        if str(stored_ristorante_id) != str(current_ristorante_id):
+            return set()
+
+    return files
 
 
 _GENERIC_UNCATEGORIZED_DESC = {
@@ -431,6 +418,7 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
         for start in range(0, len(descs_for_ai), chunk_size):
             chunk = descs_for_ai[start:start + chunk_size]
             ai_memory_upserts = []
+            chunk_update_groups: dict[tuple[str, bool], list[int]] = {}
             fornitori = [desc_map[d]['fornitore'] for d in chunk]
             iva = [desc_map[d]['iva'] for d in chunk]
             hint = [ottieni_hint_per_ai(d, user_id) for d in chunk]
@@ -457,7 +445,6 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     remaining_descs.append(desc)
                     continue
 
-                update_groups: dict[tuple[str, bool], list[int]] = {}
                 memory_candidate_ids = []
                 for row in meta['rows']:
                     try:
@@ -482,18 +469,9 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     )
                     categoria_target = str(special_row['force_categoria'] or categoria_finale)
                     needs_review_target = bool(special_row['should_review'])
-                    update_groups.setdefault((categoria_target, needs_review_target), []).append(row_id)
+                    chunk_update_groups.setdefault((categoria_target, needs_review_target), []).append(row_id)
                     if special_row['include_in_dashboard']:
                         memory_candidate_ids.append(row_id)
-
-                for (categoria_target, needs_review_target), row_ids in update_groups.items():
-                    q = supabase_client.table('fatture').update({
-                        'categoria': categoria_target,
-                        'needs_review': needs_review_target,
-                    }).eq('user_id', user_id).in_('id', row_ids)
-                    q = add_ristorante_filter(q, ristorante_id)
-                    q.execute()
-                    summary['resolved_rows'] += len(row_ids)
 
                 if memory_candidate_ids:
                     # 🔑 BUG-3 FIX: chiave normalizzata per coerenza con auto-save keyword
@@ -515,6 +493,15 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                         })
 
                 summary['resolved_descriptions'] += 1
+
+            for (categoria_target, needs_review_target), row_ids in chunk_update_groups.items():
+                q = supabase_client.table('fatture').update({
+                    'categoria': categoria_target,
+                    'needs_review': needs_review_target,
+                }).eq('user_id', user_id).in_('id', row_ids)
+                q = add_ristorante_filter(q, ristorante_id)
+                q.execute()
+                summary['resolved_rows'] += len(row_ids)
 
             if ai_memory_upserts:
                 # 🛡️ BUG-4 FIX: filtra le descrizioni con override manuale del cliente già esistenti
@@ -636,12 +623,14 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             for f in uploaded_files
         )
     )
-    if current_upload_token and st.session_state.get('_last_processed_upload_token') == current_upload_token:
-        # Evita loop: stesso batch ancora presente nel widget dopo un rerun/interazione UI.
-        logger.debug("[UPLOAD] Skip batch gia processato nella sessione corrente")
-        return
     if current_upload_token:
-        st.session_state['_last_processed_upload_token'] = current_upload_token
+        last_completed_token = st.session_state.get('_last_completed_upload_token')
+        in_progress_token = st.session_state.get('_in_progress_upload_token')
+        if last_completed_token == current_upload_token and in_progress_token != current_upload_token:
+            # Evita loop: stesso batch gia concluso e ancora presente nel widget dopo rerun/interazione UI.
+            logger.debug("[UPLOAD] Skip batch gia completato nella sessione corrente")
+            return
+        st.session_state['_in_progress_upload_token'] = current_upload_token
 
     # 🔄 CACHE FRESH AT UPLOAD START
     # Invalida la cache memoria AI prima della categorizzazione iniziale per evitare
@@ -802,7 +791,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
     file_gia_processati = []
     file_gia_processati_reason = {}
     
-    just_uploaded = st.session_state.get('just_uploaded_files', set())
+    just_uploaded = _get_just_uploaded_for_current_ristorante()
     force_reimport_all = bool(st.session_state.get('force_reimport_upload', False))
     force_reimport_files = {
         str(name).strip().lower()
@@ -815,11 +804,6 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         st.session_state.get('ristorante_id'),
         [f.name for f in file_unici],
     )
-    verified_active_full, verified_active_base = _find_active_existing_files(
-        supabase,
-        user_id,
-        st.session_state.get('ristorante_id'),
-    )
     # Guardrail: match esatto sui soli file target dell'upload corrente.
     # Questo evita falsi positivi dovuti a storico eventi o confronti indiretti.
     active_exact_targets = _find_active_exact_files_for_targets(
@@ -828,8 +812,6 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         st.session_state.get('ristorante_id'),
         [f.name for f in file_unici],
     )
-    file_su_supabase_full = verified_active_full
-    file_su_supabase = verified_active_base
     
     for file in file_unici:
         filename = file.name
@@ -911,7 +893,11 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             _uid = st.session_state.user_data.get('id', '')
             _email = st.session_state.user_data.get('email', 'unknown')
             for _fname in file_gia_processati:
-                _is_session_duplicate = get_nome_base_file(_fname) in just_uploaded
+                _reasons = file_gia_processati_reason.get(_fname, [])
+                _is_session_duplicate = any(
+                    str(reason).strip().lower() == 'appena caricato'
+                    for reason in (_reasons if isinstance(_reasons, list) else [_reasons])
+                )
                 if not _is_session_duplicate:
                     log_upload_event(
                         user_id=_uid,
@@ -1594,16 +1580,6 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             # Invalida cache solo quando c'e un impatto su dati attivi/diagnostica storica.
             if file_processati > 0 or tutti_problematici:
                 invalida_cache_memoria()
-            # [DEBUG]
-            try:
-                verify = supabase.table("fatture") \
-                    .select("id", count="exact") \
-                    .eq("user_id", user_id) \
-                    .execute()
-                righe_db = verify.count or 0
-                logger.debug(f"[UPLOAD VERIFY] Righe presenti in DB post-upload: {righe_db}")
-            except Exception as ve:
-                logger.warning(f"[UPLOAD VERIFY] Verifica post-upload fallita: {ve}")
             # Invalida la cache fatture prima del rerun per mostrare subito i nuovi dati.
             if file_ok:
                 try:
@@ -1665,6 +1641,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                 for name in list(file_ok) + [get_nome_base_file(name) for name in file_ok]
                 if str(name).strip()
             }
+            st.session_state.just_uploaded_ristorante_id = st.session_state.get('ristorante_id')
             st.session_state.files_processati_sessione = set()
             st.session_state.ultimo_upload_ids = []
             upload_summary['caricate_successo'] = file_processati
@@ -1676,6 +1653,9 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             st.session_state.ai_categorization_in_progress = False
             st.session_state.trigger_ai_categorize = False
             st.session_state.pop('_fonte_pm_cache', None)
+            if current_upload_token:
+                st.session_state['_last_completed_upload_token'] = current_upload_token
+                st.session_state.pop('_in_progress_upload_token', None)
             # [DEBUG]
             logger.debug(f"[TIMING] handle_uploaded_files completato in {time.perf_counter()-t0_upload:.2f}s")
             st.rerun()
@@ -1693,7 +1673,6 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         for i in range(total_check):
             progress_bar.progress((i + 1) / total_check)
             status_text.text(f"🔍 Verifica {i + 1}/{total_check}: {uploaded_files[i].name[:TRUNCATE_DESC_LOG]}...")
-            time.sleep(0.05)
         
         upload_placeholder.empty()
         progress_bar.empty()
@@ -1725,7 +1704,24 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                 for f in file_gia_processati
             )
             n = len(file_gia_processati)
-            lbl = "file già importato in precedenza" if n == 1 else "file già importati in precedenza"
+            _session_only = 0
+            for _fname in file_gia_processati:
+                _reasons = file_gia_processati_reason.get(_fname, [])
+                _is_session = any(
+                    str(reason).strip().lower() == 'appena caricato'
+                    for reason in (_reasons if isinstance(_reasons, list) else [_reasons])
+                )
+                if _is_session:
+                    _session_only += 1
+
+            if _session_only == n:
+                lbl = "file appena caricati in questa sessione" if n == 1 else "file appena caricati in questa sessione"
+            elif _session_only == 0:
+                lbl = "file già importato in precedenza" if n == 1 else "file già importati in precedenza"
+            else:
+                lbl = (
+                    f"file non elaborati ({n - _session_only} già presenti nel DB, {_session_only} appena caricati in sessione)"
+                )
             st.session_state.upload_messages = [
                 f'<div style="padding:10px 16px;background:#fff3cd;border-left:5px solid #ffc107;border-radius:6px;margin-bottom:8px;"><span style="font-size:0.88rem;font-weight:600;color:#856404;">⚠️ {n} {lbl}</span><br/><span style="font-size:0.78rem;color:#856404;">{nomi}</span></div>'
             ]
@@ -1741,6 +1737,9 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         if 'uploader_key' not in st.session_state:
             st.session_state.uploader_key = 0
         st.session_state.uploader_key += 1
+        if current_upload_token:
+            st.session_state['_last_completed_upload_token'] = current_upload_token
+            st.session_state.pop('_in_progress_upload_token', None)
         logger.info(f"⚠️ {len(file_gia_processati)} fatture duplicate - stato pulito automaticamente")
         # [DEBUG]
         logger.debug(f"[TIMING] handle_uploaded_files completato in {time.perf_counter()-t0_upload:.2f}s")
