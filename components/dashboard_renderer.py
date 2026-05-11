@@ -60,8 +60,8 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
         unsafe_allow_html=True,
     )
     
-    # ===== 🔍 DEBUG CATEGORIZZAZIONE (SOLO ADMIN/IMPERSONIFICATO) =====
-    if _is_admin_or_impersonating():
+    # ===== 🔍 DEBUG CATEGORIZZAZIONE (SOLO ADMIN IMPERSONIFICATO) =====
+    if st.session_state.get('impersonating', False):
         with st.expander("🔍 DEBUG: Verifica Categorie", expanded=False):
             st.markdown("**Statistiche DataFrame Completo:**")
             col1, col2, col3 = st.columns(3)
@@ -86,7 +86,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                 invalida_cache_memoria()
                 st.success("Cache invalidata. Dati ricaricati al prossimo accesso.")
 
-        # ===== 🧠 MEMORIA GLOBALE AI (SOLO ADMIN) =====
+        # ===== 🧠 MEMORIA GLOBALE AI (SOLO ADMIN IMPERSONIFICATO) =====
         with st.expander("🧠 Memoria Globale AI", expanded=False):
             st.markdown("Gestione memoria condivisa per test/diagnosi.")
 
@@ -919,8 +919,11 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     df_completo_filtrato = df_completo[mask_completo]
     num_doc_filtrati = df_completo_filtrato['FileOrigine'].nunique()
     
+    # ⭐ FIX: allinea "Righe Totali" al periodo filtrato (come le card di spesa)
+    num_righe_filtrate_periodo = len(df_completo_filtrato)
+    
     # Mostra info periodo nel box accanto al selettore (solo per periodi preimpostati)
-    info_testo = f"🗓️ {label_periodo} ({giorni} giorni) | 🍽️ Righe F&B: {len(df_food):,} | 📊 Righe Totali: {num_righe_totali_df:,} | 📄 Fatture: {num_doc_filtrati} di {num_fatture_totali_df}"
+    info_testo = f"🗓️ {label_periodo} ({giorni} giorni) | 🍽️ Righe F&B: {len(df_food):,} | 📊 Righe Totali: {num_righe_filtrate_periodo:,} | 📄 Fatture: {num_doc_filtrati} di {num_fatture_totali_df}"
     if not _is_widget_mode:
         with col_info_periodo:
             st.markdown(f"""
@@ -963,9 +966,10 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     # Calcola spesa totale
     spesa_totale = spesa_fb + spesa_generale
     
-    # Calcola spesa media mensile (usa Data_DT già calcolata, evita re-parsing)
-    dates_valid = df_completo['Data_DT'].dropna()
-    mesi_periodo = len({(d.year, d.month) for d in dates_valid}) if not dates_valid.empty else 0
+    # Calcola spesa media mensile (usa il PERIODO FILTRATO, non il dataset intero)
+    # Conta i mesi UNICI nel periodo filtrato (data_inizio_filtro → data_fine_filtro)
+    dates_filtered = df_completo_filtrato['Data_DT'].dropna()
+    mesi_periodo = len({(d.year, d.month) for d in dates_filtered}) if not dates_filtered.empty else 0
     spesa_media = spesa_totale / mesi_periodo if mesi_periodo > 0 else 0
     
     # CSS per KPI caricato da static/layout.css (kpi-card styles)

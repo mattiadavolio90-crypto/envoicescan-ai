@@ -2396,8 +2396,8 @@ else:
     if 'files_con_errori' not in st.session_state:
         st.session_state.files_con_errori = set()
 
-    # Bottone Reset Upload (solo admin)
-    if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
+    # Bottone Reset Upload (solo admin impersonificato)
+    if st.session_state.get('impersonating', False):
         if st.button("🔄 Ripristina upload (pulisci cache sessione)", key="reset_upload_cache"):
             st.session_state.files_processati_sessione = set()
             st.session_state.files_con_errori = set()
