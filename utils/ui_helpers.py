@@ -318,7 +318,9 @@ def render_pivot_mensile(
             if col == index_col:
                 continue
             if col.endswith(' %'):
-                pivot_column_config[col] = st.column_config.ProgressColumn(col, format='%.1f%%', min_value=0, max_value=100, width='small')
+                # FIX React #185: ProgressColumn + Styler causa "Maximum update depth exceeded"
+                # su Streamlit 1.54 (Glide Data Grid bug). Usare NumberColumn senza format.
+                pivot_column_config[col] = st.column_config.NumberColumn(col, width='small')
             else:
                 # Nessun format= per evitare il bug sprintf con '€ %,.0f':
                 # la formattazione visiva è gestita dallo Styler via _format_euro_migliaia.

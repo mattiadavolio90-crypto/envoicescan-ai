@@ -807,6 +807,25 @@ def render_category_editor(df_completo_filtrato, supabase):
     _editor_version = st.session_state.get('editor_refresh_counter', 0)
     _filtro_slug = (tipo_filtro or "tutti").lower().replace(" ", "_").replace("&", "and")
     _editor_key = f"editor_dati_v{_editor_version}_{_filtro_slug}"
+
+    # FIX React #185: sanitizzazione Arrow-safe di tutti i dtype prima di passare
+    # al data_editor. Su Streamlit Cloud colonne object con mix str/None/float
+    # causano "Maximum update depth exceeded" nel Glide Data Grid.
+    _col_numeriche = ['Quantita', 'TotaleRiga', 'PrezzoUnitario', 'IVAPercentuale',
+                      'NumeroRiga', 'NumFatture', 'NumRighe']
+    for _cn in _col_numeriche:
+        if _cn in df_editor_paginato_view.columns:
+            _series = pd.to_numeric(df_editor_paginato_view[_cn], errors='coerce')
+            _series = _series.replace([float('inf'), float('-inf')], 0.0).fillna(0.0)
+            df_editor_paginato_view[_cn] = _series.astype(float)
+    _col_testo = ['FileOrigine', 'DataDocumento', 'Descrizione', 'Fornitore',
+                  'UnitaMisura', 'Categoria', 'CatIcon', 'Novità']
+    for _ct in _col_testo:
+        if _ct in df_editor_paginato_view.columns:
+            df_editor_paginato_view[_ct] = (
+                df_editor_paginato_view[_ct].fillna('').astype(str)
+            )
+
     edited_df = st.data_editor(
         df_editor_paginato_view,
         column_config=column_config_dict,
