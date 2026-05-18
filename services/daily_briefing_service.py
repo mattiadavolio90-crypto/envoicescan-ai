@@ -12,6 +12,7 @@ Nessuna promozione di slot tra livelli.
 from datetime import date, datetime, timezone
 from typing import Any, Dict, List, Optional
 import re as _re
+import hashlib
 
 from config.logger_setup import get_logger
 
@@ -74,6 +75,29 @@ def _severity_max(notifications: List[Dict[str, Any]]) -> str:
         if sev == 'warning':
             best = 'warning'
     return best
+
+
+def notifications_fingerprint(notifications: List[Dict[str, Any]]) -> str:
+    """Restituisce fingerprint stabile del set notifiche attive.
+
+    Usata per capire se il briefing e' gia' allineato allo stato corrente.
+    """
+    if not notifications:
+        return ''
+    parts: List[str] = []
+    for n in notifications:
+        parts.append(
+            "|".join([
+                str(n.get('id') or ''),
+                str(n.get('topic_key') or ''),
+                str(n.get('source_type') or ''),
+                str(n.get('dedupe_key') or ''),
+                str(n.get('title') or ''),
+                str(n.get('source_event_at') or ''),
+            ])
+        )
+    raw = "\n".join(sorted(parts))
+    return hashlib.sha1(raw.encode('utf-8')).hexdigest()
 
 
 def _bullet_for(notif: Dict[str, Any]) -> str:
@@ -346,6 +370,7 @@ def _build_snapshot(notifications: List[Dict[str, Any]]) -> Dict[str, Any]:
         'narrative': _compose_narrative(selected, sev_max),
         'generated_at': datetime.now(timezone.utc).isoformat(),
         'notif_count': len(notifications),
+        'notif_fingerprint': notifications_fingerprint(notifications),
         'severity_max': sev_max,
     }
 

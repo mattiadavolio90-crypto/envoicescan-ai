@@ -49,6 +49,7 @@ from services.notification_inbox_service import (
 from services.daily_briefing_service import (
     generate_and_save_briefing,
     get_today_briefing,
+    notifications_fingerprint,
 )
 from services import get_supabase_client
 
@@ -2069,6 +2070,17 @@ elif st.session_state.gfn_tab_attivo == "notifiche":
     if _briefing_snap and (_briefing_snap.get('narrative') or _briefing_snap.get('bullets')):
         _briefing_date_str = (_briefing_snap or {}).get('generated_for_date', '')
         _briefing_notif_count = (_briefing_snap or {}).get('notif_count', 0)
+        _briefing_saved_fp = str((_briefing_snap or {}).get('notif_fingerprint') or '')
+        _live_notifs_for_brief = _prefetched_notifs
+        if _live_notifs_for_brief is None:
+            _live_notifs_for_brief = get_inbox_notifications(
+                user_id=user_id,
+                ristorante_id=current_ristorante,
+                supabase_client=supabase_notif,
+                source_type=None,
+            )
+        _live_fp = notifications_fingerprint(_live_notifs_for_brief or [])
+        _briefing_is_fresh = bool(_briefing_saved_fp) and (_briefing_saved_fp == _live_fp)
         _narrative = (_briefing_snap.get('narrative') or '').strip()
         if not _narrative:
             _narrative = ' '.join(str(b) for b in (_briefing_snap.get('bullets') or []))
@@ -2111,13 +2123,12 @@ elif st.session_state.gfn_tab_attivo == "notifiche":
 
         _brief_col, _ = st.columns([1, 3])
         with _brief_col:
-            if st.button('\U0001F504 Aggiorna briefing ora', key='gfn_rigenera_briefing',
-                         use_container_width=True, type='secondary'):
-                _notifs_for_brief = get_inbox_notifications(
-                    user_id=user_id,
-                    ristorante_id=current_ristorante,
-                    supabase_client=supabase_notif,
-                )
+            _refresh_label = '✅ Briefing aggiornato' if _briefing_is_fresh else '🔄 Aggiorna briefing ora'
+            if st.button(_refresh_label, key='gfn_rigenera_briefing',
+                         use_container_width=True, type='secondary',
+                         disabled=_briefing_is_fresh,
+                         help='Si attiva quando arrivano nuove notifiche'):
+                _notifs_for_brief = _live_notifs_for_brief
                 _new_snap = generate_and_save_briefing(
                     user_id=user_id,
                     ristorante_id=current_ristorante,
