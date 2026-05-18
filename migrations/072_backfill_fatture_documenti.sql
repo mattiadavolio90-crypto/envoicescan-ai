@@ -1,4 +1,4 @@
--- Migration 071: Backfill fatture_documenti da fatture (con batch strategy)
+-- Migration 072: Backfill fatture_documenti da fatture (con batch strategy)
 --
 -- Contesto:
 -- Popolare fatture_documenti dai record esistenti in fatture.
@@ -13,10 +13,10 @@
 --   6. Verifica finale consistenza
 
 -- ============================================================================
--- STEP 1: Create temporary index CONCURRENTLY
+-- STEP 1: Create temporary index
 -- ============================================================================
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_fatture_backfill
+CREATE INDEX IF NOT EXISTS idx_fatture_backfill
     ON public.fatture (user_id, ristorante_id, file_origine)
     WHERE deleted_at IS NULL;
 
@@ -85,7 +85,7 @@ BEGIN
             -- Aggregazione header: prendere il primo non-NULL per ogni colonna
             (ARRAY_AGG(DISTINCT f.fornitore ORDER BY f.fornitore) FILTER (WHERE f.fornitore IS NOT NULL))[1],
             (ARRAY_AGG(DISTINCT f.piva_cedente ORDER BY f.piva_cedente) FILTER (WHERE f.piva_cedente IS NOT NULL))[1],
-            (ARRAY_AGG(DISTINCT f.numero_documento ORDER BY f.numero_documento) FILTER (WHERE f.numero_documento IS NOT NULL))[1],
+            NULL::TEXT,  -- numero_documento non disponibile in fatture storiche (sempre NULL)
             (ARRAY_AGG(DISTINCT f.data_documento ORDER BY f.data_documento))[1],
             (ARRAY_AGG(DISTINCT f.data_competenza ORDER BY f.data_competenza))[1],
             (ARRAY_AGG(DISTINCT f.tipo_documento ORDER BY f.tipo_documento))[1],
@@ -131,7 +131,9 @@ END $$;
 -- STEP 3: Cleanup e maintenance
 -- ============================================================================
 
-VACUUM ANALYZE public.fatture_documenti;
+-- NOTA: VACUUM ANALYZE non supportato in Supabase Dashboard (transaction block)
+-- Verrà eseguito automaticamente dalla manutenzione di Supabase
+-- VACUUM ANALYZE public.fatture_documenti;
 
 DROP INDEX IF EXISTS idx_fatture_backfill;
 
@@ -151,7 +153,7 @@ DROP INDEX IF EXISTS idx_fatture_backfill;
 --   SELECT file_origine FROM public.fatture_documenti WHERE deleted_at IS NULL;
 
 COMMENT ON SCHEMA public IS
-    'Post-migration check (execute manually after 071 applied): '
+    'Post-migration check (execute manually after 072 applied): '
     'SELECT COUNT(*) FROM fatture_documenti WHERE deleted_at IS NULL '
     'SHOULD EQUAL '
     'SELECT COUNT(DISTINCT file_origine) FROM fatture WHERE deleted_at IS NULL';

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FatturaElettronica xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" versione="FPR12" xmlns="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+    <FatturaElettronicaHeader xmlns="">
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>03336420967</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>0056922882</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>X2PH38J</CodiceDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>03977450968</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>SQ Più S.r.l.</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>Via Giacomo Watt 20</Indirizzo>
+                <CAP>20143</CAP>
+                <Comune>Milano</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <IscrizioneREA>
+                <Ufficio>MI</Ufficio>
+                <NumeroREA>1717230</NumeroREA>
+                <CapitaleSociale>25000.00</CapitaleSociale>
+                <SocioUnico>SM</SocioUnico>
+                <StatoLiquidazione>LN</StatoLiquidazione>
+            </IscrizioneREA>
+            <Contatti>
+                <Telefono>025390723</Telefono>
+                <Email>segreteria@sqpiu.it</Email>
+            </Contatti>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>13584150968</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>CONLESTELLE</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA FRANCESCO SFORZA 43</Indirizzo>
+                <CAP>20122</CAP>
+                <Comune>MILANO (MI)</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+        <TerzoIntermediarioOSoggettoEmittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>03336420967</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>03336420967</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>Datev Koinos Srl</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+        </TerzoIntermediarioOSoggettoEmittente>
+        <SoggettoEmittente>TZ</SoggettoEmittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody xmlns="">
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-03-31</Data>
+                <Numero>26/0318</Numero>
+                <ImportoTotaleDocumento>33.00</ImportoTotaleDocumento>
+            </DatiGeneraliDocumento>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <Descrizione>CORSO HACCP 30/03/2026</Descrizione>
+                <Quantita>1.000</Quantita>
+                <UnitaMisura>Unita</UnitaMisura>
+                <PrezzoUnitario>27.05000</PrezzoUnitario>
+                <PrezzoTotale>27.05</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>27.05</ImponibileImporto>
+                <Imposta>5.95</Imposta>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+        <DatiPagamento>
+            <CondizioniPagamento>TP02</CondizioniPagamento>
+            <DettaglioPagamento>
+                <ModalitaPagamento>MP05</ModalitaPagamento>
+                <DataScadenzaPagamento>2026-03-31</DataScadenzaPagamento>
+                <ImportoPagamento>33.00</ImportoPagamento>
+                <IstitutoFinanziario>Monte dei Paschi di Siena  (Filiale di Basiglio - Ag. 598)</IstitutoFinanziario>
+                <IBAN>IT36I0103034211000001211493</IBAN>
+            </DettaglioPagamento>
+        </DatiPagamento>
+    </FatturaElettronicaBody>
+</FatturaElettronica>

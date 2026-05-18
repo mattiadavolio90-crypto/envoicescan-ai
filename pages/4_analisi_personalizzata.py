@@ -527,23 +527,6 @@ if st.session_state.ap_tab_attivo == "panoramica":
             """,
             unsafe_allow_html=True,
         )
-        st.markdown("""
-        <style>
-        [class*="st-key-ap_download_inline"] button {
-            background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
-            color: #ffffff !important;
-            border: 1px solid #15803d !important;
-        }
-        [class*="st-key-ap_download_inline"] button:hover {
-            background: linear-gradient(135deg, #16a34a 0%, #15803d 100%) !important;
-            color: #ffffff !important;
-            border: 1px solid #166534 !important;
-        }
-        [class*="st-key-ap_download_inline"] {
-            margin-top: -12px;
-        }
-        </style>
-        """, unsafe_allow_html=True)
         # Calcola excel bytes PRIMA delle colonne per poter renderizzare inline
         _excel_bytes = None
         if not df_all_cached.empty:
@@ -602,13 +585,12 @@ if st.session_state.ap_tab_attivo == "panoramica":
         with _col_export_btn:
             if _excel_bytes:
                 st.download_button(
-                    label="Excel",
+                    label="XLS",
                     data=_excel_bytes,
                     file_name=f"analisi_tag_{datetime.now().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="ap_download_inline",
-                    type="primary",
-                    use_container_width=True,
+                    use_container_width=False,
                 )
 
         associazioni_tag = tag_associazioni_map.get(selected_tag_id, [])

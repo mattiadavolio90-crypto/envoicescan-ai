@@ -183,6 +183,56 @@ def classify_special_row(
     }
 
 
+def classify_special_row_vectorized(df: 'pd.DataFrame') -> 'pd.DataFrame':
+    """
+    Versione ottimizzata di classify_special_row per DataFrame.
+
+    Invece di apply(axis=1) riga-per-riga, deduplica le tuple input
+    (di solito O(centinaia) vs O(decine di migliaia) di righe),
+    applica la funzione una sola volta per combinazione unica, poi rimappa.
+    Speed-up tipico: 20-100x su dataset grandi.
+
+    Supporta colonne CamelCase (Descrizione, Categoria, PrezzoUnitario,
+    TotaleRiga, Quantita, TipoDocumento, NeedsReview) e snake_case
+    (descrizione, categoria, prezzo_unitario, totale_riga, quantita,
+    tipo_documento, needs_review).
+    """
+    import pandas as pd
+
+    def _get_col(names, default):
+        for name in names:
+            if name in df.columns:
+                return df[name]
+        return pd.Series([default] * len(df), index=df.index)
+
+    s_desc = _get_col(['Descrizione', 'descrizione'], '').fillna('').astype(str)
+    s_cat = _get_col(['Categoria', 'categoria'], '').fillna('').astype(str)
+    s_prezzo = pd.to_numeric(_get_col(['PrezzoUnitario', 'prezzo_unitario'], 0), errors='coerce').fillna(0.0).round(6)
+    s_totale = pd.to_numeric(_get_col(['TotaleRiga', 'totale_riga'], 0), errors='coerce').fillna(0.0).round(6)
+    s_qta = pd.to_numeric(_get_col(['Quantita', 'quantita'], 1), errors='coerce').fillna(1.0).round(6)
+    s_tipo = _get_col(['TipoDocumento', 'tipo_documento'], '').fillna('').astype(str)
+    s_review = _get_col(['NeedsReview', 'needs_review'], False).fillna(False).map(bool)
+
+    keys = list(zip(s_desc, s_cat, s_prezzo, s_totale, s_qta, s_tipo, s_review))
+
+    # Calcola una sola volta per ogni combinazione unica di input
+    cache: dict = {}
+    for key in dict.fromkeys(keys):
+        desc, cat, prezzo, totale, qta, tipo, review = key
+        cache[key] = classify_special_row(
+            descrizione=desc,
+            categoria=cat,
+            prezzo=float(prezzo),
+            totale_riga=float(totale),
+            quantita=float(qta),
+            tipo_documento=tipo,
+            needs_review=bool(review),
+        )
+
+    rows = [cache[k] for k in keys]
+    return pd.DataFrame(rows, index=df.index)
+
+
 # ============================================================
 # VALIDAZIONE DICITURE
 # ============================================================

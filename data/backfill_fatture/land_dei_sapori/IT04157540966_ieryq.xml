@@ -1,0 +1,311 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns4:FatturaElettronica xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.0" xmlns:ns4="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>04157540966</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>ieryq</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>SUBM70N</CodiceDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>02827030962</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>METRO Italia S.p.A.</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA XXV APRILE</Indirizzo>
+                <NumeroCivico>23</NumeroCivico>
+                <CAP>20097</CAP>
+                <Comune>SAN DONATO MILANESE</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <IscrizioneREA>
+                <Ufficio>MI</Ufficio>
+                <NumeroREA>1572675</NumeroREA>
+                <CapitaleSociale>722400.00</CapitaleSociale>
+                <StatoLiquidazione>LN</StatoLiquidazione>
+            </IscrizioneREA>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>10865360969</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>LAND DEI SAPORI SRL</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>Via Padana Superiore</Indirizzo>
+                <NumeroCivico>311</NumeroCivico>
+                <CAP>20090</CAP>
+                <Comune>Vimodrone</Comune>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-02-09</Data>
+                <Numero>91/194/22229</Numero>
+                <ImportoTotaleDocumento>1348.70</ImportoTotaleDocumento>
+                <Causale>Importo 1348.7 Eur da saldare entro il 30.03.2026</Causale>
+                <Causale>Store: 91 - Deposito Nord</Causale>
+                <Causale>Num.Bolla: 22978013  --  </Causale>
+                <Causale>Num.Bolla: 22978013  --  </Causale>
+                <Causale>Num.Bolla: 22978013  --  </Causale>
+            </DatiGeneraliDocumento>
+            <DatiOrdineAcquisto>
+                <RiferimentoNumeroLinea>1</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>2</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>3</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>4</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>5</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>6</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>7</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>8</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>9</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>10</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>11</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>12</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>13</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>14</RiferimentoNumeroLinea>
+                <IdDocumento>MSH20260208185230@90</IdDocumento>
+                <Data>2026-02-09</Data>
+            </DatiOrdineAcquisto>
+            <DatiOrdineAcquisto>
+                <RiferimentoNumeroLinea>15</RiferimentoNumeroLinea>
+                <IdDocumento>MSH20260208195212@90</IdDocumento>
+                <Data>2026-02-09</Data>
+            </DatiOrdineAcquisto>
+            <DatiOrdineAcquisto>
+                <RiferimentoNumeroLinea>16</RiferimentoNumeroLinea>
+                <IdDocumento>ORD20260208201015@ID</IdDocumento>
+                <Data>2026-02-09</Data>
+            </DatiOrdineAcquisto>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>372247</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>SCAMONE WAGYU AUS.(MBS 4-5)</Descrizione>
+                <Quantita>10.227</Quantita>
+                <PrezzoUnitario>27.67</PrezzoUnitario>
+                <PrezzoTotale>282.98</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>2</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>58031</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>LT1 HOPLA S/ZUCCHERO</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>2.98</PrezzoUnitario>
+                <PrezzoTotale>35.76</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>3</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>28714</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 PANNA COTTA  ELENA</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>6.42</PrezzoUnitario>
+                <PrezzoTotale>77.04</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>4</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>25461</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 BURRO MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>6.49</PrezzoUnitario>
+                <PrezzoTotale>12.98</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>5</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>163260</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG2 MASCARPONE MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>13.53</PrezzoUnitario>
+                <PrezzoTotale>27.06</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>6</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>370319</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G260X2 BURRATE MC</Descrizione>
+                <Quantita>6.00</Quantita>
+                <PrezzoUnitario>6.28</PrezzoUnitario>
+                <PrezzoTotale>37.68</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>7</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>77749</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G500 RAPE INT.QUADR.</Descrizione>
+                <Quantita>4.00</Quantita>
+                <PrezzoUnitario>1.41</PrezzoUnitario>
+                <PrezzoTotale>5.64</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>8</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>363531</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1,5 FORMAGGIO SPALMABILE MC</Descrizione>
+                <Quantita>4.00</Quantita>
+                <PrezzoUnitario>9.97</PrezzoUnitario>
+                <PrezzoTotale>39.88</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>9</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>338144</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG 1 GNOCCHI ARO</Descrizione>
+                <Quantita>6.00</Quantita>
+                <PrezzoUnitario>1.50</PrezzoUnitario>
+                <PrezzoTotale>9.00</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>10</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>341652</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 PANZEROTTINI POM/MOZZ MC</Descrizione>
+                <Quantita>8.00</Quantita>
+                <PrezzoUnitario>6.80</PrezzoUnitario>
+                <PrezzoTotale>54.40</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>11</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>269935</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>ML875 SENAPE DEL DEVELEY SQUEE</Descrizione>
+                <Quantita>4.00</Quantita>
+                <PrezzoUnitario>2.90</PrezzoUnitario>
+                <PrezzoTotale>11.60</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>12</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>342359</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G800SALSA GUACA MC</Descrizione>
+                <Quantita>5.00</Quantita>
+                <PrezzoUnitario>9.40</PrezzoUnitario>
+                <PrezzoTotale>47.00</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>13</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>370908</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>L1 SUCCO DI LIMONE ARO</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>1.98</PrezzoUnitario>
+                <PrezzoTotale>23.76</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>14</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>191540</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>100 SACCAPOCHE 28X53CM</Descrizione>
+                <Quantita>20.00</Quantita>
+                <PrezzoUnitario>19.50</PrezzoUnitario>
+                <PrezzoTotale>390.00</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>15</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>372639</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G1540 POMODORI SECCHI O.S MC</Descrizione>
+                <Quantita>4.00</Quantita>
+                <PrezzoUnitario>9.30</PrezzoUnitario>
+                <PrezzoTotale>37.20</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>16</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>17642</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 MIELE MILLEFIORI MC</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>7.99</PrezzoUnitario>
+                <PrezzoTotale>95.88</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>4.00</AliquotaIVA>
+                <ImponibileImporto>126.60</ImponibileImporto>
+                <Imposta>5.06</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>10.00</AliquotaIVA>
+                <ImponibileImporto>647.50</ImponibileImporto>
+                <Imposta>64.75</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>413.76</ImponibileImporto>
+                <Imposta>91.03</Imposta>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+    </FatturaElettronicaBody>
+</ns4:FatturaElettronica>

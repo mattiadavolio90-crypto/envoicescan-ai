@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns4:FatturaElettronica xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.0" xmlns:ns4="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>04157540966</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>iybrp</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>SUBM70N</CodiceDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>02827030962</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>METRO Italia S.p.A.</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA XXV APRILE</Indirizzo>
+                <NumeroCivico>23</NumeroCivico>
+                <CAP>20097</CAP>
+                <Comune>SAN DONATO MILANESE</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <IscrizioneREA>
+                <Ufficio>MI</Ufficio>
+                <NumeroREA>1572675</NumeroREA>
+                <CapitaleSociale>722400.00</CapitaleSociale>
+                <StatoLiquidazione>LN</StatoLiquidazione>
+            </IscrizioneREA>
+            <Contatti>
+                <Telefono>02/51721</Telefono>
+                <Fax>02/51723457</Fax>
+            </Contatti>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>10865360969</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>LAND DEI SAPORI SRL</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>Via Padana Superiore</Indirizzo>
+                <NumeroCivico>311</NumeroCivico>
+                <CAP>20090</CAP>
+                <Comune>Vimodrone</Comune>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-03-07</Data>
+                <Numero>17/7/6839</Numero>
+                <ImportoTotaleDocumento>457.78</ImportoTotaleDocumento>
+                <Causale>Store: 17 - San Donato Milanese (MI)</Causale>
+            </DatiGeneraliDocumento>
+            <DatiOrdineAcquisto>
+                <IdDocumento>6839</IdDocumento>
+            </DatiOrdineAcquisto>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>EAN</CodiceTipo>
+                    <CodiceValore>8026924069994</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 MOZZ BUFALA DOP G20 MC*</Descrizione>
+                <Quantita>8.00</Quantita>
+                <PrezzoUnitario>11.19</PrezzoUnitario>
+                <ScontoMaggiorazione>
+                    <Tipo>SC</Tipo>
+                    <Percentuale>10.01</Percentuale>
+                    <Importo>1.12</Importo>
+                </ScontoMaggiorazione>
+                <PrezzoTotale>80.56</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>2</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>EAN</CodiceTipo>
+                    <CodiceValore>8026924076763</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G800 MERLUZ NORD PORZIONI MC</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>16.29</PrezzoUnitario>
+                <PrezzoTotale>195.48</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>3</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>EAN</CodiceTipo>
+                    <CodiceValore>3033610033936</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G400 BLOC FOIE GRAS ANATRA</Descrizione>
+                <Quantita>5.00</Quantita>
+                <PrezzoUnitario>24.99</PrezzoUnitario>
+                <PrezzoTotale>124.95</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>4</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>EAN</CodiceTipo>
+                    <CodiceValore>8026924061585</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G230 PASTA SFOGLIA ROT. ARO</Descrizione>
+                <Quantita>6.00</Quantita>
+                <PrezzoUnitario>0.99</PrezzoUnitario>
+                <PrezzoTotale>5.94</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>4.00</AliquotaIVA>
+                <ImponibileImporto>80.56</ImponibileImporto>
+                <Imposta>3.22</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>10.00</AliquotaIVA>
+                <ImponibileImporto>201.42</ImponibileImporto>
+                <Imposta>20.14</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>124.95</ImponibileImporto>
+                <Imposta>27.49</Imposta>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+    </FatturaElettronicaBody>
+</ns4:FatturaElettronica>

@@ -1,0 +1,522 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?><P:FatturaElettronica xmlns:P="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" versione="FPR12">
+  <FatturaElettronicaHeader>
+    <DatiTrasmissione>
+      <IdTrasmittente>
+        <IdPaese>IT</IdPaese>
+        <IdCodice>02448510046</IdCodice>
+      </IdTrasmittente>
+      <ProgressivoInvio>QPOOY</ProgressivoInvio>
+      <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+      <CodiceDestinatario>SUBM70N</CodiceDestinatario>
+      <ContattiTrasmittente>
+        <Telefono>0172-439331</Telefono>
+        <Email>edi@pec.tesisquare.com</Email>
+      </ContattiTrasmittente>
+    </DatiTrasmissione>
+    <CedentePrestatore>
+      <DatiAnagrafici>
+        <IdFiscaleIVA>
+          <IdPaese>IT</IdPaese>
+          <IdCodice>01226470993</IdCodice>
+        </IdFiscaleIVA>
+        <Anagrafica>
+          <Denominazione>SOGEGROSS S.P.A.</Denominazione>
+        </Anagrafica>
+        <RegimeFiscale>RF01</RegimeFiscale>
+      </DatiAnagrafici>
+      <Sede>
+        <Indirizzo>VIA LUNGOTORRENTE SECCA 3A</Indirizzo>
+        <CAP>16163</CAP>
+        <Comune>GENOVA</Comune>
+        <Provincia>GE</Provincia>
+        <Nazione>IT</Nazione>
+      </Sede>
+      <IscrizioneREA>
+        <Ufficio>GE</Ufficio>
+        <NumeroREA>GE393915</NumeroREA>
+        <StatoLiquidazione>LN</StatoLiquidazione>
+      </IscrizioneREA>
+    </CedentePrestatore>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA>
+          <IdPaese>IT</IdPaese>
+          <IdCodice>10865360969</IdCodice>
+        </IdFiscaleIVA>
+        <Anagrafica>
+          <Denominazione>LAND DEI SAPORI SRL</Denominazione>
+        </Anagrafica>
+      </DatiAnagrafici>
+      <Sede>
+        <Indirizzo>STRADA PADANA SUPERIORE 311</Indirizzo>
+        <CAP>20090</CAP>
+        <Comune>VIMODRONE</Comune>
+        <Provincia>MI</Provincia>
+        <Nazione>IT</Nazione>
+      </Sede>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody>
+    <DatiGenerali>
+      <DatiGeneraliDocumento>
+        <TipoDocumento>TD01</TipoDocumento>
+        <Divisa>EUR</Divisa>
+        <Data>2026-02-18</Data>
+        <Numero>A0 FCH690003173A</Numero>
+        <ImportoTotaleDocumento>700.63</ImportoTotaleDocumento>
+        <Causale>ID_BARCODE:CCFCH26001169003173A</Causale>
+        <Causale>LAND DEI SAPORI SRL STRADA PADANA SUPERIORE 311 VIMODRONE MI</Causale>
+      </DatiGeneraliDocumento>
+      <DatiDDT>
+        <NumeroDDT>A0 FCH690003173A</NumeroDDT>
+        <DataDDT>2026-02-18</DataDDT>
+      </DatiDDT>
+    </DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee>
+        <NumeroLinea>1</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000013092001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>OLIVE V.CERIGNOLA KG2,3 CITRES VPPL</Descrizione>
+        <Quantita>12.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>13.84</PrezzoUnitario>
+        <PrezzoTotale>166.08</PrezzoTotale>
+        <AliquotaIVA>4.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>2</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000079688005</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>SKIPPER S/Z PERA LT.1</Descrizione>
+        <Quantita>24.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>1.64</PrezzoUnitario>
+        <PrezzoTotale>39.36</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>3</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000402953001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>TORTELLI AL RADICCH.ROSSO KG.3 SURGITAL</Descrizione>
+        <Quantita>3.00</Quantita>
+        <UnitaMisura>KG</UnitaMisura>
+        <PrezzoUnitario>11.49</PrezzoUnitario>
+        <PrezzoTotale>34.47</PrezzoTotale>
+        <AliquotaIVA>10.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>4</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000089441001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>GRANA PADANO DOP KG 4 C.A.</Descrizione>
+        <Quantita>4.966</Quantita>
+        <UnitaMisura>KG</UnitaMisura>
+        <PrezzoUnitario>12.59</PrezzoUnitario>
+        <PrezzoTotale>62.52</PrezzoTotale>
+        <AliquotaIVA>4.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>5</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000021417001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>SPUM.BRUT CL.75 COL MESIAN</Descrizione>
+        <Quantita>36.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>2.68</PrezzoUnitario>
+        <PrezzoTotale>96.48</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>6</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000079175001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>MATRICIANE G.250 GECCHELE</Descrizione>
+        <Quantita>4.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>3.19</PrezzoUnitario>
+        <PrezzoTotale>12.76</PrezzoTotale>
+        <AliquotaIVA>10.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>7</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000079175001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>MATRICIANE G.250 GECCHELE</Descrizione>
+        <Quantita>4.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>3.19</PrezzoUnitario>
+        <PrezzoTotale>12.76</PrezzoTotale>
+        <AliquotaIVA>10.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>8</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000029618002</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>LATTE INT 1LT</Descrizione>
+        <Quantita>24.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>0.85</PrezzoUnitario>
+        <PrezzoTotale>20.40</PrezzoTotale>
+        <AliquotaIVA>4.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>9</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000401738001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>PROSC.CRUDO NAZ.PRESS.KG.7 CA DELLE VALL</Descrizione>
+        <Quantita>7.385</Quantita>
+        <UnitaMisura>KG</UnitaMisura>
+        <PrezzoUnitario>15.04</PrezzoUnitario>
+        <PrezzoTotale>111.07</PrezzoTotale>
+        <AliquotaIVA>10.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>10</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000079112001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>SALV.LIMONE X100 TNT 70X100</Descrizione>
+        <Quantita>1.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>5.99</PrezzoUnitario>
+        <PrezzoTotale>5.99</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>11</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000079112001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>SALV.LIMONE X100 TNT 70X100</Descrizione>
+        <Quantita>1.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>5.99</PrezzoUnitario>
+        <PrezzoTotale>5.99</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>12</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000079688005</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>SKIPPER S/Z PERA LT.1</Descrizione>
+        <Quantita>12.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>1.64</PrezzoUnitario>
+        <PrezzoTotale>19.68</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>13</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000408928001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>CANNUCCE X250 PLA BIO CM.15 BIANCA</Descrizione>
+        <Quantita>1.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>5.03</PrezzoUnitario>
+        <PrezzoTotale>5.03</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>14</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000408928001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>CANNUCCE X250 PLA BIO CM.15 BIANCA</Descrizione>
+        <Quantita>1.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>5.03</PrezzoUnitario>
+        <PrezzoTotale>5.03</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>15</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000408924001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>CANNUCCE X250 PLA BIO CM.21 NERE</Descrizione>
+        <Quantita>1.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>5.55</PrezzoUnitario>
+        <PrezzoTotale>5.55</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>16</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000408928001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>CANNUCCE X250 PLA BIO CM.15 BIANCA</Descrizione>
+        <Quantita>1.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>5.03</PrezzoUnitario>
+        <PrezzoTotale>5.03</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>17</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000408928001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>CANNUCCE X250 PLA BIO CM.15 BIANCA</Descrizione>
+        <Quantita>1.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>5.03</PrezzoUnitario>
+        <PrezzoTotale>5.03</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>18</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000407409001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>CANNUCCE X500 APINAT CM21 BIO NERE</Descrizione>
+        <Quantita>1.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>9.07</PrezzoUnitario>
+        <PrezzoTotale>9.07</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DettaglioLinee>
+        <NumeroLinea>19</NumeroLinea>
+        <CodiceArticolo>
+          <CodiceTipo>COD_FORNITORE</CodiceTipo>
+          <CodiceValore>000408924001</CodiceValore>
+        </CodiceArticolo>
+        <Descrizione>CANNUCCE X250 PLA BIO CM.21 NERE</Descrizione>
+        <Quantita>1.00</Quantita>
+        <UnitaMisura>PZ</UnitaMisura>
+        <PrezzoUnitario>5.55</PrezzoUnitario>
+        <PrezzoTotale>5.55</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <AltriDatiGestionali>
+          <TipoDato>P. Vendita</TipoDato>
+          <RiferimentoTesto>442426 LAND DEI SAPORI SRL</RiferimentoTesto>
+        </AltriDatiGestionali>
+      </DettaglioLinee>
+      <DatiRiepilogo>
+        <AliquotaIVA>4.00</AliquotaIVA>
+        <ImponibileImporto>249.00</ImponibileImporto>
+        <Imposta>9.96</Imposta>
+        <EsigibilitaIVA>I</EsigibilitaIVA>
+      </DatiRiepilogo>
+      <DatiRiepilogo>
+        <AliquotaIVA>10.00</AliquotaIVA>
+        <ImponibileImporto>171.06</ImponibileImporto>
+        <Imposta>17.11</Imposta>
+        <EsigibilitaIVA>I</EsigibilitaIVA>
+      </DatiRiepilogo>
+      <DatiRiepilogo>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <ImponibileImporto>207.79</ImponibileImporto>
+        <Imposta>45.71</Imposta>
+        <EsigibilitaIVA>I</EsigibilitaIVA>
+      </DatiRiepilogo>
+    </DatiBeniServizi>
+    <DatiPagamento>
+      <CondizioniPagamento>TP02</CondizioniPagamento>
+      <DettaglioPagamento>
+        <ModalitaPagamento>MP01</ModalitaPagamento>
+        <DataScadenzaPagamento>2026-02-18</DataScadenzaPagamento>
+        <ImportoPagamento>700.63</ImportoPagamento>
+      </DettaglioPagamento>
+    </DatiPagamento>
+  </FatturaElettronicaBody>
+<ds:Signature Id="S-9decb775-917f-4c57-84f3-3bc3eabc1c11">
+<ds:SignedInfo>
+<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
+<ds:Reference Id="R-962a544d-15d6-451c-b5c5-081d2aab9e2e" URI="">
+<ds:Transforms>
+<ds:Transform Algorithm="http://www.w3.org/2002/06/xmldsig-filter2">
+<dsig-xpath:XPath xmlns:dsig-xpath="http://www.w3.org/2002/06/xmldsig-filter2" Filter="subtract">/descendant::ds:Signature</dsig-xpath:XPath>
+</ds:Transform>
+<ds:Transform Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+</ds:Transforms>
+<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+<ds:DigestValue>SAtzfnRF6G7kSl4CKSVEem9d0tlxxVy7aq88YfKI05Q=</ds:DigestValue>
+</ds:Reference>
+<ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#SP-e1aa74b9-33f8-408a-a9e9-1f135ab89201">
+<ds:Transforms>
+<ds:Transform Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+</ds:Transforms>
+<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+<ds:DigestValue>h+Cmn6LDjdXICef/YA6n6RJXg+N+djr1lGe4y4caPrE=</ds:DigestValue>
+</ds:Reference>
+</ds:SignedInfo>
+<ds:SignatureValue>
+NnHsl6dwL8frlkTDmE0S49PqJnPje2KkS8YUmCe4QbgAFxaXO0Zs0IKlVlYXHRDAMzR/58Pk4mek
++NsBE0ZMuKYHJQ9QbdTtqqgtLYAsAEo+b/K7FrhiPtok0BkC0Abo7N6ukTbGH8ipTtxKespxuB1R
+cs/Cdb0ExKVEGqGJhanpuN1IH1Y3Od+zafWp7ptACnm+MZ4r0X/j3jwaNAN7SFbdEj51W4rRwzeR
+moKRm18fUWw9sco7p0Yq5GTT9tbdrx1o/oqsisyCPB0+/tlxAO+OjU29u4bEbjLBmG0JIgI+PcOg
+CMpyTivnj7/EAfrf7OLVbFOM9JmwTceh5Q6kLw==
+</ds:SignatureValue>
+<ds:KeyInfo>
+<ds:X509Data>
+<ds:X509Certificate>
+MIIHWjCCBkKgAwIBAgIIEh/XaAfQuDEwDQYJKoZIhvcNAQELBQAwfTELMAkGA1UEBhMCSVQxJDAi
+BgNVBAoMG05hbWlyaWFsIFMucC5BLi8wMjA0NjU3MDQyNjEgMB4GA1UECwwXQ2VydGlmaWNhdGlv
+biBBdXRob3JpdHkxJjAkBgNVBAMMHU5hbWlyaWFsIENBIEZpcm1hIFF1YWxpZmljYXRhMB4XDTI1
+MTAxNjE5MTQwMFoXDTI4MTAxOTIyMDAwMFowgZExCzAJBgNVBAYTAklUMRIwEAYDVQQEDAlHQVRU
+SUdMSUExETAPBgNVBCoMCE1BVVJJWklPMR8wHQYDVQQFExZUSU5JVC1HVFRNUlo1OEMwMkQ5NjlU
+MRswGQYDVQQDDBJHQVRUSUdMSUEgTUFVUklaSU8xHTAbBgNVBC4TFEFVR00yMDI1MTAxNjM4Mjgy
+MzkzMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuBHVvmAfx2bjUJ6TMPHV5vCUtsyj
+cmVoBArHcnolQaiEttUO1iNK6VTx+j8flqKKSnTFjwCnpiuEPGtXyVZheTK0FMGKZrrAzDJAa9Fy
+9dawzWO7DzuaD9YbA6LQaqj030w+5wUkCXDKrTfF7i7tAWLrX7lXNe3PbsZgJ4ReTvs/b/9Hnm/5
+mWrkLkMgEwOQm+b3PdSGnMgWgKdL+z2V3NzJGUW5uPAeDDsWiJG7X10GB9Kc+gpbqIKbDNtZpgHW
+OMZH/SzyUBuCv19vTYI+FV+aVYPudkXjmvWNZjU6ajn24jhKnSxetMyZjpoI7S3vKpDeqT983jRD
+ifzgCwoJcwIDAQABo4IDxzCCA8MwgZwGCCsGAQUFBwEBBIGPMIGMMFEGCCsGAQUFBzAChkVodHRw
+czovL2RvY3MubmFtaXJpYWx0c3AuY29tL2RvY3VtZW50cy9OYW1pcmlhbENBRmlybWFRdWFsaWZp
+Y2F0YS5jcnQwNwYIKwYBBQUHMAGGK2h0dHA6Ly9vY3NwLm5hbWlyaWFsdHNwLmNvbS9vY3NwL2Nl
+cnRzdGF0dXMwHQYDVR0OBBYEFDLSxf+oTdKy3/o4NOLC5uf/uIylMB8GA1UdIwQYMBaAFGP97eaM
+YkdIz+oJQXN2EeJkYnsQMIHNBggrBgEFBQcBAwSBwDCBvTAIBgYEAI5GAQEwCwYGBACORgEDAgEU
+MAgGBgQAjkYBBDATBgYEAI5GAQYwCQYHBACORgEGATCBhAYGBACORgEFMHowOxY1aHR0cHM6Ly9k
+b2NzLm5hbWlyaWFsdHNwLmNvbS9kb2N1bWVudHMvUERTL1BEU19lbi5wZGYTAmVuMDsWNWh0dHBz
+Oi8vZG9jcy5uYW1pcmlhbHRzcC5jb20vZG9jdW1lbnRzL1BEUy9QRFNfaXQucGRmEwJpdDCCAbgG
+A1UdIASCAa8wggGrMAkGBwQAi+xAAQIwCAYGBACPegECMIIBkgYLKwYBBAGCmmsBAQMwggGBMCkG
+CCsGAQUFBwIBFh1odHRwczovL2RvY3MubmFtaXJpYWx0c3AuY29tLzCCAVIGCCsGAQUFBwICMIIB
+RB6CAUAASQBsACAAcAByAGUAcwBlAG4AdABlACAAYwBlAHIAdABpAGYAaQBjAGEAdABvACAA6AAg
+AHYAYQBsAGkAZABvACAAcwBvAGwAbwAgAHAAZQByACAAZgBpAHIAbQBlACAAYQBwAHAAbwBzAHQA
+ZQAgAGMAbwBuACAAcAByAG8AYwBlAGQAdQByAGEAIABhAHUAdABvAG0AYQB0AGkAYwBhAC4ALwBU
+AGgAaQBzACAAYwBlAHIAdABpAGYAaQBjAGEAdABlACAAbQBhAHkAIABvAG4AbAB5ACAAYgBlACAA
+dQBzAGUAZAAgAGYAbwByACAAdQBuAGEAdAB0AGUAbgBkAGUAZAAvAGEAdQB0AG8AbQBhAHQAZQBk
+ACAAZABpAGcAaQB0AGEAbAAgAHMAaQBnAG4AYQB0AHUAcgBlAHMALjBGBgNVHR8EPzA9MDugOaA3
+hjVodHRwOi8vY3JsLm5hbWlyaWFsdHNwLmNvbS9GaXJtYUNlcnRhUXVhbGlmaWNhdGExLmNybDAO
+BgNVHQ8BAf8EBAMCBkAwDQYJKoZIhvcNAQELBQADggEBAK0kK2wDIxMDN4VC/eMCy/6k5I5G6nPL
+6ezc3/t6x+c20WrA6MwXHzaH/HKA8NgD4pve44/leT8FUqY3P8ks8Hh4Ia3aQ40YGHRI4hqhFnGS
+CNqZHlZFb9BMG2L8Hk++Mp9YQeEjeIqAxqYiXcwfw009ftahHvgp+c+9QXXrh2hg6/Q/OnLimBKL
+kB/l3EyTIEAd3BDrUB6Tte2a0QxbZ5xPRGKoZchPF7bVTAjkA+q4A4NqSJSEjielfEiqo2c6NI3a
+KXNwNLWwlVBnoBaVWZLS42uAVaKTcb/mNlCOiUNbwtMVBrIo/NyXvA6toVcnfFrbO+BZUIYVSUV6
+QkVILDc=
+</ds:X509Certificate>
+</ds:X509Data>
+</ds:KeyInfo>
+<ds:Object>
+<xades:QualifyingProperties xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Target="#S-9decb775-917f-4c57-84f3-3bc3eabc1c11">
+<xades:SignedProperties Id="SP-e1aa74b9-33f8-408a-a9e9-1f135ab89201">
+<xades:SignedSignatureProperties>
+<xades:SigningTime>2026-02-18T22:03:17Z</xades:SigningTime>
+<xades:SigningCertificate>
+<xades:Cert>
+<xades:CertDigest>
+<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+<ds:DigestValue>2Nd+ZzUc5oQtGyALMcoN88UZ8/pIbF3IN+p4tj4I2+w=</ds:DigestValue>
+</xades:CertDigest>
+<xades:IssuerSerial>
+<ds:X509IssuerName>CN=Namirial CA Firma Qualificata,OU=Certification Authority,O=Namirial S.p.A./02046570426,C=IT</ds:X509IssuerName>
+<ds:X509SerialNumber>1305999258768422961</ds:X509SerialNumber>
+</xades:IssuerSerial>
+</xades:Cert>
+</xades:SigningCertificate>
+</xades:SignedSignatureProperties>
+<xades:SignedDataObjectProperties>
+<xades:DataObjectFormat ObjectReference="#R-962a544d-15d6-451c-b5c5-081d2aab9e2e">
+<xades:MimeType>application/xml</xades:MimeType>
+</xades:DataObjectFormat>
+</xades:SignedDataObjectProperties>
+</xades:SignedProperties>
+</xades:QualifyingProperties>
+</ds:Object>
+</ds:Signature></P:FatturaElettronica>

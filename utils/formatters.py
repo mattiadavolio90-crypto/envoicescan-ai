@@ -570,6 +570,7 @@ def log_upload_event(
     error_message: Optional[str] = None,
     details: Optional[dict] = None,
     supabase_client = None,
+    ristorante_id: Optional[str] = None,
     needs_ack: bool = False,
     alert_data_consegna: Optional[str] = None,
 ) -> None:
@@ -635,6 +636,7 @@ def log_upload_event(
             'error_stage': error_stage,
             'error_message': error_message,
             'details': details_payload or None,
+            'ristorante_id': ristorante_id or None,
             'needs_ack': needs_ack,
             'alert_data_consegna': alert_status,
         }

@@ -1,0 +1,441 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns4:FatturaElettronica xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.0" xmlns:ns4="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>04157540966</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>iwrmo</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>SUBM70N</CodiceDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>02827030962</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>METRO Italia S.p.A.</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA XXV APRILE</Indirizzo>
+                <NumeroCivico>23</NumeroCivico>
+                <CAP>20097</CAP>
+                <Comune>SAN DONATO MILANESE</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <IscrizioneREA>
+                <Ufficio>MI</Ufficio>
+                <NumeroREA>1572675</NumeroREA>
+                <CapitaleSociale>722400.00</CapitaleSociale>
+                <StatoLiquidazione>LN</StatoLiquidazione>
+            </IscrizioneREA>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>10865360969</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>LAND DEI SAPORI SRL</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>Via Padana Superiore</Indirizzo>
+                <NumeroCivico>311</NumeroCivico>
+                <CAP>20090</CAP>
+                <Comune>Vimodrone</Comune>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-03-10</Data>
+                <Numero>91/194/41768</Numero>
+                <ImportoTotaleDocumento>2639.81</ImportoTotaleDocumento>
+                <Causale>Importo 2639.81 Eur da saldare entro il 30.04.2026</Causale>
+                <Causale>Store: 91 - Deposito Nord</Causale>
+                <Causale>Num.Bolla: 22997001  --  </Causale>
+            </DatiGeneraliDocumento>
+            <DatiOrdineAcquisto>
+                <IdDocumento>MSH20260309171711@90</IdDocumento>
+                <Data>2026-03-10</Data>
+            </DatiOrdineAcquisto>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>11082</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>SCAMONE WAGYU SPAGNA KG4</Descrizione>
+                <Quantita>17.53</Quantita>
+                <PrezzoUnitario>46.81</PrezzoUnitario>
+                <PrezzoTotale>820.58</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>2</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>58031</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>LT1 HOPLA S/ZUCCHERO</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>3.28</PrezzoUnitario>
+                <PrezzoTotale>39.36</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>3</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>28714</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 PANNA COTTA  ELENA</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>6.42</PrezzoUnitario>
+                <PrezzoTotale>77.04</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>4</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>349377</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 MOZZ BUFALA DOP G20 MC*</Descrizione>
+                <Quantita>8.00</Quantita>
+                <PrezzoUnitario>11.50</PrezzoUnitario>
+                <PrezzoTotale>92.00</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>5</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>163260</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG2 MASCARPONE MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>13.53</PrezzoUnitario>
+                <PrezzoTotale>27.06</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>6</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>360496</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G500 GRANA PAD DOP SCAGLIE MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>8.18</PrezzoUnitario>
+                <PrezzoTotale>16.36</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>7</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>369878</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>UOVA DI QUAGLIA X18 QUAJA</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>3.21</PrezzoUnitario>
+                <PrezzoTotale>38.52</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>8</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>354528</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G250 PROSC.DI PARMA DOP AFF.MC</Descrizione>
+                <Quantita>10.00</Quantita>
+                <PrezzoUnitario>8.88</PrezzoUnitario>
+                <PrezzoTotale>88.80</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>9</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>92850</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>PROSC.SERRANO RISER.S/O 4ES SV</Descrizione>
+                <Quantita>6.82</Quantita>
+                <PrezzoUnitario>18.88</PrezzoUnitario>
+                <PrezzoTotale>128.76</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>10</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>370500</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 MIX FORM GRATTUGIATI ARO</Descrizione>
+                <Quantita>3.00</Quantita>
+                <PrezzoUnitario>7.65</PrezzoUnitario>
+                <PrezzoTotale>22.95</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>11</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>354757</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG 1 HUMMUS DI CECI</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>10.10</PrezzoUnitario>
+                <PrezzoTotale>20.20</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>12</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>315552</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G230 PASTA SFOGLIA RETT.ARO</Descrizione>
+                <Quantita>6.00</Quantita>
+                <PrezzoUnitario>1.23</PrezzoUnitario>
+                <PrezzoTotale>7.38</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>13</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>169498</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G720 FIL.ACCIUGHE O.O.VASO MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>18.44</PrezzoUnitario>
+                <PrezzoTotale>36.88</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>14</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>337319</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG 1 SALMONE PREAFF NORV MC</Descrizione>
+                <Quantita>5.00</Quantita>
+                <PrezzoUnitario>35.90</PrezzoUnitario>
+                <PrezzoTotale>179.50</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>15</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>10961</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG5 PASTA SEM BARIL PEN.RIG.73</Descrizione>
+                <Quantita>3.00</Quantita>
+                <PrezzoUnitario>7.49</PrezzoUnitario>
+                <PrezzoTotale>22.47</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>16</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>366834</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G300 CROST.FOCACCIA ZUPPE MC</Descrizione>
+                <Quantita>4.00</Quantita>
+                <PrezzoUnitario>3.33</PrezzoUnitario>
+                <PrezzoTotale>13.32</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>17</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>345117</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 ROBIOLA MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>9.94</PrezzoUnitario>
+                <PrezzoTotale>19.88</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>18</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>25461</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 BURRO MC</Descrizione>
+                <Quantita>5.00</Quantita>
+                <PrezzoUnitario>7.12</PrezzoUnitario>
+                <PrezzoTotale>35.60</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>19</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>342615</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 GRANA PADANO DOP GRAT MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>11.39</PrezzoUnitario>
+                <PrezzoTotale>22.78</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>20</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>374859</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G125X8 BURRATE MC</Descrizione>
+                <Quantita>8.00</Quantita>
+                <PrezzoUnitario>15.53</PrezzoUnitario>
+                <PrezzoTotale>124.24</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>21</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>253579</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G500 PROSC.CRUDO A FETTE MC</Descrizione>
+                <Quantita>6.00</Quantita>
+                <PrezzoUnitario>10.00</PrezzoUnitario>
+                <PrezzoTotale>60.00</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>22</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>338144</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG 1 GNOCCHI ARO</Descrizione>
+                <Quantita>6.00</Quantita>
+                <PrezzoUnitario>1.50</PrezzoUnitario>
+                <PrezzoTotale>9.00</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>23</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>341652</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 PANZEROTTINI POM/MOZZ MC</Descrizione>
+                <Quantita>8.00</Quantita>
+                <PrezzoUnitario>6.80</PrezzoUnitario>
+                <PrezzoTotale>54.40</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>24</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>366651</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G500 GNOCCO DA FRIGGERE 18PZ</Descrizione>
+                <Quantita>20.00</Quantita>
+                <PrezzoUnitario>3.30</PrezzoUnitario>
+                <PrezzoTotale>66.00</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>25</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>126291</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG2 BASTONCINI  MERLUZZO</Descrizione>
+                <Quantita>3.00</Quantita>
+                <PrezzoUnitario>20.64</PrezzoUnitario>
+                <PrezzoTotale>61.92</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>26</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>370908</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>L1 SUCCO DI LIMONE ARO</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>1.98</PrezzoUnitario>
+                <PrezzoTotale>23.76</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>27</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>367089</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G800 CALAM PATA PUL12/14 IQFMC</Descrizione>
+                <Quantita>10.00</Quantita>
+                <PrezzoUnitario>13.80</PrezzoUnitario>
+                <PrezzoTotale>138.00</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>28</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>368571</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG2 INSALATA DI MARE PREC.MC</Descrizione>
+                <Quantita>4.00</Quantita>
+                <PrezzoUnitario>15.80</PrezzoUnitario>
+                <PrezzoTotale>63.20</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>29</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>364361</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G800 MERLUZ NORD RITAGLI MC</Descrizione>
+                <Quantita>10.00</Quantita>
+                <PrezzoUnitario>11.30</PrezzoUnitario>
+                <PrezzoTotale>113.00</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>4.00</AliquotaIVA>
+                <ImponibileImporto>471.66</ImponibileImporto>
+                <Imposta>18.87</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>10.00</AliquotaIVA>
+                <ImponibileImporto>1927.54</ImponibileImporto>
+                <Imposta>192.75</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>23.76</ImponibileImporto>
+                <Imposta>5.23</Imposta>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+    </FatturaElettronicaBody>
+</ns4:FatturaElettronica>

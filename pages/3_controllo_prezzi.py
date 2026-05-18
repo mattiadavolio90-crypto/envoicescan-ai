@@ -23,7 +23,7 @@ from services.db_service import (
     get_price_alert_threshold,
     set_price_alert_threshold,
 )
-from utils.validation import SPECIAL_ROW_STORNO, classify_special_row
+from utils.validation import SPECIAL_ROW_STORNO, classify_special_row, classify_special_row_vectorized
 
 # Logger
 logger = get_logger('controllo_prezzi')
@@ -96,28 +96,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
-
-# CSS globale per bottoni Excel verdi
-st.markdown("""
-<style>
-div.st-key-cp_download_excel_alert .stDownloadButton button,
-div.st-key-cp_download_excel_sconti .stDownloadButton button,
-div.st-key-cp_download_excel_omaggi .stDownloadButton button,
-div.st-key-cp_download_excel_nc .stDownloadButton button {
-    background-color: #22c55e !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-}
-div.st-key-cp_download_excel_alert .stDownloadButton button:hover,
-div.st-key-cp_download_excel_sconti .stDownloadButton button:hover,
-div.st-key-cp_download_excel_omaggi .stDownloadButton button:hover,
-div.st-key-cp_download_excel_nc .stDownloadButton button:hover {
-    background-color: #16a34a !important;
-}
-</style>
-""", unsafe_allow_html=True)
 
 # ============================================
 # FILTRO PERIODO
@@ -224,22 +202,10 @@ with st.spinner("Caricamento dati fatture..."):
     custom_tags = get_custom_tags(user_id, current_ristorante)
 
 if df_all.empty:
-    st.info("📊 Nessuna fattura disponibile. Carica le fatture dalla pagina Analisi Fatture AI.")
+    st.info("📊 Nessuna fattura disponibile. Carica le fatture dalla pagina Analisi Fatture.")
     st.stop()
 
-special_meta = df_all.apply(
-    lambda row: classify_special_row(
-        descrizione=row.get('Descrizione', ''),
-        categoria=row.get('Categoria', ''),
-        prezzo=row.get('PrezzoUnitario', 0),
-        totale_riga=row.get('TotaleRiga', 0),
-        quantita=row.get('Quantita', 1),
-        tipo_documento=row.get('TipoDocumento', ''),
-        needs_review=bool(row.get('NeedsReview', row.get('needs_review', False))),
-    ),
-    axis=1,
-    result_type='expand',
-)
+special_meta = classify_special_row_vectorized(df_all)
 df_all['_special_bucket'] = special_meta['bucket']
 df_all['_include_in_price_average'] = special_meta['include_in_price_average'].fillna(False).astype(bool)
 
@@ -276,21 +242,18 @@ with col_t1:
                  type="primary" if st.session_state.cp_tab_attivo == "variazioni" else "secondary"):
         if st.session_state.cp_tab_attivo != "variazioni":
             st.session_state.cp_tab_attivo = "variazioni"
-            st.rerun()
 
 with col_t2:
     if st.button("🎁 SCONTI E\nOMAGGI", key="cp_btn_sconti", use_container_width=True,
                  type="primary" if st.session_state.cp_tab_attivo == "sconti" else "secondary"):
         if st.session_state.cp_tab_attivo != "sconti":
             st.session_state.cp_tab_attivo = "sconti"
-            st.rerun()
 
 with col_t3:
     if st.button("📋 NOTE DI\nCREDITO", key="cp_btn_nc", use_container_width=True,
                  type="primary" if st.session_state.cp_tab_attivo == "nc" else "secondary"):
         if st.session_state.cp_tab_attivo != "nc":
             st.session_state.cp_tab_attivo = "nc"
-            st.rerun()
 
 # CSS bottoni tab e download (caricati da file statico condiviso)
 from utils.ui_helpers import load_css
@@ -352,7 +315,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
     with col_help:
         st.markdown(
             "<div style='margin-top: 34px; color:#1e3a8a; font-weight:600; white-space: nowrap;'>"
-            "🚨 Imposta la soglia minima di variazione prezzo che attiva le notifiche alert in dashboard principale (Analisi Fatture AI)."
+            "🚨 Imposta la soglia minima di variazione prezzo che attiva le notifiche alert in Tab Notifiche."
             "</div>",
             unsafe_allow_html=True,
         )
@@ -361,19 +324,8 @@ if st.session_state.cp_tab_attivo == "variazioni":
     df_alert_source = df_filtrato_variazioni
     df_alert = calcola_alert(df_alert_source, soglia_aumento)
 
-    # Badge conteggio sotto la selezione soglia
-    if not df_alert.empty:
-        st.markdown(
-            f"""
-            <div style="display:inline-block; width:fit-content; background:linear-gradient(135deg,#dbeafe,#eff6ff);
-                        border:1px solid #93c5fd; color:#1e40af; border-radius:8px; padding:10px 14px;
-                        font-weight:700; margin-top:4px; margin-bottom:4px;">
-                ⚠️ {len(df_alert)} Variazioni Rilevate
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    else:
+    # Messaggio se nessuna variazione
+    if df_alert.empty:
         st.markdown(
             "<p style='margin:0; color:#0B3A82; font-weight:700;'>✅ Nessuna variazione rilevata</p>",
             unsafe_allow_html=True,
@@ -381,70 +333,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
 
     if not df_alert.empty:
 
-        # ── TABELLA ──
-        st.caption("📖 **Storico**: ultimi 5 prezzi incluso l'ultimo | **Trend**: andamento recente | **Imp. €/mese**: stima peso economico del rincaro o ribasso | 📅 Dati filtrati in base al periodo selezionato in alto")
-
-        df_display = df_alert.copy()
-        df_display['Data'] = pd.to_datetime(df_display['Data']).dt.strftime('%d/%m/%y')
-        df_display['Media'] = df_display['Media'].apply(lambda x: f"€{x:.2f}")
-        df_display['Ultimo'] = df_display['Ultimo'].apply(lambda x: f"€{x:.2f}")
-        df_display['Trend'] = df_display['Trend'].fillna('↕️')
-
-        def formatta_variazione(perc):
-            if pd.isna(perc):
-                return 'N/A'
-            if perc > 0:
-                return f"🔴 +{perc:.1f}%"
-            if perc < 0:
-                return f"🟢 {perc:.1f}%"
-            return f"{perc:.1f}%"
-
-        def formatta_impatto(valore):
-            if pd.isna(valore):
-                return '-'
-            if valore > 0:
-                return f"🔴 €{valore:.0f}"
-            if valore < 0:
-                return f"🟢 €{valore:.0f}"
-            return '€0'
-
-        df_display['Aumento_Perc'] = df_display['Aumento_Perc'].apply(formatta_variazione)
-        df_display['Impatto_Stimato'] = df_display['Impatto_Stimato'].apply(formatta_impatto)
-
-        df_display = df_display.reset_index(drop=True)
-        df_display = df_display[['Prodotto', 'Categoria', 'Fornitore', 'Storico', 'Media', 'Ultimo', 'Trend', 'Aumento_Perc', 'Impatto_Stimato', 'Data', 'N_Fattura']]
-        df_display.columns = ['Prodotto', 'Cat.', 'Fornitore', 'Storico (ultimi 5)', 'Media storico', 'Ultimo', 'Trend', 'Var. %', 'Imp. €/mese', 'Data ultima', 'N.Fattura']
-
-        num_righe_alert = len(df_display)
-        altezza_alert = min(max(num_righe_alert * 35 + 50, 220), 520)
-
-        st.dataframe(
-            df_display,
-            width='stretch',
-            height=altezza_alert,
-            hide_index=True
-        )
-
-        # Export Excel
-        excel_buffer = io.BytesIO()
-        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-            df_alert.to_excel(writer, sheet_name='Variazioni Prezzo', index=False)
-
-        col_spacer, col_btn = st.columns([11, 1])
-        with col_btn:
-            st.download_button(
-                label="Excel",
-                data=excel_buffer.getvalue(),
-                file_name=f"variazioni_prezzo_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="cp_download_excel_alert",
-                type="primary",
-                use_container_width=True
-            )
-
-        # ── KPI CARDS (dimensione fissa, colori dinamici, nessun decimale) ──
-        st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
-
+        # ── KPI CARDS ──
         df_metric = df_alert.copy()
         df_metric['Aumento_Perc'] = pd.to_numeric(df_metric['Aumento_Perc'], errors='coerce').fillna(0.0)
         df_metric['Impatto_Stimato'] = pd.to_numeric(df_metric['Impatto_Stimato'], errors='coerce').fillna(0.0)
@@ -524,29 +413,97 @@ if st.session_state.cp_tab_attivo == "variazioni":
         </div>
         """, unsafe_allow_html=True)
 
+        # ── TABELLA ──
+        df_display = df_alert.copy()
+        df_display['Data'] = pd.to_datetime(df_display['Data']).dt.strftime('%d/%m/%y')
+        df_display['Media'] = df_display['Media'].apply(lambda x: f"€{x:.2f}")
+        df_display['Ultimo'] = df_display['Ultimo'].apply(lambda x: f"€{x:.2f}")
+        df_display['Trend'] = df_display['Trend'].fillna('↕️')
+
+        def formatta_variazione(perc):
+            if pd.isna(perc):
+                return 'N/A'
+            if perc > 0:
+                return f"🔴 +{perc:.1f}%"
+            if perc < 0:
+                return f"🟢 {perc:.1f}%"
+            return f"{perc:.1f}%"
+
+        def formatta_impatto(valore):
+            if pd.isna(valore):
+                return '-'
+            if valore > 0:
+                return f"🔴 €{valore:.0f}"
+            if valore < 0:
+                return f"🟢 €{valore:.0f}"
+            return '€0'
+
+        df_display['Aumento_Perc'] = df_display['Aumento_Perc'].apply(formatta_variazione)
+        df_display['Impatto_Stimato'] = df_display['Impatto_Stimato'].apply(formatta_impatto)
+
+        df_display = df_display.reset_index(drop=True)
+        df_display = df_display[['Prodotto', 'Categoria', 'Fornitore', 'Storico', 'Media', 'Ultimo', 'Trend', 'Aumento_Perc', 'Impatto_Stimato', 'Data', 'N_Fattura', 'NumeroDocumento']]
+        df_display.columns = ['Prodotto', 'Cat.', 'Fornitore', 'Storico (ultimi 5)', 'Media storico', 'Ultimo', 'Trend', 'Var. %', 'Imp. €/mese', 'Data ultima', 'Fattura', 'N° Fattura']
+
+        num_righe_alert = len(df_display)
+        altezza_alert = min(max(num_righe_alert * 35 + 50, 220), 520)
+
+        st.dataframe(
+            df_display,
+            width='stretch',
+            height=altezza_alert,
+            hide_index=True
+        )
+
+        # Export Excel
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+            df_alert.to_excel(writer, sheet_name='Variazioni Prezzo', index=False)
+
+        _col_badge_v, _col_xls_v = st.columns([9, 0.7])
+        with _col_badge_v:
+            st.markdown(
+                f"""
+            <div style="display:inline-block; width:fit-content; background:linear-gradient(135deg,#dbeafe,#eff6ff);
+                        border:1px solid #93c5fd; color:#1e40af; border-radius:8px; padding:10px 14px;
+                        font-weight:700; margin-top:8px; margin-bottom:4px;">
+                ⚠️ {len(df_alert)} Variazioni Rilevate
+            </div>
+            """,
+                unsafe_allow_html=True,
+            )
+        with _col_xls_v:
+            st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
+            st.download_button(
+                label="XLS",
+                data=excel_buffer.getvalue(),
+                file_name=f"variazioni_prezzo_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="cp_download_excel_alert",
+                use_container_width=False,
+            )
+
         st.markdown("<div style='margin-top: 2rem;'></div>", unsafe_allow_html=True)
 
     # ── GRAFICO: Storico prezzo acquisto (sempre visibile) ──
     st.markdown("<h3 style='color:#1e40af; font-weight:700;'>📈 Storico prezzo acquisto</h3>", unsafe_allow_html=True)
     st.markdown("<div style='margin-top: 0.5rem;'></div>", unsafe_allow_html=True)
 
-    # Toggle: solo prodotti con alert o tutti
-    st.markdown("<p style='font-size:1.15rem; font-weight:700; color:#1e40af; margin-bottom:0.25rem;'>Prodotti da visualizzare</p>", unsafe_allow_html=True)
-
     _has_alerts = not df_alert.empty
     _scope_options = ["Solo con alert", "Tutti i prodotti"] if _has_alerts else ["Tutti i prodotti"]
     if st.session_state.get('cp_scope_grafico') not in _scope_options:
-        st.session_state.cp_scope_grafico = _scope_options[0]
+        st.session_state['cp_scope_grafico'] = _scope_options[0]
 
-    scope_grafico = st.radio(
-        "Prodotti da visualizzare",
-        label_visibility="collapsed",
-        options=_scope_options,
-        index=0,
-        horizontal=True,
-        key="cp_scope_grafico",
-    )
-    st.markdown("<div style='margin-top: 0.75rem;'></div>", unsafe_allow_html=True)
+    PERIODI = {"Ultimi 30 giorni": 30, "Ultimi 90 giorni": 90, "Ultimi 180 giorni": 180, "Tutto": 0}
+
+    # 3 filtri in linea
+    _col_scope, _col_prodotto, _col_periodo = st.columns(3)
+    with _col_scope:
+        scope_grafico = st.selectbox(
+            "Prodotti da visualizzare",
+            options=_scope_options,
+            key="cp_scope_grafico",
+        )
 
     if scope_grafico == "Solo con alert" and _has_alerts:
         prodotti_grafico = []
@@ -559,60 +516,27 @@ if st.session_state.cp_tab_attivo == "variazioni":
             df_alert_source['Descrizione'].dropna().astype(str).str.strip().unique().tolist()
         )
 
-    st.markdown("<p style='font-size:1.15rem; font-weight:700; color:#1e40af; margin-bottom:0.25rem;'>Seleziona prodotto</p>", unsafe_allow_html=True)
-
     if not prodotti_grafico:
         st.info("📭 Nessun prodotto disponibile per il grafico.")
     else:
-        if scope_grafico == "Tutti i prodotti":
-            filtro_prodotto_grafico = st.text_input(
-                "Cerca prodotto",
-                value=st.session_state.get("cp_filtro_prodotto_grafico", ""),
-                key="cp_filtro_prodotto_grafico",
-                placeholder="Scrivi qui per filtrare l'elenco prodotti",
-                label_visibility="collapsed",
-            )
-            filtro_norm = filtro_prodotto_grafico.strip().lower()
-        else:
-            filtro_norm = ""
-
-        if filtro_norm:
-            prodotti_filtrati = [
-                prodotto for prodotto in prodotti_grafico
-                if filtro_norm in prodotto.lower()
-            ]
-        else:
-            prodotti_filtrati = prodotti_grafico
-
-        if not prodotti_filtrati:
-            st.info("🔎 Nessun prodotto trovato con questo filtro. Prova a scrivere meno caratteri o una parola diversa.")
-            st.stop()
-
-        if scope_grafico == "Tutti i prodotti":
-            st.caption(f"{len(prodotti_filtrati)} prodotti disponibili")
-
         selected_prodotto = st.session_state.get("cp_prodotto_grafico")
-        selected_index = prodotti_filtrati.index(selected_prodotto) if selected_prodotto in prodotti_filtrati else 0
+        selected_index = prodotti_grafico.index(selected_prodotto) if selected_prodotto in prodotti_grafico else 0
 
-        prodotto_grafico = st.selectbox(
-            "Seleziona prodotto",
-            options=prodotti_filtrati,
-            index=selected_index,
-            key="cp_prodotto_grafico",
-            label_visibility="collapsed"
-        )
-        st.markdown("<div style='margin-top: 0.75rem;'></div>", unsafe_allow_html=True)
+        with _col_prodotto:
+            prodotto_grafico = st.selectbox(
+                "Seleziona prodotto",
+                options=prodotti_grafico,
+                index=selected_index,
+                key="cp_prodotto_grafico",
+            )
 
-        # Filtro temporale
-        PERIODI = {"Ultimi 30 giorni": 30, "Ultimi 90 giorni": 90, "Ultimi 180 giorni": 180, "Tutto": 0}
-        st.markdown("<p style='font-size:1.15rem; font-weight:700; color:#1e40af; margin-bottom:0.25rem;'>Seleziona periodo</p>", unsafe_allow_html=True)
-        periodo_sel = st.selectbox(
-            "Seleziona periodo",
-            options=list(PERIODI.keys()),
-            index=len(PERIODI) - 1,
-            key="cp_periodo_grafico",
-            label_visibility="collapsed"
-        )
+        with _col_periodo:
+            periodo_sel = st.selectbox(
+                "Seleziona periodo",
+                options=list(PERIODI.keys()),
+                index=len(PERIODI) - 1,
+                key="cp_periodo_grafico",
+            )
 
         df_trend = df_alert_source.copy()
         df_trend['Data_DT'] = pd.to_datetime(df_trend['DataDocumento'], errors='coerce')
@@ -700,18 +624,22 @@ if st.session_state.cp_tab_attivo == "variazioni":
             fig_prezzo.update_traces(
                 line=dict(color='#2563eb', width=2.5, shape='spline'),
                 marker=dict(size=7, color='#2563eb', line=dict(color='#ffffff', width=1.5)),
-                fill='tozeroy',
-                fillcolor='rgba(37,99,235,0.07)',
                 hovertemplate='<b>%{x|%d/%m/%Y}</b><br>Variazione: <b>%{customdata[1]}</b><br>Prezzo: €%{customdata[0]:.2f}<extra></extra>',
             )
-            fig_prezzo.add_hline(
-                y=0,
-                line_dash='dash',
-                line_color='#dc2626',
-                line_width=1.5,
-                annotation_text=f'  Media €{prezzo_medio:.2f}',
-                annotation_position='right',
-                annotation_font=dict(color='#dc2626', size=13, family='Arial'),
+            fig_prezzo.add_scatter(
+                x=df_trend['Data_DT'].tolist(),
+                y=[0] * len(df_trend),
+                mode='lines',
+                line=dict(color='#dc2626', width=1.5, dash='dash'),
+                showlegend=False,
+                hovertemplate='Baseline var. 0%<extra></extra>',
+            )
+            fig_prezzo.add_annotation(
+                x=1.0, xref='paper', y=0, yref='y',
+                text=f"<b>Media €{prezzo_medio:.2f}</b>",
+                showarrow=False, xanchor='right', yanchor='bottom', yshift=5,
+                font=dict(color='#dc2626', size=13, family='Arial'),
+                bgcolor='rgba(255,255,255,0.85)',
             )
             fig_prezzo.update_layout(
                 height=380,
@@ -731,7 +659,6 @@ if st.session_state.cp_tab_attivo == "variazioni":
             )
         else:
             st.info("📭 Nessun dato disponibile per disegnare lo storico di questo prodotto.")
-
 
 # ================================================================
 # TAB 2: SCONTI E OMAGGI
@@ -832,28 +759,45 @@ elif st.session_state.cp_tab_attivo == "sconti":
     # ============================================================
     if not df_sconti.empty:
         with st.expander("💸 Dettaglio Sconti Applicati", expanded=True):
-            st.markdown(f"**{len(df_sconti)} sconti** ricevuti dai fornitori")
-            st.caption("Solo prodotti Food & Beverage - Escluse spese generali")
-
             df_sconti_view = df_sconti[[
                 'descrizione',
                 'categoria',
                 'fornitore',
                 'importo_sconto',
                 'data_documento',
-                'file_origine'
+                'file_origine',
+                'numero_documento'
             ]].copy()
-
             df_sconti_view = df_sconti_view.reset_index(drop=True)
-
             df_sconti_view.columns = [
                 'Prodotto',
                 'Categoria',
                 'Fornitore',
                 'Sconto',
                 'Data',
-                'Fattura'
+                'Fattura',
+                'N° Fattura'
             ]
+
+            # Prepara export prima del titolo per XLS inline
+            excel_sconti = io.BytesIO()
+            with pd.ExcelWriter(excel_sconti, engine='openpyxl') as writer:
+                df_sconti_view.to_excel(writer, sheet_name='Sconti', index=False)
+
+            _col_sconti_txt, _col_xls_sconti = st.columns([8, 0.7])
+            with _col_sconti_txt:
+                st.markdown(f"**{len(df_sconti)} sconti** ricevuti dai fornitori")
+                st.caption("Solo prodotti Food & Beverage - Escluse spese generali")
+            with _col_xls_sconti:
+                st.markdown("<div style='margin-top: 0px;'></div>", unsafe_allow_html=True)
+                st.download_button(
+                    label="XLS",
+                    data=excel_sconti.getvalue(),
+                    file_name=f"sconti_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="cp_download_excel_sconti",
+                    use_container_width=False,
+                )
 
             num_righe_sconti = len(df_sconti_view)
             altezza_sconti = min(max(num_righe_sconti * 35 + 50, 200), 500)
@@ -869,26 +813,10 @@ elif st.session_state.cp_tab_attivo == "sconti":
                     'Fornitore': st.column_config.TextColumn('Fornitore', width="medium"),
                     'Sconto': st.column_config.NumberColumn('Sconto', format="€%.2f", help="Importo sconto ricevuto"),
                     'Data': st.column_config.DateColumn('Data', format="DD/MM/YYYY"),
-                    'Fattura': st.column_config.TextColumn('Fattura', width="medium")
+                    'Fattura': st.column_config.TextColumn('Fattura', width="medium"),
+                    'N° Fattura': st.column_config.TextColumn('N° Fattura', width="small")
                 }
             )
-
-            # Export Excel sconti
-            excel_sconti = io.BytesIO()
-            with pd.ExcelWriter(excel_sconti, engine='openpyxl') as writer:
-                df_sconti_view.to_excel(writer, sheet_name='Sconti', index=False)
-
-            col_spacer, col_btn = st.columns([11, 1])
-            with col_btn:
-                st.download_button(
-                    label="Excel",
-                    data=excel_sconti.getvalue(),
-                    file_name=f"sconti_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="cp_download_excel_sconti",
-                    type="primary",
-                    use_container_width=True
-                )
 
     else:
         st.info(f"📊 Nessuno sconto applicato nel periodo {label_periodo.lower()}")
@@ -899,11 +827,8 @@ elif st.session_state.cp_tab_attivo == "sconti":
     st.markdown("<div style='margin-top: 1.2rem;'></div>", unsafe_allow_html=True)
     if not df_omaggi.empty:
         with st.expander(f"🎁 Dettaglio Omaggi ({len(df_omaggi)})", expanded=False):
-            st.markdown(f"**{len(df_omaggi)} omaggi** ricevuti dai fornitori")
-            st.caption("Solo prodotti Food & Beverage - Escluse spese generali")
-
-            cols_omaggi = ['descrizione', 'fornitore', 'quantita', 'data_documento', 'file_origine']
-            col_names = ['Prodotto', 'Fornitore', 'Quantità', 'Data', 'Fattura']
+            cols_omaggi = ['descrizione', 'fornitore', 'quantita', 'data_documento', 'file_origine', 'numero_documento']
+            col_names = ['Prodotto', 'Fornitore', 'Quantità', 'Data', 'Fattura', 'N° Fattura']
             has_prezzo_storico = 'ultimo_prezzo' in df_omaggi.columns
             if has_prezzo_storico:
                 cols_omaggi.extend(['ultimo_prezzo', 'valore_stimato'])
@@ -913,11 +838,32 @@ elif st.session_state.cp_tab_attivo == "sconti":
             df_omaggi_view = df_omaggi_view.reset_index(drop=True)
             df_omaggi_view.columns = col_names[:len(df_omaggi_view.columns)]
 
+            # Prepara export prima del titolo per XLS inline
+            excel_omaggi = io.BytesIO()
+            with pd.ExcelWriter(excel_omaggi, engine='openpyxl') as writer:
+                df_omaggi_view.to_excel(writer, sheet_name='Omaggi', index=False)
+
+            _col_omaggi_txt, _col_xls_omaggi = st.columns([8, 0.7])
+            with _col_omaggi_txt:
+                st.markdown(f"**{len(df_omaggi)} omaggi** ricevuti dai fornitori")
+                st.caption("Solo prodotti Food & Beverage - Escluse spese generali")
+            with _col_xls_omaggi:
+                st.markdown("<div style='margin-top: 0px;'></div>", unsafe_allow_html=True)
+                st.download_button(
+                    label="XLS",
+                    data=excel_omaggi.getvalue(),
+                    file_name=f"omaggi_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    key="cp_download_excel_omaggi",
+                    use_container_width=False,
+                )
+
             num_righe_omaggi = len(df_omaggi_view)
             altezza_omaggi = min(max(num_righe_omaggi * 35 + 50, 200), 500)
 
             col_cfg = {
                 'Data': st.column_config.DateColumn('Data', format="DD/MM/YYYY"),
+                'N° Fattura': st.column_config.TextColumn('N° Fattura', width="small"),
             }
             if has_prezzo_storico:
                 col_cfg['Ultimo Prezzo'] = st.column_config.NumberColumn(
@@ -938,23 +884,6 @@ elif st.session_state.cp_tab_attivo == "sconti":
             )
 
             st.info("ℹ️ Ultimo Prezzo = ultimo acquisto disponibile dello stesso prodotto prima dell'omaggio, preferibilmente dallo stesso fornitore.")
-
-            # Export Excel omaggi
-            excel_omaggi = io.BytesIO()
-            with pd.ExcelWriter(excel_omaggi, engine='openpyxl') as writer:
-                df_omaggi_view.to_excel(writer, sheet_name='Omaggi', index=False)
-
-            col_spacer, col_btn = st.columns([11, 1])
-            with col_btn:
-                st.download_button(
-                    label="Excel",
-                    data=excel_omaggi.getvalue(),
-                    file_name=f"omaggi_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="cp_download_excel_omaggi",
-                    type="primary",
-                    use_container_width=True
-                )
 
     if df_sconti.empty and df_omaggi.empty:
         st.info(f"📊 Nessuno sconto o omaggio ricevuto nel periodo {label_periodo.lower()}")
@@ -1008,7 +937,7 @@ elif st.session_state.cp_tab_attivo == "nc":
         if not df_nc_view.empty:
 
             # Prepara colonne per display
-            cols_display = ['FileOrigine', 'DataDocumento', 'Fornitore', 'Descrizione', 'Categoria',
+            cols_display = ['FileOrigine', 'NumeroDocumento', 'DataDocumento', 'Fornitore', 'Descrizione', 'Categoria',
                            'Quantita', 'PrezzoUnitario', 'TotaleRiga']
             
             df_nc_display = df_nc_view[[c for c in cols_display if c in df_nc_view.columns]].copy()
@@ -1024,6 +953,7 @@ elif st.session_state.cp_tab_attivo == "nc":
             # Rinomina colonne
             rename_map = {
                 'FileOrigine': 'Documento',
+                'NumeroDocumento': 'N° Fattura',
                 'DataDocumento': 'Data',
                 'Fornitore': 'Fornitore',
                 'Descrizione': 'Descrizione',
@@ -1046,7 +976,8 @@ elif st.session_state.cp_tab_attivo == "nc":
                     'Data': st.column_config.DateColumn('Data', format="DD/MM/YYYY"),
                     'Q.tà': st.column_config.NumberColumn('Q.tà', format="%.2f"),
                     'Prezzo Unit.': st.column_config.NumberColumn('Prezzo Unit.', format="€%.2f"),
-                    'Credito': st.column_config.NumberColumn('Credito', format="€%.2f", help="Importo nota di credito (valore assoluto)")
+                    'Credito': st.column_config.NumberColumn('Credito', format="€%.2f", help="Importo nota di credito (valore assoluto)"),
+                    'N° Fattura': st.column_config.TextColumn('N° Fattura', width="small"),
                 }
             )
 
@@ -1072,15 +1003,14 @@ elif st.session_state.cp_tab_attivo == "nc":
                 """.format(num_doc_nc_view, num_righe_nc_view_box, abs(totale_nc_view)),
                 unsafe_allow_html=True)
             with col_btn_nc:
-                st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
+                st.markdown("<div style='margin-top: 4px;'></div>", unsafe_allow_html=True)
                 st.download_button(
-                    label="Excel",
+                    label="XLS",
                     data=excel_nc.getvalue(),
                     file_name=f"note_credito_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                     key="cp_download_excel_nc",
-                    type="primary",
-                    use_container_width=True
+                    use_container_width=False,
                 )
         else:
             st.info("📊 Nessun risultato con i filtri applicati")

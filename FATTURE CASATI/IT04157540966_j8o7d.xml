@@ -1,0 +1,286 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns4:FatturaElettronica xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.0" xmlns:ns4="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>04157540966</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>j8o7d</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>X2PH38J</CodiceDestinatario>
+            <PECDestinatario>conlestellesrl@legalmail.it</PECDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>02827030962</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>METRO Italia S.p.A.</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA XXV APRILE</Indirizzo>
+                <NumeroCivico>23</NumeroCivico>
+                <CAP>20097</CAP>
+                <Comune>SAN DONATO MILANESE</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <IscrizioneREA>
+                <Ufficio>MI</Ufficio>
+                <NumeroREA>1572675</NumeroREA>
+                <CapitaleSociale>722400.00</CapitaleSociale>
+                <StatoLiquidazione>LN</StatoLiquidazione>
+            </IscrizioneREA>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>13584150968</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>CONLESTELLE SRL</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA FRANCESCO SFORZA</Indirizzo>
+                <NumeroCivico>43</NumeroCivico>
+                <CAP>20122</CAP>
+                <Comune>MILANO</Comune>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-03-26</Data>
+                <Numero>91/194/52799</Numero>
+                <ImportoTotaleDocumento>534.54</ImportoTotaleDocumento>
+                <Causale>Importo 534.54 Eur da saldare entro il 25.04.2026</Causale>
+                <Causale>Store: 91 - Deposito Nord</Causale>
+                <Causale>Num.Bolla: 26007279  --  </Causale>
+            </DatiGeneraliDocumento>
+            <DatiOrdineAcquisto>
+                <IdDocumento>MSH20260325191018@92</IdDocumento>
+                <Data>2026-03-26</Data>
+            </DatiOrdineAcquisto>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>151322</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G 960 SALSA TONNATA MC</Descrizione>
+                <Quantita>3.00</Quantita>
+                <PrezzoUnitario>8.25</PrezzoUnitario>
+                <PrezzoTotale>24.75</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>2</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>339983</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G800 SALSA COCKT MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>6.24</PrezzoUnitario>
+                <PrezzoTotale>12.48</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>3</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>284696</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G1540 CARCIOFI RUSTICI MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>12.59</PrezzoUnitario>
+                <PrezzoTotale>25.18</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>4</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>25232</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G660 POMODORI SECCHI MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>4.39</PrezzoUnitario>
+                <PrezzoTotale>8.78</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>5</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>25251</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G1540 FUNGHI COLTIV IN OLIO MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>18.43</PrezzoUnitario>
+                <PrezzoTotale>36.86</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>6</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>199151</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 PANE X TRAMEZZINI MC</Descrizione>
+                <Quantita>4.00</Quantita>
+                <PrezzoUnitario>5.79</PrezzoUnitario>
+                <PrezzoTotale>23.16</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>7</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>179399</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G500 STOP-TOAST MAXI MICHELETT</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>2.65</PrezzoUnitario>
+                <PrezzoTotale>5.30</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>8</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>370904</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>BURGER PIEM. G200X13 MC CONG</Descrizione>
+                <Quantita>2.679</Quantita>
+                <PrezzoUnitario>16.61</PrezzoUnitario>
+                <PrezzoTotale>44.50</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>9</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>375</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>1/2 PROSC.COTTO MC KG 4.3 CA</Descrizione>
+                <Quantita>12.192</Quantita>
+                <PrezzoUnitario>5.75</PrezzoUnitario>
+                <PrezzoTotale>70.10</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>10</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>253935</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 52 FETTINE CHEDDAR</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>8.35</PrezzoUnitario>
+                <PrezzoTotale>16.70</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>11</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>358654</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G100 PANBURGER MONOP 14CM S/G</Descrizione>
+                <Quantita>6.00</Quantita>
+                <PrezzoUnitario>2.36</PrezzoUnitario>
+                <PrezzoTotale>14.16</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>12</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>169490</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1,7 ACCIUGHE PEZZI OSG MC</Descrizione>
+                <Quantita>3.00</Quantita>
+                <PrezzoUnitario>19.58</PrezzoUnitario>
+                <PrezzoTotale>58.74</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>13</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>20448</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 TONNO OLIO OLIVA RIOMARE</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>21.99</PrezzoUnitario>
+                <PrezzoTotale>43.98</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>14</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>368031</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>MT 150X29 ROTOLO ALLUMINIO MP</Descrizione>
+                <Quantita>3.00</Quantita>
+                <PrezzoUnitario>13.11</PrezzoUnitario>
+                <PrezzoTotale>39.33</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>15</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>260412</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G480X2 PIADA C/OLIO EVO MC</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>4.49</PrezzoUnitario>
+                <PrezzoTotale>53.88</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>16</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>308081</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G800 CIPOLLE A FETTE CARAMELL.</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>9.16</PrezzoUnitario>
+                <PrezzoTotale>9.16</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>4.00</AliquotaIVA>
+                <ImponibileImporto>99.04</ImponibileImporto>
+                <Imposta>3.96</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>10.00</AliquotaIVA>
+                <ImponibileImporto>348.69</ImponibileImporto>
+                <Imposta>34.87</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>39.33</ImponibileImporto>
+                <Imposta>8.65</Imposta>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+    </FatturaElettronicaBody>
+</ns4:FatturaElettronica>

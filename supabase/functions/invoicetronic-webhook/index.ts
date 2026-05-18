@@ -32,7 +32,9 @@
 // Tabella: public.fatture_queue (migration 045)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// Pinnato a versione esatta per stabilità supply-chain.
+// Per upgrade: testare in staging prima di aggiornare in prod.
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 
 // ─── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -45,7 +47,7 @@ const ALLOWED_HOST_SUFFIX = '.invoicetronic.com'
 const MAX_XML_BYTES      = 10 * 1024 * 1024 // 10 MB — protezione DoS storage
 const REPLAY_WINDOW_SECS = 300              // 5 min — finestra anti-replay
 const API_TIMEOUT_MS     = 3_000           // timeout chiamata API Invoicetronic
-const XML_TIMEOUT_MS     = 2_000           // timeout download XML da URL
+const XML_TIMEOUT_MS     = 10_000          // timeout download XML da URL (file fino a 10 MB)
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 

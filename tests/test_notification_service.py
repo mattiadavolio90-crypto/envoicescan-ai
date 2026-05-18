@@ -2,15 +2,57 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 from services.notification_service import (
+    build_controllo_prezzi_notifications,
+    build_food_cost_notifications,
     build_monthly_data_notifications,
     build_price_alert_notifications,
+    build_qualita_anagrafica_notifications,
     build_scoped_notification_id,
+    build_trial_notifications,
     build_upload_outcome_notifications,
     build_upload_quality_notifications,
     dismiss_notification_ids,
     get_dismissed_notification_ids,
     get_previous_month_period,
 )
+
+
+class _SeqSupabase:
+    def __init__(self, responses):
+        self._responses = list(responses)
+
+    def table(self, _name):
+        return self
+
+    def select(self, *_args, **_kwargs):
+        return self
+
+    def eq(self, *_args, **_kwargs):
+        return self
+
+    def in_(self, *_args, **_kwargs):
+        return self
+
+    def gte(self, *_args, **_kwargs):
+        return self
+
+    def lte(self, *_args, **_kwargs):
+        return self
+
+    def is_(self, *_args, **_kwargs):
+        return self
+
+    def limit(self, *_args, **_kwargs):
+        return self
+
+    def order(self, *_args, **_kwargs):
+        return self
+
+    def execute(self):
+        item = self._responses.pop(0) if self._responses else []
+        if isinstance(item, dict) and ('data' in item or 'count' in item):
+            return MagicMock(data=item.get('data', []), count=item.get('count', 0))
+        return MagicMock(data=item, count=len(item) if isinstance(item, list) else 0)
 
 
 class TestNotificationService:
@@ -233,3 +275,276 @@ class TestNotificationService:
         })
         assert '<img' not in notifications[0]['body']
         assert '&lt;img' in notifications[0]['body']
+
+    def test_trial_3gg(self):
+        notifications = build_trial_notifications(
+            user_id='user-1',
+            trial_info={'is_trial': True, 'days_left': 3, 'expires_at': '2026-05-17'},
+        )
+        assert len(notifications) == 1
+        assert notifications[0]['level'] == 'warning'
+        assert '3 giorni' in notifications[0]['title']
+
+    def test_trial_0gg(self):
+        notifications = build_trial_notifications(
+            user_id='user-1',
+            trial_info={'is_trial': True, 'days_left': 0, 'expires_at': '2026-05-14'},
+        )
+        assert len(notifications) == 1
+        assert notifications[0]['level'] == 'warning'
+        assert 'OGGI' in notifications[0]['title']
+
+    def test_trial_oltre_soglia(self):
+        notifications = build_trial_notifications(
+            user_id='user-1',
+            trial_info={'is_trial': True, 'days_left': 4, 'expires_at': '2026-05-18'},
+        )
+        assert notifications == []
+
+    def test_trial_not_trial(self):
+        notifications = build_trial_notifications(
+            user_id='user-1',
+            trial_info={'is_trial': False, 'days_left': 1, 'expires_at': '2026-05-15'},
+        )
+        assert notifications == []
+
+    @patch('services.notification_service.carica_margini_anno')
+    def test_guard_fatturato_zero(self, mock_carica_margini):
+        mock_carica_margini.return_value = {
+            3: {'fatturato_netto': 0.0, 'costo_fb': 1000.0, 'mol': -10.0}
+        }
+        notifications = build_food_cost_notifications(
+            user_id='user-1',
+            ristorante_id='rist-1',
+            reference_dt=datetime(2026, 4, 8, tzinfo=timezone.utc),
+        )
+        assert notifications == []
+
+    @patch('services.notification_service.carica_margini_anno')
+    def test_food_cost_sopra_soglia(self, mock_carica_margini):
+        mock_carica_margini.return_value = {
+            3: {'fatturato_netto': 1000.0, 'costo_fb': 400.0, 'mol': 50.0}
+        }
+        notifications = build_food_cost_notifications(
+            user_id='user-1',
+            ristorante_id='rist-1',
+            reference_dt=datetime(2026, 4, 8, tzinfo=timezone.utc),
+        )
+        ids = {item['id'] for item in notifications}
+        assert 'food-cost-soglia-2026-03' in ids
+
+    @patch('services.notification_service.carica_margini_anno')
+    def test_mol_negativo(self, mock_carica_margini):
+        mock_carica_margini.return_value = {
+            3: {'fatturato_netto': 1000.0, 'costo_fb': 100.0, 'mol': -120.0}
+        }
+        notifications = build_food_cost_notifications(
+            user_id='user-1',
+            ristorante_id='rist-1',
+            reference_dt=datetime(2026, 4, 8, tzinfo=timezone.utc),
+        )
+        ids = {item['id'] for item in notifications}
+        assert 'mol-negativo-2026-03' in ids
+
+    @patch('services.notification_service.carica_margini_anno')
+    def test_food_cost_sotto_soglia(self, mock_carica_margini):
+        mock_carica_margini.return_value = {
+            3: {'fatturato_netto': 1000.0, 'costo_fb': 200.0, 'mol': 100.0}
+        }
+        notifications = build_food_cost_notifications(
+            user_id='user-1',
+            ristorante_id='rist-1',
+            reference_dt=datetime(2026, 4, 8, tzinfo=timezone.utc),
+        )
+        assert notifications == []
+
+    @patch('services.notification_service.carica_margini_anno')
+    def test_mol_positivo(self, mock_carica_margini):
+        mock_carica_margini.return_value = {
+            3: {'fatturato_netto': 1000.0, 'costo_fb': 100.0, 'mol': 10.0}
+        }
+        notifications = build_food_cost_notifications(
+            user_id='user-1',
+            ristorante_id='rist-1',
+            reference_dt=datetime(2026, 4, 8, tzinfo=timezone.utc),
+        )
+        assert notifications == []
+
+    @patch('services.notification_service.carica_margini_anno')
+    def test_trend_tre_mesi(self, mock_carica_margini):
+        mock_carica_margini.return_value = {
+            1: {'fatturato_netto': 1000.0, 'costo_fb': 100.0, 'mol': 50.0},
+            2: {'fatturato_netto': 1000.0, 'costo_fb': 150.0, 'mol': 50.0},
+            3: {'fatturato_netto': 1000.0, 'costo_fb': 200.0, 'mol': 50.0},
+            4: {'fatturato_netto': 1000.0, 'costo_fb': 100.0, 'mol': 50.0},
+        }
+        notifications = build_food_cost_notifications(
+            user_id='user-1',
+            ristorante_id='rist-1',
+            reference_dt=datetime(2026, 5, 8, tzinfo=timezone.utc),
+        )
+        ids = {item['id'] for item in notifications}
+        assert 'food-cost-trend-2026-04' in ids
+
+    @patch('services.notification_service.carica_margini_anno')
+    def test_trend_non_monotonica(self, mock_carica_margini):
+        mock_carica_margini.return_value = {
+            1: {'fatturato_netto': 1000.0, 'costo_fb': 120.0, 'mol': 50.0},
+            2: {'fatturato_netto': 1000.0, 'costo_fb': 110.0, 'mol': 50.0},
+            3: {'fatturato_netto': 1000.0, 'costo_fb': 130.0, 'mol': 50.0},
+            4: {'fatturato_netto': 1000.0, 'costo_fb': 100.0, 'mol': 50.0},
+        }
+        notifications = build_food_cost_notifications(
+            user_id='user-1',
+            ristorante_id='rist-1',
+            reference_dt=datetime(2026, 5, 8, tzinfo=timezone.utc),
+        )
+        ids = {item['id'] for item in notifications}
+        assert 'food-cost-trend-2026-04' not in ids
+
+    def test_nc_non_usata_trovata(self):
+        sb = _SeqSupabase([
+            [{'file_origine': 'nc1.xml', 'fornitore': 'Forn A', 'totale_documento': -50.0, 'data_documento': '2026-03-01',
+              'created_at': '2026-03-01T10:00:00+00:00', 'piva_cedente': '12345678901', 'tipo_documento': 'TD04'}],
+            {'data': [], 'count': 0},
+            [],
+            [],
+            {'data': [], 'count': 0},
+        ])
+        notifications = build_controllo_prezzi_notifications('u1', 'r1', supabase_client=sb)
+        ids = {item['id'] for item in notifications}
+        assert any(item.startswith('nc-non-usata-') for item in ids)
+
+    def test_nc_non_usata_compensata(self):
+        sb = _SeqSupabase([
+            [{'file_origine': 'nc1.xml', 'fornitore': 'Forn A', 'totale_documento': -50.0, 'data_documento': '2026-03-01',
+              'created_at': '2026-03-01T10:00:00+00:00', 'piva_cedente': '12345678901', 'tipo_documento': 'TD04'}],
+            {'data': [{'id': 'ok'}], 'count': 1},
+            [],
+            [],
+            {'data': [], 'count': 0},
+        ])
+        notifications = build_controllo_prezzi_notifications('u1', 'r1', supabase_client=sb)
+        ids = {item['id'] for item in notifications}
+        assert not any(item.startswith('nc-non-usata-') for item in ids)
+
+    def test_sconto_scaduto(self):
+        sb = _SeqSupabase([
+            [],
+            [{'fornitore': 'Forn B', 'piva_cedente': '22222222222', 'sconto_percentuale': 0}],
+            [
+                {'fornitore': 'Forn B', 'piva_cedente': '22222222222', 'sconto_percentuale': 5},
+                {'fornitore': 'Forn B', 'piva_cedente': '22222222222', 'sconto_percentuale': 7},
+            ],
+            [],
+            {'data': [], 'count': 0},
+        ])
+        notifications = build_controllo_prezzi_notifications('u1', 'r1', supabase_client=sb)
+        ids = {item['id'] for item in notifications}
+        assert 'sconto-scaduto-22222222222' in ids
+
+    def test_sconto_ancora_presente(self):
+        sb = _SeqSupabase([
+            [],
+            [{'fornitore': 'Forn B', 'piva_cedente': '22222222222', 'sconto_percentuale': 5}],
+            [{'fornitore': 'Forn B', 'piva_cedente': '22222222222', 'sconto_percentuale': 5}],
+            [],
+            {'data': [], 'count': 0},
+        ])
+        notifications = build_controllo_prezzi_notifications('u1', 'r1', supabase_client=sb)
+        ids = {item['id'] for item in notifications}
+        assert 'sconto-scaduto-22222222222' not in ids
+
+    def test_record_prezzo(self):
+        sb = _SeqSupabase([
+            [],
+            [],
+            [{'fornitore': 'Forn C', 'piva_cedente': '33333333333', 'descrizione': 'Pomodoro pelato', 'prezzo_unitario': 2.2,
+              'unita_misura': 'KG', 'file_origine': 'f1.xml'}],
+            [
+                {'piva_cedente': '33333333333', 'descrizione': 'Pomodoro pelato', 'prezzo_unitario': 1.0},
+                {'piva_cedente': '33333333333', 'descrizione': 'Pomodoro pelato', 'prezzo_unitario': 1.1},
+                {'piva_cedente': '33333333333', 'descrizione': 'Pomodoro pelato', 'prezzo_unitario': 1.2},
+                {'piva_cedente': '33333333333', 'descrizione': 'Pomodoro pelato', 'prezzo_unitario': 1.3},
+                {'piva_cedente': '33333333333', 'descrizione': 'Pomodoro pelato', 'prezzo_unitario': 1.4},
+            ],
+            {'data': [], 'count': 0},
+        ])
+        notifications = build_controllo_prezzi_notifications('u1', 'r1', supabase_client=sb)
+        ids = {item['id'] for item in notifications}
+        assert any(item.startswith('record-prezzo-') for item in ids)
+
+    def test_record_prezzo_pochi_storici(self):
+        sb = _SeqSupabase([
+            [],
+            [],
+            [{'fornitore': 'Forn C', 'piva_cedente': '33333333333', 'descrizione': 'Pomodoro pelato', 'prezzo_unitario': 2.2,
+              'unita_misura': 'KG', 'file_origine': 'f1.xml'}],
+            [
+                {'piva_cedente': '33333333333', 'descrizione': 'Pomodoro pelato', 'prezzo_unitario': 1.0},
+                {'piva_cedente': '33333333333', 'descrizione': 'Pomodoro pelato', 'prezzo_unitario': 1.1},
+                {'piva_cedente': '33333333333', 'descrizione': 'Pomodoro pelato', 'prezzo_unitario': 1.2},
+            ],
+            {'data': [], 'count': 0},
+        ])
+        notifications = build_controllo_prezzi_notifications('u1', 'r1', supabase_client=sb)
+        ids = {item['id'] for item in notifications}
+        assert not any(item.startswith('record-prezzo-') for item in ids)
+
+    def test_fornitore_unico(self):
+        sb = _SeqSupabase([
+            [],
+            [],
+            [],
+            {'data': [], 'count': 40},
+            [{'categoria': 'CARNE', 'fornitore': 'Forn D', 'piva_cedente': '44444444444'}],
+        ])
+        notifications = build_controllo_prezzi_notifications('u1', 'r1', supabase_client=sb)
+        ids = {item['id'] for item in notifications}
+        assert 'fornitore-unico-carne' in ids
+
+    def test_fornitore_unico_nuovo_tenant(self):
+        sb = _SeqSupabase([
+            [],
+            [],
+            [],
+            {'data': [], 'count': 10},
+        ])
+        notifications = build_controllo_prezzi_notifications('u1', 'r1', supabase_client=sb)
+        ids = {item['id'] for item in notifications}
+        assert not any(item.startswith('fornitore-unico-') for item in ids)
+
+    def test_fornitore_non_unico(self):
+        sb = _SeqSupabase([
+            [],
+            [],
+            [],
+            {'data': [], 'count': 40},
+            [
+                {'categoria': 'CARNE', 'fornitore': 'Forn D', 'piva_cedente': '44444444444'},
+                {'categoria': 'CARNE', 'fornitore': 'Forn E', 'piva_cedente': '55555555555'},
+            ],
+        ])
+        notifications = build_controllo_prezzi_notifications('u1', 'r1', supabase_client=sb)
+        ids = {item['id'] for item in notifications}
+        assert 'fornitore-unico-carne' not in ids
+
+    def test_piva_mancante(self):
+        sb = _SeqSupabase([
+            [
+                {'fornitore': 'Forn X', 'piva_fornitore': None},
+                {'fornitore': 'Forn X', 'piva_fornitore': ''},
+            ]
+        ])
+        notifications = build_qualita_anagrafica_notifications('u1', 'r1', supabase_client=sb)
+        ids = {item['id'] for item in notifications}
+        assert any(item.startswith('piva-mancante-') for item in ids)
+
+    def test_piva_valida(self):
+        sb = _SeqSupabase([
+            [
+                {'fornitore': 'Forn X', 'piva_fornitore': '12345678901'},
+            ]
+        ])
+        notifications = build_qualita_anagrafica_notifications('u1', 'r1', supabase_client=sb)
+        assert notifications == []

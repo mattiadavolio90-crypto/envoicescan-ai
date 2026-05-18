@@ -1,20 +1,30 @@
-/* ===== DOWNLOAD BUTTON GREEN ===== */
+/* ===== DOWNLOAD BUTTON XLS: quadrato, sfondo bianco, scritta verde ===== */
 [data-testid="stDownloadButton"] {
-    margin-top: 10px !important;
+    margin-top: 0 !important;
 }
 [data-testid="stDownloadButton"] button {
-    background-color: #28a745 !important;
-    color: white !important;
-    font-weight: 600 !important;
-    font-size: clamp(0.7rem, 1.6vw, 0.8rem) !important;
-    border-radius: 6px !important;
-    border: none !important;
-    min-width: 8rem !important;
-    min-height: 2.5rem !important;
-    padding: 0.5rem !important;
+    background-color: #ffffff !important;
+    color: #16a34a !important;
+    font-weight: 800 !important;
+    font-size: 0.9rem !important;
+    letter-spacing: 0.04em !important;
+    border-radius: 8px !important;
+    border: 3.5px solid #4ade80 !important;
+    width: 2.8rem !important;
+    height: 2.8rem !important;
+    min-width: unset !important;
+    min-height: unset !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
 }
 [data-testid="stDownloadButton"] button:hover {
-    background-color: #218838 !important;
+    background-color: #f0fdf4 !important;
+    border-color: #4ade80 !important;
+    color: #15803d !important;
 }
 
 /* ===== PRIMARY BUTTON AZZURRO (override theme primaryColor rosso) ===== */

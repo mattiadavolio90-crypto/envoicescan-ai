@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="UTF-8"?><ns3:FatturaElettronica xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" versione="FPR12"><FatturaElettronicaHeader><DatiTrasmissione><IdTrasmittente><IdPaese>IT</IdPaese><IdCodice>10077640968</IdCodice></IdTrasmittente><ProgressivoInvio>Hvcqk</ProgressivoInvio><FormatoTrasmissione>FPR12</FormatoTrasmissione><CodiceDestinatario>SUBM70N</CodiceDestinatario></DatiTrasmissione><CedentePrestatore><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>03332690969</IdCodice></IdFiscaleIVA><CodiceFiscale>03332690969</CodiceFiscale><Anagrafica><Denominazione>Brescianini e Co.srl</Denominazione></Anagrafica><RegimeFiscale>RF01</RegimeFiscale></DatiAnagrafici><Sede><Indirizzo>VIA COMO 5</Indirizzo><CAP>20096</CAP><Comune>PIOLTELLO</Comune><Provincia>MI</Provincia><Nazione>IT</Nazione></Sede></CedentePrestatore><CessionarioCommittente><DatiAnagrafici><IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>10865360969</IdCodice></IdFiscaleIVA><CodiceFiscale>10865360969</CodiceFiscale><Anagrafica><Denominazione>LAND DEI SAPORI SRL</Denominazione></Anagrafica></DatiAnagrafici><Sede><Indirizzo>SS PADANA SUPERIORE 311</Indirizzo><CAP>20090</CAP><Comune>VIMODRONE</Comune><Provincia>MI</Provincia><Nazione>IT</Nazione></Sede></CessionarioCommittente></FatturaElettronicaHeader><FatturaElettronicaBody><DatiGenerali><DatiGeneraliDocumento><TipoDocumento>TD24</TipoDocumento><Divisa>EUR</Divisa><Data>2026-01-30</Data><Numero>792/A/2026</Numero><ImportoTotaleDocumento>9419.94</ImportoTotaleDocumento></DatiGeneraliDocumento><DatiDDT><NumeroDDT>570</NumeroDDT><DataDDT>2026-01-19</DataDDT></DatiDDT><DatiDDT><NumeroDDT>824</NumeroDDT><DataDDT>2026-01-23</DataDDT></DatiDDT><DatiDDT><NumeroDDT>851</NumeroDDT><DataDDT>2026-01-23</DataDDT></DatiDDT><DatiDDT><NumeroDDT>867</NumeroDDT><DataDDT>2026-01-26</DataDDT></DatiDDT></DatiGenerali><DatiBeniServizi><DettaglioLinee><NumeroLinea>1</NumeroLinea><CodiceArticolo><CodiceTipo>Codice articolo</CodiceTipo><CodiceValore>DUN295668</CodiceValore></CodiceArticolo><Descrizione>DUNI 40X40 NAT.BROWN PZ.300 (295668-211400)</Descrizione><Quantita>30.00</Quantita><PrezzoUnitario>22.200000</PrezzoUnitario><PrezzoTotale>666.00</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DettaglioLinee><NumeroLinea>2</NumeroLinea><CodiceArticolo><CodiceTipo>Codice articolo</CodiceTipo><CodiceValore>20S9034600</CodiceValore></CodiceArticolo><Descrizione>TOPMATIC HYDRO IT tanica grande KG.25 UN 1824</Descrizione><Quantita>2.00</Quantita><PrezzoUnitario>120.000000</PrezzoUnitario><PrezzoTotale>240.00</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DettaglioLinee><NumeroLinea>3</NumeroLinea><CodiceArticolo><CodiceTipo>Codice articolo</CodiceTipo><CodiceValore>20S9078980</CodiceValore></CodiceArticolo><Descrizione>RENOLIT NETTORE LT.1 ECOLAB</Descrizione><Quantita>15.00</Quantita><PrezzoUnitario>4.305333</PrezzoUnitario><PrezzoTotale>64.58</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DettaglioLinee><NumeroLinea>4</NumeroLinea><CodiceArticolo><CodiceTipo>Codice articolo</CodiceTipo><CodiceValore>20STOPRINJE</CodiceValore></CodiceArticolo><Descrizione>TOPRINSE JET LT.5</Descrizione><Quantita>2.00</Quantita><PrezzoUnitario>34.935000</PrezzoUnitario><PrezzoTotale>69.87</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DettaglioLinee><NumeroLinea>5</NumeroLinea><CodiceArticolo><CodiceTipo>Codice articolo</CodiceTipo><CodiceValore>DUN295668</CodiceValore></CodiceArticolo><Descrizione>DUNI 40X40 NAT.BROWN PZ.300 (295668-211400)</Descrizione><Quantita>140.00</Quantita><PrezzoUnitario>22.200000</PrezzoUnitario><PrezzoTotale>3108.00</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DettaglioLinee><NumeroLinea>6</NumeroLinea><CodiceArticolo><CodiceTipo>Codice articolo</CodiceTipo><CodiceValore>DUN295668</CodiceValore></CodiceArticolo><Descrizione>DUNI 40X40 NAT.BROWN PZ.300 (295668-211400)</Descrizione><Quantita>140.00</Quantita><PrezzoUnitario>22.200000</PrezzoUnitario><PrezzoTotale>3108.00</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DettaglioLinee><NumeroLinea>7</NumeroLinea><CodiceArticolo><CodiceTipo>Codice articolo</CodiceTipo><CodiceValore>20S9034600</CodiceValore></CodiceArticolo><Descrizione>TOPMATIC HYDRO IT tanica grande KG.25 UN 1824</Descrizione><Quantita>1.00</Quantita><PrezzoUnitario>0.000000</PrezzoUnitario><PrezzoTotale>0.00</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DettaglioLinee><NumeroLinea>8</NumeroLinea><CodiceArticolo><CodiceTipo>Codice articolo</CodiceTipo><CodiceValore>20S9034600</CodiceValore></CodiceArticolo><Descrizione>TOPMATIC HYDRO IT tanica grande KG.25 UN 1824</Descrizione><Quantita>3.00</Quantita><PrezzoUnitario>120.000000</PrezzoUnitario><PrezzoTotale>360.00</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DettaglioLinee><NumeroLinea>9</NumeroLinea><CodiceArticolo><CodiceTipo>Codice articolo</CodiceTipo><CodiceValore>20STOPRINJE</CodiceValore></CodiceArticolo><Descrizione>TOPRINSE JET LT.5</Descrizione><Quantita>1.00</Quantita><PrezzoUnitario>0.000000</PrezzoUnitario><PrezzoTotale>0.00</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DettaglioLinee><NumeroLinea>10</NumeroLinea><CodiceArticolo><CodiceTipo>Codice articolo</CodiceTipo><CodiceValore>20STOPRINJE</CodiceValore></CodiceArticolo><Descrizione>TOPRINSE JET LT.5</Descrizione><Quantita>3.00</Quantita><PrezzoUnitario>34.936667</PrezzoUnitario><PrezzoTotale>104.81</PrezzoTotale><AliquotaIVA>22.00</AliquotaIVA></DettaglioLinee><DatiRiepilogo><AliquotaIVA>22.00</AliquotaIVA><ImponibileImporto>7721.26</ImponibileImporto><Imposta>1698.68</Imposta><EsigibilitaIVA>I</EsigibilitaIVA></DatiRiepilogo></DatiBeniServizi><DatiPagamento><CondizioniPagamento>TP02</CondizioniPagamento><DettaglioPagamento><ModalitaPagamento>MP05</ModalitaPagamento><DataScadenzaPagamento>2026-03-31</DataScadenzaPagamento><ImportoPagamento>9419.94</ImportoPagamento></DettaglioPagamento></DatiPagamento></FatturaElettronicaBody><ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="S-41eb6b41-422b-431d-9e5b-41a6b2b885ed">
+<ds:SignedInfo>
+<ds:CanonicalizationMethod Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+<ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
+<ds:Reference Id="R-e31ace3f-d28c-43cd-a7e5-cb87d5529b99" URI="">
+<ds:Transforms>
+<ds:Transform Algorithm="http://www.w3.org/2002/06/xmldsig-filter2">
+<dsig-xpath:XPath xmlns:dsig-xpath="http://www.w3.org/2002/06/xmldsig-filter2" Filter="subtract">/descendant::ds:Signature</dsig-xpath:XPath>
+</ds:Transform>
+<ds:Transform Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+</ds:Transforms>
+<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+<ds:DigestValue>tCEPGPRIKAEwUmusww8nCD9Mz00lIoAm3JGZjjU/1r4=</ds:DigestValue>
+</ds:Reference>
+<ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#SP-94835a35-69d7-4f5a-8b90-b04330bd4a70">
+<ds:Transforms>
+<ds:Transform Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+</ds:Transforms>
+<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+<ds:DigestValue>KK86/6QehRAI5IOaS9bdXyh2tR0VnH+m+eZ9IIAsv+U=</ds:DigestValue>
+</ds:Reference>
+<ds:Reference URI="#KI-38537909-fe36-4f5e-be95-ca4047e4e8e5">
+<ds:Transforms>
+<ds:Transform Algorithm="http://www.w3.org/2006/12/xml-c14n11"/>
+</ds:Transforms>
+<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+<ds:DigestValue>gn4kd0E/FDtTj6OfYHyLa2U7GxSd+C2IwgoTH2qCSu4=</ds:DigestValue>
+</ds:Reference>
+</ds:SignedInfo>
+<ds:SignatureValue>
+FynVVKC1313OEG1Q7FwaMPyk9Lcu25unNWskoVpOvYOAcdqv65fW33CZgY9fi2ZyPkpSIlnnL9Lr
+/qWDMkSkm4pX+sh2u+y8bgvKWl4VoSzpf3PTOPJdoMojDRqPSOKR92YGWVMZsZpVd1sQr4BbwLni
+/8MY7CgdXpqkOutuYhP4SQHGBlt4IGPpxWTcXZ1jEhdHHEt2w9xIf/H6MgvLUBJBUSfaNj0aJbhR
+NgNpi7lEFeHrBK5oYqYoxBz7UWkdiYcaVxu5ywyZeWMn8JinOV2/RrYiY1UZd7uVyjbFgAu2cw6F
+uKv/gGWb+C/zz490UGj4MXmAeZI1hFtS+4zXmg==
+</ds:SignatureValue>
+<ds:KeyInfo Id="KI-38537909-fe36-4f5e-be95-ca4047e4e8e5">
+<ds:X509Data>
+<ds:X509Certificate>
+MIIHaDCCBlCgAwIBAgIINFHGUkO1SkkwDQYJKoZIhvcNAQELBQAwfTELMAkGA1UEBhMCSVQxJDAi
+BgNVBAoMG05hbWlyaWFsIFMucC5BLi8wMjA0NjU3MDQyNjEgMB4GA1UECwwXQ2VydGlmaWNhdGlv
+biBBdXRob3JpdHkxJjAkBgNVBAMMHU5hbWlyaWFsIENBIEZpcm1hIFF1YWxpZmljYXRhMB4XDTIz
+MDYyMzE0NTUwMFoXDTI2MDYyMTIyMDAwMFowgZ8xCzAJBgNVBAYTAklUMRIwEAYDVQQEDAlDQUxE
+RVJPTkkxGDAWBgNVBCoMD0NMQVVESU8gQU5UT05JTzEfMB0GA1UEBRMWVElOSVQtQ0xEQ0RONzZD
+MjVGMjA1SDEiMCAGA1UEAwwZQ0FMREVST05JIENMQVVESU8gQU5UT05JTzEdMBsGA1UELhMUQVVD
+QzIwMjMwNjIzNTI5MjI2NDcwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDmXcbRzTCn
+O8YCbZRUBKEhUDqOM2suOqMJbWd9Lw5F6ewXwo8OUn/L/no2CHfZ4sYPU9+NQcT/zBp2HWebHRM9
+D+oDSCpgqktTTqsOAMqfj0IpGhXExJdFDo9hA/pyO16m7Zjaj3pOfyO4DLzFAe+ZKItau+7tQ7yD
+hdtrJAnf2gHUmiVq30qjvjNzTQck2P0P9ZHqcyxzDshjXjeJ+Du/yheTJ0BrJ/xOZ8YQgzgCop25
+pwtT36YEh0X1pOSdHzs+OJaDIh1HZmTYHotNlCGTFWX6CWud6nJXZsmONBUmZ/Tad0o4T8Pi0iWv
+TqMO8SOYQED7XfgOfewPYS+66gX1AgMBAAGjggPHMIIDwzCBnAYIKwYBBQUHAQEEgY8wgYwwUQYI
+KwYBBQUHMAKGRWh0dHBzOi8vZG9jcy5uYW1pcmlhbHRzcC5jb20vZG9jdW1lbnRzL05hbWlyaWFs
+Q0FGaXJtYVF1YWxpZmljYXRhLmNydDA3BggrBgEFBQcwAYYraHR0cDovL29jc3AubmFtaXJpYWx0
+c3AuY29tL29jc3AvY2VydHN0YXR1czAdBgNVHQ4EFgQUUJ62fhorRI1dfmsDuWi0UBWcyuYwHwYD
+VR0jBBgwFoAUY/3t5oxiR0jP6glBc3YR4mRiexAwgc0GCCsGAQUFBwEDBIHAMIG9MAgGBgQAjkYB
+ATALBgYEAI5GAQMCARQwCAYGBACORgEEMBMGBgQAjkYBBjAJBgcEAI5GAQYBMIGEBgYEAI5GAQUw
+ejA7FjVodHRwczovL2RvY3MubmFtaXJpYWx0c3AuY29tL2RvY3VtZW50cy9QRFMvUERTX2VuLnBk
+ZhMCZW4wOxY1aHR0cHM6Ly9kb2NzLm5hbWlyaWFsdHNwLmNvbS9kb2N1bWVudHMvUERTL1BEU19p
+dC5wZGYTAml0MIIBuAYDVR0gBIIBrzCCAaswCQYHBACL7EABAjAIBgYEAI96AQIwggGSBgsrBgEE
+AYKaawEBAzCCAYEwKQYIKwYBBQUHAgEWHWh0dHBzOi8vZG9jcy5uYW1pcmlhbHRzcC5jb20vMIIB
+UgYIKwYBBQUHAgIwggFEHoIBQABJAGwAIABwAHIAZQBzAGUAbgB0AGUAIABjAGUAcgB0AGkAZgBp
+AGMAYQB0AG8AIADoACAAdgBhAGwAaQBkAG8AIABzAG8AbABvACAAcABlAHIAIABmAGkAcgBtAGUA
+IABhAHAAcABvAHMAdABlACAAYwBvAG4AIABwAHIAbwBjAGUAZAB1AHIAYQAgAGEAdQB0AG8AbQBh
+AHQAaQBjAGEALgAvAFQAaABpAHMAIABjAGUAcgB0AGkAZgBpAGMAYQB0AGUAIABtAGEAeQAgAG8A
+bgBsAHkAIABiAGUAIAB1AHMAZQBkACAAZgBvAHIAIAB1AG4AYQB0AHQAZQBuAGQAZQBkAC8AYQB1
+AHQAbwBtAGEAdABlAGQAIABkAGkAZwBpAHQAYQBsACAAcwBpAGcAbgBhAHQAdQByAGUAcwAuMEYG
+A1UdHwQ/MD0wO6A5oDeGNWh0dHA6Ly9jcmwubmFtaXJpYWx0c3AuY29tL0Zpcm1hQ2VydGFRdWFs
+aWZpY2F0YTEuY3JsMA4GA1UdDwEB/wQEAwIGQDANBgkqhkiG9w0BAQsFAAOCAQEAZo2ZHj6O+qcn
+91Z4/DQedWY3AMbLW2lX66OgiXdoqvnQTi4+K10NEN6pikFMSrni/VEJIiH4rSnKB9hOQkNtSYTs
+wqt59TCmgRDcgZ+13YmAsfWL3GNcf08Xnd/C8tw+RBa4UWsv7U8uxGhpdekGpZxQXi9yrd+uajcY
+yzzjqev2p8PPcT24pMDrkyrSeLWCZfDWPtLBwtIJhZDUq085RgjN4t+VOv//KChU25fg3wAHJWWd
+oayIpftNTMnOfTl/cuIdrL85DkVqZcoS61tKz1wiiwL9167NVU2OIVs92hELr9YwZPQZfRMzKRMY
+7J+ShBbr5Zrq01rTCzm33jvECg==
+</ds:X509Certificate>
+</ds:X509Data>
+</ds:KeyInfo>
+<ds:Object>
+<xades:QualifyingProperties xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Target="#S-41eb6b41-422b-431d-9e5b-41a6b2b885ed">
+<xades:SignedProperties Id="SP-94835a35-69d7-4f5a-8b90-b04330bd4a70">
+<xades:SignedSignatureProperties>
+<xades:SigningTime>2026-02-05T14:11:04Z</xades:SigningTime>
+<xades:SigningCertificate>
+<xades:Cert>
+<xades:CertDigest>
+<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+<ds:DigestValue>0fhA0XO6B9sIe/aGWtejkZHLhRMKKI/UDkZ+E0Ss8Xo=</ds:DigestValue>
+</xades:CertDigest>
+<xades:IssuerSerial>
+<ds:X509IssuerName>CN=Namirial CA Firma Qualificata,OU=Certification Authority,O=Namirial S.p.A./02046570426,C=IT</ds:X509IssuerName>
+<ds:X509SerialNumber>3770012419711388233</ds:X509SerialNumber>
+</xades:IssuerSerial>
+</xades:Cert>
+</xades:SigningCertificate>
+</xades:SignedSignatureProperties>
+<xades:SignedDataObjectProperties>
+<xades:DataObjectFormat ObjectReference="#R-e31ace3f-d28c-43cd-a7e5-cb87d5529b99">
+<xades:MimeType>application/xml</xades:MimeType>
+</xades:DataObjectFormat>
+</xades:SignedDataObjectProperties>
+</xades:SignedProperties>
+</xades:QualifyingProperties>
+</ds:Object>
+</ds:Signature></ns3:FatturaElettronica>

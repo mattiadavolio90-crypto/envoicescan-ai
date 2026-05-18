@@ -322,16 +322,19 @@ Vincoli:
   - tabella, indici, RLS, cache_version key + bump trigger
   - trigger propagazione deleted_at da fatture
 
-- 070_create_fornitori_pagamenti_config.sql
+- 070_add_piva_cedente_to_fatture.sql
+    - ALTER TABLE fatture ADD COLUMN piva_cedente
+
+- 071_create_fornitori_pagamenti_config.sql
   - tabella, vincoli, indici, RLS
   - cache_version key + bump trigger
 
-- 071_backfill_fatture_documenti.sql
+- 072_backfill_fatture_documenti.sql
   - insert aggregato da fatture per file_origine (no inventare scadenze storiche)
 
 ### D.8 Step plan operativo aggiornato
 
-1) Migrations 069-071 + validazione conti
+1) Migrations 069-072 + validazione conti
 2) Parser DatiPagamento + upsert documento dentro salva_fattura_processata
 3) Nuova pagina skeleton + sezione Avvisi (incl. auto_invoice_notice)
 4) Spostamento Gestione Fatture da app.py + cleanup dead code app_controllers
@@ -552,7 +555,7 @@ Una volta risolte le 3 domande della Sezione E, Step 3 puo procedere senza blocc
 
 ## Sezione G - Specifica operativa piano D.8 (Step-by-step dettagliato)
 
-### STEP 1: Migrations 069/070/071
+### STEP 1: Migrations 069/070/071/072
 **Status:** ✅ COMPLETATO (migrations approvate in file)
 
 **Decisioni finali approvate (11/05/2026):**
@@ -737,7 +740,7 @@ dati_prodotti[0]['data_documento'] = data_documento  # già presente
 - `clear_fatture_cache()` (già presente dopo insert fatture)
 - Nuova: `clear_documenti_cache()` (dopo upsert_fattura_documento in documenti_service.py)
 
-**VERIFICA BACKFILL MIGRATION 071:**
+**VERIFICA BACKFILL MIGRATION 072:**
 
 Migration 071 legge fatture (righe) e aggrega per (user_id, ristorante_id, file_origine):
 - piva_fornitore: recupera da `fatture.piva_cedente` (prima riga non-NULL della tripla)
@@ -745,8 +748,8 @@ Migration 071 legge fatture (righe) e aggrega per (user_id, ristorante_id, file_
 - fornitore_norm: recupera come UPPER(fornitore) da prima riga della tripla
 
 **AZIONE (CONFERMATA):** mantenere l'approccio già definito:
-- migration 069.5 aggiunge `piva_cedente` su `fatture`
-- migration 071 usa `piva_cedente` per popolare `fatture_documenti.piva_fornitore`
+- migration 070 aggiunge `piva_cedente` su `fatture`
+- migration 072 usa `piva_cedente` per popolare `fatture_documenti.piva_fornitore`
 
 ---
 

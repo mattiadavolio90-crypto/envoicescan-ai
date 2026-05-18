@@ -643,6 +643,7 @@ def _build_query_mock(execute_data=None):
     query.lt.return_value = query
     query.neq.return_value = query
     query.is_.return_value = query
+    query.or_.return_value = query
     query.range.return_value = query
     query.upsert.return_value = query
     query.execute.return_value = SimpleNamespace(data=execute_data or [])

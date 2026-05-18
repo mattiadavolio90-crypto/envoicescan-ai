@@ -200,13 +200,18 @@ def main() -> int:
             return 0
         except Exception as exc:
             consecutive_failures += 1
-            backoff_seconds = min(
-                WORKER_ERROR_BACKOFF_SECONDS * consecutive_failures,
+            # Backoff esponenziale + jitter per evitare thundering herd
+            import random as _random
+            _exp_factor = 2 ** min(consecutive_failures - 1, 8)
+            _base = min(
+                WORKER_ERROR_BACKOFF_SECONDS * _exp_factor,
                 WORKER_MAX_BACKOFF_SECONDS,
             )
+            backoff_seconds = _base * _random.uniform(0.5, 1.0)
             logger.exception(
-                "Errore ciclo worker (failure=%d): %s",
+                "Errore ciclo worker (failure=%d, backoff=%.1fs): %s",
                 consecutive_failures,
+                backoff_seconds,
                 exc,
             )
             time.sleep(backoff_seconds)

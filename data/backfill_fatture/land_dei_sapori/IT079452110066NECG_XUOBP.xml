@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?><FatturaElettronica xmlns="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" versione="FPR12" xsi:schemaLocation="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2 C:/Users/Administrator/Documents/MapForce/NuovaMappatura/fatturaPA1.2.xsd">
+<FatturaElettronicaHeader xmlns="">
+<DatiTrasmissione>
+<IdTrasmittente>
+<IdPaese>IT</IdPaese>
+<IdCodice>07945211006</IdCodice>
+</IdTrasmittente>
+<ProgressivoInvio>0003424637</ProgressivoInvio>
+<FormatoTrasmissione>FPR12</FormatoTrasmissione>
+<CodiceDestinatario>0000000</CodiceDestinatario>
+<ContattiTrasmittente>
+<Telefono xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">0236563630</Telefono>
+<Email xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">fatturazione@justeat.it</Email>
+</ContattiTrasmittente>
+<PECDestinatario>LANDEISAPORI@PEC.IT</PECDestinatario>
+</DatiTrasmissione>
+<CedentePrestatore>
+<DatiAnagrafici xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+<IdFiscaleIVA>
+<IdPaese>IT</IdPaese>
+<IdCodice>07392740960</IdCodice>
+</IdFiscaleIVA>
+<CodiceFiscale>07392740960</CodiceFiscale>
+<Anagrafica>
+<Denominazione>Just-Eat Italy S.r.l</Denominazione>
+</Anagrafica>
+<RegimeFiscale>RF01</RegimeFiscale>
+</DatiAnagrafici>
+<Sede xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+<Indirizzo>Via Gaetano de Castillia, 23  </Indirizzo>
+<CAP>20124</CAP>
+<Comune>Milano</Comune>
+<Nazione>IT</Nazione>
+</Sede>
+<Contatti xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+<Telefono>0236563630</Telefono>
+<Email>fatturazione@justeat.it</Email>
+</Contatti>
+</CedentePrestatore>
+<CessionarioCommittente>
+<DatiAnagrafici xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+<IdFiscaleIVA>
+<IdPaese>IT</IdPaese>
+<IdCodice>10865360969</IdCodice>
+</IdFiscaleIVA>
+<Anagrafica>
+<Denominazione>LAND DEI SAPORI SRL</Denominazione>
+</Anagrafica>
+</DatiAnagrafici>
+<Sede xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+<Indirizzo>Via Padana Superiore 311</Indirizzo>
+<CAP>20090</CAP>
+<Comune>Vimodrone</Comune>
+<Nazione>IT</Nazione>
+</Sede>
+</CessionarioCommittente>
+</FatturaElettronicaHeader>
+<FatturaElettronicaBody xmlns="">
+<DatiGenerali xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+<DatiGeneraliDocumento>
+<TipoDocumento>TD01</TipoDocumento>
+<Divisa>EUR</Divisa>
+<Data>2025-12-31</Data>
+<Numero>003713296</Numero>
+<ImportoTotaleDocumento>213.81</ImportoTotaleDocumento>
+</DatiGeneraliDocumento>
+<DatiDDT>
+<NumeroDDT>DEL13188069</NumeroDDT>
+<DataDDT>2025-12-31</DataDDT>
+<RiferimentoNumeroLinea>1</RiferimentoNumeroLinea>
+<RiferimentoNumeroLinea>2</RiferimentoNumeroLinea>
+</DatiDDT>
+</DatiGenerali>
+<DatiBeniServizi xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+<DettaglioLinee>
+<NumeroLinea>1</NumeroLinea>
+<CodiceArticolo>
+<CodiceTipo>Codice Art. fornitore</CodiceTipo>
+<CodiceValore>0019</CodiceValore>
+</CodiceArticolo>
+<Descrizione>Commissione di Just-Eat</Descrizione>
+<Quantita>1.00</Quantita>
+<UnitaMisura>EA</UnitaMisura>
+<PrezzoUnitario>159.38</PrezzoUnitario>
+<PrezzoTotale>159.38</PrezzoTotale>
+<AliquotaIVA>22.00</AliquotaIVA>
+<RiferimentoAmministrazione>IVA Ordinaria 22%</RiferimentoAmministrazione>
+<AltriDatiGestionali>
+<TipoDato>INFO</TipoDato>
+<RiferimentoTesto>Corrisp. comprensivo del C. A. Conai già assolto ove dovuto</RiferimentoTesto>
+</AltriDatiGestionali>
+</DettaglioLinee>
+<DettaglioLinee>
+<NumeroLinea>2</NumeroLinea>
+<CodiceArticolo>
+<CodiceTipo>Codice Art. fornitore</CodiceTipo>
+<CodiceValore>0020</CodiceValore>
+</CodiceArticolo>
+<Descrizione>Spese di amministrazione</Descrizione>
+<Quantita>1.00</Quantita>
+<UnitaMisura>EA</UnitaMisura>
+<PrezzoUnitario>15.87</PrezzoUnitario>
+<PrezzoTotale>15.87</PrezzoTotale>
+<AliquotaIVA>22.00</AliquotaIVA>
+<RiferimentoAmministrazione>IVA Ordinaria 22%</RiferimentoAmministrazione>
+<AltriDatiGestionali>
+<TipoDato>INFO</TipoDato>
+<RiferimentoTesto>Corrisp. comprensivo del C. A. Conai già assolto ove dovuto</RiferimentoTesto>
+</AltriDatiGestionali>
+</DettaglioLinee>
+<DatiRiepilogo>
+<AliquotaIVA>22.00</AliquotaIVA>
+<ImponibileImporto>175.25</ImponibileImporto>
+<Imposta>38.56</Imposta>
+<EsigibilitaIVA>I</EsigibilitaIVA>
+</DatiRiepilogo>
+</DatiBeniServizi>
+<DatiPagamento xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+<CondizioniPagamento>TP02</CondizioniPagamento>
+<DettaglioPagamento>
+<ModalitaPagamento>MP05</ModalitaPagamento>
+<DataScadenzaPagamento>2026-01-07</DataScadenzaPagamento>
+<ImportoPagamento>213.81</ImportoPagamento>
+<IBAN>IT44O0305101699000000000060</IBAN>
+</DettaglioPagamento>
+</DatiPagamento>
+</FatturaElettronicaBody>
+<ds:Signature Id="id-8d7ef16f4bc0f98d88207b998da9d7c8"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference Id="r-id-8d7ef16f4bc0f98d88207b998da9d7c8-1" URI=""><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2002/06/xmldsig-filter2"><dsig-filter2:XPath xmlns:dsig-filter2="http://www.w3.org/2002/06/xmldsig-filter2" Filter="subtract">/descendant::ds:Signature</dsig-filter2:XPath></ds:Transform><ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>UpN6Lqasx/rpzF5A+vDGLSSROezDvh8TwDZLI4HStVs=</ds:DigestValue></ds:Reference><ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#xades-id-8d7ef16f4bc0f98d88207b998da9d7c8"><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>51CXs59nKGtzr5h8nkS2d+gp6WKjoRCGQ69pKvIn9nE=</ds:DigestValue></ds:Reference><ds:Reference URI="#keyInfo-id-8d7ef16f4bc0f98d88207b998da9d7c8"><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>OHOLlPCjQvjjt9c/CJCIOmnSHToK3H8u+JnYVkpCPSo=</ds:DigestValue></ds:Reference></ds:SignedInfo><ds:SignatureValue Id="value-id-8d7ef16f4bc0f98d88207b998da9d7c8">NSDWUYdMVtg7//ZwTVU5Y9Y7Xo10ue4A6dSEbjrvVpIoB42Bu/Jgd6N+va3ddmYgKaYSvZO4Q6hatYl/3MUo7m4+3MxoVAHNfAJqhyK63eoBzLxJ4MtgEuAvWTrJsANOmZAHCEG8QF9CvdjW+dm7/Ei9jEkCxEwPNqUAQ9LyQtlCrGOQgmOStah2FHwvCnz5m3LQ9uWCMHS0pg1ZP+bsRl/t8GMLdXEnmnOmjF30IkKtgCmgqOa8Sigsy2nZWL6h/BQfYh3UrOGVSHamxwwF3Gy/OQwVGR6nDWhtUPCrsTFK+lAh+ZY+hVbj7ZqRH+r5C1PL0LJ7Rj5YziBl7ThDcw==</ds:SignatureValue><ds:KeyInfo Id="keyInfo-id-8d7ef16f4bc0f98d88207b998da9d7c8"><ds:X509Data><ds:X509Certificate>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</ds:X509Certificate></ds:X509Data></ds:KeyInfo><ds:Object><xades:QualifyingProperties xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Target="#id-8d7ef16f4bc0f98d88207b998da9d7c8"><xades:SignedProperties Id="xades-id-8d7ef16f4bc0f98d88207b998da9d7c8"><xades:SignedSignatureProperties><xades:SigningTime>2026-01-02T18:03:48Z</xades:SigningTime><xades:SigningCertificateV2><xades:Cert><xades:CertDigest><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>oDjPQ3wmc/ov9kE5raz2cAAUKD6c/eLaXFyHU5fuTlM=</ds:DigestValue></xades:CertDigest><xades:IssuerSerialV2>MIG0MIGrpIGoMIGlMQswCQYDVQQGEwJJVDEYMBYGA1UECgwPSW5mb0NlcnQgUy5wLkEuMSkwJwYDVQQLDCBRdWFsaWZpZWQgVHJ1c3QgU2VydmljZSBQcm92aWRlcjEaMBgGA1UEYQwRVkFUSVQtMDc5NDUyMTEwMDYxNTAzBgNVBAMMLEluZm9DZXJ0IFF1YWxpZmllZCBFbGVjdHJvbmljIFNpZ25hdHVyZSBDQSAzAgQB2+fV</xades:IssuerSerialV2></xades:Cert></xades:SigningCertificateV2></xades:SignedSignatureProperties><xades:SignedDataObjectProperties><xades:DataObjectFormat ObjectReference="#r-id-8d7ef16f4bc0f98d88207b998da9d7c8-1"><xades:MimeType>application/octet-stream</xades:MimeType></xades:DataObjectFormat></xades:SignedDataObjectProperties></xades:SignedProperties></xades:QualifyingProperties></ds:Object></ds:Signature></FatturaElettronica>

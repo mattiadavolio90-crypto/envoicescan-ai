@@ -163,6 +163,7 @@ def _build_detail_view_df(df_source: pd.DataFrame) -> pd.DataFrame:
 
     truncate_map = {
         'FileOrigine': 28,
+        'NumeroDocumento': 20,
         'Descrizione': 60,
     }
 
@@ -295,6 +296,7 @@ def _render_spese_generali_fallback_editor(df_editor_paginato: pd.DataFrame, cat
     return edited_df
 
 
+@st.fragment
 def render_category_editor(df_completo_filtrato, supabase):
     """Renderizza la sezione Dettaglio Articoli con data editor e logica di salvataggio."""
     # Placeholder se dataset mancanti/vuoti
@@ -394,6 +396,8 @@ def render_category_editor(df_completo_filtrato, supabase):
     # Ordine: File, NumeroRiga, Data, Descrizione, Categoria, Fornitore, Quantita, Totale, Prezzo, UM, IVA
     cols_base = ['FileOrigine', 'NumeroRiga', 'DataDocumento', 'Descrizione', 'Categoria', 
                 'Fornitore', 'Quantita', 'TotaleRiga', 'PrezzoUnitario', 'UnitaMisura', 'IVAPercentuale']
+    if 'NumeroDocumento' in df_base.columns:
+        cols_base.insert(1, 'NumeroDocumento')
     
     # Aggiungi prezzo_standard se esiste nel database
     if 'PrezzoStandard' in df_base.columns:
@@ -729,6 +733,7 @@ def render_category_editor(df_completo_filtrato, supabase):
     # Niente tooltip hover sui titoli: devono restare facili da cliccare per l'ordinamento.
     column_config_dict = {
         "FileOrigine": st.column_config.TextColumn("📄 File", disabled=True, width="small"),
+        "NumeroDocumento": st.column_config.TextColumn("N° Fattura", disabled=True, width="small"),
         "NumeroRiga": st.column_config.NumberColumn("🔢 N.Riga", disabled=True, width="small"),
         "DataDocumento": st.column_config.TextColumn("🗓️ Data", disabled=True, width="small"),
         "Descrizione": st.column_config.TextColumn("📝 Descrizione", disabled=True, width="large"),
@@ -818,7 +823,7 @@ def render_category_editor(df_completo_filtrato, supabase):
             _series = pd.to_numeric(df_editor_paginato_view[_cn], errors='coerce')
             _series = _series.replace([float('inf'), float('-inf')], 0.0).fillna(0.0)
             df_editor_paginato_view[_cn] = _series.astype(float)
-    _col_testo = ['FileOrigine', 'DataDocumento', 'Descrizione', 'Fornitore',
+    _col_testo = ['FileOrigine', 'NumeroDocumento', 'DataDocumento', 'Descrizione', 'Fornitore',
                   'UnitaMisura', 'Categoria', 'CatIcon', 'Novità']
     for _ct in _col_testo:
         if _ct in df_editor_paginato_view.columns:
@@ -933,53 +938,23 @@ def render_category_editor(df_completo_filtrato, supabase):
     if pending_category_changes:
         logger.info(f"📝 Modifiche categoria pendenti rilevate: {len(pending_category_changes)}")
     
-    # Box riepilogo + selettore ordinamento + bottone Excel su una riga
-    col_box, col_ord, col_btn = st.columns([5, 2, 1])
-    
+    # Box riepilogo + bottone XLS inline
+    ordina_per = "DataDocumento"
+    col_box, col_btn = st.columns([9.5, 0.5], vertical_alignment="top")
+
     with col_box:
         # Box blu con statistiche
         st.markdown(f"""
-        <div style="background-color: #E3F2FD; padding: clamp(0.75rem, 2vw, 1rem) clamp(1rem, 2.5vw, 1.25rem); border-radius: 8px; border: 2px solid #2196F3; margin-bottom: 1.25rem; width: fit-content;">
-            <p style="color: #1565C0; font-size: clamp(0.875rem, 2vw, 1rem); font-weight: bold; margin: 0; white-space: normal; word-wrap: break-word; line-height: 1.4;">
+        <div style="background-color: #E3F2FD; padding: 0.6rem 1rem; border-radius: 8px; border: 2px solid #2196F3; display: inline-block; width: fit-content;">
+            <p style="color: #1565C0; font-size: clamp(0.875rem, 2vw, 1rem); font-weight: bold; margin: 0; white-space: nowrap;">
                 📋 N. Righe: {num_righe:,} | 💰 Totale: € {totale_tabella:.2f}
             </p>
         </div>
         """, unsafe_allow_html=True)
-    
-    with col_ord:
-        # Selettore ordinamento affiancato al box blu
-        st.markdown('<p style="margin-top: 0.5rem; font-size: clamp(0.75rem, 1.8vw, 0.875rem); font-weight: 500;">Seleziona ordinamento per export</p>', unsafe_allow_html=True)
-        ordina_per = st.selectbox(
-            "ord",
-            options=["DataDocumento", "Categoria", "Fornitore", "Descrizione", "TotaleRiga"],
-            index=0,
-            key="select_ordina_export",
-            label_visibility="collapsed"
-        )
 
     with col_btn:
-        # Allinea il pulsante a destra e stile pulito
-        st.markdown('<div style="text-align: right;">', unsafe_allow_html=True)
-        st.markdown("""
-            <style>
-            div.st-key-btn_excel_dettaglio .stDownloadButton button {
-                background-color: #22c55e !important;
-                color: white !important;
-                border: none !important;
-                border-radius: 8px !important;
-                font-weight: 600 !important;
-                outline: none !important;
-                box-shadow: none !important;
-            }
-            div.st-key-btn_excel_dettaglio .stDownloadButton button:hover {
-                background-color: #16a34a !important;
-            }
-            </style>
-        """, unsafe_allow_html=True)
-        
-        # Prepara Excel - USA TUTTI I DATI con ordinamento selezionato
+        # Prepara Excel
         try:
-            # ✅ ESPORTA DATI IN BASE ALLA VISUALIZZAZIONE
             # Vista aggregata: esporta righe aggregate (quelle visualizzate)
             # Vista normale: esporta tutte righe con modifiche applicate
             if vista_aggregata:
@@ -1038,19 +1013,16 @@ def render_category_editor(df_completo_filtrato, supabase):
                 df_export.to_excel(writer, index=False, sheet_name='Articoli')
             
             st.download_button(
-                label="Excel",
+                label="XLS",
                 data=excel_buffer.getvalue(),
                 file_name=f"dettaglio_{pd.Timestamp.now().strftime('%Y%m%d_%H%M')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="btn_excel_dettaglio",
-                type="primary",
-                use_container_width=False
+                use_container_width=False,
             )
         except Exception as e:
             logger.exception(f"Errore esportazione Excel: {e}")
             st.error("❌ Errore nell'esportazione. Riprova.")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
 
 
     if salva_modifiche:

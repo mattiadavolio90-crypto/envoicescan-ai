@@ -212,7 +212,7 @@ def get_supabase_client():
         _ = st.secrets["supabase"]["url"]
 
         # Definizione locale della versione cached — eseguita solo in contesto Streamlit
-        @st.cache_resource(ttl=3600)
+        @st.cache_resource
         def _cached_client():
             url, key = _get_supabase_credentials()
             return create_client(url, key, options=options)

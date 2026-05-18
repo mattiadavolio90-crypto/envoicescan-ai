@@ -17,7 +17,13 @@ from unittest.mock import MagicMock, patch
 import services.db_service as _db_mod
 importlib.reload(_db_mod)
 
-from services.db_service import calcola_alert, get_custom_tags, aggiungi_associazioni, carica_sconti_e_omaggi
+from services.db_service import (
+    calcola_alert,
+    calcola_spesa_mensile_aggregata,
+    get_custom_tags,
+    aggiungi_associazioni,
+    carica_sconti_e_omaggi,
+)
 from config.constants import CATEGORIE_SPESE_GENERALI
 
 
@@ -225,6 +231,56 @@ class TestCalcolaAlert:
         storico = str(result.iloc[0]['Storico'])
         assert storico == '€9.00 → €10.00 → €11.00 → €12.00 → €14.00'
         assert abs(float(result.iloc[0]['Ultimo']) - 14.0) < 0.001
+
+
+class TestCalcolaSpesaMensileAggregata:
+
+    def test_aggrega_per_fornitore_e_mese(self):
+        df = pd.DataFrame([
+            {'Fornitore': 'Forn A', 'Categoria': '🥩 CARNE', 'DataDocumento': '2026-01-05', 'TotaleRiga': 100.0},
+            {'Fornitore': 'Forn A', 'Categoria': '🥩 CARNE', 'DataDocumento': '2026-01-20', 'TotaleRiga': 50.0},
+            {'Fornitore': 'Forn A', 'Categoria': '🥩 CARNE', 'DataDocumento': '2026-02-10', 'TotaleRiga': 70.0},
+            {'Fornitore': 'Forn B', 'Categoria': '🥬 VERDURE', 'DataDocumento': '2026-01-12', 'TotaleRiga': 30.0},
+        ])
+
+        result = calcola_spesa_mensile_aggregata(df, 'Fornitore')
+        assert not result.empty
+        assert set(result.columns) == {'mese', 'dimensione', 'spesa_totale'}
+
+        fa_jan = result[(result['dimensione'] == 'Forn A') & (result['mese'] == pd.Timestamp('2026-01-01'))]
+        assert len(fa_jan) == 1
+        assert abs(float(fa_jan.iloc[0]['spesa_totale']) - 150.0) < 0.001
+
+    def test_normalizza_valori_dimensione(self):
+        df = pd.DataFrame([
+            {'Fornitore': '  FORN   SPA  ', 'Categoria': '🥩 CARNE', 'DataDocumento': '2026-01-05', 'TotaleRiga': 10.0},
+            {'Fornitore': 'FORN SPA', 'Categoria': '🥩 CARNE', 'DataDocumento': '2026-01-06', 'TotaleRiga': 15.0},
+            {'Fornitore': '   ', 'Categoria': '🥩 CARNE', 'DataDocumento': '2026-01-07', 'TotaleRiga': 40.0},
+        ])
+
+        result = calcola_spesa_mensile_aggregata(df, 'Fornitore')
+        assert len(result) == 1
+        assert result.iloc[0]['dimensione'] == 'FORN SPA'
+        assert abs(float(result.iloc[0]['spesa_totale']) - 25.0) < 0.001
+
+    def test_categoria_esclude_note_e_diciture(self):
+        df = pd.DataFrame([
+            {'Fornitore': 'Forn A', 'Categoria': '📝 NOTE E DICITURE', 'DataDocumento': '2026-01-05', 'TotaleRiga': 100.0},
+            {'Fornitore': 'Forn A', 'Categoria': 'NOTE E DICITURE', 'DataDocumento': '2026-01-06', 'TotaleRiga': 200.0},
+            {'Fornitore': 'Forn A', 'Categoria': '🥩 CARNE', 'DataDocumento': '2026-01-07', 'TotaleRiga': 50.0},
+        ])
+
+        result = calcola_spesa_mensile_aggregata(df, 'Categoria')
+        assert len(result) == 1
+        assert result.iloc[0]['dimensione'] == '🥩 CARNE'
+        assert abs(float(result.iloc[0]['spesa_totale']) - 50.0) < 0.001
+
+    def test_dimensione_non_valida_restituisce_vuoto(self):
+        df = pd.DataFrame([
+            {'Fornitore': 'Forn A', 'Categoria': '🥩 CARNE', 'DataDocumento': '2026-01-05', 'TotaleRiga': 100.0},
+        ])
+        result = calcola_spesa_mensile_aggregata(df, 'Prodotto')
+        assert result.empty
 
 
 # ============================================================

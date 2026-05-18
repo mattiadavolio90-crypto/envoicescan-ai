@@ -19,7 +19,7 @@ import streamlit as st
 
 # Import config
 from config.constants import CATEGORIE_SPESE_GENERALI, LEGACY_CATEGORY_ALIASES, PRICE_ALERT_THRESHOLD_DEFAULT
-from utils.validation import SPECIAL_ROW_SCONTO_OMAGGIO, classify_special_row
+from utils.validation import SPECIAL_ROW_SCONTO_OMAGGIO, classify_special_row, classify_special_row_vectorized
 
 # Logger centralizzato
 from config.logger_setup import get_logger
@@ -204,6 +204,52 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         return pd.DataFrame()
 
 
+@st.cache_data(ttl=120, show_spinner=False)
+def _fetch_numero_documento_map_cached(user_id: str, ristorante_id=None) -> Dict[str, str]:
+    """Mappa file_origine -> numero_documento dalla tabella fatture_documenti."""
+    from services import get_supabase_client
+
+    supabase_client = get_supabase_client()
+    if supabase_client is None:
+        return {}
+
+    mapping: Dict[str, str] = {}
+    page = 0
+    page_size = 1000
+    max_pages = 200
+
+    while page < max_pages:
+        offset = page * page_size
+        query = (
+            supabase_client.table("fatture_documenti")
+            .select("file_origine,numero_documento,created_at")
+            .eq("user_id", user_id)
+            .is_("deleted_at", "null")
+            .order("created_at", desc=True)
+        )
+        if ristorante_id:
+            query = query.eq("ristorante_id", ristorante_id)
+
+        response = query.range(offset, offset + page_size - 1).execute()
+        rows = response.data or []
+        if not rows:
+            break
+
+        for row in rows:
+            file_origine = str(row.get("file_origine") or "").strip()
+            if not file_origine or file_origine in mapping:
+                continue
+            numero_documento = str(row.get("numero_documento") or "").strip()
+            if numero_documento:
+                mapping[file_origine] = numero_documento
+
+        if len(rows) < page_size:
+            break
+        page += 1
+
+    return mapping
+
+
 def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None, ristorante_id=None, include_review_rows: bool = True):
     """
     🔥 SINGLE SOURCE OF TRUTH: Carica fatture SOLO da Supabase
@@ -234,6 +280,7 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     # Se force_refresh, invalida cache prima di ricaricare
     if force_refresh:
         _carica_fatture_da_supabase.clear()
+        _fetch_numero_documento_map_cached.clear()
         get_fatture_stats.clear()
         logger.info("🔄 Cache invalidata per force_refresh")
     
@@ -245,6 +292,21 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     
     # Normalizzazione categorie (veloce, in-memory)
     df_result = df_result.copy()  # Non modificare il cached DataFrame
+
+    # Arricchimento leggero: numero documento per ogni file, letto una sola volta in cache.
+    try:
+        _numero_documento_map = _fetch_numero_documento_map_cached(user_id, ristorante_id)
+    except Exception as e:
+        logger.warning(f"⚠️ Errore lookup numero_documento: {e}")
+        _numero_documento_map = {}
+
+    if 'FileOrigine' in df_result.columns:
+        if _numero_documento_map:
+            df_result['NumeroDocumento'] = (
+                df_result['FileOrigine'].astype(str).map(_numero_documento_map).fillna('')
+            )
+        else:
+            df_result['NumeroDocumento'] = ''
 
     # Compatibilità naming colonna review: alcuni flussi usano NeedsReview, altri needs_review
     if 'NeedsReview' in df_result.columns and 'needs_review' not in df_result.columns:
@@ -447,7 +509,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     """
     _ALERT_COLUMNS = [
         'Prodotto', 'Categoria', 'Fornitore', 'Storico', 'Media',
-        'Ultimo', 'Aumento_Perc', 'Data', 'N_Fattura',
+        'Ultimo', 'Aumento_Perc', 'Data', 'N_Fattura', 'NumeroDocumento',
         'Trend', 'Impatto_Stimato', 'Delta_Euro'
     ]
     if df.empty:
@@ -517,6 +579,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
 
         if abs(variazione_perc) >= soglia_minima:
             file_origine = str(ultimo.get('FileOrigine', ''))
+            numero_documento = str(ultimo.get('NumeroDocumento', '') or '')
             n_acquisti = len(acquisti_validi)
 
             if n_acquisti >= 2:
@@ -575,6 +638,7 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
                 'Aumento_Perc': variazione_perc,
                 'Data': ultimo['DataDocumento'],
                 'N_Fattura': file_origine,
+                'NumeroDocumento': numero_documento,
                 'Trend': trend,
                 'Impatto_Stimato': impatto_stimato,
                 'Delta_Euro': delta_euro,
@@ -587,6 +651,66 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     df_alert = df_alert.sort_values('Aumento_Perc', ascending=False).reset_index(drop=True)
 
     return df_alert
+
+
+def calcola_spesa_mensile_aggregata(df: pd.DataFrame, dimensione: str) -> pd.DataFrame:
+    """
+    Aggrega la spesa mensile per dimensione (Fornitore o Categoria).
+
+    Args:
+        df: DataFrame sorgente con colonne DataDocumento, TotaleRiga e dimensione richiesta.
+        dimensione: "Fornitore" oppure "Categoria".
+
+    Returns:
+        DataFrame con colonne: mese, dimensione, spesa_totale.
+    """
+    output_columns = ['mese', 'dimensione', 'spesa_totale']
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return pd.DataFrame(columns=output_columns)
+
+    dim_norm = str(dimensione or '').strip().lower()
+    dim_col_map = {
+        'fornitore': 'Fornitore',
+        'categoria': 'Categoria',
+    }
+    dim_col = dim_col_map.get(dim_norm)
+    if not dim_col or dim_col not in df.columns:
+        return pd.DataFrame(columns=output_columns)
+
+    if 'DataDocumento' not in df.columns or 'TotaleRiga' not in df.columns:
+        return pd.DataFrame(columns=output_columns)
+
+    work = df[[dim_col, 'DataDocumento', 'TotaleRiga']].copy()
+    work[dim_col] = (
+        work[dim_col]
+        .astype(str)
+        .str.replace(r'\s+', ' ', regex=True)
+        .str.strip()
+    )
+    work = work[work[dim_col] != '']
+
+    if dim_col == 'Categoria':
+        work = work[
+            ~work[dim_col].str.upper().isin({'NOTE E DICITURE', '📝 NOTE E DICITURE'})
+        ]
+
+    work['DataDocumento'] = pd.to_datetime(work['DataDocumento'], errors='coerce')
+    work['TotaleRiga'] = pd.to_numeric(work['TotaleRiga'], errors='coerce').fillna(0.0)
+    work = work[work['DataDocumento'].notna()]
+
+    if work.empty:
+        return pd.DataFrame(columns=output_columns)
+
+    work['mese'] = work['DataDocumento'].dt.to_period('M').dt.to_timestamp()
+
+    grouped = (
+        work.groupby(['mese', dim_col], as_index=False)['TotaleRiga']
+        .sum()
+        .rename(columns={dim_col: 'dimensione', 'TotaleRiga': 'spesa_totale'})
+        .sort_values(['dimensione', 'mese'])
+        .reset_index(drop=True)
+    )
+    return grouped
 
 
 def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: str = None, supabase_client=None) -> Dict[str, Any]:
@@ -672,6 +796,9 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
             }
         
         df = pd.DataFrame(all_rows)
+        _doc_map = _fetch_numero_documento_map_cached(user_id, ristorante_id)
+        if 'file_origine' in df.columns:
+            df['numero_documento'] = df['file_origine'].astype(str).map(_doc_map).fillna('')
         
         # ============================================================
         # FILTRO: ESCLUDI SOLO LE CATEGORIE SPESE GENERALI definite in constants.py
@@ -690,19 +817,7 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
         pattern = '|'.join(re.escape(k) for k in FORNITORI_SPESE_GENERALI_KEYWORDS)
         df_food = df_food[~df_food['fornitore'].str.contains(pattern, case=False, na=False, regex=True)].copy()
         
-        special_meta = df_food.apply(
-            lambda row: classify_special_row(
-                descrizione=row.get('descrizione', ''),
-                categoria=row.get('categoria', ''),
-                prezzo=row.get('prezzo_unitario', 0),
-                totale_riga=row.get('totale_riga', 0),
-                quantita=row.get('quantita', 1),
-                tipo_documento=row.get('tipo_documento', ''),
-                needs_review=bool(row.get('needs_review', False)),
-            ),
-            axis=1,
-            result_type='expand',
-        )
+        special_meta = classify_special_row_vectorized(df_food)
         df_food['special_bucket'] = special_meta['bucket']
 
         # Logging conteggi per verifica filtro
@@ -1250,6 +1365,7 @@ def clear_fatture_cache() -> None:
     import sys
     logger.debug(f"[CACHE] clear_fatture_cache() chiamata — ts={time.time():.3f}")
     _carica_fatture_da_supabase.clear()
+    _fetch_numero_documento_map_cached.clear()
     get_fatture_stats.clear()
     get_descrizioni_distinte.clear()
     # Usa sys.modules per evitare import circolari — funziona se il modulo è già caricato
@@ -1902,6 +2018,7 @@ __all__ = [
     'carica_e_prepara_dataframe',
     'ricalcola_prezzi_con_sconti',
     'calcola_alert',
+    'calcola_spesa_mensile_aggregata',
     'get_price_alert_threshold',
     'set_price_alert_threshold',
     'carica_sconti_e_omaggi',

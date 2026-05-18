@@ -5,6 +5,9 @@ import pandas as pd
 import time
 import logging
 from datetime import datetime, timezone
+import plotly.express as px
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 
 from config.constants import (
     CATEGORIE_SPESE_GENERALI,
@@ -18,7 +21,7 @@ from config.constants import (
 from utils.text_utils import normalizza_stringa, estrai_nome_categoria, escape_ilike as _escape_ilike
 from utils.ui_helpers import load_css, render_pivot_mensile
 from utils.ristorante_helper import add_ristorante_filter
-from utils.validation import classify_special_row
+from utils.validation import classify_special_row, classify_special_row_vectorized
 
 from services.ai_service import (
     carica_memoria_completa,
@@ -32,6 +35,7 @@ from services.ai_service import (
     aggiorna_streak_classificazione,
 )
 from services.worker_client import classifica_via_worker
+from services.db_service import calcola_spesa_mensile_aggregata
 
 from components.category_editor import render_category_editor
 from utils.app_controllers import is_admin_or_impersonating as _is_admin_or_impersonating
@@ -78,7 +82,8 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
             st.dataframe(conteggio_cat, hide_index=True, width='stretch')
             
             st.markdown("**Esempio 15 righe (verifica categoria):**")
-            sample_df = df_completo[['FileOrigine', 'Descrizione', 'Categoria', 'Fornitore', 'TotaleRiga']].head(15)
+            _sample_cols = ['FileOrigine', 'NumeroDocumento', 'Descrizione', 'Categoria', 'Fornitore', 'TotaleRiga']
+            sample_df = df_completo[[c for c in _sample_cols if c in df_completo.columns]].head(15)
             st.dataframe(sample_df, hide_index=True, width='stretch')
             
             # Test query diretta Supabase
@@ -116,19 +121,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     # ===== FILTRA DICITURE DA DASHBOARD =====
     righe_prima = len(df_completo)
     
-    special_meta = df_completo.apply(
-        lambda row: classify_special_row(
-            descrizione=row.get('Descrizione', ''),
-            categoria=row.get('Categoria', ''),
-            prezzo=row.get('PrezzoUnitario', 0),
-            totale_riga=row.get('TotaleRiga', 0),
-            quantita=row.get('Quantita', 1),
-            tipo_documento=row.get('TipoDocumento', row.get('tipo_documento', '')),
-            needs_review=bool(row.get('needs_review', False)),
-        ),
-        axis=1,
-        result_type='expand',
-    )
+    special_meta = classify_special_row_vectorized(df_completo)
 
     mask_escludi = ~special_meta['include_in_dashboard'].fillna(False).astype(bool)
 
@@ -154,6 +147,161 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
         st.info("📭 Nessun dato disponibile dopo i filtri.")
         return
     # ===== FINE FILTRO DICITURE =====
+
+    def _render_spesa_tempo_sotto_tab(df_source: pd.DataFrame, dimensione: str, key_prefix: str):
+        """Renderizza grafico trend spesa mensile sotto la tabella pivot del tab corrente."""
+        if df_source is None or df_source.empty:
+            return
+
+        df_spesa = calcola_spesa_mensile_aggregata(df_source, dimensione)
+        if df_spesa.empty:
+            st.info(f"📭 Nessun dato disponibile per il grafico {dimensione.lower()}.")
+            return
+
+        st.markdown("<div style='margin-top: 1.9rem;'></div>", unsafe_allow_html=True)
+
+        ranking_dimensioni = (
+            df_spesa.groupby('dimensione', as_index=False)['spesa_totale']
+            .sum()
+            .sort_values('spesa_totale', ascending=False)
+        )
+
+        select_key = f"{key_prefix}_select"
+        opzioni = sorted(
+            ranking_dimensioni['dimensione'].astype(str).dropna().unique().tolist(),
+            key=lambda valore: valore.casefold(),
+        )
+
+        if not opzioni:
+            st.info(f"📭 Nessun valore {dimensione.lower()} disponibile.")
+            return
+
+        st.markdown(
+            f"<h4 style='color:#1e40af; font-weight:700; margin-bottom:0.45rem;'>📊 Spesa nel Tempo per {dimensione}</h4>",
+            unsafe_allow_html=True,
+        )
+
+        selected_value = st.session_state.get(select_key)
+        selected_index = opzioni.index(selected_value) if selected_value in opzioni else 0
+        col_filtro, _ = st.columns([1, 2])
+        with col_filtro:
+            scelta = st.selectbox(
+                f"Seleziona {dimensione.lower()}",
+                options=opzioni,
+                index=selected_index,
+                key=select_key,
+            )
+
+        serie_raw = df_spesa[df_spesa['dimensione'] == scelta].copy().sort_values('mese')
+        if serie_raw.empty:
+            st.info("📭 Nessun dato disponibile per la selezione corrente.")
+            return
+
+        valori_periodo = pd.to_numeric(serie_raw['spesa_totale'], errors='coerce').fillna(0.0)
+        mesi_disponibili = int(serie_raw['mese'].dropna().nunique())
+        totale_periodo = float(valori_periodo.sum())
+        media_periodo = float(valori_periodo.mean())
+
+        full_range = pd.date_range(serie_raw['mese'].min(), serie_raw['mese'].max(), freq='MS')
+        serie = serie_raw.copy()
+        serie = (
+            serie.set_index('mese')
+            .reindex(full_range)
+            .rename_axis('mese')
+            .reset_index()
+        )
+        serie['spesa_totale'] = pd.to_numeric(serie['spesa_totale'], errors='coerce').fillna(0.0)
+
+        x_min = serie['mese'].min()
+        x_max = serie['mese'].max()
+        x_padding = pd.Timedelta(days=1)
+        x_range = [x_min - x_padding, x_max + x_padding]
+
+        n_punti = len(serie)
+        x_axis_cfg = dict(
+            tickformat='%m/%Y',
+            tickmode='array',
+            tickvals=serie['mese'].dropna().drop_duplicates().tolist(),
+            tickangle=0,
+            tickfont=dict(size=16, color='#1e293b', family='Arial', weight='bold'),
+            showgrid=False,
+            showline=False,
+        )
+        y_axis_cfg = dict(
+            nticks=7,
+            tickprefix='€',
+            tickformat='.0f',
+            tickfont=dict(size=16, color='#1e293b', family='Arial', weight='bold'),
+            gridcolor='rgba(229,231,235,0.55)',
+            gridwidth=1,
+            zeroline=False,
+            showline=False,
+        )
+
+        # --- Mini-legend chips (spesa + media) ---
+        st.markdown(
+            """
+            <div style="display:flex; gap:20px; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; padding-left:4px;">
+                <span style="display:inline-flex; align-items:center; gap:7px; font-size:0.80rem; color:#374151; font-weight:600; letter-spacing:0.01em;">
+                    <svg width="22" height="4"><rect y="0" width="22" height="4" rx="2" fill="#2563eb"/></svg>
+                    Spesa mensile
+                </span>
+                <span style="display:inline-flex; align-items:center; gap:7px; font-size:0.80rem; color:#374151; font-weight:600; letter-spacing:0.01em;">
+                    <svg width="22" height="4"><line x1="0" y1="2" x2="22" y2="2" stroke="#dc2626" stroke-width="2.5" stroke-dasharray="5,3"/></svg>
+                    Media periodo
+                </span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Grafico principale: spesa mensile + linea media
+        fig = px.line(serie, x='mese', y='spesa_totale', markers=True, labels={'mese': '', 'spesa_totale': ''})
+        fig.update_traces(
+            line=dict(color='#2563eb', width=3.6, shape='spline'),
+            marker=dict(size=10, color='#2563eb', line=dict(color='#ffffff', width=2)),
+            hovertemplate='<b>%{x|%m/%Y}</b><br><b>€%{y:,.0f}</b><extra></extra>',
+        )
+        fig.add_scatter(
+            x=serie['mese'].tolist(),
+            y=[media_periodo] * len(serie),
+            mode='lines',
+            line=dict(color='#dc2626', width=2.5, dash='dash'),
+            showlegend=False,
+            hovertemplate=f'Media: €{media_periodo:,.0f}<extra></extra>',
+        )
+        fig.add_annotation(
+            x=0.015, xref='paper', y=media_periodo, yref='y',
+            text=f"<b>Media €{media_periodo:,.0f}</b>",
+            showarrow=False, xanchor='left', yanchor='bottom', yshift=8,
+            font=dict(color='#dc2626', size=13, family='Arial'),
+            bgcolor='rgba(255,255,255,0.88)',
+            bordercolor='#dc2626', borderwidth=1, borderpad=4,
+        )
+        fig.update_layout(
+            height=400, hovermode='x unified', margin=dict(t=20, b=10, l=10, r=80),
+            xaxis=x_axis_cfg, yaxis=y_axis_cfg,
+            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='#ffffff',
+            font=dict(size=13, color='#374151', family='Arial'), showlegend=False,
+        )
+        fig.update_xaxes(range=x_range)
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+        riepilogo_periodo = (
+            f"📋 Mesi: {mesi_disponibili:,} | "
+            f"💰 Totale periodo: € {totale_periodo:,.0f} | "
+            f"📊 Media periodo: € {media_periodo:,.0f}"
+        )
+        st.markdown(
+            f"""
+            <div style="background-color: #E3F2FD; padding: 0.6rem 1rem; border-radius: 8px; border: 2px solid #2196F3; width: fit-content;">
+                <p style="color: #1565C0; font-size: 0.95rem; font-weight: bold; margin: 0; white-space: nowrap;">
+                    {riepilogo_periodo}
+                </p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     
     # Recupera user_id da session_state (necessario per get_fatture_stats)
     try:
@@ -808,7 +956,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     # ============================================
     from utils.period_helper import PERIODO_OPTIONS, calcola_date_periodo, risolvi_periodo
     
-    st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📅 Filtra per Periodo</h3>', unsafe_allow_html=True)
+    st.markdown("<h3 style='color:#1e40af; font-weight:700;'>📅 Filtra per Periodo</h3>", unsafe_allow_html=True)
     
     date_periodo = calcola_date_periodo()
     oggi_date = date_periodo['oggi']
@@ -1016,7 +1164,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     if 'is_loading' not in st.session_state:
         st.session_state.is_loading = False
     
-    st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📊 Naviga tra le Sezioni</h3>', unsafe_allow_html=True)
+    st.markdown("<h3 style='color:#1e40af; font-weight:700;'>📊 Naviga tra le Sezioni</h3>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns(3)
     
     with col1:
@@ -1092,6 +1240,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
             else:
                 try:
                     render_pivot_mensile(df_cat_source, 'Categoria', MESI_ITA, 'categorie', 'Categorie')
+                    _render_spesa_tempo_sotto_tab(df_cat_source, 'Categoria', 'af_trend_categorie')
                 except Exception as e:
                     logger.error(f"Errore in render_pivot_mensile (categorie): {e}", exc_info=True)
                     st.error(f"❌ Errore nel rendering della tabella categorie: {str(e)}")
@@ -1128,6 +1277,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
             else:
                 try:
                     render_pivot_mensile(df_forn_source, 'Fornitore', MESI_ITA, 'fornitori', 'Fornitori')
+                    _render_spesa_tempo_sotto_tab(df_forn_source, 'Fornitore', 'af_trend_fornitori')
                 except Exception as e:
                     logger.error(f"Errore in render_pivot_mensile (fornitori): {e}", exc_info=True)
                     st.error(f"❌ Errore nel rendering della tabella fornitori: {str(e)}")

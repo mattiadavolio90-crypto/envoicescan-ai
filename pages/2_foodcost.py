@@ -344,12 +344,14 @@ def get_ricette_come_ingredienti(user_id: str, ristorante_id: str, exclude_id: s
         if exclude_id:
             query = query.neq('id', exclude_id)
         
+        # Filtra solo SEMILAVORATI lato DB
+        query = query.eq('categoria', 'SEMILAVORATI')
+        
         response = query.execute()
         
         if not response.data:
             return []
         
-        # Filtra solo SEMILAVORATI per massimo 2 livelli profondità
         ricette = [
             {
                 'id': r['id'],
@@ -358,7 +360,6 @@ def get_ricette_come_ingredienti(user_id: str, ristorante_id: str, exclude_id: s
                 'categoria': r['categoria']
             }
             for r in response.data
-            if r['categoria'] == 'SEMILAVORATI'  # Solo semilavorati come ingredienti
         ]
         
         return ricette
@@ -1951,30 +1952,13 @@ if selected_tab == "📊 Export Excel":
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 filename = f"ricette_export_{timestamp}.xlsx"
                 
-                # CSS scoped per bottone verde solo in questo container
-                st.markdown("""
-                <style>
-                div.st-key-export_excel_btn_container .stDownloadButton button {
-                    background-color: #22c55e !important;
-                    color: white !important;
-                    border: none !important;
-                    border-radius: 8px !important;
-                    font-weight: 600 !important;
-                }
-                div.st-key-export_excel_btn_container .stDownloadButton button:hover {
-                    background-color: #16a34a !important;
-                }
-                </style>
-                """, unsafe_allow_html=True)
-                
-                with st.container(key="export_excel_btn_container"):
-                    st.download_button(
-                        label="Excel",
-                        data=output.getvalue(),
-                        file_name=filename,
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        use_container_width=True
-                    )
+                st.download_button(
+                    label="XLS",
+                    data=output.getvalue(),
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=False,
+                )
             
             except Exception as e:
                 st.error("❌ Errore nella generazione del file Excel. Riprova.")

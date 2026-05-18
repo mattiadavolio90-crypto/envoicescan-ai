@@ -118,7 +118,9 @@ def _auto_classify_saved_rows(
         .eq("user_id", user_id)
         .eq("ristorante_id", ristorante_id)
         .eq("file_origine", nome_file)
+        .is_("deleted_at", "null")
         .or_("categoria.is.null,categoria.eq.Da Classificare,categoria.eq.")
+        .limit(10000)
         .execute()
     )
 
@@ -149,13 +151,30 @@ def _auto_classify_saved_rows(
         chunk = descrizioni[i:i + chunk_size]
         fornitori = [desc_map[d][0] for d in chunk]
         iva_list = [desc_map[d][1] for d in chunk]
-        categorie = classifica_via_worker(
-            chunk,
-            fornitori=fornitori,
-            iva=iva_list,
-            hint=None,
-            user_id=user_id,
-        )
+        try:
+            categorie = classifica_via_worker(
+                chunk,
+                fornitori=fornitori,
+                iva=iva_list,
+                hint=None,
+                user_id=user_id,
+            )
+        except Exception as ai_exc:
+            logger.warning(
+                "[auto_classify] classifica_via_worker fallita per chunk %d-%d: %s",
+                i, i + len(chunk), ai_exc,
+            )
+            categorie = None
+
+        # Fallback robusto: se l'AI non ha ritornato una lista allineata, usa
+        # il fallback canonico (enforce_no_unclassified_category lo normalizzerà).
+        if not isinstance(categorie, list) or len(categorie) != len(chunk):
+            logger.warning(
+                "[auto_classify] risultato AI inatteso (atteso %d, ottenuto %s) - fallback su categoria neutra",
+                len(chunk),
+                None if not isinstance(categorie, list) else len(categorie),
+            )
+            categorie = [None] * len(chunk)
 
         for desc, cat in zip(chunk, categorie):
             categoria, fallback_forzato = enforce_no_unclassified_category(
@@ -345,8 +364,14 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
         logger.error("[item=%d] %s", queue_id, msg)
         return ItemResult(queue_id=queue_id, event_id=event_id, status="retry", error=msg)
 
+    if dati_prodotti is None:
+        # Parser ha ritornato None: condizione anomala, retry per ripianificare.
+        msg = "estrai_dati_da_xml ha restituito None (errore interno del parser)"
+        logger.error("[item=%d] %s", queue_id, msg)
+        return ItemResult(queue_id=queue_id, event_id=event_id, status="retry", error=msg)
+
     if not dati_prodotti:
-        # XML valido ma nessuna riga estratta (es. fattura senza DettaglioLinee)
+        # Lista vuota: XML valido ma nessuna riga estratta (es. fattura senza DettaglioLinee)
         logger.warning("[item=%d] estrai_dati_da_xml ha restituito 0 righe - segno come done", queue_id)
         return ItemResult(queue_id=queue_id, event_id=event_id, status="done", righe=0)
 
@@ -426,15 +451,29 @@ def _fetch_xml_from_url(url: str) -> str | None:
     try:
         from urllib.parse import urlparse
         import urllib.request
-        
-        # 🔒 SSRF protection: whitelist host Invoicetronic
+
+        # 🔒 SSRF protection: whitelist host esplicita + check porta
         parsed = urlparse(url)
+        _hostname = (parsed.hostname or "").lower().strip()
+        _allowed_exact = {
+            'invoicetronic.com',
+            'api.invoicetronic.com',
+            'download.invoicetronic.com',
+            'invoicetronic.it',
+        }
         _allowed_suffixes = ('.invoicetronic.com', '.invoicetronic.it')
-        if not parsed.hostname or not parsed.hostname.endswith(_allowed_suffixes):
-            logger.warning("SSRF blocked: host non consentito: %s", parsed.hostname)
+        _host_ok = (
+            _hostname in _allowed_exact
+            or _hostname.endswith(_allowed_suffixes)
+        )
+        if not _host_ok:
+            logger.warning("SSRF blocked: host non consentito: %s", _hostname)
             return None
         if parsed.scheme != 'https':
             logger.warning("SSRF blocked: schema non-HTTPS: %s", parsed.scheme)
+            return None
+        if parsed.port and parsed.port not in (443,):
+            logger.warning("SSRF blocked: porta non consentita: %s", parsed.port)
             return None
         
         api_key = os.environ.get("INVOICETRONIC_API_KEY", "")
@@ -557,15 +596,24 @@ def run_cycle() -> CycleStats:
         elif result.status == "retry":
             try:
                 _schedule_retry(supabase, queue_id, result.error or "errore sconosciuto")
-                # Controlla se è diventato dead (attempt >= max_attempts)
-                updated = (
-                    supabase.table("fatture_queue")
-                    .select("status")
-                    .eq("id", queue_id)
-                    .single()
-                    .execute()
-                )
-                final_status = (updated.data or {}).get("status", "failed")
+                # Controlla se è diventato dead (attempt >= max_attempts).
+                # Usa maybe_single() per non crashare se la riga è stata rimossa
+                # (race con cleanup esterno o purge).
+                try:
+                    updated = (
+                        supabase.table("fatture_queue")
+                        .select("status")
+                        .eq("id", queue_id)
+                        .maybe_single()
+                        .execute()
+                    )
+                    final_status = ((updated.data if updated else None) or {}).get("status", "failed")
+                except Exception as verify_exc:
+                    logger.warning(
+                        "[item=%d] verifica status post-retry fallita: %s",
+                        queue_id, verify_exc,
+                    )
+                    final_status = "unknown"
                 if final_status == "dead":
                     stats.dead += 1
                     logger.warning(

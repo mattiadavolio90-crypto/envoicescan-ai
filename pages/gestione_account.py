@@ -142,8 +142,8 @@ with tab1:
                             else:
                                 st.success("✅ Password aggiornata con successo!")
                                 logger.info(f"Password modificata per user_id={user.get('id')}")
-                                st.info("🔄 Reindirizzamento al login tra 2 secondi...")
-                                time.sleep(2)
+                                st.info("🔄 Reindirizzamento al login...")
+                                time.sleep(0.5)
                                 
                                 # Logout automatico + invalida session_token
                                 try:
@@ -270,6 +270,56 @@ with tab2:
                         export_data["classificazioni_manuali"] = class_export
                 except Exception as e:
                     logger.warning(f"Errore query classificazioni export: {e}")
+                
+                # Query fatture_documenti (Step 6 - Gestione Documenti)
+                try:
+                    fd_export = []
+                    offset = 0
+                    page_size = 1000
+                    while True:
+                        fd_query = supabase.table('fatture_documenti').select(
+                            'file_origine,fornitore,piva_fornitore,numero_documento,data_documento,tipo_documento,totale_documento,scadenza_xml,scadenza_effettiva,scadenza_source,pagata,pagata_at,note_pagamento,created_at'
+                        ).eq('user_id', user_id)\
+                         .is_('deleted_at', 'null')\
+                         .order('created_at', desc=False)\
+                         .range(offset, offset + page_size - 1)\
+                         .execute()
+                        rows = fd_query.data or []
+                        if not rows:
+                            break
+                        fd_export.extend(rows)
+                        if len(rows) < page_size:
+                            break
+                        offset += page_size
+                    if fd_export:
+                        export_data["fatture_documenti"] = fd_export
+                except Exception as e:
+                    logger.warning(f"Errore query fatture_documenti export: {e}")
+                
+                # Query fornitori_pagamenti_config (Step 6 - Regole Pagamento)
+                try:
+                    fpc_export = []
+                    offset = 0
+                    page_size = 1000
+                    while True:
+                        fpc_query = supabase.table('fornitori_pagamenti_config').select(
+                            'piva_fornitore,fornitore_norm,giorni_pagamento,data_riferimento,attiva,note,created_at'
+                        ).eq('user_id', user_id)\
+                         .is_('deleted_at', 'null')\
+                         .order('created_at', desc=False)\
+                         .range(offset, offset + page_size - 1)\
+                         .execute()
+                        rows = fpc_query.data or []
+                        if not rows:
+                            break
+                        fpc_export.extend(rows)
+                        if len(rows) < page_size:
+                            break
+                        offset += page_size
+                    if fpc_export:
+                        export_data["fornitori_pagamenti_config"] = fpc_export
+                except Exception as e:
+                    logger.warning(f"Errore query fornitori_pagamenti_config export: {e}")
                 
                 # Query upload_events con paginazione
                 try:
@@ -480,6 +530,8 @@ with tab3:
                         ('ai_usage_events', 'user_id'),
                         ('login_attempts', 'email'),
                         ('ristoranti', 'user_id'),
+                        ('fatture_documenti', 'user_id'),
+                        ('fornitori_pagamenti_config', 'user_id'),
                     ]
                     for table_name, id_col in tables_to_clean:
                         try:
@@ -518,7 +570,7 @@ with tab3:
                     st.success("✅ Account eliminato con successo.")
                     st.info("I tuoi dati sono stati rimossi definitivamente dai nostri server. Arrivederci!")
                     
-                    time.sleep(3)
+                    time.sleep(0.5)
                     st.rerun()
                     
                 except Exception as e:

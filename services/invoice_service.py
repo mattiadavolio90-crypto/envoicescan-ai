@@ -82,6 +82,115 @@ def _to_float_safe(value: Any, default: Optional[float] = None) -> Optional[floa
         return default
 
 
+def _to_int_safe(value: Any, default: Optional[int] = None) -> Optional[int]:
+    """Converte valori numerici/stringa in int in modo robusto."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return default
+    try:
+        return int(float(text.replace(',', '.')))
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalizza_piva_cedente(value: Any) -> Optional[str]:
+    """Normalizza P.IVA cedente mantenendo solo cifre (max 11)."""
+    if value is None:
+        return None
+    digits = re.sub(r'\D', '', str(value))
+    if not digits:
+        return None
+    return digits[:11]
+
+
+def _estrai_info_pagamento_xml(fattura: Dict[str, Any], tipo_documento: str) -> Dict[str, Any]:
+    """
+    Estrae scadenza XML e giorni termini da DatiPagamento.
+
+    Regola:
+    - Se esiste almeno una DataScadenzaPagamento: usa la data più lontana, giorni_termini=None
+    - Altrimenti, se esiste GiorniTerminiPagamento: usa il massimo giorni
+    - Altrimenti entrambi None
+    """
+    allowed_prefix = ('TD01', 'TD02', 'TD04', 'TD05', 'TD06', 'TD07', 'TD16', 'TD17', 'TD18', 'TD19', 'TD20', 'TD24', 'TD25', 'TD26', 'TD27')
+    if tipo_documento not in allowed_prefix:
+        return {'scadenza_xml': None, 'giorni_termini_xml': None}
+
+    # Struttura canonica FatturaPA: FatturaElettronicaBody -> DatiPagamento.
+    # Alcuni flussi storici potrebbero annidarlo in DatiGenerali: gestiamo entrambi.
+    dati_pagamento_raw = safe_get(
+        fattura,
+        ['FatturaElettronicaBody', 'DatiPagamento'],
+        default=None,
+        keep_list=True,
+    )
+    if not dati_pagamento_raw:
+        dati_pagamento_raw = safe_get(
+            fattura,
+            ['FatturaElettronicaBody', 'DatiGenerali', 'DatiPagamento'],
+            default=None,
+            keep_list=True,
+        )
+    if not dati_pagamento_raw:
+        return {'scadenza_xml': None, 'giorni_termini_xml': None}
+
+    if isinstance(dati_pagamento_raw, dict):
+        dati_pagamento_raw = [dati_pagamento_raw]
+
+    scadenze: List[str] = []
+    giorni: List[int] = []
+    for dati_pag in dati_pagamento_raw:
+        if not isinstance(dati_pag, dict):
+            continue
+        dettagli = dati_pag.get('DettaglioPagamento')
+        if dettagli is None:
+            continue
+        if isinstance(dettagli, dict):
+            dettagli = [dettagli]
+        if not isinstance(dettagli, list):
+            continue
+
+        for det in dettagli:
+            if not isinstance(det, dict):
+                continue
+
+            scadenza_raw = det.get('DataScadenzaPagamento')
+            if scadenza_raw:
+                try:
+                    scadenza_norm = pd.to_datetime(scadenza_raw, errors='coerce')
+                    if pd.notna(scadenza_norm):
+                        scadenze.append(scadenza_norm.strftime('%Y-%m-%d'))
+                except Exception:
+                    pass
+
+            giorni_raw = det.get('GiorniTerminiPagamento')
+            giorni_val = _to_int_safe(giorni_raw)
+            if giorni_val is not None:
+                giorni.append(giorni_val)
+
+    if scadenze:
+        return {
+            'scadenza_xml': max(scadenze),
+            'giorni_termini_xml': None,
+        }
+
+    if giorni:
+        return {
+            'scadenza_xml': None,
+            'giorni_termini_xml': max(giorni),
+        }
+
+    return {'scadenza_xml': None, 'giorni_termini_xml': None}
+
+
 class VisionDailyLimitExceededError(RuntimeError):
     """Eccezione custom quando la quota Vision giornaliera del ristorante è esaurita."""
 
@@ -699,6 +808,27 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
         is_nota_credito = tipo_documento == 'TD04'
         if is_nota_credito:
             logger.info(f"📋 NOTA DI CREDITO rilevata (TipoDocumento={tipo_documento})")
+
+        numero_documento = safe_get(
+            fattura,
+            ['FatturaElettronicaBody', 'DatiGenerali', 'DatiGeneraliDocumento', 'Numero'],
+            default=None,
+            keep_list=False,
+        )
+        if numero_documento is not None:
+            numero_documento = str(numero_documento).strip() or None
+
+        piva_cedente_raw = safe_get(
+            fattura,
+            ['FatturaElettronicaHeader', 'CedentePrestatore', 'DatiAnagrafici', 'IdFiscaleIVA', 'IdCodice'],
+            default=None,
+            keep_list=False,
+        )
+        piva_cedente = _normalizza_piva_cedente(piva_cedente_raw)
+
+        pagamento_info = _estrai_info_pagamento_xml(fattura, tipo_documento)
+        scadenza_xml = pagamento_info.get('scadenza_xml')
+        giorni_termini_xml = pagamento_info.get('giorni_termini_xml')
         
         fornitore = estrai_fornitore_xml(fattura)
         
@@ -1021,6 +1151,10 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     'Totale_Documento': totale_documento,
                     'Totale_Imponibile': totale_imponibile,
                     'Totale_IVA': totale_iva,
+                    'numero_documento': numero_documento,
+                    'piva_cedente': piva_cedente,
+                    'scadenza_xml': scadenza_xml,
+                    'giorni_termini_xml': giorni_termini_xml,
                 })
             except Exception as e:
                 logger.warning(f"{file_caricato.name} - Riga {idx} skippata: {str(e)[:100]}")
@@ -1503,6 +1637,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     "totale_documento": prod.get("TotaleDocumento", prod.get("Totale_Documento")),
                     "totale_imponibile": prod.get("TotaleImponibile", prod.get("Totale_Imponibile")),
                     "totale_iva": prod.get("TotaleIVA", prod.get("Totale_IVA")),
+                    "piva_cedente": prod.get("piva_cedente"),
                 })
             
 
@@ -1523,9 +1658,58 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 )
 
             # Inserimento
-            response = supabase_client.table("fatture").insert(records).execute()
-            
+            # [A1] Chunked insert: PostgREST ha limite payload (~10MB) e timeout su
+            # batch molto grandi. Su fatture XL spezziamo in chunk da 500 righe per
+            # garantire stabilità senza penalizzare le fatture piccole (1 chunk).
+            _INSERT_CHUNK_SIZE = 500
+            inserted_rows: list = []
+            for _i in range(0, len(records), _INSERT_CHUNK_SIZE):
+                _chunk = records[_i:_i + _INSERT_CHUNK_SIZE]
+                _resp = supabase_client.table("fatture").insert(_chunk).execute()
+                if _resp.data:
+                    inserted_rows.extend(_resp.data)
+            # Mantieni la stessa "shape" di prima per il codice a valle
+            class _RespShim:  # piccolo shim per compatibilità con `response.data`
+                __slots__ = ("data",)
+                def __init__(self, data):
+                    self.data = data
+            response = _RespShim(inserted_rows)
+
             righe_confermate = len(response.data) if response.data else len(records)
+
+            # Step 2: upsert documento header in fatture_documenti (best-effort).
+            try:
+                from services.documenti_service import upsert_fattura_documento
+
+                header = dati_prodotti[0] if dati_prodotti else {}
+                payload_documento = {
+                    "fornitore": header.get("Fornitore"),
+                    "piva_fornitore": header.get("piva_cedente"),
+                    "numero_documento": header.get("numero_documento"),
+                    "data_documento": header.get("Data_Documento") or header.get("data_documento"),
+                    "data_competenza": header.get("data_competenza"),
+                    "tipo_documento": header.get("tipo_documento", "TD01"),
+                    "totale_documento": header.get("Totale_Documento") or header.get("TotaleDocumento"),
+                    "totale_imponibile": header.get("Totale_Imponibile") or header.get("TotaleImponibile"),
+                    "totale_iva": header.get("Totale_IVA") or header.get("TotaleIVA"),
+                    "scadenza_xml": header.get("scadenza_xml"),
+                    "giorni_termini_xml": header.get("giorni_termini_xml"),
+                    "source_origin": "invoicetronic" if event_source == "invoicetronic" else "manual",
+                }
+
+                upsert_fattura_documento(
+                    user_id=user_id,
+                    ristorante_id=ristorante_id,
+                    file_origine=nome_file,
+                    payload=payload_documento,
+                    supabase_client=supabase_client,
+                )
+            except Exception as doc_err:
+                logger.warning(
+                    "Upsert fatture_documenti fallito (non bloccante) per %s: %s",
+                    nome_file,
+                    doc_err,
+                )
 
             
             # Verifica integrità
@@ -1567,6 +1751,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                         error_message=None,
                         details=_base_details,
                         supabase_client=supabase_client,
+                        ristorante_id=ristorante_id,
                         needs_ack=_is_invoicetronic,
                         alert_data_consegna=_td24_alert["status"] if _td24_alert else None,
                     )
@@ -1588,6 +1773,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                         error_message=f"Perdita dati: {verifica['perdite']} righe mancanti",
                         details=_partial_details,
                         supabase_client=supabase_client,
+                        ristorante_id=ristorante_id,
                         needs_ack=_is_invoicetronic,
                         alert_data_consegna=_td24_alert["status"] if _td24_alert else None,
                     )
@@ -1634,7 +1820,8 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     error_stage="SUPABASE_INSERT",
                     error_message=str(e)[:500],
                     details={"source": event_source, "ristorante_id": ristorante_id, "exception_type": type(e).__name__},
-                    supabase_client=supabase_client
+                    supabase_client=supabase_client,
+                    ristorante_id=ristorante_id,
                 )
             except Exception as log_error:
                 logger.error(f"Errore logging failed event: {log_error}")

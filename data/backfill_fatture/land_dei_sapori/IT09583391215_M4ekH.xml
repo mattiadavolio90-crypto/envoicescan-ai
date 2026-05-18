@@ -1,0 +1,175 @@
+<?xml version="1.0" encoding="UTF-8"?><ns3:FatturaElettronica xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" versione="FPR12">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>01830750665</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>0002328841</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>T9K4ZHO</CodiceDestinatario>
+            <ContattiTrasmittente/>
+            <PECDestinatario>LANDEISAPORI@PEC.IT</PECDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>09583391215</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>09583391215</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>IPERSTAROIL SRL</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA NUOVA SAVIANO 157</Indirizzo>
+                <CAP>80040</CAP>
+                <Comune>SAN GENNARO VESUVIANO</Comune>
+                <Provincia>NA</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <Contatti>
+                <Email>SERVIZIO.CLIENTI@IPERSTAROIL.IT</Email>
+            </Contatti>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>10865360969</IdCodice>
+                </IdFiscaleIVA>
+                <CodiceFiscale>10865360969</CodiceFiscale>
+                <Anagrafica>
+                    <Denominazione>LAND DEI SAPORI SRL</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>STRADA SUPERIORE PADANA 311</Indirizzo>
+                <CAP>20055</CAP>
+                <Comune>VIMODRONE</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+        <TerzoIntermediarioOSoggettoEmittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>01830750665</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>GADIC SRL</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+        </TerzoIntermediarioOSoggettoEmittente>
+        <SoggettoEmittente>TZ</SoggettoEmittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD24</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-03-31</Data>
+                <Numero>001556/M/0304</Numero>
+                <ImportoTotaleDocumento>77.96</ImportoTotaleDocumento>
+                <Causale>Fattura Carburante</Causale>
+            </DatiGeneraliDocumento>
+            <DatiDDT>
+                <NumeroDDT>003126/B/0304</NumeroDDT>
+                <DataDDT>2026-03-19</DataDDT>
+                <RiferimentoNumeroLinea>1</RiferimentoNumeroLinea>
+            </DatiDDT>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CARB</CodiceTipo>
+                    <CodiceValore>27101245</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>SCONTRINO N. 2091137 DEL 19/03/2026 18:28:5 - PRODOTTO: VERDE -</Descrizione>
+                <Quantita>48.30235440</Quantita>
+                <UnitaMisura>l</UnitaMisura>
+                <PrezzoUnitario>1.32295082</PrezzoUnitario>
+                <PrezzoTotale>63.90163936</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <AltriDatiGestionali>
+                    <TipoDato>TARGA</TipoDato>
+                    <RiferimentoTesto>GN715FT</RiferimentoTesto>
+                </AltriDatiGestionali>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>63.90</ImponibileImporto>
+                <Imposta>14.06</Imposta>
+                <EsigibilitaIVA>I</EsigibilitaIVA>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+    </FatturaElettronicaBody>
+<ds:Signature xmlns:ds="http://www.w3.org/2000/09/xmldsig#" Id="Signer-T-1774957644382"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2006/12/xml-c14n11#WithComments"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference Id="r-doc-Signer-T-1774957644382" URI=""><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2002/06/xmldsig-filter2"><XPath xmlns="http://www.w3.org/2002/06/xmldsig-filter2" Filter="subtract">/descendant::ds:Signature</XPath></ds:Transform></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>vO+P4EQABe5LarXY7GgnMhc2Hmd3SIZWQw4xeOPE9gQ=</ds:DigestValue></ds:Reference><ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#SignedProperties-Signer-T-1774957644382"><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>kIJWyvGaas4mKWDdMrNAyUlgTfxDRCdkhNiBvDxSoeo=</ds:DigestValue></ds:Reference><ds:Reference Id="r-keyinfo-Signer-T-1774957644382" URI="#KeyInfo-Signer-T-1774957644382"><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>jwXrixI4AIOnY6psdWZEktBtpePINsXL6I03m3cKuD0=</ds:DigestValue></ds:Reference></ds:SignedInfo><ds:SignatureValue Id="SignatureValue-Signer-T-1774957644382">TlPFd8pIZy6rhco7fqt7GYoc/RY25m90Uzcg8oXK334zeKYf8IJ0UaWuPagfGdu12CocELpC3zvO&#13;
+i4UAuiMzv/XspDO8RzsHhtMsZpk8wmfagXlgCQL4EkDvBy4KAIkLYKMCHkBg+QfyNY9/XsiH2Rpu&#13;
+kuTyTwajSC6HCJ92l33eHL8DTUWbIIwNYHi9CHpJc2ipatap+6zqZT7Mcd3C2iikYFU5uRGfNLzk&#13;
+ipQk1/wz0QCCM5vO1OK46U087femKcDPFKub62JabRjsTAJ4xETI6ozcbKqtaD5utZtrL6I1RdmS&#13;
+LNJsa3XF4FVAT/iH1XjIEwFQecJ2Cc7mZqKXBw==</ds:SignatureValue><ds:KeyInfo Id="KeyInfo-Signer-T-1774957644382"><ds:X509Data><ds:X509Certificate>MIIIADCCBeigAwIBAgIQNrZ8YJUCWqQHM6MP1A4wMTANBgkqhkiG9w0BAQsFADCBujELMAkGA1UE&#13;
+BhMCSVQxGTAXBgNVBAcMEFBvbnRlIFNhbiBQaWV0cm8xFzAVBgNVBAoMDkFjdGFsaXMgUy5wLkEu&#13;
+MRowGAYDVQRhDBFWQVRJVC0wMzM1ODUyMDk2NzEpMCcGA1UECwwgUXVhbGlmaWVkIFRydXN0IFNl&#13;
+cnZpY2UgUHJvdmlkZXIxMDAuBgNVBAMMJ0FjdGFsaXMgRVUgUXVhbGlmaWVkIENlcnRpZmljYXRl&#13;
+cyBDQSBHMTAeFw0yNTA1MjEwOTM0NDBaFw0yNzA1MTAwOTMzNDBaMIGLMQswCQYDVQQGEwJJVDEP&#13;
+MA0GA1UEBAwGQ2Fwb25lMREwDwYDVQQqDAhGZXJuYW5kbzEfMB0GA1UEBRMWVElOSVQtQ1BORk5O&#13;
+NTdBMDJDNzgzSTEYMBYGA1UEAwwPRmVybmFuZG8gQ2Fwb25lMR0wGwYDVQQuExRXU1JFRi0yMTg3&#13;
+NjY1Nzg0MTIwMTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAI6rfaHGxOrh8Bw3vkzM&#13;
+r4+zgW+ULFq19L4pnzREeJBga3ty5YLH1qunQ8ddsRp7ZpbBYbyxiMC6SABonaK05Q7wY6El4syp&#13;
+UZjTBZqlur19kO6xXmhJBaRKNlpS0kHJlC1e5MgDbhH6EzAtYE0LwGPf/exbYzHW2reTxojfXzcV&#13;
+yoXOBkfXYTM58BJA1fIV3yXWa2tO/JGd0PwHNU/S/zxvR0IOQSlj36ooY66nhwE2irfbxPri4w2t&#13;
++5Qe74CcLjOPBLHBr1AByr/+esS/kknqkOhjVgkZYKD+FcSj1AcA8wt5jkhlAPplw4qu1pakQQru&#13;
+6DHDakVFzJRNvfFd0wUCAwEAAaOCAy0wggMpMB8GA1UdIwQYMBaAFNi3AfGWc5bSaTpBPC5FOR9u&#13;
+gf6eMIGFBggrBgEFBQcBAQR5MHcwOwYIKwYBBQUHMAKGL2h0dHA6Ly9jYWNlcnQuYWN0YWxpcy5p&#13;
+dC9jZXJ0cy9hY3RhbGlzLWVpZGFzLWcxMDgGCCsGAQUFBzABhixodHRwOi8vb2NzcDA4LmFjdGFs&#13;
+aXMuaXQvdmEvYWN0YWxpcy1laWRhcy1nMTAaBgNVHRIEEzARgQ9pbmZvQGFjdGFsaXMuaXQwggEn&#13;
+BgNVHSAEggEeMIIBGjAJBgcEAIvsQAECMIIBAwYGK4EfCgIBMIH4MEQGCCsGAQUFBwIBFjhodHRw&#13;
+czovL3d3dy5hY3RhbGlzLml0L3JlcG9zaXRvcnkvYWN0YWxpcy1xdWFsaWYtY3BzLnBkZjCBrwYI&#13;
+KwYBBQUHAgIwgaIMgZ9JbCBwcmVzZW50ZSBjZXJ0aWZpY2F0byDDqCB2YWxpZG8gc29sbyBwZXIg&#13;
+ZmlybWUgYXBwb3N0ZSBjb24gcHJvY2VkdXJhIGF1dG9tYXRpY2EuIFRoZSBjZXJ0aWZpY2F0ZSBt&#13;
+YXkgb25seSBiZSB1c2VkIGZvciB1bmF0dGVuZGVkL2F1dG9tYXRpYyBkaWdpdGFsIHNpZ25hdHVy&#13;
+ZS4wBgYEK0wQBjCBxQYIKwYBBQUHAQMEgbgwgbUwCAYGBACORgEBMAsGBgQAjkYBAwIBFDAIBgYE&#13;
+AI5GAQQwgZEGBgQAjkYBBTCBhjBBFjtodHRwczovL3d3dy5hY3RhbGlzLml0L3JlcG9zaXRvcnkv&#13;
+YWN0YWxpcy1xdWFsaWYtcGRzLWl0LnBkZhMCaXQwQRY7aHR0cHM6Ly93d3cuYWN0YWxpcy5pdC9y&#13;
+ZXBvc2l0b3J5L2FjdGFsaXMtcXVhbGlmLXBkcy1lbi5wZGYTAmVuMEAGA1UdHwQ5MDcwNaAzoDGG&#13;
+L2h0dHA6Ly9jcmwwOC5hY3RhbGlzLml0L3ZhL2FjdGFsaXMtZWlkYXMtZzEvY3JsMB0GA1UdDgQW&#13;
+BBRRMi+kEu7fFho5lju9mlo6ZI79nzAOBgNVHQ8BAf8EBAMCBkAwDQYJKoZIhvcNAQELBQADggIB&#13;
+ALFhAxHeS3fZZbjZFIwr1Q2kpcwREJeoB98m9VV/bwPIGPnDLhPQgGgkVueSPUbWN/dD7KKndKbO&#13;
+bV8lsilfdyVTTE3rzBqtmK+S70BzRuq5sQIQE/dpC+MlGf2eUK+fU18IQGrKqv4X/75vF5zeS1v7&#13;
+aNsGNI7280lBLKTKe5GghD793RZxd2NzbgjT82bMGsHHZVXIX1otJIyj012Sz2LhQ/Dj5z8yD3NX&#13;
+gDW6IZHSxvhlTcsfXVmcNboLO/kr/sc7bWVyaKullUvVLaZQqmw+v6w/pKvNW8mb6cTjJq8lgYoA&#13;
+hLcevSMzJrd1gTRQ/ZOfsy63dj+d3aXjlZ+v0Bx577xJ0+i3yR+FxAJTaXguY2ivmBQh+yd52Ek/&#13;
+zbj5wU472i9i7OfMhwkJ5WT7J7iiv+CI9g9dlVu8+0OWpsdPKC4lkjhFBv6HlZN8hUO89WGGx0az&#13;
+wpnDRCCkzWUgCvjBGu5Nv8g18Y7ZojySLqH7HUNQ/75uYsvWDy9jny+9C+xOIfBmQ0IdXAkToOjo&#13;
+SIJ93dbzFShvCGK5NPijyNAU0hciPnMMjd9St7OrfWpiPrMjlddBjc2Mfkdv410uPdmQaFekxWkE&#13;
+KDcQ5TeJK0JPJduoS5sr1/fSXInEIrHJFUq/isu0I/WB+3AsWPpktcJ50JvLzmr1xCkqOsOWLauA</ds:X509Certificate></ds:X509Data></ds:KeyInfo><ds:Object><xades:QualifyingProperties xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Target="#Signer-T-1774957644382">
+		<xades:SignedProperties Id="SignedProperties-Signer-T-1774957644382">
+			<xades:SignedSignatureProperties>
+				<xades:SigningTime>2026-03-31T13:47:24+02:00</xades:SigningTime>
+				<xades:SigningCertificate>
+					<xades:Cert>
+						<xades:CertDigest>
+							<ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+							<ds:DigestValue>9jZvWfdpKCC6HKMVgQDIy5eEWmzlV6Pqmwq20jgMD1Y=</ds:DigestValue>
+						</xades:CertDigest>
+						<xades:IssuerSerial><ds:X509IssuerName>CN=Actalis EU Qualified Certificates CA G1,OU=Qualified Trust Service Provider,2.5.4.97=#0c1156415449542d3033333538353230393637,O=Actalis S.p.A.,L=Ponte San Pietro,C=IT</ds:X509IssuerName><ds:X509SerialNumber>72725832471449362295495178551668125745</ds:X509SerialNumber></xades:IssuerSerial>
+					</xades:Cert>
+				</xades:SigningCertificate>
+			</xades:SignedSignatureProperties>
+		
+			<xades:SignedDataObjectProperties>
+				<xades:DataObjectFormat ObjectReference="#r-doc-Signer-T-1774957644382">
+					<xades:MimeType>text/xml</xades:MimeType>
+				</xades:DataObjectFormat>
+			
+				<xades:DataObjectFormat ObjectReference="#r-keyinfo-Signer-T-1774957644382">
+					<xades:MimeType>text/xml</xades:MimeType>
+				</xades:DataObjectFormat>
+			</xades:SignedDataObjectProperties>
+		</xades:SignedProperties>
+	</xades:QualifyingProperties></ds:Object></ds:Signature></ns3:FatturaElettronica>

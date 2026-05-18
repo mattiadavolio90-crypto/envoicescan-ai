@@ -63,6 +63,7 @@ import os
 import re
 import threading
 import time
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any, Tuple
 import streamlit as st
@@ -88,6 +89,45 @@ _CATEGORIA_PER_FORNITORE_NORM: tuple[tuple[str, str], ...] = tuple(
     (str(k).strip().upper(), v) for k, v in CATEGORIA_PER_FORNITORE.items()
 )
 from utils.text_utils import get_descrizione_normalizzata_e_originale, normalizza_stringa
+
+# === [C2] Context propagation per chiamate AI fuori thread Streamlit ===
+# Quando ai_service viene invocato da worker/thread separati (es. fastapi worker),
+# st.session_state non è disponibile. Questi ContextVar permettono di propagare
+# user_id / ristorante_id esplicitamente senza dipendere dal contesto Streamlit.
+_ai_ctx_ristorante_id: ContextVar[Optional[str]] = ContextVar('ai_ctx_ristorante_id', default=None)
+_ai_ctx_user_id: ContextVar[Optional[str]] = ContextVar('ai_ctx_user_id', default=None)
+
+
+def set_ai_context(ristorante_id: Optional[str] = None, user_id: Optional[str] = None) -> None:
+    """Imposta il contesto user/ristorante per chiamate AI in thread non-Streamlit.
+
+    Usare in worker o thread async PRIMA di invocare funzioni di ai_service che
+    necessitano di ristorante_id per rate-limit, costi o tracking.
+    """
+    _ai_ctx_ristorante_id.set(ristorante_id)
+    _ai_ctx_user_id.set(user_id)
+
+
+def _resolve_ristorante_id() -> Optional[str]:
+    """Risolve ristorante_id: prima ContextVar, poi st.session_state, poi None."""
+    ctx_val = _ai_ctx_ristorante_id.get()
+    if ctx_val:
+        return ctx_val
+    try:
+        return st.session_state.get('ristorante_id')
+    except Exception:
+        return None
+
+
+def _resolve_user_id() -> Optional[str]:
+    """Risolve user_id: prima ContextVar, poi st.session_state, poi None."""
+    ctx_val = _ai_ctx_user_id.get()
+    if ctx_val:
+        return ctx_val
+    try:
+        return st.session_state.get('user_id')
+    except Exception:
+        return None
 from utils.validation import is_dicitura_sicura
 
 # Logger centralizzato
@@ -3599,7 +3639,7 @@ def _chiama_gpt_classificazione(
                 operation_type='categorization',
                 prompt_tokens=usage.prompt_tokens,
                 completion_tokens=usage.completion_tokens,
-                ristorante_id=st.session_state.get('ristorante_id'),
+                ristorante_id=_resolve_ristorante_id(),
                 item_count=len(da_chiedere_gpt),
                 metadata={
                     'source': 'categorization-batch',

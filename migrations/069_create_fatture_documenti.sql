@@ -78,10 +78,7 @@ CREATE TABLE IF NOT EXISTS public.fatture_documenti (
     deleted_at TIMESTAMPTZ,  -- Soft delete sincronizzato con fatture
     
     -- UNIQUE tripla (user_id, ristorante_id, file_origine)
-    UNIQUE (user_id, ristorante_id, file_origine),
-    
-    -- Check: almeno una scadenza definita se necessario
-    CHECK (scadenza_xml IS NULL OR scadenza_xml >= data_documento OR data_documento IS NULL)
+    UNIQUE (user_id, ristorante_id, file_origine)
 );
 
 -- ============================================================================

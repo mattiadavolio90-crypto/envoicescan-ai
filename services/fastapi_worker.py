@@ -84,12 +84,35 @@ _ENABLE_INLINE_QUEUE_PROCESSOR = os.getenv("ENABLE_INLINE_QUEUE_PROCESSOR", "1")
 # {ip: [timestamp, timestamp, ...]}
 _rate_buckets: Dict[str, List[float]] = defaultdict(list)
 _rate_lock = threading.Lock()  # protegge _rate_buckets da race condition multi-thread
+_rate_buckets_last_cleanup: float = 0.0
+_RATE_BUCKETS_CLEANUP_INTERVAL = 3600.0  # cleanup ogni ora
+_RATE_BUCKETS_MAX_SIZE = 10000  # max IP tracciati simultaneamente
 
 
 def _check_rate_limit(ip: str) -> None:
     """Solleva 429 se l'IP supera il limite configurato nella finestra temporale."""
+    global _rate_buckets_last_cleanup
     now = time.time()
     with _rate_lock:
+        # Cleanup periodico: rimuove bucket vuoti + cap dimensione totale
+        if now - _rate_buckets_last_cleanup > _RATE_BUCKETS_CLEANUP_INTERVAL:
+            _cleaned = {
+                k: [t for t in v if now - t < _RATE_WINDOW]
+                for k, v in _rate_buckets.items()
+            }
+            _cleaned = {k: v for k, v in _cleaned.items() if v}
+            if len(_cleaned) > _RATE_BUCKETS_MAX_SIZE:
+                # Tieni i bucket più recenti
+                _sorted = sorted(
+                    _cleaned.items(),
+                    key=lambda x: max(x[1]) if x[1] else 0.0,
+                    reverse=True,
+                )
+                _cleaned = dict(_sorted[:_RATE_BUCKETS_MAX_SIZE])
+            _rate_buckets.clear()
+            _rate_buckets.update(_cleaned)
+            _rate_buckets_last_cleanup = now
+
         bucket = _rate_buckets[ip]
         # Rimuovi timestamp fuori dalla finestra
         _rate_buckets[ip] = [t for t in bucket if now - t < _RATE_WINDOW]
@@ -184,15 +207,21 @@ _MAX_BODY_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 class _ContentSizeLimitMiddleware(BaseHTTPMiddleware):
-    """Rifiuta richieste con Content-Length > 50MB prima che vengano lette in RAM."""
+    """Rifiuta richieste con Content-Length > 50MB o mancante per POST/PUT/PATCH."""
     async def dispatch(self, request, call_next):
         content_length = request.headers.get("content-length")
+        _method = request.method.upper()
+        _needs_body = _method in ("POST", "PUT", "PATCH")
         if content_length:
             try:
                 if int(content_length) > _MAX_BODY_BYTES:
                     return StarletteResponse("Payload too large", status_code=413)
             except ValueError:
-                pass
+                if _needs_body:
+                    return StarletteResponse("Invalid Content-Length", status_code=411)
+        elif _needs_body and request.headers.get("transfer-encoding", "").lower() != "chunked":
+            # POST/PUT/PATCH senza Content-Length né chunked transfer
+            return StarletteResponse("Length Required", status_code=411)
         return await call_next(request)
 
 

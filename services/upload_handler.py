@@ -40,11 +40,83 @@ from services.db_service import (
     clear_fatture_cache,
     get_price_alert_threshold,
 )
+from services.notification_inbox_service import (
+    build_notification_record,
+    upsert_inbox_notifications,
+)
 from utils.validation import classify_special_row, is_dicitura_sicura
 from utils.text_utils import get_descrizione_normalizzata_e_originale
 
 
 logger = logging.getLogger("fci_app")
+
+
+# === [M8] Lock concorrenza upload (per ristorante) ===
+UPLOAD_LOCK_TTL_SECONDS = 600  # 10 min: oltre questo, lock considerato "stale" e ripreso
+
+
+def _acquire_upload_lock(supabase_client, ristorante_id: str, user_id: str) -> bool:
+    """Prova ad acquisire il lock upload per il ristorante.
+
+    Ritorna True se acquisito, False se un altro upload è già in corso.
+    Lock "stale" (>UPLOAD_LOCK_TTL_SECONDS) vengono sovrascritti automaticamente.
+    """
+    if not ristorante_id:
+        return True  # senza ristorante non c'è multi-tenant da proteggere
+    try:
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        now = _dt.now(_tz.utc)
+        stale_before = (now - _td(seconds=UPLOAD_LOCK_TTL_SECONDS)).isoformat()
+
+        # Cleanup lock stale prima del tentativo (best effort)
+        try:
+            supabase_client.table('upload_locks').delete().lt('locked_at', stale_before).execute()
+        except Exception:
+            pass
+
+        # Tentativo INSERT — se PK collide ed è recente, fallisce
+        try:
+            resp = supabase_client.table('upload_locks').insert({
+                'ristorante_id': ristorante_id,
+                'user_id': user_id,
+                'locked_at': now.isoformat(),
+            }).execute()
+            return bool(resp.data)
+        except Exception as ins_err:
+            # Possibile conflitto PK: verifica se lock esistente è dello stesso utente
+            try:
+                existing = (
+                    supabase_client.table('upload_locks')
+                    .select('user_id, locked_at')
+                    .eq('ristorante_id', ristorante_id)
+                    .limit(1)
+                    .execute()
+                )
+                if existing.data:
+                    row = existing.data[0]
+                    if str(row.get('user_id') or '') == str(user_id):
+                        # Stesso utente: refresh timestamp, considera acquisito
+                        supabase_client.table('upload_locks').update({
+                            'locked_at': now.isoformat(),
+                        }).eq('ristorante_id', ristorante_id).execute()
+                        return True
+                logger.info(f"[UPLOAD][M8] Lock occupato per ristorante={ristorante_id}: {ins_err}")
+                return False
+            except Exception:
+                return False
+    except Exception as exc:
+        logger.warning(f"[UPLOAD][M8] Errore acquire lock (fail-open): {exc}")
+        return True  # fail-open: non bloccare upload se DB fa storie
+
+
+def _release_upload_lock(supabase_client, ristorante_id: str) -> None:
+    """Rilascia il lock upload (fail-safe)."""
+    if not ristorante_id:
+        return
+    try:
+        supabase_client.table('upload_locks').delete().eq('ristorante_id', ristorante_id).execute()
+    except Exception as exc:
+        logger.warning(f"[UPLOAD][M8] Errore release lock: {exc}")
 
 
 def _is_trial_invoice_date_allowed(data_documento: str, reference_date=None) -> bool:
@@ -710,6 +782,19 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         st.session_state['uploader_key'] = st.session_state.get('uploader_key', 0) + 1
         st.session_state['_upload_limit_error'] = f"⚠️ Dimensione totale troppo grande: **{_total_mb:.0f} MB** (max {MAX_UPLOAD_TOTAL_MB} MB). Riduci il numero di file."
         st.rerun()
+
+    # 🔒 [M8] Lock distribuito: evita upload concorrenti sullo stesso ristorante
+    _current_ristorante_id_lock = st.session_state.get('ristorante_id')
+    _lock_acquired = False
+    if _current_ristorante_id_lock:
+        _lock_acquired = _acquire_upload_lock(supabase, _current_ristorante_id_lock, user_id)
+        if not _lock_acquired:
+            st.session_state['uploader_key'] = st.session_state.get('uploader_key', 0) + 1
+            st.warning(
+                "⏳ **Un altro upload è già in corso** per questo ristorante. "
+                "Attendi il completamento o ricarica la pagina tra qualche minuto."
+            )
+            return
     
     # 🚀 PROGRESS BAR IMMEDIATA: Mostra subito che stiamo lavorando
     upload_placeholder = st.empty()
@@ -924,6 +1009,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         'duplicates_extra_count': _extra_count,
                     },
                     supabase_client=supabase,
+                    ristorante_id=st.session_state.get('ristorante_id'),
                 )
         except Exception as _log_ex:
             logger.warning(f"Errore logging duplicate in selection: {_log_ex}")
@@ -951,7 +1037,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                             'reason': 'already_in_db',
                             'dedup_reason': file_gia_processati_reason.get(_fname, []),
                         },
-                        supabase_client=supabase
+                        supabase_client=supabase,
+                        ristorante_id=st.session_state.get('ristorante_id'),
                     )
                 else:
                     log_upload_event(
@@ -965,7 +1052,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                             'reason': 'already_in_session',
                             'dedup_reason': file_gia_processati_reason.get(_fname, []),
                         },
-                        supabase_client=supabase
+                        supabase_client=supabase,
+                        ristorante_id=st.session_state.get('ristorante_id'),
                     )
         except Exception as _log_ex:
             logger.warning(f"Errore logging duplicate skip: {_log_ex}")
@@ -1001,7 +1089,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                         user_id=_uid_tl, user_email=_email_tl,
                         file_name=_bf.name, status='TRIAL_FORMAT_BLOCKED',
                         details={'source': 'manual_upload'},
-                        supabase_client=supabase
+                        supabase_client=supabase,
+                        ristorante_id=st.session_state.get('ristorante_id'),
                     )
                 file_nuovi = [
                     f for f in file_nuovi
@@ -1410,6 +1499,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                 error_message=quota_msg[:150],
                                 details={"source": "manual_upload", "exception_type": type(e).__name__},
                                 supabase_client=supabase,
+                                ristorante_id=st.session_state.get('ristorante_id'),
                             )
                         except Exception as log_error:
                             logger.warning(f"Errore logging vision limit event: {log_error}")
@@ -1445,6 +1535,7 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                         "policy_error": full_error[:250],
                                     },
                                     supabase_client=supabase,
+                                    ristorante_id=st.session_state.get('ristorante_id'),
                                 )
                             except Exception as _policy_log_error:
                                 logger.warning(f"Errore logging policy block {file.name}: {_policy_log_error}")
@@ -1484,7 +1575,8 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                                 error_stage=error_stage,
                                 error_message=error_msg,
                                 details={"source": "manual_upload", "exception_type": type(e).__name__},
-                                supabase_client=supabase
+                                supabase_client=supabase,
+                                ristorante_id=st.session_state.get('ristorante_id'),
                             )
                         except Exception as log_error:
                             logger.error(f"Errore logging failed event: {log_error}")
@@ -1690,6 +1782,165 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             st.session_state.last_upload_summary = upload_summary
             upload_notification_context['stats'] = dict(upload_summary)
             st.session_state.last_upload_notification_context = upload_notification_context
+
+            # ============================================================
+            # INBOX INGESTION POST-UPLOAD (non-critical, silent on error)
+            # Una sola chiamata upsert al termine — mai dentro il loop file.
+            # Tutte one-shot (refresh_on_conflict=False, bucket=hash file_ids).
+            # ============================================================
+            try:
+                _inbox_uid = str(user_id or '')
+                _inbox_rid = str(st.session_state.get('ristorante_id') or '')
+                if _inbox_uid and _inbox_rid:
+                    _ctx = upload_notification_context
+                    _file_ids = list(_ctx.get('successful_files') or [])
+                    _failed_files = [
+                        e['file_name'] for e in (_ctx.get('problematic_files') or [])
+                        if e.get('category') == 'failed'
+                    ]
+                    _price_alerts = list(_ctx.get('price_alerts') or [])
+                    _credit_note_files = list(_ctx.get('credit_note_files') or [])
+                    _td24_alerts = list(_ctx.get('td24_date_alerts') or [])
+                    _quality = dict(_ctx.get('quality_checks') or {})
+                    # Bucket hash basato su tutti i file dell'upload (ok + failed)
+                    _bucket_ids = _file_ids + _failed_files or [_ctx.get('upload_id', 'unknown')]
+                    _inbox_records = []
+
+                    # 1. upload_failed
+                    if _failed_files:
+                        _n_f = len(_failed_files)
+                        _nomi_f = ', '.join(_failed_files[:5])
+                        if _n_f > 5:
+                            _nomi_f += f' e altri {_n_f - 5}'
+                        _inbox_records.append(build_notification_record(
+                            user_id=_inbox_uid, ristorante_id=_inbox_rid,
+                            topic_key='upload_failed', source_type='upload', severity='error',
+                            title=f'{"1 fattura" if _n_f == 1 else str(_n_f) + " fatture"} non caricate',
+                            body=f'Errore durante il salvataggio: {_nomi_f}. Riprova o contatta il supporto.',
+                            payload={'failed_files': _failed_files[:10], 'count': _n_f},
+                            action_page='Carica Fatture',
+                            file_ids=_bucket_ids,
+                        ))
+
+                    # 2. uncategorized_rows
+                    _uncategorized = int(_quality.get('uncategorized_rows') or 0)
+                    if _uncategorized > 0:
+                        _examples = list(_quality.get('uncategorized_examples') or [])
+                        _ex_str = ', '.join(_examples[:3])
+                        _inbox_records.append(build_notification_record(
+                            user_id=_inbox_uid, ristorante_id=_inbox_rid,
+                            topic_key='uncategorized_rows', source_type='upload', severity='warning',
+                            title=f'{_uncategorized} {"riga" if _uncategorized == 1 else "righe"} da classificare',
+                            body=(f'{_uncategorized} {"riga richiede" if _uncategorized == 1 else "righe richiedono"} classificazione manuale.'
+                                  + (f' Esempi: {_ex_str}' if _ex_str else '')),
+                            payload={'uncategorized_rows': _uncategorized, 'examples': _examples[:8]},
+                            action_page='Analisi Fatture',
+                            file_ids=_bucket_ids,
+                        ))
+
+                    # 3. price_alert
+                    if _price_alerts:
+                        _n_pa = len(_price_alerts)
+                        _prod_str = ', '.join(
+                            a.get('product', '') for a in _price_alerts[:3] if a.get('product')
+                        )
+                        _inbox_records.append(build_notification_record(
+                            user_id=_inbox_uid, ristorante_id=_inbox_rid,
+                            topic_key='price_alert', source_type='upload', severity='warning',
+                            title=f'Alert prezzi su {_n_pa} {"prodotto" if _n_pa == 1 else "prodotti"}',
+                            body=(f'Aumento prezzi rilevato rispetto agli acquisti precedenti.'
+                                  + (f' Prodotti: {_prod_str}' if _prod_str else '')),
+                            payload={
+                                'price_alerts': _price_alerts[:10],
+                                'count': _n_pa,
+                                'top_product': _price_alerts[0].get('product') if _price_alerts else None,
+                                'top_increase_pct': _price_alerts[0].get('increase_pct') if _price_alerts else None,
+                            },
+                            action_page='Analisi Margine',
+                            file_ids=_bucket_ids,
+                        ))
+
+                    # 4. credit_note
+                    if _credit_note_files:
+                        _n_nc = len(_credit_note_files)
+                        _nc_nomi = ', '.join(_credit_note_files[:5])
+                        _inbox_records.append(build_notification_record(
+                            user_id=_inbox_uid, ristorante_id=_inbox_rid,
+                            topic_key='credit_note', source_type='upload', severity='info',
+                            title=f'{"Nota di credito" if _n_nc == 1 else str(_n_nc) + " note di credito"} caricate',
+                            body=f'Verifica l\'impatto sui margini: {_nc_nomi}.',
+                            payload={'credit_note_files': _credit_note_files},
+                            action_page='Analisi Margine',
+                            file_ids=_bucket_ids,
+                        ))
+
+                    # 5. td24_noddt / td24_partial
+                    _td24_missing = [a for a in _td24_alerts if a.get('status') == 'missing']
+                    _td24_partial_list = [a for a in _td24_alerts if a.get('status') == 'warning']
+                    if _td24_missing:
+                        _n_m = len(_td24_missing)
+                        _td24_nomi = ', '.join(a.get('file_name', '') for a in _td24_missing[:3])
+                        _inbox_records.append(build_notification_record(
+                            user_id=_inbox_uid, ristorante_id=_inbox_rid,
+                            topic_key='td24_noddt', source_type='upload', severity='warning',
+                            title=f'TD24 senza data di consegna ({_n_m} file)',
+                            body=f'Fatture TD24 prive di data consegna: {_td24_nomi}. La data di competenza potrebbe non essere corretta.',
+                            payload={'td24_alerts': _td24_missing[:10]},
+                            action_page='Gestione e Pagamenti',
+                            file_ids=_bucket_ids,
+                        ))
+                    if _td24_partial_list:
+                        _n_p = len(_td24_partial_list)
+                        _td24_nomi_p = ', '.join(a.get('file_name', '') for a in _td24_partial_list[:3])
+                        _inbox_records.append(build_notification_record(
+                            user_id=_inbox_uid, ristorante_id=_inbox_rid,
+                            topic_key='td24_partial', source_type='upload', severity='warning',
+                            title=f'TD24 con data parziale ({_n_p} file)',
+                            body=f'Fatture TD24 con copertura data consegna parziale: {_td24_nomi_p}.',
+                            payload={'td24_alerts': _td24_partial_list[:10]},
+                            action_page='Gestione e Pagamenti',
+                            file_ids=_bucket_ids,
+                        ))
+
+                    # 6. quality_check_failed
+                    _needs_review = int(_quality.get('needs_review_rows') or 0)
+                    if _needs_review > 0:
+                        _inbox_records.append(build_notification_record(
+                            user_id=_inbox_uid, ristorante_id=_inbox_rid,
+                            topic_key='quality_check_failed', source_type='upload', severity='warning',
+                            title=f'{_needs_review} {"riga richiede" if _needs_review == 1 else "righe richiedono"} revisione',
+                            body=(f'{"Una riga" if _needs_review == 1 else str(_needs_review) + " righe"} '
+                                  f'segnalate per revisione manuale dopo il caricamento.'),
+                            payload={'needs_review_rows': _needs_review},
+                            action_page='Analisi Fatture',
+                            file_ids=_bucket_ids,
+                        ))
+
+                    if _inbox_records:
+                        upsert_inbox_notifications(_inbox_records, supabase_client=supabase)
+
+                    # Radar anomalie - esecuzione non critica post-upload
+                    try:
+                        from services.anomaly_radar_service import check_on_upload
+
+                        radar_records = check_on_upload(
+                            user_id=_inbox_uid,
+                            ristorante_id=_inbox_rid,
+                            upload_id=str(_ctx.get('upload_id') or ''),
+                            supabase_client=supabase,
+                        )
+                        if radar_records:
+                            upsert_inbox_notifications(
+                                radar_records,
+                                supabase_client=supabase,
+                            )
+                    except Exception as radar_err:
+                        logger.warning(
+                            f'Radar anomalie upload fallito (non critico): {radar_err}'
+                        )
+            except Exception as _inbox_exc:
+                logger.warning(f"[INBOX] Errore ingestion post-upload (non critico): {_inbox_exc}")
+
             clear_fatture_cache()
             st.session_state.ai_categorization_in_progress = False
             st.session_state.trigger_ai_categorize = False
@@ -1697,6 +1948,9 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
             if current_upload_token:
                 st.session_state['_last_completed_upload_token'] = current_upload_token
                 st.session_state.pop('_in_progress_upload_token', None)
+            # 🔓 [M8] Release lock upload
+            if _lock_acquired and _current_ristorante_id_lock:
+                _release_upload_lock(supabase, _current_ristorante_id_lock)
             # [DEBUG]
             logger.debug(f"[TIMING] handle_uploaded_files completato in {time.perf_counter()-t0_upload:.2f}s")
             st.rerun()
@@ -1781,6 +2035,9 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
         if current_upload_token:
             st.session_state['_last_completed_upload_token'] = current_upload_token
             st.session_state.pop('_in_progress_upload_token', None)
+        # 🔓 [M8] Release lock upload
+        if _lock_acquired and _current_ristorante_id_lock:
+            _release_upload_lock(supabase, _current_ristorante_id_lock)
         logger.info(f"⚠️ {len(file_gia_processati)} fatture duplicate - stato pulito automaticamente")
         # [DEBUG]
         logger.debug(f"[TIMING] handle_uploaded_files completato in {time.perf_counter()-t0_upload:.2f}s")

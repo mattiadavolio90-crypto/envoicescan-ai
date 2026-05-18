@@ -1,4 +1,4 @@
--- Migration 070: Tabella fornitori_pagamenti_config per regole scadenza automatiche
+-- Migration 071: Tabella fornitori_pagamenti_config per regole scadenza automatiche
 --
 -- Contesto:
 -- Utente configurare regole di pagamento per singoli fornitori (per ristorante).

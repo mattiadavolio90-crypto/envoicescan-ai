@@ -15,7 +15,7 @@ OPTIONAL_PAGES = {
 }
 
 
-@st.cache_data(ttl=60)
+@st.cache_data(ttl=300)
 def _fetch_pagine_abilitate(user_id: str):
     """Query DB per pagine_abilitate con cache 60s."""
     supabase = get_supabase_client()

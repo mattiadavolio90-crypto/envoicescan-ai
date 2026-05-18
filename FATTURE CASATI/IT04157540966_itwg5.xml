@@ -1,0 +1,442 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ns4:FatturaElettronica xmlns:ns2="http://www.w3.org/2000/09/xmldsig#" xmlns:ns3="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.0" xmlns:ns4="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" versione="FPR12">
+    <FatturaElettronicaHeader>
+        <DatiTrasmissione>
+            <IdTrasmittente>
+                <IdPaese>IT</IdPaese>
+                <IdCodice>04157540966</IdCodice>
+            </IdTrasmittente>
+            <ProgressivoInvio>itwg5</ProgressivoInvio>
+            <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+            <CodiceDestinatario>X2PH38J</CodiceDestinatario>
+            <PECDestinatario>conlestellesrl@legalmail.it</PECDestinatario>
+        </DatiTrasmissione>
+        <CedentePrestatore>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>02827030962</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>METRO Italia S.p.A.</Denominazione>
+                </Anagrafica>
+                <RegimeFiscale>RF01</RegimeFiscale>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA XXV APRILE</Indirizzo>
+                <NumeroCivico>23</NumeroCivico>
+                <CAP>20097</CAP>
+                <Comune>SAN DONATO MILANESE</Comune>
+                <Provincia>MI</Provincia>
+                <Nazione>IT</Nazione>
+            </Sede>
+            <IscrizioneREA>
+                <Ufficio>MI</Ufficio>
+                <NumeroREA>1572675</NumeroREA>
+                <CapitaleSociale>722400.00</CapitaleSociale>
+                <StatoLiquidazione>LN</StatoLiquidazione>
+            </IscrizioneREA>
+        </CedentePrestatore>
+        <CessionarioCommittente>
+            <DatiAnagrafici>
+                <IdFiscaleIVA>
+                    <IdPaese>IT</IdPaese>
+                    <IdCodice>13584150968</IdCodice>
+                </IdFiscaleIVA>
+                <Anagrafica>
+                    <Denominazione>CONLESTELLE SRL</Denominazione>
+                </Anagrafica>
+            </DatiAnagrafici>
+            <Sede>
+                <Indirizzo>VIA FRANCESCO SFORZA</Indirizzo>
+                <NumeroCivico>43</NumeroCivico>
+                <CAP>20122</CAP>
+                <Comune>MILANO</Comune>
+                <Nazione>IT</Nazione>
+            </Sede>
+        </CessionarioCommittente>
+    </FatturaElettronicaHeader>
+    <FatturaElettronicaBody>
+        <DatiGenerali>
+            <DatiGeneraliDocumento>
+                <TipoDocumento>TD01</TipoDocumento>
+                <Divisa>EUR</Divisa>
+                <Data>2026-03-05</Data>
+                <Numero>91/194/38760</Numero>
+                <ImportoTotaleDocumento>532.71</ImportoTotaleDocumento>
+                <Causale>Importo 532.71 Eur da saldare entro il 04.04.2026</Causale>
+                <Causale>Store: 91 - Deposito Nord</Causale>
+                <Causale>Num.Bolla: 22993977  --  </Causale>
+                <Causale>Num.Bolla: 22993977  --  </Causale>
+            </DatiGeneraliDocumento>
+            <DatiOrdineAcquisto>
+                <RiferimentoNumeroLinea>1</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>2</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>3</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>4</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>5</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>6</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>7</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>8</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>9</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>10</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>11</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>12</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>13</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>14</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>15</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>16</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>17</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>18</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>19</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>20</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>21</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>22</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>23</RiferimentoNumeroLinea>
+                <IdDocumento>MSH20260304100705@92</IdDocumento>
+                <Data>2026-03-05</Data>
+            </DatiOrdineAcquisto>
+            <DatiOrdineAcquisto>
+                <RiferimentoNumeroLinea>24</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>25</RiferimentoNumeroLinea>
+                <RiferimentoNumeroLinea>26</RiferimentoNumeroLinea>
+                <IdDocumento>MSH20260304125208@92</IdDocumento>
+                <Data>2026-03-05</Data>
+            </DatiOrdineAcquisto>
+        </DatiGenerali>
+        <DatiBeniServizi>
+            <DettaglioLinee>
+                <NumeroLinea>1</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>27864</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>A. SALUSTIANA 7/8 CS MC(ES II)</Descrizione>
+                <Quantita>26.113</Quantita>
+                <PrezzoUnitario>1.55</PrezzoUnitario>
+                <PrezzoTotale>40.48</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>2</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>39016</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>LIMONI SIRAC. IGP RT 1KG(IT I)</Descrizione>
+                <Quantita>4.00</Quantita>
+                <PrezzoUnitario>3.23</PrezzoUnitario>
+                <PrezzoTotale>12.92</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>3</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>363749</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 ZUCCHERO SEMOLATO ARO</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>12.90</PrezzoUnitario>
+                <PrezzoTotale>25.80</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>4</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>263408</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG 1 ZUCC.CANNA RIOBA SACC.</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>2.20</PrezzoUnitario>
+                <PrezzoTotale>4.40</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>5</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>32628</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>MENTA MIN. 400G MC (IT I)</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>6.09</PrezzoUnitario>
+                <PrezzoTotale>12.18</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>6</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>37749</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>LIME CAL. 42 CASSA MC(BR I)</Descrizione>
+                <Quantita>13.374</Quantita>
+                <PrezzoUnitario>4.55</PrezzoUnitario>
+                <PrezzoTotale>60.85</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>7</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>27463</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>ANANAS ORS. ET. CAL.6 CS(CR I)</Descrizione>
+                <Quantita>4.406</Quantita>
+                <PrezzoUnitario>2.87</PrezzoUnitario>
+                <PrezzoTotale>12.65</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>8</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>33457</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>BASILICO PD MC (IT I)</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>9.14</PrezzoUnitario>
+                <PrezzoTotale>18.28</PrezzoTotale>
+                <AliquotaIVA>5.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>9</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>31878</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>FRAGOLE PAD. 250G X8 MC (IT I)</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>15.95</PrezzoUnitario>
+                <PrezzoTotale>31.90</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>10</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>132733</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>1 BACCA VANIGLIA REBECCHI</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>6.43</PrezzoUnitario>
+                <PrezzoTotale>12.86</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>11</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>40157</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>LT1 PANNA FRESCA E&amp;apos; PIU&amp;apos;</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>6.49</PrezzoUnitario>
+                <PrezzoTotale>6.49</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>12</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>95244</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>PASSIONFRUIT CT. ORIG. (CO I)</Descrizione>
+                <Quantita>1.954</Quantita>
+                <PrezzoUnitario>11.99</PrezzoUnitario>
+                <PrezzoTotale>23.43</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>13</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>39807</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>POMPELMI R. RETE 2KG (CY I)</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>5.39</PrezzoUnitario>
+                <PrezzoTotale>10.78</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>14</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>306272</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>200CANGURINO +TOV.2VELI</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>30.73</PrezzoUnitario>
+                <PrezzoTotale>30.73</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>15</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>198013</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G 50 X 18 PETITS PAINS  MC</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>4.36</PrezzoUnitario>
+                <PrezzoTotale>4.36</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>16</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>306279</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>500SACC.ANTIGRASSO PANINI16X31</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>23.50</PrezzoUnitario>
+                <PrezzoTotale>23.50</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>17</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>358654</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G100 PANBURGER MONOP 14CM S/G</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>2.36</PrezzoUnitario>
+                <PrezzoTotale>4.72</PrezzoTotale>
+                <AliquotaIVA>10.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>18</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>199151</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 PANE X TRAMEZZINI MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>5.79</PrezzoUnitario>
+                <PrezzoTotale>11.58</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>19</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>199148</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G500 PANE PER TOAST MC</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>2.29</PrezzoUnitario>
+                <PrezzoTotale>4.58</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>20</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>342099</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G330 PANCARRE 10X10  1P</Descrizione>
+                <Quantita>2.00</Quantita>
+                <PrezzoUnitario>1.16</PrezzoUnitario>
+                <PrezzoTotale>2.32</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>21</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>260412</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>G480X2 PIADA C/OLIO EVO MC</Descrizione>
+                <Quantita>6.00</Quantita>
+                <PrezzoUnitario>4.49</PrezzoUnitario>
+                <PrezzoTotale>26.94</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>22</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>35559</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>MELAGRANA PAD. (TR I)</Descrizione>
+                <Quantita>3.283</Quantita>
+                <PrezzoUnitario>4.31</PrezzoUnitario>
+                <PrezzoTotale>14.15</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>23</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>368054</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>KG1 ALBUME MC</Descrizione>
+                <Quantita>1.00</Quantita>
+                <PrezzoUnitario>3.04</PrezzoUnitario>
+                <PrezzoTotale>3.04</PrezzoTotale>
+                <AliquotaIVA>22.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>24</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>39072</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>POMO. CILIEG. R. CS MC (IT I)</Descrizione>
+                <Quantita>12.532</Quantita>
+                <PrezzoUnitario>3.80</PrezzoUnitario>
+                <PrezzoTotale>47.62</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>25</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>33950</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>POMO. ROSSO MAROCCO MC (MA I)</Descrizione>
+                <Quantita>12.00</Quantita>
+                <PrezzoUnitario>2.39</PrezzoUnitario>
+                <PrezzoTotale>28.68</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DettaglioLinee>
+                <NumeroLinea>26</NumeroLinea>
+                <CodiceArticolo>
+                    <CodiceTipo>CODICE METRO</CodiceTipo>
+                    <CodiceValore>33076</CodiceValore>
+                </CodiceArticolo>
+                <Descrizione>INS. ROMANA PAD. (IT II)</Descrizione>
+                <Quantita>6.03</Quantita>
+                <PrezzoUnitario>3.59</PrezzoUnitario>
+                <PrezzoTotale>21.65</PrezzoTotale>
+                <AliquotaIVA>4.00</AliquotaIVA>
+            </DettaglioLinee>
+            <DatiRiepilogo>
+                <AliquotaIVA>4.00</AliquotaIVA>
+                <ImponibileImporto>354.89</ImponibileImporto>
+                <Imposta>14.20</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>5.00</AliquotaIVA>
+                <ImponibileImporto>18.28</ImponibileImporto>
+                <Imposta>0.91</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>10.00</AliquotaIVA>
+                <ImponibileImporto>54.27</ImponibileImporto>
+                <Imposta>5.43</Imposta>
+            </DatiRiepilogo>
+            <DatiRiepilogo>
+                <AliquotaIVA>22.00</AliquotaIVA>
+                <ImponibileImporto>69.45</ImponibileImporto>
+                <Imposta>15.28</Imposta>
+            </DatiRiepilogo>
+        </DatiBeniServizi>
+    </FatturaElettronicaBody>
+</ns4:FatturaElettronica>

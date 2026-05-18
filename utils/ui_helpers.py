@@ -8,6 +8,7 @@ Funzioni condivise per:
 
 import os
 import io
+import html as _html_mod
 import logging
 import pandas as pd
 import streamlit as st
@@ -29,6 +30,177 @@ def _format_pivot_value(col_name: str, value):
         except (TypeError, ValueError):
             return str(value)
     return str(value)
+
+
+def _render_styled_pivot_html(
+    df: pd.DataFrame,
+    index_col: str,
+    total_row_label: str,
+    sezione_key: str,
+    altezza: int = 500,
+) -> None:
+    """
+    Renderizza la pivot mensile come tabella HTML con gli stessi colori/stili
+    del st.dataframe+Styler (usato per Categorie), senza passare per il grid
+    React — evita l'errore #185 su dataset grandi come Fornitori.
+    """
+    cols = list(df.columns)
+
+    def _fmt(col_name: str, value) -> str:
+        if pd.isna(value) or str(value).strip() == '':
+            return ''
+        if col_name == index_col:
+            return _html_mod.escape(str(value))
+        if col_name.endswith(' %'):
+            try:
+                return f"{float(value):.1f}%"
+            except (TypeError, ValueError):
+                return _html_mod.escape(str(value))
+        try:
+            return f"€ {float(value):,.0f}".replace(",", ".")
+        except (TypeError, ValueError):
+            return _html_mod.escape(str(value))
+
+    def _td_cls(col_name: str) -> str:
+        if col_name in ('TOTALE', 'TOTALE %'):
+            return 'ohh-col-tot'
+        if col_name == 'MEDIA':
+            return 'ohh-col-med'
+        return ''
+
+    header = ''.join(f'<th>{_html_mod.escape(str(c))}</th>' for c in cols)
+    rows_html = ''
+    for _, row in df.iterrows():
+        is_sum = str(row.get(index_col, '')).strip() == total_row_label
+        tr_cls = ' class="ohh-row-sum"' if is_sum else ''
+        cells = ''
+        for col in cols:
+            tc = _td_cls(col)
+            tc_attr = f' class="{tc}"' if tc else ''
+            cells += f'<td{tc_attr}>{_fmt(col, row[col])}</td>'
+        rows_html += f'<tr{tr_cls}>{cells}</tr>'
+
+    uid = sezione_key
+    css = f"""
+<style>
+.ohh-pv-wrap-{uid}{{overflow-y:auto;overflow-x:auto;height:{altezza}px;border:1px solid #dbe4f0;
+    border-radius:10px;background:#fff;margin-bottom:.75rem;}}
+.ohh-pv-wrap-{uid} table{{width:100%;border-collapse:collapse;font-size:.86rem;
+    font-family:"Source Sans Pro",sans-serif;}}
+.ohh-pv-wrap-{uid} thead th{{position:sticky;top:0;z-index:2;background:#f7f9fc;
+    color:#334155;padding:.55rem .65rem;border-bottom:2px solid #dbe4f0;
+    text-align:right;white-space:nowrap;font-weight:700;}}
+.ohh-pv-wrap-{uid} thead th:first-child{{text-align:left;}}
+.ohh-pv-wrap-{uid} tbody td{{padding:.48rem .65rem;border-top:1px solid #eef2f7;
+    white-space:nowrap;text-align:right;vertical-align:middle;}}
+.ohh-pv-wrap-{uid} tbody td:first-child{{text-align:left;}}
+.ohh-pv-wrap-{uid} tbody tr:nth-child(even){{background:#fbfdff;}}
+.ohh-pv-wrap-{uid} td.ohh-col-tot{{background-color:#E3F2FD!important;
+    color:#1565C0;font-weight:700;}}
+.ohh-pv-wrap-{uid} td.ohh-col-med{{background-color:#FFF3CD!important;
+    color:#856404;font-weight:700;}}
+.ohh-pv-wrap-{uid} tr.ohh-row-sum td{{background-color:#F2F8FF!important;
+    color:#0B3B91;font-weight:700;}}
+.ohh-pv-wrap-{uid} tr.ohh-row-sum td:first-child{{background-color:#DCEEFF!important;
+    color:#0B3B91;font-weight:900;}}
+.ohh-pv-wrap-{uid} tr.ohh-row-sum td.ohh-col-tot{{background-color:#DBECFF!important;
+    color:#0B3B91;font-weight:800;}}
+.ohh-pv-wrap-{uid} tr.ohh-row-sum td.ohh-col-med{{background-color:#FFF1C9!important;
+    color:#7A4E00;font-weight:800;}}
+</style>"""
+
+    table = (
+        f'<div class="ohh-pv-wrap-{uid}">'
+        f'<table><thead><tr>{header}</tr></thead>'
+        f'<tbody>{rows_html}</tbody></table></div>'
+    )
+    st.markdown(css + table, unsafe_allow_html=True)
+
+
+def _render_styled_pivot_html(
+    df: pd.DataFrame,
+    index_col: str,
+    total_row_label: str,
+    sezione_key: str,
+    altezza: int = 500,
+) -> None:
+    """
+    Renderizza la pivot mensile come tabella HTML con gli stessi colori/stili
+    del st.dataframe+Styler (usato per Categorie), senza passare per il grid
+    React — evita l'errore #185 su dataset grandi come Fornitori.
+    """
+    cols = list(df.columns)
+
+    def _fmt(col_name: str, value) -> str:
+        if pd.isna(value) or str(value).strip() == '':
+            return ''
+        if col_name == index_col:
+            return _html_mod.escape(str(value))
+        if col_name.endswith(' %'):
+            try:
+                return f"{float(value):.1f}%"
+            except (TypeError, ValueError):
+                return _html_mod.escape(str(value))
+        try:
+            return f"€\u00a0{float(value):,.0f}".replace(",", ".")
+        except (TypeError, ValueError):
+            return _html_mod.escape(str(value))
+
+    def _td_cls(col_name: str) -> str:
+        if col_name in ('TOTALE', 'TOTALE %'):
+            return 'ohh-col-tot'
+        if col_name == 'MEDIA':
+            return 'ohh-col-med'
+        return ''
+
+    header = ''.join(f'<th>{_html_mod.escape(str(c))}</th>' for c in cols)
+    rows_html = ''
+    for _, row in df.iterrows():
+        is_sum = str(row.get(index_col, '')).strip() == total_row_label
+        tr_cls = ' class="ohh-row-sum"' if is_sum else ''
+        cells = ''
+        for col in cols:
+            tc = _td_cls(col)
+            tc_attr = f' class="{tc}"' if tc else ''
+            cells += f'<td{tc_attr}>{_fmt(col, row[col])}</td>'
+        rows_html += f'<tr{tr_cls}>{cells}</tr>'
+
+    uid = sezione_key
+    css = (
+        f'<style>'
+        f'.ohh-pv-wrap-{uid}{{overflow:auto;max-height:{altezza}px;border:1px solid #dbe4f0;'
+        f'border-radius:10px;background:#fff;margin-bottom:.75rem;}}'
+        f'.ohh-pv-wrap-{uid} table{{width:100%;border-collapse:collapse;font-size:.86rem;'
+        f'font-family:"Source Sans Pro",sans-serif;}}'
+        f'.ohh-pv-wrap-{uid} thead th{{position:sticky;top:0;z-index:2;background:#f7f9fc;'
+        f'color:#334155;padding:.55rem .65rem;border-bottom:2px solid #dbe4f0;'
+        f'text-align:right;white-space:nowrap;font-weight:700;}}'
+        f'.ohh-pv-wrap-{uid} thead th:first-child{{text-align:left;}}'
+        f'.ohh-pv-wrap-{uid} tbody td{{padding:.48rem .65rem;border-top:1px solid #eef2f7;'
+        f'white-space:nowrap;text-align:right;vertical-align:middle;}}'
+        f'.ohh-pv-wrap-{uid} tbody td:first-child{{text-align:left;}}'
+        f'.ohh-pv-wrap-{uid} tbody tr:nth-child(even){{background:#fbfdff;}}'
+        f'.ohh-pv-wrap-{uid} td.ohh-col-tot{{background-color:#E3F2FD!important;'
+        f'color:#1565C0;font-weight:700;}}'
+        f'.ohh-pv-wrap-{uid} td.ohh-col-med{{background-color:#FFF3CD!important;'
+        f'color:#856404;font-weight:700;}}'
+        f'.ohh-pv-wrap-{uid} tr.ohh-row-sum td{{background-color:#F2F8FF!important;'
+        f'color:#0B3B91;font-weight:700;border-top:3px solid #1D4ED8;'
+        f'border-bottom:2px solid #1D4ED8;}}'
+        f'.ohh-pv-wrap-{uid} tr.ohh-row-sum td:first-child{{background-color:#DCEEFF!important;'
+        f'color:#0B3B91;font-weight:900;}}'
+        f'.ohh-pv-wrap-{uid} tr.ohh-row-sum td.ohh-col-tot{{background-color:#DBECFF!important;'
+        f'color:#0B3B91;font-weight:800;}}'
+        f'.ohh-pv-wrap-{uid} tr.ohh-row-sum td.ohh-col-med{{background-color:#FFF1C9!important;'
+        f'color:#7A4E00;font-weight:800;}}'
+        f'</style>'
+    )
+    table = (
+        f'<div class="ohh-pv-wrap-{uid}">'
+        f'<table><thead><tr>{header}</tr></thead>'
+        f'<tbody>{rows_html}</tbody></table></div>'
+    )
+    st.markdown(css + table, unsafe_allow_html=True)
 
 
 def _render_static_table(df: pd.DataFrame, key: str):
@@ -327,35 +499,12 @@ def render_pivot_mensile(
                 # la formattazione visiva è gestita dallo Styler via _format_euro_migliaia.
                 pivot_column_config[col] = st.column_config.NumberColumn(col, width='small')
 
-        try:
-            style_formatters = {}
-            for col in pivot_display.columns:
-                if col == index_col:
-                    continue
-                if col.endswith(' %'):
-                    style_formatters[col] = lambda v: f"{v:.1f}%" if pd.notna(v) else ''
-                else:
-                    style_formatters[col] = _format_euro_migliaia
-
-            pivot_styled = (
-                pivot_display.style
-                .apply(_evidenzia_colonne_riepilogo, axis=1)
-                .format(style_formatters)
-            )
-            st.dataframe(
-                pivot_styled,
-                column_config=pivot_column_config,
-                hide_index=True,
-                use_container_width=True,
-                height=altezza_dinamica,
-            )
-        except Exception as grid_error:
-            logger.exception("[pivot:%s] Fallback tabella statica per errore grid: %s", sezione_key, grid_error)
-            st.warning("⚠️ Visualizzazione semplificata attivata per questa tabella.")
-            fallback_df = pivot_display.copy()
-            for col in fallback_df.columns:
-                fallback_df[col] = fallback_df[col].apply(lambda value: _format_pivot_value(col, value))
-            _render_static_table(fallback_df, key=f"{sezione_key}_fallback")
+        # Fornitori: usa tabella HTML stilizzata per evitare errore React #185
+        # (Glide Data Grid va in loop con Styler su dataset grandi).
+        # Categorie: usa st.dataframe con Styler (dataset più piccolo, funziona).
+        # Usa sempre la tabella HTML stilizzata (stile uniforme per Fornitori e Categorie,
+        # evita anche il bug React #185 su Glide Data Grid con Styler).
+        _render_styled_pivot_html(pivot_display, index_col, total_row_label, sezione_key, altezza_dinamica)
 
         totale = pivot['TOTALE'].sum()
         media = totale / num_mesi if num_mesi > 0 else 0
@@ -373,23 +522,23 @@ def render_pivot_mensile(
         with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
             excel_export.to_excel(writer, index=False, sheet_name=sheet_name)
 
-        col_info, col_excel = st.columns([9, 1])
+        col_info, col_excel = st.columns([9.5, 0.5], vertical_alignment='top')
         with col_info:
             st.markdown(f"""
-            <div style="background-color: #E3F2FD; padding: 0.6rem 1rem; border-radius: 8px; border: 2px solid #2196F3; width: fit-content;">
-                <p style="color: #1565C0; font-size: 0.95rem; font-weight: bold; margin: 0; white-space: nowrap;">
+            <div style="background-color: #E3F2FD; padding: 0.5rem 0.8rem; border-radius: 8px; border: 2px solid #2196F3; display: inline-block; width: fit-content;">
+                <p style="color: #1565C0; font-size: 0.88rem; font-weight: bold; margin: 0; white-space: nowrap;">
                     {riepilogo_text}
                 </p>
             </div>
             """, unsafe_allow_html=True)
         with col_excel:
             st.download_button(
-                label="Excel",
+                label="XLS",
                 data=excel_buffer.getvalue(),
                 file_name=f"{sezione_key}_mensile_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key=f"btn_excel_{sezione_key}",
-                use_container_width=True,
+                use_container_width=False,
             )
     else:
         st.info("📊 Nessun dato da visualizzare per il periodo selezionato")

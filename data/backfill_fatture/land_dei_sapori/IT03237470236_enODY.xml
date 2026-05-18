@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="UTF-8"?><p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" versione="FPR12">
+	<FatturaElettronicaHeader>
+		<DatiTrasmissione>
+			<IdTrasmittente>
+				<IdPaese>IT</IdPaese>
+				<IdCodice>03237470236</IdCodice>
+			</IdTrasmittente>
+			<ProgressivoInvio>enODY</ProgressivoInvio>
+			<FormatoTrasmissione>FPR12</FormatoTrasmissione>
+			<CodiceDestinatario>SUBM70N</CodiceDestinatario>
+		</DatiTrasmissione>
+		<CedentePrestatore>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>09806270154</IdCodice>
+				</IdFiscaleIVA>
+				<Anagrafica>
+					<Denominazione>PARTESA S.R.L.</Denominazione>
+				</Anagrafica>
+				<RegimeFiscale>RF01</RegimeFiscale>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>Viale Edison, 110</Indirizzo>
+				<CAP>20099</CAP>
+				<Comune>Sesto San Giovanni</Comune>
+				<Provincia>MI</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+			<IscrizioneREA>
+				<Ufficio>MI</Ufficio>
+				<NumeroREA>1317284</NumeroREA>
+				<CapitaleSociale>2550000.00</CapitaleSociale>
+				<SocioUnico>SU</SocioUnico>
+				<StatoLiquidazione>LN</StatoLiquidazione>
+			</IscrizioneREA>
+		</CedentePrestatore>
+		<CessionarioCommittente>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>10865360969</IdCodice>
+				</IdFiscaleIVA>
+				<Anagrafica>
+					<Denominazione>LAND DEI SAPORI SRL</Denominazione>
+				</Anagrafica>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>VIA PADANA SUPERIORE , 311</Indirizzo>
+				<CAP>20090</CAP>
+				<Comune>VIMODRONE</Comune>
+				<Provincia>MI</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+		</CessionarioCommittente>
+		<TerzoIntermediarioOSoggettoEmittente>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>03237470236</IdCodice>
+				</IdFiscaleIVA>
+				<Anagrafica>
+					<Denominazione>ARCHIVA SRL</Denominazione>
+				</Anagrafica>
+			</DatiAnagrafici>
+		</TerzoIntermediarioOSoggettoEmittente>
+		<SoggettoEmittente>TZ</SoggettoEmittente>
+	</FatturaElettronicaHeader>
+	<FatturaElettronicaBody>
+		<DatiGenerali>
+			<DatiGeneraliDocumento>
+				<TipoDocumento>TD04</TipoDocumento>
+				<Divisa>EUR</Divisa>
+				<Data>2026-02-18</Data>
+				<Numero>6544037289</Numero>
+				<ImportoTotaleDocumento>66.23</ImportoTotaleDocumento>
+				<Causale>6765</Causale>
+				<Causale>Codice cliente: 6765014083 - LAND DEI SAPORI SRL, VIA PADANA SUPERIORE , 311 (VIMODRONE)</Causale>
+				<Causale>Pagamento: RIMESSA DIR M AGENTE 30 GG FM</Causale>
+			</DatiGeneraliDocumento>
+			<DatiOrdineAcquisto>
+				<RiferimentoNumeroLinea>10</RiferimentoNumeroLinea>
+				<IdDocumento>8021446487</IdDocumento>
+			</DatiOrdineAcquisto>
+		</DatiGenerali>
+		<DatiBeniServizi>
+			<DettaglioLinee>
+				<NumeroLinea>10</NumeroLinea>
+				<CodiceArticolo>
+					<CodiceTipo>COD. ART</CodiceTipo>
+					<CodiceValore>G266</CodiceValore>
+				</CodiceArticolo>
+				<Descrizione>ROENO MULLER THURGAU DOC 75 CL</Descrizione>
+				<Quantita>1.000</Quantita>
+				<UnitaMisura>KAR</UnitaMisura>
+				<PrezzoUnitario>54.30</PrezzoUnitario>
+				<ScontoMaggiorazione>
+					<Tipo>SC</Tipo>
+					<Percentuale>0.01</Percentuale>
+				</ScontoMaggiorazione>
+				<PrezzoTotale>54.29</PrezzoTotale>
+				<AliquotaIVA>22.00</AliquotaIVA>
+				<AltriDatiGestionali>
+					<TipoDato>NOTA</TipoDato>
+					<RiferimentoTesto>RESO SU BOLLA N 213 DEL 12.02.2026</RiferimentoTesto>
+				</AltriDatiGestionali>
+				<AltriDatiGestionali>
+					<TipoDato>DEST.MERCE</TipoDato>
+					<RiferimentoTesto>6765014083, 8021446487</RiferimentoTesto>
+				</AltriDatiGestionali>
+			</DettaglioLinee>
+			<DatiRiepilogo>
+				<AliquotaIVA>22.00</AliquotaIVA>
+				<ImponibileImporto>54.29</ImponibileImporto>
+				<Imposta>11.94</Imposta>
+				<EsigibilitaIVA>I</EsigibilitaIVA>
+				<RiferimentoNormativo>Ven. IVA 22% IVA Vendite</RiferimentoNormativo>
+			</DatiRiepilogo>
+		</DatiBeniServizi>
+	</FatturaElettronicaBody>
+<ds:Signature Id="AUTO_GZZLRT76B22L781L_1-19c70d0bf220" xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#SignedProperties-AUTO_GZZLRT76B22L781L_1-19c70d0bf220-19c70d0bf230"><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>x8f2kEUxdx+Y1MzZc8v90xHhyv/ILEQb5W0qFwiY6RI=</ds:DigestValue></ds:Reference><ds:Reference Id="Reference-AUTO_GZZLRT76B22L781L_1-19c70d0bf220-1" URI=""><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2002/06/xmldsig-filter2"><dsig-xpath:XPath xmlns:dsig-xpath="http://www.w3.org/2002/06/xmldsig-filter2" Filter="subtract">/descendant::ds:Signature</dsig-xpath:XPath></ds:Transform><ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>8LrT8cO6yNvQvyq1zNjbdv4SeMgtGNq9ZNKJswDPBC0=</ds:DigestValue></ds:Reference></ds:SignedInfo><ds:SignatureValue Id="SignatureValue-AUTO_GZZLRT76B22L781L_1-19c70d0bf220">pDx08X80m42i5ECxAujoJaZvV7KvUxSSt5X8tcV0hKquBXNQs4xqLGXwip/uZizWzFCV5Ny2LJkXcrSdnj9TwyOygIZQM900EPahCQ8eHkSax9WKrzbuhxWqcTQeHDf+sBiVOkjwL22GJ31dyWSXKQLDI88GeS5AcHmeDLbTGgqVKQpirdUJSceXXMMEp94pgRn6/H2UG388492PgGhP1T666jYEKymk+NT19lQaTaLBNPkUYUQiI611zdI8/+9eoMgkTa8yoIKQyrs0kKke+1y99JDWgxqZtFtuFuReieCqN/DQ3GUtN3HRX+ykSa38ZAFP94RQpgkmC4FefWT/NA==</ds:SignatureValue><ds:KeyInfo><ds:X509Data><ds:X509Certificate>MIIIkzCCBnugAwIBAgIIFgEj0r6OuowwDQYJKoZIhvcNAQELBQAwgbExCzAJBgNVBAYTAklUMRowGAYDVQRhDBFWQVRJVC0wMjc4MDQ4MDk2NDEcMBoGA1UECgwTSW50ZXNpIEdyb3VwIFMucC5BLjEpMCcGA1UECwwgUXVhbGlmaWVkIFRydXN0IFNlcnZpY2UgUHJvdmlkZXIxPTA7BgNVBAMMNEludGVzaSBHcm91cCBFVSBRdWFsaWZpZWQgRWxlY3Ryb25pYyBTaWduYXR1cmUgQ0EgRzIwHhcNMjQwMzI2MTQyMzAwWhcNMjcwMzI3MTQyMzAwWjCByjELMAkGA1UEBhMCSVQxGjAYBgNVBGEMEVZBVElULTAzMjM3NDcwMjM2MRYwFAYDVQQKDA1BcmNoaXZhIHMuci5sMQ4wDAYDVQQMDAVEb3R0LjEQMA4GA1UEBAwHR2F6emFuaTEQMA4GA1UEKgwHQWxiZXJ0bzEfMB0GA1UEBRMWVElOSVQtR1paTFJUNzZCMjJMNzgxTDEYMBYGA1UEAwwPQWxiZXJ0byBHYXp6YW5pMRgwFgYDVQQuEw9SRTE2MTc4MDQ3MTM5MjAwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDEsZ2adUBKwErUuceNKnMu+z10ELI0QWvPg2c/g17KpldSjoGqxC+5js57z75fTlh+J3yjWn7RNuAdvWZ3bmqj/zm8PUERiOWgG6YNn4YWYvSJqRQk7MmKfchSSfIqszqi3d+lLGeJ0Y46b7N/0MdzvVXKqZFul0g9R6XybIZNogSzxdVJl2gnffVcnNX4PQWDmcNTRQQ8kMXQ7/FiwPtFtgZuZWmS1D16EnmMA/DdJu93gQTzQoLj55DnUoq7CyRkXW9UxfLqVFMlBgH/teo/aIR0eHxkIQrnyEkHFYW59RwSC9iYKv5G84wmbyxaCXDdLBRfH5wyI3EAZS5JVZcrAgMBAAGjggOSMIIDjjCBggYIKwYBBQUHAQEEdjB0MEoGCCsGAQUFBzAChj5odHRwOi8vY2Fpc3N1ZXJzLnRpbWU0bWluZC5jb20vSW50ZXNpL3F1YWxpZmllZHNpZ25hdHVyZUNBLmNydDAmBggrBgEFBQcwAYYaaHR0cDovL3FvY3NwLnRpbWU0bWluZC5jb20wHQYDVR0OBBYEFORoF5Id53YbjJTVWyTealg/8WAAMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAU7Cu2a7tXItWhtHoaGXM++nH8PN0wgZoGCCsGAQUFBwEDBIGNMIGKMBUGCCsGAQUFBwsCMAkGBwQAi+xJAQEwCAYGBACORgEBMAsGBgQAjkYBAwIBFDAIBgYEAI5GAQQwEwYGBACORgEGMAkGBwQAjkYBBgEwOwYGBACORgEFMDEwLxYpaHR0cHM6Ly93d3cuaW50ZXNpZ3JvdXAuY29tL2VuL2RvY3VtZW50cy8TAmVuMIIBvwYDVR0gBIIBtjCCAbIwCQYHBACL7EABAjAGBgQrTBAGMIIBmwYMKwYBBAGC/l4BAQEBMIIBiTA1BggrBgEFBQcCARYpaHR0cHM6Ly93d3cuaW50ZXNpZ3JvdXAuY29tL2VuL2RvY3VtZW50cy8wggFOBggrBgEFBQcCAjCCAUAeggE8AEkAbAAgAHAAcgBlAHMAZQBuAHQAZQAgAGMAZQByAHQAaQBmAGkAYwBhAHQAbwAgAOgAIAB2AGEAbABpAGQAbwAgAHMAbwBsAG8AIABwAGUAcgAgAGYAaQByAG0AZQAgAGEAcABwAG8AcwB0AGUAIABjAG8AbgAgAHAAcgBvAGMAZQBkAHUAcgBhACAAYQB1AHQAbwBtAGEAdABpAGMAYQAuACAAVABoAGUAIABjAGUAcgB0AGkAZgBpAGMAYQB0AGUAIABtAGEAeQAgAG8AbgBsAHkAIABiAGUAIAB1AHMAZQBkACAAZgBvAHIAIAB1AG4AYQB0AHQAZQBuAGQAZQBkAC8AYQB1AHQAbwBtAGEAdABpAGMAIABkAGkAZwBpAHQAYQBsACAAcwBpAGcAbgBhAHQAdQByAGUALjBJBgNVHR8EQjBAMD6gPKA6hjhodHRwOi8vY3JsLnRpbWU0bWluZC5jb20vSW50ZXNpL3F1YWxpZmllZHNpZ25hdHVyZUNBLmNybDAOBgNVHQ8BAf8EBAMCBkAwDQYJKoZIhvcNAQELBQADggIBAMWD5yhODFJOIWjK2inGXB6GYXBSbaBRQnIqIJvCjKSIKFi76ykKrzKeBdk8AltKy5Y/wQFaDGiEFWLk/N3tIuVOSDAWdHL4UZum/QLUyvKC6vQNmCFCnUnnTYRpwsNs01R1dpHPHZGcumrYFgkQ+sPaLgbQJoWJXB+m7BFoNyqKjMxaNO+ZdBBLt5h0Y/XzeplqOHerk223pOtZLZtjJxCwU5Vk14SO/GHVGyZXrktU5czfct1e80BNIlEjVZJ4iExBC4CX6szvwOpfBYys95/MXBnsUzLRhSc1uupsrLuiYSIqc4K84UlGVYK/Pm35JZ72N/zCdYoJ20UGhCy0/DZytCS0jkdUn08F7UVo+POJQQRTaSxVLtdnxbQ7FuCF6Re/VgHdCXjMDvx3oH/EhME3O6+02NQYSGnZd7Rwrl103X6gegKHqg3DAMQSQbWebp+0+azUAWiSMjzxanWZI9T9wICP5dsDOqtSDY8AvVMa0Um8npJhDbvhevr1OmZmO1SBVBN5xrXiPmQ9yqj3M99ud74vr6HWIeGsRWaAyl/BJoRsSDtem5eZum8GE0rPzsLB5Q52fKd0v4iiXihLUoDk5AJBGWGHpl4r9r+SLdP7xCHzJJWPJ5EjVcb1cvr/oeCC/j40aVTDgaYfzHV1sYJML7g3js3C3wMSkuW2x+TE</ds:X509Certificate></ds:X509Data></ds:KeyInfo><ds:Object><xades:QualifyingProperties xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Target="#AUTO_GZZLRT76B22L781L_1-19c70d0bf220"><xades:SignedProperties Id="SignedProperties-AUTO_GZZLRT76B22L781L_1-19c70d0bf220-19c70d0bf230"><xades:SignedSignatureProperties><xades:SigningTime>2026-02-18T13:54:14+01:00</xades:SigningTime><xades:SigningCertificate><xades:Cert><xades:CertDigest><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>IvYHFO7EBs3+2L2XpanpTCqGmZBCa6YXy/2JgrlcFuM=</ds:DigestValue></xades:CertDigest><xades:IssuerSerial><ds:X509IssuerName>CN=Intesi Group EU Qualified Electronic Signature CA G2,OU=Qualified Trust Service Provider,O=Intesi Group S.p.A.,organizationIdentifier=VATIT-02780480964,C=IT</ds:X509IssuerName><ds:X509SerialNumber>1585587931858254476</ds:X509SerialNumber></xades:IssuerSerial></xades:Cert></xades:SigningCertificate></xades:SignedSignatureProperties></xades:SignedProperties></xades:QualifyingProperties></ds:Object></ds:Signature></p:FatturaElettronica>

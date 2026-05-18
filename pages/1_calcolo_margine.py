@@ -98,29 +98,6 @@ st.markdown("""
 
 st.markdown("<div style='margin-top: 16px;'></div>", unsafe_allow_html=True)
 
-# CSS globale per bottoni Excel verdi
-st.markdown("""
-<style>
-div.st-key-aa_download_centri .stDownloadButton button,
-div.st-key-cm_download_excel_centri .stDownloadButton button,
-div.st-key-margine_download .stDownloadButton button {
-    background-color: #22c55e !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-}
-div.st-key-aa_download_centri .stDownloadButton button:hover,
-div.st-key-cm_download_excel_centri .stDownloadButton button:hover,
-div.st-key-margine_download .stDownloadButton button:hover {
-    background-color: #16a34a !important;
-}
-div.st-key-aa_download_centri {
-    margin-top: 8px !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
 # ============================================
 # TABS: Calcolo Marginalità + Analisi Avanzate
 # ============================================
@@ -177,97 +154,43 @@ if st.session_state.margine_tab == "analisi":
     if 'aa_periodo_dropdown' not in st.session_state:
         st.session_state.aa_periodo_dropdown = "🗓️ Anno in Corso"
 
-    col_periodo_aa, col_info_aa = st.columns([1.5, 4.5])
-
-    with col_periodo_aa:
-        st.markdown('<p style="color:#1e40af;font-weight:600;font-size:0.9rem;margin:0 0 4px 0;">📅 Filtra per Periodo</p>', unsafe_allow_html=True)
-        periodo_sel_aa = st.selectbox(
-            "📅 Filtra per Periodo",
-            options=PERIODO_OPTIONS,
-            label_visibility="collapsed",
-            index=PERIODO_OPTIONS.index(st.session_state.aa_periodo_dropdown) if st.session_state.aa_periodo_dropdown in PERIODO_OPTIONS else 3,
-            key="aa_filtro_periodo"
-        )
-
+    # Leggi periodo da session state (widget renderizzato dopo l'expander)
+    periodo_sel_aa = st.session_state.get("aa_filtro_periodo", st.session_state.aa_periodo_dropdown)
     st.session_state.aa_periodo_dropdown = periodo_sel_aa
 
     # Logica date
     data_inizio_aa, data_fine_aa, label_periodo = risolvi_periodo(periodo_sel_aa, date_periodo)
     anno_aa = oggi_date_aa.year  # default
 
-    # Info periodo
-    with col_info_aa:
-        if data_inizio_aa is None:
-            if periodo_sel_aa == "📆 Seleziona Mese":
-                from utils.period_helper import get_mesi_disponibili_fatture, risolvi_mese_selezionato
-                from services import get_supabase_client as _get_sb_aa
-                _sb_aa = _get_sb_aa()
-                _mesi_aa = get_mesi_disponibili_fatture(user_id, current_ristorante, _sb_aa)
-                _mesi_labels_aa = [x[2] for x in _mesi_aa]
-                if not _mesi_labels_aa:
-                    _mesi_labels_aa = [inizio_anno_aa.strftime("%B %Y")]
-                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                _col_mese_aa, _col_empty_aa = st.columns([1.2, 1.8])
-                with _col_mese_aa:
-                    _mese_sel_aa = st.selectbox(
-                        "Mese",
-                        options=_mesi_labels_aa,
-                        index=len(_mesi_labels_aa) - 1,
-                        key="aa_mese_sel",
-                        label_visibility="collapsed",
-                    )
-                data_inizio_aa, data_fine_aa = risolvi_mese_selezionato(_mese_sel_aa, _mesi_aa)
-                anno_aa = data_inizio_aa.year
-                label_periodo = _mese_sel_aa
-                giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
-            else:
-                # Periodo Personalizzato: range picker inline
-                if 'aa_data_inizio' not in st.session_state:
-                    st.session_state.aa_data_inizio = inizio_anno_aa
-                if 'aa_data_fine' not in st.session_state:
-                    st.session_state.aa_data_fine = oggi_date_aa
-                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-                _col_range, _col_empty = st.columns([1.2, 1.8])
-                with _col_range:
-                    _range = st.date_input(
-                        "Periodo",
-                        value=(st.session_state.aa_data_inizio, st.session_state.aa_data_fine),
-                        min_value=inizio_anno_aa,
-                        format="DD/MM/YYYY",
-                        key="aa_data_range_custom",
-                        label_visibility="collapsed",
-                    )
-                if isinstance(_range, (list, tuple)) and len(_range) == 2:
-                    data_inizio_custom_aa, data_fine_custom_aa = _range[0], _range[1]
-                    if data_inizio_custom_aa > data_fine_custom_aa:
-                        st.error("⚠️ La data iniziale deve essere precedente alla data finale.")
-                        data_inizio_aa = st.session_state.aa_data_inizio
-                        data_fine_aa = st.session_state.aa_data_fine
-                    else:
-                        st.session_state.aa_data_inizio = data_inizio_custom_aa
-                        st.session_state.aa_data_fine = data_fine_custom_aa
-                        data_inizio_aa = data_inizio_custom_aa
-                        data_fine_aa = data_fine_custom_aa
-                else:
-                    data_inizio_aa = st.session_state.aa_data_inizio
-                    data_fine_aa = st.session_state.aa_data_fine
-                anno_aa = data_inizio_aa.year
-                label_periodo = f"{data_inizio_aa.strftime('%d/%m/%Y')} → {data_fine_aa.strftime('%d/%m/%Y')}"
-                giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
-        else:
+    if data_inizio_aa is None:
+        if periodo_sel_aa == "📆 Seleziona Mese":
+            from utils.period_helper import get_mesi_disponibili_fatture, risolvi_mese_selezionato
+            from services import get_supabase_client as _get_sb_aa
+            _sb_aa = _get_sb_aa()
+            _mesi_aa = get_mesi_disponibili_fatture(user_id, current_ristorante, _sb_aa)
+            _mesi_labels_aa = [x[2] for x in _mesi_aa]
+            if not _mesi_labels_aa:
+                _mesi_labels_aa = [inizio_anno_aa.strftime("%B %Y")]
+            _mese_sel_aa = st.session_state.get("aa_mese_sel", _mesi_labels_aa[-1])
+            if _mese_sel_aa not in _mesi_labels_aa:
+                _mese_sel_aa = _mesi_labels_aa[-1]
+            data_inizio_aa, data_fine_aa = risolvi_mese_selezionato(_mese_sel_aa, _mesi_aa)
+            anno_aa = data_inizio_aa.year
+            label_periodo = _mese_sel_aa
             giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            st.markdown(f"""
-            <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
-                        padding: 10px 16px;
-                        border-radius: 8px;
-                        border: 1px solid #fde047;
-                        font-size: clamp(0.78rem, 1.8vw, 0.88rem);
-                        font-weight: 500;
-                        line-height: 1.5;">
-                🗓️ {label_periodo} ({giorni_aa} giorni)
-            </div>
-            """, unsafe_allow_html=True)
+        else:
+            # Periodo Personalizzato
+            if 'aa_data_inizio' not in st.session_state:
+                st.session_state.aa_data_inizio = inizio_anno_aa
+            if 'aa_data_fine' not in st.session_state:
+                st.session_state.aa_data_fine = oggi_date_aa
+            data_inizio_aa = st.session_state.aa_data_inizio
+            data_fine_aa = st.session_state.aa_data_fine
+            anno_aa = data_inizio_aa.year
+            label_periodo = f"{data_inizio_aa.strftime('%d/%m/%Y')} → {data_fine_aa.strftime('%d/%m/%Y')}"
+            giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
+    else:
+        giorni_aa = (data_fine_aa - data_inizio_aa).days + 1
 
     # Converti date in stringhe per le query
     date_from_str = data_inizio_aa.strftime('%Y-%m-%d')
@@ -327,9 +250,7 @@ if st.session_state.margine_tab == "analisi":
 
         totale_costi_fb = df_costi_cat['totale'].sum()
 
-        st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
         st.markdown('<h3 style="color:#1e40af;font-weight:700;">🏭 Incidenza Centri di Costo sul Fatturato</h3>', unsafe_allow_html=True)
-        st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
 
         # ============================================
         # SUDDIVISIONE FATTURATO PER CENTRO
@@ -388,7 +309,7 @@ if st.session_state.margine_tab == "analisi":
         </style>
         """, unsafe_allow_html=True)
         with st.container(key="expander_fatturato_centri"):
-          with st.expander("📌 Fatturato per Centro di Produzione", expanded=True):
+          with st.expander("📌 Fatturato per Centro di Produzione", expanded=False):
             st.markdown("""
             <div style='color: #1e3a5f; font-size: 0.875rem; line-height: 1.6; margin-bottom: 12px;'>
             Ripartisci il Fatturato Netto tra i centri di produzione <strong>mese per mese</strong>.
@@ -604,6 +525,58 @@ if st.session_state.margine_tab == "analisi":
                 if _recap_rows:
                     st.dataframe(pd.DataFrame(_recap_rows), hide_index=True, use_container_width=True)
 
+        # Filtro periodo — renderizzato dopo l'expander
+        col_periodo_aa, col_info_aa = st.columns([1.5, 4.5])
+        with col_periodo_aa:
+            st.markdown('<p style="color:#1e40af;font-weight:600;font-size:0.9rem;margin:0 0 4px 0;">📅 Filtra per Periodo</p>', unsafe_allow_html=True)
+            st.selectbox(
+                "📅 Filtra per Periodo",
+                options=PERIODO_OPTIONS,
+                label_visibility="collapsed",
+                index=PERIODO_OPTIONS.index(periodo_sel_aa) if periodo_sel_aa in PERIODO_OPTIONS else 3,
+                key="aa_filtro_periodo"
+            )
+        with col_info_aa:
+            if periodo_sel_aa == "📆 Seleziona Mese":
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                _col_mese_aa, _col_empty_aa = st.columns([1.2, 1.8])
+                with _col_mese_aa:
+                    st.selectbox(
+                        "Mese",
+                        options=_mesi_labels_aa,
+                        index=_mesi_labels_aa.index(_mese_sel_aa) if _mese_sel_aa in _mesi_labels_aa else len(_mesi_labels_aa) - 1,
+                        key="aa_mese_sel",
+                        label_visibility="collapsed",
+                    )
+            elif periodo_sel_aa == "📅 Periodo Personalizzato":
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                _col_range, _col_empty = st.columns([1.2, 1.8])
+                with _col_range:
+                    _range = st.date_input(
+                        "Periodo",
+                        value=(st.session_state.aa_data_inizio, st.session_state.aa_data_fine),
+                        min_value=inizio_anno_aa,
+                        format="DD/MM/YYYY",
+                        key="aa_data_range_custom",
+                        label_visibility="collapsed",
+                    )
+                if isinstance(_range, (list, tuple)) and len(_range) == 2:
+                    _d0, _d1 = _range[0], _range[1]
+                    if _d0 > _d1:
+                        st.error("⚠️ La data iniziale deve essere precedente alla data finale.")
+                    else:
+                        st.session_state.aa_data_inizio = _d0
+                        st.session_state.aa_data_fine = _d1
+            else:
+                st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div style="display: inline-block; width: fit-content; background: linear-gradient(135deg, #fef9c3 0%, #fefce8 100%);
+                            padding: 10px 16px; border-radius: 8px; border: 1px solid #fde047;
+                            font-size: clamp(0.78rem, 1.8vw, 0.88rem); font-weight: 500; line-height: 1.5;">
+                    🗓️ {label_periodo} ({giorni_aa} giorni)
+                </div>
+                """, unsafe_allow_html=True)
+
         # Aggregazione per centro
         df_centri_agg = df_costi_cat.groupby('centro')['totale'].sum().reset_index()
         df_centri_agg.columns = ['Centro', 'Spesa']
@@ -698,7 +671,7 @@ if st.session_state.margine_tab == "analisi":
 
         # HTML con CSS Grid
         h = []
-        h.append('<div class="aa-grid">')
+        h.append('<div class="aa-grid" style="padding-bottom:44px;">')
         # Header — ordine: Centro | Fatturato | Costi | % Costi su Fatt. | Margine | Margine % | % su Costi F&B Tot
         h.append('<div class="aa-row aa-header"><div>Centro / Categoria</div><div>Fatturato (€)</div><div>Costi (€)</div><div>% Costi su Fatt.</div><div>Margine (€)</div><div>Margine (%)</div><div>% su Costi F&amp;B Tot</div></div>')
 
@@ -755,7 +728,7 @@ if st.session_state.margine_tab == "analisi":
         # SEZIONE COSTI SENZA FATTURATO DIRETTO — rimossa (non più visibile in tabella)
 
         # Excel export - a destra, sotto le tabelle, prima dei KPI
-        _col_excel_spacer, _col_excel_btn = st.columns([5, 1])
+        _col_excel_spacer, _col_excel_btn = st.columns([9.5, 0.5])
         with _col_excel_btn:
             excel_buf_c = io.BytesIO()
             with pd.ExcelWriter(excel_buf_c, engine='openpyxl') as writer:
@@ -777,19 +750,18 @@ if st.session_state.margine_tab == "analisi":
                     df_c_agg_exp.to_excel(writer, index=False, sheet_name=sheet_name)
             excel_buf_c.seek(0)
             st.download_button(
-                label="Excel",
+                label="XLS",
                 data=excel_buf_c.getvalue(),
                 file_name=f"analisi_centri_categorie_{anno_aa}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 key="aa_download_centri",
-                type="primary",
-                use_container_width=True,
+                use_container_width=False,
             )
 
         # ============================================
         # KPI PERIODO - ANALISI CENTRI
         # ============================================
-        st.markdown('<h3 style="color:#1e40af;font-weight:700;">📊 Riepilogo KPI - Media valori per periodo</h3>', unsafe_allow_html=True)
+        st.markdown("<h3 style='color:#1e40af; font-weight:700;'>📊 Riepilogo KPI - Media valori per periodo</h3>", unsafe_allow_html=True)
 
         # Numero mesi con fatturato > 0 (esclude mesi futuri o senza dati inseriti)
         _num_mesi_attivi_aa = _mesi_con_fatt_aa if _mesi_con_fatt_aa > 0 else 1
@@ -997,8 +969,8 @@ if st.session_state.margine_tab == "analisi":
             })
 
             if _commenti_centri:
-                st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
-                st.markdown('<h4 style="color:#1e40af;font-weight:700;">💬 Analisi KPI</h4>', unsafe_allow_html=True)
+                st.markdown("<div style='margin-top: 2.5rem;'></div>", unsafe_allow_html=True)
+                st.markdown("<h3 style='color:#1e40af; font-weight:700;'>💬 Analisi KPI</h3>", unsafe_allow_html=True)
                 for c in _commenti_centri:
                     st.markdown(f"""
                     <div style='display: flex; align-items: center; gap: 12px; padding: 10px 16px; margin: 5px 0;
@@ -1027,9 +999,8 @@ if st.session_state.margine_tab == "analisi":
     from config.constants import CENTRI_DI_PRODUZIONE, CATEGORIE_SPESE_GENERALI, MESI_ITA
     from services.db_service import carica_e_prepara_dataframe
 
-    st.markdown("<hr style='margin: 32px 0 24px 0; border: none; border-top: 2px solid #e2e8f0;'>", unsafe_allow_html=True)
     st.markdown("""
-    <h3 style='color: #1e3a8a; font-weight: 700; margin-bottom: 6px;'>
+    <h3 style='color: #1e3a8a; font-weight: 700; margin-top: 8px; margin-bottom: 6px;'>
         📅 Dettaglio categorie per Centro di Costo
     </h3>
     """, unsafe_allow_html=True)
@@ -1211,7 +1182,7 @@ if st.session_state.margine_tab == "analisi":
                     pivot.to_excel(writer, sheet_name='Centri Produzione')
                 excel_data_centri.seek(0)
 
-                _col_centri_left, _col_centri_right = st.columns([5, 1])
+                _col_centri_left, _col_centri_right = st.columns([9.5, 0.5], vertical_alignment="bottom")
                 with _col_centri_left:
                     st.markdown(f"""
                     <div style="display:inline-block; background-color: #E3F2FD; padding: 10px 16px; border-radius: 8px; border: 2px solid #2196F3; margin-top: 8px;">
@@ -1222,15 +1193,13 @@ if st.session_state.margine_tab == "analisi":
                     """, unsafe_allow_html=True)
 
                 with _col_centri_right:
-                    st.markdown("<div style='margin-top: 6px;'></div>", unsafe_allow_html=True)
                     st.download_button(
-                        label="Excel",
+                        label="XLS",
                         data=excel_data_centri,
                         file_name=f"centri_produzione_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                         key="cm_download_excel_centri",
-                        type="primary",
-                        use_container_width=True,
+                        use_container_width=False,
                     )
 
 if st.session_state.margine_tab == "calcolo":
@@ -1269,9 +1238,32 @@ if st.session_state.margine_tab == "calcolo":
         })
     df_input = pd.DataFrame(data_input)
 
-    st.markdown("<br>", unsafe_allow_html=True)
+    # ============================================
+    # TABELLA UNICA TRASPOSTA - INPUT + RISULTATI
+    # ============================================
+    st.markdown('<h3 style="color:#1e40af;font-weight:700;">📊 Tabella Annuale ricavi-costi-margini</h3>', unsafe_allow_html=True)
+
     st.markdown("""
-    <div style="padding: 10px 14px; margin-bottom: 8px;">
+    <details style='background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; margin-bottom: 28px;'>
+    <summary style='background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px;
+        padding: 10px 14px; color: #1e40af; font-weight: 600; cursor: pointer; font-size: 0.95rem;'>
+        📌 Apri per visualizzare la Legenda
+    </summary>
+    <div style='padding: 10px 18px; color: #1e3a5f; font-size: 0.875rem; line-height: 1.6;'>
+    <ul style='margin: 4px 0; padding-left: 20px;'>
+    <li>I <strong>Costi F&B</strong> e le <strong>Spese Generali</strong> contrassegnati <em>(Fatture)</em> sono calcolati automaticamente dalle fatture caricate</li>
+    <li>Le righe con <strong>=</strong> sono calcolate automaticamente e si aggiornano in tempo reale</li>
+    <li>Il <strong>Fatturato</strong> si riferisce all'incasso IVA inclusa: viene scorporata l'IVA per ottenere il <em>Fatturato Netto</em></li>
+    <li>Se non inserisci fatturato, il <strong>MOL sarà negativo</strong> (somma dei soli costi)</li>
+    <li>I <strong>mesi</strong> compaiono in tabella solo quando sono stati popolati da <strong>fatture</strong> o da <strong>valori manuali salvati</strong></li>
+    <li>I dati sono salvati per <strong>ristorante</strong> e <strong>anno</strong> — ogni ristorante ha i propri margini</li>
+    </ul>
+    </div>
+    </details>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="padding: 4px 14px; margin-bottom: 4px; margin-top: -6px;">
         <span style="color: #1e40af; font-weight: 600; font-size: 1rem;">💡 Inserimento rapido - Seleziona metrica, mese o Tutti i mesi, inserisci l'importo e clicca Applica.</span>
     </div>
     """, unsafe_allow_html=True)
@@ -1330,32 +1322,11 @@ if st.session_state.margine_tab == "calcolo":
             else:
                 st.error("❌ Errore durante il salvataggio. Riprova.")
 
-    # ============================================
-    # TABELLA UNICA TRASPOSTA - INPUT + RISULTATI
-    # ============================================
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown('<h3 style="color:#1e40af;font-weight:700;">📊 Tabella Annuale ricavi-costi-margini</h3>', unsafe_allow_html=True)
-
-    st.markdown("""
-    <details style='background: #eff6ff; border: 1px solid #93c5fd; border-radius: 8px; margin-bottom: 16px;'>
-    <summary style='background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%); border-radius: 8px;
-        padding: 10px 14px; color: #1e40af; font-weight: 600; cursor: pointer; font-size: 0.95rem;'>
-        📌 Apri per visualizzare la Legenda
-    </summary>
-    <div style='padding: 10px 18px; color: #1e3a5f; font-size: 0.875rem; line-height: 1.6;'>
-    <ul style='margin: 4px 0; padding-left: 20px;'>
-    <li>I <strong>Costi F&B</strong> e le <strong>Spese Generali</strong> contrassegnati <em>(Fatture)</em> sono calcolati automaticamente dalle fatture caricate</li>
-    <li>Le righe con <strong>=</strong> sono calcolate automaticamente e si aggiornano in tempo reale</li>
-    <li>Il <strong>Fatturato</strong> si riferisce all'incasso IVA inclusa: viene scorporata l'IVA per ottenere il <em>Fatturato Netto</em></li>
-    <li>Se non inserisci fatturato, il <strong>MOL sarà negativo</strong> (somma dei soli costi)</li>
-    <li>I <strong>mesi</strong> compaiono in tabella solo quando sono stati popolati da <strong>fatture</strong> o da <strong>valori manuali salvati</strong></li>
-    <li>I dati sono salvati per <strong>ristorante</strong> e <strong>anno</strong> — ogni ristorante ha i propri margini</li>
-    </ul>
-    </div>
-    </details>
-    """, unsafe_allow_html=True)
+    st.markdown("<div style='height: 1.5rem;'></div>", unsafe_allow_html=True)
 
     # Build transposed display from df_input
+    df_risultati = calcola_risultati(df_input)
+    nome_rist = st.session_state.get("nome_ristorante", "Ristorante")
     df_display = build_transposed_df(df_input)
 
     voce_display_map = {
@@ -1544,18 +1515,26 @@ if st.session_state.margine_tab == "calcolo":
         f"<div style='overflow-x:auto; padding-bottom:4px;'>{styled_table.to_html()}</div>",
         unsafe_allow_html=True,
     )
-    st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
+    _col_xls_empty, _col_xls_tbl = st.columns([9.5, 0.5])
+    with _col_xls_tbl:
+        excel_data_tbl = export_excel_margini(df_risultati, anno, nome_rist)
+        st.download_button(
+            label="XLS",
+            data=excel_data_tbl,
+            file_name=f"Margini_{anno}_{nome_rist.replace(' ', '_')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="margine_download_tbl",
+            use_container_width=False,
+        )
 
     # ============================================
     # CALCOLA RISULTATI PER KPI + EXPORT
     # ============================================
-    df_risultati = calcola_risultati(df_input_current)
 
     # ============================================
     # KPI CARDS RIEPILOGO ANNO
     # ============================================
-    st.markdown("---")
-    st.markdown('<h3 style="color:#1e3a5f;font-weight:700;">📊 Riepilogo KPI - Media valori per periodo</h3>', unsafe_allow_html=True)
+    st.markdown("<h3 style='color:#1e40af; font-weight:700; margin-top:-22px;'>📊 Riepilogo KPI - Media valori per periodo</h3>", unsafe_allow_html=True)
 
     # ============================================
     # FILTRO TEMPORALE KPI
@@ -1706,8 +1685,8 @@ if st.session_state.margine_tab == "calcolo":
         commenti = genera_commenti_kpi(kpi, df_risultati, mesi_filtro=mesi_filtro)
     
         if commenti:
-            st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-            st.markdown('<h4 style="color:#1e3a5f;font-weight:700;">💬 Analisi KPI</h4>', unsafe_allow_html=True)
+            st.markdown("<div style='height: 2.5rem;'></div>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#1e40af; font-weight:700;'>💬 Analisi KPI</h3>", unsafe_allow_html=True)
             for c in commenti:
                 st.markdown(f"""
                 <div style='display: flex; align-items: center; gap: 12px; padding: 10px 16px; margin: 5px 0;
@@ -1724,34 +1703,3 @@ if st.session_state.margine_tab == "calcolo":
                 """, unsafe_allow_html=True)
             st.markdown("<br>", unsafe_allow_html=True)
     
-        # Download Excel sotto i KPI
-        nome_rist = st.session_state.get("nome_ristorante", "Ristorante")
-        kpi_data = {
-            'periodo': periodo_sel,
-            'num_mesi': num_mesi,
-            'fatt_totale': fatt_totale,
-            'fatt_medio': fatt_medio,
-            'costi_fb': costi_fb,
-            'fc_perc': fc_perc,
-            'primo_marg': primo_marg,
-            'primo_marg_perc': primo_marg_perc,
-            'spese_gen': spese_gen,
-            'spese_perc': spese_perc,
-            'personale': personale_medio,
-            'personale_perc': personale_perc,
-            'mol_medio': mol_medio,
-            'mol_perc': mol_perc
-        }
-        excel_data = export_excel_margini(df_risultati, anno, nome_rist, kpi_data)
-        _col_excel_empty_t1, col_excel_t1 = st.columns([5, 1])
-        with col_excel_t1:
-            st.download_button(
-                "Excel",
-                data=excel_data,
-                file_name=f"Margini_{anno}_{nome_rist.replace(' ', '_')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                key="margine_download",
-                use_container_width=True,
-            )
-
-

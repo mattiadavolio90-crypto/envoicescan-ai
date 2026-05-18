@@ -130,6 +130,7 @@ def render_sidebar(user_data: dict):
             frame = sys._getframe(1)
             # Risali max 10 frame per trovare il file pagina (molto più veloce di inspect.stack())
             _page_names = {'app.py', '1_calcolo_margine.py', '2_foodcost.py', '3_controllo_prezzi.py',
+                           '4_analisi_personalizzata.py', '5_notifiche_e_gestione.py',
                            'gestione_account.py', 'privacy_policy.py', 'admin.py'}
             for _ in range(10):
                 if frame is None:
@@ -173,8 +174,8 @@ def render_sidebar(user_data: dict):
         st.markdown("### 📋 Sezioni e Funzioni")
         if _is_pure_admin:
             st.caption("Accesso admin senza restrizioni attivo")
-        
-        if st.button("🧠 Analisi Fatture AI", use_container_width=True, key="sidebar_dashboard",
+
+        if st.button("🧠 Analisi Fatture", use_container_width=True, key="sidebar_dashboard",
                      type="primary" if current_script == 'app.py' else "secondary"):
             st.switch_page("app.py")
         
@@ -190,6 +191,7 @@ def render_sidebar(user_data: dict):
         pagine_abilitate = _pagine_raw if isinstance(_pagine_raw, dict) else {}
         workspace_enabled = True if _is_pure_admin else pagine_abilitate.get('workspace', True)
         analisi_personalizzata_enabled = True if _is_pure_admin else pagine_abilitate.get('analisi_personalizzata', False)
+        gestione_documenti_enabled = True if _is_pure_admin else pagine_abilitate.get('gestione_documenti', True)
         
         if st.button("🔍 Controllo Prezzi", use_container_width=True, key="sidebar_controllo_prezzi",
                      type="primary" if current_script == '3_controllo_prezzi.py' else "secondary"):
@@ -208,6 +210,10 @@ def render_sidebar(user_data: dict):
             if st.button("🍴 Foodcost", use_container_width=True, key="sidebar_workspace",
                          type="primary" if current_script == '2_foodcost.py' else "secondary"):
                 st.switch_page("pages/2_foodcost.py")
+
+        if st.button("🔔 Notifiche e Gestione", use_container_width=True, key="sidebar_gestione_documenti",
+                     type="primary" if current_script == '5_notifiche_e_gestione.py' else "secondary"):
+            st.switch_page("pages/5_notifiche_e_gestione.py")
         
         st.markdown("---")
         
@@ -282,3 +288,4 @@ def render_sidebar(user_data: dict):
             st.session_state._cookie_checked = True
             st.query_params["logout"] = "1"
             st.rerun()
+

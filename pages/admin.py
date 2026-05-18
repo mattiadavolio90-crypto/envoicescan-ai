@@ -34,6 +34,7 @@ from utils.validation import (
     SPECIAL_ROW_SCONTO_OMAGGIO,
     SPECIAL_ROW_STORNO,
     classify_special_row,
+    classify_special_row_vectorized,
     is_dicitura_sicura,
     is_sconto_omaggio_sicuro,
 )
@@ -989,12 +990,25 @@ if tab1:
                                                     type="secondary",
                                                     disabled=not _confirm_elimina_sede,
                                                     key=f"btn_elimina_{rist_da_eliminare['id']}"):
+                                            # ⚠️ Defense-in-depth: ricontrolla autorizzazione admin
+                                            # PER OGNI operazione distruttiva (oltre al check di ingresso pagina).
+                                            _curr_admin_email = (st.session_state.get('user_data', {}).get('email') or '').strip().lower()
+                                            if _curr_admin_email not in ADMIN_EMAILS:
+                                                logger.critical(
+                                                    f"⛔ Tentativo delete ristorante {rist_da_eliminare['id']} da email non-admin: {_curr_admin_email}"
+                                                )
+                                                st.error("⛔ Operazione non autorizzata.")
+                                                st.stop()
                                             try:
                                                 # Elimina ristorante (cascade elimina anche fatture via FK)
                                                 supabase.table('ristoranti')\
                                                     .delete()\
                                                     .eq('id', rist_da_eliminare['id'])\
                                                     .execute()
+                                                logger.warning(
+                                                    f"🗑️ RISTORANTE ELIMINATO id={rist_da_eliminare['id']} "
+                                                    f"nome={rist_da_eliminare.get('nome_ristorante')} | admin={_curr_admin_email}"
+                                                )
                                                 
                                                 # 🔄 SYNC: Aggiorna users.nome_ristorante con il prossimo ristorante attivo
                                                 ristoranti_rimasti = supabase.table('ristoranti')\
@@ -1876,7 +1890,13 @@ if tab2:
         opzioni_clienti = [{'id': 'TUTTI', 'email': 'Tutti i clienti', 'nome_ristorante': 'Tutti'}] + clienti
     except Exception as e:
         st.error(f"Errore caricamento clienti: {e}")
+        clienti = []
         opzioni_clienti = [{'id': 'TUTTI', 'email': 'Tutti i clienti', 'nome_ristorante': 'Tutti'}]
+
+    # ⚠️ TENANT ISOLATION: lista degli user_id consentiti (clienti non-admin).
+    # Quando il filtro è "Tutti i clienti" la query verrà comunque ristretta a
+    # questi user_id per evitare di esporre i dati di altri admin.
+    _allowed_non_admin_user_ids = [c['id'] for c in clienti if c.get('id')]
 
     mappa_clienti = {c['id']: c for c in opzioni_clienti}
     if 'filtro_cliente_review_id' not in st.session_state:
@@ -1891,12 +1911,15 @@ if tab2:
     # CARICAMENTO RIGHE SPECIALI CON FILTRO CLIENTE
     # ============================================================
     @st.cache_data(ttl=60, show_spinner=False)
-    def carica_righe_speciali_con_filtro(cliente_id=None):
+    def carica_righe_speciali_con_filtro(cliente_id=None, allowed_user_ids: tuple = ()):
         """
         Carica tutte le righe speciali attive e le classifica localmente.
         
         Args:
             cliente_id: UUID cliente o None per tutti
+            allowed_user_ids: tupla di user_id consentiti (clienti non-admin).
+                Usata come guardrail quando cliente_id=None per evitare di
+                esporre dati di altri admin via service_role bypass-RLS.
             
         Returns:
             DataFrame con righe da validare
@@ -1916,6 +1939,14 @@ if tab2:
                 # Applica filtro cliente se specificato
                 if cliente_id:
                     query = query.eq('user_id', cliente_id)
+                else:
+                    # ⚠️ TENANT ISOLATION: restringi sempre ai clienti non-admin.
+                    # Se la lista è vuota (anomalia), forza la query a non
+                    # restituire nulla anziché caricare l'intero DB.
+                    if allowed_user_ids:
+                        query = query.in_('user_id', list(allowed_user_ids))
+                    else:
+                        return pd.DataFrame()
                 
                 response = query.execute()
                 
@@ -1937,23 +1968,11 @@ if tab2:
                     lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x
                 )
 
-                _special_meta = df.apply(
-                    lambda row: classify_special_row(
-                        descrizione=row.get('descrizione', ''),
-                        categoria=row.get('categoria', ''),
-                        prezzo=row.get('prezzo_unitario', 0),
-                        totale_riga=row.get('totale_riga', 0),
-                        quantita=row.get('quantita', 1),
-                        tipo_documento=row.get('tipo_documento', ''),
-                        needs_review=bool(row.get('needs_review', False)),
-                    ),
-                    axis=1,
-                    result_type='expand',
-                )
+                _special_meta = classify_special_row_vectorized(df)
                 df['bucket_raw'] = _special_meta['bucket']
-                df['bucket_ui'] = df.apply(
-                    lambda row: SPECIAL_ROW_DA_VERIFICARE if bool(row.get('needs_review')) else row.get('bucket_raw'),
-                    axis=1,
+                df['bucket_ui'] = df['bucket_raw'].where(
+                    ~df['needs_review'].fillna(False).astype(bool),
+                    other=SPECIAL_ROW_DA_VERIFICARE,
                 )
                 df = df[(df['bucket_ui'] != SPECIAL_ROW_NORMALE)].copy()
             
@@ -1996,7 +2015,10 @@ if tab2:
         SPECIAL_ROW_DA_VERIFICARE: '❓ Da Verificare',
     }
     
-    df_zero = carica_righe_speciali_con_filtro(filtro_cliente_id)
+    df_zero = carica_righe_speciali_con_filtro(
+        filtro_cliente_id,
+        allowed_user_ids=tuple(_allowed_non_admin_user_ids),
+    )
     
     if df_zero.empty:
         st.success("✅ Nessuna riga speciale nel filtro corrente!")
@@ -3474,6 +3496,7 @@ if tab4:
                 email_map = {}
         except Exception as e:
             logger.warning(f"Errore caricamento clienti per filtro: {e}")
+            clienti_non_admin = []
             opzioni_clienti = ["Tutti i clienti"]
             email_map = {}
         
@@ -3545,6 +3568,16 @@ if tab4:
                             q = q.in_('ristorante_id', _filtro_rist_ids)
                     elif _filtro_user_id:
                         q = q.eq('user_id', _filtro_user_id)
+                    else:
+                        # ⚠️ TENANT ISOLATION: senza filtri espliciti, restringi
+                        # comunque ai soli clienti non-admin per evitare di
+                        # esporre fatture di altri admin via service_role.
+                        _non_admin_ids = [c['id'] for c in (clienti_non_admin or []) if c.get('id')]
+                        if _non_admin_ids:
+                            q = q.in_('user_id', _non_admin_ids)
+                        else:
+                            # Nessun cliente disponibile: query che non matcha nulla.
+                            q = q.eq('user_id', '00000000-0000-0000-0000-000000000000')
                     if _filtro_data_limite:
                         q = q.gte('data_documento', _filtro_data_limite)
                     return q

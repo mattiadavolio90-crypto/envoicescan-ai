@@ -111,7 +111,7 @@ class TestDashboardRenderer:
     @patch("components.dashboard_renderer.st")
     def test_mostra_statistiche_admin_debug_reload(self, mock_st, _mock_admin, mock_invalida_cache):
         """Nel blocco debug admin, click su debug_reload deve invalidare cache."""
-        mock_st.session_state = _AttrDict({"user_data": {}})
+        mock_st.session_state = _AttrDict({"user_data": {}, "impersonating": True})
         mock_st.expander.return_value = _FakeContext()
         mock_st.columns.side_effect = _columns_factory
 

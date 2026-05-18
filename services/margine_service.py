@@ -14,9 +14,14 @@ import streamlit as st
 from datetime import datetime, timezone
 from config.logger_setup import get_logger
 from config.constants import CATEGORIE_FOOD, CATEGORIE_SPESE_GENERALI, KPI_SOGLIE
-from services import get_supabase_client
 
 logger = get_logger('margine_service')
+
+
+def get_supabase_client():
+    from services import get_supabase_client as _gsc
+
+    return _gsc()
 
 # Nomi mesi in italiano (abbreviati)
 MESI_NOMI = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
@@ -71,40 +76,15 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
             .neq('categoria', 'Da Classificare')
         )
 
-        # Query 1: fatture con data_documento nell'anno (comportamento storico)
-        q1 = (
-            _base_q
-            .gte('data_documento', f'{anno}-01-01')
-            .lt('data_documento', f'{anno + 1}-01-01')
+        # Query unica: data_documento OPPURE data_competenza nell'anno.
+        # Sostituisce il precedente approccio Q1+Q2 con deduplicazione:
+        # il filtro OR lato DB evita duplicati e dimezza il numero di query paginate.
+        q = _base_q.or_(
+            f"and(data_documento.gte.{anno}-01-01,data_documento.lt.{anno + 1}-01-01),"
+            f"and(data_competenza.gte.{anno}-01-01,data_competenza.lt.{anno + 1}-01-01)"
         )
-        data_q1 = _fetch_paginated(q1)
-
-        # Query 2: fatture con data_competenza nell'anno ma data_documento fuori anno
-        # (reclassificazioni cross-anno: es. fattura Dec 2025 → competenza Jan 2026)
-        # Best-effort: se fallisce non rompe il calcolo principale.
-        data_q2 = []
-        try:
-            q2 = (
-                _base_q
-                .gte('data_competenza', f'{anno}-01-01')
-                .lt('data_competenza', f'{anno + 1}-01-01')
-            )
-            data_q2 = _fetch_paginated(q2)
-        except Exception as _e_q2:
-            logger.debug(f"Query Q2 (data_competenza cross-anno) saltata: {_e_q2}")
-            data_q2 = []
-
-        # Merge e deduplicazione per id
-        all_data = data_q1.copy()
-        if data_q2:
-            ids_q1 = {r['id'] for r in data_q1 if r.get('id')}
-            for row in data_q2:
-                if row.get('id') not in ids_q1:
-                    all_data.append(row)
-            logger.debug(
-                f"📅 calcola_costi anno {anno}: Q1={len(data_q1)} righe, "
-                f"Q2={len(data_q2)} righe, merge={len(all_data)} righe totali"
-            )
+        all_data = _fetch_paginated(q)
+        logger.debug(f"📅 calcola_costi anno {anno}: {len(all_data)} righe (query unica OR)")
 
         if not all_data:
             logger.info(f"📊 Nessuna fattura trovata per anno {anno}")
@@ -256,7 +236,7 @@ def carica_margini_anno(user_id: str, ristorante_id: str, anno: int) -> dict:
         supabase = get_supabase_client()
         
         response = supabase.table('margini_mensili') \
-            .select('mese, fatturato_iva10, fatturato_iva22, altri_ricavi_noiva, altri_costi_fb, altri_costi_spese, costo_dipendenti') \
+            .select('mese, fatturato_iva10, fatturato_iva22, altri_ricavi_noiva, altri_costi_fb, altri_costi_spese, costo_dipendenti, mol') \
             .eq('user_id', user_id) \
             .eq('ristorante_id', ristorante_id) \
             .eq('anno', anno) \

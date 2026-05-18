@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?><p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2" xmlns:ds="http://www.w3.org/2000/09/xmldsig#" versione="FPR12">
+	<FatturaElettronicaHeader>
+		<DatiTrasmissione>
+			<IdTrasmittente>
+				<IdPaese>IT</IdPaese>
+				<IdCodice>03237470236</IdCodice>
+			</IdTrasmittente>
+			<ProgressivoInvio>ezRXo</ProgressivoInvio>
+			<FormatoTrasmissione>FPR12</FormatoTrasmissione>
+			<CodiceDestinatario>SUBM70N</CodiceDestinatario>
+		</DatiTrasmissione>
+		<CedentePrestatore>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>09806270154</IdCodice>
+				</IdFiscaleIVA>
+				<Anagrafica>
+					<Denominazione>PARTESA S.R.L.</Denominazione>
+				</Anagrafica>
+				<RegimeFiscale>RF01</RegimeFiscale>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>Viale Edison, 110</Indirizzo>
+				<CAP>20099</CAP>
+				<Comune>Sesto San Giovanni</Comune>
+				<Provincia>MI</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+			<IscrizioneREA>
+				<Ufficio>MI</Ufficio>
+				<NumeroREA>1317284</NumeroREA>
+				<CapitaleSociale>2550000.00</CapitaleSociale>
+				<SocioUnico>SU</SocioUnico>
+				<StatoLiquidazione>LN</StatoLiquidazione>
+			</IscrizioneREA>
+		</CedentePrestatore>
+		<CessionarioCommittente>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>10865360969</IdCodice>
+				</IdFiscaleIVA>
+				<Anagrafica>
+					<Denominazione>LAND DEI SAPORI SRL</Denominazione>
+				</Anagrafica>
+			</DatiAnagrafici>
+			<Sede>
+				<Indirizzo>VIA PADANA SUPERIORE , 311</Indirizzo>
+				<CAP>20090</CAP>
+				<Comune>VIMODRONE</Comune>
+				<Provincia>MI</Provincia>
+				<Nazione>IT</Nazione>
+			</Sede>
+		</CessionarioCommittente>
+		<TerzoIntermediarioOSoggettoEmittente>
+			<DatiAnagrafici>
+				<IdFiscaleIVA>
+					<IdPaese>IT</IdPaese>
+					<IdCodice>03237470236</IdCodice>
+				</IdFiscaleIVA>
+				<Anagrafica>
+					<Denominazione>ARCHIVA SRL</Denominazione>
+				</Anagrafica>
+			</DatiAnagrafici>
+		</TerzoIntermediarioOSoggettoEmittente>
+		<SoggettoEmittente>TZ</SoggettoEmittente>
+	</FatturaElettronicaHeader>
+	<FatturaElettronicaBody>
+		<DatiGenerali>
+			<DatiGeneraliDocumento>
+				<TipoDocumento>TD04</TipoDocumento>
+				<Divisa>EUR</Divisa>
+				<Data>2026-03-11</Data>
+				<Numero>6547024031</Numero>
+				<DatiBollo>
+					<BolloVirtuale>SI</BolloVirtuale>
+					<ImportoBollo>2.00</ImportoBollo>
+				</DatiBollo>
+				<ImportoTotaleDocumento>879.33</ImportoTotaleDocumento>
+				<Causale>6765</Causale>
+				<Causale>Codice cliente: 6765014083 - LAND DEI SAPORI SRL, VIA PADANA SUPERIORE , 311 (VIMODRONE)</Causale>
+				<Causale>Pagamento: RIMESSA DIR M AGENTE 30 GG FM</Causale>
+			</DatiGeneraliDocumento>
+			<DatiOrdineAcquisto>
+				<RiferimentoNumeroLinea>10</RiferimentoNumeroLinea>
+				<IdDocumento>4000305690</IdDocumento>
+				<Data>2026-02-28</Data>
+			</DatiOrdineAcquisto>
+		</DatiGenerali>
+		<DatiBeniServizi>
+			<DettaglioLinee>
+				<NumeroLinea>10</NumeroLinea>
+				<CodiceArticolo>
+					<CodiceTipo>COD. ART</CodiceTipo>
+					<CodiceValore>000000000005001999</CodiceValore>
+				</CodiceArticolo>
+				<Descrizione> Premio posticipato fine periodo Riferimento: 4000305690 Validit: 01.02.2026 - 28.02.2026</Descrizione>
+				<Quantita>1.000</Quantita>
+				<UnitaMisura>UN.</UnitaMisura>
+				<PrezzoUnitario>881.33</PrezzoUnitario>
+				<PrezzoTotale>881.33</PrezzoTotale>
+				<AliquotaIVA>0.00</AliquotaIVA>
+				<Natura>N2.2</Natura>
+				<AltriDatiGestionali>
+					<TipoDato>DEST.MERCE</TipoDato>
+					<RiferimentoTesto>6765014083</RiferimentoTesto>
+				</AltriDatiGestionali>
+			</DettaglioLinee>
+			<DettaglioLinee>
+				<NumeroLinea>20</NumeroLinea>
+				<Descrizione>Rivalsa bollo N.C.</Descrizione>
+				<PrezzoUnitario>-2.00</PrezzoUnitario>
+				<PrezzoTotale>-2.00</PrezzoTotale>
+				<AliquotaIVA>0.00</AliquotaIVA>
+				<Natura>N2.2</Natura>
+			</DettaglioLinee>
+			<DatiRiepilogo>
+				<AliquotaIVA>0.00</AliquotaIVA>
+				<Natura>N2.2</Natura>
+				<ImponibileImporto>879.33</ImponibileImporto>
+				<Imposta>0.00</Imposta>
+				<EsigibilitaIVA>I</EsigibilitaIVA>
+				<RiferimentoNormativo>V-Fuoricampo Art.26 IVA Vendite</RiferimentoNormativo>
+			</DatiRiepilogo>
+		</DatiBeniServizi>
+	</FatturaElettronicaBody>
+<ds:Signature Id="AUTO_GZZLRT76B22L781L_1-19cdc0434d90" xmlns:ds="http://www.w3.org/2000/09/xmldsig#"><ds:SignedInfo><ds:CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/><ds:SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/><ds:Reference Type="http://uri.etsi.org/01903#SignedProperties" URI="#SignedProperties-AUTO_GZZLRT76B22L781L_1-19cdc0434d90-19cdc0434da0"><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>tS6Bwpsz4FwgWnKO0Kbi/5aaSdRyUsDnaONBTwVkPfI=</ds:DigestValue></ds:Reference><ds:Reference Id="Reference-AUTO_GZZLRT76B22L781L_1-19cdc0434d90-1" URI=""><ds:Transforms><ds:Transform Algorithm="http://www.w3.org/2002/06/xmldsig-filter2"><dsig-xpath:XPath xmlns:dsig-xpath="http://www.w3.org/2002/06/xmldsig-filter2" Filter="subtract">/descendant::ds:Signature</dsig-xpath:XPath></ds:Transform><ds:Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/></ds:Transforms><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>SxcJcoIohI4c5DPBipu31uYe3wmjgl8urVX3gJ54jRU=</ds:DigestValue></ds:Reference></ds:SignedInfo><ds:SignatureValue Id="SignatureValue-AUTO_GZZLRT76B22L781L_1-19cdc0434d90">EDXtI/CAMBxnJbIVwhAHjzVN65uDRResGW5cili1L2Kj2581ghyMWRJoga2rcDz4zurg/zeHw1kK1Xnx+BI84O8flfpxcyEfeihItQjoEQXnV3bks6vNmNVG9bDHcCPYrnirV+KdBeqQvGG0hf5LCdlxg3Zl6UATWPox8yS3D7Tr+TkOmlx5HBl3KKR+1qx9f8zqxpTW4/RCQd5D0iBlSk5+xYni08vzxIHchrZGTEHCdW2EyjbVWhDRUkrsc9dC8WkQG+uG8MGaj6l9nWBjJTE610KlpmlJKr93211TkpEQ8D4XqTiQ/EQwsDvtz8Gz4GYUDccoj/WeWvRo9M22Dg==</ds:SignatureValue><ds:KeyInfo><ds:X509Data><ds:X509Certificate>MIIIkzCCBnugAwIBAgIIFgEj0r6OuowwDQYJKoZIhvcNAQELBQAwgbExCzAJBgNVBAYTAklUMRowGAYDVQRhDBFWQVRJVC0wMjc4MDQ4MDk2NDEcMBoGA1UECgwTSW50ZXNpIEdyb3VwIFMucC5BLjEpMCcGA1UECwwgUXVhbGlmaWVkIFRydXN0IFNlcnZpY2UgUHJvdmlkZXIxPTA7BgNVBAMMNEludGVzaSBHcm91cCBFVSBRdWFsaWZpZWQgRWxlY3Ryb25pYyBTaWduYXR1cmUgQ0EgRzIwHhcNMjQwMzI2MTQyMzAwWhcNMjcwMzI3MTQyMzAwWjCByjELMAkGA1UEBhMCSVQxGjAYBgNVBGEMEVZBVElULTAzMjM3NDcwMjM2MRYwFAYDVQQKDA1BcmNoaXZhIHMuci5sMQ4wDAYDVQQMDAVEb3R0LjEQMA4GA1UEBAwHR2F6emFuaTEQMA4GA1UEKgwHQWxiZXJ0bzEfMB0GA1UEBRMWVElOSVQtR1paTFJUNzZCMjJMNzgxTDEYMBYGA1UEAwwPQWxiZXJ0byBHYXp6YW5pMRgwFgYDVQQuEw9SRTE2MTc4MDQ3MTM5MjAwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDEsZ2adUBKwErUuceNKnMu+z10ELI0QWvPg2c/g17KpldSjoGqxC+5js57z75fTlh+J3yjWn7RNuAdvWZ3bmqj/zm8PUERiOWgG6YNn4YWYvSJqRQk7MmKfchSSfIqszqi3d+lLGeJ0Y46b7N/0MdzvVXKqZFul0g9R6XybIZNogSzxdVJl2gnffVcnNX4PQWDmcNTRQQ8kMXQ7/FiwPtFtgZuZWmS1D16EnmMA/DdJu93gQTzQoLj55DnUoq7CyRkXW9UxfLqVFMlBgH/teo/aIR0eHxkIQrnyEkHFYW59RwSC9iYKv5G84wmbyxaCXDdLBRfH5wyI3EAZS5JVZcrAgMBAAGjggOSMIIDjjCBggYIKwYBBQUHAQEEdjB0MEoGCCsGAQUFBzAChj5odHRwOi8vY2Fpc3N1ZXJzLnRpbWU0bWluZC5jb20vSW50ZXNpL3F1YWxpZmllZHNpZ25hdHVyZUNBLmNydDAmBggrBgEFBQcwAYYaaHR0cDovL3FvY3NwLnRpbWU0bWluZC5jb20wHQYDVR0OBBYEFORoF5Id53YbjJTVWyTealg/8WAAMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAU7Cu2a7tXItWhtHoaGXM++nH8PN0wgZoGCCsGAQUFBwEDBIGNMIGKMBUGCCsGAQUFBwsCMAkGBwQAi+xJAQEwCAYGBACORgEBMAsGBgQAjkYBAwIBFDAIBgYEAI5GAQQwEwYGBACORgEGMAkGBwQAjkYBBgEwOwYGBACORgEFMDEwLxYpaHR0cHM6Ly93d3cuaW50ZXNpZ3JvdXAuY29tL2VuL2RvY3VtZW50cy8TAmVuMIIBvwYDVR0gBIIBtjCCAbIwCQYHBACL7EABAjAGBgQrTBAGMIIBmwYMKwYBBAGC/l4BAQEBMIIBiTA1BggrBgEFBQcCARYpaHR0cHM6Ly93d3cuaW50ZXNpZ3JvdXAuY29tL2VuL2RvY3VtZW50cy8wggFOBggrBgEFBQcCAjCCAUAeggE8AEkAbAAgAHAAcgBlAHMAZQBuAHQAZQAgAGMAZQByAHQAaQBmAGkAYwBhAHQAbwAgAOgAIAB2AGEAbABpAGQAbwAgAHMAbwBsAG8AIABwAGUAcgAgAGYAaQByAG0AZQAgAGEAcABwAG8AcwB0AGUAIABjAG8AbgAgAHAAcgBvAGMAZQBkAHUAcgBhACAAYQB1AHQAbwBtAGEAdABpAGMAYQAuACAAVABoAGUAIABjAGUAcgB0AGkAZgBpAGMAYQB0AGUAIABtAGEAeQAgAG8AbgBsAHkAIABiAGUAIAB1AHMAZQBkACAAZgBvAHIAIAB1AG4AYQB0AHQAZQBuAGQAZQBkAC8AYQB1AHQAbwBtAGEAdABpAGMAIABkAGkAZwBpAHQAYQBsACAAcwBpAGcAbgBhAHQAdQByAGUALjBJBgNVHR8EQjBAMD6gPKA6hjhodHRwOi8vY3JsLnRpbWU0bWluZC5jb20vSW50ZXNpL3F1YWxpZmllZHNpZ25hdHVyZUNBLmNybDAOBgNVHQ8BAf8EBAMCBkAwDQYJKoZIhvcNAQELBQADggIBAMWD5yhODFJOIWjK2inGXB6GYXBSbaBRQnIqIJvCjKSIKFi76ykKrzKeBdk8AltKy5Y/wQFaDGiEFWLk/N3tIuVOSDAWdHL4UZum/QLUyvKC6vQNmCFCnUnnTYRpwsNs01R1dpHPHZGcumrYFgkQ+sPaLgbQJoWJXB+m7BFoNyqKjMxaNO+ZdBBLt5h0Y/XzeplqOHerk223pOtZLZtjJxCwU5Vk14SO/GHVGyZXrktU5czfct1e80BNIlEjVZJ4iExBC4CX6szvwOpfBYys95/MXBnsUzLRhSc1uupsrLuiYSIqc4K84UlGVYK/Pm35JZ72N/zCdYoJ20UGhCy0/DZytCS0jkdUn08F7UVo+POJQQRTaSxVLtdnxbQ7FuCF6Re/VgHdCXjMDvx3oH/EhME3O6+02NQYSGnZd7Rwrl103X6gegKHqg3DAMQSQbWebp+0+azUAWiSMjzxanWZI9T9wICP5dsDOqtSDY8AvVMa0Um8npJhDbvhevr1OmZmO1SBVBN5xrXiPmQ9yqj3M99ud74vr6HWIeGsRWaAyl/BJoRsSDtem5eZum8GE0rPzsLB5Q52fKd0v4iiXihLUoDk5AJBGWGHpl4r9r+SLdP7xCHzJJWPJ5EjVcb1cvr/oeCC/j40aVTDgaYfzHV1sYJML7g3js3C3wMSkuW2x+TE</ds:X509Certificate></ds:X509Data></ds:KeyInfo><ds:Object><xades:QualifyingProperties xmlns:xades="http://uri.etsi.org/01903/v1.3.2#" Target="#AUTO_GZZLRT76B22L781L_1-19cdc0434d90"><xades:SignedProperties Id="SignedProperties-AUTO_GZZLRT76B22L781L_1-19cdc0434d90-19cdc0434da0"><xades:SignedSignatureProperties><xades:SigningTime>2026-03-11T09:29:49+01:00</xades:SigningTime><xades:SigningCertificate><xades:Cert><xades:CertDigest><ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>IvYHFO7EBs3+2L2XpanpTCqGmZBCa6YXy/2JgrlcFuM=</ds:DigestValue></xades:CertDigest><xades:IssuerSerial><ds:X509IssuerName>CN=Intesi Group EU Qualified Electronic Signature CA G2,OU=Qualified Trust Service Provider,O=Intesi Group S.p.A.,organizationIdentifier=VATIT-02780480964,C=IT</ds:X509IssuerName><ds:X509SerialNumber>1585587931858254476</ds:X509SerialNumber></xades:IssuerSerial></xades:Cert></xades:SigningCertificate></xades:SignedSignatureProperties></xades:SignedProperties></xades:QualifyingProperties></ds:Object></ds:Signature></p:FatturaElettronica>

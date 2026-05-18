@@ -1,13 +1,16 @@
 """Notifiche in-app per promemoria operativi e dati mancanti."""
 
 import html as _html
+import hashlib
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+import pandas as pd
 
 from config.constants import MESI_ITA
 from config.logger_setup import get_logger
 from services.margine_service import carica_margini_anno
+from utils.text_utils import normalizza_stringa
 
 logger = get_logger('notification')
 
@@ -66,10 +69,13 @@ def build_upload_outcome_notifications(upload_context: Optional[Dict[str, Any]])
         body += ': ' + ', '.join(summary_parts)
     body += '.'
 
+    # Severity error solo se c'è almeno un file con category='failed'
+    has_failed = any(item.get('category') == 'failed' for item in problematic_files)
+
     return [{
         'id': f'upload-outcome-{upload_id}',
-        'level': 'warning',
-        'icon': '⚠️',
+        'level': 'error' if has_failed else 'warning',
+        'icon': '🔴' if has_failed else '⚠️',
         'title': 'Upload con file scartati o falliti',
         'body': body,
         'toast': f"Upload da controllare: {total_problematic} {_pluralize(total_problematic, 'file scartato', 'file scartati')}",
@@ -400,6 +406,7 @@ def build_monthly_data_notifications(
             'action_page': 'pages/1_calcolo_margine.py',
             'action_state_key': 'margine_tab',
             'action_state_value': 'calcolo',
+            'payload_data': {'mese': month_label, 'anno': year},
         })
 
     if costo_dipendenti <= 0:
@@ -417,6 +424,805 @@ def build_monthly_data_notifications(
             'action_page': 'pages/1_calcolo_margine.py',
             'action_state_key': 'margine_tab',
             'action_state_value': 'calcolo',
+            'payload_data': {'mese': month_label, 'anno': year},
+        })
+
+    return notifications
+
+
+def build_scadenza_documents_notifications(
+    user_id: str,
+    ristorante_id: str,
+    supabase_client=None,
+) -> List[Dict[str, Any]]:
+    """Crea notifiche per documenti scaduti o in scadenza entro 7 giorni (Step 7)."""
+    if not user_id or not ristorante_id:
+        return []
+
+    try:
+        from services import get_supabase_client
+        from datetime import date, timedelta
+        
+        sb = supabase_client or get_supabase_client()
+        today = date.today()
+        tomorrow_plus_7 = today + timedelta(days=7)
+        
+        # Carica documenti non pagati da fatture_documenti con scadenza <= oggi+7 (filtro SQL)
+        query = (
+            sb.table("fatture_documenti")
+            .select("id,file_origine,fornitore,totale_documento,scadenza_effettiva,pagata")
+            .eq("user_id", user_id)
+            .eq("ristorante_id", ristorante_id)
+            .eq("pagata", False)
+            .is_("deleted_at", "null")
+            .lte("scadenza_effettiva", tomorrow_plus_7.isoformat())
+            .execute()
+        )
+        
+        docs = query.data or []
+        if not docs:
+            return []
+        
+        scadute = []
+        imminenti = []
+        
+        for doc in docs:
+            scad_str = doc.get("scadenza_effettiva")
+            if not scad_str:
+                continue
+            
+            try:
+                from datetime import datetime as dt_cls
+                scad_dt = dt_cls.strptime(scad_str, "%Y-%m-%d").date()
+                delta = (scad_dt - today).days
+                
+                if delta < 0:
+                    scadute.append(doc)
+                elif delta <= 7:
+                    imminenti.append(doc)
+            except:
+                continue
+        
+        notifications: List[Dict[str, Any]] = []
+        
+        # Notifica scadute (severity: error)
+        if scadute:
+            count = len(scadute)
+            totale = sum(float(d.get("totale_documento", 0)) for d in scadute)
+            
+            examples = []
+            for doc in scadute[:3]:
+                fornitore = _html.escape(str(doc.get("fornitore") or "?"))
+                file_orig = _html.escape(str(doc.get("file_origine") or "?"))
+                examples.append(f"• {fornitore} ({file_orig})")
+            
+            body = f"**{count}** {_pluralize(count, 'documento scaduto', 'documenti scaduti')} per € {totale:,.2f}<br/>"
+            if examples:
+                body += "<br/>".join(examples)
+            
+            notifications.append({
+                'id': f'scaduti-{ristorante_id}',
+                'level': 'error',
+                'icon': '🔴',
+                'title': f'Scadenze superate ({count})',
+                'body': body,
+                'toast': f"⚠️ {count} {_pluralize(count, 'fattura scaduta', 'fatture scadute')} in attesa di pagamento",
+                'action_label': 'Vai ai Documenti',
+                'action_page': 'pages/5_notifiche_e_gestione.py',
+                'payload_data': {'count': count, 'totale': round(totale, 2)},
+            })
+        
+        # Notifica imminenti (7 giorni)
+        if imminenti:
+            count = len(imminenti)
+            totale = sum(float(d.get("totale_documento", 0)) for d in imminenti)
+            
+            examples = []
+            for doc in imminenti[:3]:
+                fornitore = _html.escape(str(doc.get("fornitore") or "?"))
+                file_orig = _html.escape(str(doc.get("file_origine") or "?"))
+                scad = _html.escape(str(doc.get("scadenza_effettiva") or "?"))
+                examples.append(f"• {fornitore} ({file_orig}) - {scad}")
+            
+            body = f"**{count}** {_pluralize(count, 'documento in scadenza', 'documenti in scadenza')} entro 7 giorni per € {totale:,.2f}<br/>"
+            if examples:
+                body += "<br/>".join(examples)
+            
+            notifications.append({
+                'id': f'imminenti-{ristorante_id}',
+                'level': 'info',
+                'icon': '🟡',
+                'title': f'Scadenze imminenti ({count})',
+                'body': body,
+                'toast': f"📅 {count} {_pluralize(count, 'fattura', 'fatture')} in scadenza nei prossimi 7 giorni",
+                'action_label': 'Vai ai Documenti',
+                'action_page': 'pages/5_notifiche_e_gestione.py',
+                'payload_data': {'count': count, 'totale': round(totale, 2)},
+            })
+        
+        return notifications
+        
+    except Exception as exc:
+        logger.warning(f"Errore preparazione notifiche scadenze: {exc}")
+        return []
+
+
+def build_trial_notifications(
+    user_id: str,
+    trial_info: Optional[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Crea notifiche di trial in scadenza (attivate a 3 giorni prima della fine).
+    
+    Args:
+        user_id: ID utente
+        trial_info: Dict con chiavi: is_trial (bool), days_left (int), expires_at (ISO date str)
+    
+    Returns:
+        Lista con max 1 notifica di warning se trial scade entro 3 giorni
+    """
+    if not user_id or not trial_info:
+        return []
+    
+    is_trial = trial_info.get('is_trial', False)
+    days_left = trial_info.get('days_left', 0)
+    expires_at = trial_info.get('expires_at', '')
+    
+    # Gate: attiva SOLO se trial attivo AND giorni rimanenti <= 3
+    if not is_trial or days_left > 3 or days_left < 0:
+        return []
+    
+    if days_left == 0:
+        title = '⏰ Trial scade OGGI'
+        body = f"La versione di prova di OH YEAH! Hub scade oggi. Contatta il team commerciale per attivare la versione completa."
+    elif days_left == 1:
+        title = '⏰ Trial scade domani'
+        body = f"La versione di prova di OH YEAH! Hub scade domani ({expires_at}). Contatta il team commerciale per attivare la versione completa."
+    else:  # 2 o 3 giorni
+        title = f'⏰ Trial scade tra {days_left} giorni'
+        body = f"La versione di prova di OH YEAH! Hub scade il {expires_at} ({days_left} giorni rimasti). Contatta il team commerciale per attivare la versione completa."
+    
+    return [{
+        'id': f'trial-expiry-{user_id}',
+        'level': 'warning',
+        'icon': '⏰',
+        'title': title,
+        'body': body,
+        'toast': f"Trial in scadenza: {days_left} giorni rimasti",
+        'action_label': 'Contatta Support',
+        'action_page': 'Dashboard',
+    }]
+
+
+def build_food_cost_notifications(
+    user_id: str,
+    ristorante_id: str,
+    reference_dt: Optional[datetime] = None,
+    soglia_food_cost: float = 32.0,
+    supabase_client=None,
+) -> List[Dict[str, Any]]:
+    """Crea notifiche su Food Cost, MOL e trend peggioramento per il mese precedente."""
+    if not user_id or not ristorante_id:
+        return []
+
+    year, month = get_previous_month_period(reference_dt)
+    month_label = MESI_ITA.get(month, str(month)).title()
+
+    try:
+        dati_anno = carica_margini_anno(user_id, ristorante_id, year) or {}
+    except Exception as exc:
+        logger.warning(f"Errore caricamento margini per food cost {year}: {exc}")
+        return []
+
+    # Guard obbligatorio: mese assente nel dizionario -> nessuna notifica
+    if month not in dati_anno:
+        return []
+
+    dati_mese = dati_anno.get(month) or {}
+    fatturato_netto = float(dati_mese.get('fatturato_netto', 0.0) or 0.0)
+    if fatturato_netto <= 0:
+        return []
+
+    costo_fb = float(
+        dati_mese.get('costo_fb', dati_mese.get('costi_fb_totali', 0.0)) or 0.0
+    )
+    food_cost_pct = (costo_fb / fatturato_netto * 100.0) if fatturato_netto > 0 else 0.0
+
+    mol_raw = dati_mese.get('mol', None)
+    if mol_raw is None:
+        costo_totale = float(dati_mese.get('costo_totale', 0.0) or 0.0)
+        costo_personale = float(dati_mese.get('costo_dipendenti', 0.0) or 0.0)
+        mol = float(fatturato_netto - costo_totale - costo_personale)
+    else:
+        mol = float(mol_raw or 0.0)
+
+    notifications: List[Dict[str, Any]] = []
+
+    if food_cost_pct > soglia_food_cost:
+        notifications.append({
+            'id': f'food-cost-soglia-{year}-{month:02d}',
+            'level': 'warning',
+            'icon': '📊',
+            'title': (
+                f'Food Cost {month_label} {year}: {food_cost_pct:.1f}% '
+                f'— sopra soglia ({soglia_food_cost:.0f}%)'
+            ),
+            'body': (
+                'Il Food Cost del mese supera la soglia configurata. '
+                'Verifica le categorie con maggior incidenza nella '
+                'pagina Calcolo Margini.'
+            ),
+            'toast': f'Food Cost {food_cost_pct:.1f}% — sopra soglia',
+            'action_label': 'Vai alla pagina',
+            'action_page': 'pages/1_calcolo_margine.py',
+            'action_state_key': 'margine_tab',
+            'action_state_value': 'calcolo',
+        })
+
+    if mol < 0:
+        notifications.append({
+            'id': f'mol-negativo-{year}-{month:02d}',
+            'level': 'warning',
+            'icon': '📉',
+            'title': f'MOL negativo a {month_label} {year}: €{mol:.2f}',
+            'body': (
+                f'Il Margine Operativo Lordo di {month_label} risulta negativo. '
+                'Controlla i costi operativi e il fatturato dichiarato '
+                'nella pagina Calcolo Margini.'
+            ),
+            'toast': f'MOL negativo {month_label}: €{mol:.2f}',
+            'action_label': 'Vai alla pagina',
+            'action_page': 'pages/1_calcolo_margine.py',
+            'action_state_key': 'margine_tab',
+            'action_state_value': 'calcolo',
+        })
+
+    def _decrement_year_month(y: int, m: int) -> Tuple[int, int]:
+        if m == 1:
+            return y - 1, 12
+        return y, m - 1
+
+    prev_ym: List[Tuple[int, int]] = []
+    _y, _m = year, month
+    for _ in range(3):
+        _y, _m = _decrement_year_month(_y, _m)
+        prev_ym.append((_y, _m))
+    # Ordine richiesto: mese-3, mese-2, mese-1
+    prev_ym = list(reversed(prev_ym))
+
+    year_cache: Dict[int, Dict[int, Dict[str, Any]]] = {year: dati_anno}
+    trend_values: List[float] = []
+    trend_valid = True
+
+    for py, pm in prev_ym:
+        if py not in year_cache:
+            try:
+                year_cache[py] = carica_margini_anno(user_id, ristorante_id, py) or {}
+            except Exception:
+                year_cache[py] = {}
+
+        mese_row = (year_cache.get(py) or {}).get(pm) or {}
+        fatt_prev = float(mese_row.get('fatturato_netto', 0.0) or 0.0)
+        if fatt_prev <= 0:
+            trend_valid = False
+            break
+
+        costo_prev = float(
+            mese_row.get('costo_fb', mese_row.get('costi_fb_totali', 0.0)) or 0.0
+        )
+        trend_values.append((costo_prev / fatt_prev) * 100.0)
+
+    if trend_valid and len(trend_values) == 3:
+        pct_m3, pct_m2, pct_m1 = trend_values
+        if pct_m3 < pct_m2 < pct_m1:
+            notifications.append({
+                'id': f'food-cost-trend-{year}-{month:02d}',
+                'level': 'warning',
+                'icon': '📈',
+                'title': 'Food Cost in aumento da 3 mesi consecutivi',
+                'body': (
+                    'Il Food Cost cresce ogni mese: '
+                    f'{pct_m3:.1f}% → {pct_m2:.1f}% → {pct_m1:.1f}%. '
+                    'Valuta se e stagionalita o una tendenza da correggere.'
+                ),
+                'toast': 'Food Cost in aumento da 3 mesi',
+                'action_label': 'Vai alla pagina',
+                'action_page': 'pages/1_calcolo_margine.py',
+                'action_state_key': 'margine_tab',
+                'action_state_value': 'calcolo',
+            })
+
+    return notifications
+
+
+def _short_hash(value: str, length: int = 12) -> str:
+    raw = str(value or '').strip().encode('utf-8', errors='ignore')
+    return hashlib.md5(raw, usedforsecurity=False).hexdigest()[:length]
+
+
+def _piva_is_valid(value: Any) -> bool:
+    digits = ''.join(ch for ch in str(value or '') if ch.isdigit())
+    return len(digits) >= 11
+
+
+def build_controllo_prezzi_notifications(
+    user_id: str,
+    ristorante_id: str,
+    upload_context: Optional[Dict[str, Any]] = None,
+    supabase_client=None,
+) -> List[Dict[str, Any]]:
+    """Costruisce notifiche per controllo prezzi e note credito."""
+    if not user_id or not ristorante_id:
+        return []
+
+    try:
+        from services import get_supabase_client
+
+        sb = supabase_client or get_supabase_client()
+        today = date.today()
+        now_utc = datetime.now(timezone.utc)
+        notifications: List[Dict[str, Any]] = []
+
+        current_files = list((upload_context or {}).get('successful_files') or [])
+        upload_id = str((upload_context or {}).get('upload_id') or '').strip()
+
+        # 1) nota_credito_non_usata (TD04 > 30 giorni, nessun acquisto TD01/TD06 entro +45 giorni)
+        # Limita a ultimi 180 giorni (NC più vecchie raramente rilevanti) e cap totale
+        since_180_nc = (today - timedelta(days=180)).isoformat()
+        nc_rows = (
+            sb.table('fatture')
+            .select('file_origine,fornitore,totale_documento,data_documento,created_at,piva_cedente,tipo_documento')
+            .eq('user_id', user_id)
+            .eq('ristorante_id', ristorante_id)
+            .eq('tipo_documento', 'TD04')
+            .gte('data_documento', since_180_nc)
+            .is_('deleted_at', 'null')
+            .limit(500)
+            .execute().data or []
+        )
+        if current_files:
+            allowed = {str(f).strip() for f in current_files if str(f).strip()}
+            nc_rows = [r for r in nc_rows if str(r.get('file_origine') or '').strip() in allowed]
+
+        for row in nc_rows:
+            piva = str(row.get('piva_cedente') or '').strip()
+            if not _piva_is_valid(piva):
+                continue
+
+            file_origine = str(row.get('file_origine') or '').strip()
+            fornitore = str(row.get('fornitore') or '?').strip()
+            importo = abs(float(row.get('totale_documento') or 0.0))
+            data_doc_s = str(row.get('data_documento') or '').strip()
+            created_at_s = str(row.get('created_at') or '').strip()
+
+            try:
+                created_dt = datetime.fromisoformat(created_at_s.replace('Z', '+00:00')).date()
+            except Exception:
+                continue
+            giorni = (today - created_dt).days
+            if giorni <= 30:
+                continue
+
+            try:
+                data_td04 = date.fromisoformat(data_doc_s)
+            except Exception:
+                continue
+
+            upper = (data_td04 + timedelta(days=45)).isoformat()
+            acquisti = (
+                sb.table('fatture')
+                .select('id', count='exact')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .in_('tipo_documento', ['TD01', 'TD06'])
+                .eq('piva_cedente', piva)
+                .gte('data_documento', data_td04.isoformat())
+                .lte('data_documento', upper)
+                .is_('deleted_at', 'null')
+                .limit(1)
+                .execute()
+            )
+            if int(getattr(acquisti, 'count', 0) or 0) > 0:
+                continue
+
+            notifications.append({
+                'id': f'nc-non-usata-{_short_hash(file_origine)}',
+                'level': 'info',
+                'icon': '🧾',
+                'title': f'Nota di credito non compensata — {fornitore}',
+                'body': (
+                    f'La nota di credito di €{importo:.2f} da {fornitore} ricevuta {giorni} giorni fa '
+                    'non risulta ancora compensata da un acquisto successivo. Verifica se e stata applicata.'
+                ),
+                'toast': f'Nota credito non compensata: {fornitore}',
+                'action_label': 'Vai alla pagina',
+                'action_page': 'pages/3_controllo_prezzi.py',
+                'action_state_key': 'cp_tab_attivo',
+                'action_state_value': 'nc',
+            })
+
+        # 2) sconto_fornitore_scaduto
+        current_rows: List[Dict[str, Any]] = []
+        if current_files:
+            current_rows = (
+                sb.table('fatture')
+                .select('fornitore,piva_cedente,sconto_percentuale,file_origine,data_documento')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .in_('file_origine', current_files)
+                .is_('deleted_at', 'null')
+                .execute().data or []
+            )
+        else:
+            since_7 = (today - timedelta(days=7)).isoformat()
+            current_rows = (
+                sb.table('fatture')
+                .select('fornitore,piva_cedente,sconto_percentuale,file_origine,data_documento')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .gte('data_documento', since_7)
+                .is_('deleted_at', 'null')
+                .execute().data or []
+            )
+
+        supplier_current: Dict[str, Dict[str, Any]] = {}
+        for row in current_rows:
+            piva = str(row.get('piva_cedente') or '').strip()
+            if not _piva_is_valid(piva):
+                continue
+            fornitore = str(row.get('fornitore') or piva).strip() or piva
+            sconto_val = float(row.get('sconto_percentuale') or 0.0)
+            item = supplier_current.setdefault(piva, {'fornitore': fornitore, 'has_discount': False})
+            if sconto_val > 0:
+                item['has_discount'] = True
+
+        if supplier_current:
+            since_90 = (today - timedelta(days=90)).isoformat()
+            storico_rows = (
+                sb.table('fatture')
+                .select('fornitore,piva_cedente,sconto_percentuale,data_documento')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .gte('data_documento', since_90)
+                .is_('deleted_at', 'null')
+                .execute().data or []
+            )
+
+            storico_sconti_count: Dict[str, int] = {}
+            for row in storico_rows:
+                piva = str(row.get('piva_cedente') or '').strip()
+                if not piva:
+                    continue
+                sconto_val = float(row.get('sconto_percentuale') or 0.0)
+                if sconto_val > 0:
+                    storico_sconti_count[piva] = storico_sconti_count.get(piva, 0) + 1
+
+            for piva, meta in supplier_current.items():
+                if meta.get('has_discount'):
+                    continue
+                if int(storico_sconti_count.get(piva, 0)) < 2:
+                    continue
+                fornitore = str(meta.get('fornitore') or piva)
+                notifications.append({
+                    'id': f'sconto-scaduto-{piva}',
+                    'level': 'info',
+                    'icon': '🎁',
+                    'title': f'Sconti non piu presenti — {fornitore}',
+                    'body': (
+                        f"{fornitore} non ha applicato sconti nell'ultimo ordine ricevuto. "
+                        'Nelle fatture precedenti erano presenti sconti. Verifica se l accordo e ancora attivo.'
+                    ),
+                    'toast': f'Sconti assenti: {fornitore}',
+                    'action_label': 'Vai alla pagina',
+                    'action_page': 'pages/3_controllo_prezzi.py',
+                    'action_state_key': 'cp_tab_attivo',
+                    'action_state_value': 'sconti',
+                })
+
+        # 3) prezzo_prodotto_record_storico
+        target_rows: List[Dict[str, Any]] = []
+        if current_files:
+            target_rows = (
+                sb.table('fatture')
+                .select('fornitore,piva_cedente,descrizione,prezzo_unitario,unita_misura,file_origine')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .in_('file_origine', current_files)
+                .is_('deleted_at', 'null')
+                .execute().data or []
+            )
+        else:
+            since_7 = (today - timedelta(days=7)).isoformat()
+            target_rows = (
+                sb.table('fatture')
+                .select('fornitore,piva_cedente,descrizione,prezzo_unitario,unita_misura,file_origine,data_documento')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .gte('data_documento', since_7)
+                .is_('deleted_at', 'null')
+                .execute().data or []
+            )
+
+        # ⚡ Pre-carica storici prezzi UNA volta per tutte le P.IVA target (evita N+1)
+        _pivas_target: Set[str] = {
+            str(r.get('piva_cedente') or '').strip()
+            for r in target_rows
+            if _piva_is_valid(str(r.get('piva_cedente') or '').strip())
+        }
+        storici_per_piva: Dict[str, List[Dict[str, Any]]] = {}
+        if _pivas_target:
+            try:
+                _pivas_list = list(_pivas_target)
+                # Batch IN query: limita a 200 P.IVA per evitare URL troppo lungo
+                for _i in range(0, len(_pivas_list), 200):
+                    _chunk = _pivas_list[_i:_i + 200]
+                    _storici_resp = (
+                        sb.table('fatture')
+                        .select('prezzo_unitario,file_origine,descrizione,piva_cedente')
+                        .eq('user_id', user_id)
+                        .eq('ristorante_id', ristorante_id)
+                        .in_('piva_cedente', _chunk)
+                        .is_('deleted_at', 'null')
+                        .limit(50000)
+                        .execute().data or []
+                    )
+                    for _s in _storici_resp:
+                        _p = str(_s.get('piva_cedente') or '').strip()
+                        if _p:
+                            storici_per_piva.setdefault(_p, []).append(_s)
+            except Exception as _e:
+                logger.warning(f"Errore pre-fetch storici prezzi (fallback per riga): {_e}")
+                storici_per_piva = {}
+
+        record_seen: Set[str] = set()
+        for row in target_rows:
+            piva = str(row.get('piva_cedente') or '').strip()
+            descrizione = str(row.get('descrizione') or '').strip()
+            prezzo = float(row.get('prezzo_unitario') or 0.0)
+            um = str(row.get('unita_misura') or 'UM').strip() or 'UM'
+            fornitore = str(row.get('fornitore') or piva or '?').strip()
+            if not _piva_is_valid(piva) or not descrizione or prezzo <= 0:
+                continue
+
+            key_norm = normalizza_stringa(descrizione)
+            if not key_norm:
+                continue
+            unique_key = f'{piva}::{key_norm}'
+
+            storici = storici_per_piva.get(piva)
+            if storici is None:
+                # Fallback se pre-fetch fallito
+                storici = (
+                    sb.table('fatture')
+                    .select('prezzo_unitario,file_origine,descrizione')
+                    .eq('user_id', user_id)
+                    .eq('ristorante_id', ristorante_id)
+                    .eq('piva_cedente', piva)
+                    .is_('deleted_at', 'null')
+                    .execute().data or []
+                )
+
+            history_prices: List[float] = []
+            for s_row in storici:
+                s_desc = normalizza_stringa(str(s_row.get('descrizione') or ''))
+                if s_desc != key_norm:
+                    continue
+                s_price = float(s_row.get('prezzo_unitario') or 0.0)
+                if s_price > 0:
+                    history_prices.append(s_price)
+
+            if len(history_prices) < 5:
+                continue
+
+            prev_max = max(history_prices)
+            if prev_max <= 0:
+                continue
+            if prezzo <= prev_max * 1.10:
+                continue
+            if unique_key in record_seen:
+                continue
+
+            aumento_pct = ((prezzo - prev_max) / prev_max) * 100.0
+            record_seen.add(unique_key)
+            notifications.append({
+                'id': f'record-prezzo-{key_norm[:30]}',
+                'level': 'warning',
+                'icon': '🔝',
+                'title': f'Nuovo record prezzo: {descrizione[:40]}',
+                'body': (
+                    f'{descrizione} ha raggiunto il prezzo record di €{prezzo:.4f}/{um} da {fornitore} '
+                    f'— il piu alto registrato (+{aumento_pct:.1f}% rispetto al precedente).'
+                ),
+                'toast': f'Record prezzo: {descrizione[:30]}',
+                'action_label': 'Vai alla pagina',
+                'action_page': 'pages/3_controllo_prezzi.py',
+                'action_state_key': 'cp_tab_attivo',
+                'action_state_value': 'variazioni',
+            })
+
+        # 4) fornitore_unico_categoria
+        tenant_count_resp = (
+            sb.table('fatture')
+            .select('id', count='exact')
+            .eq('user_id', user_id)
+            .eq('ristorante_id', ristorante_id)
+            .is_('deleted_at', 'null')
+            .limit(1)
+            .execute()
+        )
+        total_tenant_rows = int(getattr(tenant_count_resp, 'count', 0) or 0)
+        if total_tenant_rows >= 30:
+            since_60 = (today - timedelta(days=60)).isoformat()
+            cat_rows = (
+                sb.table('fatture')
+                .select('categoria,fornitore,piva_cedente,data_documento')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .gte('data_documento', since_60)
+                .is_('deleted_at', 'null')
+                .execute().data or []
+            )
+
+            critiche = {'CARNE', 'PESCE', 'LATTICINI', 'SALUMI', 'PRODOTTI DA FORNO'}
+            categoria_supplier: Dict[str, Dict[str, str]] = {cat: {} for cat in critiche}
+            for row in cat_rows:
+                categoria = str(row.get('categoria') or '').strip().upper()
+                if categoria not in critiche:
+                    continue
+                piva = str(row.get('piva_cedente') or '').strip()
+                if not _piva_is_valid(piva):
+                    continue
+                fornitore = str(row.get('fornitore') or piva).strip() or piva
+                categoria_supplier[categoria][piva] = fornitore
+
+            for categoria in sorted(critiche):
+                suppliers = categoria_supplier.get(categoria) or {}
+                if len(suppliers) != 1:
+                    continue
+                _, fornitore = next(iter(suppliers.items()))
+                notifications.append({
+                    'id': f"fornitore-unico-{categoria.lower().replace(' ', '-')}",
+                    'level': 'info',
+                    'icon': '⚠️',
+                    'title': f'Fornitore unico per {categoria}',
+                    'body': (
+                        f'Per {categoria} risulta attivo un solo fornitore negli ultimi 60 giorni ({fornitore}). '
+                        'Considera di diversificare per ridurre il rischio di fornitura.'
+                    ),
+                    'toast': f'Fornitore unico: {categoria}',
+                    'action_label': 'Vai alla pagina',
+                    'action_page': 'pages/3_controllo_prezzi.py',
+                })
+
+        return notifications
+    except Exception as exc:
+        logger.warning(f'Errore preparazione notifiche controllo prezzi: {exc}')
+        return []
+
+
+def build_qualita_anagrafica_notifications(
+    user_id: str,
+    ristorante_id: str,
+    upload_context: Optional[Dict[str, Any]] = None,
+    supabase_client=None,
+) -> List[Dict[str, Any]]:
+    """Notifiche di qualità anagrafica fornitori (P.IVA mancante/non valida)."""
+    if not user_id or not ristorante_id:
+        return []
+
+    try:
+        from services import get_supabase_client
+
+        sb = supabase_client or get_supabase_client()
+        today = date.today()
+        files = list((upload_context or {}).get('successful_files') or [])
+
+        rows: List[Dict[str, Any]] = []
+        if files:
+            rows = (
+                sb.table('fatture_documenti')
+                .select('fornitore,piva_fornitore,file_origine,data_documento')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .in_('file_origine', files)
+                .is_('deleted_at', 'null')
+                .execute().data or []
+            )
+        else:
+            since_7 = (today - timedelta(days=7)).isoformat()
+            rows = (
+                sb.table('fatture_documenti')
+                .select('fornitore,piva_fornitore,file_origine,data_documento')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .gte('data_documento', since_7)
+                .is_('deleted_at', 'null')
+                .execute().data or []
+            )
+
+        grouped: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            piva = str(row.get('piva_fornitore') or '').strip()
+            if _piva_is_valid(piva):
+                continue
+            fornitore = str(row.get('fornitore') or 'FORNITORE SCONOSCIUTO').strip() or 'FORNITORE SCONOSCIUTO'
+            key = normalizza_stringa(fornitore)[:20] or 'SCONOSCIUTO'
+            if key not in grouped:
+                grouped[key] = {'fornitore': fornitore, 'count': 0}
+            grouped[key]['count'] += 1
+
+        notifications: List[Dict[str, Any]] = []
+        for key, data in grouped.items():
+            fornitore = str(data['fornitore'])
+            count = int(data['count'])
+            notifications.append({
+                'id': f'piva-mancante-{key}',
+                'level': 'info',
+                'icon': '📋',
+                'title': f'P.IVA mancante: {fornitore}',
+                'body': (
+                    f'{fornitore} ha {count} {"fattura" if count == 1 else "fatture"} senza P.IVA cedente. '
+                    'Senza P.IVA il sistema non puo rilevare duplicati o tracciare variazioni prezzo per questo fornitore.'
+                ),
+                'toast': f'P.IVA mancante: {fornitore}',
+                'action_label': 'Vai alla pagina',
+                'action_page': 'pages/5_notifiche_e_gestione.py',
+            })
+
+        return notifications
+    except Exception as exc:
+        logger.warning(f'Errore preparazione notifiche qualità anagrafica: {exc}')
+        return []
+
+
+def build_efficiency_spesa_notifications(
+    fatturato_data: pd.DataFrame,
+    spesa_data: pd.DataFrame,
+    threshold_pct: float = 5.0,
+    ristorante_id: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    """Crea notifiche per aumenti significativi nell'incidenza spesa/fatturato."""
+    if fatturato_data.empty or spesa_data.empty:
+        return []
+
+    # Unisci i dati su mese e dimensione (categoria o fornitore)
+    merged_data = pd.merge(
+        spesa_data, fatturato_data,
+        on=['mese', 'dimensione'],
+        how='inner'
+    )
+
+    # Calcola l'incidenza e il trend mese su mese (guardia divisione per zero)
+    merged_data['incidenza'] = merged_data.apply(
+        lambda r: (float(r['spesa_totale']) / float(r['fatturato_totale']) * 100.0)
+        if float(r.get('fatturato_totale') or 0) > 0 else 0.0,
+        axis=1,
+    )
+    merged_data['trend'] = merged_data.groupby('dimensione')['incidenza'].pct_change() * 100
+
+    # Filtra aumenti significativi
+    alerts = merged_data[merged_data['trend'] > threshold_pct]
+
+    notifications = []
+    for _, row in alerts.iterrows():
+        dimensione = row['dimensione']
+        trend = row['trend']
+        incidenza = row['incidenza']
+        mese = row['mese']
+
+        notifications.append({
+            'id': build_scoped_notification_id(f'efficiency-alert:{dimensione}:{mese}', ristorante_id),
+            'level': 'warning',
+            'icon': '📊',
+            'title': f'Aumento incidenza spesa per {dimensione}',
+            'body': (
+                f"L'incidenza della spesa per {dimensione} è aumentata del {trend:.1f}% "
+                f"nel mese di {mese}. Incidenza attuale: {incidenza:.1f}%"
+            ),
+            'toast': f'Incidenza spesa aumentata: {dimensione}',
+            'action_label': 'Vai alla sezione',
+            'action_page': 'pages/4_analisi_personalizzata.py',
+            'action_state_key': 'af_tab_attivo',
+            'action_state_value': 'categorie' if 'Categoria' in dimensione else 'fornitori',
         })
 
     return notifications
