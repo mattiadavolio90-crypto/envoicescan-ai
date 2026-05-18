@@ -156,6 +156,18 @@ def _parse_mese_anno_from_title(title: str):
     return None, None
 
 
+def _parse_products_from_price_alert_text(text: str) -> List[str]:
+    """Estrae fino a 3 prodotti da testi legacy tipo 'Prodotti: A, B, C'."""
+    if not text:
+        return []
+    m = _re.search(r'Prodotti?:\s*(.+)$', text, flags=_re.IGNORECASE)
+    if not m:
+        return []
+    raw = m.group(1).strip().rstrip('.')
+    parts = [p.strip() for p in raw.split(',') if p and p.strip()]
+    return parts[:3]
+
+
 def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
     """Frase narrativa con contesto e motivazione per un singolo topic."""
     topic = str(notif.get('topic_key') or '')
@@ -225,11 +237,19 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
         count = payload.get('count') or _parse_count_from_title(title)
         top_product = payload.get('top_product')
         top_pct = payload.get('top_increase_pct')
+        body = str(notif.get('body') or '')
+        legacy_products = _parse_products_from_price_alert_text(body)
+        if not top_product and legacy_products:
+            top_product = legacy_products[0]
+            if not count:
+                count = len(legacy_products)
         if count:
             prodotti = 'prodotto ha avuto una variazione di prezzo' if count == 1 else 'prodotti hanno avuto variazioni di prezzo'
-            base = f"{count} {prodotti} significativa"
+            base = f"Ho rilevato che {count} {prodotti} significativa"
             if top_product and top_pct is not None:
                 base += f" (es. {top_product} +{top_pct:.1f}%)"
+            elif top_product:
+                base += f" (ad esempio {top_product})"
             return base + ": vale la pena controllare se impattano i tuoi margini."
         return f"{title}."
 

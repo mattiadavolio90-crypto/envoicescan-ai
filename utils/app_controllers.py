@@ -253,7 +253,8 @@ def mostra_pagina_login(supabase, cookie_manager):
                                 _lg.getLogger('fci_app').info(f"✅ Login cliente: user_id={user.get('id')}")
                                 st.success("✅ Accesso effettuato!")
                                 time.sleep(UI_DELAY_MEDIUM)
-                                st.rerun()
+                                st.switch_page("pages/1_calcolo_margine.py")
+                                st.stop()
                         else:
                             st.error(f"❌ {errore}")
 
@@ -339,7 +340,8 @@ def mostra_pagina_login(supabase, cookie_manager):
                                 )
                             st.success("✅ Password aggiornata! Accesso automatico...")
                             time.sleep(UI_DELAY_LONG)
-                            st.rerun()
+                            st.switch_page("pages/1_calcolo_margine.py")
+                            st.stop()
                         else:
                             st.error(f"❌ {messaggio}")
 

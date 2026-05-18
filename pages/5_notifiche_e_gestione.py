@@ -2040,6 +2040,28 @@ elif st.session_state.gfn_tab_attivo == "notifiche":
         if _briefing_snap is not None:
             st.session_state[_briefing_key] = _briefing_snap
 
+    # Auto-refresh briefing: evita snapshot stantio quando cambiano le notifiche
+    # (es. card "tutto in ordine" salvata prima che arrivino nuovi avvisi).
+    _briefing_notif_count_saved = int((_briefing_snap or {}).get('notif_count') or 0)
+    if _briefing_snap is not None and _briefing_notif_count_saved != int(_notif_badge_count):
+        _notifs_for_brief = _prefetched_notifs
+        if _notifs_for_brief is None:
+            _notifs_for_brief = get_inbox_notifications(
+                user_id=user_id,
+                ristorante_id=current_ristorante,
+                supabase_client=supabase_notif,
+                source_type=None,
+            )
+        _new_snap = generate_and_save_briefing(
+            user_id=user_id,
+            ristorante_id=current_ristorante,
+            notifications=_notifs_for_brief or [],
+            supabase_client=supabase_notif,
+        )
+        if _new_snap is not None:
+            _briefing_snap = _new_snap
+            st.session_state[_briefing_key] = _new_snap
+
     _briefing_sev = (_briefing_snap or {}).get('severity_max', 'info')
     _briefing_color = {'error': '#ef4444', 'warning': '#f59e0b', 'info': '#3b82f6'}.get(_briefing_sev, '#3b82f6')
 
@@ -2086,6 +2108,28 @@ elif st.session_state.gfn_tab_attivo == "notifiche":
             f'</div>',
             unsafe_allow_html=True,
         )
+
+        _brief_col, _ = st.columns([1, 3])
+        with _brief_col:
+            if st.button('\U0001F504 Aggiorna briefing ora', key='gfn_rigenera_briefing',
+                         use_container_width=True, type='secondary'):
+                _notifs_for_brief = get_inbox_notifications(
+                    user_id=user_id,
+                    ristorante_id=current_ristorante,
+                    supabase_client=supabase_notif,
+                )
+                _new_snap = generate_and_save_briefing(
+                    user_id=user_id,
+                    ristorante_id=current_ristorante,
+                    notifications=_notifs_for_brief or [],
+                    supabase_client=supabase_notif,
+                )
+                if _new_snap:
+                    st.session_state[_briefing_key] = _new_snap
+                    st.toast('Briefing aggiornato', icon='✅')
+                    st.rerun()
+                else:
+                    st.warning('Impossibile aggiornare il briefing. Riprova.')
     else:
         _col_brief, _ = st.columns([1, 3])
         with _col_brief:
