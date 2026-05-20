@@ -341,8 +341,8 @@ class TestBuildTransposedDf:
 
         df = build_transposed_df(df_in)
 
-        # 12 righe (voci finanziarie)
-        assert len(df) == 12
+        # 13 righe (voci finanziarie, include Costo personale Extra)
+        assert len(df) == 13
 
         # Colonne attese
         for col in ["Voce", "Gen €", "Gen %", "Dic €", "Dic %"]:
@@ -367,7 +367,7 @@ class TestBuildTransposedDf:
 
         df = build_transposed_df(df_in)
 
-        assert len(df) == 12
+        assert len(df) == 13
         assert "Voce" in df.columns
 
         # Tutti i valori € devono essere 0

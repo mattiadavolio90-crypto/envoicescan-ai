@@ -143,24 +143,11 @@ def render_sidebar(user_data: dict):
         except Exception as e:
             logger.debug(f"Frame inspection fallita: {e}")
         
-        # CSS per forzare colore blu uniforme sui bottoni attivi della sidebar
-        # Usa selettore specifico per la sidebar così non tocca il resto dell'app
+        # CSS per bottoni sidebar: stato attivo con stesso colore dei tab (primaryColor tema)
         st.markdown("""
         <style>
-        [data-testid="stSidebar"] button[kind="primary"] {
-            background-color: #2563eb !important;
-            border-color: #2563eb !important;
-            color: white !important;
-            font-weight: 600 !important;
-        }
-        [data-testid="stSidebar"] button[kind="primary"]:hover {
-            background-color: #1d4ed8 !important;
-            border-color: #1d4ed8 !important;
-        }
         [data-testid="stSidebar"] button[kind="primary"]:active,
         [data-testid="stSidebar"] button[kind="primary"]:focus {
-            background-color: #2563eb !important;
-            border-color: #2563eb !important;
             color: white !important;
         }
         </style>

@@ -76,16 +76,33 @@ def _calcola_scadenza_base(payload: Dict[str, Any]) -> Tuple[Optional[str], Opti
     return None, None
 
 
-def get_cache_version(key: str, supabase_client=None) -> int:
-    """Legge la versione cache da public.cache_version (0 se assente)."""
-    from services import get_supabase_client
+try:
+    import streamlit as _st_cv
 
-    sb = supabase_client or get_supabase_client()
-    resp = sb.table("cache_version").select("version").eq("key", key).limit(1).execute()
-    row = (resp.data or [None])[0]
-    if not row:
-        return 0
-    return int(row.get("version") or 0)
+    @_st_cv.cache_data(ttl=20, show_spinner=False)
+    def _get_cache_version_internal(key: str) -> int:
+        """Versione cached di get_cache_version (TTL 20s per ridurre round-trip)."""
+        from services import get_supabase_client as _gcv_sb
+        sb = _gcv_sb()
+        resp = sb.table("cache_version").select("version").eq("key", key).limit(1).execute()
+        row = (resp.data or [None])[0]
+        if not row:
+            return 0
+        return int(row.get("version") or 0)
+except Exception:
+    def _get_cache_version_internal(key: str) -> int:  # type: ignore[misc]
+        from services import get_supabase_client as _gcv_sb
+        sb = _gcv_sb()
+        resp = sb.table("cache_version").select("version").eq("key", key).limit(1).execute()
+        row = (resp.data or [None])[0]
+        if not row:
+            return 0
+        return int(row.get("version") or 0)
+
+
+def get_cache_version(key: str, supabase_client=None) -> int:
+    """Legge la versione cache da public.cache_version (0 se assente). Cached 20s."""
+    return _get_cache_version_internal(key)
 
 
 def upsert_fattura_documento(
@@ -302,7 +319,7 @@ def _applica_regole_fornitore(
                 if _piva_key:
                     query = (
                         sb.table("fornitori_pagamenti_config")
-                        .select("giorni_pagamento,data_riferimento")
+                        .select("giorni_pagamento,data_riferimento,modalita")
                         .eq("user_id", user_id)
                         .eq("ristorante_id", ristorante_id)
                         .eq("piva_fornitore", _piva_key)
@@ -315,22 +332,40 @@ def _applica_regole_fornitore(
                         regola = query.data[0]
 
             if regola:
-                giorni_pag = _to_int_safe(regola.get("giorni_pagamento"))
-                data_rif = str(regola.get("data_riferimento") or "data_documento").strip().lower()
+                modalita_reg = str(regola.get("modalita") or "").strip().lower()
 
-                if giorni_pag is not None and data_documento:
-                    base_dt = pd.to_datetime(data_documento, errors="coerce")
-                    if pd.notna(base_dt):
-                        if data_rif == "fine_mese":
-                            last_day = (base_dt + pd.offsets.MonthEnd(0))
-                            scad_dt = last_day + pd.Timedelta(days=giorni_pag)
-                        elif data_rif == "fine_mese_successivo":
-                            first_of_next = base_dt + pd.offsets.MonthEnd(0) + pd.Timedelta(days=1)
-                            last_of_next = first_of_next + pd.offsets.MonthEnd(0)
-                            scad_dt = last_of_next + pd.Timedelta(days=giorni_pag)
-                        else:  # data_documento
-                            scad_dt = base_dt + pd.Timedelta(days=giorni_pag)
-                        return scad_dt.strftime("%Y-%m-%d"), "fornitore"
+                if modalita_reg:
+                    # Nuova logica: modalita discreta
+                    if data_documento:
+                        base_dt = pd.to_datetime(data_documento, errors="coerce")
+                        if pd.notna(base_dt):
+                            if modalita_reg == "rid":
+                                return base_dt.strftime("%Y-%m-%d"), "fornitore_rid"
+                            elif modalita_reg in ("30gg", "60gg", "90gg"):
+                                _days = {"30gg": 30, "60gg": 60, "90gg": 90}[modalita_reg]
+                                return (base_dt + pd.Timedelta(days=_days)).strftime("%Y-%m-%d"), "fornitore"
+                            elif modalita_reg in ("30gg_fm", "60gg_fm", "90gg_fm"):
+                                _months = {"30gg_fm": 1, "60gg_fm": 2, "90gg_fm": 3}[modalita_reg]
+                                _last_day = (base_dt + pd.DateOffset(months=_months)) + pd.offsets.MonthEnd(0)
+                                return _last_day.strftime("%Y-%m-%d"), "fornitore"
+                else:
+                    # Logica legacy: giorni_pagamento + data_riferimento
+                    giorni_pag = _to_int_safe(regola.get("giorni_pagamento"))
+                    data_rif = str(regola.get("data_riferimento") or "data_documento").strip().lower()
+
+                    if giorni_pag is not None and data_documento:
+                        base_dt = pd.to_datetime(data_documento, errors="coerce")
+                        if pd.notna(base_dt):
+                            if data_rif == "fine_mese":
+                                last_day = (base_dt + pd.offsets.MonthEnd(0))
+                                scad_dt = last_day + pd.Timedelta(days=giorni_pag)
+                            elif data_rif == "fine_mese_successivo":
+                                first_of_next = base_dt + pd.offsets.MonthEnd(0) + pd.Timedelta(days=1)
+                                last_of_next = first_of_next + pd.offsets.MonthEnd(0)
+                                scad_dt = last_of_next + pd.Timedelta(days=giorni_pag)
+                            else:  # data_documento
+                                scad_dt = base_dt + pd.Timedelta(days=giorni_pag)
+                            return scad_dt.strftime("%Y-%m-%d"), "fornitore"
         except Exception as e:
             logger.warning(f"Errore lookup fornitore regole: {e}")
     
@@ -346,47 +381,85 @@ def _applica_regole_fornitore(
     return None, "none"
 
 
+try:
+    import streamlit as _st_fpc
+
+    @_st_fpc.cache_data(ttl=120, show_spinner=False)
+    def _get_fornitori_pagamenti_config_cached(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
+        """Versione cached di get_fornitori_pagamenti_config (TTL 120s)."""
+        from services import get_supabase_client as _fpc_sb
+        sb = _fpc_sb()
+        try:
+            query = (
+                sb.table("fornitori_pagamenti_config")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("ristorante_id", ristorante_id)
+                .order("attiva", desc=True)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            return query.data or []
+        except Exception as e:
+            logger.warning(f"Errore caricamento fornitori config: {e}")
+            return []
+except Exception:
+    def _get_fornitori_pagamenti_config_cached(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:  # type: ignore[misc]
+        from services import get_supabase_client as _fpc_sb
+        sb = _fpc_sb()
+        try:
+            query = (
+                sb.table("fornitori_pagamenti_config")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("ristorante_id", ristorante_id)
+                .order("attiva", desc=True)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            return query.data or []
+        except Exception as e:
+            logger.warning(f"Errore caricamento fornitori config: {e}")
+            return []
+
+
 def get_fornitori_pagamenti_config(
     user_id: str,
     ristorante_id: str,
     supabase_client=None,
 ) -> List[Dict[str, Any]]:
-    """Carica lista regole pagamento fornitore configurate."""
+    """Carica lista regole pagamento fornitore configurate. Cached 120s."""
     if not user_id or not ristorante_id:
         return []
-    
-    try:
-        from services import get_supabase_client
-        sb = supabase_client or get_supabase_client()
-        
-        query = (
-            sb.table("fornitori_pagamenti_config")
-            .select("*")
-            .eq("user_id", user_id)
-            .eq("ristorante_id", ristorante_id)
-            .order("attiva", desc=True)
-            .order("created_at", desc=True)
-            .execute()
-        )
-        return query.data or []
-    except Exception as e:
-        logger.warning(f"Errore caricamento fornitori config: {e}")
-        return []
+    return _get_fornitori_pagamenti_config_cached(str(user_id), str(ristorante_id))
+
+
+# Mapping modalita → (giorni_pagamento legacy, data_riferimento legacy)
+_MODALITA_LEGACY_MAP: Dict[str, tuple] = {
+    "rid":     (0,  "data_documento"),
+    "30gg":    (30, "data_documento"),
+    "60gg":    (60, "data_documento"),
+    "90gg":    (90, "data_documento"),
+    "30gg_fm": (30, "data_documento"),
+    "60gg_fm": (60, "data_documento"),
+    "90gg_fm": (90, "data_documento"),
+}
 
 
 def upsert_fornitori_pagamenti_config(
     user_id: str,
     ristorante_id: str,
     piva_fornitore: Optional[str],
-    giorni_pagamento: int,
-    data_riferimento: str,
+    modalita: str,
+    giorni_pagamento: Optional[int] = None,
+    data_riferimento: str = "data_documento",
     attiva: bool = True,
     note: Optional[str] = None,
     supabase_client=None,
 ) -> Dict[str, Any]:
     """Upsert regola pagamento fornitore."""
-    if not user_id or not ristorante_id or giorni_pagamento is None:
-        raise ValueError("user_id, ristorante_id, giorni_pagamento obbligatori")
+    if not user_id or not ristorante_id or not modalita:
+        raise ValueError("user_id, ristorante_id, modalita obbligatori")
     
     if not piva_fornitore or not str(piva_fornitore).strip():
         raise ValueError("P.IVA/codice fornitore obbligatorio")
@@ -405,6 +478,10 @@ def upsert_fornitori_pagamenti_config(
         _piva = _piva_clean
         _now = datetime.now(timezone.utc).isoformat()
 
+        # Deriva giorni_pagamento e data_riferimento dalla modalita
+        _modalita_clean = str(modalita).strip().lower()
+        _gg_legacy, _dr_legacy = _MODALITA_LEGACY_MAP.get(_modalita_clean, (giorni_pagamento or 30, data_riferimento))
+
         # Check esistenza (l'indice è parziale, ON CONFLICT non funziona → check manuale)
         _existing = (
             sb.table("fornitori_pagamenti_config")
@@ -421,8 +498,9 @@ def upsert_fornitori_pagamenti_config(
             resp = (
                 sb.table("fornitori_pagamenti_config")
                 .update({
-                    "giorni_pagamento": int(giorni_pagamento),
-                    "data_riferimento": str(data_riferimento).strip().lower(),
+                    "modalita": _modalita_clean,
+                    "giorni_pagamento": int(_gg_legacy),
+                    "data_riferimento": str(_dr_legacy).strip().lower(),
                     "attiva": bool(attiva),
                     "note": str(note or "").strip() or None,
                     "updated_at": _now,
@@ -438,8 +516,9 @@ def upsert_fornitori_pagamenti_config(
                     "user_id": str(user_id),
                     "ristorante_id": str(ristorante_id),
                     "piva_fornitore": _piva,
-                    "giorni_pagamento": int(giorni_pagamento),
-                    "data_riferimento": str(data_riferimento).strip().lower(),
+                    "modalita": _modalita_clean,
+                    "giorni_pagamento": int(_gg_legacy),
+                    "data_riferimento": str(_dr_legacy).strip().lower(),
                     "attiva": bool(attiva),
                     "note": str(note or "").strip() or None,
                 })
@@ -512,79 +591,56 @@ def clear_fornitori_cache() -> None:
         pass
 
 
-def get_documenti_list(
-    user_id: str,
-    ristorante_id: str,
-    filtro: str = "tutte",
-    giorni_imminenti: int = 7,
-    supabase_client=None,
-) -> List[Dict[str, Any]]:
-    """
-    Restituisce lista documenti da fatture_documenti con stato scadenza calcolato.
+# ============================================================
+# CACHE DOCUMENTI NORMALIZZATI
+# Centralizza la normalizzazione (scadenza_effettiva + regole fornitore)
+# in un'unica funzione cached. get_documenti_list diventa un thin wrapper
+# che chiama questa cache e poi filtra in memoria — 0 query DB per cache hit.
+# ============================================================
 
-    filtro supportati:
-    - "tutte"
-    - "scadute"
-    - "imminenti"
-    """
-    if not user_id or not ristorante_id:
-        return []
+try:
+    import streamlit as _st_dnorm
 
-    current_version = get_cache_version("fatture_documenti", supabase_client=supabase_client)
-    rows = _fetch_documenti_cached(str(user_id), str(ristorante_id), int(current_version))
-
-    today = date.today()
-    rows = _filter_documenti_rows(rows, filtro=filtro, today=today, giorni_imminenti=giorni_imminenti)
-
-    # ⚡ Pre-carica regole fornitori UNA volta (evita N+1 query nel loop)
-    regole_map: Dict[str, Dict[str, Any]] = {}
-    try:
-        from services import get_supabase_client
-        _sb = supabase_client or get_supabase_client()
-        _regole_resp = (
-            _sb.table("fornitori_pagamenti_config")
-            .select("piva_fornitore,giorni_pagamento,data_riferimento")
-            .eq("user_id", str(user_id))
-            .eq("ristorante_id", str(ristorante_id))
-            .eq("attiva", True)
-            .is_("deleted_at", "null")
-            .execute()
-        )
-        for _r in (_regole_resp.data or []):
-            _piva = str(_r.get("piva_fornitore") or "").strip()
-            if _piva:
-                regole_map[_piva] = _r
-    except Exception as _e:
-        logger.warning(f"Errore pre-caricamento regole fornitori (fallback a query per riga): {_e}")
-        regole_map = None  # type: ignore
-
-    normalized: List[Dict[str, Any]] = []
-    for row in rows:
-        # Applica gerarchia scadenza con lookup fornitore
-        scadenza_eff, source_eff = _applica_regole_fornitore(
-            fornitore=row.get("fornitore"),
-            piva_fornitore=row.get("piva_fornitore"),
-            data_documento=row.get("data_documento"),
-            scadenza_xml=row.get("scadenza_xml"),
-            giorni_termini_xml=row.get("giorni_termini_xml"),
-            user_id=user_id,
-            ristorante_id=ristorante_id,
-            supabase_client=supabase_client,
-            regole_map=regole_map,
-        )
-
-        # Fallback: se _applica_regole_fornitore non trova nulla, usa il valore
-        # già salvato in DB da upsert_fattura_documento (include scadenza XML
-        # e override manuali scritti al momento dell'upload).
-        if not scadenza_eff:
-            _stored = row.get("scadenza_effettiva")
-            if _stored:
-                scadenza_eff = _to_date_iso(_stored)
-                source_eff = row.get("scadenza_source") or "stored"
-
-        pagata = bool(row.get("pagata"))
-        normalized.append(
-            {
+    @_st_dnorm.cache_data(ttl=60, show_spinner=False)
+    def _get_documenti_normalized_cached(
+        user_id: str, ristorante_id: str, cache_version: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Normalizza TUTTI i documenti applicando regole scadenza fornitore.
+        Cached 60s per cache_version → si invalida automaticamente con clear_documenti_cache().
+        Usa _fetch_documenti_cached e _get_fornitori_pagamenti_config_cached (entrambi cached)
+        → 0 query DB per cache hit.
+        """
+        rows = _fetch_documenti_cached(user_id, ristorante_id, cache_version)
+        regole_list = _get_fornitori_pagamenti_config_cached(user_id, ristorante_id)
+        regole_map: Dict[str, Dict[str, Any]] = {
+            str(r.get("piva_fornitore", "")).strip(): r
+            for r in regole_list
+            if r.get("piva_fornitore")
+        }
+        today = date.today()
+        normalized: List[Dict[str, Any]] = []
+        for row in rows:
+            scadenza_eff, source_eff = _applica_regole_fornitore(
+                fornitore=row.get("fornitore"),
+                piva_fornitore=row.get("piva_fornitore"),
+                data_documento=row.get("data_documento"),
+                scadenza_xml=row.get("scadenza_xml"),
+                giorni_termini_xml=row.get("giorni_termini_xml"),
+                user_id=user_id,
+                ristorante_id=ristorante_id,
+                regole_map=regole_map,
+            )
+            if not scadenza_eff:
+                _stored = row.get("scadenza_effettiva")
+                if _stored:
+                    scadenza_eff = _to_date_iso(_stored)
+                    source_eff = row.get("scadenza_source") or "stored"
+            pagata = bool(row.get("pagata"))
+            # Auto-pagato: fatture di fornitori con regola RID risultano già pagate
+            if source_eff == "fornitore_rid" and not pagata:
+                pagata = True
+            normalized.append({
                 "id": row.get("id"),
                 "file_origine": row.get("file_origine"),
                 "fornitore": row.get("fornitore") or "Sconosciuto",
@@ -601,10 +657,90 @@ def get_documenti_list(
                 "pagata_at": _to_date_iso(row.get("pagata_at")),
                 "stato_scadenza": _compute_stato_scadenza(scadenza_eff, pagata=pagata, today=today),
                 "created_at": row.get("created_at"),
-            }
-        )
+            })
+        return normalized
+except Exception:
+    def _get_documenti_normalized_cached(  # type: ignore[misc]
+        user_id: str, ristorante_id: str, cache_version: int
+    ) -> List[Dict[str, Any]]:
+        rows = _fetch_documenti_cached(user_id, ristorante_id, cache_version)
+        regole_list = _get_fornitori_pagamenti_config_cached(user_id, ristorante_id)
+        regole_map: Dict[str, Dict[str, Any]] = {
+            str(r.get("piva_fornitore", "")).strip(): r
+            for r in regole_list
+            if r.get("piva_fornitore")
+        }
+        today = date.today()
+        normalized: List[Dict[str, Any]] = []
+        for row in rows:
+            scadenza_eff, source_eff = _applica_regole_fornitore(
+                fornitore=row.get("fornitore"),
+                piva_fornitore=row.get("piva_fornitore"),
+                data_documento=row.get("data_documento"),
+                scadenza_xml=row.get("scadenza_xml"),
+                giorni_termini_xml=row.get("giorni_termini_xml"),
+                user_id=user_id,
+                ristorante_id=ristorante_id,
+                regole_map=regole_map,
+            )
+            if not scadenza_eff:
+                _stored = row.get("scadenza_effettiva")
+                if _stored:
+                    scadenza_eff = _to_date_iso(_stored)
+                    source_eff = row.get("scadenza_source") or "stored"
+            pagata = bool(row.get("pagata"))
+            # Auto-pagato: fatture di fornitori con regola RID risultano già pagate
+            if source_eff == "fornitore_rid" and not pagata:
+                pagata = True
+            normalized.append({
+                "id": row.get("id"),
+                "file_origine": row.get("file_origine"),
+                "fornitore": row.get("fornitore") or "Sconosciuto",
+                "tipo_documento": row.get("tipo_documento") or "TD01",
+                "totale_documento": _to_float_safe(row.get("totale_documento")) or 0.0,
+                "data_documento": row.get("data_documento"),
+                "numero_documento": row.get("numero_documento"),
+                "scadenza_xml": row.get("scadenza_xml"),
+                "giorni_termini_xml": row.get("giorni_termini_xml"),
+                "scadenza_effettiva": scadenza_eff,
+                "scadenza_source": source_eff,
+                "pagata": pagata,
+                "data_pagamento": _to_date_iso(row.get("pagata_at")),
+                "pagata_at": _to_date_iso(row.get("pagata_at")),
+                "stato_scadenza": _compute_stato_scadenza(scadenza_eff, pagata=pagata, today=today),
+                "created_at": row.get("created_at"),
+            })
+        return normalized
 
-    return normalized
+
+def get_documenti_list(
+    user_id: str,
+    ristorante_id: str,
+    filtro: str = "tutte",
+    giorni_imminenti: int = 7,
+    supabase_client=None,
+) -> List[Dict[str, Any]]:
+    """
+    Restituisce lista documenti da fatture_documenti con stato scadenza calcolato.
+
+    filtro supportati:
+    - "tutte"
+    - "scadute"
+    - "imminenti"
+
+    ⚡ Performance: usa _get_documenti_normalized_cached (cached 60s) per
+    normalizzazione e regole fornitore → 0 query DB per cache hit.
+    """
+    if not user_id or not ristorante_id:
+        return []
+
+    current_version = get_cache_version("fatture_documenti", supabase_client=supabase_client)
+    # Ottieni tutti i documenti normalizzati dalla cache → O(1) per cache hit
+    all_normalized = _get_documenti_normalized_cached(str(user_id), str(ristorante_id), int(current_version))
+
+    # Applica filtro in memoria — puro Python, senza I/O
+    today = date.today()
+    return _filter_documenti_rows(all_normalized, filtro=filtro, today=today, giorni_imminenti=giorni_imminenti)
 
 
 def clear_documenti_cache() -> None:

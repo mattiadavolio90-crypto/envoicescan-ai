@@ -566,447 +566,474 @@ load_css('common.css')
 
 st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
 
-if st.session_state.gfn_tab_attivo == "scadenziario":
-    # Carica TUTTI i documenti (nessun filtro stato) per il report mensile completo
-    with st.spinner("⏳ Caricamento scadenziario..."):
-        tutti_documenti = get_documenti_list(
-            user_id=user_id,
-            ristorante_id=current_ristorante,
-            filtro="tutte",
-            giorni_imminenti=365,
-    )
-
-    if not tutti_documenti:
-        st.info("Nessun documento disponibile.")
-    else:
-        df_all = pd.DataFrame(tutti_documenti)
-        df_all["scadenza_ts"] = pd.to_datetime(df_all["scadenza_effettiva"], errors="coerce")
-        df_all["totale_documento"] = pd.to_numeric(df_all["totale_documento"], errors="coerce").fillna(0.0)
-        df_all["pagata"] = df_all["pagata"].fillna(False).astype(bool)
-        today = pd.Timestamp(date.today())
-
-        # ── Filtro periodo ─────────────────────────────────────────────────
-        from utils.period_helper import get_mesi_disponibili_fatture as _get_mesi_scad
-        from services import get_supabase_client as _get_sb_scad
-        _sb_scad = _get_sb_scad()
-        _mesi_scad = _get_mesi_scad(user_id, current_ristorante, _sb_scad)
-        _anni_scad = sorted(list({a for a, _, _ in _mesi_scad}), reverse=True) or [today.year]
-        _opzioni_tutto_anno = [f"🗓️ Tutto il {a}" for a in _anni_scad]
-        _opzioni_mesi_scad = [lbl for _, _, lbl in reversed(_mesi_scad)]
-        _opzioni_periodo_scad = _opzioni_tutto_anno + _opzioni_mesi_scad
-        if not _opzioni_periodo_scad:
-            _opzioni_periodo_scad = [f"🗓️ Tutto il {today.year}"]
-        _default_scad_key = f"🗓️ Tutto il {today.year}"
-        _default_scad_idx = _opzioni_periodo_scad.index(_default_scad_key) if _default_scad_key in _opzioni_periodo_scad else 0
-
-        _sc_col1, _sc_col2 = st.columns([1.5, 1.5])
-        with _sc_col1:
-            _periodo_scad = st.selectbox(
-                "📅 Periodo Scadenziario",
-                options=_opzioni_periodo_scad,
-                index=_default_scad_idx,
-                key="scad_periodo_sel",
-            )
-        with _sc_col2:
-            _fornitori_opzioni = ["🏢 Tutti i fornitori"] + sorted(
-                df_all["fornitore"].dropna().astype(str).unique().tolist()
-            )
-            _filtro_fornitore = st.selectbox(
-                "🏢 Fornitore",
-                options=_fornitori_opzioni,
-                key="scad_filtro_fornitore",
-            )
-
-        # Risolvi periodo selezionato
-        if _periodo_scad.startswith("🗓️ Tutto il "):
-            _anno_sel = int(_periodo_scad.replace("🗓️ Tutto il ", ""))
-            _df_filtrato = df_all[df_all["scadenza_ts"].dt.year == _anno_sel].copy()
-        else:
-            _match_mese_scad = next(((a, m) for a, m, lbl in _mesi_scad if lbl == _periodo_scad), None)
-            if _match_mese_scad:
-                _anno_sel, _mese_num_sel = _match_mese_scad
-                _df_filtrato = df_all[
-                    (df_all["scadenza_ts"].dt.year == _anno_sel) &
-                    (df_all["scadenza_ts"].dt.month == _mese_num_sel)
-                ].copy()
-            else:
-                _anno_sel = today.year
-                _df_filtrato = df_all[df_all["scadenza_ts"].dt.year == _anno_sel].copy()
-
-        # ── KPI globali ────────────────────────────────────────────────────
-        _df_anno_no_scad = df_all[df_all["scadenza_ts"].isna()].copy()
-
-        # Applica filtro fornitore
-        if _filtro_fornitore != "🏢 Tutti i fornitori":
-            _df_filtrato = _df_filtrato[_df_filtrato["fornitore"] == _filtro_fornitore]
-            _df_anno_no_scad = _df_anno_no_scad[_df_anno_no_scad["fornitore"] == _filtro_fornitore]
-
-        _tot_anno = _df_filtrato["totale_documento"].sum()
-        _tot_pagato = _df_filtrato[_df_filtrato["pagata"]]["totale_documento"].sum()
-        _tot_residuo = _df_filtrato[~_df_filtrato["pagata"]]["totale_documento"].sum()
-        _tot_scaduto = _df_filtrato[
-            (~_df_filtrato["pagata"]) & (_df_filtrato["scadenza_ts"].dt.normalize() < today)
-        ]["totale_documento"].sum()
-
-        st.markdown("<div style='margin-top:1.8rem;'></div>", unsafe_allow_html=True)
-        _kc1, _kc2, _kc3, _kc4 = st.columns(4)
-
-        def _scad_kpi_html(label, value, color="#1e40af"):
-            return f"""<div style="
-                background: linear-gradient(135deg, rgba(248,249,250,0.95), rgba(233,236,239,0.95));
-                padding: 1.1rem 1rem;
-                border-radius: 12px;
-                border: 1px solid rgba(206,212,218,0.5);
-                box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.05);
-                text-align: center;
-                min-height: 100px;
-                display: flex; flex-direction: column;
-                justify-content: center; align-items: center;
-            ">
-                <div style="color:#2563eb; font-weight:600; font-size:0.82rem; margin-bottom:6px; line-height:1.3;">{label}</div>
-                <div style="color:{color}; font-size:1.6rem; font-weight:700;">{value}</div>
-            </div>"""
-
-        with _kc1:
-            st.markdown(_scad_kpi_html("📋 Totale periodo", f"€ {_tot_anno:,.0f}"), unsafe_allow_html=True)
-        with _kc2:
-            st.markdown(_scad_kpi_html("✅ Pagato", f"€ {_tot_pagato:,.0f}", color="#166534"), unsafe_allow_html=True)
-        with _kc3:
-            st.markdown(_scad_kpi_html("⏳ Residuo", f"€ {_tot_residuo:,.0f}", color="#b45309"), unsafe_allow_html=True)
-        with _kc4:
-            st.markdown(_scad_kpi_html("🔴 Scaduto", f"€ {_tot_scaduto:,.0f}", color="#dc2626"), unsafe_allow_html=True)
-
-        st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
-
-        # ── Report mensile ─────────────────────────────────────────────────
-        _det_col_h, _det_col_lbl, _det_col_f = st.columns([3, 0.7, 1.3])
-        with _det_col_h:
-            st.markdown("<h3 style='color:#1e40af; font-weight:700;'>📊 Dettaglio Mensile</h3>", unsafe_allow_html=True)
-        with _det_col_lbl:
-            st.markdown("<div style='text-align:right; padding-top:0.65rem; color:#374151; font-size:0.88rem; font-weight:600;'>Filtra per stato:</div>", unsafe_allow_html=True)
-        with _det_col_f:
-            _filtro_stato = st.selectbox(
-                "💳 Stato Fatture",
-                options=["⏳ Da pagare", "🔴 Scadute", "✅ Pagate", "📋 Tutte"],
-                index=0,
-                key="scad_filtro_stato",
-                label_visibility="collapsed",
-            )
-
-        if _filtro_stato == "⏳ Da pagare":
-            _df_report = _df_filtrato[~_df_filtrato["pagata"]]
-        elif _filtro_stato == "🔴 Scadute":
-            _df_report = _df_filtrato[
-                (~_df_filtrato["pagata"]) &
-                (_df_filtrato["scadenza_ts"].notna()) &
-                (_df_filtrato["scadenza_ts"] < pd.Timestamp(today))
-            ]
-        elif _filtro_stato == "✅ Pagate":
-            _df_report = _df_filtrato[_df_filtrato["pagata"]]
-        else:
-            _df_report = _df_filtrato
-        _df_report = _df_report[_df_report["scadenza_ts"].notna()].copy()
-        _df_report["_mese"] = _df_report["scadenza_ts"].dt.month
-
-        for _mese_num in range(1, 13):
-            _df_m = _df_report[_df_report["_mese"] == _mese_num]
-            if _df_m.empty:
-                continue
-            _mese_label = MESI_ITA.get(_mese_num, str(_mese_num))
-            _tot_m = _df_m["totale_documento"].sum()
-            _pag_m = _df_m[_df_m["pagata"]]["totale_documento"].sum()
-            _res_m = _df_m[~_df_m["pagata"]]["totale_documento"].sum()
-            _n_m = len(_df_m)
-
-            # Colore intestazione mese: rosso se scaduto, arancio se mese corrente, azzurro altrimenti
-            _mese_ts = pd.Timestamp(year=int(_anno_sel), month=_mese_num, day=1)
-            _fine_mese = (_mese_ts + pd.offsets.MonthEnd(0)).normalize()
-            if _fine_mese < today:
-                _hdr_color = "#fef2f2"; _border_color = "#fca5a5"; _txt_color = "#991b1b"
-            elif _mese_ts.month == today.month and _mese_ts.year == today.year:
-                _hdr_color = "#fefce8"; _border_color = "#fde047"; _txt_color = "#854d0e"
-            else:
-                _hdr_color = "#eff6ff"; _border_color = "#93c5fd"; _txt_color = "#1e3a8a"
-
-            with st.expander(
-                f"📅 **{_mese_label} {_anno_sel}** — 📋 {_n_m} fatture  |  "
-                f"⏳ Da pagare: **€ {_res_m:,.0f}**  |  ✅ Pagato: **€ {_pag_m:,.0f}**",
-                expanded=(today.month == _mese_num and today.year == int(_anno_sel)),
-            ):
-                # Tabella dettaglio fatture del mese
-                _cols_show = ["fornitore", "data_documento", "scadenza_effettiva", "totale_documento", "pagata", "numero_documento"]
-                _cols_avail = [c for c in _cols_show if c in _df_m.columns]
-                _df_det = _df_m[_cols_avail].copy()
-
-                _rename_map = {
-                    "fornitore": "Fornitore",
-                    "data_documento": "Data Fattura",
-                    "scadenza_effettiva": "Scadenza",
-                    "totale_documento": "Totale (€)",
-                    "pagata": "Pagata",
-                    "numero_documento": "N° Fattura",
-                }
-                _df_det = _df_det.rename(columns={k: v for k, v in _rename_map.items() if k in _df_det.columns})
-                _df_det = _df_det.sort_values("Scadenza", ascending=True, na_position="last")
-                if "Pagata" in _df_det.columns:
-                    _pagata_series = _df_m["pagata"].fillna(False).astype(bool)
-                    _icons = pd.Series("⚪", index=_df_m.index)
-                    _icons[_pagata_series] = "🟢"
-                    if "scadenza_ts" in _df_m.columns:
-                        _scadute_mask = (
-                            (~_pagata_series)
-                            & _df_m["scadenza_ts"].notna()
-                            & (_df_m["scadenza_ts"] < pd.Timestamp(today))
-                        )
-                        _icons[_scadute_mask] = "🔴"
-                    _df_det["Pagata"] = _icons.reindex(_df_det.index).fillna("⚪")
-                if "Totale (€)" in _df_det.columns:
-                    _df_det["Totale (€)"] = _df_det["Totale (€)"].apply(lambda x: f"€ {x:,.2f}")
-
-                st.dataframe(_df_det, use_container_width=True, hide_index=True)
-
-        # ── Senza scadenza ─────────────────────────────────────────────────
-        if _filtro_stato == "⏳ Da pagare":
-            _df_no_scad_report = _df_anno_no_scad[~_df_anno_no_scad["pagata"]]
-        elif _filtro_stato == "🔴 Scadute":
-            _df_no_scad_report = pd.DataFrame()  # senza scadenza non possono essere scadute
-        elif _filtro_stato == "✅ Pagate":
-            _df_no_scad_report = _df_anno_no_scad[_df_anno_no_scad["pagata"]]
-        else:
-            _df_no_scad_report = _df_anno_no_scad
-        if not _df_no_scad_report.empty:
-            _tot_no_scad = _df_no_scad_report["totale_documento"].sum()
-            with st.expander(
-                f"⚪ **Senza scadenza** — {len(_df_no_scad_report)} fatture | Totale: **€ {_tot_no_scad:,.0f}**",
-                expanded=False,
-            ):
-                _cols_ns = ["fornitore", "data_documento", "totale_documento", "pagata", "numero_documento"]
-                _cols_ns_avail = [c for c in _cols_ns if c in _df_no_scad_report.columns]
-                _df_ns = _df_no_scad_report[_cols_ns_avail].rename(columns={
-                    "fornitore": "Fornitore",
-                    "data_documento": "Data Documento",
-                    "totale_documento": "Totale (€)",
-                    "pagata": "Pagata",
-                    "numero_documento": "N° Fattura",
-                }).copy()
-                if "Pagata" in _df_ns.columns:
-                    _df_ns["Pagata"] = _df_ns["Pagata"].apply(lambda x: "🟢" if x else "⚪")
-                if "Totale (€)" in _df_ns.columns:
-                    _df_ns["Totale (€)"] = _df_ns["Totale (€)"].apply(lambda x: f"€ {x:,.2f}")
-                st.dataframe(_df_ns, use_container_width=True, hide_index=True)
-                st.caption("💡 Queste fatture non hanno una scadenza assegnata. Configurala dal tab Avvisi → Regole Pagamento oppure modifica la singola fattura.")
-
-        # ── Scadenze imminenti (prossimi 30 giorni) ────────────────────────
-        st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
-        st.markdown("<h3 style='color:#1e40af; font-weight:700;'>⏰ Documenti in Scadenza (Prossimi 30 giorni)</h3>", unsafe_allow_html=True)
-
-        _scad_imminenti = get_documenti_list(
-            user_id=user_id,
-            ristorante_id=current_ristorante,
-            filtro="imminenti",
-            giorni_imminenti=30,
+@st.fragment
+def _render_scadenziario_tab(user_id, current_ristorante):
+        # Carica TUTTI i documenti (nessun filtro stato) per il report mensile completo
+        with st.spinner("⏳ Caricamento scadenziario..."):
+            tutti_documenti = get_documenti_list(
+                user_id=user_id,
+                ristorante_id=current_ristorante,
+                filtro="tutte",
+                giorni_imminenti=365,
         )
-        _scad_non_pagate = [d for d in _scad_imminenti if not d.get("pagata")]
-        if _filtro_fornitore != "🏢 Tutti i fornitori":
-            _scad_non_pagate = [d for d in _scad_non_pagate if d.get("fornitore") == _filtro_fornitore]
 
-        if not _scad_non_pagate:
-            st.info("✅ Nessun documento in scadenza nei prossimi 30 giorni.")
+        if not tutti_documenti:
+            st.info("Nessun documento disponibile.")
         else:
-            _cards_html = ""
-            for _doc in sorted(_scad_non_pagate, key=lambda x: x.get("scadenza_effettiva") or ""):
-                # XSS-safe: escape valori derivati dai dati fattura prima di interpolarli nell'HTML
-                _scad_str = html.escape(str(_doc.get("scadenza_effettiva") or "N/A"))
-                _forn = html.escape(str(_doc.get("fornitore") or "Sconosciuto"))
-                _tot = _doc.get("totale_documento") or 0
-                _src = html.escape(str(_doc.get("scadenza_source") or "none"))
-                try:
-                    _scad_dt = pd.to_datetime(_scad_str, errors="coerce")
-                    if pd.notna(_scad_dt):
-                        _gg_rim = (_scad_dt.date() - today.date()).days
-                        if _gg_rim <= 0:
-                            _badge_bg = "#fee2e2"; _badge_color = "#991b1b"; _border = "#fca5a5"; _urgenza = "🔴 Scaduto"
-                        elif _gg_rim <= 7:
-                            _badge_bg = "#fef3c7"; _badge_color = "#92400e"; _border = "#fcd34d"; _urgenza = f"🔴 {_gg_rim}gg"
-                        else:
-                            _badge_bg = "#fefce8"; _badge_color = "#854d0e"; _border = "#fde047"; _urgenza = f"🟡 {_gg_rim}gg"
-                    else:
-                        _badge_bg = "#f3f4f6"; _badge_color = "#6b7280"; _border = "#d1d5db"; _urgenza = "⚪ N/D"
-                except Exception:
-                    _badge_bg = "#f3f4f6"; _badge_color = "#6b7280"; _border = "#d1d5db"; _urgenza = "⚪"
-                _cards_html += f"""
-                <div style="display:flex; align-items:center; gap:1rem;
-                    background:white; border:1px solid {_border};
-                    border-left:4px solid {_badge_color};
-                    border-radius:10px; padding:0.75rem 1.1rem;
-                    margin-bottom:0.55rem;
-                    box-shadow:0 1px 4px rgba(0,0,0,0.06);">
-                    <div style="background:{_badge_bg}; color:{_badge_color}; font-weight:700;
-                        font-size:0.82rem; border-radius:6px; padding:0.25rem 0.6rem; white-space:nowrap;">{_urgenza}</div>
-                    <div style="flex:1; font-weight:600; color:#111827; font-size:0.95rem;">{_forn}</div>
-                    <div style="font-size:1rem; font-weight:700; color:#1e40af; white-space:nowrap;">€ {_tot:,.2f}</div>
-                    <div style="color:#6b7280; font-size:0.82rem; white-space:nowrap;">📅 {_scad_str} <span style='color:#9ca3af;'>({_src})</span></div>
+            df_all = pd.DataFrame(tutti_documenti)
+            df_all["scadenza_ts"] = pd.to_datetime(df_all["scadenza_effettiva"], errors="coerce")
+            df_all["totale_documento"] = pd.to_numeric(df_all["totale_documento"], errors="coerce").fillna(0.0)
+            df_all["pagata"] = df_all["pagata"].fillna(False).astype(bool)
+            today = pd.Timestamp(date.today())
+
+            # ── Filtro periodo ─────────────────────────────────────────────────
+            from utils.period_helper import get_mesi_disponibili_fatture as _get_mesi_scad
+            from services import get_supabase_client as _get_sb_scad
+            _sb_scad = _get_sb_scad()
+            _mesi_scad = _get_mesi_scad(user_id, current_ristorante, _sb_scad)
+            _anni_scad = sorted(list({a for a, _, _ in _mesi_scad}), reverse=True) or [today.year]
+            _opzioni_tutto_anno = [f"🗓️ Tutto il {a}" for a in _anni_scad]
+            _opzioni_mesi_scad = [lbl for _, _, lbl in reversed(_mesi_scad)]
+            _opzioni_periodo_scad = _opzioni_tutto_anno + _opzioni_mesi_scad
+            if not _opzioni_periodo_scad:
+                _opzioni_periodo_scad = [f"🗓️ Tutto il {today.year}"]
+            _default_scad_key = f"🗓️ Tutto il {today.year}"
+            _default_scad_idx = _opzioni_periodo_scad.index(_default_scad_key) if _default_scad_key in _opzioni_periodo_scad else 0
+
+            _sc_col1, _sc_col2 = st.columns([1.5, 1.5])
+            with _sc_col1:
+                _periodo_scad = st.selectbox(
+                    "📅 Periodo Scadenziario",
+                    options=_opzioni_periodo_scad,
+                    index=_default_scad_idx,
+                    key="scad_periodo_sel",
+                )
+            with _sc_col2:
+                _fornitori_opzioni = ["🏢 Tutti i fornitori"] + sorted(
+                    df_all["fornitore"].dropna().astype(str).unique().tolist()
+                )
+                _filtro_fornitore = st.selectbox(
+                    "🏢 Fornitore",
+                    options=_fornitori_opzioni,
+                    key="scad_filtro_fornitore",
+                )
+
+            # Risolvi periodo selezionato
+            if _periodo_scad.startswith("🗓️ Tutto il "):
+                _anno_sel = int(_periodo_scad.replace("🗓️ Tutto il ", ""))
+                _df_filtrato = df_all[df_all["scadenza_ts"].dt.year == _anno_sel].copy()
+            else:
+                _match_mese_scad = next(((a, m) for a, m, lbl in _mesi_scad if lbl == _periodo_scad), None)
+                if _match_mese_scad:
+                    _anno_sel, _mese_num_sel = _match_mese_scad
+                    _df_filtrato = df_all[
+                        (df_all["scadenza_ts"].dt.year == _anno_sel) &
+                        (df_all["scadenza_ts"].dt.month == _mese_num_sel)
+                    ].copy()
+                else:
+                    _anno_sel = today.year
+                    _df_filtrato = df_all[df_all["scadenza_ts"].dt.year == _anno_sel].copy()
+
+            # ── KPI globali ────────────────────────────────────────────────────
+            _df_anno_no_scad = df_all[df_all["scadenza_ts"].isna()].copy()
+
+            # Applica filtro fornitore
+            if _filtro_fornitore != "🏢 Tutti i fornitori":
+                _df_filtrato = _df_filtrato[_df_filtrato["fornitore"] == _filtro_fornitore]
+                _df_anno_no_scad = _df_anno_no_scad[_df_anno_no_scad["fornitore"] == _filtro_fornitore]
+
+            _tot_anno = _df_filtrato["totale_documento"].sum()
+            _tot_pagato = _df_filtrato[_df_filtrato["pagata"]]["totale_documento"].sum()
+            _tot_residuo = _df_filtrato[~_df_filtrato["pagata"]]["totale_documento"].sum()
+            _tot_scaduto = _df_filtrato[
+                (~_df_filtrato["pagata"]) & (_df_filtrato["scadenza_ts"].dt.normalize() < today)
+            ]["totale_documento"].sum()
+
+            st.markdown("<div style='margin-top:1.8rem;'></div>", unsafe_allow_html=True)
+            _kc1, _kc2, _kc3, _kc4 = st.columns(4)
+
+            def _scad_kpi_html(label, value, color="#1e40af"):
+                return f"""<div style="
+                    background: linear-gradient(135deg, rgba(248,249,250,0.95), rgba(233,236,239,0.95));
+                    padding: 1.1rem 1rem;
+                    border-radius: 12px;
+                    border: 1px solid rgba(206,212,218,0.5);
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.05);
+                    text-align: center;
+                    min-height: 100px;
+                    display: flex; flex-direction: column;
+                    justify-content: center; align-items: center;
+                ">
+                    <div style="color:#2563eb; font-weight:600; font-size:0.82rem; margin-bottom:6px; line-height:1.3;">{label}</div>
+                    <div style="color:{color}; font-size:1.6rem; font-weight:700;">{value}</div>
                 </div>"""
+
+            with _kc1:
+                st.markdown(_scad_kpi_html("📋 Totale periodo", f"€ {_tot_anno:,.0f}"), unsafe_allow_html=True)
+            with _kc2:
+                st.markdown(_scad_kpi_html("✅ Pagato", f"€ {_tot_pagato:,.0f}", color="#166534"), unsafe_allow_html=True)
+            with _kc3:
+                st.markdown(_scad_kpi_html("⏳ Residuo", f"€ {_tot_residuo:,.0f}", color="#b45309"), unsafe_allow_html=True)
+            with _kc4:
+                st.markdown(_scad_kpi_html("🔴 Scaduto", f"€ {_tot_scaduto:,.0f}", color="#dc2626"), unsafe_allow_html=True)
+
+            st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
+
+            # ── Report mensile ─────────────────────────────────────────────────
+            _det_col_h, _det_col_lbl, _det_col_f = st.columns([3, 0.7, 1.3])
+            with _det_col_h:
+                st.markdown("<h3 style='color:#1e40af; font-weight:700;'>📊 Dettaglio Mensile</h3>", unsafe_allow_html=True)
+            with _det_col_lbl:
+                st.markdown("<div style='text-align:right; padding-top:0.65rem; color:#374151; font-size:0.88rem; font-weight:600;'>Filtra per stato:</div>", unsafe_allow_html=True)
+            with _det_col_f:
+                _filtro_stato = st.selectbox(
+                    "💳 Stato Fatture",
+                    options=["⏳ Da pagare", "🔴 Scadute", "✅ Pagate", "📋 Tutte"],
+                    index=0,
+                    key="scad_filtro_stato",
+                    label_visibility="collapsed",
+                )
+
+            if _filtro_stato == "⏳ Da pagare":
+                _df_report = _df_filtrato[~_df_filtrato["pagata"]]
+            elif _filtro_stato == "🔴 Scadute":
+                _df_report = _df_filtrato[
+                    (~_df_filtrato["pagata"]) &
+                    (_df_filtrato["scadenza_ts"].notna()) &
+                    (_df_filtrato["scadenza_ts"] < pd.Timestamp(today))
+                ]
+            elif _filtro_stato == "✅ Pagate":
+                _df_report = _df_filtrato[_df_filtrato["pagata"]]
+            else:
+                _df_report = _df_filtrato
+            _df_report = _df_report[_df_report["scadenza_ts"].notna()].copy()
+            _df_report["_mese"] = _df_report["scadenza_ts"].dt.month
+
+            for _mese_num in range(1, 13):
+                _df_m = _df_report[_df_report["_mese"] == _mese_num]
+                if _df_m.empty:
+                    continue
+                _mese_label = MESI_ITA.get(_mese_num, str(_mese_num))
+                _tot_m = _df_m["totale_documento"].sum()
+                _pag_m = _df_m[_df_m["pagata"]]["totale_documento"].sum()
+                _res_m = _df_m[~_df_m["pagata"]]["totale_documento"].sum()
+                _n_m = len(_df_m)
+
+                # Colore intestazione mese: rosso se scaduto, arancio se mese corrente, azzurro altrimenti
+                _mese_ts = pd.Timestamp(year=int(_anno_sel), month=_mese_num, day=1)
+                _fine_mese = (_mese_ts + pd.offsets.MonthEnd(0)).normalize()
+                if _fine_mese < today:
+                    _hdr_color = "#fef2f2"; _border_color = "#fca5a5"; _txt_color = "#991b1b"
+                elif _mese_ts.month == today.month and _mese_ts.year == today.year:
+                    _hdr_color = "#fefce8"; _border_color = "#fde047"; _txt_color = "#854d0e"
+                else:
+                    _hdr_color = "#eff6ff"; _border_color = "#93c5fd"; _txt_color = "#1e3a8a"
+
+                with st.expander(
+                    f"📅 **{_mese_label} {_anno_sel}** — 📋 {_n_m} fatture  |  "
+                    f"⏳ Da pagare: **€ {_res_m:,.0f}**  |  ✅ Pagato: **€ {_pag_m:,.0f}**",
+                    expanded=(today.month == _mese_num and today.year == int(_anno_sel)),
+                ):
+                    # Tabella dettaglio fatture del mese
+                    _cols_show = ["fornitore", "data_documento", "scadenza_effettiva", "totale_documento", "pagata", "numero_documento"]
+                    _cols_avail = [c for c in _cols_show if c in _df_m.columns]
+                    _df_det = _df_m[_cols_avail].copy()
+
+                    _rename_map = {
+                        "fornitore": "Fornitore",
+                        "data_documento": "Data Fattura",
+                        "scadenza_effettiva": "Scadenza",
+                        "totale_documento": "Totale (€)",
+                        "pagata": "Pagata",
+                        "numero_documento": "N° Fattura",
+                    }
+                    _df_det = _df_det.rename(columns={k: v for k, v in _rename_map.items() if k in _df_det.columns})
+                    _df_det = _df_det.sort_values("Scadenza", ascending=True, na_position="last")
+                    if "Pagata" in _df_det.columns:
+                        _pagata_series = _df_m["pagata"].fillna(False).astype(bool)
+                        _icons = pd.Series("⚪", index=_df_m.index)
+                        _icons[_pagata_series] = "🟢"
+                        if "scadenza_ts" in _df_m.columns:
+                            _scadute_mask = (
+                                (~_pagata_series)
+                                & _df_m["scadenza_ts"].notna()
+                                & (_df_m["scadenza_ts"] < pd.Timestamp(today))
+                            )
+                            _icons[_scadute_mask] = "🔴"
+                        _df_det["Pagata"] = _icons.reindex(_df_det.index).fillna("⚪")
+                    if "Totale (€)" in _df_det.columns:
+                        _df_det["Totale (€)"] = _df_det["Totale (€)"].apply(lambda x: f"€ {x:,.2f}")
+
+                    st.dataframe(_df_det, use_container_width=True, hide_index=True)
+
+            # ── Senza scadenza ─────────────────────────────────────────────────
+            if _filtro_stato == "⏳ Da pagare":
+                _df_no_scad_report = _df_anno_no_scad[~_df_anno_no_scad["pagata"]]
+            elif _filtro_stato == "🔴 Scadute":
+                _df_no_scad_report = pd.DataFrame()  # senza scadenza non possono essere scadute
+            elif _filtro_stato == "✅ Pagate":
+                _df_no_scad_report = _df_anno_no_scad[_df_anno_no_scad["pagata"]]
+            else:
+                _df_no_scad_report = _df_anno_no_scad
+            if not _df_no_scad_report.empty:
+                _tot_no_scad = _df_no_scad_report["totale_documento"].sum()
+                with st.expander(
+                    f"⚪ **Senza scadenza** — {len(_df_no_scad_report)} fatture | Totale: **€ {_tot_no_scad:,.0f}**",
+                    expanded=False,
+                ):
+                    _cols_ns = ["fornitore", "data_documento", "totale_documento", "pagata", "numero_documento"]
+                    _cols_ns_avail = [c for c in _cols_ns if c in _df_no_scad_report.columns]
+                    _df_ns = _df_no_scad_report[_cols_ns_avail].rename(columns={
+                        "fornitore": "Fornitore",
+                        "data_documento": "Data Documento",
+                        "totale_documento": "Totale (€)",
+                        "pagata": "Pagata",
+                        "numero_documento": "N° Fattura",
+                    }).copy()
+                    if "Pagata" in _df_ns.columns:
+                        _df_ns["Pagata"] = _df_ns["Pagata"].apply(lambda x: "🟢" if x else "⚪")
+                    if "Totale (€)" in _df_ns.columns:
+                        _df_ns["Totale (€)"] = _df_ns["Totale (€)"].apply(lambda x: f"€ {x:,.2f}")
+                    st.dataframe(_df_ns, use_container_width=True, hide_index=True)
+                    st.caption("💡 Queste fatture non hanno una scadenza assegnata. Configurala dal tab Avvisi → Regole Pagamento oppure modifica la singola fattura.")
+
+            # ── Scadenze imminenti (prossimi 30 giorni) ────────────────────────
+            st.markdown("<div style='margin-top:2rem;'></div>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#1e40af; font-weight:700;'>⏰ Documenti in Scadenza (Prossimi 30 giorni)</h3>", unsafe_allow_html=True)
+
+            _scad_imminenti = get_documenti_list(
+                user_id=user_id,
+                ristorante_id=current_ristorante,
+                filtro="imminenti",
+                giorni_imminenti=30,
+            )
+            _scad_non_pagate = [d for d in _scad_imminenti if not d.get("pagata")]
+            if _filtro_fornitore != "🏢 Tutti i fornitori":
+                _scad_non_pagate = [d for d in _scad_non_pagate if d.get("fornitore") == _filtro_fornitore]
+
+            if not _scad_non_pagate:
+                st.info("✅ Nessun documento in scadenza nei prossimi 30 giorni.")
+            else:
+                _cards_html = ""
+                for _doc in sorted(_scad_non_pagate, key=lambda x: x.get("scadenza_effettiva") or ""):
+                    # XSS-safe: escape valori derivati dai dati fattura prima di interpolarli nell'HTML
+                    _scad_str = html.escape(str(_doc.get("scadenza_effettiva") or "N/A"))
+                    _forn = html.escape(str(_doc.get("fornitore") or "Sconosciuto"))
+                    _tot = _doc.get("totale_documento") or 0
+                    _src = html.escape(str(_doc.get("scadenza_source") or "none"))
+                    try:
+                        _scad_dt = pd.to_datetime(_scad_str, errors="coerce")
+                        if pd.notna(_scad_dt):
+                            _gg_rim = (_scad_dt.date() - today.date()).days
+                            if _gg_rim <= 0:
+                                _badge_bg = "#fee2e2"; _badge_color = "#991b1b"; _border = "#fca5a5"; _urgenza = "🔴 Scaduto"
+                            elif _gg_rim <= 7:
+                                _badge_bg = "#fef3c7"; _badge_color = "#92400e"; _border = "#fcd34d"; _urgenza = f"🔴 {_gg_rim}gg"
+                            else:
+                                _badge_bg = "#fefce8"; _badge_color = "#854d0e"; _border = "#fde047"; _urgenza = f"🟡 {_gg_rim}gg"
+                        else:
+                            _badge_bg = "#f3f4f6"; _badge_color = "#6b7280"; _border = "#d1d5db"; _urgenza = "⚪ N/D"
+                    except Exception:
+                        _badge_bg = "#f3f4f6"; _badge_color = "#6b7280"; _border = "#d1d5db"; _urgenza = "⚪"
+                    _cards_html += f"""
+                    <div style="display:flex; align-items:center; gap:1rem;
+                        background:white; border:1px solid {_border};
+                        border-left:4px solid {_badge_color};
+                        border-radius:10px; padding:0.75rem 1.1rem;
+                        margin-bottom:0.55rem;
+                        box-shadow:0 1px 4px rgba(0,0,0,0.06);">
+                        <div style="background:{_badge_bg}; color:{_badge_color}; font-weight:700;
+                            font-size:0.82rem; border-radius:6px; padding:0.25rem 0.6rem; white-space:nowrap;">{_urgenza}</div>
+                        <div style="flex:1; font-weight:600; color:#111827; font-size:0.95rem;">{_forn}</div>
+                        <div style="font-size:1rem; font-weight:700; color:#1e40af; white-space:nowrap;">€ {_tot:,.2f}</div>
+                        <div style="color:#6b7280; font-size:0.82rem; white-space:nowrap;">📅 {_scad_str} <span style='color:#9ca3af;'>({_src})</span></div>
+                    </div>"""
+                st.markdown(
+                    f'<div style="max-height:400px; overflow-y:auto; padding-right:6px;">{_cards_html}</div>',
+                    unsafe_allow_html=True,
+                )
+
+            # ── Regole scadenza fornitori ───────────────────────────────────────────
+            from services.documenti_service import (
+                get_fornitori_pagamenti_config,
+                upsert_fornitori_pagamenti_config,
+                delete_fornitori_pagamenti_config,
+                clear_fornitori_cache,
+            )
+            import time
+
+            # Opzioni modalità pagamento
+            _OPZIONI_SCADENZA_LABELS = [
+                "⚡ Automatico/RID — già pagato",
+                "30 giorni dalla data fattura",
+                "60 giorni dalla data fattura",
+                "90 giorni dalla data fattura",
+                "Fine mese successivo",
+                "Fine del 2° mese successivo",
+                "Fine del 3° mese successivo",
+            ]
+            _OPZIONI_SCADENZA_VALORI = ["rid", "30gg", "60gg", "90gg", "30gg_fm", "60gg_fm", "90gg_fm"]
+            _LABEL_DA_MODALITA = dict(zip(_OPZIONI_SCADENZA_VALORI, _OPZIONI_SCADENZA_LABELS))
+
+            st.markdown("<div style='margin-top:2.5rem;'></div>", unsafe_allow_html=True)
+            st.markdown("<h3 style='color:#1e40af; font-weight:700;'>⚙️ Regole Scadenza Fornitori</h3>", unsafe_allow_html=True)
             st.markdown(
-                f'<div style="max-height:400px; overflow-y:auto; padding-right:6px;">{_cards_html}</div>',
+                "<div style='background:#fefce8; border:1px solid #fde047; border-radius:8px; "
+                "padding:0.55rem 0.9rem; font-size:0.87rem; color:#78350f; margin-bottom:1rem;'>"
+                "💡 Seleziona un fornitore e scegli la modalità di pagamento. "
+                "La scadenza verrà calcolata automaticamente in base alla regola impostata.</div>",
                 unsafe_allow_html=True,
             )
 
-        # ── Regole scadenza fornitori ───────────────────────────────────────────
-        from services.documenti_service import (
-            get_fornitori_pagamenti_config,
-            upsert_fornitori_pagamenti_config,
-            delete_fornitori_pagamenti_config,
-            clear_fornitori_cache,
-        )
-        import time
+            _regole = get_fornitori_pagamenti_config(user_id, current_ristorante)
 
-        st.markdown("<div style='margin-top:2.5rem;'></div>", unsafe_allow_html=True)
-        st.markdown("<h3 style='color:#1e40af; font-weight:700;'>⚙️ Regole Scadenza Fornitori</h3>", unsafe_allow_html=True)
-        st.markdown(
-            "<div style='background:#fefce8; border:1px solid #fde047; border-radius:8px; "
-            "padding:0.55rem 0.9rem; font-size:0.87rem; color:#78350f; margin-bottom:1rem;'>"
-            "💡 Seleziona un fornitore e imposta i giorni di pagamento dalla data fattura. "
-            "La scadenza verrà calcolata automaticamente.</div>",
-            unsafe_allow_html=True,
-        )
+            # Carica fornitori distinti dal DB
+            @st.cache_data(ttl=120, show_spinner=False)
+            def _get_fornitori_distinti(uid, rid):
+                try:
+                    _sb = get_supabase_client()
+                    _res = (
+                        _sb.table("fatture_documenti")
+                        .select("fornitore,piva_fornitore")
+                        .eq("user_id", uid)
+                        .eq("ristorante_id", rid)
+                        .is_("deleted_at", "null")
+                        .execute()
+                    )
+                    _seen = {}
+                    for _r in (_res.data or []):
+                        _piva = (_r.get("piva_fornitore") or "").strip()
+                        _nome = (_r.get("fornitore") or "").strip()
+                        if _piva and _piva not in _seen:
+                            _seen[_piva] = _nome or _piva
+                    return sorted(_seen.items(), key=lambda x: x[1])
+                except Exception:
+                    return []
 
-        _regole = get_fornitori_pagamenti_config(user_id, current_ristorante)
+            _fornitori_lista = _get_fornitori_distinti(user_id, current_ristorante)
+            # Rimuovi fornitori già con regola
+            _pive_con_regola = {_rg.get("piva_fornitore", "") for _rg in _regole}
 
-        # Carica fornitori distinti dal DB
-        @st.cache_data(ttl=120, show_spinner=False)
-        def _get_fornitori_distinti(uid, rid):
-            try:
-                _sb = get_supabase_client()
-                _res = (
-                    _sb.table("fatture_documenti")
-                    .select("fornitore,piva_fornitore")
-                    .eq("user_id", uid)
-                    .eq("ristorante_id", rid)
-                    .is_("deleted_at", "null")
-                    .execute()
-                )
-                _seen = {}
-                for _r in (_res.data or []):
-                    _piva = (_r.get("piva_fornitore") or "").strip()
-                    _nome = (_r.get("fornitore") or "").strip()
-                    if _piva and _piva not in _seen:
-                        _seen[_piva] = _nome or _piva
-                return sorted(_seen.items(), key=lambda x: x[1])
-            except Exception:
-                return []
+            # Tabella regole esistenti
+            if _regole:
+                _rh1, _rh2, _rh3, _rh4 = st.columns([4, 1.5, 0.6, 0.6])
+                _rh1.markdown("**Fornitore**")
+                _rh2.markdown("**Modalità pagamento**")
+                _rh3.markdown("")
+                _rh4.markdown("")
+                for _rg in _regole:
+                    _rg_id = _rg.get("id")
+                    _edit_key = f"scad_editing_{_rg_id}"
+                    _rc1, _rc2, _rc3, _rc4 = st.columns([4, 1.5, 0.6, 0.6])
+                    _piva_rg = _rg.get("piva_fornitore") or "?"
+                    _nome_rg = next((n for p, n in _fornitori_lista if p == _piva_rg), _piva_rg)
+                    if _nome_rg != _piva_rg:
+                        _rc1.markdown(f"**{_nome_rg}**<br><span style='color:#9ca3af;font-size:0.78rem;'>{_piva_rg}</span>", unsafe_allow_html=True)
+                    else:
+                        _rc1.markdown(_piva_rg)
 
-        _fornitori_lista = _get_fornitori_distinti(user_id, current_ristorante)
-        # Rimuovi fornitori già con regola
-        _pive_con_regola = {_rg.get("piva_fornitore", "") for _rg in _regole}
-
-        # Tabella regole esistenti
-        if _regole:
-            _rh1, _rh2, _rh3, _rh4 = st.columns([4, 1.5, 0.6, 0.6])
-            _rh1.markdown("**Fornitore**")
-            _rh2.markdown("**Giorni dalla data fattura**")
-            _rh3.markdown("")
-            _rh4.markdown("")
-            for _rg in _regole:
-                _rg_id = _rg.get("id")
-                _edit_key = f"scad_editing_{_rg_id}"
-                _rc1, _rc2, _rc3, _rc4 = st.columns([4, 1.5, 0.6, 0.6])
-                _piva_rg = _rg.get("piva_fornitore") or "?"
-                _nome_rg = next((n for p, n in _fornitori_lista if p == _piva_rg), _piva_rg)
-                if _nome_rg != _piva_rg:
-                    _rc1.markdown(f"**{_nome_rg}**<br><span style='color:#9ca3af;font-size:0.78rem;'>{_piva_rg}</span>", unsafe_allow_html=True)
-                else:
-                    _rc1.markdown(_piva_rg)
-
-                if st.session_state.get(_edit_key):
-                    # Modalità modifica
-                    with _rc2:
-                        _giorni_edit = st.number_input(
-                            "gg",
-                            min_value=1, max_value=365,
-                            value=int(_rg.get("giorni_pagamento", 30)),
-                            key=f"scad_giorni_edit_{_rg_id}",
-                            label_visibility="collapsed",
-                        )
-                    with _rc3:
-                        if st.button("✅", key=f"scad_save_edit_{_rg_id}", use_container_width=True, help="Salva"):
-                            try:
-                                upsert_fornitori_pagamenti_config(
-                                    user_id=user_id,
-                                    ristorante_id=current_ristorante,
-                                    piva_fornitore=_piva_rg,
-                                    giorni_pagamento=int(_giorni_edit),
-                                    data_riferimento="data_documento",
-                                    attiva=True,
-                                )
-                                clear_fornitori_cache()
-                                clear_documenti_cache()
+                    if st.session_state.get(_edit_key):
+                        # Modalità modifica
+                        with _rc2:
+                            _modalita_corrente = str(_rg.get("modalita") or "30gg").strip().lower()
+                            _idx_default = _OPZIONI_SCADENZA_VALORI.index(_modalita_corrente) if _modalita_corrente in _OPZIONI_SCADENZA_VALORI else 1
+                            _sel_edit = st.selectbox(
+                                "Modalità",
+                                options=_OPZIONI_SCADENZA_VALORI,
+                                format_func=lambda v: _LABEL_DA_MODALITA.get(v, v),
+                                index=_idx_default,
+                                key=f"scad_modalita_edit_{_rg_id}",
+                                label_visibility="collapsed",
+                            )
+                        with _rc3:
+                            if st.button("✅", key=f"scad_save_edit_{_rg_id}", use_container_width=True, help="Salva"):
+                                try:
+                                    upsert_fornitori_pagamenti_config(
+                                        user_id=user_id,
+                                        ristorante_id=current_ristorante,
+                                        piva_fornitore=_piva_rg,
+                                        modalita=_sel_edit,
+                                        attiva=True,
+                                    )
+                                    clear_fornitori_cache()
+                                    clear_documenti_cache()
+                                    st.session_state.pop(_edit_key, None)
+                                    st.rerun()
+                                except Exception as _e:
+                                    st.error(str(_e))
+                        with _rc4:
+                            if st.button("❌", key=f"scad_cancel_edit_{_rg_id}", use_container_width=True, help="Annulla"):
                                 st.session_state.pop(_edit_key, None)
                                 st.rerun()
-                            except Exception as _e:
-                                st.error(str(_e))
-                    with _rc4:
-                        if st.button("❌", key=f"scad_cancel_edit_{_rg_id}", use_container_width=True, help="Annulla"):
-                            st.session_state.pop(_edit_key, None)
-                            st.rerun()
-                else:
-                    # Visualizzazione normale
-                    _rc2.write(f"{_rg.get('giorni_pagamento', '?')} gg")
-                    with _rc3:
-                        if st.button("✏️", key=f"scad_edit_reg_{_rg_id}", use_container_width=True, help="Modifica"):
-                            st.session_state[_edit_key] = True
-                            st.rerun()
-                    with _rc4:
-                        if st.button("🗑️", key=f"scad_del_reg_{_rg_id}", use_container_width=True, help="Elimina"):
-                            try:
-                                delete_fornitori_pagamenti_config(user_id, current_ristorante, _rg_id)
-                                clear_fornitori_cache()
-                                clear_documenti_cache()
+                    else:
+                        # Visualizzazione normale
+                        _modalita_disp = str(_rg.get("modalita") or "").strip().lower()
+                        _rc2.write(_LABEL_DA_MODALITA.get(_modalita_disp, f"{_rg.get('giorni_pagamento', '?')} gg"))
+                        with _rc3:
+                            if st.button("✏️", key=f"scad_edit_reg_{_rg_id}", use_container_width=True, help="Modifica"):
+                                st.session_state[_edit_key] = True
                                 st.rerun()
-                            except Exception as _e:
-                                st.error(str(_e))
-        else:
-            st.info("Nessuna regola configurata.")
-
-        # Form aggiunta
-        _fornitori_disponibili = [(p, n) for p, n in _fornitori_lista if p not in _pive_con_regola]
-        st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
-        with st.expander("➕ Aggiungi regola", expanded=False):
-            if not _fornitori_disponibili:
-                st.info("Tutti i fornitori presenti hanno già una regola configurata.")
+                        with _rc4:
+                            if st.button("🗑️", key=f"scad_del_reg_{_rg_id}", use_container_width=True, help="Elimina"):
+                                try:
+                                    delete_fornitori_pagamenti_config(user_id, current_ristorante, _rg_id)
+                                    clear_fornitori_cache()
+                                    clear_documenti_cache()
+                                    st.rerun()
+                                except Exception as _e:
+                                    st.error(str(_e))
             else:
-                _fa, _fb, _fc = st.columns([3, 1.5, 1.2])
-                with _fa:
-                    _fornitore_sel = st.selectbox(
-                        "Fornitore",
-                        options=[p for p, n in _fornitori_disponibili],
-                        format_func=lambda p: next((f"{n} ({p})" for pp, n in _fornitori_disponibili if pp == p), p),
-                        key="scad_reg_fornitore",
-                    )
-                with _fb:
-                    _new_giorni = st.number_input("Giorni dalla data fattura", min_value=1, max_value=365, value=30, key="scad_reg_giorni")
-                with _fc:
-                    st.markdown("<div style='margin-top:1.6rem;'></div>", unsafe_allow_html=True)
-                    if st.button("✅ Salva", type="primary", use_container_width=True, key="scad_reg_save"):
-                        try:
-                            _result = upsert_fornitori_pagamenti_config(
-                                user_id=user_id,
-                                ristorante_id=current_ristorante,
-                                piva_fornitore=_fornitore_sel,
-                                giorni_pagamento=int(_new_giorni),
-                                data_riferimento="data_documento",
-                                attiva=True,
-                            )
-                            if _result.get("ok"):
-                                clear_fornitori_cache()
-                                clear_documenti_cache()
-                                st.success("✅ Regola salvata")
-                                time.sleep(0.3)
-                                st.rerun()
-                            else:
-                                st.error(f"❌ Errore salvataggio: {_result.get('error', 'errore sconosciuto')}")
-                        except Exception as _e:
-                            st.error(str(_e))
+                st.info("Nessuna regola configurata.")
+
+            # Form aggiunta
+            _fornitori_disponibili = [(p, n) for p, n in _fornitori_lista if p not in _pive_con_regola]
+            st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
+            with st.expander("➕ Aggiungi regola", expanded=False):
+                if not _fornitori_disponibili:
+                    st.info("Tutti i fornitori presenti hanno già una regola configurata.")
+                else:
+                    _fa, _fb, _fc = st.columns([3, 1.5, 1.2])
+                    with _fa:
+                        _fornitore_sel = st.selectbox(
+                            "Fornitore",
+                            options=[p for p, n in _fornitori_disponibili],
+                            format_func=lambda p: next((f"{n} ({p})" for pp, n in _fornitori_disponibili if pp == p), p),
+                            key="scad_reg_fornitore",
+                        )
+                    with _fb:
+                        _new_modalita = st.selectbox(
+                            "Modalità pagamento",
+                            options=_OPZIONI_SCADENZA_VALORI,
+                            format_func=lambda v: _LABEL_DA_MODALITA.get(v, v),
+                            index=1,
+                            key="scad_reg_modalita",
+                        )
+                    with _fc:
+                        st.markdown("<div style='margin-top:1.6rem;'></div>", unsafe_allow_html=True)
+                        if st.button("✅ Salva", type="primary", use_container_width=True, key="scad_reg_save"):
+                            try:
+                                _result = upsert_fornitori_pagamenti_config(
+                                    user_id=user_id,
+                                    ristorante_id=current_ristorante,
+                                    piva_fornitore=_fornitore_sel,
+                                    modalita=_new_modalita,
+                                    attiva=True,
+                                )
+                                if _result.get("ok"):
+                                    clear_fornitori_cache()
+                                    clear_documenti_cache()
+                                    st.success("✅ Regola salvata")
+                                    time.sleep(0.3)
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Errore salvataggio: {_result.get('error', 'errore sconosciuto')}")
+                            except Exception as _e:
+                                st.error(str(_e))
+
+
+
+if st.session_state.gfn_tab_attivo == "scadenziario":
+    _render_scadenziario_tab(user_id, current_ristorante)
 
 elif st.session_state.gfn_tab_attivo == "gestione":
     # ============================================================
@@ -1317,110 +1344,111 @@ elif st.session_state.gfn_tab_attivo == "gestione":
             # ========== GESTIONE SINGOLA FATTURA ==========
 
             if len(fatture_summary) > 0:
-                # 🔍 FILTRI — Fornitore + Mese su due colonne affiancate
-                col_filtro_fornitore, col_filtro_mese = st.columns([1.2, 1.2])
+                # ⚡ PERFORMANCE: filtri e tabella dentro @st.fragment
+                # → cambiare un filtro rerun SOLO il fragment, non tutta la pagina
+                @st.fragment
+                def _render_gfn_fatture_fragment(fatture_summary_local):
+                    # 🔍 FILTRI — Fornitore + Mese su due colonne affiancate
+                    col_filtro_fornitore, col_filtro_mese = st.columns([1.2, 1.2])
 
-                fornitori_disponibili = sorted(fatture_summary['Fornitore'].dropna().unique().tolist())
-                opzioni_fornitore = ["— Tutti i fornitori —"] + fornitori_disponibili
+                    fornitori_disponibili = sorted(fatture_summary_local['Fornitore'].dropna().unique().tolist())
+                    opzioni_fornitore = ["— Tutti i fornitori —"] + fornitori_disponibili
 
-                with col_filtro_fornitore:
-                    filtro_fornitore_sel = st.selectbox(
-                        "🔍 Filtra per Fornitore:",
-                        options=opzioni_fornitore,
-                        key="gfn_filtro_fornitore_gestione"
-                    )
-
-                if filtro_fornitore_sel == "— Tutti i fornitori —":
-                    fatture_filtrate_temp = fatture_summary
-                else:
-                    fatture_filtrate_temp = fatture_summary[fatture_summary['Fornitore'] == filtro_fornitore_sel]
-
-                # Estrai mesi unici dalle fatture filtrate per fornitore
-                mesi_disponibili = []
-                if len(fatture_filtrate_temp) > 0:
-                    try:
-                        date_vals = pd.to_datetime(fatture_filtrate_temp['Data'], errors='coerce')
-                        mesi_disponibili = sorted(
-                            [(f"{MESI_ITA.get(d.month, d.strftime('%B'))} {d.year}", d.year, d.month) for d in date_vals.dropna()],
-                            key=lambda x: (x[1], x[2]),
-                            reverse=True
+                    with col_filtro_fornitore:
+                        filtro_fornitore_sel = st.selectbox(
+                            "🔍 Filtra per Fornitore:",
+                            options=opzioni_fornitore,
+                            key="gfn_filtro_fornitore_gestione"
                         )
-                        mesi_visti = set()
-                        mesi_disponibili = [
-                            m for m in mesi_disponibili
-                            if not (m in mesi_visti or mesi_visti.add(m))
-                        ]
-                    except Exception as _e_mesi:
-                        logger.debug(f"Errore estrazione mesi: {_e_mesi}")
-                        mesi_disponibili = []
 
-                opzioni_mese = ["— Tutti i mesi —"]
-                if mesi_disponibili:
-                    _anni_disp = sorted(list({m[1] for m in mesi_disponibili}), reverse=True)
-                    for _a in _anni_disp:
-                        opzioni_mese.append(f"Tutto il {_a}")
-                    opzioni_mese += [m[0] for m in mesi_disponibili]
+                    if filtro_fornitore_sel == "— Tutti i fornitori —":
+                        fatture_filtrate_temp = fatture_summary_local
+                    else:
+                        fatture_filtrate_temp = fatture_summary_local[fatture_summary_local['Fornitore'] == filtro_fornitore_sel]
 
-                with col_filtro_mese:
-                    filtro_mese_sel = st.selectbox(
-                        "📅 Filtra per Mese:",
-                        options=opzioni_mese,
-                        key="gfn_filtro_mese_gestione"
-                    )
+                    # Estrai mesi unici dalle fatture filtrate per fornitore
+                    mesi_disponibili = []
+                    if len(fatture_filtrate_temp) > 0:
+                        try:
+                            date_vals = pd.to_datetime(fatture_filtrate_temp['Data'], errors='coerce')
+                            mesi_disponibili = sorted(
+                                [(f"{MESI_ITA.get(d.month, d.strftime('%B'))} {d.year}", d.year, d.month) for d in date_vals.dropna()],
+                                key=lambda x: (x[1], x[2]),
+                                reverse=True
+                            )
+                            mesi_visti = set()
+                            mesi_disponibili = [
+                                m for m in mesi_disponibili
+                                if not (m in mesi_visti or mesi_visti.add(m))
+                            ]
+                        except Exception as _e_mesi:
+                            logger.debug(f"Errore estrazione mesi: {_e_mesi}")
+                            mesi_disponibili = []
 
-                if filtro_mese_sel == "— Tutti i mesi —":
-                    fatture_filtrate = fatture_filtrate_temp
-                elif filtro_mese_sel.startswith("Tutto il "):
-                    _anno_target_int = int(filtro_mese_sel.replace("Tutto il ", ""))
-                    fatture_filtrate = fatture_filtrate_temp[
-                        pd.to_datetime(fatture_filtrate_temp['Data'], errors='coerce').dt.year == _anno_target_int
-                    ]
-                else:
-                    mese_target = next((m for m in mesi_disponibili if m[0] == filtro_mese_sel), None)
-                    if mese_target:
-                        _, anno_target, mese_num = mese_target
+                    opzioni_mese = ["— Tutti i mesi —"]
+                    if mesi_disponibili:
+                        _anni_disp = sorted(list({m[1] for m in mesi_disponibili}), reverse=True)
+                        for _a in _anni_disp:
+                            opzioni_mese.append(f"Tutto il {_a}")
+                        opzioni_mese += [m[0] for m in mesi_disponibili]
+
+                    with col_filtro_mese:
+                        filtro_mese_sel = st.selectbox(
+                            "📅 Filtra per Mese:",
+                            options=opzioni_mese,
+                            key="gfn_filtro_mese_gestione"
+                        )
+
+                    if filtro_mese_sel == "— Tutti i mesi —":
+                        fatture_filtrate = fatture_filtrate_temp
+                    elif filtro_mese_sel.startswith("Tutto il "):
+                        _anno_target_int = int(filtro_mese_sel.replace("Tutto il ", ""))
                         fatture_filtrate = fatture_filtrate_temp[
-                            (pd.to_datetime(fatture_filtrate_temp['Data'], errors='coerce').dt.month == mese_num) &
-                            (pd.to_datetime(fatture_filtrate_temp['Data'], errors='coerce').dt.year == anno_target)
+                            pd.to_datetime(fatture_filtrate_temp['Data'], errors='coerce').dt.year == _anno_target_int
                         ]
                     else:
-                        fatture_filtrate = fatture_filtrate_temp
+                        mese_target = next((m for m in mesi_disponibili if m[0] == filtro_mese_sel), None)
+                        if mese_target:
+                            _, anno_target, mese_num = mese_target
+                            fatture_filtrate = fatture_filtrate_temp[
+                                (pd.to_datetime(fatture_filtrate_temp['Data'], errors='coerce').dt.month == mese_num) &
+                                (pd.to_datetime(fatture_filtrate_temp['Data'], errors='coerce').dt.year == anno_target)
+                            ]
+                        else:
+                            fatture_filtrate = fatture_filtrate_temp
 
-                # File ricevuti da Invoicetronic non ancora confermati
-                # Mostra 🆕 SOLO se auto_invoice_notice è presente E non è stato dismisso
-                _nuovi_invoicetronic = set()
-                if (st.session_state.get('auto_invoice_notice')
-                        and not st.session_state.get('auto_invoice_notice_dismissed', False)):
-                    _auto_ricevuti = st.session_state.get('auto_received_file_origini', set()) or set()
-                    _auto_gestiti = st.session_state.get('auto_invoice_handled', set()) or set()
-                    _nuovi_invoicetronic = _auto_ricevuti - _auto_gestiti
+                    # File ricevuti da Invoicetronic non ancora confermati
+                    _nuovi_invoicetronic = set()
+                    if (st.session_state.get('auto_invoice_notice')
+                            and not st.session_state.get('auto_invoice_notice_dismissed', False)):
+                        _auto_ricevuti = st.session_state.get('auto_received_file_origini', set()) or set()
+                        _auto_gestiti = st.session_state.get('auto_invoice_handled', set()) or set()
+                        _nuovi_invoicetronic = _auto_ricevuti - _auto_gestiti
 
-                fatture_options = []
-                for idx, row in fatture_filtrate.iterrows():
-                    _data_competenza_val = row['DataCompetenza'] if 'DataCompetenza' in row.index else None
-                    _data_originale_val = row['DataDocumentoOriginale'] if 'DataDocumentoOriginale' in row.index else row.get('Data')
-                    _has_data_competenza = bool(pd.notna(_data_competenza_val) and str(_data_competenza_val).strip() not in {'', 'NaT', 'None'})
-                    fatture_options.append({
-                        'File': row['File'],
-                        'Fornitore': row['Fornitore'],
-                        'NumProdotti': int(row['NumProdotti']),
-                        'Totale': row['Totale'],
-                        'Data': row['Data'],
-                        'DataOriginale': _data_originale_val,
-                        'DataCompetenza': _data_competenza_val,
-                        'HasDataCompetenza': _has_data_competenza,
-                        'Pagata': _pagata_map.get(row['File'], False),
-                        'Scadenza': _docs_map.get(row['File'], {}).get('scadenza_effettiva'),
-                        'NumeroFattura': _docs_map.get(row['File'], {}).get('numero_documento'),
-                        'TipoDocumento': _docs_map.get(row['File'], {}).get('tipo_documento'),
-                        'PIVAFornitore': _docs_map.get(row['File'], {}).get('piva_fornitore'),
-                        'IsNuova': row['File'] in _nuovi_invoicetronic,
-                    })
+                    fatture_options = []
+                    for idx, row in fatture_filtrate.iterrows():
+                        _data_competenza_val = row['DataCompetenza'] if 'DataCompetenza' in row.index else None
+                        _data_originale_val = row['DataDocumentoOriginale'] if 'DataDocumentoOriginale' in row.index else row.get('Data')
+                        _has_data_competenza = bool(pd.notna(_data_competenza_val) and str(_data_competenza_val).strip() not in {'', 'NaT', 'None'})
+                        fatture_options.append({
+                            'File': row['File'],
+                            'Fornitore': row['Fornitore'],
+                            'NumProdotti': int(row['NumProdotti']),
+                            'Totale': row['Totale'],
+                            'Data': row['Data'],
+                            'DataOriginale': _data_originale_val,
+                            'DataCompetenza': _data_competenza_val,
+                            'HasDataCompetenza': _has_data_competenza,
+                            'Pagata': _pagata_map.get(row['File'], False),
+                            'Scadenza': _docs_map.get(row['File'], {}).get('scadenza_effettiva'),
+                            'NumeroFattura': _docs_map.get(row['File'], {}).get('numero_documento'),
+                            'TipoDocumento': _docs_map.get(row['File'], {}).get('tipo_documento'),
+                            'PIVAFornitore': _docs_map.get(row['File'], {}).get('piva_fornitore'),
+                            'IsNuova': row['File'] in _nuovi_invoicetronic,
+                        })
 
-                @st.fragment
-                def _render_gfn_fatture_fragment(fatture_options_local):
-                    fatture_options = fatture_options_local
-                    if not fatture_options:
+                    fatture_options_local = fatture_options
+                    if not fatture_options_local:
                         st.info("🔭 Nessuna fattura trovata per il fornitore cercato.")
                         return
 
@@ -1692,7 +1720,7 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                                 st.session_state.pop('gfn_fattura_data_editor_file', None)
                                 st.rerun(scope="fragment")
 
-                _render_gfn_fatture_fragment(fatture_options)
+                _render_gfn_fatture_fragment(fatture_summary)
             else:
                 st.info("🔭 Nessuna fattura da eliminare.")
 

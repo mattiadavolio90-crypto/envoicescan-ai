@@ -18,7 +18,9 @@ from utils.ristorante_helper import get_current_ristorante_id
 from services.db_service import (
     carica_e_prepara_dataframe,
     calcola_alert,
+    _calcola_alert_cached,
     carica_sconti_e_omaggi,
+    _carica_sconti_e_omaggi_cached,
     get_custom_tags,
     get_price_alert_threshold,
     set_price_alert_threshold,
@@ -235,25 +237,28 @@ st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
 if 'cp_tab_attivo' not in st.session_state:
     st.session_state.cp_tab_attivo = "variazioni"
 
+def _set_cp_tab(tab: str) -> None:
+    """on_click callback: aggiorna il tab PRIMA che Streamlit ri-renderizzi i bottoni.
+    Evita il flash 'secondary → primary' che si vedeva con il pattern if st.button(...)."""
+    st.session_state.cp_tab_attivo = tab
+
+
 col_t1, col_t2, col_t3 = st.columns(3)
 
 with col_t1:
-    if st.button("📈 VARIAZIONI\nPREZZO", key="cp_btn_variazioni", use_container_width=True,
-                 type="primary" if st.session_state.cp_tab_attivo == "variazioni" else "secondary"):
-        if st.session_state.cp_tab_attivo != "variazioni":
-            st.session_state.cp_tab_attivo = "variazioni"
+    st.button("📈 VARIAZIONI\nPREZZO", key="cp_btn_variazioni", use_container_width=True,
+              type="primary" if st.session_state.cp_tab_attivo == "variazioni" else "secondary",
+              on_click=_set_cp_tab, args=("variazioni",))
 
 with col_t2:
-    if st.button("🎁 SCONTI E\nOMAGGI", key="cp_btn_sconti", use_container_width=True,
-                 type="primary" if st.session_state.cp_tab_attivo == "sconti" else "secondary"):
-        if st.session_state.cp_tab_attivo != "sconti":
-            st.session_state.cp_tab_attivo = "sconti"
+    st.button("🎁 SCONTI E\nOMAGGI", key="cp_btn_sconti", use_container_width=True,
+              type="primary" if st.session_state.cp_tab_attivo == "sconti" else "secondary",
+              on_click=_set_cp_tab, args=("sconti",))
 
 with col_t3:
-    if st.button("📋 NOTE DI\nCREDITO", key="cp_btn_nc", use_container_width=True,
-                 type="primary" if st.session_state.cp_tab_attivo == "nc" else "secondary"):
-        if st.session_state.cp_tab_attivo != "nc":
-            st.session_state.cp_tab_attivo = "nc"
+    st.button("📋 NOTE DI\nCREDITO", key="cp_btn_nc", use_container_width=True,
+              type="primary" if st.session_state.cp_tab_attivo == "nc" else "secondary",
+              on_click=_set_cp_tab, args=("nc",))
 
 # CSS bottoni tab e download (caricati da file statico condiviso)
 from utils.ui_helpers import load_css
@@ -322,7 +327,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
 
     # Calcola alert (solo F&B, periodo selezionato)
     df_alert_source = df_filtrato_variazioni
-    df_alert = calcola_alert(df_alert_source, soglia_aumento)
+    df_alert = _calcola_alert_cached(df_alert_source, soglia_aumento)
 
     # Messaggio se nessuna variazione
     if df_alert.empty:
@@ -663,7 +668,12 @@ elif st.session_state.cp_tab_attivo == "sconti":
 
     # Carica dati
     with st.spinner("Caricamento sconti e omaggi..."):
-        dati_sconti = carica_sconti_e_omaggi(user_id, data_inizio_filtro, data_fine_filtro, ristorante_id=get_current_ristorante_id())
+        dati_sconti = _carica_sconti_e_omaggi_cached(
+            user_id,
+            get_current_ristorante_id(),
+            data_inizio_filtro.isoformat(),
+            data_fine_filtro.isoformat(),
+        )
 
     df_sconti = dati_sconti['sconti']
     df_omaggi = dati_sconti['omaggi']

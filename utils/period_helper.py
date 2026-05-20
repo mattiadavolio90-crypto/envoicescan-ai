@@ -73,12 +73,63 @@ def risolvi_periodo(periodo_selezionato: str, date_periodo: dict) -> tuple:
         return None, oggi, None
 
 
+try:
+    import streamlit as _st_mesi
+
+    @_st_mesi.cache_data(ttl=300, show_spinner=False)
+    def _get_mesi_disponibili_cached(user_id: str, ristorante_id: str) -> list:
+        """Versione cached (TTL 300s) di get_mesi_disponibili_fatture."""
+        from datetime import datetime as _dt_inner
+        from datetime import date as _date_inner
+        oggi_inner = _date_inner.today()
+        prima_data_inner = None
+        try:
+            from services import get_supabase_client as _sb_fn
+            sb_inner = _sb_fn()
+            resp = (
+                sb_inner.table('fatture')
+                .select('data_documento')
+                .eq('user_id', user_id)
+                .eq('ristorante_id', ristorante_id)
+                .is_('deleted_at', 'null')
+                .not_.is_('data_documento', 'null')
+                .order('data_documento', desc=False)
+                .limit(1)
+                .execute()
+            )
+            if resp.data and resp.data[0].get('data_documento'):
+                prima_data_inner = _dt_inner.fromisoformat(resp.data[0]['data_documento'][:10]).date()
+        except Exception:
+            pass
+        if prima_data_inner is None:
+            prima_data_inner = oggi_inner.replace(day=1)
+        mesi_inner = []
+        anno, mese = prima_data_inner.year, prima_data_inner.month
+        anno_end, mese_end = oggi_inner.year, oggi_inner.month
+        while (anno, mese) <= (anno_end, mese_end):
+            label = f"{_MESI_ITA[mese - 1]} {anno}"
+            mesi_inner.append((anno, mese, label))
+            mese += 1
+            if mese > 12:
+                mese = 1
+                anno += 1
+        return mesi_inner
+except Exception:
+    _get_mesi_disponibili_cached = None  # type: ignore[assignment]
+
+
 def get_mesi_disponibili_fatture(user_id: str, ristorante_id: str, supabase_client=None) -> list:
     """
     Restituisce una lista di (anno, mese, label) per tutti i mesi dalla prima fattura
     del ristorante fino al mese corrente incluso.
     Se non ci sono fatture o la query fallisce, parte dal mese corrente.
+    Cached 300s per ridurre round-trip Supabase su ogni render.
     """
+    # Usa versione cached quando Streamlit è disponibile (ignora supabase_client: non hashable)
+    if _get_mesi_disponibili_cached is not None and user_id and ristorante_id:
+        return _get_mesi_disponibili_cached(str(user_id), str(ristorante_id))
+
+    # Fallback senza cache (worker/test/non-Streamlit context)
     oggi = date.today()
     prima_data = None
 

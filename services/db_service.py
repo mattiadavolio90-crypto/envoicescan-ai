@@ -653,6 +653,24 @@ def calcola_alert(df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str =
     return df_alert
 
 
+# Cached wrapper per uso nelle pagine Streamlit.
+# calcola_alert viene lasciata invariata (usata anche in upload_handler e test).
+try:
+    import streamlit as _st_alert_cache
+
+    @_st_alert_cache.cache_data(ttl=120, show_spinner=False)
+    def _calcola_alert_cached(
+        df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str = ""
+    ) -> pd.DataFrame:
+        """Cached 120s. Evita ricalcolo su ogni re-render quando df e soglia non cambiano."""
+        return calcola_alert(df, soglia_minima, filtro_prodotto)
+except Exception:
+    def _calcola_alert_cached(  # type: ignore[misc]
+        df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str = ""
+    ) -> pd.DataFrame:
+        return calcola_alert(df, soglia_minima, filtro_prodotto)
+
+
 def calcola_spesa_mensile_aggregata(df: pd.DataFrame, dimensione: str) -> pd.DataFrame:
     """
     Aggrega la spesa mensile per dimensione (Fornitore o Categoria).
@@ -955,6 +973,29 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
             'omaggi': pd.DataFrame(),
             'totale_risparmiato': 0.0
         }
+
+
+# Cached wrapper per uso nelle pagine Streamlit.
+# carica_sconti_e_omaggi ha supabase_client (non hashable): il wrapper usa
+# get_supabase_client() internamente e prende solo parametri hashable.
+try:
+    import streamlit as _st_sco_cache
+
+    @_st_sco_cache.cache_data(ttl=120, show_spinner=False)
+    def _carica_sconti_e_omaggi_cached(
+        user_id: str, ristorante_id: str, data_inizio_iso: str, data_fine_iso: str
+    ) -> Dict[str, Any]:
+        """Cached 120s. Evita query DB paginata su ogni re-render del tab sconti."""
+        return carica_sconti_e_omaggi(
+            user_id, data_inizio_iso, data_fine_iso, ristorante_id=ristorante_id
+        )
+except Exception:
+    def _carica_sconti_e_omaggi_cached(  # type: ignore[misc]
+        user_id: str, ristorante_id: str, data_inizio_iso: str, data_fine_iso: str
+    ) -> Dict[str, Any]:
+        return carica_sconti_e_omaggi(
+            user_id, data_inizio_iso, data_fine_iso, ristorante_id=ristorante_id
+        )
 
 
 def elimina_fattura_completa(file_origine: str, user_id: str, supabase_client=None, ristoranteid: str = None, soft_delete: bool = True) -> Dict[str, Any]:
@@ -1368,6 +1409,9 @@ def clear_fatture_cache() -> None:
     _fetch_numero_documento_map_cached.clear()
     get_fatture_stats.clear()
     get_descrizioni_distinte.clear()
+    # Invalida anche il cestino
+    if hasattr(get_fatture_cestino, 'clear'):
+        get_fatture_cestino.clear()
     # Usa sys.modules per evitare import circolari — funziona se il modulo è già caricato
     _margine_mod = sys.modules.get('services.margine_service')
     if _margine_mod is not None:
@@ -1386,6 +1430,7 @@ def clear_fatture_cache() -> None:
 # CESTINO FATTURE (soft-delete)
 # ============================================================
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_fatture_cestino(user_id: str, ristorante_id: str = None, supabase_client=None) -> List[Dict[str, Any]]:
     """
     Restituisce le fatture nel cestino raggruppate per file_origine.

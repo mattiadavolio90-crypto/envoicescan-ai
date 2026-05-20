@@ -31,6 +31,8 @@ from services.margine_service import (
     carica_costi_per_categoria,
     salva_fatturato_centri,
     carica_fatturato_centri_mese,
+    _carica_fatturato_centri_mese_cached,
+    clear_fatturato_centri_cache,
     MESI_NOMI,
 )
 
@@ -266,7 +268,7 @@ if st.session_state.margine_tab == "analisi":
             m_from = data_inizio_aa.month if a == data_inizio_aa.year else 1
             m_to = data_fine_aa.month if a == data_fine_aa.year else 12
             for m in range(m_from, m_to + 1):
-                _d_mese = carica_fatturato_centri_mese(user_id, current_ristorante, a, m)
+                _d_mese = _carica_fatturato_centri_mese_cached(user_id, current_ristorante, a, m)
                 if not _d_mese:
                     continue
                 for c in _centri_con_fatturato:
@@ -346,7 +348,7 @@ if st.session_state.margine_tab == "analisi":
             _mese_sel_split = _mesi_options[_sel_idx][1]
 
             # Carica dal DB il mese specifico
-            _dati_mese_db = carica_fatturato_centri_mese(
+            _dati_mese_db = _carica_fatturato_centri_mese_cached(
                 user_id, current_ristorante, _anno_sel_split, _mese_sel_split
             )
             # Fallback UX: se il DB non ha ancora restituito i valori appena salvati,
@@ -478,6 +480,7 @@ if st.session_state.margine_tab == "analisi":
                             "mese": _mese_sel_split,
                             "split": {c: float(_euro_da_salvare.get(c, 0.0) or 0.0) for c in _centri_con_fatturato}
                         }
+                        clear_fatturato_centri_cache()
                         st.success(f"✅ Fatturato centri salvato per {mese_label_sel}")
                         time.sleep(0.5)
                         st.rerun()
@@ -493,6 +496,7 @@ if st.session_state.margine_tab == "analisi":
                         "mese": _mese_sel_split,
                         "split": {c: 0.0 for c in _centri_con_fatturato}
                     }
+                    clear_fatturato_centri_cache()
                     st.rerun()
 
             # Mostra riepilogo mesi già compilati nel periodo
@@ -504,7 +508,7 @@ if st.session_state.margine_tab == "analisi":
                     m_from = data_inizio_aa.month if a == data_inizio_aa.year else 1
                     m_to = data_fine_aa.month if a == data_fine_aa.year else 12
                     for m in range(m_from, m_to + 1):
-                        _d = carica_fatturato_centri_mese(user_id, current_ristorante, a, m)
+                        _d = _carica_fatturato_centri_mese_cached(user_id, current_ristorante, a, m)
                         if _d:
                             tot_m = sum(_d.values())
                             if tot_m > 0:
@@ -715,6 +719,37 @@ if st.session_state.margine_tab == "analisi":
                     sheet_name = centro_n[:31]
                     df_c_agg_exp.to_excel(writer, index=False, sheet_name=sheet_name)
             excel_buf_c.seek(0)
+            st.markdown(
+                """
+                <style>
+                div.st-key-aa_download_centri [data-testid="stDownloadButton"] button {
+                    background-color: #ffffff !important;
+                    color: #16a34a !important;
+                    border: 3.5px solid #4ade80 !important;
+                    border-radius: var(--radius-sm, 0.5rem) !important;
+                    width: 2.8rem !important;
+                    height: 2.8rem !important;
+                    min-width: unset !important;
+                    min-height: unset !important;
+                    padding: 0 !important;
+                    font-weight: 800 !important;
+                    font-size: 0.9rem !important;
+                    letter-spacing: 0.04em !important;
+                    box-shadow: none !important;
+                    white-space: nowrap !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                }
+                div.st-key-aa_download_centri [data-testid="stDownloadButton"] button:hover {
+                    background-color: #f0fdf4 !important;
+                    border-color: #4ade80 !important;
+                    color: #15803d !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
             st.download_button(
                 label="XLS",
                 data=excel_buf_c.getvalue(),
@@ -1119,6 +1154,37 @@ if st.session_state.margine_tab == "analisi":
                     """, unsafe_allow_html=True)
 
                 with _col_centri_right:
+                    st.markdown(
+                        """
+                        <style>
+                        div.st-key-cm_download_excel_centri [data-testid="stDownloadButton"] button {
+                            background-color: #ffffff !important;
+                            color: #16a34a !important;
+                            border: 3.5px solid #4ade80 !important;
+                            border-radius: var(--radius-sm, 0.5rem) !important;
+                            width: 2.8rem !important;
+                            height: 2.8rem !important;
+                            min-width: unset !important;
+                            min-height: unset !important;
+                            padding: 0 !important;
+                            font-weight: 800 !important;
+                            font-size: 0.9rem !important;
+                            letter-spacing: 0.04em !important;
+                            box-shadow: none !important;
+                            white-space: nowrap !important;
+                            display: inline-flex !important;
+                            align-items: center !important;
+                            justify-content: center !important;
+                        }
+                        div.st-key-cm_download_excel_centri [data-testid="stDownloadButton"] button:hover {
+                            background-color: #f0fdf4 !important;
+                            border-color: #4ade80 !important;
+                            color: #15803d !important;
+                        }
+                        </style>
+                        """,
+                        unsafe_allow_html=True,
+                    )
                     st.download_button(
                         label="XLS",
                         data=excel_data_centri,
@@ -1161,6 +1227,7 @@ if st.session_state.margine_tab == "calcolo":
             'Costi_Spese_Auto': float(costi_spese_mensili.get(mese_num, 0.0)),
             'Altri_Spese': float(dati_mese.get('altri_costi_spese', 0.0) or 0.0),
             'Costo_Dipendenti': float(dati_mese.get('costo_dipendenti', 0.0) or 0.0),
+            'Costo_Personale_Extra': float(dati_mese.get('costo_personale_extra', 0.0) or 0.0),
         })
     df_input = pd.DataFrame(data_input)
 
@@ -1201,6 +1268,7 @@ if st.session_state.margine_tab == "calcolo":
         "Altri Costi F&B": ("Altri_FB", 50.0),
         "Altre Spese Generali": ("Altri_Spese", 50.0),
         "Costo personale Lordo": ("Costo_Dipendenti", 100.0),
+        "Costo personale Extra": ("Costo_Personale_Extra", 100.0),
     }
     _OPZIONI_TEMPORALI = ["Tutti i mesi"] + MESI_NOMI
 
@@ -1267,6 +1335,7 @@ if st.session_state.margine_tab == "calcolo":
         'Spese Gen. (da Fatture)': 'Spese Gen. | da fatture',
         'Altre Spese Generali': 'Spese Gen. | altre spese',
         'Costo personale Lordo': 'Personale | costo lordo',
+        'Costo personale Extra': 'Personale | costo extra',
         '= 2° Margine (MOL)': 'Margine | 2° Margine (MOL)',
     }
     df_display['Voce'] = df_display['Voce'].map(lambda v: voce_display_map.get(v, v))
@@ -1281,7 +1350,7 @@ if st.session_state.margine_tab == "calcolo":
     # ============================================
     _COLONNE_DATI = ['Fatt_IVA10', 'Fatt_IVA22', 'Altri_Ricavi_NoIVA',
                      'Costi_FB_Auto', 'Altri_FB', 'Costi_Spese_Auto',
-                     'Altri_Spese', 'Costo_Dipendenti']
+                     'Altri_Spese', 'Costo_Dipendenti', 'Costo_Personale_Extra']
     mesi_nascosti = []
     for _m_idx, _mese_nome in enumerate(MESI_NOMI, start=1):
         _riga = df_input[df_input['MeseNum'] == _m_idx]
@@ -1324,6 +1393,7 @@ if st.session_state.margine_tab == "calcolo":
         'Spese Gen. | da fatture': '#6d28d9',
         'Spese Gen. | altre spese': '#6d28d9',
         'Personale | costo lordo': '#be185d',
+        'Personale | costo extra': '#be185d',
         'Margine | 2° Margine (MOL)': '#15803d',
     }
     bold_rows = {
@@ -1346,6 +1416,7 @@ if st.session_state.margine_tab == "calcolo":
         'Spese Gen. | da fatture',
         'Spese Gen. | altre spese',
         'Personale | costo lordo',
+        'Personale | costo extra',
         'Margine | 2° Margine (MOL)',
     }
 
@@ -1439,6 +1510,39 @@ if st.session_state.margine_tab == "calcolo":
     )
     st.markdown(
         f"<div style='overflow-x:auto; padding-bottom:4px;'>{styled_table.to_html()}</div>",
+        unsafe_allow_html=True,
+    )
+    # Targeting preciso tramite st-key per evitare conflitto con regola
+    # div[data-testid="column"] button { height: 4rem } di common.css
+    st.markdown(
+        """
+        <style>
+        div.st-key-margine_download_tbl [data-testid="stDownloadButton"] button {
+            background-color: #ffffff !important;
+            color: #16a34a !important;
+            border: 3.5px solid #4ade80 !important;
+            border-radius: var(--radius-sm, 0.5rem) !important;
+            width: 2.8rem !important;
+            height: 2.8rem !important;
+            min-width: unset !important;
+            min-height: unset !important;
+            padding: 0 !important;
+            font-weight: 800 !important;
+            font-size: 0.9rem !important;
+            letter-spacing: 0.04em !important;
+            box-shadow: none !important;
+            white-space: nowrap !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        div.st-key-margine_download_tbl [data-testid="stDownloadButton"] button:hover {
+            background-color: #f0fdf4 !important;
+            border-color: #4ade80 !important;
+            color: #15803d !important;
+        }
+        </style>
+        """,
         unsafe_allow_html=True,
     )
     _col_xls_empty, _col_xls_tbl = st.columns([9.5, 0.5])

@@ -236,7 +236,7 @@ def carica_margini_anno(user_id: str, ristorante_id: str, anno: int) -> dict:
         supabase = get_supabase_client()
         
         response = supabase.table('margini_mensili') \
-            .select('mese, fatturato_iva10, fatturato_iva22, altri_ricavi_noiva, altri_costi_fb, altri_costi_spese, costo_dipendenti, mol') \
+            .select('mese, fatturato_iva10, fatturato_iva22, altri_ricavi_noiva, altri_costi_fb, altri_costi_spese, costo_dipendenti, costo_personale_extra, mol') \
             .eq('user_id', user_id) \
             .eq('ristorante_id', ristorante_id) \
             .eq('anno', anno) \
@@ -496,6 +496,34 @@ def carica_fatturato_centri_mese(user_id: str, ristorante_id: str,
         return {}
 
 
+# Cached wrapper per uso nelle pagine Streamlit.
+# Evita N query DB per i loop mesi (es. 12 mesi × 2 loop = 24 query → 0 per cache hit).
+# Non modificare carica_fatturato_centri_mese: i test lo chiamano direttamente e
+# devono restare isolati dalla cache.
+try:
+    import streamlit as _st_cfcm
+
+    @_st_cfcm.cache_data(ttl=120, show_spinner=False)
+    def _carica_fatturato_centri_mese_cached(
+        user_id: str, ristorante_id: str, anno: int, mese: int
+    ) -> dict:
+        """Cached 120s per uso in pagine. Invalida con clear_fatturato_centri_cache()."""
+        return carica_fatturato_centri_mese(user_id, ristorante_id, anno, mese)
+except Exception:
+    def _carica_fatturato_centri_mese_cached(  # type: ignore[misc]
+        user_id: str, ristorante_id: str, anno: int, mese: int
+    ) -> dict:
+        return carica_fatturato_centri_mese(user_id, ristorante_id, anno, mese)
+
+
+def clear_fatturato_centri_cache() -> None:
+    """Invalida cache fatturato centri dopo salvataggio — chiamare dopo salva_fatturato_centri()."""
+    try:
+        _carica_fatturato_centri_mese_cached.clear()  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+
 def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
                        df_input: pd.DataFrame, df_risultati: pd.DataFrame) -> bool:
     """
@@ -513,6 +541,9 @@ def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
     Returns:
         bool: True se salvataggio riuscito
     """
+    if 'Costo_Personale_Extra' not in df_input.columns:
+        df_input = df_input.copy()
+        df_input['Costo_Personale_Extra'] = 0.0
     try:
         supabase = get_supabase_client()
         records = []
@@ -569,6 +600,7 @@ def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
                 'altri_costi_fb': float(df_input.at[i, 'Altri_FB']),
                 'altri_costi_spese': float(df_input.at[i, 'Altri_Spese']),
                 'costo_dipendenti': float(df_input.at[i, 'Costo_Dipendenti']),
+                'costo_personale_extra': float(df_input.at[i, 'Costo_Personale_Extra']),
                 # Snapshot costi auto
                 'costi_fb_auto': float(df_input.at[i, 'Costi_FB_Auto']),
                 'costi_spese_auto': float(df_input.at[i, 'Costi_Spese_Auto']),
@@ -634,6 +666,9 @@ def calcola_risultati(df_input: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame con 13 righe (12 mesi + TOT ANNO) e colonne risultati
     """
+    if 'Costo_Personale_Extra' not in df_input.columns:
+        df_input = df_input.copy()
+        df_input['Costo_Personale_Extra'] = 0.0
     risultati = []
     
     for i in range(12):
@@ -646,7 +681,7 @@ def calcola_risultati(df_input: pd.DataFrame) -> pd.DataFrame:
         # Costi totali (auto + manuali)
         costi_fb_tot = float(df_input.at[i, 'Costi_FB_Auto']) + float(df_input.at[i, 'Altri_FB'])
         costi_spese_tot = float(df_input.at[i, 'Costi_Spese_Auto']) + float(df_input.at[i, 'Altri_Spese'])
-        costi_personale = float(df_input.at[i, 'Costo_Dipendenti'])
+        costi_personale = float(df_input.at[i, 'Costo_Dipendenti']) + float(df_input.at[i, 'Costo_Personale_Extra'])
         
         # Margini
         primo_margine = fatt_netto - costi_fb_tot
@@ -934,6 +969,9 @@ def build_transposed_df(df_input: pd.DataFrame) -> pd.DataFrame:
     Returns:
         DataFrame with 12 rows (voci) and 25 columns (Voce + 12 months * 2)
     """
+    if 'Costo_Personale_Extra' not in df_input.columns:
+        df_input = df_input.copy()
+        df_input['Costo_Personale_Extra'] = 0.0
     # Compute derived values and percentages for each month
     calc = []
     for i in range(12):
@@ -953,7 +991,8 @@ def build_transposed_df(df_input: pd.DataFrame) -> pd.DataFrame:
         spese_tot = round(costi_spese_auto + altre_spese, 2)
         
         costo_personale = float(df_input.at[i, 'Costo_Dipendenti'])
-        mol = round(primo_margine - spese_tot - costo_personale, 2)
+        costo_personale_extra = float(df_input.at[i, 'Costo_Personale_Extra'])
+        mol = round(primo_margine - spese_tot - costo_personale - costo_personale_extra, 2)
         
         # Percentages (only if fatt_netto > 0)
         if fatt_netto > 0:
@@ -964,6 +1003,7 @@ def build_transposed_df(df_input: pd.DataFrame) -> pd.DataFrame:
             spese_auto_perc = round((costi_spese_auto / fatt_netto) * 100, 1)
             altre_spese_perc = round((altre_spese / fatt_netto) * 100, 1)
             pers_perc = round((costo_personale / fatt_netto) * 100, 1)
+            pers_extra_perc = round((costo_personale_extra / fatt_netto) * 100, 1)
             mol_perc = round((mol / fatt_netto) * 100, 1)
         else:
             fb_auto_perc = 0.0
@@ -973,6 +1013,7 @@ def build_transposed_df(df_input: pd.DataFrame) -> pd.DataFrame:
             spese_auto_perc = 0.0
             altre_spese_perc = 0.0
             pers_perc = 0.0
+            pers_extra_perc = 0.0
             mol_perc = 0.0
         
         calc.append({
@@ -988,6 +1029,7 @@ def build_transposed_df(df_input: pd.DataFrame) -> pd.DataFrame:
             'spese_auto_perc': spese_auto_perc,
             'altre_spese_perc': altre_spese_perc,
             'pers_perc': pers_perc,
+            'pers_extra_perc': pers_extra_perc,
             'mol_perc': mol_perc,
         })
     
@@ -1003,8 +1045,9 @@ def build_transposed_df(df_input: pd.DataFrame) -> pd.DataFrame:
         ('= 1° Margine',             lambda i: calc[i]['primo_margine'],                      lambda i: calc[i]['pm_perc']),
         ('Spese Gen. (da Fatture)',  lambda i: float(df_input.at[i, 'Costi_Spese_Auto']),     lambda i: calc[i]['spese_auto_perc']),
         ('Altre Spese Generali',     lambda i: float(df_input.at[i, 'Altri_Spese']),          lambda i: calc[i]['altre_spese_perc']),
-        ('Costo personale Lordo',    lambda i: float(df_input.at[i, 'Costo_Dipendenti']),     lambda i: calc[i]['pers_perc']),
-        ('= 2° Margine (MOL)',       lambda i: calc[i]['mol'],                                lambda i: calc[i]['mol_perc']),
+        ('Costo personale Lordo',    lambda i: float(df_input.at[i, 'Costo_Dipendenti']),          lambda i: calc[i]['pers_perc']),
+        ('Costo personale Extra',    lambda i: float(df_input.at[i, 'Costo_Personale_Extra']),     lambda i: calc[i]['pers_extra_perc']),
+        ('= 2° Margine (MOL)',       lambda i: calc[i]['mol'],                                      lambda i: calc[i]['mol_perc']),
     ]
     
     rows = []

@@ -450,7 +450,7 @@ def build_scadenza_documents_notifications(
         # Carica documenti non pagati da fatture_documenti con scadenza <= oggi+7 (filtro SQL)
         query = (
             sb.table("fatture_documenti")
-            .select("id,file_origine,fornitore,totale_documento,scadenza_effettiva,pagata")
+            .select("id,file_origine,fornitore,piva_fornitore,totale_documento,scadenza_effettiva,pagata")
             .eq("user_id", user_id)
             .eq("ristorante_id", ristorante_id)
             .eq("pagata", False)
@@ -460,6 +460,28 @@ def build_scadenza_documents_notifications(
         )
         
         docs = query.data or []
+        if not docs:
+            return []
+        
+        # Esclude fornitori con regola RID (auto-pagato virtuale — pagata=False nel DB ma
+        # lo scadenziario li mostra già come pagati; notificarli sarebbe un falso allarme)
+        try:
+            _regole_rid = (
+                sb.table("fornitori_pagamenti_config")
+                .select("piva_fornitore")
+                .eq("user_id", user_id)
+                .eq("ristorante_id", ristorante_id)
+                .eq("modalita", "rid")
+                .eq("attiva", True)
+                .is_("deleted_at", "null")
+                .execute()
+            )
+            _pive_rid = {str(r.get("piva_fornitore") or "").strip() for r in (_regole_rid.data or [])} - {""}
+            if _pive_rid:
+                docs = [d for d in docs if str(d.get("piva_fornitore") or "").strip() not in _pive_rid]
+        except Exception as _rid_err:
+            logger.warning(f"Filtro RID notifiche fallito (non bloccante): {_rid_err}")
+        
         if not docs:
             return []
         

@@ -259,29 +259,40 @@ def get_inbox_notifications(
         return []
 
 
+# Cache layer per badge count: @st.cache_data(ttl=30) evita query DB ridondanti
+# su ogni re-render della pagina. La cache è condivisa per processo (non per sessione)
+# ma è comunque user+ristorante-specifica tramite i parametri.
+try:
+    import streamlit as _st_badge
+
+    @_st_badge.cache_data(ttl=30, show_spinner=False)
+    def _get_inbox_badge_cached(user_id: str, ristorante_id: str) -> int:
+        """Badge count cached 30s — elimina la query DB ridondante sui re-render."""
+        from services import get_supabase_client as _get_sb
+        sb = _get_sb()
+        rows = get_inbox_notifications(user_id, ristorante_id, sb)
+        return len(rows)
+except Exception:
+    def _get_inbox_badge_cached(user_id: str, ristorante_id: str) -> int:  # type: ignore[misc]
+        from services import get_supabase_client as _get_sb
+        sb = _get_sb()
+        rows = get_inbox_notifications(user_id, ristorante_id, sb)
+        return len(rows)
+
+
 def get_inbox_badge_count(
     user_id: str,
     ristorante_id: str,
     supabase_client=None,
 ) -> int:
     """Conta le notifiche attive e non scadute. Usato per il badge nel tab header."""
-    # Cache layer 1: micro-cache per evitare 10+ query/sec da sidebar re-render
+    if not user_id or not ristorante_id:
+        return 0
     try:
-        import streamlit as _st
-        _cache_key = f"_inbox_badge_count::{user_id}::{ristorante_id}"
-        _ts_key = f"_inbox_badge_count_ts::{user_id}::{ristorante_id}"
-        import time as _time
-        _now = _time.time()
-        _cached_ts = _st.session_state.get(_ts_key, 0)
-        if _now - _cached_ts < 30:  # 30s TTL
-            _cached_val = _st.session_state.get(_cache_key)
-            if _cached_val is not None:
-                return int(_cached_val)
-        rows = get_inbox_notifications(user_id, ristorante_id, supabase_client)
-        _count = len(rows)
-        _st.session_state[_cache_key] = _count
-        _st.session_state[_ts_key] = _now
-        return _count
+        result = _get_inbox_badge_cached(str(user_id), str(ristorante_id))
+        if not isinstance(result, int):
+            raise TypeError("cache returned non-int")
+        return result
     except Exception:
         rows = get_inbox_notifications(user_id, ristorante_id, supabase_client)
         return len(rows)
