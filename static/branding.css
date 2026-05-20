@@ -76,6 +76,19 @@ button[kind="primary"]:hover {
     background-color: #0284c7 !important;
     border-color: #0369a1 !important;
 }
+button[kind="primary"]:active {
+    background-color: #0369a1 !important;
+    border-color: #075985 !important;
+    color: white !important;
+}
+button[kind="primary"]:focus,
+button[kind="primary"]:focus-visible {
+    background-color: #0ea5e9 !important;
+    border-color: #0284c7 !important;
+    color: white !important;
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.4) !important;
+    outline: none !important;
+}
 button[kind="primary"]:disabled,
 button[kind="primary"][disabled] {
     background-color: #0ea5e9 !important;
@@ -86,24 +99,84 @@ button[kind="primary"][disabled] {
 
 /* === BARRE PERCENTUALE INCIDENZA (arancione, come calcolo marginalità) === */
 [data-testid="stDataFrame"] [data-baseweb="progress-bar"] {
-    --progress-bar-color: #f97316 !important;
+    --progress-bar-color: var(--color-progress) !important;
 }
 [data-testid="stDataFrame"] [data-baseweb="progress-bar"] > div {
-    background-color: #f97316 !important;
+    background-color: var(--color-progress) !important;
 }
 [data-testid="stDataFrame"] [data-baseweb="progress-bar"] > div > div {
-    background-color: #f97316 !important;
+    background-color: var(--color-progress) !important;
 }
 [data-testid="stDataFrame"] div[role="progressbar"] {
-    background-color: #f97316 !important;
+    background-color: var(--color-progress) !important;
 }
 [data-testid="stDataFrame"] div[role="progressbar"] > div {
-    background-color: #f97316 !important;
+    background-color: var(--color-progress) !important;
 }
 [data-testid="stDataFrame"] div[role="progressbar"] > div > div {
-    background-color: #f97316 !important;
+    background-color: var(--color-progress) !important;
 }
 [data-testid="stDataFrame"] [data-baseweb="progress-bar"] span {
-    color: #f97316 !important;
+    color: var(--color-progress) !important;
     font-weight: 600 !important;
 }
+
+/* ============================================================
+   APP COMPONENTS — classi HTML usate da app.py
+   ============================================================ */
+
+/* --- Page title (intestazione principale) --- */
+.page-title {
+    font-size: clamp(2rem, 4.5vw, 2.8rem);
+    font-weight: 700;
+    margin: 0;
+    margin-top: 0.5rem;
+}
+.page-title-gradient {
+    background: var(--color-brand-gradient, linear-gradient(90deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* --- Legal note sotto il titolo --- */
+.legal-note {
+    padding: 4px 14px 0;
+    font-size: 0.88rem;
+    color: var(--color-text, #1e2a4a);
+    font-weight: 500;
+    margin-bottom: 1.5rem;
+}
+
+/* --- Trial banner --- */
+.trial-banner {
+    background: linear-gradient(135deg, var(--color-warning-light, #fef9c3), var(--color-warning-border, #fef08a));
+    border: 2px solid;          /* border-color iniettato inline (dinamico) */
+    border-radius: var(--radius-sm, 10px);
+    padding: 12px 18px;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.trial-banner__icon { font-size: 1.6rem; }
+.trial-banner__title { font-size: 1rem; }
+.trial-banner__body {
+    color: var(--color-warning-text, #92400e);
+    font-size: 0.85rem;
+}
+
+/* --- Section heading (h3 titoli sezione) --- */
+.section-heading {
+    color: var(--color-brand-navy, #1e3a5f);
+    font-weight: 700;
+}
+
+/* --- Info bar ristorante sotto dropdown --- */
+.ristorante-info-bar {
+    padding: 8px 14px;
+    font-size: 0.88rem;
+    color: var(--color-brand-navy, #1e3a5f);
+    font-weight: 500;
+}
+

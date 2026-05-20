@@ -75,8 +75,8 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
                     try:
                         import streamlit as st
                         if 'files_con_errori' not in st.session_state:
-                            st.session_state.files_con_errori = {}
-                        st.session_state.files_con_errori[nome_file] = errore
+                            st.session_state.files_con_errori = set()
+                        st.session_state.files_con_errori.add(nome_file)
                     except Exception:
                         pass  # intenzionale: Streamlit non disponibile fuori contesto UI
                     
@@ -106,8 +106,8 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
                 try:
                     import streamlit as st
                     if 'files_con_errori' not in st.session_state:
-                        st.session_state.files_con_errori = {}
-                    st.session_state.files_con_errori[nome_file] = errore
+                        st.session_state.files_con_errori = set()
+                    st.session_state.files_con_errori.add(nome_file)
                 except Exception:
                     pass  # intenzionale: Streamlit non disponibile fuori contesto UI
                 
@@ -120,8 +120,8 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
                 try:
                     import streamlit as st
                     if 'files_con_errori' not in st.session_state:
-                        st.session_state.files_con_errori = {}
-                    st.session_state.files_con_errori[nome_file] = errore
+                        st.session_state.files_con_errori = set()
+                    st.session_state.files_con_errori.add(nome_file)
                 except Exception:
                     pass  # intenzionale: Streamlit non disponibile fuori contesto UI
                 
@@ -137,8 +137,8 @@ def converti_in_base64(file_obj, nome_file: str) -> Optional[str]:
         try:
             import streamlit as st
             if 'files_con_errori' not in st.session_state:
-                st.session_state.files_con_errori = {}
-            st.session_state.files_con_errori[nome_file] = errore
+                st.session_state.files_con_errori = set()
+            st.session_state.files_con_errori.add(nome_file)
         except Exception:
             pass  # intenzionale: Streamlit non disponibile fuori contesto UI
         

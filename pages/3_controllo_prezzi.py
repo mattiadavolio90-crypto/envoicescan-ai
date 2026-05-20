@@ -363,36 +363,6 @@ if st.session_state.cp_tab_attivo == "variazioni":
             impatto_label = "€0/mese"
 
         st.markdown(f"""
-        <style>
-        .cp-kpi-row {{
-            display: flex;
-            gap: 16px;
-            margin-bottom: 1.5rem;
-        }}
-        .cp-kpi-card {{
-            flex: 1 1 0;
-            min-width: 0;
-            background: linear-gradient(135deg, rgba(248,249,250,0.95), rgba(233,236,239,0.95));
-            padding: clamp(0.75rem, 2vw, 1.25rem);
-            border-radius: 12px;
-            border: 1px solid rgba(206,212,218,0.5);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.05);
-            text-align: center;
-            box-sizing: border-box;
-            aspect-ratio: auto;
-        }}
-        .cp-kpi-card .kpi-label {{
-            color: #2563eb;
-            font-size: clamp(0.7rem, 1.6vw, 0.85rem);
-            font-weight: 600;
-            margin-bottom: 6px;
-        }}
-        .cp-kpi-card .kpi-value {{
-            font-size: clamp(1.2rem, 3vw, 1.8rem);
-            font-weight: 700;
-            line-height: 1.2;
-        }}
-        </style>
         <div class="cp-kpi-row">
             <div class="cp-kpi-card">
                 <div class="kpi-label">⚠️ Alert attivi</div>
@@ -473,7 +443,28 @@ if st.session_state.cp_tab_attivo == "variazioni":
                 unsafe_allow_html=True,
             )
         with _col_xls_v:
-            st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
+            st.markdown(
+                """
+                <style>
+                div.st-key-cp_download_excel_alert [data-testid="stDownloadButton"] button {
+                    background-color: #ffffff !important;
+                    color: #16a34a !important;
+                    border: 3.5px solid #4ade80 !important;
+                    width: 2.8rem !important;
+                    height: 2.8rem !important;
+                    min-width: unset !important;
+                    min-height: unset !important;
+                    padding: 0 !important;
+                    font-weight: 800 !important;
+                    font-size: 0.9rem !important;
+                    display: inline-flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True,
+            )
             st.download_button(
                 label="XLS",
                 data=excel_buffer.getvalue(),
@@ -681,40 +672,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
     # ============================================================
     # KPI SCONTI E OMAGGI - Stile identico alla pagina principale
     # ============================================================
-    st.markdown("""
-    <style>
-    .kpi-card-cp {
-        background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
-        padding: clamp(0.75rem, 2vw, 1.25rem);
-        border-radius: 12px;
-        border: 1px solid rgba(206, 212, 218, 0.5);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
-        backdrop-filter: blur(10px);
-        text-align: center;
-        min-height: 100px;
-        box-sizing: border-box;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-    }
-    .kpi-card-cp .kpi-label {
-        color: #2563eb;
-        font-weight: 600;
-        font-size: clamp(0.7rem, 1.6vw, 0.85rem);
-        margin-bottom: 6px;
-        line-height: 1.3;
-    }
-    .kpi-card-cp .kpi-value {
-        color: #1e40af;
-        font-size: clamp(1.3rem, 3.5vw, 1.75rem);
-        font-weight: 700;
-        white-space: normal;
-        overflow-wrap: anywhere;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
+    # KPI SCONTI E OMAGGI — stili in static/common.css (.kpi-card-cp)
     col_metric1, col_metric2, col_metric3 = st.columns(3)
 
     importo_sconti = df_sconti['importo_sconto'].sum() if not df_sconti.empty else 0.0

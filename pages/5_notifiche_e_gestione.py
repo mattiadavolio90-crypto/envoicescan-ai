@@ -1,4 +1,4 @@
-"""
+﻿"""
 Gestione Fatture e Notifiche - Scadenziario e Avvisi
 Step 6/7: gestione documenti caricati + regole fornitore + notifiche scadenze.
 """
@@ -401,27 +401,11 @@ def render_anteprima_fattura(file_origine, docs_map, df_cache, fattura_sel, pane
         </tr>
         """
     
-    # CSS e HTML completo
+    # CSS e HTML completo (CSS inline: st.components.v1.html usa iframe isolato, common.css non vi entra)
     html_content = f"""
     <style>
-    .gfn-preview-wrap {{
-        margin-top: 14px;
-        margin-bottom: 16px;
-    }}
-    
-    .gfn-preview-head {{
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-    }}
-    
-    .gfn-preview-title {{
-        color: #1e40af;
-        font-weight: 700;
-        font-size: 1.05rem;
-    }}
-    
+    body {{ font-family: Arial, sans-serif; margin: 0; padding: 0; }}
+    .gfn-preview-wrap {{ margin-top: 14px; margin-bottom: 16px; }}
     .gfn-preview-doc-card {{
         background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
         border: 1px solid #bfdbfe;
@@ -430,7 +414,6 @@ def render_anteprima_fattura(file_origine, docs_map, df_cache, fattura_sel, pane
         box-shadow: 0 4px 12px rgba(30,64,175,0.10);
         padding: 16px;
     }}
-    
     .gfn-preview-doc-header {{
         display: grid;
         grid-template-columns: 1.3fr 1fr;
@@ -441,28 +424,10 @@ def render_anteprima_fattura(file_origine, docs_map, df_cache, fattura_sel, pane
         padding: 12px;
         margin-bottom: 12px;
     }}
-    
-    .gfn-preview-doc-header .label {{
-        color: #1e3a8a;
-        font-weight: 600;
-        font-size: 0.85rem;
-    }}
-    
-    .gfn-preview-doc-header .value {{
-        color: #111827;
-        font-weight: 700;
-        font-size: 1.02rem;
-    }}
-    
-    .gfn-preview-doc-header .sub {{
-        color: #475569;
-        font-size: 0.88rem;
-    }}
-    
-    .gfn-preview-doc-header-row {{
-        line-height: 1.6;
-    }}
-    
+    .gfn-preview-doc-header .label {{ color: #1e3a8a; font-weight: 600; font-size: 0.85rem; }}
+    .gfn-preview-doc-header .value {{ color: #111827; font-weight: 700; font-size: 1.02rem; }}
+    .gfn-preview-doc-header .sub {{ color: #475569; font-size: 0.88rem; }}
+    .gfn-preview-doc-header-row {{ line-height: 1.6; }}
     .gfn-preview-table-wrap {{
         max-height: 400px;
         overflow-y: auto;
@@ -470,51 +435,27 @@ def render_anteprima_fattura(file_origine, docs_map, df_cache, fattura_sel, pane
         border-radius: 10px;
         margin-bottom: 10px;
     }}
-    
-    .gfn-preview-table {{
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.90rem;
-    }}
-    
+    .gfn-preview-table {{ width: 100%; border-collapse: collapse; font-size: 0.90rem; }}
     .gfn-preview-table thead th {{
-        position: sticky;
-        top: 0;
-        background: #dbeafe;
-        color: #1e3a8a;
-        font-weight: 700;
+        position: sticky; top: 0;
+        background: #dbeafe; color: #1e3a8a; font-weight: 700;
         border-bottom: 1px solid #93c5fd;
-        padding: 8px 10px;
-        text-align: left;
+        padding: 8px 10px; text-align: left;
     }}
-    
     .gfn-preview-table tbody td {{
         border-bottom: 1px solid #eef2ff;
-        padding: 7px 10px;
-        color: #111827;
-        vertical-align: top;
+        padding: 7px 10px; color: #111827; vertical-align: top;
     }}
-    
     .gfn-preview-footer {{
-        display: flex;
-        justify-content: space-between;
-        padding-top: 8px;
-        border-top: 1px dashed #93c5fd;
-        color: #1e3a8a;
-        font-weight: 700;
-        font-size: 0.95rem;
+        display: flex; justify-content: space-between;
+        padding-top: 8px; border-top: 1px dashed #93c5fd;
+        color: #1e3a8a; font-weight: 700; font-size: 0.95rem;
     }}
-    
     @media (max-width: 900px) {{
-        .gfn-preview-doc-header {{
-            grid-template-columns: 1fr;
-        }}
-        .gfn-preview-table {{
-            font-size: 0.82rem;
-        }}
+        .gfn-preview-doc-header {{ grid-template-columns: 1fr; }}
+        .gfn-preview-table {{ font-size: 0.82rem; }}
     }}
     </style>
-    
     <div class="gfn-preview-wrap">
         <div class="gfn-preview-doc-card">
             <div class="gfn-preview-doc-header">
@@ -542,7 +483,6 @@ def render_anteprima_fattura(file_origine, docs_map, df_cache, fattura_sel, pane
                             <th style="text-align: right;">Prezzo Unit.</th>
                             <th>IVA%</th>
                             <th style="text-align: right;">Totale Riga</th>
-                               
                         </tr>
                     </thead>
                     <tbody>

@@ -708,9 +708,9 @@ if st.session_state.ap_tab_attivo == "panoramica":
                             if n_punti > 20:
                                 x_axis_cfg = dict(
                                     tickformat="%d/%m/%y",
-                                    nticks=12,
-                                    tickangle=45,
-                                    tickfont=dict(size=13, color="#6b7280", family="Arial"),
+                                    nticks=10,
+                                    tickangle=0,
+                                    tickfont=dict(size=12, color="#6b7280", family="Arial"),
                                     showgrid=False,
                                     linecolor="#e5e7eb",
                                 )
@@ -720,19 +720,19 @@ if st.session_state.ap_tab_attivo == "panoramica":
                                     tickformat="%d/%m/%y",
                                     tickmode="array",
                                     tickvals=x_tickvals,
-                                    tickangle=40,
-                                    tickfont=dict(size=13, color="#6b7280", family="Arial"),
+                                    tickangle=0,
+                                    tickfont=dict(size=12, color="#6b7280", family="Arial"),
                                     showgrid=False,
                                     linecolor="#e5e7eb",
                                 )
                             else:
                                 x_tickvals = df_linea_tag["Data_DT"].dropna().drop_duplicates().tolist()
                                 x_axis_cfg = dict(
-                                    tickformat="%d/%m/%Y",
+                                    tickformat="%d/%m/%y",
                                     tickmode="array",
                                     tickvals=x_tickvals,
                                     tickangle=0,
-                                    tickfont=dict(size=14, color="#6b7280", family="Arial"),
+                                    tickfont=dict(size=13, color="#6b7280", family="Arial"),
                                     showgrid=False,
                                     linecolor="#e5e7eb",
                                 )
@@ -865,20 +865,7 @@ if st.session_state.ap_tab_attivo == "panoramica":
                                 )
 
                             st.markdown("<div style='margin-top: 0.8rem;'></div>", unsafe_allow_html=True)
-                            st.markdown(
-                                """
-                                <style>
-                                .tag-forn-grid { width:100%; font-family:'Source Sans Pro',sans-serif; font-size:0.88rem; }
-                                .tag-forn-row { display:grid; grid-template-columns:28% 13% 10% 12% 13% 10% 14%; border-bottom:1px solid #e2e8f0; }
-                                .tag-forn-row > div { padding:10px 12px; }
-                                .tag-forn-row > div:not(:first-child) { text-align:right; font-variant-numeric:tabular-nums; }
-                                .tag-forn-header { background:#f0f2f6; font-weight:700; color:#1e3a5f; font-size:0.84rem; border-bottom:2px solid #cbd5e1; }
-                                .tag-forn-body:nth-child(even) { background:#f8fbff; }
-                                .tag-forn-body > div:first-child { font-weight:700; color:#1e40af; }
-                                </style>
-                                """,
-                                unsafe_allow_html=True,
-                            )
+                            # Stili tag-forn-* in static/common.css
 
                             h = []
                             h.append('<div class="tag-forn-grid">')

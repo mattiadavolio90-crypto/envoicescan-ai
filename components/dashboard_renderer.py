@@ -6,7 +6,6 @@ import time
 import logging
 from datetime import datetime, timezone
 import plotly.express as px
-from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 
 from config.constants import (
@@ -18,10 +17,10 @@ from config.constants import (
     MAX_AI_CALLS_PER_DAY,
 )
 
-from utils.text_utils import normalizza_stringa, estrai_nome_categoria, escape_ilike as _escape_ilike
+from utils.text_utils import normalizza_stringa
 from utils.ui_helpers import load_css, render_pivot_mensile
 from utils.ristorante_helper import add_ristorante_filter
-from utils.validation import classify_special_row, classify_special_row_vectorized
+from utils.validation import classify_special_row_vectorized
 
 from services.ai_service import (
     carica_memoria_completa,
@@ -50,6 +49,9 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
     if df_completo is None or df_completo.empty:
         st.info("📭 Nessun dato disponibile. Carica le tue prime fatture!")
         return
+
+    # Stili componenti condivisi (ai-banner, kpi-card, ecc.)
+    load_css('common.css')
 
     # Header colonne in grassetto per tutte le tabelle dei tab Analisi Fatture AI.
     st.markdown(
@@ -460,48 +462,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    # CSS per banner orizzontale con pulsazione cervelletto
-                    st.markdown("""
-                    <style>
-                    @keyframes pulse_brain {
-                        0% { transform: scale(1); opacity: 1; }
-                        50% { transform: scale(1.15); opacity: 0.9; }
-                        100% { transform: scale(1); opacity: 1; }
-                    }
-                    
-                    .ai-banner {
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        gap: 25px;
-                        padding: 20px;
-                        background: linear-gradient(135deg, #FFE5F4 0%, #FFF0F8 100%);
-                        border: 2px solid #FFB6E1;
-                        border-radius: 12px;
-                        box-shadow: 0 4px 8px rgba(255, 182, 225, 0.3);
-                    }
-                    
-                    .brain-pulse-banner {
-                        font-size: clamp(2.5rem, 6vw, 3.75rem);
-                        animation: pulse_brain 1.5s ease-in-out infinite;
-                        line-height: 1;
-                    }
-                    
-                    .progress-percentage {
-                        font-family: monospace;
-                        font-size: clamp(1.5rem, 4vw, 2rem);
-                        font-weight: bold;
-                        color: #FF69B4;
-                        min-width: 5rem;
-                    }
-                    
-                    .progress-status {
-                        color: #555;
-                        font-size: clamp(0.875rem, 2.5vw, 1.125rem);
-                        font-weight: 500;
-                    }
-                    </style>
-                    """, unsafe_allow_html=True)
+                    # CSS per banner orizzontale con pulsazione cervelletto — ora in static/common.css
                     
                     # � PRE-STEP: Controlla memoria (admin > locale > globale) PRIMA di keyword/AI
                     # Invalida cache per avere dati aggiornati (altri utenti potrebbero aver categorizzato)
@@ -1198,8 +1159,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                     del st.session_state.last_upload_summary
                 st.rerun()
     
-    # CSS per bottoni colorati personalizzati
-    load_css('common.css')
+    # CSS per bottoni colorati personalizzati — spostato all'inizio della funzione
     
     # Resetta il flag is_loading dopo il rerun
     if st.session_state.is_loading:

@@ -125,20 +125,11 @@ with col_tab2:
 # CSS per bottoni tab - caricato da file statico condiviso
 from utils.ui_helpers import load_css
 load_css('common.css')
-st.markdown("""
-    <style>
-    /* Override specifico: altezza bottoni più compatta per questa pagina */
-    div[data-testid="column"] button {
-        padding: 0.5rem 0.25rem !important;
-        min-height: 3rem !important;
-        height: auto !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# CSS bottoni pagina — in static/common.css (div[data-testid="column"] button)
 
 if st.session_state.margine_tab == "analisi":
 
-    from config.constants import CENTRI_DI_PRODUZIONE, CATEGORIE_FOOD
+    from config.constants import CENTRI_DI_PRODUZIONE
 
     st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
 
@@ -631,33 +622,8 @@ if st.session_state.margine_tab == "analisi":
         # Colonne: Centro | Fatturato | Costi | % Costi su Fatt. | Margine | Margine % | % su Costi F&B Tot
         _grid_cols = "20% 13% 12% 13% 13% 11% 18%"
 
-        st.markdown(f"""
-        <style>
-        .aa-grid {{ width:100%; font-family:'Source Sans Pro',sans-serif; font-size:0.88rem; }}
-        .aa-row {{ display:grid; grid-template-columns:{_grid_cols}; border-bottom:1px solid #e2e8f0; }}
-        .aa-row > div {{ padding:10px 14px; }}
-        .aa-row > div:not(:first-child) {{ text-align:right; font-variant-numeric:tabular-nums; }}
-        .aa-header {{ background:#f0f2f6; font-weight:700; color:#1e3a5f; font-size:0.85rem; border-bottom:2px solid #cbd5e1; }}
-        .aa-details {{ border:none; margin:0; padding:0; }}
-        .aa-details summary {{ list-style:none; cursor:pointer; }}
-        .aa-details summary::-webkit-details-marker {{ display:none; }}
-        .aa-details summary::marker {{ display:none; content:""; }}
-        .aa-details summary .aa-row {{ background:#fff; transition:background .15s; }}
-        .aa-details summary .aa-row:hover {{ background:#eff6ff; }}
-        .aa-details summary .aa-row > div:first-child {{ font-weight:700; color:#1e40af; font-size:0.9rem; }}
-        .aa-details summary .aa-row > div {{ font-weight:600; }}
-        .aa-details[open] summary .aa-row {{ background:#eff6ff; border-left:3px solid #0ea5e9; }}
-        .aa-cat .aa-row {{ background:#f8fafc; }}
-        .aa-cat .aa-row > div {{ font-size:0.83rem; color:#475569; padding:7px 14px; }}
-        .aa-cat .aa-row > div:first-child {{ padding-left:40px; }}
-        .aa-totale {{ background:#e0f2fe; border-top:2px solid #0ea5e9; }}
-        .aa-totale > div {{ font-weight:700; color:#0c4a6e; }}
-        .aa-arrow {{ display:inline-block; transition:transform .2s; margin-right:6px; font-size:0.7rem; }}
-        .aa-details[open] .aa-arrow {{ transform:rotate(90deg); }}
-        .aa-margine-pos {{ color:#16a34a; font-weight:700; }}
-        .aa-margine-neg {{ color:#dc2626; font-weight:700; }}
-        </style>
-        """, unsafe_allow_html=True)
+        # CSS aa-* statico in static/common.css; inietta solo grid-template-columns dinamico
+        st.markdown(f"<style>.aa-row {{ display:grid; grid-template-columns:{_grid_cols}; border-bottom:1px solid #e2e8f0; }}</style>", unsafe_allow_html=True)
 
         def _margine_html(margine):
             cls = "aa-margine-pos" if margine >= 0 else "aa-margine-neg"
@@ -779,47 +745,7 @@ if st.session_state.margine_tab == "analisi":
                 segno = "-" if val < 0 else ""
                 return f"{segno}€{abs(val):,.0f}".replace(",", ".")
 
-            # CSS per KPI con sfondo grigio argentato traslucido e bordo (stile tab 1)
-            st.markdown("""
-            <style>
-            [data-testid="stHorizontalBlock"]:has(div[data-testid="stMetric"]) > div[data-testid="column"] {
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: stretch !important;
-            }
-            [data-testid="stHorizontalBlock"]:has(div[data-testid="stMetric"]) > div[data-testid="column"] > div {
-                flex: 1 !important;
-                display: flex !important;
-                flex-direction: column !important;
-            }
-            div[data-testid="stMetric"] {
-                background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
-                padding: clamp(1rem, 2.5vw, 1.25rem);
-                border-radius: 12px;
-                border: 1px solid rgba(206, 212, 218, 0.5);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
-                backdrop-filter: blur(10px);
-                height: 100%;
-                min-height: 100px;
-                box-sizing: border-box;
-                justify-content: center;
-            }
-            div[data-testid="stMetric"] label {
-                color: #2563eb !important;
-                font-weight: 600 !important;
-                font-size: clamp(0.75rem, 1.8vw, 0.875rem) !important;
-            }
-            div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-                color: #1e40af !important;
-                font-size: clamp(1.25rem, 3.5vw, 1.75rem) !important;
-                font-weight: 700 !important;
-            }
-            div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
-                color: #f97316 !important;
-                font-weight: 600 !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
+            # CSS KPI Analisi Annuale stHorizontalBlock — in static/common.css
 
             # KPI Cards — 5 colonne, stile identico al tab 1
             col_kpi_aa1, col_kpi_aa2, col_kpi_aa3, col_kpi_aa4, col_kpi_aa5 = st.columns(5)
@@ -1603,61 +1529,7 @@ if st.session_state.margine_tab == "calcolo":
             segno = "-" if val < 0 else ""
             return f"{segno}€{abs(val):,.0f}".replace(",", ".")
     
-        # CSS per KPI con card custom uniformi
-        st.markdown("""
-        <style>
-        .margine-kpi-grid {
-            display: grid;
-            grid-template-columns: repeat(7, minmax(0, 1fr));
-            gap: 12px;
-            margin: 10px 0 4px 0;
-        }
-        .margine-kpi-card {
-            background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
-            padding: clamp(1rem, 2.5vw, 1.25rem);
-            border-radius: 12px;
-            border: 1px solid rgba(206, 212, 218, 0.5);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
-            backdrop-filter: blur(10px);
-            min-height: 122px;
-            box-sizing: border-box;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-        }
-        .margine-kpi-label {
-            color: #2563eb;
-            font-weight: 600;
-            font-size: clamp(0.74rem, 1.7vw, 0.86rem);
-            line-height: 1.25;
-            min-height: 2.4em;
-        }
-        .margine-kpi-value {
-            color: #1e40af;
-            font-size: clamp(1.18rem, 3.2vw, 1.62rem);
-            font-weight: 700;
-            line-height: 1.15;
-            margin-top: 8px;
-        }
-        .margine-kpi-sub {
-            color: #f97316;
-            font-weight: 600;
-            font-size: 0.82rem;
-            margin-top: 8px;
-            min-height: 1.3em;
-        }
-        @media (max-width: 1400px) {
-            .margine-kpi-grid {
-                grid-template-columns: repeat(4, minmax(0, 1fr));
-            }
-        }
-        @media (max-width: 900px) {
-            .margine-kpi-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-        }
-        </style>
-        """, unsafe_allow_html=True)
+        # CSS margine-kpi-* — in static/common.css
 
         def _kpi_card_html(label: str, value: str, sub: str) -> str:
             return (
