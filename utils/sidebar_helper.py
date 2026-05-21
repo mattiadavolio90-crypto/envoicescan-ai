@@ -43,42 +43,7 @@ def render_sidebar(user_data: dict):
         hide_sidebar_css()
         return
     
-    # CSS: nasconde navigazione automatica, pulsante chiusura, e FORZA sidebar sempre aperta
-    st.markdown("""
-        <style>
-        /* Nasconde navigazione automatica e pulsante chiusura */
-        [data-testid="stSidebarNav"] {display: none !important;}
-        [data-testid="collapsedControl"] {display: none !important; pointer-events: none !important;}
-        button[kind="header"] {display: none !important;}
-        
-        /* Forza sidebar SEMPRE visibile e aperta */
-        [data-testid="stSidebar"],
-        section[data-testid="stSidebar"] {
-            display: flex !important;
-            visibility: visible !important;
-            width: clamp(220px, 22vw, 260px) !important;
-            min-width: clamp(220px, 22vw, 260px) !important;
-            max-width: clamp(220px, 22vw, 260px) !important;
-            opacity: 1 !important;
-            transform: none !important;
-            position: relative !important;
-        }
-        
-        /* Nasconde freccia/pulsante chiudi sidebar */
-        [data-testid="stSidebar"] button[aria-label="Close"],
-        [data-testid="stSidebar"] button[aria-label="Chiudi"],
-        [data-testid="stSidebar"] [data-testid="baseButton-header"],
-        [data-testid="stSidebar"] button[kind="headerNoPadding"],
-        .stSidebar [data-testid="collapsedControl"],
-        div[data-testid="collapsedControl"] {
-            display: none !important;
-            visibility: hidden !important;
-            pointer-events: none !important;
-            width: 0 !important;
-            height: 0 !important;
-        }
-        </style>
-    """, unsafe_allow_html=True)
+    # Sidebar CSS (sidebar force-visible, nav hide) ora in branding.css (caricato globalmente)
     
     with st.sidebar:
         # Nome app in alto
@@ -143,15 +108,7 @@ def render_sidebar(user_data: dict):
         except Exception as e:
             logger.debug(f"Frame inspection fallita: {e}")
         
-        # CSS per bottoni sidebar: stato attivo con stesso colore dei tab (primaryColor tema)
-        st.markdown("""
-        <style>
-        [data-testid="stSidebar"] button[kind="primary"]:active,
-        [data-testid="stSidebar"] button[kind="primary"]:focus {
-            color: white !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+        # Sidebar button active/focus CSS ora in branding.css (caricato globalmente)
         
         # ============================================
         # SEZIONE OPERATIVO
@@ -232,20 +189,7 @@ def render_sidebar(user_data: dict):
         # ============================================
         st.markdown("---")
         
-        # CSS per bottone logout rosso
-        st.markdown("""
-            <style>
-            button[key="sidebar_logout"] {
-                background-color: #dc2626 !important;
-                color: white !important;
-                border: 1px solid #dc2626 !important;
-            }
-            button[key="sidebar_logout"]:hover {
-                background-color: #b91c1c !important;
-                border: 1px solid #b91c1c !important;
-            }
-            </style>
-        """, unsafe_allow_html=True)
+        # Logout button CSS (div.st-key-sidebar_logout) ora in branding.css (caricato globalmente)
         
         if st.button("🚪 Logout", use_container_width=True, type="primary", key="sidebar_logout"):
             # 1. Registra logout nel database

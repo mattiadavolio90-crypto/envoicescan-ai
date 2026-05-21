@@ -156,25 +156,7 @@ def _render_auto_invoice_notice(auto_notice, user_id, dismissed_ids, supabase_cl
         st.toast(f"📬 {toast_message}", icon="📥")
         st.session_state.auto_invoice_notice_toast_shown = True
 
-    st.markdown("""
-    <style>
-    div.st-key-expander_auto_invoices [data-testid="stExpander"] details summary {
-        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
-        border-radius: 10px;
-        padding: 8px 16px;
-        font-weight: 700;
-        color: #1e3a8a;
-    }
-    div.st-key-expander_auto_invoices [data-testid="stExpander"] details {
-        border: 2px solid #3b82f6;
-        border-radius: 12px;
-        margin-bottom: 1rem;
-    }
-    div.st-key-expander_auto_invoices [data-testid="stExpander"] details[open] summary {
-        border-bottom: 1px solid #93c5fd;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # expander_auto_invoices CSS ora in common.css
 
     with st.container(key="expander_auto_invoices"):
         fatture_label = 'fattura' if len(pending_files) == 1 else 'fatture'
@@ -1468,12 +1450,7 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                     if 'gfn_preview_closed_for_n_sel' not in st.session_state:
                         st.session_state.gfn_preview_closed_for_n_sel = -1
 
-                    st.markdown("""
-                    <style>
-                    [data-testid="stBaseButton-secondary"][kind="secondary"] { white-space: nowrap; }
-                    div[data-testid="column"].gfn-sel-col > div { white-space: nowrap; }
-                    </style>
-                    """, unsafe_allow_html=True)
+                    # gfn-sel-col + stBaseButton-secondary CSS ora in common.css
                     _scol1, _scol2, _scol_info = st.columns([1.6, 1.8, 6.6])
                     with _scol1:
                         if st.button("☑️ Seleziona tutto", key="gfn_btn_sel_tutto", use_container_width=True):
@@ -1501,18 +1478,7 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                     } for f in fatture_options])
                     st.session_state.gfn_tbl_init_sel = None
 
-                    # Header HTML azzurro — l'header nativo canvas viene tagliato via clip-path
-                    st.markdown("""
-                    <style>
-                    /* Sfondo azzurro sull'header nativo del data_editor */
-                    [data-testid="stDataFrameResizable"] [role="columnheader"],
-                    [data-testid="stDataFrameResizable"] th {
-                        background-color: rgba(219,234,254,0.85) !important;
-                        color: #111827 !important;
-                        font-weight: 700 !important;
-                    }
-                    </style>
-                    """, unsafe_allow_html=True)
+                    # stDataFrameResizable header azzurro CSS ora in common.css
 
                     _edited_tbl = st.data_editor(
                         _df_tbl,
@@ -2112,18 +2078,8 @@ elif st.session_state.gfn_tab_attivo == "notifiche":
     else:
         _col_brief, _ = st.columns([1, 3])
         with _col_brief:
-            st.markdown(
-                '<style>'
-                'div[data-testid="stColumn"]:has(#gfn_genera_briefing_wrap)'
-                ' button[kind="primary"]'
-                '{background-color:#2563eb!important;border-color:#2563eb!important;color:#fff!important;}'
-                'div[data-testid="stColumn"]:has(#gfn_genera_briefing_wrap)'
-                ' button[kind="primary"]:hover'
-                '{background-color:#1d4ed8!important;border-color:#1d4ed8!important;}'
-                '</style>'
-                '<span id="gfn_genera_briefing_wrap"></span>',
-                unsafe_allow_html=True,
-            )
+            # gfn_genera_briefing_wrap button CSS ora in common.css
+            st.markdown('<span id="gfn_genera_briefing_wrap"></span>', unsafe_allow_html=True)
             if st.button('\U0001F4CB Genera briefing di oggi', key='gfn_genera_briefing',
                          use_container_width=True, type='primary'):
                 _notifs_for_brief = get_inbox_notifications(

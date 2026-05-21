@@ -188,74 +188,7 @@ def _render_spese_generali_fallback_editor(df_editor_paginato: pd.DataFrame, cat
     if 'Quantita' in preview_df.columns:
         preview_df['Quantita'] = preview_df['Quantita'].apply(lambda value: f"{float(value):,.2f}" if pd.notna(value) else '')
     table_html = preview_df.to_html(index=False, escape=True, classes="ohh-detail-stable-table")
-    st.markdown(
-        """
-<style>
-.ohh-detail-stable-wrap {
-    overflow-x: auto;
-    border: 1px solid #dbe4f0;
-    border-radius: 10px;
-    background: #ffffff;
-    margin-bottom: 1rem;
-}
-.ohh-detail-stable-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.92rem;
-    table-layout: fixed;
-}
-.ohh-detail-stable-table thead th {
-    background: #f7f9fc;
-    color: #334155;
-    padding: 0.7rem 0.75rem;
-    border-bottom: 1px solid #dbe4f0;
-    text-align: left;
-    white-space: nowrap;
-}
-.ohh-detail-stable-table tbody td {
-    padding: 0.65rem 0.75rem;
-    border-top: 1px solid #eef2f7;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.ohh-detail-stable-table th:nth-child(1), .ohh-detail-stable-table td:nth-child(1) {
-    width: 11%;
-}
-.ohh-detail-stable-table th:nth-child(2), .ohh-detail-stable-table td:nth-child(2) {
-    width: 34%;
-}
-.ohh-detail-stable-table th:nth-child(3), .ohh-detail-stable-table td:nth-child(3) {
-    width: 20%;
-}
-.ohh-detail-stable-table th:nth-child(4), .ohh-detail-stable-table td:nth-child(4) {
-    width: 9%;
-}
-.ohh-detail-stable-table th:nth-child(5), .ohh-detail-stable-table td:nth-child(5) {
-    width: 11%;
-}
-.ohh-detail-stable-table th:nth-child(6), .ohh-detail-stable-table td:nth-child(6) {
-    width: 15%;
-}
-.ohh-detail-selector-meta {
-    padding: 0.55rem 0.15rem 0.8rem 0.1rem;
-}
-.ohh-detail-selector-title {
-    font-weight: 600;
-    color: #1f2937;
-    line-height: 1.25;
-    margin-bottom: 0.2rem;
-    word-break: break-word;
-}
-.ohh-detail-selector-subtitle {
-    font-size: 0.84rem;
-    color: #64748b;
-    line-height: 1.25;
-}
-</style>
-""",
-        unsafe_allow_html=True,
-    )
+    # ohh-detail-stable-* CSS ora in common.css (caricato globalmente)
     st.markdown(f'<div class="ohh-detail-stable-wrap">{table_html}</div>', unsafe_allow_html=True)
     st.caption("Modalità stabile: tabella compatta sopra, categoria modificabile riga per riga qui sotto.")
 
@@ -840,31 +773,7 @@ def render_category_editor(df_completo_filtrato, supabase):
         key=_editor_key
     )
 
-    st.markdown("""
-            <style>
-            [data-testid="stDataFrame"] [data-testid="stDataFrameCell"] {
-                transition: background-color 0.3s ease;
-            }
-            
-            /* 🔍 BADGE PIÙ LEGGIBILE nella colonna Novità */
-            /* Approccio 1: Targetta tutte le celle dell'ultima colonna */
-            div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(1),
-            div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(2):has(:only-child) {
-                font-size: clamp(1.1rem, 1vw + 0.8rem, 1.625rem) !important;
-                text-align: center !important;
-                line-height: 1.5 !important;
-            }
-            /* Approccio 2: Aumenta font per colonne con width="small" (Fonte e U.M.) */
-            div[data-testid="stDataFrame"] [data-baseweb="cell"]:has(span:only-child) {
-                font-size: clamp(1rem, 0.9vw + 0.8rem, 1.5rem) !important;
-            }
-            /* Approccio 3: Centra e ingrandisci celle contenenti solo emoji singole */
-            div[data-testid="stDataFrame"] div[role="gridcell"] > div:only-child {
-                font-size: inherit;
-            }
-            </style>
-        """, unsafe_allow_html=True)
-    
+    # DataEditor badge CSS ora in common.css (caricato globalmente)
     totale_tabella = edited_df['TotaleRiga'].sum()
     num_righe = len(edited_df)
     

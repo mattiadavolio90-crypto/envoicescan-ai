@@ -51,21 +51,9 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
         return
 
     # Stili componenti condivisi (ai-banner, kpi-card, ecc.)
+    # columnheader bold + altri stili globali ora in common.css
     load_css('common.css')
 
-    # Header colonne in grassetto per tutte le tabelle dei tab Analisi Fatture AI.
-    st.markdown(
-        """
-        <style>
-        [data-testid="stDataFrame"] [role="columnheader"],
-        [data-testid="stDataEditor"] [role="columnheader"] {
-            font-weight: 700 !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    
     # ===== 🔍 DEBUG CATEGORIZZAZIONE (SOLO ADMIN IMPERSONIFICATO) =====
     if st.session_state.get('impersonating', False):
         with st.expander("🔍 DEBUG: Verifica Categorie", expanded=False):

@@ -114,6 +114,9 @@ check_page_enabled('workspace', user_id)
 # ============================================
 render_sidebar(user)
 
+from utils.ui_helpers import load_css
+load_css('common.css')
+
 # ============================================
 # INIZIALIZZA SESSION STATE
 # ============================================
@@ -594,59 +597,7 @@ with col_t4:
             st.session_state.workspace_tab = "export"
             st.rerun()
 
-# CSS per bottoni tab - stile identico a Analisi Fatture
-st.markdown("""
-    <style>
-    /* Globale: primary button azzurro */
-    button[kind="primary"] {
-        background-color: #0ea5e9 !important;
-        color: white !important;
-        border: 2px solid #0284c7 !important;
-        font-weight: bold !important;
-    }
-    button[kind="primary"]:hover {
-        background-color: #0284c7 !important;
-        border-color: #0369a1 !important;
-    }
-    button[kind="primary"]:disabled,
-    button[kind="primary"][disabled] {
-        background-color: #0ea5e9 !important;
-        color: white !important;
-        border: 2px solid #0284c7 !important;
-        opacity: 0.5 !important;
-    }
-    div[data-testid="column"] button[kind="primary"] {
-        background-color: #0ea5e9 !important;
-        color: white !important;
-        border: 2px solid #0284c7 !important;
-        font-weight: bold !important;
-    }
-    div[data-testid="column"] button[kind="primary"]:hover {
-        background-color: #0284c7 !important;
-        border-color: #0369a1 !important;
-    }
-    div[data-testid="column"] button[kind="secondary"] {
-        background-color: #f0f2f6 !important;
-        color: #31333F !important;
-        border: 2px solid #e0e0e0 !important;
-    }
-    div[data-testid="column"] button[kind="secondary"]:hover {
-        background-color: #e0e5eb !important;
-        border-color: #0ea5e9 !important;
-    }
-    div[data-testid="column"] button p {
-        font-size: clamp(0.7rem, 1.8vw, 0.95rem) !important;
-        line-height: 1.3 !important;
-        word-wrap: break-word !important;
-        white-space: normal !important;
-        overflow-wrap: break-word !important;
-    }
-    div[data-testid="column"] button {
-        padding: 0.5rem 0.25rem !important;
-        min-height: 3rem !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+
 
 # Mappa session state a selected_tab per compatibilità con codice esistente
 _tab_map = {
@@ -707,44 +658,7 @@ if selected_tab == "📋 Analisi Ricette e Menù":
             # Conta ricette con prezzo impostato
             ricette_con_prezzo = df_analisi['prezzo_netto'].notna().sum()
             
-            # CSS per KPI con sfondo grigio argentato traslucido e bordo
-            st.markdown("""
-            <style>
-            /* Altezza uniforme tra tutte le card KPI al variare dello zoom */
-            [data-testid="stHorizontalBlock"]:has(div[data-testid="stMetric"]) > div[data-testid="column"] {
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: stretch !important;
-            }
-            [data-testid="stHorizontalBlock"]:has(div[data-testid="stMetric"]) > div[data-testid="column"] > div {
-                flex: 1 !important;
-                display: flex !important;
-                flex-direction: column !important;
-            }
-            div[data-testid="stMetric"] {
-                background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
-                padding: clamp(1rem, 2.5vw, 1.25rem);
-                border-radius: 12px;
-                border: 1px solid rgba(206, 212, 218, 0.5);
-                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
-                backdrop-filter: blur(10px);
-                height: 100%;
-                min-height: 100px;
-                box-sizing: border-box;
-                justify-content: center;
-            }
-            div[data-testid="stMetric"] label {
-                color: #2563eb !important;
-                font-weight: 600 !important;
-                font-size: clamp(0.75rem, 1.8vw, 0.875rem) !important;
-            }
-            div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-                color: #1e40af !important;
-                font-size: clamp(1.25rem, 3.5vw, 1.75rem) !important;
-                font-weight: 700 !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
+            # stMetric CSS ora in common.css
             
             # KPI generali del menu - Tutti su una riga
             col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
@@ -845,21 +759,7 @@ if selected_tab == "📋 Analisi Ricette e Menù":
 if selected_tab == "🧪 Lab Ricette":
     
     # Guida alla sezione (con sfondo azzurro chiaro) - PRIMA DI TUTTO
-    st.markdown("""
-    <style>
-    div[data-testid="stExpander"]:first-of-type summary {
-        background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
-        border-radius: 8px !important;
-        padding: clamp(0.625rem, 1.5vw, 1rem) clamp(0.75rem, 2vw, 1rem) !important;
-        color: #1e40af !important;
-        font-weight: 600 !important;
-    }
-    div[data-testid="stExpander"]:first-of-type {
-        margin-bottom: 24px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
+    # stExpander first-of-type CSS ora in common.css
     with st.expander("ℹ️ Guida alla sezione Ricette", expanded=False):
         st.markdown("""
 ### 💡 Come creare una ricetta
@@ -895,18 +795,7 @@ Se necessario contattare l'assistenza.
     st.divider()
     
     # --- Crea Ingrediente Manuale (expander con intestazione verde chiaro) ---
-    st.markdown("""
-    <style>
-    /* Sfondo verde chiaro SOLO per l'expander Crea Ingrediente Manuale */
-    div[data-testid="stExpander"] details summary:has(span:where(:is([data-testid="stMarkdownContainer"])) ) {
-    }
-    div.st-key-expander_crea_ing > div[data-testid="stExpander"] > details > summary {
-        background: #d4edda !important;
-        border: 1px solid #c3e6cb !important;
-        border-radius: 8px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # expander_crea_ing CSS ora in common.css
     with st.container(key="expander_crea_ing"):
         with st.expander("📝 Crea Ingrediente Manuale", expanded=False):
         
@@ -997,30 +886,7 @@ Se necessario contattare l'assistenza.
                 
                     st.markdown('<div class="workspace-ingredients-list"></div>', unsafe_allow_html=True)
                 
-                    st.markdown("""
-                    <style>
-                    .workspace-ingredients-list + div {
-                        max-height: 350px;
-                        overflow-y: auto;
-                        padding-right: 8px;
-                        margin-top: 8px;
-                    }
-                    .workspace-ingredients-list + div::-webkit-scrollbar {
-                        width: 8px;
-                    }
-                    .workspace-ingredients-list + div::-webkit-scrollbar-track {
-                        background: #f1f5f9;
-                        border-radius: 4px;
-                    }
-                    .workspace-ingredients-list + div::-webkit-scrollbar-thumb {
-                        background: #94a3b8;
-                        border-radius: 4px;
-                    }
-                    .workspace-ingredients-list + div::-webkit-scrollbar-thumb:hover {
-                        background: #64748b;
-                    }
-                    </style>
-                    """, unsafe_allow_html=True)
+                    # workspace-ingredients-list scrollbar CSS ora in common.css
                 
                     for ing in workspace_ings.data:
                         is_editing = st.session_state.get(f"edit_ing_{ing['id']}", False)
@@ -1250,38 +1116,7 @@ Se necessario contattare l'assistenza.
         </div>
         """, unsafe_allow_html=True)
         
-        # Bottone per aggiungere ingredienti con testo allineato a sinistra
-        st.markdown("""
-        <style>
-        /* Testo a sinistra SOLO sul bottone Aggiungi Ingrediente */
-        div.st-key-add_ingredient_btn button[kind="secondary"] {
-            text-align: left !important;
-            display: flex !important;
-            justify-content: flex-start !important;
-            align-items: center !important;
-        }
-        div.st-key-add_ingredient_btn button[kind="secondary"] > div {
-            text-align: left !important;
-            justify-content: flex-start !important;
-            display: flex !important;
-            width: 100% !important;
-        }
-        div.st-key-add_ingredient_btn button[kind="secondary"] > div > p,
-        div.st-key-add_ingredient_btn button[kind="secondary"] p {
-            text-align: left !important;
-            width: 100% !important;
-        }
-        div.st-key-add_ingredient_btn .stButton button {
-            justify-content: flex-start !important;
-        }
-        div.st-key-add_ingredient_btn .stButton button div {
-            justify-content: flex-start !important;
-        }
-        div.st-key-add_ingredient_btn .stButton button div p {
-            text-align: left !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+        # add_ingredient_btn CSS (testo sinistra) ora in common.css
         
         if st.button("➕ Aggiungi Ingrediente", 
                      disabled=len(st.session_state.ingredienti_temp) >= MAX_INGREDIENTI,

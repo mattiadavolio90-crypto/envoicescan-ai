@@ -719,37 +719,7 @@ if st.session_state.margine_tab == "analisi":
                     sheet_name = centro_n[:31]
                     df_c_agg_exp.to_excel(writer, index=False, sheet_name=sheet_name)
             excel_buf_c.seek(0)
-            st.markdown(
-                """
-                <style>
-                div.st-key-aa_download_centri [data-testid="stDownloadButton"] button {
-                    background-color: #ffffff !important;
-                    color: #16a34a !important;
-                    border: 3.5px solid #4ade80 !important;
-                    border-radius: var(--radius-sm, 0.5rem) !important;
-                    width: 2.8rem !important;
-                    height: 2.8rem !important;
-                    min-width: unset !important;
-                    min-height: unset !important;
-                    padding: 0 !important;
-                    font-weight: 800 !important;
-                    font-size: 0.9rem !important;
-                    letter-spacing: 0.04em !important;
-                    box-shadow: none !important;
-                    white-space: nowrap !important;
-                    display: inline-flex !important;
-                    align-items: center !important;
-                    justify-content: center !important;
-                }
-                div.st-key-aa_download_centri [data-testid="stDownloadButton"] button:hover {
-                    background-color: #f0fdf4 !important;
-                    border-color: #4ade80 !important;
-                    color: #15803d !important;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
+            # aa_download_centri button CSS ora in common.css
             st.download_button(
                 label="XLS",
                 data=excel_buf_c.getvalue(),
@@ -1154,37 +1124,7 @@ if st.session_state.margine_tab == "analisi":
                     """, unsafe_allow_html=True)
 
                 with _col_centri_right:
-                    st.markdown(
-                        """
-                        <style>
-                        div.st-key-cm_download_excel_centri [data-testid="stDownloadButton"] button {
-                            background-color: #ffffff !important;
-                            color: #16a34a !important;
-                            border: 3.5px solid #4ade80 !important;
-                            border-radius: var(--radius-sm, 0.5rem) !important;
-                            width: 2.8rem !important;
-                            height: 2.8rem !important;
-                            min-width: unset !important;
-                            min-height: unset !important;
-                            padding: 0 !important;
-                            font-weight: 800 !important;
-                            font-size: 0.9rem !important;
-                            letter-spacing: 0.04em !important;
-                            box-shadow: none !important;
-                            white-space: nowrap !important;
-                            display: inline-flex !important;
-                            align-items: center !important;
-                            justify-content: center !important;
-                        }
-                        div.st-key-cm_download_excel_centri [data-testid="stDownloadButton"] button:hover {
-                            background-color: #f0fdf4 !important;
-                            border-color: #4ade80 !important;
-                            color: #15803d !important;
-                        }
-                        </style>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                    # cm_download_excel_centri button CSS ora in common.css
                     st.download_button(
                         label="XLS",
                         data=excel_data_centri,
@@ -1512,39 +1452,7 @@ if st.session_state.margine_tab == "calcolo":
         f"<div style='overflow-x:auto; padding-bottom:4px;'>{styled_table.to_html()}</div>",
         unsafe_allow_html=True,
     )
-    # Targeting preciso tramite st-key per evitare conflitto con regola
-    # div[data-testid="column"] button { height: 4rem } di common.css
-    st.markdown(
-        """
-        <style>
-        div.st-key-margine_download_tbl [data-testid="stDownloadButton"] button {
-            background-color: #ffffff !important;
-            color: #16a34a !important;
-            border: 3.5px solid #4ade80 !important;
-            border-radius: var(--radius-sm, 0.5rem) !important;
-            width: 2.8rem !important;
-            height: 2.8rem !important;
-            min-width: unset !important;
-            min-height: unset !important;
-            padding: 0 !important;
-            font-weight: 800 !important;
-            font-size: 0.9rem !important;
-            letter-spacing: 0.04em !important;
-            box-shadow: none !important;
-            white-space: nowrap !important;
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-        div.st-key-margine_download_tbl [data-testid="stDownloadButton"] button:hover {
-            background-color: #f0fdf4 !important;
-            border-color: #4ade80 !important;
-            color: #15803d !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    # Targeting preciso tramite st-key — margine_download_tbl button CSS ora in common.css
     _col_xls_empty, _col_xls_tbl = st.columns([9.5, 0.5])
     with _col_xls_tbl:
         excel_data_tbl = export_excel_margini(df_risultati, anno, nome_rist)

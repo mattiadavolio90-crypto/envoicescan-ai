@@ -617,28 +617,7 @@ if st.session_state.ap_tab_attivo == "panoramica":
                         st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
                         st.markdown("<h3 style='color:#1e40af; font-weight:700;'>💬 Analisi KPI Prodotti</h3>", unsafe_allow_html=True)
 
-                        st.markdown("""
-                        <style>
-                        div[data-testid="stMetric"] {
-                            background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
-                            padding: clamp(1rem, 2.5vw, 1.25rem);
-                            border-radius: 12px;
-                            border: 1px solid rgba(206, 212, 218, 0.5);
-                            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
-                            min-height: 100px;
-                            box-sizing: border-box;
-                            justify-content: center;
-                        }
-                        div[data-testid="stMetric"] label {
-                            color: #2563eb !important;
-                            font-weight: 600 !important;
-                        }
-                        div[data-testid="stMetric"] [data-testid="stMetricValue"] {
-                            color: #1e40af !important;
-                            font-weight: 700 !important;
-                        }
-                        </style>
-                        """, unsafe_allow_html=True)
+                        # stMetric CSS ora in common.css
 
                         col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
                         with col_kpi1:
@@ -992,22 +971,7 @@ elif st.session_state.ap_tab_attivo == "gestione":
     <div style="display: inline-block; background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%); padding: 10px 14px; border-radius: 10px; border: 1px solid #f59e0b; color: #92400e; font-weight: 600; font-size: 0.88rem; margin-bottom: 0.8rem;">
         🔔 Inserisci il nome tag da modificare - modifica tag - filtra e aggiungi i prodotti - salva tag
     </div>
-    <style>
-    div[data-testid="stTextInput"] label p {
-        color: #1e3a8a !important;
-        font-weight: 700 !important;
-    }
-    [class*="st-key-ap_btn_modifica_tag"] button {
-        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
-        color: #92400e !important;
-        border: 1px solid #f59e0b !important;
-    }
-    [class*="st-key-ap_btn_modifica_tag"] button:hover {
-        background: linear-gradient(135deg, #fde68a 0%, #fcd34d 100%) !important;
-        color: #78350f !important;
-        border: 1px solid #d97706 !important;
-    }
-    </style>
+    <!-- stTextInput label + ap_btn_modifica_tag CSS ora in common.css -->
     """, unsafe_allow_html=True)
 
     st.markdown("<div style='margin-top: 0.8rem;'></div>", unsafe_allow_html=True)
@@ -1334,29 +1298,7 @@ elif st.session_state.ap_tab_attivo == "gestione":
 
     st.markdown("<div style='margin-top: 1.4rem;'></div>", unsafe_allow_html=True)
     st.markdown('<h3 style="color:#1e40af; font-weight:700;">🏷️ Gestione Tag</h3>', unsafe_allow_html=True)
-    st.markdown("""
-    <style>
-    div[data-testid="stExpander"] {
-        background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-        border: 1px solid #93c5fd;
-        border-radius: 12px;
-        overflow: hidden;
-    }
-    div[data-testid="stExpander"] details summary {
-        background: rgba(191, 219, 254, 0.35);
-    }
-    [class*="st-key-ap_delete_box_"] button {
-        background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
-        color: white !important;
-        border: 1px solid #991b1b !important;
-    }
-    [class*="st-key-ap_delete_box_"] button:hover {
-        background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%) !important;
-        color: white !important;
-        border: 1px solid #7f1d1d !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # stExpander Gestione Tag + ap_delete_box CSS ora in common.css
     if custom_tags:
         for tag in custom_tags:
             tag_id = int(tag["id"])

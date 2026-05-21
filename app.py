@@ -108,6 +108,7 @@ load_css('design_tokens.css')
 load_css('branding.css')
 load_css('layout.css')
 load_css('responsive.css')
+load_css('common.css')
 load_js('branding.js')
 
 

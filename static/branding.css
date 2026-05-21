@@ -180,3 +180,76 @@ button[kind="primary"][disabled] {
     font-weight: 500;
 }
 
+/* ============================================================
+   SIDEBAR — layout, navigazione, logout
+   ============================================================ */
+
+/* Nasconde navigazione automatica Streamlit e pulsante chiusura */
+[data-testid="stSidebarNav"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; pointer-events: none !important; }
+
+/* Forza sidebar sempre visibile e aperta */
+[data-testid="stSidebar"],
+section[data-testid="stSidebar"] {
+    display: flex !important;
+    visibility: visible !important;
+    width: clamp(220px, 22vw, 260px) !important;
+    min-width: clamp(220px, 22vw, 260px) !important;
+    max-width: clamp(220px, 22vw, 260px) !important;
+    opacity: 1 !important;
+    transform: none !important;
+    position: relative !important;
+}
+
+/* Nasconde freccia/pulsante chiudi sidebar */
+[data-testid="stSidebar"] button[aria-label="Close"],
+[data-testid="stSidebar"] button[aria-label="Chiudi"],
+[data-testid="stSidebar"] [data-testid="baseButton-header"],
+[data-testid="stSidebar"] button[kind="headerNoPadding"],
+.stSidebar [data-testid="collapsedControl"],
+div[data-testid="collapsedControl"] {
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    width: 0 !important;
+    height: 0 !important;
+}
+
+/* Sidebar: bottone primary mantiene testo bianco su :active/:focus */
+[data-testid="stSidebar"] button[kind="primary"]:active,
+[data-testid="stSidebar"] button[kind="primary"]:focus {
+    color: white !important;
+}
+
+/* Bottone logout: sfondo rosso */
+div.st-key-sidebar_logout button {
+    background-color: var(--color-danger, #dc2626) !important;
+    color: white !important;
+    border: 1px solid var(--color-danger, #dc2626) !important;
+}
+div.st-key-sidebar_logout button:hover {
+    background-color: #b91c1c !important;
+    border: 1px solid #b91c1c !important;
+}
+
+/* ============================================================
+   LOGIN — bottoni reset password
+   ============================================================ */
+
+/* Bottone "Invia Codice" reset: auto width, azzurro */
+div.st-key-reset_btn_invia button {
+    width: auto !important;
+    min-width: unset !important;
+    background-color: var(--color-primary, #0ea5e9) !important;
+    color: white !important;
+}
+div.st-key-reset_btn_invia button:hover {
+    background-color: var(--color-primary-dark, #0284c7) !important;
+}
+
+/* Bottone "Conferma" reset: auto width */
+div.st-key-reset_btn_conferma button {
+    width: auto !important;
+    min-width: unset !important;
+}
+

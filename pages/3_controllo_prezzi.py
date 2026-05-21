@@ -448,28 +448,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
                 unsafe_allow_html=True,
             )
         with _col_xls_v:
-            st.markdown(
-                """
-                <style>
-                div.st-key-cp_download_excel_alert [data-testid="stDownloadButton"] button {
-                    background-color: #ffffff !important;
-                    color: #16a34a !important;
-                    border: 3.5px solid #4ade80 !important;
-                    width: 2.8rem !important;
-                    height: 2.8rem !important;
-                    min-width: unset !important;
-                    min-height: unset !important;
-                    padding: 0 !important;
-                    font-weight: 800 !important;
-                    font-size: 0.9rem !important;
-                    display: inline-flex !important;
-                    align-items: center !important;
-                    justify-content: center !important;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
+            # cp_download_excel_alert button CSS ora in common.css
             st.download_button(
                 label="XLS",
                 data=excel_buffer.getvalue(),

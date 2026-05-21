@@ -260,23 +260,7 @@ def mostra_pagina_login(supabase, cookie_manager):
 
     elif st.session_state.login_tab_attivo == "reset":
         st.markdown("#### Reset Password via Email")
-        st.markdown("""
-            <style>
-            div.st-key-reset_btn_invia button {
-                width: auto !important;
-                min-width: unset !important;
-                background-color: #0ea5e9 !important;
-                color: white !important;
-            }
-            div.st-key-reset_btn_invia button:hover {
-                background-color: #0284c7 !important;
-            }
-            div.st-key-reset_btn_conferma button {
-                width: auto !important;
-                min-width: unset !important;
-            }
-            </style>
-        """, unsafe_allow_html=True)
+        # Reset button CSS ora in branding.css (caricato globalmente)
 
         reset_email = st.text_input("📧 Email per reset", placeholder="tua@email.com", key="reset_email")
 
@@ -1248,28 +1232,7 @@ def render_dashboard_ui(supabase, logger, user):
     mostra_expander_gestione = (not df_cache.empty) or bool(fatture_cestino_cache)
 
     if mostra_expander_gestione:
-        st.markdown("""
-    <style>
-    /* Expander Gestione Fatture - sfondo arancione chiaro */
-    div.st-key-expander_gestione_fatture [data-testid="stExpander"] details summary {
-        background: linear-gradient(135deg, rgba(255, 237, 213, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%) !important;
-        border-radius: 8px !important;
-        padding: 10px 14px !important;
-        color: #9a3412 !important;
-        font-weight: 600 !important;
-        border: 1px solid #fdba74 !important;
-    }
-    div.st-key-expander_gestione_fatture [data-testid="stExpander"] details {
-        background: rgba(255, 247, 237, 0.9) !important;
-        border: 1px solid #fdba74 !important;
-        border-radius: 8px !important;
-    }
-    div.st-key-expander_gestione_fatture [data-testid="stExpander"] details[open] summary {
-        border-bottom: 1px solid #fdba74 !important;
-        border-radius: 8px 8px 0 0 !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+        # Expander Gestione Fatture CSS (sfondo arancione) ora in common.css
         with st.container(key="expander_gestione_fatture"):
             with st.expander("🗂️ Apri per gestire le Fatture Caricate (Elimina)", expanded=False):
 
@@ -1614,18 +1577,7 @@ def render_dashboard_ui(supabase, logger, user):
     # ============================================================
     # LAYOUT: FILE UPLOADER + AI INFO/BUTTON AFFIANCATI
     # ============================================================
-    # Stile uploader admin — riutilizza lo scope dal container dedicato
-    st.markdown("""
-    <style>
-    [data-testid="stFileUploaderDropzoneInstructions"] {
-        visibility: hidden !important;
-        position: absolute !important;
-        width: 0 !important;
-        height: 0 !important;
-        overflow: hidden !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # stFileUploaderDropzoneInstructions hidden CSS ora in common.css
 
     col_upload, col_ai_right = st.columns([3, 2])
 

@@ -1,3 +1,37 @@
+/* ===== DATAFRAME / DATA EDITOR: header colonne in grassetto ===== */
+[data-testid="stDataFrame"] [role="columnheader"],
+[data-testid="stDataEditor"] [role="columnheader"] {
+    font-weight: 700 !important;
+}
+
+/* ===== FILE UPLOADER: nascondi testo istruzioni dropzone ===== */
+[data-testid="stFileUploaderDropzoneInstructions"] {
+    visibility: hidden !important;
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+
+/* ===== EXPANDER GESTIONE FATTURE — sfondo arancione chiaro ===== */
+div.st-key-expander_gestione_fatture [data-testid="stExpander"] details summary {
+    background: linear-gradient(135deg, rgba(255, 237, 213, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%) !important;
+    border-radius: 8px !important;
+    padding: 10px 14px !important;
+    color: #9a3412 !important;
+    font-weight: 600 !important;
+    border: 1px solid #fdba74 !important;
+}
+div.st-key-expander_gestione_fatture [data-testid="stExpander"] details {
+    background: rgba(255, 247, 237, 0.9) !important;
+    border: 1px solid #fdba74 !important;
+    border-radius: 8px !important;
+}
+div.st-key-expander_gestione_fatture [data-testid="stExpander"] details[open] summary {
+    border-bottom: 1px solid #fdba74 !important;
+    border-radius: 8px 8px 0 0 !important;
+}
+
 /* ===== DOWNLOAD BUTTON XLS: quadrato, sfondo bianco, scritta verde ===== */
 [data-testid="stDownloadButton"] {
     margin-top: 0 !important;
@@ -456,4 +490,456 @@ div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
     .margine-kpi-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+}
+
+/* ============================================================
+   UPLOAD PANEL — sezione documenti (upload_panel.py)
+   ============================================================ */
+div.st-key-main_documents_upload_section .documents-header-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 1rem;
+    padding: 0 0 12px 0;
+}
+div.st-key-main_documents_upload_section .documents-title {
+    font-size: 2.25rem;
+    font-weight: 700;
+    color: #1f4e8c;
+    line-height: 1.2;
+}
+div.st-key-main_documents_upload_section .documents-warning {
+    font-size: 0.88rem;
+    color: #166534;
+    font-weight: 500;
+    line-height: 1.4;
+}
+/* upload_hint_row: forza tutti i wrapper Streamlit a restringersi al contenuto */
+div.st-key-upload_hint_row {
+    display: inline-flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 0.55rem !important;
+    flex-wrap: nowrap !important;
+    width: auto !important;
+    max-width: 100% !important;
+}
+div.st-key-upload_hint_row > div,
+div.st-key-upload_hint_row > div > div {
+    width: fit-content !important;
+    max-width: fit-content !important;
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+}
+div.st-key-upload_hint_row > div:last-child,
+div.st-key-upload_hint_row > div:last-child > div {
+    width: auto !important;
+    max-width: none !important;
+}
+div.st-key-main_documents_upload_section .upload-format-hint {
+    color: #2d6a4f;
+    font-size: clamp(0.8rem, 0.3vw + 0.74rem, 0.9rem);
+    font-weight: 600;
+    line-height: 1.3;
+    white-space: nowrap;
+    margin: 0 !important;
+}
+div.st-key-main_documents_upload_section .upload-ai-spacer {
+    height: 34px;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploader"] {
+    margin: 0 !important;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploader"] > div,
+div.st-key-main_documents_upload_section [data-testid="stFileUploader"] > div > div,
+div.st-key-main_documents_upload_section [data-testid="stFileUploader"] section,
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"],
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] > div {
+    width: fit-content !important;
+    max-width: fit-content !important;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploader"] section {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] {
+    display: inline-flex !important;
+    align-items: center !important;
+    padding: 0 !important;
+    min-height: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    border-radius: 0 !important;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzoneInstructions"] {
+    visibility: hidden !important;
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] > div {
+    width: auto !important;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button {
+    min-width: 12.5rem !important;
+    height: 2.9rem !important;
+    min-height: 2.9rem !important;
+    padding: 0.72rem 1.05rem !important;
+    border-radius: 10px !important;
+    border: 1px solid #2d6a4f !important;
+    background-color: #2d6a4f !important;
+    color: transparent !important;
+    box-shadow: none !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    position: relative !important;
+    overflow: hidden !important;
+    transform: none !important;
+    line-height: 1 !important;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button > * {
+    opacity: 0 !important;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button p,
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button span,
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button div {
+    font-size: 0 !important;
+    line-height: 0 !important;
+    margin: 0 !important;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button::after {
+    content: "📄 Carica Documenti" !important;
+    position: absolute !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
+    width: max-content !important;
+    text-align: center !important;
+    font-size: clamp(0.85rem, 0.4vw + 0.75rem, 1rem) !important;
+    line-height: 1.1 !important;
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
+    pointer-events: none !important;
+}
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button:hover,
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button:focus,
+div.st-key-main_documents_upload_section [data-testid="stFileUploaderDropzone"] button:active {
+    border-color: #1f513b !important;
+    background-color: #1f513b !important;
+    color: transparent !important;
+    transform: none !important;
+}
+@media (max-width: 767px) {
+    div.st-key-main_documents_upload_section .upload-format-hint {
+        min-height: auto;
+        padding-top: 0.15rem;
+    }
+    div.st-key-main_documents_upload_section .upload-ai-spacer {
+        height: 12px;
+    }
+}
+
+/* ============================================================
+   CATEGORY EDITOR — tabella dettaglio stabile ohh-detail-*
+   ============================================================ */
+.ohh-detail-stable-wrap {
+    overflow-x: auto;
+    border: 1px solid #dbe4f0;
+    border-radius: 10px;
+    background: #ffffff;
+    margin-bottom: 1rem;
+}
+.ohh-detail-stable-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.92rem;
+    table-layout: fixed;
+}
+.ohh-detail-stable-table thead th {
+    background: #f7f9fc;
+    color: #334155;
+    padding: 0.7rem 0.75rem;
+    border-bottom: 1px solid #dbe4f0;
+    text-align: left;
+    white-space: nowrap;
+}
+.ohh-detail-stable-table tbody td {
+    padding: 0.65rem 0.75rem;
+    border-top: 1px solid #eef2f7;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ohh-detail-stable-table th:nth-child(2), .ohh-detail-stable-table td:nth-child(2) { width: 34%; }
+.ohh-detail-stable-table th:nth-child(3), .ohh-detail-stable-table td:nth-child(3) { width: 20%; }
+.ohh-detail-stable-table th:nth-child(4), .ohh-detail-stable-table td:nth-child(4) { width: 9%; }
+.ohh-detail-stable-table th:nth-child(5), .ohh-detail-stable-table td:nth-child(5) { width: 11%; }
+.ohh-detail-stable-table th:nth-child(6), .ohh-detail-stable-table td:nth-child(6) { width: 15%; }
+.ohh-detail-selector-meta {
+    padding: 0.55rem 0.15rem 0.8rem 0.1rem;
+}
+.ohh-detail-selector-title {
+    font-weight: 600;
+    color: #1f2937;
+    line-height: 1.25;
+    margin-bottom: 0.2rem;
+    word-break: break-word;
+}
+.ohh-detail-selector-subtitle {
+    font-size: 0.84rem;
+    color: #64748b;
+    line-height: 1.25;
+}
+
+/* ============================================================
+   CATEGORY EDITOR — DataEditor badge colonna Novità
+   ============================================================ */
+[data-testid="stDataFrame"] [data-testid="stDataFrameCell"] {
+    transition: background-color 0.3s ease;
+}
+div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(1),
+div[data-testid="stDataFrame"] div[role="gridcell"]:nth-last-child(2):has(:only-child) {
+    font-size: clamp(1.1rem, 1vw + 0.8rem, 1.625rem) !important;
+    text-align: center !important;
+    line-height: 1.5 !important;
+}
+div[data-testid="stDataFrame"] [data-baseweb="cell"]:has(span:only-child) {
+    font-size: clamp(1rem, 0.9vw + 0.8rem, 1.5rem) !important;
+}
+
+/* ============================================================
+   NOTIFICHE — expander auto_invoices (azzurro)
+   ============================================================ */
+div.st-key-expander_auto_invoices [data-testid="stExpander"] details summary {
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+    border-radius: 10px;
+    padding: 8px 16px;
+    font-weight: 700;
+    color: #1e3a8a;
+}
+div.st-key-expander_auto_invoices [data-testid="stExpander"] details {
+    border: 2px solid #3b82f6;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+}
+div.st-key-expander_auto_invoices [data-testid="stExpander"] details[open] summary {
+    border-bottom: 1px solid #93c5fd;
+}
+
+/* ============================================================
+   NOTIFICHE — tabella fatture (GFN): bottoni selezione + header azzurro
+   ============================================================ */
+[data-testid="stBaseButton-secondary"][kind="secondary"] { white-space: nowrap; }
+div[data-testid="column"].gfn-sel-col > div { white-space: nowrap; }
+
+[data-testid="stDataFrameResizable"] [role="columnheader"],
+[data-testid="stDataFrameResizable"] th {
+    background-color: rgba(219, 234, 254, 0.85) !important;
+    color: #111827 !important;
+    font-weight: 700 !important;
+}
+
+/* ============================================================
+   NOTIFICHE — bottone Genera Briefing (blu scuro)
+   ============================================================ */
+div[data-testid="stColumn"]:has(#gfn_genera_briefing_wrap) button[kind="primary"] {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
+    color: #fff !important;
+}
+div[data-testid="stColumn"]:has(#gfn_genera_briefing_wrap) button[kind="primary"]:hover {
+    background-color: #1d4ed8 !important;
+    border-color: #1d4ed8 !important;
+}
+
+/* ============================================================
+   DOWNLOAD BUTTON VERDE — scoped per container specifici
+   (calcolo_margine: aa_download_centri, cm_download_excel_centri,
+    margine_download_tbl — controllo_prezzi: cp_download_excel_alert)
+   ============================================================ */
+div.st-key-aa_download_centri [data-testid="stDownloadButton"] button,
+div.st-key-cm_download_excel_centri [data-testid="stDownloadButton"] button,
+div.st-key-margine_download_tbl [data-testid="stDownloadButton"] button,
+div.st-key-cp_download_excel_alert [data-testid="stDownloadButton"] button {
+    background-color: #ffffff !important;
+    color: #16a34a !important;
+    border: 3.5px solid #4ade80 !important;
+    border-radius: var(--radius-sm, 0.5rem) !important;
+    width: 2.8rem !important;
+    height: 2.8rem !important;
+    min-width: unset !important;
+    min-height: unset !important;
+    padding: 0 !important;
+    font-weight: 800 !important;
+    font-size: 0.9rem !important;
+    letter-spacing: 0.04em !important;
+    box-shadow: none !important;
+    white-space: nowrap !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+div.st-key-aa_download_centri [data-testid="stDownloadButton"] button:hover,
+div.st-key-cm_download_excel_centri [data-testid="stDownloadButton"] button:hover,
+div.st-key-margine_download_tbl [data-testid="stDownloadButton"] button:hover,
+div.st-key-cp_download_excel_alert [data-testid="stDownloadButton"] button:hover {
+    background-color: #f0fdf4 !important;
+    border-color: #4ade80 !important;
+    color: #15803d !important;
+}
+
+/* ============================================================
+   KPI METRIC — sfondo grigio argentato traslucido
+   (4_analisi_personalizzata, 2_foodcost)
+   ============================================================ */
+div[data-testid="stMetric"] {
+    background: linear-gradient(135deg, rgba(248, 249, 250, 0.95), rgba(233, 236, 239, 0.95));
+    padding: clamp(1rem, 2.5vw, 1.25rem);
+    border-radius: 12px;
+    border: 1px solid rgba(206, 212, 218, 0.5);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.05);
+    backdrop-filter: blur(10px);
+    height: 100%;
+    min-height: 100px;
+    box-sizing: border-box;
+    justify-content: center;
+}
+div[data-testid="stMetric"] label {
+    color: #2563eb !important;
+    font-weight: 600 !important;
+    font-size: clamp(0.75rem, 1.8vw, 0.875rem) !important;
+}
+div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+    color: #1e40af !important;
+    font-size: clamp(1.25rem, 3.5vw, 1.75rem) !important;
+    font-weight: 700 !important;
+}
+
+/* ============================================================
+   4_ANALISI PERSONALIZZATA — stTextInput label + bottone modifica tag
+   ============================================================ */
+div[data-testid="stTextInput"] label p {
+    color: #1e3a8a !important;
+    font-weight: 700 !important;
+}
+[class*="st-key-ap_btn_modifica_tag"] button {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
+    color: #92400e !important;
+    border: 1px solid #f59e0b !important;
+}
+[class*="st-key-ap_btn_modifica_tag"] button:hover {
+    background: linear-gradient(135deg, #fde68a 0%, #fcd34d 100%) !important;
+    color: #78350f !important;
+    border: 1px solid #d97706 !important;
+}
+
+/* ============================================================
+   4_ANALISI PERSONALIZZATA — expander Gestione Tag (azzurro) + delete buttons
+   ============================================================ */
+div[data-testid="stExpander"] {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1px solid #93c5fd;
+    border-radius: 12px;
+    overflow: hidden;
+}
+div[data-testid="stExpander"] details summary {
+    background: rgba(191, 219, 254, 0.35);
+}
+[class*="st-key-ap_delete_box_"] button {
+    background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%) !important;
+    color: white !important;
+    border: 1px solid #991b1b !important;
+}
+[class*="st-key-ap_delete_box_"] button:hover {
+    background: linear-gradient(135deg, #b91c1c 0%, #991b1b 100%) !important;
+    color: white !important;
+    border: 1px solid #7f1d1d !important;
+}
+
+/* ============================================================
+   2_FOODCOST — Lab Ricette: expander guida (first-of-type)
+   ============================================================ */
+div[data-testid="stExpander"]:first-of-type summary {
+    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
+    border-radius: 8px !important;
+    padding: clamp(0.625rem, 1.5vw, 1rem) clamp(0.75rem, 2vw, 1rem) !important;
+    color: #1e40af !important;
+    font-weight: 600 !important;
+}
+div[data-testid="stExpander"]:first-of-type {
+    margin-bottom: 24px !important;
+}
+
+/* ============================================================
+   2_FOODCOST — expander_crea_ing: sfondo verde chiaro
+   ============================================================ */
+div.st-key-expander_crea_ing > div[data-testid="stExpander"] > details > summary {
+    background: #d4edda !important;
+    border: 1px solid #c3e6cb !important;
+    border-radius: 8px !important;
+}
+
+/* ============================================================
+   2_FOODCOST — workspace ingredients list: scrollbar custom
+   ============================================================ */
+.workspace-ingredients-list + div {
+    max-height: 350px;
+    overflow-y: auto;
+    padding-right: 8px;
+    margin-top: 8px;
+}
+.workspace-ingredients-list + div::-webkit-scrollbar {
+    width: 8px;
+}
+.workspace-ingredients-list + div::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 4px;
+}
+.workspace-ingredients-list + div::-webkit-scrollbar-thumb {
+    background: #94a3b8;
+    border-radius: 4px;
+}
+.workspace-ingredients-list + div::-webkit-scrollbar-thumb:hover {
+    background: #64748b;
+}
+
+/* ============================================================
+   2_FOODCOST — bottone add_ingredient_btn: testo allineato sinistra
+   ============================================================ */
+div.st-key-add_ingredient_btn button[kind="secondary"] {
+    text-align: left !important;
+    display: flex !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+}
+div.st-key-add_ingredient_btn button[kind="secondary"] > div {
+    text-align: left !important;
+    justify-content: flex-start !important;
+    display: flex !important;
+    width: 100% !important;
+}
+div.st-key-add_ingredient_btn button[kind="secondary"] > div > p,
+div.st-key-add_ingredient_btn button[kind="secondary"] p {
+    text-align: left !important;
+    width: 100% !important;
+}
+div.st-key-add_ingredient_btn .stButton button {
+    justify-content: flex-start !important;
+}
+div.st-key-add_ingredient_btn .stButton button div {
+    justify-content: flex-start !important;
+}
+div.st-key-add_ingredient_btn .stButton button div p {
+    text-align: left !important;
 }
