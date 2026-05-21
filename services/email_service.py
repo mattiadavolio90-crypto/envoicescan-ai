@@ -4,7 +4,6 @@ Servizio per invio email tramite Brevo SMTP API.
 
 import streamlit as st
 import requests
-import logging
 import time
 import hashlib
 from datetime import datetime, timedelta, timezone

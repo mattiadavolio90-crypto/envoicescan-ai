@@ -623,7 +623,7 @@ def show_login_page(cookie_manager, supabase) -> None:
                                         "session_token",
                                         _s_token,
                                         expires_at=datetime.now(timezone.utc)
-                                        + timedelta(days=7),
+                                        + timedelta(days=30),
                                         secure=True,
                                         same_site="strict",
                                     )

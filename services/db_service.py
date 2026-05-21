@@ -10,9 +10,9 @@ Funzioni:
 Pattern: Dependency Injection per Supabase client
 """
 
-import logging
 import re
 import time
+from collections import defaultdict
 from typing import Dict, Any, List
 import pandas as pd
 import streamlit as st
@@ -461,7 +461,6 @@ def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
             return 0
         
         # Batch update: raggruppa per prezzo_effettivo per fare meno query
-        from collections import defaultdict
         prezzo_groups = defaultdict(list)
         for u in updates_needed:
             prezzo_groups[u['prezzo_effettivo']].append(u['id'])
@@ -664,7 +663,8 @@ try:
     ) -> pd.DataFrame:
         """Cached 120s. Evita ricalcolo su ogni re-render quando df e soglia non cambiano."""
         return calcola_alert(df, soglia_minima, filtro_prodotto)
-except Exception:
+except Exception as _e:
+    logger.debug(f"Cache Streamlit non disponibile per _calcola_alert_cached (modalità fallback): {_e}")
     def _calcola_alert_cached(  # type: ignore[misc]
         df: pd.DataFrame, soglia_minima: float, filtro_prodotto: str = ""
     ) -> pd.DataFrame:
@@ -989,7 +989,8 @@ try:
         return carica_sconti_e_omaggi(
             user_id, data_inizio_iso, data_fine_iso, ristorante_id=ristorante_id
         )
-except Exception:
+except Exception as _e:
+    logger.debug(f"Cache Streamlit non disponibile per _carica_sconti_e_omaggi_cached (modalità fallback): {_e}")
     def _carica_sconti_e_omaggi_cached(  # type: ignore[misc]
         user_id: str, ristorante_id: str, data_inizio_iso: str, data_fine_iso: str
     ) -> Dict[str, Any]:
@@ -1469,7 +1470,6 @@ def get_fatture_cestino(user_id: str, ristorante_id: str = None, supabase_client
             return []
         
         # Raggruppa per file_origine
-        from collections import defaultdict
         grouped = defaultdict(lambda: {"num_righe": 0, "totale": 0.0, "fornitore": "", "deleted_at": "", "data_documento": ""})
         for row in all_rows:
             key = row["file_origine"]

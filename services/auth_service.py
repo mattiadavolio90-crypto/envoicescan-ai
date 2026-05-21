@@ -19,13 +19,13 @@ import argon2
 import secrets
 import requests
 import hashlib
-import logging
 import json
 import re
 import uuid
 import pandas as pd
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict, Any, List
+from collections import defaultdict
 
 # Logger centralizzato
 from config.logger_setup import get_logger
@@ -835,7 +835,6 @@ def riepilogo_fatture_auto_da_ultimo_login(
 
         # Dedup logico per file_name con ACK per-evento: mantieni tutti gli id evento
         # e usa l'evento più recente per i conteggi "nuove" / "in sospeso".
-        from collections import defaultdict
         grouped_by_file: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         for row in rows:
             fname = str(row.get('file_name') or '').strip()
@@ -906,7 +905,6 @@ def riepilogo_fatture_auto_da_ultimo_login(
                     .execute()
                 all_rows = fres.data or []
                 # Raggruppa per file_origine
-                from collections import defaultdict
                 grouped = defaultdict(list)
                 for r in all_rows:
                     grouped[r.get('file_origine', '')].append(r)

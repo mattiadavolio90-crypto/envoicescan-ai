@@ -9,7 +9,6 @@ Espone:
     show_operational_toasts(notifications)                   Mostra un toast silenzioso per notifica (1 volta/sessione).
 
 Note:
-    _apply_notification_navigation_target() è inclusa ma non usata nel codebase corrente (dead code).
     dismiss_notification_ids / get_dismissed_notification_ids / build_scoped_notification_id
     erano importate in app.py ma mai usate lì → non ri-esportate qui (cleanup Fase 1).
 """
@@ -78,20 +77,6 @@ def _show_toast_once(toast_id: str, message: str, icon: str = None) -> None:
         return
     st.toast(message, icon=icon)
     st.session_state.shown_dashboard_toasts.add(toast_id)
-
-
-def _apply_notification_navigation_target(notification: dict) -> None:
-    """Imposta eventuale stato tab prima del cambio pagina dalle notifiche.
-
-    NOTE: questa funzione non è ancora usata nel codebase (dead code) —
-    inclusa per futura navigazione lato notifiche.
-    """
-    if not isinstance(notification, dict):
-        return
-    state_key = notification.get('action_state_key')
-    state_value = notification.get('action_state_value')
-    if state_key and state_value is not None:
-        st.session_state[state_key] = state_value
 
 
 # ============================================================

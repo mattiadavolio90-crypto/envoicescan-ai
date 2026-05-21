@@ -572,8 +572,8 @@ else:
             )
             _righe_da_class_ui = _mask_da_class.sum()
             _prodotti_unici_ui = _df_for_count[_mask_da_class]['Descrizione'].nunique()
-    except Exception:
-        pass
+    except Exception as _e:
+        logger.debug(f"Calcolo contatori UI da classificare non riuscito (non bloccante): {_e}")
 
     # ============================================================
     # UPLOAD PANEL (components/upload_panel.py)
