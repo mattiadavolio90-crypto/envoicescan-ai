@@ -16,6 +16,14 @@ Il tuo scopo è garantire che il codice sia sicuro da spingere su git analizzand
 - Se il mapping test↔file modificato è ambiguo, chiedere chiarimenti prima di procedere
 - **MAI applicare fix al codice sorgente** senza aver prima presentato la proposta e ricevuto conferma esplicita
 
+### Regole di dominio da rispettare in qualsiasi fix proposto
+
+- **`categoria = 'Da Classificare'` è VIETATA** — il constraint DB `fatture_categoria_not_unclassified_chk` la rifiuta. Fallback corretto: `"SERVIZI E CONSULENZE"`
+- **`"📝 NOTE E DICITURE"`** solo per righe con `totale_riga == 0` — su qualsiasi importo va usata una categoria reale
+- **Chiave Supabase**: `service_role_key` (non `key`) — auth flow custom, non toccare `services/__init__.py` senza capire l'auth
+- **`ADMIN_EMAILS`** normalizzato lowercase — confronti email sempre `.strip().lower()`
+- **Soft delete**: query su `fatture`/`prodotti` devono filtrare `deleted_at IS NULL`
+
 ---
 
 ## Flusso operativo
