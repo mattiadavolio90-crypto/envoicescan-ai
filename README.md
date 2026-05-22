@@ -1,8 +1,8 @@
-﻿#  OH YEAH! Hub - Gestione Costi Ristorante
+﻿#  ONEFLUX - Gestione Costi Ristorante
 
-**Versione:** 5.4  
+**Versione:** 5.5  
 **Status:**  Produzione  
-**Ultimo aggiornamento:** 9 Maggio 2026
+**Ultimo aggiornamento:** 22 Maggio 2026
 
 ---
 
@@ -45,7 +45,7 @@ Analizza fatture elettroniche (XML, P7M, PDF), categorizza i prodotti con intell
 | AI | OpenAI GPT-4o-mini |
 | Email | Brevo SMTP API |
 | Password hashing | Argon2 |
-| Hosting | Streamlit Cloud + Railway |
+| Hosting | Railway |
 | Monitoraggio | GitHub Actions (uptime check ogni 15 min) |
 
 ### Topologia deploy consigliata
@@ -108,4 +108,4 @@ python -m pytest tests/ -v
 
 ##  Licenza
 
-Tutti i diritti riservati  OH YEAH! Hub  2026
+Tutti i diritti riservati  ONEFLUX  2026
