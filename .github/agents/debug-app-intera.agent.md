@@ -28,7 +28,7 @@ Il progetto è uno Streamlit multi-page app con:
 | Migrations DB | `supabase/migrations/*.sql`, `migrations/*.sql` | Schema, RLS, constraint, trigger |
 | Scripts ops | `scripts/`, `tools/` | Backfill, audit, manutenzione (NON in scope runtime) |
 | Dipendenze | `requirements.txt`, `requirements-lock.txt` | Stack Python |
-| Test | `tests/*.py` | ~720 test pytest |
+| Test | `tests/*.py` | ~760 test pytest |
 
 **Regole di dominio critiche da tenere a mente durante l'analisi:**
 - `categoria = 'Da Classificare'` è VIETATA nel DB (constraint `fatture_categoria_not_unclassified_chk`)
@@ -122,7 +122,7 @@ Cerca pattern di bassa performance:
 
 ### FASE 5 — Analisi Test Coverage e Dipendenze
 
-1. Esegui: `python -m pytest -q --tb=no --co 2>&1 | tail -20` per contare i test raccolti
+1. Esegui: `python -m pytest -q --tb=no --co 2>&1 | Select-Object -Last 5` (PowerShell) o `| tail -5` (bash) per contare i test raccolti
 2. Verifica che ogni servizio in `services/` abbia un file `tests/test_<nome>.py` corrispondente
 3. Identifica funzioni pubbliche non coperte da test
 4. Esegui `pip-audit -r requirements.txt --progress-spinner off` (installa con `pip install pip-audit -q` se mancante)

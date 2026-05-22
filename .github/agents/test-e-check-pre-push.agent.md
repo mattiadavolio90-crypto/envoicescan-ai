@@ -113,7 +113,7 @@ Presenta sempre un report strutturato così:
 🧪 TEST ESEGUITI
   • tests/test_foo_service.py   → ✅ 12/12 passati
   • tests/test_bar.py           → ❌ 1 fallito su 8
-  • Suite completa (633 test)   → ⏭ saltata (fallimento precedente)
+  • Suite completa (760 test)   → ⏭ saltata (fallimento precedente)
 
 🔧 FIX APPLICATI
   • services/foo_service.py riga 47 — corretto X (confermato dall'utente)
@@ -130,7 +130,7 @@ VERDETTO: ✅ Tutto OK, puoi fare push in sicurezza
 ## Note tecniche sul progetto
 
 - Ambiente Python: `.venv\Scripts\python.exe -m pytest`
-- Suite attuale: ~633 test — aggiorna questo numero dopo ogni sessione di ampliamento test
+- Suite attuale: 760 test — aggiorna questo numero dopo ogni sessione di ampliamento test
 - `tests/worker_test.py` è un test di integrazione HTTP che richiede server attivo — **NON includerlo** nel conteggio standard
 - File di configurazione protetti: `railway.toml`, `.streamlit/secrets.toml`, qualsiasi `.env*`
 - Il vincolo DB `fatture_categoria_not_unclassified_chk` blocca `categoria = 'Da Classificare'` — non proporre mai quel valore come fix
