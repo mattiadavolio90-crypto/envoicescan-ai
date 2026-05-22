@@ -42,6 +42,7 @@ from utils.piva_validator import valida_formato_piva, normalizza_piva
 from services.auth_service import crea_cliente_con_token, verifica_sessione_da_cookie
 from services.db_service import get_retention_last_status
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
+from utils.ui_helpers import load_css
 
 # Importa costanti per filtri e admin
 from config.constants import CATEGORIE_SPESE_GENERALI, ADMIN_EMAILS, CATEGORIE_FOOD_BEVERAGE, VISION_DAILY_LIMIT
@@ -211,6 +212,11 @@ if (user.get('email') or '').strip().lower() not in ADMIN_EMAILS:
     else:
         st.error("⛔ Accesso riservato agli amministratori")
         st.stop()
+
+# ============================================================
+# CSS GLOBALE (nasconde nav automatica Streamlit)
+# ============================================================
+load_css('common.css')
 
 # ============================================================
 # SIDEBAR CONDIVISA
