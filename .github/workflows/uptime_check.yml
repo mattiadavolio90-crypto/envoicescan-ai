@@ -19,7 +19,7 @@ jobs:
             -L \
             --max-time 60 \
             --connect-timeout 15 \
-            https://ohyeah.streamlit.app/ || echo "000")
+            https://frontend-production-aa79.up.railway.app/ || echo "000")
           echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
           if [ "$HTTP_CODE" = "200" ]; then
             echo "down=false" >> $GITHUB_OUTPUT
@@ -32,17 +32,16 @@ jobs:
             echo "❌ App offline (HTTP $HTTP_CODE)"
           fi
 
-      - name: Tenta wake-up automatico (se ibernata)
+      - name: Retry dopo pausa (verifica transitoria)
         if: steps.ping.outputs.down == 'true'
         run: |
-          echo "🔄 Invio richiesta di wake-up con timeout 120s..."
-          # Streamlit si sveglia ricevendo una richiesta HTTP. Usiamo timeout lungo.
-          # || true: non fallisce se anche questo va in timeout
+          echo "🔄 Attendo 30s e riprovo..."
+          sleep 30
           WAKE_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
             -L \
-            --max-time 120 \
-            --connect-timeout 20 \
-            https://ohyeah.streamlit.app/ || echo "000")
+            --max-time 60 \
+            --connect-timeout 15 \
+            https://frontend-production-aa79.up.railway.app/ || echo "000")
           echo "Risposta dopo wake-up: $WAKE_CODE"
           if [ "$WAKE_CODE" = "200" ]; then
             echo "woke_up=true" >> $GITHUB_OUTPUT
@@ -58,7 +57,7 @@ jobs:
         run: |
           HTTP_CODE="${{ steps.ping.outputs.http_code }}"
           if [ "$HTTP_CODE" = "000" ]; then
-            DETAIL="Timeout: nessuna risposta entro 60 secondi (probabile ibernazione Streamlit)"
+            DETAIL="Timeout: nessuna risposta entro 60 secondi"
           else
             DETAIL="Codice HTTP ricevuto: <strong>$HTTP_CODE</strong>"
           fi
@@ -69,5 +68,5 @@ jobs:
               \"sender\": {\"name\": \"ONEFLUX Monitor\", \"email\": \"agent@oneflux.it\"},
               \"to\": [{\"email\": \"md@oneflux.it\", \"name\": \"Mattia\"}],
               \"subject\": \"🚨 ONEFLUX è offline\",
-              \"htmlContent\": \"<h2>⚠️ Attenzione</h2><p>L'app <strong>ONEFLUX</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://ohyeah.streamlit.app/'>https://ohyeah.streamlit.app/</a></p><p>Controlla su <a href='https://share.streamlit.io'>Streamlit Cloud</a> se l'app è ibernata o in errore.</p>\"
+              "htmlContent": "<h2>⚠️ Attenzione</h2><p>L'app <strong>ONEFLUX</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://frontend-production-aa79.up.railway.app/'>https://frontend-production-aa79.up.railway.app/</a></p><p>Controlla su <a href='https://railway.com'>Railway Dashboard</a> per lo stato del deploy.</p>"
             }"
