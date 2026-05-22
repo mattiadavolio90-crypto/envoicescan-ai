@@ -46,8 +46,8 @@ const ALLOWED_HOST_SUFFIX = '.invoicetronic.com'
 
 const MAX_XML_BYTES      = 10 * 1024 * 1024 // 10 MB — protezione DoS storage
 const REPLAY_WINDOW_SECS = 300              // 5 min — finestra anti-replay
-const API_TIMEOUT_MS     = 3_000           // timeout chiamata API Invoicetronic
-const XML_TIMEOUT_MS     = 10_000          // timeout download XML da URL (file fino a 10 MB)
+const API_TIMEOUT_MS     = 10_000          // timeout chiamata API Invoicetronic (10s — coerente con XML, evita timeout spuri cross-cloud)
+const XML_TIMEOUT_MS     = 15_000          // timeout download XML da URL (file fino a 10 MB su rete EU)
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 

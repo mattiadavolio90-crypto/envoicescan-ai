@@ -47,7 +47,33 @@ def check_on_upload(
     if not nuovi_docs:
         return []
 
-    # Step 2: fattura_duplicata
+    # --- PREFETCH bulk: una sola query per tutte le P.IVA dell'upload (elimina N+1) ---
+    piva_set = {str(d.get('piva_fornitore') or '').strip() for d in nuovi_docs}
+    piva_set.discard('')
+    file_origini_upload = {str(d.get('file_origine') or '').strip() for d in nuovi_docs}
+
+    storico_bulk: List[Dict[str, Any]] = []
+    if piva_set:
+        storico_bulk = (
+            sb.table('fatture_documenti')
+            .select('id,piva_fornitore,totale_documento,file_origine,data_documento')
+            .eq('user_id', user_id)
+            .eq('ristorante_id', ristorante_id)
+            .in_('piva_fornitore', list(piva_set))
+            .is_('deleted_at', 'null')
+            .order('data_documento', desc=True)
+            .limit(10000)
+            .execute().data or []
+        )
+    # Esclude i file dell'upload corrente per non confrontare ogni doc con se stesso
+    storico_bulk = [r for r in storico_bulk if r.get('file_origine') not in file_origini_upload]
+
+    by_piva: Dict[str, List] = defaultdict(list)
+    for r in storico_bulk:
+        by_piva[str(r.get('piva_fornitore') or '').strip()].append(r)
+    # --- fine PREFETCH ---
+
+    # Step 2: fattura_duplicata (zero query aggiuntive, usa by_piva locale)
     for doc in nuovi_docs:
         piva = str(doc.get('piva_fornitore') or '').strip()
         importo = float(doc.get('totale_documento') or 0)
@@ -63,23 +89,16 @@ def check_on_upload(
         except ValueError:
             continue
 
-        data_min = (data_doc - timedelta(days=30)).isoformat()
-        data_max = (data_doc + timedelta(days=30)).isoformat()
+        data_min = data_doc - timedelta(days=30)
+        data_max = data_doc + timedelta(days=30)
 
-        candidati = (
-            sb.table('fatture_documenti')
-            .select('id,totale_documento,file_origine,data_documento')
-            .eq('user_id', user_id)
-            .eq('ristorante_id', ristorante_id)
-            .eq('piva_fornitore', piva)
-            .gte('data_documento', data_min)
-            .lte('data_documento', data_max)
-            .neq('file_origine', file_orig)
-            .is_('deleted_at', 'null')
-            .execute().data or []
-        )
-
-        for cand in candidati:
+        for cand in by_piva.get(piva, []):
+            try:
+                cand_data = date.fromisoformat(str(cand.get('data_documento') or ''))
+            except ValueError:
+                continue
+            if not (data_min <= cand_data <= data_max):
+                continue
             importo_cand = float(cand.get('totale_documento') or 0)
             if importo_cand <= 0:
                 continue
@@ -153,19 +172,7 @@ def check_on_upload(
             continue
 
         try:
-            storici = (
-                sb.table('fatture_documenti')
-                .select('totale_documento')
-                .eq('user_id', user_id)
-                .eq('ristorante_id', ristorante_id)
-                .eq('piva_fornitore', piva)
-                .neq('file_origine', file_orig)
-                .is_('deleted_at', 'null')
-                .order('data_documento', desc=True)
-                .limit(10)
-                .execute().data or []
-            )
-
+            storici = by_piva.get(piva, [])[:10]  # già ordinati per data_documento desc (prefetch)
             if len(storici) < 3:
                 continue
 

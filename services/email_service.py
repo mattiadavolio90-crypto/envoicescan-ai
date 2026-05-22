@@ -6,10 +6,18 @@ import streamlit as st
 import requests
 import time
 import hashlib
+import threading
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from config.logger_setup import get_logger
 
 logger = get_logger('email')
+
+# Cap in-memory per fail-open: quando DB è irraggiungibile, limita a _FAILOPEN_MAX_PER_5MIN
+# email ogni 5 min per destinatario (evita flood Brevo in caso DB down + loop notifiche)
+_failopen_lock = threading.Lock()
+_failopen_counter: dict = defaultdict(list)  # dest → [timestamp, ...]
+_FAILOPEN_MAX_PER_5MIN = 3
 
 
 # === [M3] Rate-limit invio email (anti-spam/loop) ===
@@ -52,7 +60,21 @@ def _check_email_rate_limit(destinatario: str, oggetto: str) -> tuple[bool, str]
 
         return True, "ok"
     except Exception as exc:
-        # Se DB irraggiungibile: fail-open per non bloccare email critiche (reset password)
+        # Se DB irraggiungibile: fail-open con cap process-local (max 3/5min per destinatario)
+        # Evita flood Brevo quando Supabase è down e un loop di notifiche è attivo
+        now_ts = time.time()
+        dest_key = destinatario.strip().lower()
+        with _failopen_lock:
+            _failopen_counter[dest_key] = [
+                t for t in _failopen_counter[dest_key] if now_ts - t < 300
+            ]
+            if len(_failopen_counter[dest_key]) >= _FAILOPEN_MAX_PER_5MIN:
+                logger.warning(
+                    f"⚠️ Rate limit check fallito, cap fail-open raggiunto "
+                    f"({_FAILOPEN_MAX_PER_5MIN}/5min) per {dest_key}: {exc}"
+                )
+                return False, "fail-open-cap"
+            _failopen_counter[dest_key].append(now_ts)
         logger.warning(f"⚠️ Rate limit check fallito (fail-open): {exc}")
         return True, "fail-open"
 

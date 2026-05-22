@@ -166,11 +166,15 @@ def _get_supabase_credentials() -> tuple[str, str]:
             if local_service_role:
                 return url, local_service_role
             import logging as _logging
-            _logging.getLogger(__name__).warning(
-                "⚠️ SUPABASE service_role_key NON trovata in st.secrets! "
-                "Fallback ad anon key — RLS potrebbe bloccare le query dopo migration 052."
+            _logging.getLogger(__name__).error(
+                "❌ SUPABASE service_role_key NON trovata. Dopo migration 052 l'anon key "
+                "fallisce silenziosamente su tutte le query con custom auth (auth.uid()=NULL). "
+                "Configurare service_role_key in st.secrets['supabase']['service_role_key'] "
+                "oppure env var SUPABASE_SERVICE_ROLE_KEY."
             )
-            key = st.secrets["supabase"]["key"]
+            raise RuntimeError(
+                "service_role_key Supabase non configurata — vedi log sopra."
+            )
         return url, key
     except Exception:
         pass

@@ -185,7 +185,12 @@ button[kind="primary"][disabled] {
    ============================================================ */
 
 /* Nasconde navigazione automatica Streamlit e pulsante chiusura */
-[data-testid="stSidebarNav"] { display: none !important; }
+[data-testid="stSidebarNav"],
+[data-testid="stSidebarNavItems"],
+[data-testid="stSidebarNavLinkContainer"],
+[data-testid="stSidebarNavLink"],
+nav[data-testid="stSidebarNav"],
+div[data-testid="stSidebarNav"] { display: none !important; }
 [data-testid="collapsedControl"] { display: none !important; pointer-events: none !important; }
 
 /* Forza sidebar sempre visibile e aperta */

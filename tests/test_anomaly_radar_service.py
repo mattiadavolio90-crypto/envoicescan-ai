@@ -31,6 +31,9 @@ class _SeqSupabase:
     def is_(self, *_args, **_kwargs):
         return self
 
+    def in_(self, *_args, **_kwargs):
+        return self
+
     def not_(self, *_args, **_kwargs):
         return self
 
@@ -54,8 +57,10 @@ def test_duplicato_trovato():
         'data_documento': '2026-05-10',
         'file_origine': 'a.xml',
     }]
-    candidati_dup = [{
+    # bulk prefetch: contiene il potenziale duplicato (file diverso, data in range, piva uguale)
+    candidati_bulk = [{
         'id': '2',
+        'piva_fornitore': 'IT123',
         'totale_documento': 101.0,
         'file_origine': 'b.xml',
         'data_documento': '2026-05-09',
@@ -63,9 +68,8 @@ def test_duplicato_trovato():
 
     sb = _SeqSupabase([
         nuovi_docs,
-        candidati_dup,
-        [],
-        [],
+        candidati_bulk,  # prefetch bulk (step 2 + step 4)
+        [],              # tutti per piva_dup (step 3)
     ])
 
     records = check_on_upload('u1', 'r1', 'up1', supabase_client=sb)
@@ -85,9 +89,8 @@ def test_no_duplicato():
 
     sb = _SeqSupabase([
         nuovi_docs,
-        [],
-        [],
-        [],
+        [],  # prefetch bulk vuoto
+        [],  # tutti per piva_dup
     ])
 
     records = check_on_upload('u1', 'r1', 'up1', supabase_client=sb)
@@ -110,9 +113,8 @@ def test_piva_dup():
 
     sb = _SeqSupabase([
         nuovi_docs,
-        [],
-        tutti,
-        [],
+        [],    # prefetch bulk vuoto
+        tutti, # piva_dup (step 3)
     ])
 
     records = check_on_upload('u1', 'r1', 'up1', supabase_client=sb)
@@ -129,17 +131,17 @@ def test_anomalia_5x():
         'data_documento': '2026-05-10',
         'file_origine': 'a.xml',
     }]
-    storici = [
-        {'totale_documento': 100.0},
-        {'totale_documento': 110.0},
-        {'totale_documento': 90.0},
+    # bulk prefetch: storici con piva_fornitore e file_origine diverso dall'upload
+    storico_bulk = [
+        {'id': '10', 'piva_fornitore': 'IT123', 'totale_documento': 100.0, 'file_origine': 'old.xml', 'data_documento': '2025-01-01'},
+        {'id': '11', 'piva_fornitore': 'IT123', 'totale_documento': 110.0, 'file_origine': 'old.xml', 'data_documento': '2024-12-01'},
+        {'id': '12', 'piva_fornitore': 'IT123', 'totale_documento': 90.0, 'file_origine': 'old.xml', 'data_documento': '2024-11-01'},
     ]
 
     sb = _SeqSupabase([
         nuovi_docs,
-        [],
-        [],
-        storici,
+        storico_bulk,  # prefetch bulk (step 2 + step 4)
+        [],            # tutti per piva_dup (step 3)
     ])
 
     records = check_on_upload('u1', 'r1', 'up1', supabase_client=sb)
@@ -156,16 +158,16 @@ def test_troppo_pochi_storici():
         'data_documento': '2026-05-10',
         'file_origine': 'a.xml',
     }]
-    storici = [
-        {'totale_documento': 100.0},
-        {'totale_documento': 110.0},
+    # solo 2 storici: sotto la soglia minima di 3 → nessuna anomalia
+    storico_bulk = [
+        {'id': '10', 'piva_fornitore': 'IT123', 'totale_documento': 100.0, 'file_origine': 'old.xml', 'data_documento': '2025-01-01'},
+        {'id': '11', 'piva_fornitore': 'IT123', 'totale_documento': 110.0, 'file_origine': 'old.xml', 'data_documento': '2024-12-01'},
     ]
 
     sb = _SeqSupabase([
         nuovi_docs,
-        [],
-        [],
-        storici,
+        storico_bulk,  # prefetch bulk
+        [],            # tutti per piva_dup
     ])
 
     records = check_on_upload('u1', 'r1', 'up1', supabase_client=sb)

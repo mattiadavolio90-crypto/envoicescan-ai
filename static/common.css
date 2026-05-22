@@ -1,3 +1,12 @@
+/* ===== SIDEBAR NAV AUTOMATICA STREAMLIT: sempre nascosta ===== */
+[data-testid="stSidebarNav"],
+[data-testid="stSidebarNavItems"],
+[data-testid="stSidebarNavLinkContainer"],
+[data-testid="stSidebarNavLink"],
+nav[data-testid="stSidebarNav"],
+div[data-testid="stSidebarNav"] { display: none !important; }
+[data-testid="collapsedControl"] { display: none !important; pointer-events: none !important; }
+
 /* ===== DATAFRAME / DATA EDITOR: header colonne in grassetto ===== */
 [data-testid="stDataFrame"] [role="columnheader"],
 [data-testid="stDataEditor"] [role="columnheader"] {

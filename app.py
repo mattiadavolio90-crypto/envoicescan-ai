@@ -96,13 +96,6 @@ if _rerun_count > 8:
     st.stop()
 st.session_state._rerun_guard = _rerun_count + 1
 
-# ============================================================
-# SIDEBAR: NASCONDI SUBITO SE NON LOGGATO (anti-flash)
-# ============================================================
-if not st.session_state.get('logged_in', False):
-    from utils.ui_helpers import hide_sidebar_css
-    hide_sidebar_css()
-
 # CSS + JS branding (caricati da file statici)
 load_css('design_tokens.css')
 load_css('branding.css')
@@ -110,6 +103,14 @@ load_css('layout.css')
 load_css('responsive.css')
 load_css('common.css')
 load_js('branding.js')
+
+# ============================================================
+# SIDEBAR: NASCONDI SUBITO SE NON LOGGATO (anti-flash)
+# Deve essere DOPO i load_css per sovrascrivere branding.css
+# ============================================================
+if not st.session_state.get('logged_in', False):
+    from utils.ui_helpers import hide_sidebar_css
+    hide_sidebar_css()
 
 
 # ============================================================

@@ -54,6 +54,8 @@ echo.
 
 echo Avvio su porta %APP_PORT%...
 echo.
+
+ping 127.0.0.1 -n 4 > nul
 start "" "http://localhost:%APP_PORT%"
 
 "%PYTHON_EXE%" -m streamlit run "%APP_FILE%" --server.port %APP_PORT%
