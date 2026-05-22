@@ -1,4 +1,4 @@
-# OH YEAH! Hub — Documentazione Sintetica
+﻿# ONEFLUX — Documentazione Sintetica
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
@@ -9,7 +9,7 @@ Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato) | URL: https://ohy
 
 ## 1. Panoramica
 
-OH YEAH! Hub è una piattaforma SaaS web-based per ristoratori italiani che analizza, categorizza e controlla i costi dalle fatture elettroniche dei fornitori.
+ONEFLUX è una piattaforma SaaS web-based per ristoratori italiani che analizza, categorizza e controlla i costi dalle fatture elettroniche dei fornitori.
 
 **Funzionalità principali:**
 - Caricamento fatture (XML/FatturaPA, P7M, PDF, JPG/PNG)
@@ -437,4 +437,4 @@ python tools/check_migrations.py  # verifica 65 oggetti DB da migration legacy
 
 *Documento sintetico v5.4 — 1 Maggio 2026*
 *Per la documentazione completa, vedere `DOCUMENTAZIONE_COMPLETA.md`*
-*Contatti: mattiadavolio90@gmail.com*
+*Contatti: md@oneflux.it*

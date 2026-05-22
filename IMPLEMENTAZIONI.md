@@ -1,4 +1,4 @@
-# 🚀 OH YEAH! Hub — Roadmap Nuove Implementazioni
+# 🚀 ONEFLUX — Roadmap Nuove Implementazioni
 *Sessione brainstorming 13 maggio 2026 — Mattia D'Avolio, Recoma System srl*
 
 ## 1. Home Intelligente — Score "Pulse" + Briefing Contestuale
@@ -82,7 +82,7 @@ Struttura email proposta:
 - Oggetto: "📊 Il tuo lunedì — [Nome Ristorante], [data]"
 - Score Pulse testuale: "Il tuo punteggio questa settimana: 78/100"
 - I 3-4 punti del briefing contestuale
-- Bottone CTA: "→ Apri OH YEAH! Hub"
+- Bottone CTA: "→ Apri ONEFLUX"
 - Footer con link opt-out (obbligatorio GDPR)
 
 **Attenzione importante:** il contenuto preciso degli slot va definito e validato PRIMA di implementare. Il rischio è inviare email con informazioni banali che il ristoratore inizia a ignorare e poi disattiva.
@@ -106,12 +106,12 @@ Struttura email proposta:
 Il ristoratore sa che il suo food cost è 34% ma non sa se è tanto o poco rispetto ai competitor. Senza un riferimento esterno i numeri sono solo numeri — non diventano mai una leva per migliorare. Questa informazione oggi non è accessibile per le PMI della ristorazione italiana.
 
 ### Come funziona
-Aggregazione anonima dei KPI di tutti i clienti OH YEAH! con profilo simile. Il singolo ristoratore vede i propri KPI confrontati con la media — senza che nessun dato individuale venga esposto. Minimo 10 ristoranti nel pool prima di mostrare la media (privacy).
+Aggregazione anonima dei KPI di tutti i clienti ONEFLUX con profilo simile. Il singolo ristoratore vede i propri KPI confrontati con la media — senza che nessun dato individuale venga esposto. Minimo 10 ristoranti nel pool prima di mostrare la media (privacy).
 
 Esempio di output per ogni KPI:
-- Food Cost: Tu 34% — Media OH YEAH! 28% → ⚠️ Superiore alla media del 6%
-- Bevande: Tu 12% — Media OH YEAH! 13% → ✅ In linea
-- Personale: Tu 31% — Media OH YEAH! 29% → 🟡 Leggermente sopra
+- Food Cost: Tu 34% — Media ONEFLUX 28% → ⚠️ Superiore alla media del 6%
+- Bevande: Tu 12% — Media ONEFLUX 13% → ✅ In linea
+- Personale: Tu 31% — Media ONEFLUX 29% → 🟡 Leggermente sopra
 
 ### Dove si integra — da decidere prima di implementare
 - **Opzione A:** accanto a ogni KPI in Calcolo Marginalità, sotto la progress bar del punto 3
@@ -139,11 +139,11 @@ Esempi di frasi generate automaticamente:
 - "Il tuo fornitore più fedele è Birra & Co: presente da 18 mesi senza interruzioni."
 - "La tua categoria più volatile è Pesce: varia in media del ±34% mese su mese."
 - "Il tuo mese migliore per il margine è stato ottobre 2025 (MOL: 24%)."
-- "Hai gestito 847 fatture per €124.000 di spese da quando usi OH YEAH!"
+- "Hai gestito 847 fatture per €124.000 di spese da quando usi ONEFLUX"
 - "Il tuo fornitore più costoso in assoluto è [Nome]: €XX.XXX negli ultimi 12 mesi."
 
 ### Perché è differenziante strategicamente
-Genera lock-in naturale: dopo 12-18 mesi l'utente non può "portare via" questa storia cambiando app. L'account OH YEAH! diventa un asset unico e personale. Nessun competitor nel segmento PMI italiano lo offre.
+Genera lock-in naturale: dopo 12-18 mesi l'utente non può "portare via" questa storia cambiando app. L'account ONEFLUX diventa un asset unico e personale. Nessun competitor nel segmento PMI italiano lo offre.
 
 ### Prerequisiti temporali
 - 3 mesi di dati → sezione base (top fornitore, categoria più costosa, totale gestito)
@@ -182,7 +182,7 @@ Esempi di domande reali:
 - **Opzione B:** pagina dedicata "🤖 Chef AI" nel menu laterale
 
 ### Perché è il differenziante a lungo termine
-Trasforma OH YEAH! da "software gestionale" a "consulente digitale del ristoratore". Nessun competitor nel segmento PMI italiano della ristorazione lo offre oggi.
+Trasforma ONEFLUX da "software gestionale" a "consulente digitale del ristoratore". Nessun competitor nel segmento PMI italiano della ristorazione lo offre oggi.
 
 ### File da toccare
 - `services/chef_ai_service.py` (nuovo)

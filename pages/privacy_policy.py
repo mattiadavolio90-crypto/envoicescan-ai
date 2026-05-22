@@ -52,7 +52,7 @@ with tab_privacy:
     **Recoma System S.r.l.**  
     P.IVA: IT09599210961  
     Referente tecnico: Mattia D'Avolio  
-    Email: mattiadavolio90@gmail.com
+    Email: md@oneflux.it
 
     ---
 
@@ -99,7 +99,7 @@ with tab_privacy:
     | **Supabase Inc.** | Hosting database | UE — Frankfurt 🇩🇪 | Dati persistiti esclusivamente in UE |
     | **OpenAI LP** | Elaborazione AI categorizzazione | USA | Clausole contrattuali standard UE (SCCs); dati elaborati on-the-fly, non archiviati per training |
     | **Brevo SAS** | SMTP transazionale | UE — Francia 🇫🇷 | Nessun contenuto di fatture trasmesso |
-    | **Invoicetronic S.r.l.** | Ricezione fatture SDI e inoltro webhook | Italia 🇮🇹 | Eventi webhook e metadati fatture inoltrati verso l'infrastruttura OH YEAH!; XML grezzo non archiviato dopo la consegna |
+    | **Invoicetronic S.r.l.** | Ricezione fatture SDI e inoltro webhook | Italia 🇮🇹 | Eventi webhook e metadati fatture inoltrati verso l'infrastruttura ONEFLUX; XML grezzo non archiviato dopo la consegna |
     | **Railway Corp.** | Worker elaborazione fatture | USA | Elaborazione in memoria, nessun dato persistito; SCCs UE |
     | **Streamlit Cloud** | Hosting applicazione web | USA | Nessun dato persistito lato Streamlit; solo elaborazione in memoria; SCCs UE |
 
@@ -182,7 +182,7 @@ with tab_tos:
 
     st.markdown("""
     ### 1. Oggetto del Servizio
-    Il servizio **OH YEAH! Hub** (di seguito "Servizio") è una piattaforma SaaS di analisi e gestione dei costi per attività di ristorazione, fornita da **Recoma System S.r.l.** (P.IVA: IT09599210961, referente: Mattia D'Avolio).
+    Il servizio **ONEFLUX** (di seguito "Servizio") è una piattaforma SaaS di analisi e gestione dei costi per attività di ristorazione, fornita da **Recoma System S.r.l.** (P.IVA: IT09599210961, referente: Mattia D'Avolio).
 
     Il Servizio include:
     - Caricamento e analisi automatica di fatture elettroniche (XML, P7M, PDF)
@@ -283,6 +283,6 @@ with tab_tos:
     ### Contatti
     **Recoma System S.r.l.**  
     Referente: Mattia D'Avolio  
-    Email: mattiadavolio90@gmail.com  
+    Email: md@oneflux.it  
     P.IVA: IT09599210961
     """)

@@ -1,5 +1,5 @@
-"""
-Modulo validation per OH YEAH! Hub.
+﻿"""
+Modulo validation per ONEFLUX.
 
 Funzioni per:
 - Validazione diciture vs prodotti

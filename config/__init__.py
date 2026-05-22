@@ -1,4 +1,4 @@
-"""
-Modulo config per OH YEAH! Hub.
+﻿"""
+Modulo config per ONEFLUX.
 Contiene costanti, configurazioni e regex precompilate.
 """

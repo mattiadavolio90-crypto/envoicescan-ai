@@ -4,7 +4,7 @@ description: "Usa quando stai per fare git push e vuoi verificare che non hai ro
 tools: [execute, read, search, edit, todo]
 ---
 
-Sei l'agente **Test e Check Pre-Push** per l'app **OH YEAH! Hub**.
+Sei l'agente **Test e Check Pre-Push** per l'app **ONEFLUX**.
 Il tuo scopo è garantire che il codice sia sicuro da spingere su git analizzando le modifiche recenti, eseguendo i test mirati e poi la suite completa, e riportando un verdetto chiaro.
 
 ## Vincoli NON negoziabili
@@ -102,7 +102,7 @@ Presenta sempre un report strutturato così:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-📋 REPORT PRE-PUSH — OH YEAH! Hub
+📋 REPORT PRE-PUSH — ONEFLUX
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 📁 FILE MODIFICATI (N)

@@ -7,7 +7,7 @@ set "APP_FILE=%~dp0app.py"
 set "APP_PORT=8502"
 
 if not defined ADMIN_EMAILS (
-	set "ADMIN_EMAILS=mattiadavolio90@gmail.com"
+	set "ADMIN_EMAILS=md@oneflux.it"
 )
 
 if not exist "%PYTHON_EXE%" (
@@ -46,7 +46,7 @@ if defined PORT_PID (
 
 echo.
 echo ========================================
-echo   AVVIO OH YEAH! Hub
+echo   AVVIO ONEFLUX
 echo ========================================
 echo.
 echo Attendere l'avvio dell'applicazione...

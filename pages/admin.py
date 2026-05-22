@@ -1,5 +1,5 @@
 ﻿"""
-🔧 PANNELLO AMMINISTRAZIONE - OH YEAH! Hub
+🔧 PANNELLO AMMINISTRAZIONE - ONEFLUX
 ===============================================
 Pannello admin con 5 TAB:
 - Gestione Clienti (con impersonazione)
@@ -735,7 +735,7 @@ if tab1:
                             
                             email_html = f"""
                             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                                <h2 style="color: #2c5aa0;">🎉 Benvenuto in OH YEAH! Hub</h2>
+                                <h2 style="color: #2c5aa0;">🎉 Benvenuto in ONEFLUX</h2>
                                 <p>Ciao <strong>{_html.escape(new_name)}</strong>,</p>
                                 <p>Il tuo account è stato creato con successo dal nostro team.</p>
                                 
@@ -776,16 +776,16 @@ if tab1:
                                 
                                 <p style="color: #666; font-size: 14px;">
                                     ---<br>
-                                    <strong>OH YEAH! Hub Team</strong><br>
-                                    📧 Support: mattiadavolio90@gmail.com
+                                    <strong>Oneflux Team</strong><br>
+                                    📧 Support: md@oneflux.it
                                 </p>
                             </div>
                             """
                             
                             payload = {
-                                "sender": {"email": sender_email, "name": "OH YEAH! Hub"},
+                                "sender": {"email": sender_email, "name": "ONEFLUX"},
                                 "to": [{"email": new_email, "name": _html.escape(new_name)}],
-                                "replyTo": {"email": "mattiadavolio90@gmail.com", "name": "Mattia Davolio - Support"},
+                                "replyTo": {"email": "md@oneflux.it", "name": "Mattia - Oneflux Support"},
                                 "subject": f"🆕 Benvenuto {_html.escape(new_name)} - Imposta la tua Password",
                                 "htmlContent": email_html
                             }
@@ -1288,12 +1288,12 @@ if tab1:
                                     
                                     email_inviata = invia_email(
                                         destinatario=row['email'],
-                                        oggetto="🔑 Reset Password - OH YEAH! Hub",
+                                        oggetto="🔑 Reset Password - ONEFLUX",
                                         corpo_html=f"""
                                         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
                                             <h2 style="color: #2c5aa0;">🔑 Reset Password Richiesto</h2>
                                             <p>Ciao,</p>
-                                            <p>L'amministratore ha richiesto un reset della tua password su <strong>OH YEAH! Hub</strong>.</p>
+                                            <p>L'amministratore ha richiesto un reset della tua password su <strong>ONEFLUX</strong>.</p>
                                             <p>Clicca sul pulsante per impostare una nuova password:</p>
                                             <div style="text-align: center; margin: 30px 0;">
                                                 <a href="{reset_url}" style="background-color:#0ea5e9;color:white;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">🔐 Imposta Nuova Password</a>
@@ -1301,7 +1301,7 @@ if tab1:
                                             <p style="color: #dc2626;">⚠️ <strong>Importante:</strong> Questo link è valido per <strong>1 ora</strong>.</p>
                                             <p style="color: #888; font-size: 13px;">Se non hai richiesto questo reset, ignora questa email.</p>
                                             <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
-                                            <p style="color: #666; font-size: 13px;">---<br><strong>OH YEAH! Hub Team</strong><br>📧 Support: mattiadavolio90@gmail.com</p>
+                                            <p style="color: #666; font-size: 13px;">---<br><strong>Oneflux Team</strong><br>📧 Support: md@oneflux.it</p>
                                         </div>
                                         """
                                     )

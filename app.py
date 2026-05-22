@@ -72,7 +72,7 @@ def _debug_session_snap(label: str) -> None:
 # ============================================
 
 st.set_page_config(
-    page_title="OH YEAH! Hub",
+    page_title="ONEFLUX",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="collapsed",

@@ -42,7 +42,7 @@ def _fmt_int_migliaia(valore) -> str:
 # CONFIGURAZIONE PAGINA
 # ============================================
 st.set_page_config(
-    page_title="Controllo Prezzi - OH YEAH! Hub",
+    page_title="Controllo Prezzi - ONEFLUX",
     page_icon="🔍",
     layout="wide",
     initial_sidebar_state="expanded"

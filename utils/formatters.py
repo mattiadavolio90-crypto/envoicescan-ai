@@ -1,5 +1,5 @@
-"""
-Modulo formatters per OH YEAH! Hub.
+﻿"""
+Modulo formatters per ONEFLUX.
 
 Funzioni per:
 - Conversione file (PDF/IMG → base64)

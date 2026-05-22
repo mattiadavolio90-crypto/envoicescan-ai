@@ -215,7 +215,7 @@ class TestAppControllersDB:
         session_state = _AttrDict({
             "logged_in": True,
             "force_logout": False,
-            "user_data": {"id": "admin-1", "email": "mattiadavolio90@gmail.com"},
+            "user_data": {"id": "admin-1", "email": "md@oneflux.it"},
             "user_is_admin": True,
             "impersonating": False,
             "ristoranti": [],
@@ -229,7 +229,7 @@ class TestAppControllersDB:
 
         with patch("utils.app_controllers.st.session_state", new=session_state), \
              patch("utils.app_controllers.st.columns", side_effect=_fake_columns), \
-               patch("utils.app_controllers.ADMIN_EMAILS", new=["mattiadavolio90@gmail.com", "cliente@demo.it"]), \
+               patch("utils.app_controllers.ADMIN_EMAILS", new=["md@oneflux.it", "cliente@demo.it"]), \
                patch("utils.app_controllers.st.button", return_value=False), \
              patch("utils.app_controllers.render_sidebar"), \
              patch("utils.app_controllers.render_oh_yeah_header"), \

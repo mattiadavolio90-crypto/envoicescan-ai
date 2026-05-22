@@ -1,4 +1,4 @@
-# 🚀 Dev Services Integration Guide
+﻿# 🚀 Dev Services Integration Guide
 
 **Data setup**: 2 aprile 2026 | **Ultimo aggiornamento**: 9 maggio 2026  
 **Status**: ✅ GitHub CLI, Railway CLI, Supabase CLI - ALL CONNECTED
@@ -68,7 +68,7 @@ gh release upload v1.0.0 ./file.zip
 
 ## Railway Operations
 
-**Connessione**: mattiadavolio90@gmail.com  
+**Connessione**: md@oneflux.it  
 **Progetti**: ingenious-fascination, exemplary-creation
 
 ### Project Management

@@ -1,5 +1,5 @@
-"""
-Modulo ui_helpers per OH YEAH! Hub.
+﻿"""
+Modulo ui_helpers per ONEFLUX.
 
 Funzioni condivise per:
 - Caricamento CSS/JS da file statici

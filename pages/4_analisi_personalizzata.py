@@ -48,7 +48,7 @@ logger = get_logger('analisi_personalizzata')
 # CONFIGURAZIONE PAGINA
 # ============================================
 st.set_page_config(
-    page_title="Analisi e Tag - OH YEAH! Hub",
+    page_title="Analisi e Tag - ONEFLUX",
     page_icon="🏷️",
     layout="wide",
     initial_sidebar_state="expanded"

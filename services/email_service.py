@@ -79,7 +79,7 @@ def invia_email(destinatario: str, oggetto: str, corpo_html: str, reply_to_email
         destinatario: Email destinatario
         oggetto: Oggetto email
         corpo_html: Contenuto HTML email
-        reply_to_email: Email per reply-to (default: mattiadavolio90@gmail.com)
+        reply_to_email: Email per reply-to (default: md@oneflux.it)
         reply_to_name: Nome per reply-to (default: Support)
         
     Returns:
@@ -120,7 +120,7 @@ def invia_email(destinatario: str, oggetto: str, corpo_html: str, reply_to_email
             return False
         
         sender_email = brevo_cfg.get('sender_email', 'noreply@example.com')
-        sender_name = brevo_cfg.get('sender_name', 'OH YEAH! Hub')
+        sender_name = brevo_cfg.get('sender_name', 'ONEFLUX')
 
         # 🔒 Validazione email: previene spoofing/misconfig in secrets.toml
         import re as _re

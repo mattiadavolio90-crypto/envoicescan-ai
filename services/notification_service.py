@@ -595,13 +595,13 @@ def build_trial_notifications(
     
     if days_left == 0:
         title = '⏰ Trial scade OGGI'
-        body = f"La versione di prova di OH YEAH! Hub scade oggi. Contatta il team commerciale per attivare la versione completa."
+        body = f"La versione di prova di ONEFLUX scade oggi. Contatta il team commerciale per attivare la versione completa."
     elif days_left == 1:
         title = '⏰ Trial scade domani'
-        body = f"La versione di prova di OH YEAH! Hub scade domani ({expires_at}). Contatta il team commerciale per attivare la versione completa."
+        body = f"La versione di prova di ONEFLUX scade domani ({expires_at}). Contatta il team commerciale per attivare la versione completa."
     else:  # 2 o 3 giorni
         title = f'⏰ Trial scade tra {days_left} giorni'
-        body = f"La versione di prova di OH YEAH! Hub scade il {expires_at} ({days_left} giorni rimasti). Contatta il team commerciale per attivare la versione completa."
+        body = f"La versione di prova di ONEFLUX scade il {expires_at} ({days_left} giorni rimasti). Contatta il team commerciale per attivare la versione completa."
     
     return [{
         'id': f'trial-expiry-{user_id}',

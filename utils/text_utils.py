@@ -1,5 +1,5 @@
-"""
-Modulo text_utils per OH YEAH! Hub.
+﻿"""
+Modulo text_utils per ONEFLUX.
 
 Funzioni per:
 - Normalizzazione descrizioni (memoria globale)

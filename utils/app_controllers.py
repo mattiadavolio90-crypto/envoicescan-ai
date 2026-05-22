@@ -1,4 +1,4 @@
-"""
+﻿"""
 utils/app_controllers.py
 
 Controller estratti da app.py per ridurre la monoliticità del file principale.
@@ -630,7 +630,7 @@ def render_sidebar_and_header(supabase, logger, cookie_manager):
       - Redirect admin puro → pannello admin
       - Verifica scadenza trial + logout automatico
       - Banner impersonazione con pulsante "Torna Admin"
-      - Render sidebar e header OH YEAH!
+      - Render sidebar e header ONEFLUX
       - Trial banner (giorni rimanenti)
       - Dropdown multi-ristorante (se cliente con più ristoranti)
 

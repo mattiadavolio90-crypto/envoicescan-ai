@@ -55,7 +55,7 @@ from services import get_supabase_client
 
 
 st.set_page_config(
-    page_title="Notifiche e Gestione - OH YEAH! Hub",
+    page_title="Notifiche e Gestione - ONEFLUX",
     page_icon="🔔",
     layout="wide",
     initial_sidebar_state="expanded",

@@ -1,4 +1,4 @@
-# OH YEAH! Hub — Documentazione Completa
+﻿# ONEFLUX — Documentazione Completa
 
 **Sistema di Analisi Fatture e Controllo Costi per la Ristorazione**
 
@@ -51,9 +51,9 @@ URL Produzione: https://ohyeah.streamlit.app/
 
 ## 1. Panoramica del Progetto
 
-### Cos'è OH YEAH! Hub
+### Cos'è ONEFLUX
 
-OH YEAH! Hub è una piattaforma SaaS web-based progettata specificamente per ristoratori italiani che necessitano di analizzare, categorizzare e controllare i costi derivanti dalle fatture elettroniche dei propri fornitori.
+ONEFLUX è una piattaforma SaaS web-based progettata specificamente per ristoratori italiani che necessitano di analizzare, categorizzare e controllare i costi derivanti dalle fatture elettroniche dei propri fornitori.
 
 L'applicazione consente di:
 
@@ -76,7 +76,7 @@ L'applicazione consente di:
 
 ### Problema Risolto
 
-I ristoratori italiani ricevono decine/centinaia di fatture elettroniche XML al mese dai fornitori. Queste fatture contengono righe di prodotti con descrizioni spesso abbreviate, non standardizzate e difficili da classificare. OH YEAH! Hub automatizza completamente l'analisi di queste fatture, trasformando dati grezzi XML in informazioni azionabili per il controllo dei costi.
+I ristoratori italiani ricevono decine/centinaia di fatture elettroniche XML al mese dai fornitori. Queste fatture contengono righe di prodotti con descrizioni spesso abbreviate, non standardizzate e difficili da classificare. ONEFLUX automatizza completamente l'analisi di queste fatture, trasformando dati grezzi XML in informazioni azionabili per il controllo dei costi.
 
 ---
 
@@ -1364,9 +1364,9 @@ WORKER_BASE_URL = "http://worker:8000"   # oppure URL Railway
 [brevo]
 api_key = "xkeysib-..."
 sender_email = "noreply@ohyeah.app"
-sender_name = "OH YEAH! Hub"
+sender_name = "ONEFLUX"
 reply_to_email = "support@ohyeah.app"
-reply_to_name = "Support OH YEAH! Hub"
+reply_to_name = "Support ONEFLUX"
 ```
 
 **Supabase Edge Function** (via `supabase secrets set`):
@@ -1448,9 +1448,9 @@ jobs:
             curl -X POST "https://api.brevo.com/v3/smtp/email" \
               -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
               -H "Content-Type: application/json" \
-              -d '{"sender":{"email":"alerts@ohyeah.app","name":"OH YEAH! Hub Monitor"},
-                   "to":[{"email":"mattiadavolio90@gmail.com"}],
-                   "subject":"🚨 OH YEAH! Hub DOWN",
+              -d '{"sender":{"email":"alerts@ohyeah.app","name":"ONEFLUX Monitor"},
+                   "to":[{"email":"md@oneflux.it"}],
+                   "subject":"🚨 ONEFLUX DOWN",
                    "htmlContent":"<p>Status: '$STATUS'</p>"}'
             exit 1
           fi
@@ -1582,7 +1582,7 @@ jobs:
 1. Verificare status `fatture_queue`: record con `status=pending` → non ancora processati
 2. Il service Railway `queue-worker` polla la coda ogni 15 secondi → attendere il ciclo successivo
 3. `status=failed` o `status=dead` → vedere `error_message` nella tabella
-4. `status=unknown_tenant` → P.IVA del ristorante non ancora registrata su OH YEAH! Hub; aggiungere il ristorante con la P.IVA corretta, poi chiamare la RPC `resolve_unknown_tenant(piva)` per rimettere in `pending`
+4. `status=unknown_tenant` → P.IVA del ristorante non ancora registrata su ONEFLUX; aggiungere il ristorante con la P.IVA corretta, poi chiamare la RPC `resolve_unknown_tenant(piva)` per rimettere in `pending`
 5. Verificare che la Edge Function `invoicetronic-webhook` risponda (GET `/functions/v1/invoicetronic-webhook` → `200 OK`)
 
 #### Firma webhook Invoicetronic non valida
@@ -1637,7 +1637,7 @@ pip freeze > requirements-lock.txt
 
 | Variabile | Descrizione | Default |
 |-----------|-------------|---------|
-| `ADMIN_EMAILS` | Lista email admin (separati da virgola) | `mattiadavolio90@gmail.com` |
+| `ADMIN_EMAILS` | Lista email admin (separati da virgola) | `md@oneflux.it` |
 | `SUPABASE_URL` | URL progetto Supabase | In `st.secrets` |
 | `SUPABASE_KEY` | Chiave API Supabase (anon) | In `st.secrets` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role key (worker + Edge Function) | In secrets Railway / GitHub |
@@ -1679,7 +1679,7 @@ pip freeze > requirements-lock.txt
 
 Invoicetronic è un servizio SaaS italiano che funge da **intermediario SDI** (Sistema di Interscambio): riceve le fatture elettroniche indirizzate al codice destinatario `7HD37X0` e le notifica via webhook HTTPS firmato.
 
-Grazie a questa integrazione, i ristoratori che comunicano ai propri fornitori il codice destinatario `7HD37X0` **ricevono le fatture automaticamente** in OH YEAH! Hub senza dover caricare manualmente i file XML.
+Grazie a questa integrazione, i ristoratori che comunicano ai propri fornitori il codice destinatario `7HD37X0` **ricevono le fatture automaticamente** in ONEFLUX senza dover caricare manualmente i file XML.
 
 ### Flusso Completo
 
@@ -1760,7 +1760,7 @@ I record falliti vengono ri-schedulati con `schedule_retry()`. Il numero di tent
 Dopo 24 ore dall'elaborazione, `purge_processed_xml_content()` nullifica il campo `xml_content` (dati sensibili). L'`xml_url` viene conservata per eventuale re-download, ma l'XML grezzo non resta in DB.
 
 #### Recovery Tenant Sconosciuto
-Se una fattura arriva per una P.IVA non ancora registrata in OH YEAH! Hub, il record viene salvato con `status=unknown_tenant`. Quando il ristorante si registra con quella P.IVA, l'admin può chiamare:
+Se una fattura arriva per una P.IVA non ancora registrata in ONEFLUX, il record viene salvato con `status=unknown_tenant`. Quando il ristorante si registra con quella P.IVA, l'admin può chiamare:
 ```sql
 SELECT resolve_unknown_tenant('01234567890');
 -- Aggiorna user_id/ristorante_id e rimette in pending per rielaborazione
@@ -2148,4 +2148,4 @@ La colonna `users.price_alert_threshold` (default 5.0, range 0–100) consente a
 
 *Documento generato automaticamente dall'analisi completa del codice sorgente.*
 *Versione 5.4 — 1 Maggio 2026*
-*Per aggiornamenti, modifiche o domande: mattiadavolio90@gmail.com*
+*Per aggiornamenti, modifiche o domande: md@oneflux.it*

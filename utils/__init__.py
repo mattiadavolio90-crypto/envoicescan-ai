@@ -1,5 +1,5 @@
-"""
-Utils package per OH YEAH! Hub.
+﻿"""
+Utils package per ONEFLUX.
 
 Moduli:
 - text_utils: Normalizzazione e manipolazione testo

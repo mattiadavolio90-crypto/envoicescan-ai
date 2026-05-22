@@ -1,5 +1,5 @@
 """
-services/fastapi_worker.py — FastAPI Worker per Oh Yeah! Hub (Fase 3)
+services/fastapi_worker.py — FastAPI Worker per ONEFLUX (Fase 3)
 ═══════════════════════════════════════════════════════════════════════════
 Separa la logica AI/parsing pesante dal frontend Streamlit.
 
@@ -176,7 +176,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     lifespan=lifespan,
-    title="Oh Yeah! Hub — Worker API",
+    title="ONEFLUX — Worker API",
     description=(
         "Worker API per classificazione AI e parsing fatture. "
         "Usato da Streamlit come backend separato in Fase 3 (50+ utenti)."
@@ -196,6 +196,9 @@ def _build_allowed_origins() -> List[str]:
             "https://ohyeah.streamlit.app",
             "https://ohyeah.app",
             "https://envoicescan-ai-production.up.railway.app",
+            "https://oneflux.it",
+            "https://www.oneflux.it",
+            "https://frontend-production-aa79.up.railway.app",
         ]
 
     if "*" in origins:

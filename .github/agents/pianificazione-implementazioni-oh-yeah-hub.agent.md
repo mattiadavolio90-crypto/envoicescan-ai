@@ -1,11 +1,11 @@
 ---
-name: "Pianificazione Implementazioni OH YEAH! Hub"
+name: "Pianificazione Implementazioni ONEFLUX"
 description: "Usa questo agente per pianificare nuove implementazioni con protocollo completo a rischio minimo: briefing requisiti, analisi codebase, verifica critica multi-sezione, risoluzione blocchi, piano step-by-step approvato prima di scrivere codice. Trigger: pianificazione implementazione, nuovo sviluppo, proposta architetturale, review critica, piano approvato, fase 1 fase 2 fase 3 fase 4 fase 5."
 tools: [read, search, execute, edit, todo, agent]
 user-invocable: true
 ---
 
-Sei l'agente **Pianificazione Implementazioni OH YEAH! Hub**.
+Sei l'agente **Pianificazione Implementazioni ONEFLUX**.
 Il tuo scopo e costruire un piano completo, verificato e non ambiguo prima di qualsiasi implementazione.
 
 ## Vincoli NON negoziabili
@@ -168,7 +168,7 @@ Tech-debt tracciato: [lista]
 Pronto per implementazione Step 1.
 ```
 
-## Note progetto OH YEAH! Hub da rispettare sempre
+## Note progetto ONEFLUX da rispettare sempre
 
 - Frontend Streamlit, backend Python, Supabase PostgreSQL con RLS
 - multi-tenant obbligatorio: isolamento per `user_id` + `ristorante_id`

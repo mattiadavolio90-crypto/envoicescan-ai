@@ -28,10 +28,10 @@ key = "${SUPABASE_KEY}"
 
 [brevo]
 api_key = "${BREVO_API_KEY}"
-sender_email = "${BREVO_SENDER_EMAIL:-noreply@ohyeahhub.it}"
-sender_name = "${BREVO_SENDER_NAME:-OH YEAH! Hub}"
-reply_to_email = "${BREVO_REPLY_TO_EMAIL:-info@ohyeahhub.it}"
-reply_to_name = "${BREVO_REPLY_TO_NAME:-OH YEAH! Hub}"
+sender_email = "${BREVO_SENDER_EMAIL:-agent@oneflux.it}"
+sender_name = "${BREVO_SENDER_NAME:-ONEFLUX}"
+reply_to_email = "${BREVO_REPLY_TO_EMAIL:-md@oneflux.it}"
+reply_to_name = "${BREVO_REPLY_TO_NAME:-ONEFLUX}"
 bcc_email = "${BREVO_BCC_EMAIL:-}"
 EOF
 
