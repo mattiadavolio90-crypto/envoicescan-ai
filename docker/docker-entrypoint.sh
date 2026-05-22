@@ -25,6 +25,7 @@ OPENAI_API_KEY = "${OPENAI_API_KEY}"
 [supabase]
 url = "${SUPABASE_URL}"
 key = "${SUPABASE_KEY}"
+service_role_key = "${SUPABASE_SERVICE_ROLE_KEY:-}"
 
 [brevo]
 api_key = "${BREVO_API_KEY}"
