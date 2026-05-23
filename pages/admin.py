@@ -42,7 +42,7 @@ from utils.piva_validator import valida_formato_piva, normalizza_piva
 from services.auth_service import crea_cliente_con_token, verifica_sessione_da_cookie
 from services.db_service import get_retention_last_status
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
-from utils.ui_helpers import load_css
+from utils.ui_helpers import load_css, load_all_css
 
 # Importa costanti per filtri e admin
 from config.constants import CATEGORIE_SPESE_GENERALI, ADMIN_EMAILS, CATEGORIE_FOOD_BEVERAGE, VISION_DAILY_LIMIT
@@ -67,6 +67,21 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+/* === HIDE DEFAULT MULTIPAGE NAVIGATION (injected early) === */
+[data-testid="stSidebarNav"],
+section[data-testid="stSidebarNav"],
+div[data-testid="stSidebarNav"],
+nav[data-testid="stSidebarNav"],
+[data-testid="stSidebarNavItems"],
+[data-testid="stSidebarNavLinkContainer"],
+[data-testid="stSidebarNavLink"],
+[data-testid="stSidebarNavSeparator"],
+[data-testid="collapsedControl"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
 .admin-metrics-grid {
     display: flex;
     gap: 12px;
@@ -216,7 +231,7 @@ if (user.get('email') or '').strip().lower() not in ADMIN_EMAILS:
 # ============================================================
 # CSS GLOBALE (nasconde nav automatica Streamlit)
 # ============================================================
-load_css('common.css')
+load_all_css()
 
 # ============================================================
 # SIDEBAR CONDIVISA

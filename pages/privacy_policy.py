@@ -5,7 +5,7 @@ from utils.streamlit_compat import patch_streamlit_width_api
 patch_streamlit_width_api()
 
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
-from utils.ui_helpers import load_css
+from utils.ui_helpers import load_css, load_all_css
 
 st.set_page_config(
     page_title="Privacy Policy & Termini di Servizio", 
@@ -27,7 +27,7 @@ if 'logged_in' not in st.session_state or not st.session_state.logged_in:
     """, unsafe_allow_html=True)
 
 # CSS globale (nasconde nav automatica Streamlit)
-load_css('common.css')
+load_all_css()
 
 # La pagina è pubblica, mostra avviso se non loggati
 if 'logged_in' not in st.session_state or not st.session_state.logged_in:

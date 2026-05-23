@@ -261,8 +261,8 @@ with col_t3:
               on_click=_set_cp_tab, args=("nc",))
 
 # CSS bottoni tab e download (caricati da file statico condiviso)
-from utils.ui_helpers import load_css
-load_css('common.css')
+from utils.ui_helpers import load_all_css
+load_all_css()
 
 st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
 

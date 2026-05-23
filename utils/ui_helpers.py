@@ -247,6 +247,21 @@ def load_css(filename: str):
         return
 
 
+_ALL_CSS_FILES = [
+    'design_tokens.css',
+    'branding.css',
+    'layout.css',
+    'responsive.css',
+    'common.css',
+]
+
+
+def load_all_css():
+    """Carica tutti i CSS dell'app (da usare in ogni pagina per garantire stili coerenti in cloud)."""
+    for fname in _ALL_CSS_FILES:
+        load_css(fname)
+
+
 _HIDE_SIDEBAR_CSS = """
 <style>
 [data-testid="stSidebar"],

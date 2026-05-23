@@ -9,6 +9,19 @@ footer::after, footer::before {
     overflow: hidden !important;
 }
 
+/* === HIDE DEFAULT MULTIPAGE NAVIGATION (stSidebarNav) === */
+[data-testid="stSidebarNav"],
+section[data-testid="stSidebarNav"],
+div[data-testid="stSidebarNav"],
+.stSidebarNav,
+[data-testid="stSidebarNavItems"],
+[data-testid="stSidebarNavSeparator"] {
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    overflow: hidden !important;
+}
+
 /* === HEADER, TOOLBAR, MENU === */
 header[data-testid="stHeader"], .stApp > header,
 [data-testid="stToolbar"], div[data-testid="stToolbar"],

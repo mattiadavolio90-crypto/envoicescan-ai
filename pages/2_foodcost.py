@@ -114,8 +114,8 @@ check_page_enabled('workspace', user_id)
 # ============================================
 render_sidebar(user)
 
-from utils.ui_helpers import load_css
-load_css('common.css')
+from utils.ui_helpers import load_all_css
+load_all_css()
 
 # ============================================
 # INIZIALIZZA SESSION STATE

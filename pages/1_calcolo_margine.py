@@ -125,8 +125,8 @@ with col_tab2:
             st.rerun()
 
 # CSS per bottoni tab - caricato da file statico condiviso
-from utils.ui_helpers import load_css
-load_css('common.css')
+from utils.ui_helpers import load_all_css
+load_all_css()
 # CSS bottoni pagina — in static/common.css (div[data-testid="column"] button)
 
 if st.session_state.margine_tab == "analisi":

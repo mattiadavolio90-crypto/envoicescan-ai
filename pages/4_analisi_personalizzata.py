@@ -400,8 +400,8 @@ with col_t2:
                 st.session_state.pop(_k, None)
             st.rerun()
 
-from utils.ui_helpers import load_css
-load_css('common.css')
+from utils.ui_helpers import load_all_css
+load_all_css()
 
 trial_info = st.session_state.get('trial_info', {})
 is_trial = trial_info.get('is_trial', False) and not st.session_state.get('impersonating', False)

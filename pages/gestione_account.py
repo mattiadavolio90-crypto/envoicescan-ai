@@ -12,7 +12,7 @@ from services import get_supabase_client
 from services.auth_service import valida_password_compliance
 from config.logger_setup import get_logger
 from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
-from utils.ui_helpers import load_css
+from utils.ui_helpers import load_css, load_all_css
 
 # Logger
 logger = get_logger('gestione_account')
@@ -50,7 +50,7 @@ ph = PasswordHasher()
 # ============================================================
 # CSS GLOBALE (nasconde nav automatica Streamlit)
 # ============================================================
-load_css('common.css')
+load_all_css()
 
 # ============================================================
 # SIDEBAR CONDIVISA
