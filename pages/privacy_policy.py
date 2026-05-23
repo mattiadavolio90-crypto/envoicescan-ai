@@ -118,7 +118,7 @@ with tab_privacy:
 
     | Cookie | Tipo | Scadenza | Contenuto | Note |
     |--------|------|----------|-----------|------|
-    | `session_token` | Tecnico / sessione | 30 giorni | Token opaco generato lato server | Mantenimento sessione di login |
+    | `session_token` | Tecnico / sessione | 30 giorni | Token opaco ad alta entropia (Supabase refresh_token o token legacy per account pre-migrazione) | Mantenimento sessione di login |
     | `impersonation_user_id` | Tecnico / amministrativo | 30 minuti | UUID utente impersonato | Solo per account amministratori; supporto tecnico temporaneo |
 
     Tutti i cookie sono impostati con `SameSite=Strict` e flag `Secure` (trasmessi solo su HTTPS), senza dati personali in chiaro.
@@ -131,6 +131,8 @@ with tab_privacy:
     - Pixel di tracciamento
 
     Ai sensi del Provvedimento del Garante Privacy dell'8 gennaio 2015 e delle Linee Guida 2022, i cookie tecnici strettamente necessari **non richiedono consenso preventivo**, ma richiedono informativa — che viene fornita tramite banner informativo nella pagina di accesso.
+
+    Per eliminare i cookie tecnici è sufficiente cancellare i cookie del browser nelle impostazioni del browser stesso. L'operazione comporterà la disconnessione dall'applicazione.
 
     ---
 

@@ -459,7 +459,7 @@
           <tr><td>Controllo accessi</td><td>Row-Level Security PostgreSQL + filtro applicativo user_id + ristorante_id su ogni query</td></tr>
           <tr><td>Rate limiting login</td><td>5 tentativi / 15 minuti per coppia IP+email — persistente su DB</td></tr>
           <tr><td>Rate limiting reset pw</td><td>1 richiesta / 5 minuti per email — persistente su DB (migration 046)</td></tr>
-          <tr><td>Sessioni</td><td>Token opaco ad alta entropia (secrets.token_urlsafe), TTL 30 giorni, scadenza inattività 8h, invalidazione al logout e su token non valido. Cookie Secure + SameSite=Strict; per limiti del CookieManager Streamlit il flag HttpOnly non è impostabile.</td></tr>
+          <tr><td>Sessioni</td><td>Token opaco ad alta entropia (Supabase refresh_token, o secrets.token_urlsafe per account legacy pre-maggio 2026), TTL 30 giorni, scadenza inattività 8h, invalidazione al logout e su token non valido. Cookie Secure + SameSite=Strict; per limiti del CookieManager Streamlit il flag HttpOnly non è impostabile.</td></tr>
           <tr><td>IDOR protection</td><td>Filtro .eq('userid', user_id) su tutte le operazioni UPDATE/DELETE — nessuna modifica su record altrui anche con RLS permissivo</td></tr>
           <tr><td>Path traversal</td><td>Sanitizzazione nome file e File_Origine prima della persistenza su DB (strip ../ e path separator)</td></tr>
           <tr><td>XSS output</td><td>html.escape() su tutti i valori DB interpolati in HTML con unsafe_allow_html (sidebar, admin panel, categorie, P.IVA)</td></tr>

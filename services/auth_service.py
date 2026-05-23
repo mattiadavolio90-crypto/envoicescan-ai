@@ -576,12 +576,14 @@ def imposta_password_da_token(
         password_hash = ph.hash(nuova_password)
         user_id = user['id']
         
+        _now_consent = datetime.now(timezone.utc).isoformat()
         supabase_client.table('users').update({
             'reset_code': None,
             'reset_expires': None,
             'password_hash': password_hash,
             'attivo': True,
-            'password_changed_at': datetime.now(timezone.utc).isoformat()
+            'password_changed_at': _now_consent,
+            'privacy_accepted_at': _now_consent,  # GDPR Art. 7(1) — prova del consenso
         }).eq('id', user_id).execute()
         
         logger.info(f"✅ Password impostata per user_id={user_id}")
