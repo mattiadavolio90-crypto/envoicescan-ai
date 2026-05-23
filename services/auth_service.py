@@ -648,6 +648,30 @@ def verify_and_migrate_password(user_record: dict, password: str) -> bool:
         return False
 
 
+def _get_supabase_anon_client():
+    """
+    Crea un client Supabase con anon_key per operazioni lato utente
+    (sign_in_with_password, refresh_session). Non cachato — usato solo
+    durante il login, non in loop caldi.
+    """
+    import os as _os
+    try:
+        import streamlit as _st
+        url = _st.secrets["supabase"]["url"]
+        anon_key = _st.secrets["supabase"].get("anon_key") or _st.secrets["supabase"].get("key", "")
+    except Exception:
+        url = _os.environ.get("SUPABASE_URL", "")
+        anon_key = _os.environ.get("SUPABASE_ANON_KEY") or _os.environ.get("SUPABASE_KEY", "")
+
+    if not url or not anon_key:
+        return None
+    try:
+        from supabase import create_client as _cc
+        return _cc(url, anon_key)
+    except Exception:
+        return None
+
+
 def _tenta_login_supabase_auth(email: str, password: str, supabase_client) -> Optional[object]:
     """
     Tenta login tramite Supabase Auth nativo.
@@ -655,11 +679,15 @@ def _tenta_login_supabase_auth(email: str, password: str, supabase_client) -> Op
     None se le credenziali non sono ancora in auth.users o se non configurato.
 
     Bridge FASE 2: usato da verifica_credenziali() prima del path Argon2.
+
+    NOTA: usa anon_key per sign_in_with_password — Supabase aggiorna last_sign_in_at
+    solo quando la chiamata proviene da un client con anon_key (non service_role).
     """
     try:
-        # Usa il client service_role per chiamare sign_in_with_password
-        # (l'auth API non richiede una key specifica, funziona con entrambe)
-        session_resp = supabase_client.auth.sign_in_with_password({
+        # Usa client con anon_key: aggiorna last_sign_in_at in auth.users
+        anon_client = _get_supabase_anon_client()
+        auth_client = anon_client if anon_client is not None else supabase_client
+        session_resp = auth_client.auth.sign_in_with_password({
             "email": email,
             "password": password,
         })
@@ -1066,7 +1094,11 @@ def verifica_sessione_da_cookie(
 
         if _is_jwt_refresh:
             try:
-                refresh_resp = supabase_client.auth.refresh_session(token)
+                # refresh_session usa anon_key: il service_role client non gestisce
+                # correttamente il token refresh lato utente
+                _anon = _get_supabase_anon_client()
+                _refresh_client = _anon if _anon is not None else supabase_client
+                refresh_resp = _refresh_client.auth.refresh_session(token)
                 if refresh_resp and getattr(refresh_resp, "session", None):
                     session = refresh_resp.session
                     user_auth = getattr(refresh_resp, "user", None)
