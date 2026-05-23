@@ -62,6 +62,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("worker.run")
 
+# ─── Killswitch: WORKER_ENABLED=0 sospende il worker senza uscire ────────────
+# Railway riavvierebbe il container se uscisse; con sleep infinito resta vivo
+# ma senza consumare CPU o fare chiamate DB/API.
+# Per riattivare: imposta WORKER_ENABLED=1 (o rimuovi la variabile) e redeploy.
+if os.environ.get("WORKER_ENABLED", "1").strip() in ("0", "false", "False", "no"):
+    logger.warning(
+        "⏸️  WORKER_ENABLED=0 — worker in pausa (killswitch attivo). "
+        "Per riattivare: imposta WORKER_ENABLED=1 e rideploya."
+    )
+    while True:
+        time.sleep(3600)  # dorme 1h alla volta, nessuna chiamata esterna
+
 WORKER_POLL_INTERVAL_SECONDS = int(os.environ.get("WORKER_POLL_INTERVAL_SECONDS", "15"))
 WORKER_ERROR_BACKOFF_SECONDS = int(os.environ.get("WORKER_ERROR_BACKOFF_SECONDS", "30"))
 WORKER_MAX_BACKOFF_SECONDS = int(os.environ.get("WORKER_MAX_BACKOFF_SECONDS", "300"))
