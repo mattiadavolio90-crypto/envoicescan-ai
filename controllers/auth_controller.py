@@ -152,7 +152,13 @@ def handle_force_logout(supabase) -> None:
 def restore_session_from_cookie(
     cookie_manager, supabase, inactivity_hours: int, clear_fatture_cache_fn
 ) -> None:
-    """Tenta di ripristinare la sessione dal cookie session_token."""
+    """
+    Tenta di ripristinare la sessione dal cookie session_token.
+
+    Supporta due formati (backward-compatible):
+      - refresh_token JWT Supabase Auth → rinnova via refresh_session(), aggiorna cookie
+      - session_token opaco legacy → lookup su public.users (path pre-migrazione)
+    """
     from config.constants import ADMIN_EMAILS
     from services.auth_service import verifica_sessione_da_cookie
 
@@ -166,6 +172,23 @@ def restore_session_from_cookie(
                 _token_cookie, inactivity_hours=inactivity_hours
             )
             if _u:
+                # Se verifica_sessione_da_cookie ha restituito un nuovo refresh_token (JWT ruotato),
+                # aggiorna il cookie per ridurre la finestra di esposizione del token precedente.
+                _new_refresh_token = _u.pop("_jwt_refresh_token", None)
+                _u.pop("_jwt_access_token", None)  # access_token non va in session_state
+
+                if _new_refresh_token and _new_refresh_token != _token_cookie and cookie_manager is not None:
+                    try:
+                        cookie_manager.set(
+                            "session_token",
+                            _new_refresh_token,
+                            expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+                            secure=True,
+                            same_site="strict",
+                        )
+                    except Exception as _cookie_err:
+                        logger.warning(f"Errore aggiornamento cookie JWT ruotato: {_cookie_err}")
+
                 st.session_state.logged_in = True
                 st.session_state.user_data = _u
                 st.session_state.partita_iva = _u.get("partita_iva")
@@ -604,32 +627,60 @@ def show_login_page(cookie_manager, supabase) -> None:
                                     f"Errore preparazione notifica fatture automatiche: {_notice_err}"
                                 )
 
-                            # 🍪 Genera e salva session_token nel DB + cookie persistente
+                            # 🍪 Salva token nel cookie persistente
+                            # Path JWT: se verifica_credenziali() ha restituito refresh_token Supabase Auth,
+                            # usalo come cookie (backward-compat: stessa chiave "session_token").
+                            # Path legacy: genera UUID opaco e salvalo su public.users.session_token.
                             if cookie_manager is not None and not st.session_state.get(
                                 "_session_token_set_this_run"
                             ):
                                 st.session_state["_session_token_set_this_run"] = True
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
-                                    _s_token = _secrets.token_urlsafe(32)
-                                    supabase.table("users").update(
-                                        {
-                                            "session_token": _s_token,
-                                            "session_token_created_at": _now_utc.isoformat(),
-                                            "last_seen_at": _now_utc.isoformat(),
-                                        }
-                                    ).eq("id", user.get("id")).execute()
-                                    cookie_manager.set(
-                                        "session_token",
-                                        _s_token,
-                                        expires_at=datetime.now(timezone.utc)
-                                        + timedelta(days=30),
-                                        secure=True,
-                                        same_site="strict",
-                                    )
-                                    st.session_state._last_seen_write_at = (
-                                        _now_utc.isoformat()
-                                    )
+                                    _jwt_refresh_token = user.get("_jwt_refresh_token")
+
+                                    if _jwt_refresh_token:
+                                        # PATH JWT: salva refresh_token Supabase Auth nel cookie.
+                                        # Aggiorna last_seen_at nel DB (non genera session_token legacy).
+                                        supabase.table("users").update(
+                                            {
+                                                "last_seen_at": _now_utc.isoformat(),
+                                            }
+                                        ).eq("id", user.get("id")).execute()
+                                        cookie_manager.set(
+                                            "session_token",
+                                            _jwt_refresh_token,
+                                            expires_at=datetime.now(timezone.utc)
+                                            + timedelta(days=30),
+                                            secure=True,
+                                            same_site="strict",
+                                        )
+                                        logger.debug(f"🔑 Cookie JWT impostato per user_id={user.get('id')}")
+                                    else:
+                                        # PATH LEGACY: genera UUID opaco, salvalo su public.users.
+                                        _s_token = _secrets.token_urlsafe(32)
+                                        supabase.table("users").update(
+                                            {
+                                                "session_token": _s_token,
+                                                "session_token_created_at": _now_utc.isoformat(),
+                                                "last_seen_at": _now_utc.isoformat(),
+                                            }
+                                        ).eq("id", user.get("id")).execute()
+                                        cookie_manager.set(
+                                            "session_token",
+                                            _s_token,
+                                            expires_at=datetime.now(timezone.utc)
+                                            + timedelta(days=30),
+                                            secure=True,
+                                            same_site="strict",
+                                        )
+                                        logger.debug(f"🔑 Cookie legacy impostato per user_id={user.get('id')}")
+
+                                    # Rimuovi token JWT da session_state (non devono essere esposti)
+                                    user.pop("_jwt_access_token", None)
+                                    user.pop("_jwt_refresh_token", None)
+                                    st.session_state.user_data = user
+                                    st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception as _ce:
                                     logger.warning(
                                         f"Errore salvataggio session token: {_ce}"

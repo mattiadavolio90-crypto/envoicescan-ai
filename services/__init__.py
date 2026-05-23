@@ -68,6 +68,7 @@ __all__ = [
     'carica_sconti_e_omaggi',
     # Supabase singleton
     'get_supabase_client',
+    'get_supabase_user_client',
 ]
 
 # ============================================
@@ -198,12 +199,12 @@ def _get_supabase_credentials() -> tuple[str, str]:
 
 def get_supabase_client():
     """
-    Restituisce un client Supabase.
+    Restituisce un client Supabase con service_role_key.
+    Usato da: admin, worker, impersonazione, operazioni batch.
+    Bypassa RLS — usare get_supabase_user_client() per query utente con RLS attiva.
+
     - Dentro Streamlit: usa st.secrets + cache @st.cache_resource.
     - Fuori Streamlit (worker CLI): crea client diretto da env vars.
-
-    Returns:
-        Client Supabase configurato
     """
     options = SyncClientOptions(
         postgrest_client_timeout=30,
@@ -226,4 +227,56 @@ def get_supabase_client():
         # Fuori Streamlit: client senza cache (worker gestisce il proprio ciclo di vita)
         url, key = _get_supabase_credentials()
         return create_client(url, key, options=options)
+
+
+def get_supabase_user_client(access_token: str):
+    """
+    Restituisce un client Supabase autenticato con il JWT dell'utente.
+    Usa anon_key + Authorization header → RLS attiva (auth.uid() != NULL).
+
+    Usato da: query dati utente normale (fatture, ristoranti, ecc.)
+    NON usato da: admin, worker, impersonazione (usa get_supabase_client()).
+
+    Args:
+        access_token: JWT access_token ottenuto da supabase.auth.sign_in_with_password()
+
+    Returns:
+        Client Supabase con RLS attiva per l'utente autenticato
+    """
+    if not access_token:
+        raise ValueError("access_token non può essere vuoto per get_supabase_user_client()")
+
+    url = ""
+    anon_key = ""
+
+    # Tentativo 1: st.secrets
+    try:
+        import streamlit as st
+        url = st.secrets["supabase"]["url"]
+        anon_key = st.secrets["supabase"].get("anon_key") or st.secrets["supabase"].get("key", "")
+    except Exception:
+        pass
+
+    # Tentativo 2: env vars
+    if not url:
+        url = os.environ.get("SUPABASE_URL", "")
+    if not anon_key:
+        anon_key = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_KEY", "")
+
+    if not url or not anon_key:
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "get_supabase_user_client: anon_key non trovata, "
+            "fallback a service_role_key (RLS non attiva)."
+        )
+        return get_supabase_client()
+
+    options = SyncClientOptions(
+        postgrest_client_timeout=30,
+        storage_client_timeout=30,
+    )
+    client = create_client(url, anon_key, options=options)
+    # Imposta il JWT dell'utente per attivare RLS
+    client.auth.set_session(access_token, refresh_token="")
+    return client
 

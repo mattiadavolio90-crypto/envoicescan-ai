@@ -648,54 +648,121 @@ def verify_and_migrate_password(user_record: dict, password: str) -> bool:
         return False
 
 
+def _tenta_login_supabase_auth(email: str, password: str, supabase_client) -> Optional[object]:
+    """
+    Tenta login tramite Supabase Auth nativo.
+    Restituisce la session Supabase (con access_token + refresh_token) se riesce,
+    None se le credenziali non sono ancora in auth.users o se non configurato.
+
+    Bridge FASE 2: usato da verifica_credenziali() prima del path Argon2.
+    """
+    try:
+        # Usa il client service_role per chiamare sign_in_with_password
+        # (l'auth API non richiede una key specifica, funziona con entrambe)
+        session_resp = supabase_client.auth.sign_in_with_password({
+            "email": email,
+            "password": password,
+        })
+        if session_resp and getattr(session_resp, "session", None):
+            return session_resp.session
+        return None
+    except Exception as e:
+        err = str(e).lower()
+        # "invalid login credentials" = utente non ancora in auth.users o password non sincronizzata
+        if "invalid login credentials" in err or "invalid_credentials" in err:
+            return None
+        # Errori di rete o Supabase Auth non disponibile → fallback silenzioso a Argon2
+        logger.warning(f"_tenta_login_supabase_auth: errore non gestito ({e}), fallback Argon2")
+        return None
+
+
+def _sincronizza_password_in_supabase_auth(user_id: str, email: str, password: str, supabase_client) -> bool:
+    """
+    Dopo verifica Argon2 riuscita, registra la password in Supabase Auth via admin API.
+    Questo completa il bridge silenzioso: al prossimo login l'utente entrerà via Supabase Auth.
+
+    Returns:
+        True se sincronizzazione riuscita, False altrimenti
+    """
+    try:
+        supabase_client.auth.admin.update_user_by_id(user_id, {"password": password})
+        logger.info(f"✅ Password sincronizzata in Supabase Auth per user_id={user_id}")
+        return True
+    except Exception as e:
+        logger.warning(f"Sincronizzazione password in Supabase Auth fallita per user_id={user_id}: {e}")
+        return False
+
+
 def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tuple[Optional[Dict], Optional[str]]:
     """
     Verifica credenziali utente e aggiorna last_login / last_seen_at.
-    
+
+    Flusso dual-auth (bridge FASE 2 migrazione Supabase Auth):
+      1. Tenta login via Supabase Auth nativo (restituisce JWT se password già sincronizzata)
+      2. Se fallisce, verifica password con Argon2 su public.users (path legacy)
+         → Se Argon2 ok: sincronizza password in Supabase Auth (bridge silenzioso)
+         → Al prossimo login l'utente userà automaticamente il path Supabase Auth
+
     Args:
         email: Email utente
         password: Password in chiaro
         supabase_client: Client Supabase (opzionale, usa st.secrets se None)
-        
+
     Returns:
         Tuple[Optional[Dict], Optional[str]]: (user_data, error_message)
-        - Se successo: (user_dict, None)
+        - Se successo: (user_dict con jwt_access_token e jwt_refresh_token, None)
         - Se fallito: (None, "messaggio errore")
-        
+
     Note:
         - Verifica account attivo (attivo=True)
         - Aggiorna automaticamente last_login e last_seen_at su successo
-        - Supporta sia Argon2 che SHA256 legacy
+        - Supporta sia Argon2 che SHA256 legacy + Supabase Auth nativo
     """
     try:
         import streamlit as st
         from services import get_supabase_client
-        
-        # Ottieni client Supabase (singleton)
+
+        # Ottieni client Supabase (singleton service_role)
         if supabase_client is None:
             supabase_client = get_supabase_client()
-        
+
         # Rate limiting su DB: controlla lockout
         bloccato, minuti = controlla_rate_limit(email, supabase_client)
         if bloccato:
             return None, f"Troppi tentativi falliti. Riprova tra {minuti} minuti."
-        
-        # Query base utente attivo: deve restare compatibile anche con schema legacy.
+
+        # Query base utente attivo
         response = supabase_client.table("users") \
             .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
                 "password_hash, partita_iva, created_at, last_login") \
             .eq("email", email) \
             .eq("attivo", True) \
             .execute()
-        
+
         if not response.data:
             registra_tentativo(email, False, supabase_client)
             return None, "Credenziali errate o account disattivato"
-        
+
         user = response.data[0]
-        
-        # Verifica password
-        if verify_and_migrate_password(user, password):
+
+        # ----------------------------------------------------------------
+        # PATH 1: Supabase Auth nativo (utenti già migrati)
+        # ----------------------------------------------------------------
+        jwt_session = _tenta_login_supabase_auth(email, password, supabase_client)
+        password_verificata = jwt_session is not None
+
+        # ----------------------------------------------------------------
+        # PATH 2: Argon2 legacy (bridge silenzioso — utenti non ancora migrati)
+        # ----------------------------------------------------------------
+        if not password_verificata:
+            password_verificata = verify_and_migrate_password(user, password)
+            if password_verificata:
+                # Sincronizza silenziosamente la password in Supabase Auth
+                _sincronizza_password_in_supabase_auth(user["id"], email, password, supabase_client)
+                # Riprova login Supabase Auth: ora la password è registrata
+                jwt_session = _tenta_login_supabase_auth(email, password, supabase_client)
+
+        if password_verificata:
             trial_active = False
             trial_activated_at = None
             try:
@@ -748,11 +815,18 @@ def verifica_credenziali(email: str, password: str, supabase_client=None) -> Tup
             user['last_login_precedente'] = previous_last_login
             user['last_login'] = login_now_iso
             user['login_at'] = login_now_iso
-            
+
+            # Allega token JWT Supabase Auth (usati da auth_controller per cookie e RLS)
+            # Se jwt_session è None (bridge non ancora riuscito o Supabase Auth non configurato),
+            # i campi restano assenti → auth_controller usa il path legacy session_token.
+            if jwt_session is not None:
+                user['_jwt_access_token'] = getattr(jwt_session, 'access_token', None)
+                user['_jwt_refresh_token'] = getattr(jwt_session, 'refresh_token', None)
+
             # Rimuovi dati sensibili prima di restituire (non devono finire in session_state)
             for _sensitive_key in ('password_hash', 'reset_code', 'reset_expires'):
                 user.pop(_sensitive_key, None)
-            
+
             return user, None
         else:
             registra_tentativo(email, False, supabase_client)
@@ -957,14 +1031,20 @@ def verifica_sessione_da_cookie(
     supabase_client=None,
 ) -> Optional[Dict]:
     """
-    Verifica un session_token da cookie e controlla timeout inattività.
+    Verifica un token da cookie e controlla timeout inattività.
+
+    Supporta due formati (backward-compatible):
+      - refresh_token JWT Supabase Auth (formato Base64url, ~120 char)
+        → usa supabase.auth.refresh_session() per ottenere access_token fresco
+      - session_token opaco legacy (UUID URL-safe ~43 char)
+        → logica DB su public.users (path pre-migrazione)
 
     Returns:
         - dict user_data (senza campi sensibili) se valido
         - None se token non valido, scaduto o inattivo
 
     Side-effects:
-        - Se la sessione è scaduta per inattività, invalida il token nel DB.
+        - Se la sessione è scaduta per inattività (path legacy), invalida il token nel DB.
     """
     try:
         from services import get_supabase_client
@@ -975,6 +1055,66 @@ def verifica_sessione_da_cookie(
         if supabase_client is None:
             supabase_client = get_supabase_client()
 
+        # ----------------------------------------------------------------
+        # PATH JWT: token Supabase Auth (refresh token)
+        # I refresh token Supabase sono stringhe Base64url senza trattini,
+        # tipicamente > 60 caratteri. I session_token legacy sono URL-safe base64
+        # di 43 char (secrets.token_urlsafe(32)).
+        # Euristica: se il token non contiene trattini e ha > 50 char → JWT path.
+        # ----------------------------------------------------------------
+        _is_jwt_refresh = len(token) > 50 and "-" not in token and "." not in token
+
+        if _is_jwt_refresh:
+            try:
+                refresh_resp = supabase_client.auth.refresh_session(token)
+                if refresh_resp and getattr(refresh_resp, "session", None):
+                    session = refresh_resp.session
+                    user_auth = getattr(refresh_resp, "user", None)
+                    if not user_auth:
+                        return None
+                    auth_uid = getattr(user_auth, "id", None)
+                    if not auth_uid:
+                        return None
+                    # Carica dati custom da public.users
+                    user_resp = supabase_client.table("users") \
+                        .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
+                                "ultimo_ristorante_id, last_seen_at, session_token_created_at") \
+                        .eq("id", auth_uid) \
+                        .eq("attivo", True) \
+                        .execute()
+                    if not user_resp.data:
+                        return None
+                    user = user_resp.data[0]
+
+                    # Verifica inattività anche per path JWT
+                    now_utc = datetime.now(timezone.utc)
+                    last_seen_raw = user.get("last_seen_at")
+                    if last_seen_raw:
+                        try:
+                            last_seen_dt = datetime.fromisoformat(last_seen_raw.replace("Z", "+00:00"))
+                            if last_seen_dt.tzinfo is None:
+                                last_seen_dt = last_seen_dt.replace(tzinfo=timezone.utc)
+                            if (now_utc - last_seen_dt) > timedelta(hours=inactivity_hours):
+                                logger.info(f"🔒 Sessione JWT scaduta per inattività (>{inactivity_hours}h) - user_id={auth_uid}")
+                                return None
+                        except (ValueError, TypeError):
+                            return None
+
+                    # Allega i token aggiornati a user_data
+                    user["_jwt_access_token"] = getattr(session, "access_token", None)
+                    user["_jwt_refresh_token"] = getattr(session, "refresh_token", None)
+                    for _sensitive_key in ("password_hash", "reset_code", "reset_expires", "session_token"):
+                        user.pop(_sensitive_key, None)
+                    return user
+                return None
+            except Exception as jwt_err:
+                logger.warning(f"verifica_sessione_da_cookie JWT refresh fallito: {jwt_err}, fallback a path legacy")
+                # Non ritornare None subito: se il refresh fallisce, il token potrebbe
+                # essere un vecchio session_token opaco — prova il path legacy sotto.
+
+        # ----------------------------------------------------------------
+        # PATH LEGACY: session_token opaco su public.users
+        # ----------------------------------------------------------------
         response = supabase_client.table('users') \
             .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
                     "session_token, session_token_created_at, last_seen_at, "
