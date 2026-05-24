@@ -4004,7 +4004,7 @@ if tab5:
 
             st.dataframe(
                 df_display[['Cliente', 'Ragione Sociale', 'Vision', 'Vision Oggi', 'Residuo Vision', 'Categorizzazioni', 'Costo Vision', 'Costo Categ.', 'Costo Totale', 'Costo/Op', 'Token', 'Ultimo Uso']],
-                width='stretch',
+                use_container_width=True,
                 hide_index=True,
             )
 
@@ -4063,7 +4063,7 @@ if tab5:
                 df_recent['File'] = df_recent['source_file'].fillna('-')
                 st.dataframe(
                     df_recent[['Quando', 'Cliente', 'Tipo', 'model', 'Item', 'Token', 'Costo', 'File']],
-                    width='stretch',
+                    use_container_width=True,
                     hide_index=True,
                 )
 

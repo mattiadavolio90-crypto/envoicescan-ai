@@ -425,7 +425,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
 
         st.dataframe(
             df_display,
-            width='stretch',
+            use_container_width=True,
             height=altezza_alert,
             hide_index=True
         )
@@ -752,7 +752,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
             st.dataframe(
                 df_sconti_view,
                 hide_index=True,
-                width='stretch',
+                use_container_width=True,
                 height=altezza_sconti,
                 column_config={
                     'Prodotto': st.column_config.TextColumn('Prodotto', width="large"),
@@ -825,7 +825,7 @@ elif st.session_state.cp_tab_attivo == "sconti":
             st.dataframe(
                 df_omaggi_view,
                 hide_index=True,
-                width='stretch',
+                use_container_width=True,
                 height=altezza_omaggi,
                 column_config=col_cfg
             )
@@ -917,7 +917,7 @@ elif st.session_state.cp_tab_attivo == "nc":
             st.dataframe(
                 df_nc_display,
                 hide_index=True,
-                width='stretch',
+                use_container_width=True,
                 height=altezza_nc,
                 column_config={
                     'Data': st.column_config.DateColumn('Data', format="DD/MM/YYYY"),

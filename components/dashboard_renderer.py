@@ -69,12 +69,12 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
             st.markdown("**Conteggio per Categoria:**")
             conteggio_cat = df_completo.groupby('Categoria', dropna=False).size().reset_index(name='Righe')
             conteggio_cat = conteggio_cat.sort_values('Righe', ascending=False)
-            st.dataframe(conteggio_cat, hide_index=True, width='stretch')
+            st.dataframe(conteggio_cat, hide_index=True, use_container_width=True)
             
             st.markdown("**Esempio 15 righe (verifica categoria):**")
             _sample_cols = ['FileOrigine', 'NumeroDocumento', 'Descrizione', 'Categoria', 'Fornitore', 'TotaleRiga']
             sample_df = df_completo[[c for c in _sample_cols if c in df_completo.columns]].head(15)
-            st.dataframe(sample_df, hide_index=True, width='stretch')
+            st.dataframe(sample_df, hide_index=True, use_container_width=True)
             
             # Test query diretta Supabase
             if st.button("🔄 Ricarica da Supabase (bypass cache)", key="debug_reload"):
