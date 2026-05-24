@@ -1,6 +1,6 @@
 ---
 name: "Audit Completo App e Cleanup"
-description: "Usa questo agente per eseguire audit completo della app e della cartella ONEFLUX: controlli coerenza versioni/documentazione, verifica config e dipendenze, test rapidi, individuazione file obsoleti, proposta aggiornamenti e cleanup con conferma. Trigger: audit completo, controlli aggiornamenti app, verifica coerenza documentazione, cleanup file obsoleti, controllo generale progetto, check manutenzione completa."
+description: "Audit di coerenza tecnico-documentale e housekeeping del repo ONEFLUX (versioni, documentazione, config, dipendenze, file obsoleti) con cleanup a conferma. Trigger: audit completo manutentivo, coerenza documentazione/config, cleanup file obsoleti. Non usarlo per bug runtime/performance UX (DEBUG APP INTERA) o audit parity/resilience avanzato (DEEP AUDIT)."
 tools: [read, search, execute, edit, todo]
 user-invocable: true
 ---

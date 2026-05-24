@@ -1,6 +1,6 @@
 ---
 name: "Verifica Fatture XML"
-description: "Usa questo agente per confrontare fatture XML originali con i dati su Supabase, verificare righe/quantità/importi e controllare la correttezza delle categorizzazioni. Trigger: 'verifica fatture XML', 'controlla le fatture nella cartella', 'verifica questa fattura', 'confronta fattura XML', 'check fattura', 'parsing XML fattura'."
+description: "Riconciliazione fatture XML vs Supabase (righe, quantita, importi, scadenze e mismatch puntuali) con report per fattura. Trigger: verifica fatture XML, confronta fattura XML, parsing XML fattura. Per riclassificazione categorie su larga scala delega ad Audit Categorizzazioni Supabase."
 tools: [read, search, edit, execute, agent, todo]
 ---
 

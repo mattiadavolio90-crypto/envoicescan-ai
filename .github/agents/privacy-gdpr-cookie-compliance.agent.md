@@ -1,6 +1,6 @@
 ---
 name: "Privacy GDPR e Cookie Compliance"
-description: "Usa questo agente per verificare la conformità GDPR, privacy policy e cookie dell'app ONEFLUX: allineamento documenti vs runtime, TTL cookie, flag sicurezza, consenso, data retention, diritti utenti, testo policy aggiornato. Trigger: privacy, GDPR, cookie, conformità, policy, data retention, diritti utenti, consenso cookie, compliance, privacy policy, CookieManager, TTL sessione, cookie sicuro."
+description: "Agente compliance GDPR/cookie di ONEFLUX: verifica allineamento documenti legali vs runtime (TTL cookie, flag sicurezza, consenso, retention, diritti utenti) e propone correzioni controllate. Trigger: privacy, GDPR, cookie, compliance, policy. Non usarlo per debug tecnico generalista o pre-push testing."
 tools: [read, search, edit, todo]
 user-invocable: true
 ---

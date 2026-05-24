@@ -1,6 +1,6 @@
 ---
 name: "Pianificazione Implementazioni ONEFLUX"
-description: "Usa questo agente per pianificare nuove implementazioni con protocollo completo a rischio minimo: briefing requisiti, analisi codebase, verifica critica multi-sezione, risoluzione blocchi, piano step-by-step approvato prima di scrivere codice. Trigger: pianificazione implementazione, nuovo sviluppo, proposta architetturale, review critica, piano approvato, fase 1 fase 2 fase 3 fase 4 fase 5."
+description: "Agente di pianificazione implementazioni: trasforma requisiti in piano esecutivo approvabile (briefing, analisi codebase, risk review, step-by-step) prima del coding. Trigger: pianificazione implementazione, nuovo sviluppo, proposta architetturale. Non usarlo per debug, compliance o audit operativo."
 tools: [read, search, execute, edit, todo, agent]
 user-invocable: true
 ---

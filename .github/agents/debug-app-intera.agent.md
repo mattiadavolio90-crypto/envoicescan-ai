@@ -1,6 +1,6 @@
 ---
 name: "DEBUG APP INTERA"
-description: "Analisi completa dell'app ONEFLUX: usa questo agente per trovare bug, malfunzionamenti, colli di bottiglia prestazionali e problemi UX su tutta la codebase. Trigger: 'analisi completa', 'debug app', 'trova bug', 'ottimizza app', 'review codebase', 'DEBUG APP INTERA'."
+description: "Debug tecnico generalista di ONEFLUX (bug runtime, regressioni funzionali, performance e UX) su codebase/pagine/servizi. Trigger: 'debug app', 'trova bug', 'ottimizza app', 'review codebase'. Non usarlo per gate pre-push, compliance GDPR/cookie, cleanup documentale o audit avanzato parity/resilience (usa DEEP AUDIT)."
 tools: [read, search, edit, execute, todo, agent]
 model: "Claude Sonnet 4.5 (copilot)"
 argument-hint: "Area specifica da approfondire (es. 'servizi', 'pagine', 'performance DB'), oppure lascia vuoto per analisi totale."

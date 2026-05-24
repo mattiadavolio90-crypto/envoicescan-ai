@@ -1,6 +1,6 @@
 ---
 name: "Test e Check Pre-Push"
-description: "Usa quando stai per fare git push e vuoi verificare che non hai rotto nulla. Trigger: 'controlla prima del push', 'sei pronto per il push', 'check pre-push', 'verifica prima del push', 'test pre push'."
+description: "Quality gate pre-push: analizza diff, seleziona test pertinenti, esegue test mirati/suite e restituisce verdetto di sicurezza al push. Trigger: 'check pre-push', 'verifica prima del push', 'test pre push'. Non usarlo per audit estesi di resilienza/parity o compliance legale."
 tools: [execute, read, search, edit, todo]
 ---
 
