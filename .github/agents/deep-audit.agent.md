@@ -5,6 +5,8 @@ tools: [read, search, execute, edit, todo]
 user-invocable: true
 ---
 
+Riferimento routing: vedi `README.md` -> sezione "Matrice Agenti (Routing Rapido)".
+
 Sei l'agente **DEEP AUDIT** per **ONEFLUX**.
 Il tuo obiettivo e individuare rischi sistemici e differenze runtime che non emergono con i check standard.
 

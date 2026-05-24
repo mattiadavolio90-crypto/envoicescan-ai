@@ -4,6 +4,9 @@ name: "Audit Categorizzazioni Supabase"
 tools: [read, search, execute, edit, todo]
 user-invocable: true
 ---
+
+Riferimento routing: vedi `README.md` -> sezione "Matrice Agenti (Routing Rapido)".
+
 Sei uno specialista di audit e miglioramento della categorizzazione AI per prodotti in fatture di ristoranti su Supabase.
 
 ---
