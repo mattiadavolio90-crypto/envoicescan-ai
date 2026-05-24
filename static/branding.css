@@ -33,9 +33,12 @@ button[aria-label*="Manage"], button[title*="Manage"] {
 }
 
 /* === VIEWERBADGE (Made with Streamlit) === */
+/* NOTA: non usare a[target="_blank"][rel*="noopener"] — in Streamlit Cloud
+   tutti i link markdown ricevono target="_blank" rel="noopener noreferrer",
+   quindi quel selettore nasconderebbe ANCHE i link utente (es. caption admin). */
 .viewerBadge_container__1QSob, .viewerBadge_link__1S137,
 .styles_viewerBadge__1yB5_, [class*="viewerBadge"],
-a[href*="streamlit.io"], a[target="_blank"][rel*="noopener"] {
+a[href*="streamlit.io"] {
     display: none !important;
     visibility: hidden !important;
     opacity: 0 !important;
@@ -239,13 +242,17 @@ div[data-testid="collapsedControl"] {
     color: white !important;
 }
 
-/* Bottone logout: sfondo rosso */
-div.st-key-sidebar_logout button {
+/* Bottone logout: sfondo rosso — selettori multipli per compatibilità Streamlit Cloud */
+div.st-key-sidebar_logout button,
+[data-testid="stSidebar"] div.st-key-sidebar_logout button,
+[data-testid="stSidebar"] [class*="st-key-sidebar_logout"] button {
     background-color: var(--color-danger, #dc2626) !important;
     color: white !important;
     border: 1px solid var(--color-danger, #dc2626) !important;
 }
-div.st-key-sidebar_logout button:hover {
+div.st-key-sidebar_logout button:hover,
+[data-testid="stSidebar"] div.st-key-sidebar_logout button:hover,
+[data-testid="stSidebar"] [class*="st-key-sidebar_logout"] button:hover {
     background-color: #b91c1c !important;
     border: 1px solid #b91c1c !important;
 }

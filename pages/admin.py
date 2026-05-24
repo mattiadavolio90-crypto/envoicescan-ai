@@ -171,6 +171,21 @@ try:
         if _token_admin:
             _u_admin = verifica_sessione_da_cookie(_token_admin, inactivity_hours=8)
             if _u_admin:
+                # Gestione JWT rotation: se il refresh_token è stato ruotato, aggiorna il cookie
+                _new_token_admin = _u_admin.pop("_jwt_refresh_token", None)
+                _u_admin.pop("_jwt_access_token", None)  # access_token non va in session_state
+                if _new_token_admin and _new_token_admin != _token_admin:
+                    try:
+                        from datetime import datetime, timezone, timedelta
+                        _cookie_manager_admin.set(
+                            "session_token",
+                            _new_token_admin,
+                            expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+                            secure=True,
+                            same_site="strict",
+                        )
+                    except Exception as _jwt_ce:
+                        logger.warning(f"Errore aggiornamento cookie JWT admin (rotation): {_jwt_ce}")
                 st.session_state.logged_in = True
                 st.session_state.user_data = _u_admin
                 logger.info(f"✅ Sessione admin ripristinata da session_token")
