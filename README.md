@@ -106,6 +106,27 @@ python -m pytest tests/ -v
 
 ---
 
+##  Matrice Agenti (Routing Rapido)
+
+Usa questa tabella per scegliere subito l'agente corretto ed evitare sovrapposizioni.
+
+| Quando serve | Agente consigliato | Non usare se... |
+|---|---|---|
+| Bug runtime, regressioni funzionali, problemi UX/performance applicativa | DEBUG APP INTERA | devi fare gate pre-push, compliance GDPR/cookie, o audit parity/resilience avanzato |
+| Audit avanzato locale/cloud, resilienza integrazioni, idempotenza webhook/worker, reliability dati, observability | DEEP AUDIT | vuoi solo debug generalista o manutenzione documentale |
+| Verifica prima del push (diff + test mirati + verdetto) | Test e Check Pre-Push | vuoi audit esteso operativo/compliance |
+| Coerenza documentazione/config e cleanup file obsoleti | Audit Completo App e Cleanup | stai cercando bug runtime o audit resilienza avanzato |
+| Privacy/GDPR/cookie policy e allineamento legale vs runtime | Privacy GDPR e Cookie Compliance | stai facendo debug tecnico o test pre-push |
+| Riconciliazione fatture XML vs Supabase (righe/importi/scadenze) | Verifica Fatture XML | devi riclassificare in massa le categorie |
+| Audit/riclassificazione categorie AI su Supabase | Audit Categorizzazioni Supabase | devi fare riconciliazione XML completa |
+| Pianificazione nuova implementazione prima di scrivere codice | Pianificazione Implementazioni ONEFLUX | devi fare debug/audit/compliance già in corso |
+
+Note operative:
+- In caso di dubbio tra DEBUG APP INTERA e DEEP AUDIT: usa DEBUG per bug applicativi, DEEP AUDIT per rischi sistemici tra ambienti e resilienza operativa.
+- Per task con piu aree, parti dall'agente piu specifico e poi delega il resto all'agente verticale corretto.
+
+---
+
 ##  Licenza
 
 Tutti i diritti riservati  ONEFLUX  2026
