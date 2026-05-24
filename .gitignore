@@ -78,6 +78,9 @@ create_admin*.py
 START_HERE.txt
 TEST_FIX*.md
 
+# Agent definitions (dev tooling)
+!.github/agents/*.agent.md
+
 # File SQL di setup/test
 *_schema*.sql
 *_setup*.sql
