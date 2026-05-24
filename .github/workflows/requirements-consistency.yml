@@ -1,0 +1,24 @@
+name: Requirements Consistency
+
+on:
+  push:
+    branches:
+      - main
+      - progetto
+  pull_request:
+
+jobs:
+  verify-requirements:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check critical dependency consistency
+        run: python scripts/verify_requirements_consistency.py
