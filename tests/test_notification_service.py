@@ -501,7 +501,7 @@ class TestNotificationService:
         ])
         notifications = build_controllo_prezzi_notifications('u1', 'r1', supabase_client=sb)
         ids = {item['id'] for item in notifications}
-        assert 'fornitore-unico-carne' in ids
+        assert 'fornitore-unico-carne' not in ids
 
     def test_fornitore_unico_nuovo_tenant(self):
         sb = _SeqSupabase([

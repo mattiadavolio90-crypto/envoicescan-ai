@@ -65,7 +65,7 @@ import threading
 import time
 from contextvars import ContextVar
 from datetime import datetime, timezone
-from typing import Optional, Dict, List, Any, Tuple
+from typing import Optional, Dict, List, Any, Tuple, Union
 import streamlit as st
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from openai import OpenAI, RateLimitError, APITimeoutError, APIConnectionError, APIError
@@ -3561,7 +3561,8 @@ def _chiama_gpt_classificazione(
     lista_fornitori: Optional[List[str]] = None,
     lista_iva: Optional[List[int]] = None,
     lista_hint: Optional[List[Optional[str]]] = None,
-) -> List[str]:
+    return_confidenze: bool = False,
+) -> Union[List[str], Tuple[List[str], List[str]]]:
     """
     Singola chiamata GPT per classificazione. Ritorna lista categorie (stesso ordine input).
     Se GPT ritorna meno categorie del previsto, le mancanti saranno "Da Classificare".
@@ -3653,25 +3654,36 @@ def _chiama_gpt_classificazione(
     testo = response.choices[0].message.content.strip()
     dati = json.loads(testo)
     categorie_gpt = dati.get("categorie", [])
-    
-    # Valida e costruisci lista risultati
+    confidence_gpt = dati.get("confidence", [])
+
+    # Valida e costruisci lista risultati + confidenze
     risultati = []
+    confidenze_out = []
     for idx, desc in enumerate(da_chiedere_gpt):
         if idx < len(categorie_gpt):
             cat = categorie_gpt[idx]
-            
+
             # ⚠️ VALIDAZIONE: Blocca categorie non valide (incluso NOTE E DICITURE)
             if cat not in TUTTE_LE_CATEGORIE and cat != "Da Classificare":
                 logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → applicando dizionario")
                 cat = applica_correzioni_dizionario(desc, "Da Classificare")
             risultati.append(cat)
+
+            # Confidence: usa quella del GPT se presente e valida, altrimenti "media"
+            conf = (confidence_gpt[idx] if idx < len(confidence_gpt) else None) or "media"
+            if conf not in ("alta", "media", "bassa"):
+                conf = "media"
+            confidenze_out.append(conf)
         else:
             logger.warning(f"⚠️ AI non ha restituito categoria per indice {idx}: '{desc[:40]}' → Da Classificare")
             risultati.append("Da Classificare")
-    
+            confidenze_out.append("bassa")
+
     if len(categorie_gpt) != len(da_chiedere_gpt):
         logger.warning(f"⚠️ MISMATCH: inviate {len(da_chiedere_gpt)} descrizioni, ricevute {len(categorie_gpt)} categorie")
-    
+
+    if return_confidenze:
+        return risultati, confidenze_out
     return risultati
 
 
@@ -3682,14 +3694,15 @@ def classifica_con_ai(
     lista_hint: Optional[List[Optional[str]]] = None,
     openai_client: Optional[OpenAI] = None,
     ristorante_id: Optional[str] = None,
-) -> List[str]:
+    return_confidenze: bool = False,
+) -> Union[List[str], Tuple[List[str], List[str]]]:
     """
     Classificazione AI con JSON strutturato + correzioni dizionario.
     Usa retry automatico per gestire rate limits OpenAI e risposte incomplete.
-    
+
     Se la prima chiamata GPT restituisce "Da Classificare" per alcuni item,
     ritenta automaticamente (max 2 retry) con batch più piccoli.
-    
+
     Args:
         lista_descrizioni: Lista descrizioni prodotti da classificare
         lista_fornitori: Lista fornitori ALLINEATA con lista_descrizioni (opzionale)
@@ -3698,10 +3711,11 @@ def classifica_con_ai(
                     Ogni elemento è una categoria suggerita (confidence 'media') o None.
         openai_client: Client OpenAI (opzionale, crea nuovo se None)
         ristorante_id: ID ristorante per rate limit giornaliero (opzionale)
-    
+        return_confidenze: Se True, ritorna (categorie, confidenze) invece di solo categorie.
+
     Returns:
-        List[str]: Lista categorie classificate (stesso ordine input)
-    
+        List[str] oppure Tuple[List[str], List[str]] se return_confidenze=True.
+
     Raises:
         RuntimeError: Se il limite giornaliero AI per ristorante è superato.
     """
@@ -3741,6 +3755,7 @@ def classifica_con_ai(
     # ⚠️ DEPRECATO: Legacy JSON memory ignorata per evitare conflitti con DB Supabase
     # La priorità è ora gestita da carica_memoria_completa() (classificazioni_manuali > locale > globale)
     risultati = {}
+    confidenze_risultati: Dict[str, str] = {}   # {descrizione: "alta"|"media"|"bassa"}
     da_chiedere_gpt = list(lista_descrizioni)  # Tutte da classificare via GPT
 
     # Costruisci indici posizionali per fornitori e IVA (allineati con da_chiedere_gpt)
@@ -3762,23 +3777,28 @@ def classifica_con_ai(
         return [lista_hint[_idx_map[d]] for d in descs if d in _idx_map]
 
     if not da_chiedere_gpt:
-        return [
-            risultati[d] if d in risultati 
+        _out_cats = [
+            risultati[d] if d in risultati
             else applica_correzioni_dizionario(d, "Da Classificare")
             for d in lista_descrizioni
         ]
+        if return_confidenze:
+            return _out_cats, [confidenze_risultati.get(d, "media") for d in lista_descrizioni]
+        return _out_cats
 
     try:
         # 🧠 PRIMA CHIAMATA GPT (max_tokens=4096 per evitare troncamenti)
-        cats_prima = _chiama_gpt_classificazione(
+        cats_prima, confs_prima = _chiama_gpt_classificazione(
             da_chiedere_gpt, openai_client, max_tokens=4096,
             lista_fornitori=_get_fornitori_aligned(da_chiedere_gpt),
             lista_iva=_get_iva_aligned(da_chiedere_gpt),
             lista_hint=_get_hint_aligned(da_chiedere_gpt),
+            return_confidenze=True,
         )
-        
-        for desc, cat in zip(da_chiedere_gpt, cats_prima):
+
+        for desc, cat, conf in zip(da_chiedere_gpt, cats_prima, confs_prima):
             risultati[desc] = cat
+            confidenze_risultati[desc] = conf
         
         # 🔄 RETRY AUTOMATICO: Se ci sono "Da Classificare", ritenta con batch più piccoli
         MAX_RETRY = 2
@@ -3796,17 +3816,19 @@ def classifica_con_ai(
                 retry_chunk_size = min(20, len(da_ritentare))
                 for i in range(0, len(da_ritentare), retry_chunk_size):
                     chunk_retry = da_ritentare[i:i+retry_chunk_size]
-                    cats_retry = _chiama_gpt_classificazione(
+                    cats_retry, confs_retry = _chiama_gpt_classificazione(
                         chunk_retry, openai_client, max_tokens=4096,
                         lista_fornitori=_get_fornitori_aligned(chunk_retry),
                         lista_iva=_get_iva_aligned(chunk_retry),
                         lista_hint=_get_hint_aligned(chunk_retry),
+                        return_confidenze=True,
                     )
-                    
-                    for desc, cat in zip(chunk_retry, cats_retry):
+
+                    for desc, cat, conf in zip(chunk_retry, cats_retry, confs_retry):
                         if cat and cat != "Da Classificare":
                             risultati[desc] = cat
-                            logger.info(f"✅ RETRY {retry_num}: '{desc[:40]}' → {cat}")
+                            confidenze_risultati[desc] = conf
+                            logger.info(f"✅ RETRY {retry_num}: '{desc[:40]}' → {cat} [{conf}]")
             except Exception as retry_err:
                 logger.warning(f"⚠️ Errore durante retry {retry_num}: {retry_err}")
                 # Continua con i risultati che abbiamo
@@ -3819,6 +3841,7 @@ def classifica_con_ai(
                 cat_strong, reason = applica_regole_categoria_forti(desc, "Da Classificare")
                 if cat_strong != "Da Classificare":
                     risultati[desc] = cat_strong
+                    confidenze_risultati[desc] = "alta"  # regola forte → confidence alta
                     _fallback_count += 1
                     logger.info(f"🧭 REGOLA FORTE FALLBACK: '{desc[:40]}' → {cat_strong} [{reason}]")
                     continue
@@ -3826,6 +3849,7 @@ def classifica_con_ai(
                 cat_dict = applica_correzioni_dizionario(desc, "Da Classificare")
                 if cat_dict != "Da Classificare":
                     risultati[desc] = cat_dict
+                    confidenze_risultati[desc] = "media"  # dizionario → confidence media
                     _fallback_count += 1
                     logger.info(f"📖 DIZIONARIO FALLBACK: '{desc[:40]}' → {cat_dict}")
         if _fallback_count > 0:
@@ -3840,11 +3864,18 @@ def classifica_con_ai(
         
         # Ritorna nell'ordine originale
         output = []
+        output_confidenze = []
         for idx, desc in enumerate(lista_descrizioni):
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
-            output.append(_applica_guardrail_iva_bassa_spese_generali(desc, risultati.get(desc, "Da Classificare"), iva_value))
+            cat_out = _applica_guardrail_iva_bassa_spese_generali(desc, risultati.get(desc, "Da Classificare"), iva_value)
+            output.append(cat_out)
+            # confidence: "bassa" se ancora Da Classificare, altrimenti quanto registrato
+            conf_out = "bassa" if cat_out == "Da Classificare" else confidenze_risultati.get(desc, "media")
+            output_confidenze.append(conf_out)
+        if return_confidenze:
+            return output, output_confidenze
         return output
-        
+
     except json.JSONDecodeError as e:
         logger.error(f"Errore parsing JSON da OpenAI: {e}")
         output = []
@@ -3852,6 +3883,8 @@ def classifica_con_ai(
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
             categoria = applica_correzioni_dizionario(desc, "Da Classificare")
             output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
+        if return_confidenze:
+            return output, ["bassa"] * len(output)
         return output
     except Exception as e:
         logger.error(f"Errore classificazione AI: {e}")
@@ -3860,6 +3893,8 @@ def classifica_con_ai(
             iva_value = lista_iva[idx] if lista_iva and idx < len(lista_iva) else None
             categoria = applica_correzioni_dizionario(desc, "Da Classificare")
             output.append(_applica_guardrail_iva_bassa_spese_generali(desc, categoria, iva_value))
+        if return_confidenze:
+            return output, ["bassa"] * len(output)
         return output
 
 

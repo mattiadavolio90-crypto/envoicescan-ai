@@ -5,6 +5,7 @@ Skeleton iniziale con gating pagina e navigazione a bottoni.
 
 import io
 import html as _html
+import time
 from datetime import datetime
 
 import pandas as pd
@@ -18,6 +19,9 @@ patch_streamlit_width_api()
 from config.constants import (
     CATEGORIE_SPESE_GENERALI,
     CUSTOM_TAG_COLOR_DEFAULT,
+    CUSTOM_TAG_SUGGESTION_MIN_PRODUCTS,
+    CUSTOM_TAG_SUGGESTION_MIN_ROWS,
+    CUSTOM_TAG_SUGGESTION_MIN_SCORE_EXTEND,
     MAX_CUSTOM_TAGS,
     MAX_CUSTOM_TAGS_TRIAL,
     MAX_PRODOTTI_PER_TAG,
@@ -35,6 +39,14 @@ from services.db_service import (
     get_custom_tags,
     get_descrizioni_distinte,
     rimuovi_associazione,
+)
+from services.tag_suggestion_service import (
+    accept_suggestion_create_tag,
+    accept_suggestion_extend_tag,
+    dismiss_tag_suggestion,
+    list_pending_tag_suggestions,
+    run_tag_suggestion_pipeline,
+    snooze_tag_suggestion,
 )
 from utils.period_helper import PERIODO_OPTIONS, calcola_date_periodo, risolvi_periodo
 from utils.page_setup import check_page_enabled
@@ -962,6 +974,153 @@ elif st.session_state.ap_tab_attivo == "gestione":
         else:
             st.warning(f"🔒 Hai raggiunto il limite massimo di {MAX_CUSTOM_TAGS} tag per questo account.")
 
+    st.markdown('<h3 style="color:#1e40af; font-weight:700;">💡 Suggerimenti intelligenti</h3>', unsafe_allow_html=True)
+    _sugg_refresh_key = f"ap_sugg_last_run_ts::{user_id}::{current_ristorante}"
+    _now_ts = time.time()
+    if (_now_ts - float(st.session_state.get(_sugg_refresh_key, 0.0))) > 600:
+        run_tag_suggestion_pipeline(
+            user_id=user_id,
+            ristorante_id=current_ristorante,
+            min_products=CUSTOM_TAG_SUGGESTION_MIN_PRODUCTS,
+            min_rows=CUSTOM_TAG_SUGGESTION_MIN_ROWS,
+            min_score_extend=CUSTOM_TAG_SUGGESTION_MIN_SCORE_EXTEND,
+        )
+        st.session_state[_sugg_refresh_key] = _now_ts
+
+    _pending_suggestions = list_pending_tag_suggestions(user_id=user_id, ristorante_id=current_ristorante)
+    _pending_new = [s for s in _pending_suggestions if s.get('suggestion_type') == 'new_tag']
+    _pending_extend = [s for s in _pending_suggestions if s.get('suggestion_type') == 'extend_tag']
+    _tag_label_by_id = {int(t['id']): _tag_label(t) for t in custom_tags if t.get('id') is not None}
+
+    _orfani_associazioni = []
+    _sel_tag_id_for_orfani = st.session_state.get('ap_tag_selezionato_id')
+    if _sel_tag_id_for_orfani and not df_all_cached.empty:
+        _assoc_sel = tag_associazioni_map.get(int(_sel_tag_id_for_orfani), [])
+        if _assoc_sel:
+            _orfani_associazioni = _compute_orfani(df_all_cached, _assoc_sel)
+    _orfani_count = len(_orfani_associazioni)
+
+    col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+    with col_s1:
+        st.metric("Nuovi Tag Suggeriti", f"{len(_pending_new)}")
+    with col_s2:
+        st.metric("Estensioni Tag", f"{len(_pending_extend)}")
+    with col_s3:
+        st.metric("Totale Suggerimenti", f"{len(_pending_suggestions)}")
+    with col_s4:
+        st.metric("Associazioni Da Rivedere", f"{_orfani_count}")
+
+    if _orfani_count > 0:
+        with st.expander(
+            f"⚠️ {_orfani_count} associazioni potenzialmente orfane (ultimi {ORPHAN_CHECK_DAYS} giorni)",
+            expanded=False,
+        ):
+            _sel_tag_label = _tag_label_by_id.get(int(_sel_tag_id_for_orfani), "tag selezionato")
+            st.caption(f"Tag corrente: {_sel_tag_label}")
+            for _assoc in _orfani_associazioni[:20]:
+                st.markdown(f"- {_assoc.get('descrizione', '-')}")
+            if _orfani_count > 20:
+                st.caption(f"... e altre {_orfani_count - 20} associazioni")
+
+            _confirm_bulk_key = f"ap_confirm_remove_orfani_{int(_sel_tag_id_for_orfani)}"
+            _valid_orfani_ids = [
+                int(_assoc['id'])
+                for _assoc in _orfani_associazioni
+                if _assoc.get('id') is not None
+            ]
+            if _valid_orfani_ids:
+                if st.session_state.get(_confirm_bulk_key, False):
+                    _c1, _c2 = st.columns([1.1, 1])
+                    with _c1:
+                        if st.button(
+                            "⚠️ Conferma rimozione orfani",
+                            key=f"ap_bulk_remove_orfani_confirm_{int(_sel_tag_id_for_orfani)}",
+                            use_container_width=True,
+                        ):
+                            for _assoc_id in _valid_orfani_ids:
+                                rimuovi_associazione(_assoc_id, user_id)
+                            st.session_state.pop(_confirm_bulk_key, None)
+                            clear_tags_cache()
+                            st.toast("Associazioni orfane rimosse", icon="🧹")
+                            st.rerun()
+                    with _c2:
+                        if st.button(
+                            "Annulla",
+                            key=f"ap_bulk_remove_orfani_cancel_{int(_sel_tag_id_for_orfani)}",
+                            use_container_width=True,
+                        ):
+                            st.session_state.pop(_confirm_bulk_key, None)
+                            st.rerun()
+                else:
+                    if st.button(
+                        "🧹 Rimuovi tutte le associazioni orfane",
+                        key=f"ap_bulk_remove_orfani_start_{int(_sel_tag_id_for_orfani)}",
+                        use_container_width=True,
+                    ):
+                        st.session_state[_confirm_bulk_key] = True
+                        st.rerun()
+
+    if _pending_suggestions:
+        for _s in _pending_suggestions[:10]:
+            _sid = int(_s.get('id'))
+            _stype = str(_s.get('suggestion_type') or '')
+            _items = _s.get('items') or []
+            _products = int(_s.get('matched_products_count') or 0)
+            _rows = int(_s.get('matched_rows_count') or 0)
+            _conf = float(_s.get('confidence_score') or 0.0)
+            _title = (
+                f"Nuovo Tag: {_s.get('suggested_tag_name') or 'Senza nome'}"
+                if _stype == 'new_tag'
+                else f"Estendi Tag ID {_s.get('target_tag_id') or '-'}"
+            )
+
+            with st.container(border=True):
+                st.markdown(f"**{_title}**")
+                st.caption(
+                    f"Prodotti: {_products} · Occorrenze: {_rows} · Confidenza: {_conf:.0f}% · Finestra: 30 giorni"
+                )
+                if _items:
+                    _preview = ", ".join(str(i.get('descrizione') or '') for i in _items[:5] if i.get('descrizione'))
+                    if _preview:
+                        st.caption(f"Esempi: {_preview}")
+
+                _c_accept, _c_snooze, _c_dismiss = st.columns([1.2, 1, 1])
+                with _c_accept:
+                    if st.button("✅ Accetta", key=f"ap_sugg_accept_{_sid}", use_container_width=True):
+                        if _stype == 'new_tag':
+                            _result = accept_suggestion_create_tag(
+                                suggestion_id=_sid,
+                                tag_name=str(_s.get('suggested_tag_name') or '').strip() or None,
+                                user_id=user_id,
+                                ristorante_id=current_ristorante,
+                            )
+                        else:
+                            _result = accept_suggestion_extend_tag(
+                                suggestion_id=_sid,
+                                tag_id=int(_s.get('target_tag_id') or 0) or None,
+                                user_id=user_id,
+                                ristorante_id=current_ristorante,
+                            )
+                        if _result.get('success'):
+                            st.toast("Suggerimento applicato", icon="✅")
+                            clear_tags_cache()
+                            st.rerun()
+                        st.error(f"⚠️ Operazione non riuscita: {_result.get('error', 'errore sconosciuto')}")
+                with _c_snooze:
+                    if st.button("⏰ Snooze 30g", key=f"ap_sugg_snooze_{_sid}", use_container_width=True):
+                        snooze_tag_suggestion(_sid, user_id=user_id, ristorante_id=current_ristorante, days=30)
+                        st.toast("Suggerimento rinviato di 30 giorni", icon="⏰")
+                        st.rerun()
+                with _c_dismiss:
+                    if st.button("❌ Ignora", key=f"ap_sugg_dismiss_{_sid}", use_container_width=True):
+                        dismiss_tag_suggestion(_sid, user_id=user_id, ristorante_id=current_ristorante)
+                        st.toast("Suggerimento ignorato", icon="🗑️")
+                        st.rerun()
+    else:
+        st.info("📭 Nessun suggerimento attivo al momento. I nuovi suggerimenti vengono aggiornati automaticamente dopo i caricamenti.")
+
+    st.markdown("<div style='margin-top: 0.8rem;'></div>", unsafe_allow_html=True)
+
     st.markdown('<h3 style="color:#1e40af; font-weight:700;">✨ Crea Nuovo o modifica Tag</h3>', unsafe_allow_html=True)
     st.markdown("""
     <div style="display: inline-block; background: linear-gradient(135deg, #dbeafe 0%, #eff6ff 100%); padding: 10px 14px; border-radius: 10px; border: 1px solid #93c5fd; color: #1e3a8a; font-weight: 600; font-size: 0.88rem; margin-bottom: 0.5rem;">
@@ -1112,16 +1271,6 @@ elif st.session_state.ap_tab_attivo == "gestione":
     selected_tag_label = _tag_label(selected_tag) if selected_tag else ""
     selected_associazioni_correnti = tag_associazioni_map.get(selected_tag_id, []) if selected_tag_id else []
 
-
-    if selected_tag_id and not df_all_cached.empty and selected_associazioni_correnti:
-        orfani = _compute_orfani(df_all_cached, selected_associazioni_correnti)
-        if orfani:
-            orfani_preview = ", ".join(assoc["descrizione"] for assoc in orfani[:5])
-            suffix = "..." if len(orfani) > 5 else ""
-            st.warning(
-                f"⚠️ {len(orfani)} associazioni potenzialmente orfane negli ultimi {ORPHAN_CHECK_DAYS} giorni: "
-                f"{orfani_preview}{suffix}"
-            )
 
     st.markdown("<div style='margin-top: 1.2rem;'></div>", unsafe_allow_html=True)
     st.markdown('<h3 style="color:#1e40af; font-weight:700;">🔎 Cerca Prodotti da Fatture</h3>', unsafe_allow_html=True)

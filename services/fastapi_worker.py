@@ -261,6 +261,7 @@ class ClassifyRequest(BaseModel):
 
 class ClassifyResponse(BaseModel):
     categorie: List[str]
+    confidenze: Optional[List[str]] = None
     count: int
     elapsed_ms: int
 
@@ -341,13 +342,14 @@ async def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
                 logger.warning(f"⚠️ Memoria non caricata per user_id={body.user_id}: {mem_err}")
 
         openai_client = OpenAI(api_key=openai_api_key)
-        categorie = classifica_con_ai(
+        categorie, confidenze = classifica_con_ai(
             lista_descrizioni=body.descrizioni,
             lista_fornitori=body.fornitori,
             lista_iva=body.iva,
             lista_hint=body.hint,
             openai_client=openai_client,
             ristorante_id=body.ristorante_id,
+            return_confidenze=True,
         )
 
         elapsed_ms = int((time.monotonic() - t0) * 1000)
@@ -357,6 +359,7 @@ async def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
         )
         return ClassifyResponse(
             categorie=categorie,
+            confidenze=confidenze,
             count=len(categorie),
             elapsed_ms=elapsed_ms,
         )

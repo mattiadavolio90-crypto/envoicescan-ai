@@ -287,8 +287,8 @@ def _applica_regole_fornitore(
     Applica gerarchia scadenza con lookup a fornitori_pagamenti_config.
     
     Priorita:
-    1) scadenza_xml (se presente)
-    2) Lookup fornitore in fornitori_pagamenti_config by piva_fornitore
+    1) Lookup fornitore in fornitori_pagamenti_config by piva_fornitore
+    2) scadenza_xml (se presente)
     3) data_documento + giorni_termini_xml
     4) None
     
@@ -297,12 +297,7 @@ def _applica_regole_fornitore(
     Se `regole_map` è fornito (dict {piva: {giorni_pagamento, data_riferimento}}),
     viene usato al posto di una query DB per evitare N+1 in loop su molte righe.
     """
-    # Priorita 1: scadenza_xml
-    scad_xml = _to_date_iso(scadenza_xml)
-    if scad_xml:
-        return scad_xml, "xml"
-    
-    # Priorita 2: Lookup fornitore in fornitori_pagamenti_config
+    # Priorita 1: Lookup fornitore in fornitori_pagamenti_config
     if piva_fornitore or fornitore:
         try:
             regola: Optional[Dict[str, Any]] = None
@@ -368,6 +363,11 @@ def _applica_regole_fornitore(
                             return scad_dt.strftime("%Y-%m-%d"), "fornitore"
         except Exception as e:
             logger.warning(f"Errore lookup fornitore regole: {e}")
+
+    # Priorita 2: scadenza_xml
+    scad_xml = _to_date_iso(scadenza_xml)
+    if scad_xml:
+        return scad_xml, "xml"
     
     # Priorita 3: data_documento + giorni_termini_xml
     data_doc = _to_date_iso(data_documento)
@@ -769,6 +769,9 @@ def segna_fattura_pagata(
     sb = supabase_client or get_supabase_client()
     try:
         from datetime import datetime
+        _file_target = str(file_origine).strip()
+        _file_target_norm = _file_target.lower()
+
         payload: Dict[str, Any] = {"pagata": pagata}
         if pagata:
             payload["pagata_at"] = datetime.utcnow().date().isoformat()
@@ -780,10 +783,54 @@ def segna_fattura_pagata(
             .update(payload)
             .eq("user_id", str(user_id))
             .eq("ristorante_id", str(ristorante_id))
-            .eq("file_origine", str(file_origine))
+            .is_("deleted_at", "null")
+            .eq("file_origine", _file_target)
             .execute()
         )
-        return {"success": True, "data": resp.data or []}
+        updated_rows = resp.data or []
+
+        # Fallback robusto: intercetta mismatch su maiuscole/spazi nel file_origine.
+        if not updated_rows:
+            lookup = (
+                sb.table("fatture_documenti")
+                .select("id,file_origine")
+                .eq("user_id", str(user_id))
+                .eq("ristorante_id", str(ristorante_id))
+                .is_("deleted_at", "null")
+                .execute()
+            )
+            matched_id = None
+            for row in (lookup.data or []):
+                _row_file = str(row.get("file_origine") or "").strip().lower()
+                if _row_file == _file_target_norm:
+                    matched_id = row.get("id")
+                    break
+
+            if matched_id is not None:
+                resp = (
+                    sb.table("fatture_documenti")
+                    .update(payload)
+                    .eq("id", matched_id)
+                    .execute()
+                )
+                updated_rows = resp.data or []
+
+        if not updated_rows:
+            return {
+                "success": False,
+                "error": f"Fattura non trovata per aggiornamento pagamento: {_file_target}",
+            }
+
+        try:
+            current_version = get_cache_version("fatture_documenti", sb)
+            sb.table("cache_version").upsert({
+                "key": "fatture_documenti",
+                "version": current_version + 1,
+            }, on_conflict="key").execute()
+        except Exception:
+            pass
+
+        return {"success": True, "data": updated_rows}
     except Exception as exc:
         logger.error("segna_fattura_pagata error: %s", exc)
         return {"success": False, "error": str(exc)}

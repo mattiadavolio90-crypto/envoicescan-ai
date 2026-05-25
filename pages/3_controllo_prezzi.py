@@ -111,6 +111,63 @@ inizio_anno = date_periodo['inizio_anno']
 if 'cp_periodo_dropdown' not in st.session_state:
     st.session_state.cp_periodo_dropdown = "🗓️ Anno in Corso"
 
+if 'cp_data_inizio' not in st.session_state:
+    st.session_state.cp_data_inizio = inizio_anno
+if 'cp_data_fine' not in st.session_state:
+    st.session_state.cp_data_fine = oggi_date
+
+# ============================================
+# CARICAMENTO DATI
+# ============================================
+with st.spinner("Caricamento dati fatture..."):
+    df_all = carica_e_prepara_dataframe(user_id, ristorante_id=current_ristorante)
+    custom_tags = get_custom_tags(user_id, current_ristorante)
+
+if df_all.empty:
+    st.info("📊 Nessuna fattura disponibile. Carica le fatture dalla pagina Analisi Fatture.")
+    st.stop()
+
+special_meta = classify_special_row_vectorized(df_all)
+df_all['_special_bucket'] = special_meta['bucket']
+df_all['_include_in_price_average'] = special_meta['include_in_price_average'].fillna(False).astype(bool)
+
+st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+
+# ============================================
+# NAVIGAZIONE TAB
+# ============================================
+if 'cp_tab_attivo' not in st.session_state:
+    st.session_state.cp_tab_attivo = "variazioni"
+
+def _set_cp_tab(tab: str) -> None:
+    """on_click callback: aggiorna il tab PRIMA che Streamlit ri-renderizzi i bottoni.
+    Evita il flash 'secondary → primary' che si vedeva con il pattern if st.button(...)."""
+    st.session_state.cp_tab_attivo = tab
+
+
+col_t1, col_t2, col_t3 = st.columns(3)
+
+with col_t1:
+    st.button("📈 VARIAZIONI\nPREZZO", key="cp_btn_variazioni", use_container_width=True,
+              type="primary" if st.session_state.cp_tab_attivo == "variazioni" else "secondary",
+              on_click=_set_cp_tab, args=("variazioni",))
+
+with col_t2:
+    st.button("🎁 SCONTI E\nOMAGGI", key="cp_btn_sconti", use_container_width=True,
+              type="primary" if st.session_state.cp_tab_attivo == "sconti" else "secondary",
+              on_click=_set_cp_tab, args=("sconti",))
+
+with col_t3:
+    st.button("📋 NOTE DI\nCREDITO", key="cp_btn_nc", use_container_width=True,
+              type="primary" if st.session_state.cp_tab_attivo == "nc" else "secondary",
+              on_click=_set_cp_tab, args=("nc",))
+
+st.markdown("<div style='margin-top: 0.3rem;'></div>", unsafe_allow_html=True)
+st.markdown(
+    "<div style='margin-top: 0.45rem; margin-bottom: 0.35rem; color:#1e3a8a; font-weight:700; font-size:0.95rem;'>Seleziona periodo:</div>",
+    unsafe_allow_html=True,
+)
+
 col_periodo, col_info_periodo = st.columns([1, 3])
 
 with col_periodo:
@@ -126,13 +183,6 @@ st.session_state.cp_periodo_dropdown = periodo_selezionato
 
 # Gestione logica periodo
 data_inizio_filtro, data_fine_filtro, label_periodo = risolvi_periodo(periodo_selezionato, date_periodo)
-
-if data_inizio_filtro is None and periodo_selezionato != "📆 Seleziona Mese":
-    # inizializza session state se necessario (picker renderizzato sotto)
-    if 'cp_data_inizio' not in st.session_state:
-        st.session_state.cp_data_inizio = inizio_anno
-    if 'cp_data_fine' not in st.session_state:
-        st.session_state.cp_data_fine = oggi_date
 
 with col_info_periodo:
     if periodo_selezionato == "📆 Seleziona Mese":
@@ -196,22 +246,7 @@ with col_info_periodo:
         </div>
         """, unsafe_allow_html=True)
 
-# ============================================
-# CARICAMENTO DATI
-# ============================================
-with st.spinner("Caricamento dati fatture..."):
-    df_all = carica_e_prepara_dataframe(user_id, ristorante_id=current_ristorante)
-    custom_tags = get_custom_tags(user_id, current_ristorante)
-
-if df_all.empty:
-    st.info("📊 Nessuna fattura disponibile. Carica le fatture dalla pagina Analisi Fatture.")
-    st.stop()
-
-special_meta = classify_special_row_vectorized(df_all)
-df_all['_special_bucket'] = special_meta['bucket']
-df_all['_include_in_price_average'] = special_meta['include_in_price_average'].fillna(False).astype(bool)
-
-# Filtro periodo
+# Filtro periodo (dopo risoluzione input periodo)
 df_all['Data_DT'] = pd.to_datetime(df_all['DataDocumento'], errors='coerce')
 mask_periodo = (
     (df_all['Data_DT'].dt.date >= data_inizio_filtro) &
@@ -229,42 +264,11 @@ if df_filtrato.empty:
     st.warning(f"📊 Nessun dato disponibile per il periodo: {label_periodo}")
     st.stop()
 
-st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
-
-# ============================================
-# NAVIGAZIONE TAB
-# ============================================
-if 'cp_tab_attivo' not in st.session_state:
-    st.session_state.cp_tab_attivo = "variazioni"
-
-def _set_cp_tab(tab: str) -> None:
-    """on_click callback: aggiorna il tab PRIMA che Streamlit ri-renderizzi i bottoni.
-    Evita il flash 'secondary → primary' che si vedeva con il pattern if st.button(...)."""
-    st.session_state.cp_tab_attivo = tab
-
-
-col_t1, col_t2, col_t3 = st.columns(3)
-
-with col_t1:
-    st.button("📈 VARIAZIONI\nPREZZO", key="cp_btn_variazioni", use_container_width=True,
-              type="primary" if st.session_state.cp_tab_attivo == "variazioni" else "secondary",
-              on_click=_set_cp_tab, args=("variazioni",))
-
-with col_t2:
-    st.button("🎁 SCONTI E\nOMAGGI", key="cp_btn_sconti", use_container_width=True,
-              type="primary" if st.session_state.cp_tab_attivo == "sconti" else "secondary",
-              on_click=_set_cp_tab, args=("sconti",))
-
-with col_t3:
-    st.button("📋 NOTE DI\nCREDITO", key="cp_btn_nc", use_container_width=True,
-              type="primary" if st.session_state.cp_tab_attivo == "nc" else "secondary",
-              on_click=_set_cp_tab, args=("nc",))
-
 # CSS bottoni tab e download (caricati da file statico condiviso)
 from utils.ui_helpers import load_all_css
 load_all_css()
 
-st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
+st.markdown("<div style='margin-top: 0.25rem;'></div>", unsafe_allow_html=True)
 
 # ================================================================
 # TAB 1: VARIAZIONI PREZZO
@@ -296,20 +300,22 @@ if st.session_state.cp_tab_attivo == "variazioni":
         st.session_state[_cp_threshold_user_key] = True
 
     # ── Riga filtro: Soglia + Salva + testo guida ──
-    col_soglia, col_salva, col_help = st.columns([0.9, 0.5, 5.4])
+    col_soglia, col_salva, col_help = st.columns([0.9, 0.5, 5.4], vertical_alignment="bottom")
 
     with col_soglia:
+        st.markdown("<div style='font-size:0.92rem; font-weight:500; color:#374151; margin-bottom:0.25rem;'>Soglia %</div>", unsafe_allow_html=True)
         soglia_aumento = st.number_input(
             "Soglia %",
             min_value=0.0,
             max_value=100.0,
             step=0.5,
             key="cp_soglia_alert",
-            help="Mostra solo variazioni con valore assoluto ≥ X%"
+            help="Mostra solo variazioni con valore assoluto ≥ X%",
+            label_visibility="collapsed",
         )
 
     with col_salva:
-        st.markdown("<div style='margin-top: 27px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 1.65rem;'></div>", unsafe_allow_html=True)
         if st.button("SALVA", key="cp_btn_salva_soglia_alert", use_container_width=True):
             saved = set_price_alert_threshold(user_id, soglia_aumento)
             if saved:
@@ -318,8 +324,9 @@ if st.session_state.cp_tab_attivo == "variazioni":
                 st.toast("Impossibile salvare la soglia alert. Riprova.", icon="⚠️")
 
     with col_help:
+        st.markdown("<div style='height: 1.58rem;'></div>", unsafe_allow_html=True)
         st.markdown(
-            "<div style='margin-top: 34px; color:#1e3a8a; font-weight:600; white-space: nowrap;'>"
+            "<div style='margin-top: 0; color:#1e3a8a; font-weight:600; line-height:1.2; white-space: nowrap;'>"
             "🚨 Imposta la soglia minima di variazione prezzo che attiva le notifiche alert in Tab Notifiche."
             "</div>",
             unsafe_allow_html=True,
@@ -640,11 +647,6 @@ if st.session_state.cp_tab_attivo == "variazioni":
 # ================================================================
 elif st.session_state.cp_tab_attivo == "sconti":
 
-    st.markdown(
-        "<p style='color:#1e40af; font-size:0.95rem; font-weight:600; margin-bottom:0.8rem;'>📖 <b>Sconti</b>: totale sconti ricevuti | <b>Omaggi</b>: valore stimato dall'ultimo prezzo d'acquisto × quantità se disponibile | <b>Totale</b>: somma sconti + omaggi | Solo F&amp;B</p>",
-        unsafe_allow_html=True,
-    )
-
     # Carica dati
     with st.spinner("Caricamento sconti e omaggi..."):
         dati_sconti = _carica_sconti_e_omaggi_cached(
@@ -658,181 +660,105 @@ elif st.session_state.cp_tab_attivo == "sconti":
     df_omaggi = dati_sconti['omaggi']
     totale_risparmiato = dati_sconti['totale_risparmiato']
 
-    # ============================================================
-    # KPI SCONTI E OMAGGI - Stile identico alla pagina principale
-    # ============================================================
-    # KPI SCONTI E OMAGGI — stili in static/common.css (.kpi-card-cp)
+    # KPI SCONTI E OMAGGI — stesso componente/stile usato nelle pagine analisi (st.metric)
     col_metric1, col_metric2, col_metric3 = st.columns(3)
 
-    importo_sconti = df_sconti['importo_sconto'].sum() if not df_sconti.empty else 0.0
-    valore_omaggi = dati_sconti.get('totale_omaggi', totale_risparmiato - importo_sconti)
-    _omaggi_ha_storico = valore_omaggi is not None and not (isinstance(valore_omaggi, float) and valore_omaggi == 0.0 and not df_omaggi.empty)
+    _n_sconti = len(df_sconti)
+    _n_omaggi = len(df_omaggi)
+    _n_voci_tot = _n_sconti + _n_omaggi
+
+    _fornitori_sconti = set(df_sconti['fornitore'].dropna().astype(str).str.strip()) if not df_sconti.empty and 'fornitore' in df_sconti.columns else set()
+    _fornitori_omaggi = set(df_omaggi['fornitore'].dropna().astype(str).str.strip()) if not df_omaggi.empty and 'fornitore' in df_omaggi.columns else set()
+    _fornitori_coinvolti = len({f for f in (_fornitori_sconti | _fornitori_omaggi) if f})
 
     with col_metric1:
-        _sconti_display = _fmt_int_migliaia(importo_sconti)
-        st.markdown(f"""
-        <div class="kpi-card-cp">
-            <div class="kpi-label">💸 Sconti Applicati</div>
-            <div class="kpi-value">€{_sconti_display}</div>
-            <div style="font-size: clamp(0.65rem, 1.4vw, 0.75rem); color: #6b7280; margin-top: 4px;">{len(df_sconti)} prodotti scontati</div>
-        </div>
-        """, unsafe_allow_html=True)
+        _totale_display = _fmt_int_migliaia(totale_risparmiato)
+        st.metric("💸 Sconti + Omaggi", f"€{_totale_display}")
+        st.caption(f"Sconti: {_n_sconti} | Omaggi: {_n_omaggi}")
 
     with col_metric2:
-        _omaggi_display = f"€{_fmt_int_migliaia(valore_omaggi)}" if _omaggi_ha_storico else "N/D"
-        _omaggi_sub = f"{len(df_omaggi)} prodotti omaggio" if _omaggi_ha_storico else f"{len(df_omaggi)} omaggi — nessuno storico prezzi"
-        st.markdown(f"""
-        <div class="kpi-card-cp">
-            <div class="kpi-label">🎁 Omaggi Ricevuti</div>
-            <div class="kpi-value">{_omaggi_display}</div>
-            <div style="font-size: clamp(0.65rem, 1.4vw, 0.75rem); color: #6b7280; margin-top: 4px;">{_omaggi_sub}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric("🧾 Voci Totali", f"{_n_voci_tot}")
+        st.caption(label_periodo)
 
     with col_metric3:
-        _totale_risparmiato_display = _fmt_int_migliaia(totale_risparmiato)
-        st.markdown(f"""
-        <div class="kpi-card-cp">
-            <div class="kpi-label">✅ Totale Risparmiato</div>
-            <div class="kpi-value">€{_totale_risparmiato_display}</div>
-            <div style="font-size: clamp(0.65rem, 1.4vw, 0.75rem); color: #6b7280; margin-top: 4px;">{label_periodo}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.metric("🏢 N. Fornitori Coinvolti", f"{_fornitori_coinvolti}")
+        st.caption("Sconti e omaggi")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # ============================================================
-    # TABELLA SCONTI
-    # ============================================================
+    _righe_unificate = []
+
     if not df_sconti.empty:
-        with st.expander("💸 Dettaglio Sconti Applicati", expanded=True):
-            df_sconti_view = df_sconti[[
-                'descrizione',
-                'categoria',
-                'fornitore',
-                'importo_sconto',
-                'data_documento',
-                'file_origine',
-                'numero_documento'
-            ]].copy()
-            df_sconti_view = df_sconti_view.reset_index(drop=True)
-            df_sconti_view.columns = [
-                'Prodotto',
-                'Categoria',
-                'Fornitore',
-                'Sconto',
-                'Data',
-                'Fattura',
-                'N° Fattura'
-            ]
+        for _, _r in df_sconti.iterrows():
+            _righe_unificate.append({
+                'Tipo': '💸 Sconto',
+                'Prodotto': _r.get('descrizione'),
+                'Categoria': _r.get('categoria'),
+                'Fornitore': _r.get('fornitore'),
+                'Quantità': None,
+                'Valore': _r.get('importo_sconto'),
+                'Data': _r.get('data_documento'),
+                'Fattura': _r.get('file_origine'),
+                'N° Fattura': _r.get('numero_documento'),
+            })
 
-            # Prepara export prima del titolo per XLS inline
-            excel_sconti = io.BytesIO()
-            with pd.ExcelWriter(excel_sconti, engine='openpyxl') as writer:
-                df_sconti_view.to_excel(writer, sheet_name='Sconti', index=False)
-
-            _col_sconti_txt, _col_xls_sconti = st.columns([8, 0.7])
-            with _col_sconti_txt:
-                st.markdown(f"**{len(df_sconti)} sconti** ricevuti dai fornitori")
-                st.caption("Solo prodotti Food & Beverage - Escluse spese generali")
-            with _col_xls_sconti:
-                st.markdown("<div style='margin-top: 0px;'></div>", unsafe_allow_html=True)
-                st.download_button(
-                    label="XLS",
-                    data=excel_sconti.getvalue(),
-                    file_name=f"sconti_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="cp_download_excel_sconti",
-                    use_container_width=False,
-                )
-
-            num_righe_sconti = len(df_sconti_view)
-            altezza_sconti = min(max(num_righe_sconti * 35 + 50, 200), 500)
-
-            st.dataframe(
-                df_sconti_view,
-                hide_index=True,
-                use_container_width=True,
-                height=altezza_sconti,
-                column_config={
-                    'Prodotto': st.column_config.TextColumn('Prodotto', width="large"),
-                    'Categoria': st.column_config.TextColumn('Categoria', width="medium"),
-                    'Fornitore': st.column_config.TextColumn('Fornitore', width="medium"),
-                    'Sconto': st.column_config.NumberColumn('Sconto', format="€%.2f", help="Importo sconto ricevuto"),
-                    'Data': st.column_config.DateColumn('Data', format="DD/MM/YYYY"),
-                    'Fattura': st.column_config.TextColumn('Fattura', width="medium"),
-                    'N° Fattura': st.column_config.TextColumn('N° Fattura', width="small")
-                }
-            )
-
-    else:
-        st.info(f"📊 Nessuno sconto applicato nel periodo {label_periodo.lower()}")
-
-    # ============================================================
-    # TABELLA OMAGGI
-    # ============================================================
-    st.markdown("<div style='margin-top: 1.2rem;'></div>", unsafe_allow_html=True)
     if not df_omaggi.empty:
-        with st.expander(f"🎁 Dettaglio Omaggi ({len(df_omaggi)})", expanded=False):
-            cols_omaggi = ['descrizione', 'fornitore', 'quantita', 'data_documento', 'file_origine', 'numero_documento']
-            col_names = ['Prodotto', 'Fornitore', 'Quantità', 'Data', 'Fattura', 'N° Fattura']
-            has_prezzo_storico = 'ultimo_prezzo' in df_omaggi.columns
-            if has_prezzo_storico:
-                cols_omaggi.extend(['ultimo_prezzo', 'valore_stimato'])
-                col_names.extend(['Ultimo Prezzo', 'Valore Stimato'])
+        for _, _r in df_omaggi.iterrows():
+            _val_omaggio = _r.get('valore_stimato')
+            _righe_unificate.append({
+                'Tipo': '🎁 Omaggio',
+                'Prodotto': _r.get('descrizione'),
+                'Categoria': _r.get('categoria'),
+                'Fornitore': _r.get('fornitore'),
+                'Quantità': _r.get('quantita'),
+                'Valore': _val_omaggio if pd.notna(pd.to_numeric(_val_omaggio, errors='coerce')) else 0.0,
+                'Data': _r.get('data_documento'),
+                'Fattura': _r.get('file_origine'),
+                'N° Fattura': _r.get('numero_documento'),
+            })
 
-            df_omaggi_view = df_omaggi[[c for c in cols_omaggi if c in df_omaggi.columns]].copy()
-            df_omaggi_view = df_omaggi_view.reset_index(drop=True)
-            df_omaggi_view.columns = col_names[:len(df_omaggi_view.columns)]
+    if _righe_unificate:
+        df_unificato = pd.DataFrame(_righe_unificate)
+        df_unificato['Data'] = pd.to_datetime(df_unificato['Data'], errors='coerce')
+        df_unificato['Valore'] = pd.to_numeric(df_unificato['Valore'], errors='coerce').fillna(0.0)
+        df_unificato = df_unificato.sort_values(['Data', 'Fornitore', 'Prodotto'], ascending=[False, True, True], na_position='last')
 
-            # Prepara export prima del titolo per XLS inline
-            excel_omaggi = io.BytesIO()
-            with pd.ExcelWriter(excel_omaggi, engine='openpyxl') as writer:
-                df_omaggi_view.to_excel(writer, sheet_name='Omaggi', index=False)
+        num_righe_unificate = len(df_unificato)
+        altezza_unificata = min(max(num_righe_unificate * 35 + 50, 240), 560)
 
-            _col_omaggi_txt, _col_xls_omaggi = st.columns([8, 0.7])
-            with _col_omaggi_txt:
-                st.markdown(f"**{len(df_omaggi)} omaggi** ricevuti dai fornitori")
-                st.caption("Solo prodotti Food & Beverage - Escluse spese generali")
-            with _col_xls_omaggi:
-                st.markdown("<div style='margin-top: 0px;'></div>", unsafe_allow_html=True)
-                st.download_button(
-                    label="XLS",
-                    data=excel_omaggi.getvalue(),
-                    file_name=f"omaggi_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key="cp_download_excel_omaggi",
-                    use_container_width=False,
-                )
-
-            num_righe_omaggi = len(df_omaggi_view)
-            altezza_omaggi = min(max(num_righe_omaggi * 35 + 50, 200), 500)
-
-            col_cfg = {
-                'Data': st.column_config.DateColumn('Data', format="DD/MM/YYYY"),
-                'N° Fattura': st.column_config.TextColumn('N° Fattura', width="small"),
+        st.dataframe(
+            df_unificato,
+            hide_index=True,
+            use_container_width=True,
+            height=altezza_unificata,
+            column_config={
+                'Tipo': st.column_config.TextColumn('Tipo', width='small'),
+                'Prodotto': st.column_config.TextColumn('Prodotto', width='large'),
+                'Categoria': st.column_config.TextColumn('Categoria', width='medium'),
+                'Fornitore': st.column_config.TextColumn('Fornitore', width='medium'),
+                'Quantità': st.column_config.NumberColumn('Quantità', format='%.2f'),
+                'Valore': st.column_config.NumberColumn('Valore (€)', format='€%.2f'),
+                'Data': st.column_config.DateColumn('Data', format='DD/MM/YYYY'),
+                'Fattura': st.column_config.TextColumn('Fattura', width='medium'),
+                'N° Fattura': st.column_config.TextColumn('N° Fattura', width='small'),
             }
-            if has_prezzo_storico:
-                col_cfg['Ultimo Prezzo'] = st.column_config.NumberColumn(
-                    'Ultimo Prezzo', format="€%.2f",
-                    help="Ultimo prezzo d'acquisto prima dell'omaggio (stesso fornitore)"
-                )
-                col_cfg['Valore Stimato'] = st.column_config.NumberColumn(
-                    'Valore Stimato', format="€%.2f",
-                    help="Valore stimato: ultimo prezzo × quantità"
-                )
+        )
 
-            st.dataframe(
-                df_omaggi_view,
-                hide_index=True,
+        excel_unificato = io.BytesIO()
+        with pd.ExcelWriter(excel_unificato, engine='openpyxl') as writer:
+            df_unificato.to_excel(writer, sheet_name='Sconti_Omaggi', index=False)
+
+        _col_xls_pad, _col_xls_btn = st.columns([10, 1])
+        with _col_xls_btn:
+            st.download_button(
+                label="XLS",
+                data=excel_unificato.getvalue(),
+                file_name=f"sconti_omaggi_{pd.Timestamp.now().strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                key="cp_download_excel_sconti_omaggi_unificato",
                 use_container_width=True,
-                height=altezza_omaggi,
-                column_config=col_cfg
             )
-
-            st.info("ℹ️ Ultimo Prezzo = ultimo acquisto disponibile dello stesso prodotto prima dell'omaggio, preferibilmente dallo stesso fornitore.")
-
-    if df_sconti.empty and df_omaggi.empty:
+    else:
         st.info(f"📊 Nessuno sconto o omaggio ricevuto nel periodo {label_periodo.lower()}")
 
 
@@ -842,8 +768,6 @@ elif st.session_state.cp_tab_attivo == "sconti":
 elif st.session_state.cp_tab_attivo == "nc":
 
     df_nc = df_filtrato[df_filtrato['_special_bucket'] == SPECIAL_ROW_STORNO].copy()
-
-    st.caption("📖 **Storni / Note di Credito**: righe classificate come storno dal motore condiviso, incluse TD04 e rettifiche economiche. Le righe omaggio/sconto restano nel tab Sconti e Omaggi.")
 
     # ============================================================
     # FILTRI NOTE DI CREDITO

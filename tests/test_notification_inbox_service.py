@@ -57,6 +57,7 @@ def _make_supabase_mock(return_data=None):
     q.table.return_value = q
     q.select.return_value = q
     q.eq.return_value = q
+    q.neq.return_value = q
     q.is_.return_value = q
     q.in_.return_value = q
     q.or_.return_value = q

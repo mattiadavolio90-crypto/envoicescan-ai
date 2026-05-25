@@ -22,6 +22,17 @@ div[data-testid="stSidebarNav"] { display: none !important; }
     overflow: hidden !important;
 }
 
+/* ===== SEPARATORI ORIZZONTALI STREAMLIT: nascondi linee automatiche ===== */
+hr,
+div[data-testid="stDivider"],
+[data-testid="stMarkdownContainer"] hr {
+    display: none !important;
+    height: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    padding: 0 !important;
+}
+
 /* ===== EXPANDER GESTIONE FATTURE — sfondo arancione chiaro ===== */
 div.st-key-expander_gestione_fatture [data-testid="stExpander"] details summary {
     background: linear-gradient(135deg, rgba(255, 237, 213, 0.95) 0%, rgba(254, 215, 170, 0.95) 100%) !important;

@@ -41,7 +41,8 @@ _REFRESH_ON_CONFLICT_TOPICS = {
     'fornitore_critico_consecutivo',
     'nota_credito_non_usata',
     'sconto_fornitore_scaduto',
-    'fornitore_unico_categoria',
+    'tag_suggestion_new_tag',
+    'tag_suggestion_extend_tag',
 }
 
 # Soglia "Nuova": notifiche con source_event_at più recente di 24h
@@ -108,7 +109,8 @@ def resolve_bucket(topic_key: str, file_ids: Optional[List[str]] = None,
         'fornitore_critico_consecutivo',
         'nota_credito_non_usata',
         'sconto_fornitore_scaduto',
-        'fornitore_unico_categoria',
+        'tag_suggestion_new_tag',
+        'tag_suggestion_extend_tag',
     ):
         return _bucket_iso_week(ref_dt)
     if topic_key == 'invoicetronic_auto':
@@ -233,6 +235,7 @@ def get_inbox_notifications(
             .select('id,topic_key,source_type,severity,title,body,payload,action_page,source_event_at,expires_at')
             .eq('user_id', user_id)
             .eq('ristorante_id', ristorante_id)
+            .neq('topic_key', 'fornitore_unico_categoria')
             .is_('dismissed_at', 'null')
             .order('source_event_at', desc=True)
         )
@@ -345,4 +348,36 @@ def dismiss_all_inbox_notifications(
         return True
     except Exception as exc:
         logger.error(f"❌ Errore dismiss_all_inbox_notifications: {exc}")
+        return False
+
+
+def dismiss_inbox_topics(
+    user_id: str,
+    ristorante_id: str,
+    topic_keys: List[str],
+    supabase_client=None,
+) -> bool:
+    """Soft-delete massivo per topic specifici (solo notifiche attive).
+
+    Usato per cleanup server-side di topic dismessi dal prodotto.
+    """
+    if not user_id or not ristorante_id or supabase_client is None:
+        return False
+    topics = [str(t).strip() for t in (topic_keys or []) if str(t).strip()]
+    if not topics:
+        return False
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        (
+            supabase_client.table('notification_inbox')
+            .update({'dismissed_at': now_iso})
+            .eq('user_id', user_id)
+            .eq('ristorante_id', ristorante_id)
+            .is_('dismissed_at', 'null')
+            .in_('topic_key', topics)
+            .execute()
+        )
+        return True
+    except Exception as exc:
+        logger.error(f"❌ Errore dismiss_inbox_topics: {exc}")
         return False

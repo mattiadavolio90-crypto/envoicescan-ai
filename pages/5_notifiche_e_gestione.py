@@ -41,6 +41,7 @@ from services.db_service import (
 )
 from services.notification_service import build_scoped_notification_id
 from services.notification_inbox_service import (
+    dismiss_inbox_topics,
     dismiss_all_inbox_notifications,
     dismiss_inbox_notification,
     get_inbox_badge_count,
@@ -503,6 +504,15 @@ if _gfn_last_rist != current_ristorante:
 # Badge count notifiche (calcolato prima del render tab per aggiornamento immediato)
 # Se il tab notifiche e' attivo, prefetch della lista completa per evitare doppio fetch badge+lista.
 _supabase_badge = get_supabase_client()
+_legacy_cleanup_key = f"gfn_inbox_cleanup_done::{user_id}::{current_ristorante}"
+if not st.session_state.get(_legacy_cleanup_key):
+    dismiss_inbox_topics(
+        user_id=user_id,
+        ristorante_id=current_ristorante,
+        topic_keys=['fornitore_unico_categoria'],
+        supabase_client=_supabase_badge,
+    )
+    st.session_state[_legacy_cleanup_key] = True
 _prefetched_notifs = None
 gfn_col1, gfn_col2, gfn_col3 = st.columns(3)
 st.markdown("<div style='margin-top: 1rem;'></div>", unsafe_allow_html=True)
@@ -646,8 +656,8 @@ def _render_scadenziario_tab(user_id, current_ristorante):
                     display: flex; flex-direction: column;
                     justify-content: center; align-items: center;
                 ">
-                    <div style="color:#2563eb; font-weight:600; font-size:0.82rem; margin-bottom:6px; line-height:1.3;">{label}</div>
-                    <div style="color:{color}; font-size:1.6rem; font-weight:700;">{value}</div>
+                    <div style="color:#2563eb; font-weight:700; font-size:0.92rem; margin-bottom:6px; line-height:1.3;">{label}</div>
+                    <div style="color:{color}; font-size:1.78rem; font-weight:800;">{value}</div>
                 </div>"""
 
             with _kc1:
@@ -655,7 +665,7 @@ def _render_scadenziario_tab(user_id, current_ristorante):
             with _kc2:
                 st.markdown(_scad_kpi_html("✅ Pagato", f"€ {_tot_pagato:,.0f}", color="#166534"), unsafe_allow_html=True)
             with _kc3:
-                st.markdown(_scad_kpi_html("⏳ Residuo", f"€ {_tot_residuo:,.0f}", color="#b45309"), unsafe_allow_html=True)
+                st.markdown(_scad_kpi_html("💸 Da pagare", f"€ {_tot_residuo:,.0f}", color="#b45309"), unsafe_allow_html=True)
             with _kc4:
                 st.markdown(_scad_kpi_html("🔴 Scaduto", f"€ {_tot_scaduto:,.0f}", color="#dc2626"), unsafe_allow_html=True)
 
@@ -825,10 +835,10 @@ def _render_scadenziario_tab(user_id, current_ristorante):
                         margin-bottom:0.55rem;
                         box-shadow:0 1px 4px rgba(0,0,0,0.06);">
                         <div style="background:{_badge_bg}; color:{_badge_color}; font-weight:700;
-                            font-size:0.82rem; border-radius:6px; padding:0.25rem 0.6rem; white-space:nowrap;">{_urgenza}</div>
-                        <div style="flex:1; font-weight:600; color:#111827; font-size:0.95rem;">{_forn}</div>
-                        <div style="font-size:1rem; font-weight:700; color:#1e40af; white-space:nowrap;">€ {_tot:,.2f}</div>
-                        <div style="color:#6b7280; font-size:0.82rem; white-space:nowrap;">📅 {_scad_str} <span style='color:#9ca3af;'>({_src})</span></div>
+                            font-size:0.90rem; border-radius:6px; padding:0.25rem 0.6rem; white-space:nowrap;">{_urgenza}</div>
+                        <div style="flex:1; font-weight:700; color:#111827; font-size:1.05rem;">{_forn}</div>
+                        <div style="font-size:1.12rem; font-weight:800; color:#1e40af; white-space:nowrap;">€ {_tot:,.2f}</div>
+                        <div style="color:#6b7280; font-size:0.90rem; white-space:nowrap;">📅 {_scad_str} <span style='color:#9ca3af;'>({_src})</span></div>
                     </div>"""
                 st.markdown(
                     f'<div style="max-height:400px; overflow-y:auto; padding-right:6px;">{_cards_html}</div>',
@@ -1030,7 +1040,10 @@ elif st.session_state.gfn_tab_attivo == "gestione":
             ristorante_id=current_ristorante,
         )
 
-    # Mappa file → pagata per mostrare stato pagamento sui bottoni
+    def _norm_file_key(value):
+        return str(value or "").strip().lower()
+
+    # Mappa file → metadati documento/pagata per mostrare stato pagamento sui bottoni
     try:
         _docs_pagata = get_documenti_list(
             user_id=user_id,
@@ -1038,10 +1051,21 @@ elif st.session_state.gfn_tab_attivo == "gestione":
             filtro="tutte",
             giorni_imminenti=0,
         )
-        _docs_map = {d['file_origine']: d for d in (_docs_pagata or [])}
-        _pagata_map = {k: bool(v.get('pagata', False)) for k, v in _docs_map.items()}
+        _docs_map = {
+            str(d.get('file_origine', '')).strip(): d
+            for d in (_docs_pagata or [])
+            if str(d.get('file_origine', '')).strip()
+        }
+        _docs_map_norm = {
+            _norm_file_key(d.get('file_origine')): d
+            for d in (_docs_pagata or [])
+            if _norm_file_key(d.get('file_origine'))
+        }
+        _pagata_map = {k: bool(v.get('pagata', False)) for k, v in _docs_map_norm.items()}
     except Exception:
+        _docs_pagata = []
         _docs_map = {}
+        _docs_map_norm = {}
         _pagata_map = {}
 
     fatture_cestino_cache = []
@@ -1098,7 +1122,7 @@ elif st.session_state.gfn_tab_attivo == "gestione":
         border-radius: 10px;
         border-left: 5px solid rgba(59,130,246,0.55);
         box-shadow: 0 3px 6px rgba(30,64,175,0.10);
-        margin: 0 0 20px 0;
+        margin: 0 0 8px 0;
         display: block;
         width: min(100%, 44rem);
         min-width: 0;
@@ -1141,22 +1165,26 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                     for _, row in monthly_counts.iterrows():
                         mese_label = MESI_ITA.get(int(row['MeseNum']), str(int(row['MeseNum'])))
                         parti_mensili.append(
-                            f"{mese_label}: <strong style='color:#1e40af;'>{int(row['NumFatture'])}</strong>"
+                            f"{mese_label}: <strong style='font-size:1.2em; color:#1e40af;'>{int(row['NumFatture'])}</strong>"
                         )
 
                     if parti_mensili:
                         st.markdown(
                             f"""
 <div style="
-    background: rgba(219,234,254,0.50);
-    border: 1px solid rgba(59,130,246,0.30);
-    border-radius: 8px;
-    padding: 8px 12px;
-    margin: -10px 0 16px 0;
+    background: linear-gradient(135deg, rgba(219,234,254,0.55) 0%, rgba(191,219,254,0.70) 100%);
+    padding: clamp(0.75rem, 1.8vw, 0.9rem) clamp(0.9rem, 2.5vw, 1.4rem);
+    border-radius: 10px;
+    border-left: 5px solid rgba(59,130,246,0.55);
+    box-shadow: 0 3px 6px rgba(30,64,175,0.10);
+    margin: 0 0 16px 0;
+    display: block;
     width: min(100%, 44rem);
+    min-width: 0;
     box-sizing: border-box;
+    backdrop-filter: blur(10px);
 ">
-    <span style="font-size: 0.9rem; color: #1e3a8a; font-weight: 600; overflow-wrap: anywhere; line-height: 1.45;">
+    <span style="color: #1e3a8a; font-size: clamp(0.95rem, 1.3vw, 1.05rem); font-weight: 700; line-height: 1.45; overflow-wrap: anywhere;">
         📅 Fatture Mensili: {' | '.join(parti_mensili)}
     </span>
 </div>
@@ -1208,6 +1236,58 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                 fatture_summary = fatture_summary.drop(columns=['_sort_data'])
             else:
                 fatture_summary = pd.DataFrame(columns=['File', 'Fornitore', 'Totale', 'NumProdotti', 'Data'])
+
+            # Allinea Gestione Fatture con fatture_documenti: mostra anche documenti
+            # presenti nello Scadenziario ma senza righe in tabella fatture.
+            if _docs_pagata:
+                _present_files = set()
+                if not fatture_summary.empty and 'File' in fatture_summary.columns:
+                    _present_files = {
+                        _norm_file_key(_f) for _f in fatture_summary['File'].dropna().tolist()
+                    }
+
+                _missing_rows = []
+                for _doc in _docs_pagata:
+                    _file_doc = str(_doc.get('file_origine') or '').strip()
+                    _file_key_doc = _norm_file_key(_file_doc)
+                    if not _file_doc or _file_key_doc in _present_files:
+                        continue
+
+                    _tot_doc = pd.to_numeric(_doc.get('totale_documento'), errors='coerce')
+                    _tot_doc = float(_tot_doc) if pd.notna(_tot_doc) else 0.0
+                    _data_doc = _doc.get('data_documento')
+
+                    _missing_rows.append({
+                        'File': _file_doc,
+                        'Fornitore': str(_doc.get('fornitore') or 'Sconosciuto').strip() or 'Sconosciuto',
+                        'Totale': _tot_doc,
+                        'NumProdotti': 0,
+                        'Data': _data_doc,
+                        'DataDocumentoOriginale': _data_doc,
+                        'DataCompetenza': None,
+                        'CreatedAt': _doc.get('created_at'),
+                    })
+                    _present_files.add(_file_key_doc)
+
+                if _missing_rows:
+                    fatture_summary = pd.concat([
+                        fatture_summary,
+                        pd.DataFrame(_missing_rows),
+                    ], ignore_index=True)
+
+                    _sort_dates = pd.to_datetime(fatture_summary.get('Data'), errors='coerce')
+                    fatture_summary = fatture_summary.assign(_sort_data=_sort_dates)
+                    if 'CreatedAt' in fatture_summary.columns:
+                        _created_sort = pd.to_datetime(fatture_summary['CreatedAt'], errors='coerce')
+                        fatture_summary = fatture_summary.assign(_sort_created=_created_sort).sort_values(
+                            by=['_sort_data', '_sort_created'],
+                            ascending=[False, False],
+                            na_position='last',
+                        )
+                        fatture_summary = fatture_summary.drop(columns=['_sort_created'])
+                    else:
+                        fatture_summary = fatture_summary.sort_values('_sort_data', ascending=False, na_position='last')
+                    fatture_summary = fatture_summary.drop(columns=['_sort_data'])
 
             # 🗑️ PULSANTE SVUOTA TUTTO (solo admin/impersonificati - nessuna conferma richiesta)
             if st.session_state.get('user_is_admin', False) or st.session_state.get('impersonating', False):
@@ -1409,6 +1489,7 @@ elif st.session_state.gfn_tab_attivo == "gestione":
 
                     fatture_options = []
                     for idx, row in fatture_filtrate.iterrows():
+                        _doc_row = _docs_map_norm.get(_norm_file_key(row.get('File')), {})
                         _data_competenza_val = row['DataCompetenza'] if 'DataCompetenza' in row.index else None
                         _data_originale_val = row['DataDocumentoOriginale'] if 'DataDocumentoOriginale' in row.index else row.get('Data')
                         _has_data_competenza = bool(pd.notna(_data_competenza_val) and str(_data_competenza_val).strip() not in {'', 'NaT', 'None'})
@@ -1421,11 +1502,11 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                             'DataOriginale': _data_originale_val,
                             'DataCompetenza': _data_competenza_val,
                             'HasDataCompetenza': _has_data_competenza,
-                            'Pagata': _pagata_map.get(row['File'], False),
-                            'Scadenza': _docs_map.get(row['File'], {}).get('scadenza_effettiva'),
-                            'NumeroFattura': _docs_map.get(row['File'], {}).get('numero_documento'),
-                            'TipoDocumento': _docs_map.get(row['File'], {}).get('tipo_documento'),
-                            'PIVAFornitore': _docs_map.get(row['File'], {}).get('piva_fornitore'),
+                            'Pagata': bool(_doc_row.get('pagata', _pagata_map.get(_norm_file_key(row.get('File')), False))),
+                            'Scadenza': _doc_row.get('scadenza_effettiva'),
+                            'NumeroFattura': _doc_row.get('numero_documento'),
+                            'TipoDocumento': _doc_row.get('tipo_documento'),
+                            'PIVAFornitore': _doc_row.get('piva_fornitore'),
                             'IsNuova': row['File'] in _nuovi_invoicetronic,
                         })
 
@@ -1437,8 +1518,13 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                     # ---- Seleziona / Deseleziona tutto ----
                     if 'gfn_tbl_key_ver' not in st.session_state:
                         st.session_state.gfn_tbl_key_ver = 0
-                    if 'gfn_tbl_init_sel' not in st.session_state:
-                        st.session_state.gfn_tbl_init_sel = None
+                    if 'gfn_selected_files' not in st.session_state:
+                        st.session_state.gfn_selected_files = set()
+
+                    _visible_files = {str(f['File']) for f in fatture_options}
+                    st.session_state.gfn_selected_files = {
+                        str(_f) for _f in (st.session_state.gfn_selected_files or set()) if str(_f) in _visible_files
+                    }
 
                     # ---- Stato preview anteprima ----
                     if 'gfn_preview_open' not in st.session_state:
@@ -1454,29 +1540,27 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                     _scol1, _scol2, _scol_info = st.columns([1.6, 1.8, 6.6])
                     with _scol1:
                         if st.button("☑️ Seleziona tutto", key="gfn_btn_sel_tutto", use_container_width=True):
-                            st.session_state.gfn_tbl_init_sel = True
+                            st.session_state.gfn_selected_files = set(_visible_files)
                             st.session_state.gfn_tbl_key_ver += 1
                     with _scol2:
                         if st.button("⬜ Deseleziona tutto", key="gfn_btn_desel_tutto", use_container_width=True):
-                            st.session_state.gfn_tbl_init_sel = False
+                            st.session_state.gfn_selected_files = set()
                             st.session_state.gfn_tbl_key_ver += 1
 
                     # ---- Tabella fatture ----
-                    _init_sel = st.session_state.gfn_tbl_init_sel
                     _df_tbl = pd.DataFrame([{
-                        '✓': True if _init_sel is True else False,
+                        '✓': str(f['File']) in st.session_state.gfn_selected_files,
                         '🆕': '🆕' if f.get('IsNuova') else '',
                         'Fornitore': f['Fornitore'],
                         'Totale (€)': float(f['Totale']) if f['Totale'] is not None else 0.0,
                         'Righe': f['NumProdotti'],
-                        'Data': str(f['Data'])[:10] if f['Data'] else '',
+                        'Data': str(f['DataOriginale'])[:10] if f.get('DataOriginale') else (str(f['Data'])[:10] if f.get('Data') else ''),
                         'Pagata': '✅' if f['Pagata'] else '⚪',
                         'Data Modificata': ('🔴 ' + str(f['DataCompetenza'])[:10]) if f['HasDataCompetenza'] else '',
                         'Scadenza': str(f['Scadenza'])[:10] if f['Scadenza'] else '',
                         'N° Fattura': str(f['NumeroFattura']) if f['NumeroFattura'] else '',
                         'File': f['File'],
                     } for f in fatture_options])
-                    st.session_state.gfn_tbl_init_sel = None
 
                     # stDataFrameResizable header azzurro CSS ora in common.css
 
@@ -1497,15 +1581,26 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                         },
                         use_container_width=True,
                         hide_index=True,
-                        height=300,
+                        height=420,
                         key=f'gfn_fatture_table_{st.session_state.gfn_tbl_key_ver}',
                     )
 
-                    fatture_selezionate = [fatture_options[i] for i, row in _edited_tbl.iterrows() if row['✓']]
+                    _selected_files_after_edit = set(
+                        _edited_tbl.loc[_edited_tbl['✓'], 'File'].astype(str).tolist()
+                    )
+                    st.session_state.gfn_selected_files = _selected_files_after_edit
+
+                    fatture_selezionate = [
+                        f for f in fatture_options if str(f['File']) in st.session_state.gfn_selected_files
+                    ]
                     n_sel = len(fatture_selezionate)
 
                     if n_sel > 0:
                         st.caption(f"**{n_sel}** fattura/e selezionata/e")
+
+                    _fatture_pagate_sel = [f for f in fatture_selezionate if f.get('Pagata')]
+                    _fatture_non_pagate_sel = [f for f in fatture_selezionate if not f.get('Pagata')]
+                    _ha_comp = any(f.get('HasDataCompetenza') for f in fatture_selezionate)
 
                     # ---- Bottoni azioni ----
                     col_btn_delete, col_btn_date, col_btn_preview, col_btn_pagamento, col_btn_reset, col_spacer = st.columns([1, 1, 1, 1, 1, 1])
@@ -1544,19 +1639,16 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                                 st.session_state['gfn_preview_file'] = fatture_selezionate[0]['File']
 
                     with col_btn_pagamento:
-                        _tutte_pagate = all(f['Pagata'] for f in fatture_selezionate) if fatture_selezionate else False
-                        _label_pag = "↩️ Annulla Pagamento" if (_tutte_pagate and n_sel > 0) else "💳 Conferma Pagamento"
-                        if st.button(_label_pag, type="secondary", use_container_width=True,
-                                     key="gfn_btn_conferma_pagamento", disabled=n_sel == 0):
+                        if _fatture_non_pagate_sel and st.button("💳 Conferma Pagamento", type="secondary", use_container_width=True,
+                                     key="gfn_btn_conferma_pagamento"):
                             with st.spinner("Aggiornamento pagamento..."):
-                                _nuovo_stato_pag = not _tutte_pagate
                                 _errori_pag = []
-                                for _fat in fatture_selezionate:
+                                for _fat in _fatture_non_pagate_sel:
                                     _esito_pag = segna_fattura_pagata(
                                         file_origine=_fat['File'],
                                         user_id=user_id,
                                         ristorante_id=current_ristorante,
-                                        pagata=_nuovo_stato_pag,
+                                        pagata=True,
                                     )
                                     if not _esito_pag.get("success"):
                                         _errori_pag.append(_fat['File'])
@@ -1565,15 +1657,36 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                                 if _errori_pag:
                                     st.error(f"❌ Errore su: {', '.join(_errori_pag)}")
                                 else:
-                                    _msg_pag = f"✅ {n_sel} fattura/e {'pagate' if _nuovo_stato_pag else 'non pagate'}"
+                                    _msg_pag = f"✅ {len(_fatture_non_pagate_sel)} fattura/e pagate"
                                     st.success(_msg_pag)
                                     time.sleep(0.3)
                                     st.rerun()
 
+                        if _fatture_pagate_sel and st.button("↩️ Annulla Pagamento", type="secondary", use_container_width=True,
+                                     key="gfn_btn_annulla_pagamento"):
+                            with st.spinner("Aggiornamento pagamento..."):
+                                _errori_pag = []
+                                for _fat in _fatture_pagate_sel:
+                                    _esito_pag = segna_fattura_pagata(
+                                        file_origine=_fat['File'],
+                                        user_id=user_id,
+                                        ristorante_id=current_ristorante,
+                                        pagata=False,
+                                    )
+                                    if not _esito_pag.get("success"):
+                                        _errori_pag.append(_fat['File'])
+                                clear_documenti_cache()
+                                clear_fatture_cache()
+                                if _errori_pag:
+                                    st.error(f"❌ Errore su: {', '.join(_errori_pag)}")
+                                else:
+                                    st.success(f"✅ {len(_fatture_pagate_sel)} fattura/e impostate come non pagate")
+                                    time.sleep(0.3)
+                                    st.rerun()
+
                     with col_btn_reset:
-                        _ha_comp = any(f.get('HasDataCompetenza') for f in fatture_selezionate)
                         if _ha_comp:
-                            if st.button("↩️ Ripristina", use_container_width=True, key="gfn_btn_ripristina_data"):
+                            if st.button("↩️ Ripristina Data", use_container_width=True, key="gfn_btn_ripristina_data"):
                                 with st.spinner("Ripristino in corso..."):
                                     for _fat in [f for f in fatture_selezionate if f.get('HasDataCompetenza')]:
                                         esito = aggiorna_data_competenza_fattura(
@@ -2212,7 +2325,8 @@ elif st.session_state.gfn_tab_attivo == "notifiche":
                 'prezzo_prodotto_record_storico':  'pages/3_controllo_prezzi.py',
                 'uncategorized_rows':              'pages/4_analisi_personalizzata.py',
                 'piva_duplicata_fornitore':        'pages/4_analisi_personalizzata.py',
-                'fornitore_unico_categoria':       'pages/4_analisi_personalizzata.py',
+                'tag_suggestion_new_tag':          'pages/4_analisi_personalizzata.py',
+                'tag_suggestion_extend_tag':       'pages/4_analisi_personalizzata.py',
             }
             _TOPIC_TAB_FALLBACK = {
                 'scadenza_superata':  'scadenziario',

@@ -238,18 +238,25 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
 📝 FORMATO RISPOSTA
 ═══════════════════════════════════════════════════════════════════
 
-🚨 IMPORTANTE: NON restituire MAI "Da Classificare" o stringhe vuote!
-   DEVI sempre classificare con la categoria più probabile.
+🚨 IMPORTANTE: DEVI classificare ogni articolo con la categoria più probabile.
+   Non restituire stringhe vuote o categorie non elencate sopra.
    
    ⚠️ ATTENZIONE: CORNETTI, BRIOCHES, CROISSANT, CROSTATINE sono SEMPRE PASTICCERIA, mai MATERIALE DI CONSUMO!
    ⚠️ SOLO pellicole, piatti, bicchieri, salviette, tovaglioli, coperchi → MATERIALE DI CONSUMO
    
    Se incerto tra food/no-food, leggi attentamente: è commestibile? → categoria food appropriata
 
-Rispondi SOLO in JSON:
+Rispondi SOLO in JSON con DUE array paralleli (stesso numero di elementi):
 {
-  "categorie": ["CATEGORIA1", "CATEGORIA2", ...]
+  "categorie": ["CATEGORIA1", "CATEGORIA2", ...],
+  "confidence": ["alta", "media", ...]
 }
+
+Livelli di confidenza (scegli uno per ogni articolo):
+- "alta"  → descrizione chiara, classificazione certa
+- "media" → classificazione probabile, ma qualche ambiguità di contesto
+- "bassa" → descrizione troppo generica/vaga/in codice per essere certa (es. "VARIE", "ASSORTITI", "PRODOTTO 01", solo un codice numerico)
+             Anche con confidence "bassa" scegli comunque la categoria più probabile.
 
 Mantieni lo STESSO ordine degli articoli forniti.
 Usa esattamente i nomi categoria sopra (26 food + MATERIALE DI CONSUMO + 3 spese = 30 categorie).

@@ -44,6 +44,7 @@ from services.notification_inbox_service import (
     build_notification_record,
     upsert_inbox_notifications,
 )
+from services.tag_suggestion_service import run_tag_suggestion_pipeline
 from utils.validation import classify_special_row, is_dicitura_sicura
 from utils.text_utils import get_descrizione_normalizzata_e_originale
 
@@ -1937,6 +1938,26 @@ def handle_uploaded_files(uploaded_files, supabase, user_id):
                     except Exception as radar_err:
                         logger.warning(
                             f'Radar anomalie upload fallito (non critico): {radar_err}'
+                        )
+
+                    # Suggerimenti Tag - esecuzione non critica post-upload
+                    try:
+                        tag_result = run_tag_suggestion_pipeline(
+                            user_id=_inbox_uid,
+                            ristorante_id=_inbox_rid,
+                            supabase_client=supabase,
+                        )
+                        if tag_result.get('success'):
+                            logger.info(
+                                "Tag suggestions pipeline: total=%s new=%s extend=%s notif=%s",
+                                tag_result.get('total_suggestions'),
+                                tag_result.get('new_tag_suggestions'),
+                                tag_result.get('extend_tag_suggestions'),
+                                tag_result.get('notification_records'),
+                            )
+                    except Exception as tag_err:
+                        logger.warning(
+                            f'Tag suggestion pipeline fallita (non critico): {tag_err}'
                         )
             except Exception as _inbox_exc:
                 logger.warning(f"[INBOX] Errore ingestion post-upload (non critico): {_inbox_exc}")

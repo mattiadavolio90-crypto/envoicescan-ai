@@ -133,7 +133,7 @@ if st.session_state.margine_tab == "analisi":
 
     from config.constants import CENTRI_DI_PRODUZIONE
 
-    st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 1px;'></div>", unsafe_allow_html=True)
 
     # ============================================
     # FILTRO TEMPORALE (stile identico ad Analisi Fatture)
@@ -1136,7 +1136,7 @@ if st.session_state.margine_tab == "analisi":
 
 if st.session_state.margine_tab == "calcolo":
 
-    st.markdown("<div style='margin-top: 24px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='margin-top: 1px;'></div>", unsafe_allow_html=True)
 
     # Anno fisso: anno corrente
     anno_corrente = datetime.now().year

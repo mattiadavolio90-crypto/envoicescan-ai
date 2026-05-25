@@ -1061,59 +1061,7 @@ def build_controllo_prezzi_notifications(
                 'action_state_value': 'variazioni',
             })
 
-        # 4) fornitore_unico_categoria
-        tenant_count_resp = (
-            sb.table('fatture')
-            .select('id', count='exact')
-            .eq('user_id', user_id)
-            .eq('ristorante_id', ristorante_id)
-            .is_('deleted_at', 'null')
-            .limit(1)
-            .execute()
-        )
-        total_tenant_rows = int(getattr(tenant_count_resp, 'count', 0) or 0)
-        if total_tenant_rows >= 30:
-            since_60 = (today - timedelta(days=60)).isoformat()
-            cat_rows = (
-                sb.table('fatture')
-                .select('categoria,fornitore,piva_cedente,data_documento')
-                .eq('user_id', user_id)
-                .eq('ristorante_id', ristorante_id)
-                .gte('data_documento', since_60)
-                .is_('deleted_at', 'null')
-                .execute().data or []
-            )
-
-            critiche = {'CARNE', 'PESCE', 'LATTICINI', 'SALUMI', 'PRODOTTI DA FORNO'}
-            categoria_supplier: Dict[str, Dict[str, str]] = {cat: {} for cat in critiche}
-            for row in cat_rows:
-                categoria = str(row.get('categoria') or '').strip().upper()
-                if categoria not in critiche:
-                    continue
-                piva = str(row.get('piva_cedente') or '').strip()
-                if not _piva_is_valid(piva):
-                    continue
-                fornitore = str(row.get('fornitore') or piva).strip() or piva
-                categoria_supplier[categoria][piva] = fornitore
-
-            for categoria in sorted(critiche):
-                suppliers = categoria_supplier.get(categoria) or {}
-                if len(suppliers) != 1:
-                    continue
-                _, fornitore = next(iter(suppliers.items()))
-                notifications.append({
-                    'id': f"fornitore-unico-{categoria.lower().replace(' ', '-')}",
-                    'level': 'info',
-                    'icon': '⚠️',
-                    'title': f'Fornitore unico per {categoria}',
-                    'body': (
-                        f'Per {categoria} risulta attivo un solo fornitore negli ultimi 60 giorni ({fornitore}). '
-                        'Considera di diversificare per ridurre il rischio di fornitura.'
-                    ),
-                    'toast': f'Fornitore unico: {categoria}',
-                    'action_label': 'Vai alla pagina',
-                    'action_page': 'pages/3_controllo_prezzi.py',
-                })
+        # Notifica "fornitore_unico_categoria" dismessa per scelta prodotto.
 
         return notifications
     except Exception as exc:
@@ -1248,3 +1196,81 @@ def build_efficiency_spesa_notifications(
         })
 
     return notifications
+
+
+def build_da_classificare_notifications(
+    user_id: str,
+    ristorante_id: Optional[str],
+    supabase_client=None,
+) -> List[Dict[str, Any]]:
+    """Notifica persistente per righe fattura che richiedono classificazione manuale.
+
+    Conta le righe con needs_review=True (oppure categoria NULL/vuota/'Da Classificare')
+    che non sono state ancora risolte dall'utente. Se presenti, restituisce una notifica
+    di tipo 'warning' con il conteggio e un link alla pagina di gestione.
+    """
+    if not user_id:
+        return []
+    try:
+        if supabase_client is None:
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
+
+        # Conta righe che richiedono review: needs_review=True o categoria assente
+        query = (
+            supabase_client.table('fatture')
+            .select('id', count='exact')
+            .eq('user_id', user_id)
+            .is_('deleted_at', 'null')
+            .or_('needs_review.eq.true,categoria.is.null,categoria.eq.')
+        )
+        if ristorante_id:
+            query = query.eq('ristorante_id', ristorante_id)
+        result = query.limit(0).execute()
+        count = getattr(result, 'count', None)
+        if count is None or count <= 0:
+            return []
+
+        # Recupera esempi (max 5 descrizioni)
+        sample_query = (
+            supabase_client.table('fatture')
+            .select('descrizione')
+            .eq('user_id', user_id)
+            .is_('deleted_at', 'null')
+            .or_('needs_review.eq.true,categoria.is.null,categoria.eq.')
+        )
+        if ristorante_id:
+            sample_query = sample_query.eq('ristorante_id', ristorante_id)
+        sample_result = sample_query.limit(5).execute()
+        examples = []
+        seen_desc: set = set()
+        for row in (sample_result.data or []):
+            desc = str(row.get('descrizione') or '').strip()
+            if desc and desc not in seen_desc:
+                examples.append(_html.escape(desc))
+                seen_desc.add(desc)
+
+        righe_label = _pluralize(count, 'riga richiede', 'righe richiedono')
+        body = (
+            f"{count} {righe_label} classificazione manuale perché la descrizione è "
+            "ambigua o troppo generica per una categorizzazione automatica affidabile."
+        )
+        if examples:
+            body += "<br/>Esempi:<br/>• " + "<br/>• ".join(examples)
+
+        return [{
+            'id': f'da-classificare-{user_id[:8]}-{ristorante_id or "all"}',
+            'level': 'warning',
+            'icon': '🏷️',
+            'title': f'{count} {_pluralize(count, "prodotto da classificare", "prodotti da classificare")}',
+            'body': body,
+            'toast': (
+                f'{count} {_pluralize(count, "riga da classificare", "righe da classificare")} '
+                f'richied{_pluralize(count, "e", "ono")} attenzione'
+            ),
+            'action_label': 'Vai alla gestione',
+            'action_page': 'pages/5_notifiche_e_gestione.py',
+        }]
+    except Exception as exc:
+        logger.warning(f'Errore build_da_classificare_notifications: {exc}')
+        return []

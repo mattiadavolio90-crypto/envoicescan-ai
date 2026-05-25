@@ -98,6 +98,65 @@ def classifica_via_worker(
     )
 
 
+def classifica_via_worker_con_confidenza(
+    descrizioni: List[str],
+    fornitori: Optional[List[str]] = None,
+    iva: Optional[List[int]] = None,
+    hint: Optional[List[Optional[str]]] = None,
+    user_id: Optional[str] = None,
+    ristorante_id: Optional[str] = None,
+) -> tuple:
+    """Come classifica_via_worker, ma ritorna (categorie, confidenze) come tuple.
+
+    Le confidenze sono 'alta', 'media' o 'bassa' (una per descrizione).
+    Se il worker HTTP non supporta ancora la confidence, usa 'media' come default.
+    """
+    base = _worker_base_url()
+    if base:
+        try:
+            resp = requests.post(
+                f"{base}/api/classify",
+                json={
+                    "descrizioni": descrizioni,
+                    "fornitori": fornitori,
+                    "iva": iva,
+                    "hint": hint,
+                    "user_id": user_id,
+                    "ristorante_id": ristorante_id,
+                },
+                headers={"X-Worker-Key": _WORKER_KEY} if _WORKER_KEY else {},
+                timeout=_CLASSIFY_TIMEOUT,
+            )
+            if 400 <= resp.status_code < 500:
+                resp.raise_for_status()
+            resp.raise_for_status()
+            payload = resp.json()
+            categorie = payload["categorie"]
+            # Retrocompatibilità: worker più vecchi non includono "confidenze"
+            confidenze = payload.get("confidenze") or ["media"] * len(categorie)
+            logger.info(
+                f"✅ Worker classify (con confidenza): {len(categorie)} prodotti"
+                + (f" user_id={user_id}" if user_id else "")
+            )
+            return categorie, confidenze
+        except Exception as exc:
+            logger.warning(
+                f"⚠️ Worker classify non disponibile ({exc}), uso locale",
+                exc_info=False,
+            )
+
+    # ── Fallback: classificazione locale diretta ──────────────────────────
+    from services.ai_service import classifica_con_ai  # import locale per evitare circolarità
+    return classifica_con_ai(
+        descrizioni,
+        lista_fornitori=fornitori,
+        lista_iva=iva,
+        lista_hint=hint,
+        ristorante_id=ristorante_id,
+        return_confidenze=True,
+    )
+
+
 def parse_file_via_worker(
     file: Any,
     nome_file: str,

@@ -29,6 +29,7 @@ logger = logging.getLogger("fci_app")
 try:
     from services.notification_service import (
         build_controllo_prezzi_notifications,
+        build_da_classificare_notifications,
         build_food_cost_notifications,
         build_credit_note_notifications,
         build_monthly_data_notifications,
@@ -46,6 +47,7 @@ except ImportError:
     _notification_module = importlib.import_module('services.notification_service')
 
     build_controllo_prezzi_notifications   = _notification_module.build_controllo_prezzi_notifications
+    build_da_classificare_notifications    = _notification_module.build_da_classificare_notifications
     build_food_cost_notifications          = _notification_module.build_food_cost_notifications
     build_credit_note_notifications        = _notification_module.build_credit_note_notifications
     build_monthly_data_notifications       = _notification_module.build_monthly_data_notifications
@@ -59,6 +61,7 @@ except ImportError:
 
 from services.notification_inbox_service import (
     build_notification_record,
+    dismiss_inbox_topics,
     upsert_inbox_notifications,
 )
 
@@ -166,6 +169,13 @@ def build_operational_notifications(
                 ristorante_id=ristorante_id,
             )
         )
+        _db_notifs.extend(
+            build_da_classificare_notifications(
+                user_id=user_id,
+                ristorante_id=ristorante_id,
+                supabase_client=supabase,
+            )
+        )
         if not is_impersonating:
             _db_notifs.extend(
                 build_food_cost_notifications(
@@ -240,6 +250,17 @@ def ingest_notifications_to_inbox(
         if not (_inbox_op_uid and _inbox_op_rid):
             return
 
+        # Cleanup one-shot di topic dismessi dal prodotto.
+        _cleanup_key = f"_inbox_cleanup_done::{_inbox_op_uid}::{_inbox_op_rid}"
+        if not st.session_state.get(_cleanup_key):
+            dismiss_inbox_topics(
+                user_id=_inbox_op_uid,
+                ristorante_id=_inbox_op_rid,
+                topic_keys=['fornitore_unico_categoria'],
+                supabase_client=supabase,
+            )
+            st.session_state[_cleanup_key] = True
+
         # Mappa id-prefix → (topic_key, severity default)
         _INBOX_OP_TOPIC_MAP = {
             'missing-revenue-':    ('fatturato_mancante',            'warning'),
@@ -253,7 +274,6 @@ def ingest_notifications_to_inbox(
             'nc-non-usata-':       ('nota_credito_non_usata',         'info'),
             'sconto-scaduto-':     ('sconto_fornitore_scaduto',       'info'),
             'record-prezzo-':      ('prezzo_prodotto_record_storico', 'warning'),
-            'fornitore-unico-':    ('fornitore_unico_categoria',      'info'),
             'piva-mancante-':      ('piva_fornitore_mancante',        'info'),
         }
         _level_to_severity = {'warning': 'warning', 'error': 'error', 'info': 'info'}

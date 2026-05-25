@@ -33,7 +33,7 @@ from services.ai_service import (
     ottieni_hint_per_ai,
     aggiorna_streak_classificazione,
 )
-from services.worker_client import classifica_via_worker
+from services.worker_client import classifica_via_worker, classifica_via_worker_con_confidenza
 from services.db_service import calcola_spesa_mensile_aggregata
 
 from components.category_editor import render_category_editor
@@ -534,7 +534,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             </div>
                             """, unsafe_allow_html=True)
                             try:
-                                cats = classifica_via_worker(
+                                cats, confs = classifica_via_worker_con_confidenza(
                                     chunk,
                                     fornitori=[desc_to_fornitore.get(d, '') for d in chunk],
                                     iva=[desc_to_iva.get(d, 0) for d in chunk],
@@ -545,17 +545,20 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             except Exception as ai_exc:
                                 logger.error(f"❌ classifica_via_worker fallita per chunk {_chunk_num}: {ai_exc}")
                                 cats = ["Da Classificare"] * len(chunk)
+                                confs = ["bassa"] * len(chunk)
                             st.session_state['_ai_budget_calls'] = st.session_state.get('_ai_budget_calls', 0) + 1
                             ai_batch_upsert = []
-                            for desc, cat in zip(chunk, cats):
+                            needs_review_row_ids = []  # righe Da Classificare o bassa confidence
+                            for desc, cat, conf in zip(chunk, cats, confs):
                                 cat, override_reason = applica_regole_categoria_forti(desc, cat)
                                 if override_reason:
+                                    conf = "alta"  # override sicurezza → alta
                                     logger.info(
                                         f"🧭 OVERRIDE SICUREZZA (AI): '{desc[:TRUNCATE_DESC_LOG]}' -> {cat} [{override_reason}]"
                                     )
                                 mappa_categorie[desc] = cat
                                 prodotti_elaborati += 1
-                            
+
                                 # 🧠 Aggiorna banner dopo ogni prodotto (AI step: nessuna soglia)
                                 percentuale = (prodotti_elaborati / totale_da_classificare) * 100
                                 if prodotti_elaborati % 5 == 0 or prodotti_elaborati == totale_da_classificare:
@@ -566,8 +569,19 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                         <div class="progress-status">{prodotti_elaborati} di {totale_da_classificare} prodotti</div>
                                     </div>
                                     """, unsafe_allow_html=True)
-                                
-                                if cat and cat != "Da Classificare":
+
+                                # Raccoglie righe Da Classificare o bassa confidence per needs_review
+                                _is_da_class = (cat == "Da Classificare")
+                                _is_bassa = (conf == "bassa")
+                                if _is_da_class or _is_bassa:
+                                    _row_ids_for_review = desc_to_row_ids.get(desc) or []
+                                    needs_review_row_ids.extend(_row_ids_for_review)
+                                    if _is_da_class:
+                                        logger.info(f"⏭️ Da Classificare (needs_review): '{desc[:TRUNCATE_DESC_LOG]}'")
+                                    else:
+                                        logger.info(f"⚠️ Confidence bassa (needs_review): '{desc[:TRUNCATE_DESC_LOG]}' → {cat}")
+
+                                if cat and cat != "Da Classificare" and conf != "bassa":
                                     # 🛡️ QUARANTENA: Escludi descrizioni €0 dalla memoria locale automatica
                                     if desc not in _descrizioni_con_prezzo_zero:
                                         ai_batch_upsert.append({
@@ -592,6 +606,15 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                     logger.info(f"💾 BATCH AI LOCALE: {_ai_saved}/{len(ai_batch_upsert)} prodotti salvati in memoria utente")
                                 except Exception as e:
                                     logger.error(f"Errore batch salvataggio memoria locale AI: {e}")
+
+                            # ⚠️ Batch UPDATE needs_review=True per Da Classificare / bassa confidence
+                            if needs_review_row_ids:
+                                try:
+                                    _nr_ids = list(set(needs_review_row_ids))
+                                    supabase.table('fatture').update({'needs_review': True}).in_('id', _nr_ids).execute()
+                                    logger.info(f"⚠️ NEEDS_REVIEW: {len(_nr_ids)} righe marcate per review manuale")
+                                except Exception as e:
+                                    logger.error(f"Errore batch update needs_review: {e}")
                         
                         # Invalida cache una sola volta dopo tutti i chunk
                         invalida_cache_memoria()
@@ -619,12 +642,16 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         # Invece di 1 query per descrizione (N+1), facciamo 1 query per categoria
                         cat_to_descs = {}  # {categoria: [descrizione, ...]}
                         cat_to_row_ids = {}  # {categoria: set(row_id, ...)}
+                        da_classificare_row_ids = []  # righe con cat=Da Classificare da marcare needs_review
                         for desc, cat in mappa_categorie.items():
                             if not cat or cat.strip() == '':
                                 logger.warning(f"⚠️ Categoria vuota/NULL per '{desc[:TRUNCATE_DESC_LOG]}', skip update")
                                 continue
                             if cat == "Da Classificare":
-                                logger.info(f"⏭️ Skip update per '{desc[:TRUNCATE_DESC_LOG]}' → già Da Classificare")
+                                # non aggiorniamo categoria, ma marchiamo needs_review
+                                _dc_ids = desc_to_row_ids.get(desc) or []
+                                da_classificare_row_ids.extend(_dc_ids)
+                                logger.info(f"⏭️ Skip update categoria per '{desc[:TRUNCATE_DESC_LOG]}' → Da Classificare (needs_review=""True"" impostato)")
                                 continue
                             cat_to_descs.setdefault(cat, []).append(desc)
                             row_ids = desc_to_row_ids.get(desc) or []
@@ -815,6 +842,15 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         except Exception as fb_err:
                             logger.warning(f"Errore fallback categorizzazione: {fb_err}")
                         
+                        # ⚠️ Batch UPDATE needs_review=True per righe Da Classificare (da update-loop)
+                        if da_classificare_row_ids:
+                            try:
+                                _dc_ids_unique = list(set(da_classificare_row_ids))
+                                supabase.table('fatture').update({'needs_review': True}).in_('id', _dc_ids_unique).execute()
+                                logger.info(f"⚠️ NEEDS_REVIEW (update-loop): {len(_dc_ids_unique)} righe Da Classificare marcate")
+                            except Exception as _nr_err:
+                                logger.error(f"Errore batch update needs_review (Da Classificare): {_nr_err}")
+
                         # ✅ Pulisci placeholder progress
                         progress_placeholder.empty()
                         
