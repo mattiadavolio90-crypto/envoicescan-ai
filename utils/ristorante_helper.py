@@ -113,13 +113,37 @@ def add_ristorante_filter(query, ristorante_id=None):
         raise
 
 
+def _ensure_ristorante_session() -> None:
+    """
+    Se ristorante_id manca dalla sessione ma l'utente è loggato,
+    carica i ristoranti dal DB tramite init_ristoranti_session.
+    Idempotente: noop se ristorante_id è già presente.
+    Usato dalle pagine che possono essere aperte direttamente senza passare per app.py.
+    """
+    if st.session_state.get('ristorante_id'):
+        return
+    if not st.session_state.get('logged_in') or not st.session_state.get('user_data'):
+        return
+    try:
+        from services import get_supabase_client
+        from controllers.session_controller import init_ristoranti_session
+        supabase = get_supabase_client()
+        if supabase:
+            init_ristoranti_session(supabase, st.session_state.user_data)
+    except Exception as e:
+        logger.warning(f"_ensure_ristorante_session: impossibile inizializzare ristorante: {e}")
+
+
 def get_current_ristorante_id():
     """
     Recupera ristorante_id corrente dalla sessione.
-    
+    Se non è ancora stato inizializzato (utente arrivato direttamente su una pagina
+    secondaria senza passare per app.py), lo carica automaticamente dal DB.
+
     Returns:
         str: UUID del ristorante o None
     """
+    _ensure_ristorante_session()
     try:
         return st.session_state.get('ristorante_id')
     except Exception as e:
