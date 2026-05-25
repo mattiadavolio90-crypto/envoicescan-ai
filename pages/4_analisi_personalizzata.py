@@ -988,8 +988,6 @@ elif st.session_state.ap_tab_attivo == "gestione":
         st.session_state[_sugg_refresh_key] = _now_ts
 
     _pending_suggestions = list_pending_tag_suggestions(user_id=user_id, ristorante_id=current_ristorante)
-    _pending_new = [s for s in _pending_suggestions if s.get('suggestion_type') == 'new_tag']
-    _pending_extend = [s for s in _pending_suggestions if s.get('suggestion_type') == 'extend_tag']
     _tag_label_by_id = {int(t['id']): _tag_label(t) for t in custom_tags if t.get('id') is not None}
 
     _orfani_associazioni = []
@@ -999,16 +997,6 @@ elif st.session_state.ap_tab_attivo == "gestione":
         if _assoc_sel:
             _orfani_associazioni = _compute_orfani(df_all_cached, _assoc_sel)
     _orfani_count = len(_orfani_associazioni)
-
-    col_s1, col_s2, col_s3, col_s4 = st.columns(4)
-    with col_s1:
-        st.metric("Nuovi Tag Suggeriti", f"{len(_pending_new)}")
-    with col_s2:
-        st.metric("Estensioni Tag", f"{len(_pending_extend)}")
-    with col_s3:
-        st.metric("Totale Suggerimenti", f"{len(_pending_suggestions)}")
-    with col_s4:
-        st.metric("Associazioni Da Rivedere", f"{_orfani_count}")
 
     if _orfani_count > 0:
         with st.expander(
@@ -1273,7 +1261,7 @@ elif st.session_state.ap_tab_attivo == "gestione":
 
 
     st.markdown("<div style='margin-top: 1.2rem;'></div>", unsafe_allow_html=True)
-    st.markdown('<h3 style="color:#1e40af; font-weight:700;">🔎 Cerca Prodotti da Fatture</h3>', unsafe_allow_html=True)
+    st.markdown('<h3 style="color:#1e40af; font-weight:700;">🔎 Cerca Prodotti da Inserire nel Tag</h3>', unsafe_allow_html=True)
 
     df_descrizioni_source = df_all_cached
     if "Categoria" not in df_descrizioni_source.columns:
@@ -1292,63 +1280,74 @@ elif st.session_state.ap_tab_attivo == "gestione":
         Fornitore=df_descrizioni_source["Fornitore"].fillna("").astype(str).str.strip(),
     )
 
-    col_tipo, col_search_type, col_search = st.columns([2, 2, 3])
+    with st.container(key="ap_search_filters_row"):
+        col_tipo, col_search_type, col_search = st.columns([2, 2, 3])
 
-    with col_tipo:
-        tipo_filtro = st.selectbox(
-            "📦 Tipo Prodotti:",
-            options=["Food & Beverage", "Spese Generali", "Tutti"],
-            key="ap_tipo_filtro_prodotti",
-            help="Filtra per tipologia di prodotto",
-        )
+        with col_tipo:
+            st.markdown("📦 Tipo Prodotti:")
+            tipo_filtro = st.selectbox(
+                "Tipo Prodotti",
+                options=["Food & Beverage", "Spese Generali", "Tutti"],
+                key="ap_tipo_filtro_prodotti",
+                help="Filtra per tipologia di prodotto",
+                label_visibility="collapsed",
+            )
 
-    df_descrizioni_source = _apply_tipo_filtro(df_descrizioni_source, tipo_filtro)
+        df_descrizioni_source = _apply_tipo_filtro(df_descrizioni_source, tipo_filtro)
 
-    with col_search_type:
-        search_type = st.selectbox(
-            "🔍 Cerca per:",
-            options=["Prodotto", "Categoria", "Fornitore"],
-            key="ap_search_type",
-        )
+        with col_search_type:
+            st.markdown("🔍 Cerca per:")
+            search_type = st.selectbox(
+                "Cerca per",
+                options=["Prodotto", "Categoria", "Fornitore"],
+                key="ap_search_type",
+                label_visibility="collapsed",
+            )
 
-    with col_search:
-        if search_type == "Prodotto":
-            search_term = st.text_input(
-                "🔍 Cerca nella descrizione:",
-                placeholder="Es: pollo, salmone, caffè...",
-                key="ap_search_prodotto_text",
-            ).strip()
-            if search_term:
-                df_descrizioni_source = df_descrizioni_source[
-                    df_descrizioni_source["Descrizione"].astype(str).str.contains(search_term, case=False, na=False)
-                    | df_descrizioni_source["descrizione_key"].astype(str).str.contains(search_term, case=False, na=False)
-                ].copy()
-        elif search_type == "Categoria":
-            categoria_options = ["— Tutte le categorie —"] + sorted(
-                cat for cat in df_descrizioni_source["Categoria"].dropna().unique().tolist() if str(cat).strip()
-            )
-            categoria_sel = st.selectbox(
-                "🔍 Cerca per categoria:",
-                options=categoria_options,
-                key="ap_search_prodotto_cat",
-            )
-            if categoria_sel != "— Tutte le categorie —":
-                df_descrizioni_source = df_descrizioni_source[
-                    df_descrizioni_source["Categoria"] == categoria_sel
-                ].copy()
-        else:
-            fornitore_options = ["— Tutti i fornitori —"] + sorted(
-                forn for forn in df_descrizioni_source["Fornitore"].dropna().unique().tolist() if str(forn).strip()
-            )
-            fornitore_sel = st.selectbox(
-                "🔍 Cerca per fornitore:",
-                options=fornitore_options,
-                key="ap_search_prodotto_forn",
-            )
-            if fornitore_sel != "— Tutti i fornitori —":
-                df_descrizioni_source = df_descrizioni_source[
-                    df_descrizioni_source["Fornitore"] == fornitore_sel
-                ].copy()
+        with col_search:
+            if search_type == "Prodotto":
+                st.markdown("🔍 Cerca nella descrizione:")
+                search_term = st.text_input(
+                    "Cerca nella descrizione",
+                    placeholder="Es: pollo, salmone, caffè...",
+                    key="ap_search_prodotto_text",
+                    label_visibility="collapsed",
+                ).strip()
+                if search_term:
+                    df_descrizioni_source = df_descrizioni_source[
+                        df_descrizioni_source["Descrizione"].astype(str).str.contains(search_term, case=False, na=False)
+                        | df_descrizioni_source["descrizione_key"].astype(str).str.contains(search_term, case=False, na=False)
+                    ].copy()
+            elif search_type == "Categoria":
+                st.markdown("🔍 Cerca per categoria:")
+                categoria_options = ["— Tutte le categorie —"] + sorted(
+                    cat for cat in df_descrizioni_source["Categoria"].dropna().unique().tolist() if str(cat).strip()
+                )
+                categoria_sel = st.selectbox(
+                    "Cerca per categoria",
+                    options=categoria_options,
+                    key="ap_search_prodotto_cat",
+                    label_visibility="collapsed",
+                )
+                if categoria_sel != "— Tutte le categorie —":
+                    df_descrizioni_source = df_descrizioni_source[
+                        df_descrizioni_source["Categoria"] == categoria_sel
+                    ].copy()
+            else:
+                st.markdown("🔍 Cerca per fornitore:")
+                fornitore_options = ["— Tutti i fornitori —"] + sorted(
+                    forn for forn in df_descrizioni_source["Fornitore"].dropna().unique().tolist() if str(forn).strip()
+                )
+                fornitore_sel = st.selectbox(
+                    "Cerca per fornitore",
+                    options=fornitore_options,
+                    key="ap_search_prodotto_forn",
+                    label_visibility="collapsed",
+                )
+                if fornitore_sel != "— Tutti i fornitori —":
+                    df_descrizioni_source = df_descrizioni_source[
+                        df_descrizioni_source["Fornitore"] == fornitore_sel
+                    ].copy()
 
     filtered_keys = set(df_descrizioni_source["descrizione_key"].dropna().tolist())
     filtered_descrizioni = [
@@ -1393,7 +1392,7 @@ elif st.session_state.ap_tab_attivo == "gestione":
     if not filtered_descrizioni:
         st.info("📭 Nessun prodotto trovato con i filtri applicati.")
     else:
-        with st.container(height=520, border=True):
+        with st.container(border=True, key="ap_prodotti_scroll_box"):
             for idx, row in enumerate(filtered_descrizioni):
                 descrizione_key = row["descrizione_key"]
                 existing_selection = st.session_state.ap_selected_descrizioni

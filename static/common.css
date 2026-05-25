@@ -867,6 +867,29 @@ div[data-testid="stTextInput"] label p {
 /* ============================================================
    4_ANALISI PERSONALIZZATA — expander Gestione Tag (azzurro) + delete buttons
    ============================================================ */
+div.st-key-ap_search_filters_row [data-testid="column"] [data-testid="stMarkdownContainer"] p {
+    margin: 0 0 0.28rem 0 !important;
+    line-height: 1.2 !important;
+    color: #1e3a8a !important;
+    font-weight: 600 !important;
+}
+div.st-key-ap_search_filters_row [data-testid="column"] [data-testid="stSelectbox"],
+div.st-key-ap_search_filters_row [data-testid="column"] [data-testid="stTextInput"] {
+    margin-top: 0 !important;
+}
+
+div.st-key-ap_prodotti_scroll_box {
+    max-height: 520px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    z-index: 0;
+    contain: layout paint;
+}
+div.st-key-ap_prodotti_scroll_box [data-testid="stVerticalBlock"] {
+    gap: 0.2rem;
+}
+
 div.st-key-ap_gestione_tag_section div[data-testid="stExpander"] {
     background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
     border: 1px solid #93c5fd;
