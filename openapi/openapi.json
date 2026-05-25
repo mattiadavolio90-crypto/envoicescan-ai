@@ -1,0 +1,367 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ONEFLUX — Worker API",
+    "description": "Worker API per classificazione AI e parsing fatture. Usato da Streamlit come backend separato in Fase 3 (50+ utenti).",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Health check",
+        "description": "Endpoint di health check — usato da Docker healthcheck e load balancer.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Stato del worker",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/classify": {
+      "post": {
+        "tags": [
+          "AI"
+        ],
+        "summary": "Classificazione AI prodotti",
+        "description": "Classifica una lista di descrizioni prodotti usando GPT con memoria Supabase.\n\n- Carica automaticamente la memoria classificazioni dell'utente (se `user_id` fornito)\n- Applica correzioni dizionario prima della risposta\n- Ritorna le categorie nello stesso ordine dell'input",
+        "operationId": "classify_api_classify_post",
+        "parameters": [
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifyResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Payload non valido"
+          },
+          "429": {
+            "description": "Rate limit superato"
+          },
+          "500": {
+            "description": "Errore interno classificazione"
+          }
+        }
+      }
+    },
+    "/api/parse": {
+      "post": {
+        "tags": [
+          "Parsing"
+        ],
+        "summary": "Parsing fattura XML / P7M",
+        "description": "Estrae le righe prodotto da una fattura elettronica XML o P7M.\n\n- Supporta XML fattura elettronica italiana (FatturaPA)\n- Supporta P7M (busta CAdES — estrae XML interno automaticamente)\n- Categorizza automaticamente con memoria utente (keyword + DB)\n- Non richiede Streamlit session_state — user_id passato esplicitamente",
+        "operationId": "parse_invoice_api_parse_post",
+        "parameters": [
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_parse_invoice_api_parse_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "File non valido o formato non supportato"
+          },
+          "429": {
+            "description": "Rate limit superato"
+          },
+          "500": {
+            "description": "Errore interno parsing"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Body_parse_invoice_api_parse_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "description": "File XML o P7M (fattura elettronica italiana)"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id",
+            "description": "ID utente per precarico memoria"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_parse_invoice_api_parse_post"
+      },
+      "ClassifyRequest": {
+        "properties": {
+          "descrizioni": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Descrizioni",
+            "description": "Lista descrizioni prodotti da classificare (max 200)"
+          },
+          "fornitori": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fornitori",
+            "description": "Lista fornitori (allineata con descrizioni)"
+          },
+          "iva": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iva",
+            "description": "Lista aliquote IVA % (4, 10, 22)"
+          },
+          "hint": {
+            "anyOf": [
+              {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hint",
+            "description": "Lista hint categoria (o null)"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id",
+            "description": "ID utente — usato per caricare memoria classificazioni"
+          },
+          "ristorante_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ristorante Id",
+            "description": "ID ristorante — usato per rate limit giornaliero AI"
+          }
+        },
+        "type": "object",
+        "required": [
+          "descrizioni"
+        ],
+        "title": "ClassifyRequest",
+        "example": {
+          "descrizioni": [
+            "FARINA 00 KG 25",
+            "VINO CHIANTI 0.75L"
+          ],
+          "fornitori": [
+            "MOLINO SPADONI",
+            "ANTINORI"
+          ],
+          "hint": [
+            null,
+            "BEVANDE"
+          ],
+          "iva": [
+            10,
+            22
+          ],
+          "ristorante_id": "rist-456",
+          "user_id": "abc-123"
+        }
+      },
+      "ClassifyResponse": {
+        "properties": {
+          "categorie": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Categorie"
+          },
+          "confidenze": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidenze"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "title": "Elapsed Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "categorie",
+          "count",
+          "elapsed_ms"
+        ],
+        "title": "ClassifyResponse"
+      },
+      "ParseResponse": {
+        "properties": {
+          "fatture": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Fatture"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "title": "Elapsed Ms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fatture",
+          "count",
+          "elapsed_ms"
+        ],
+        "title": "ParseResponse"
+      }
+    }
+  }
+}

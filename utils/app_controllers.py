@@ -64,6 +64,7 @@ from services.db_service import (
     clear_fatture_cache,
     elimina_fattura_completa,
     elimina_tutte_fatture,
+    filter_active,
     get_fatture_stats,
 )
 from services.ai_service import invalida_cache_memoria, mostra_loading_ai
@@ -1370,7 +1371,7 @@ def render_dashboard_ui(supabase, logger, user):
                                 try:
                                     verify_query = supabase.table("fatture").select("id", count="exact").eq("user_id", user_id)
                                     if use_soft_delete:
-                                        verify_query = verify_query.is_("deleted_at", "null")
+                                        verify_query = filter_active(verify_query)
                                     verify_query = add_ristorante_filter(verify_query)
                                     verify = verify_query.execute()
                                     num_residue = verify.count or 0

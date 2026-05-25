@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
 from config.logger_setup import get_logger
+from services.db_service import filter_active
 
 logger = get_logger("documenti")
 
@@ -243,10 +244,8 @@ try:
             )
             .eq("user_id", user_id)
             .eq("ristorante_id", ristorante_id)
-            .is_("deleted_at", "null")
-            .order("scadenza_effettiva", desc=False)
-            .order("created_at", desc=True)
         )
+        query = filter_active(query).order("scadenza_effettiva", desc=False).order("created_at", desc=True)
         resp = query.execute()
         return resp.data or []
 except Exception:
@@ -264,10 +263,8 @@ except Exception:
             )
             .eq("user_id", user_id)
             .eq("ristorante_id", ristorante_id)
-            .is_("deleted_at", "null")
-            .order("scadenza_effettiva", desc=False)
-            .order("created_at", desc=True)
         )
+        query = filter_active(query).order("scadenza_effettiva", desc=False).order("created_at", desc=True)
         resp = query.execute()
         return resp.data or []
 
@@ -313,13 +310,14 @@ def _applica_regole_fornitore(
                 sb = supabase_client or get_supabase_client()
                 if _piva_key:
                     query = (
-                        sb.table("fornitori_pagamenti_config")
-                        .select("giorni_pagamento,data_riferimento,modalita")
-                        .eq("user_id", user_id)
-                        .eq("ristorante_id", ristorante_id)
-                        .eq("piva_fornitore", _piva_key)
-                        .eq("attiva", True)
-                        .is_("deleted_at", "null")
+                        filter_active(
+                            sb.table("fornitori_pagamenti_config")
+                            .select("giorni_pagamento,data_riferimento,modalita")
+                            .eq("user_id", user_id)
+                            .eq("ristorante_id", ristorante_id)
+                            .eq("piva_fornitore", _piva_key)
+                            .eq("attiva", True)
+                        )
                         .limit(1)
                         .execute()
                     )
@@ -779,11 +777,12 @@ def segna_fattura_pagata(
             payload["pagata_at"] = None
 
         resp = (
-            sb.table("fatture_documenti")
-            .update(payload)
-            .eq("user_id", str(user_id))
-            .eq("ristorante_id", str(ristorante_id))
-            .is_("deleted_at", "null")
+            filter_active(
+                sb.table("fatture_documenti")
+                .update(payload)
+                .eq("user_id", str(user_id))
+                .eq("ristorante_id", str(ristorante_id))
+            )
             .eq("file_origine", _file_target)
             .execute()
         )
@@ -792,11 +791,12 @@ def segna_fattura_pagata(
         # Fallback robusto: intercetta mismatch su maiuscole/spazi nel file_origine.
         if not updated_rows:
             lookup = (
-                sb.table("fatture_documenti")
-                .select("id,file_origine")
-                .eq("user_id", str(user_id))
-                .eq("ristorante_id", str(ristorante_id))
-                .is_("deleted_at", "null")
+                filter_active(
+                    sb.table("fatture_documenti")
+                    .select("id,file_origine")
+                    .eq("user_id", str(user_id))
+                    .eq("ristorante_id", str(ristorante_id))
+                )
                 .execute()
             )
             matched_id = None

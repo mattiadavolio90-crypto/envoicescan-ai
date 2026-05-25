@@ -434,7 +434,8 @@ if st.session_state.cp_tab_attivo == "variazioni":
             df_display,
             use_container_width=True,
             height=altezza_alert,
-            hide_index=True
+            hide_index=True,
+            column_config={col: st.column_config.TextColumn(col) for col in df_display.columns},
         )
 
         # Export Excel
@@ -473,8 +474,9 @@ if st.session_state.cp_tab_attivo == "variazioni":
 
     _has_alerts = not df_alert.empty
     _scope_options = ["Solo con alert", "Tutti i prodotti"] if _has_alerts else ["Tutti i prodotti"]
-    if st.session_state.get('cp_scope_grafico') not in _scope_options:
-        st.session_state['cp_scope_grafico'] = _scope_options[0]
+    _current_scope = st.session_state.get('cp_scope_grafico', _scope_options[0])
+    if _current_scope not in _scope_options:
+        _current_scope = _scope_options[0]
 
     PERIODI = {"Ultimi 30 giorni": 30, "Ultimi 90 giorni": 90, "Ultimi 180 giorni": 180, "Tutto": 0}
 
@@ -484,6 +486,7 @@ if st.session_state.cp_tab_attivo == "variazioni":
         scope_grafico = st.selectbox(
             "Prodotti da visualizzare",
             options=_scope_options,
+            index=_scope_options.index(_current_scope),
             key="cp_scope_grafico",
         )
 

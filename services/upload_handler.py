@@ -38,6 +38,7 @@ from services.db_service import (
     calcola_alert,
     carica_e_prepara_dataframe,
     clear_fatture_cache,
+    filter_active,
     get_price_alert_threshold,
 )
 from services.notification_inbox_service import (
@@ -274,11 +275,10 @@ def _find_active_existing_files(supabase_client, user_id: str, ristorante_id: st
 
     while page < max_pages:
         offset = page * page_size
-        query_files = (
+        query_files = filter_active(
             supabase_client.table("fatture")
             .select("file_origine")
             .eq("user_id", user_id)
-            .is_("deleted_at", "null")
         )
         if ristorante_id:
             query_files = query_files.eq("ristorante_id", ristorante_id)
@@ -318,10 +318,11 @@ def _find_active_exact_files_for_targets(
 
     try:
         query = (
-            supabase_client.table("fatture")
-            .select("file_origine")
-            .eq("user_id", user_id)
-            .is_("deleted_at", "null")
+            filter_active(
+                supabase_client.table("fatture")
+                .select("file_origine")
+                .eq("user_id", user_id)
+            )
             .in_("file_origine", list(set(raw_targets)))
         )
         if ristorante_id:

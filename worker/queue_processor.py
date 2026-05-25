@@ -52,6 +52,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
+from services.db_service import filter_active
 from services.invoice_service import estrai_dati_da_xml, salva_fattura_processata
 from services.worker_client import classifica_via_worker
 
@@ -113,12 +114,13 @@ def _auto_classify_saved_rows(
         Numero di righe aggiornate con categoria diversa da "Da Classificare".
     """
     unresolved = (
-        supabase.table("fatture")
-        .select("descrizione, fornitore, iva_percentuale")
-        .eq("user_id", user_id)
-        .eq("ristorante_id", ristorante_id)
-        .eq("file_origine", nome_file)
-        .is_("deleted_at", "null")
+        filter_active(
+            supabase.table("fatture")
+            .select("descrizione, fornitore, iva_percentuale")
+            .eq("user_id", user_id)
+            .eq("ristorante_id", ristorante_id)
+            .eq("file_origine", nome_file)
+        )
         .or_("categoria.is.null,categoria.eq.Da Classificare,categoria.eq.")
         .limit(10000)
         .execute()

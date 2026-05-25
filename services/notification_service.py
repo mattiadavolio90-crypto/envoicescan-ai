@@ -9,6 +9,7 @@ import pandas as pd
 
 from config.constants import MESI_ITA
 from config.logger_setup import get_logger
+from services.db_service import filter_active
 from services.margine_service import carica_margini_anno
 from utils.text_utils import normalizza_stringa
 
@@ -449,12 +450,13 @@ def build_scadenza_documents_notifications(
         
         # Carica documenti non pagati da fatture_documenti con scadenza <= oggi+7 (filtro SQL)
         query = (
-            sb.table("fatture_documenti")
-            .select("id,file_origine,fornitore,piva_fornitore,totale_documento,scadenza_effettiva,pagata")
-            .eq("user_id", user_id)
-            .eq("ristorante_id", ristorante_id)
-            .eq("pagata", False)
-            .is_("deleted_at", "null")
+            filter_active(
+                sb.table("fatture_documenti")
+                .select("id,file_origine,fornitore,piva_fornitore,totale_documento,scadenza_effettiva,pagata")
+                .eq("user_id", user_id)
+                .eq("ristorante_id", ristorante_id)
+                .eq("pagata", False)
+            )
             .lte("scadenza_effettiva", tomorrow_plus_7.isoformat())
             .execute()
         )
@@ -467,13 +469,14 @@ def build_scadenza_documents_notifications(
         # lo scadenziario li mostra già come pagati; notificarli sarebbe un falso allarme)
         try:
             _regole_rid = (
-                sb.table("fornitori_pagamenti_config")
-                .select("piva_fornitore")
-                .eq("user_id", user_id)
-                .eq("ristorante_id", ristorante_id)
-                .eq("modalita", "rid")
-                .eq("attiva", True)
-                .is_("deleted_at", "null")
+                filter_active(
+                    sb.table("fornitori_pagamenti_config")
+                    .select("piva_fornitore")
+                    .eq("user_id", user_id)
+                    .eq("ristorante_id", ristorante_id)
+                    .eq("modalita", "rid")
+                    .eq("attiva", True)
+                )
                 .execute()
             )
             _pive_rid = {str(r.get("piva_fornitore") or "").strip() for r in (_regole_rid.data or [])} - {""}

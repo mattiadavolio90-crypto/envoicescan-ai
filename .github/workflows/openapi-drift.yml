@@ -1,0 +1,35 @@
+name: OpenAPI Schema Drift Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/fastapi_worker.py"
+      - "openapi/openapi.json"
+  pull_request:
+    paths:
+      - "services/fastapi_worker.py"
+      - "openapi/openapi.json"
+
+jobs:
+  check-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements-lock.txt
+
+      - name: Check OpenAPI schema drift
+        run: python scripts/export_openapi.py --check-drift
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          WORKER_SECRET_KEY: ci-drift-check
