@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Test-Path *)",
+      "PowerShell(pip show *)",
+      "PowerShell(pip list)",
+      "PowerShell(pip list *)"
+    ]
+  }
+}

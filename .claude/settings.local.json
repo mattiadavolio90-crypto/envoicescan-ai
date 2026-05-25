@@ -3,7 +3,8 @@
     "allow": [
       "Bash(ls /mnt/c/Users/matti/Desktop/ONEFLUX/scripts/ | head -5)",
       "Read(//mnt/c/Users/matti/Desktop/ONEFLUX/**)",
-      "Bash(python scripts/export_openapi.py)"
+      "Bash(python scripts/export_openapi.py)",
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\matti\\\\Desktop\\\\ONEFLUX\\\\\" | Where-Object { !$_.PSIsContainer } | Select-Object Name)"
     ]
   }
 }

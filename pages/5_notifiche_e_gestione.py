@@ -757,7 +757,8 @@ def _render_scadenziario_tab(user_id, current_ristorante):
                     if "Totale (€)" in _df_det.columns:
                         _df_det["Totale (€)"] = _df_det["Totale (€)"].apply(lambda x: f"€ {x:,.2f}")
 
-                    st.dataframe(_df_det, use_container_width=True, hide_index=True)
+                    _cc_det = {c: st.column_config.TextColumn(c) for c in _df_det.select_dtypes(include="object").columns}
+                    st.dataframe(_df_det, use_container_width=True, hide_index=True, column_config=_cc_det)
 
             # ── Senza scadenza ─────────────────────────────────────────────────
             if _filtro_stato == "⏳ Da pagare":
@@ -787,7 +788,8 @@ def _render_scadenziario_tab(user_id, current_ristorante):
                         _df_ns["Pagata"] = _df_ns["Pagata"].apply(lambda x: "🟢" if x else "⚪")
                     if "Totale (€)" in _df_ns.columns:
                         _df_ns["Totale (€)"] = _df_ns["Totale (€)"].apply(lambda x: f"€ {x:,.2f}")
-                    st.dataframe(_df_ns, use_container_width=True, hide_index=True)
+                    _cc_ns = {c: st.column_config.TextColumn(c) for c in _df_ns.select_dtypes(include="object").columns}
+                    st.dataframe(_df_ns, use_container_width=True, hide_index=True, column_config=_cc_ns)
                     st.caption("💡 Queste fatture non hanno una scadenza assegnata. Configurala dal tab Avvisi → Regole Pagamento oppure modifica la singola fattura.")
 
             # ── Scadenze imminenti (prossimi 30 giorni) ────────────────────────
