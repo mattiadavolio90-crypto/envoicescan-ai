@@ -1392,6 +1392,7 @@ elif st.session_state.ap_tab_attivo == "gestione":
     if not filtered_descrizioni:
         st.info("📭 Nessun prodotto trovato con i filtri applicati.")
     else:
+        st.caption(f"Prodotti trovati: {len(filtered_descrizioni)}")
         with st.container(border=True, key="ap_prodotti_scroll_box"):
             for idx, row in enumerate(filtered_descrizioni):
                 descrizione_key = row["descrizione_key"]

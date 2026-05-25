@@ -66,7 +66,7 @@ set "CURRENT_BRANCH="
 for /f %%B in ('git rev-parse --abbrev-ref HEAD 2^>nul') do set "CURRENT_BRANCH=%%B"
 if /I not "%CURRENT_BRANCH%"=="%TARGET_BRANCH%" (
 	echo.
-	echo ERRORE: Branch attivo non valido (%CURRENT_BRANCH%). Atteso: %TARGET_BRANCH%.
+	echo ERRORE: Branch attivo non valido: %CURRENT_BRANCH%. Atteso: %TARGET_BRANCH%.
 	echo Avvio bloccato.
 	echo.
 	pause
