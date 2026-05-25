@@ -1391,9 +1391,27 @@ elif st.session_state.ap_tab_attivo == "gestione":
         if not filtered_descrizioni:
             st.info("📭 Nessun prodotto trovato con i filtri applicati.")
         else:
-            st.caption(f"Prodotti trovati: {len(filtered_descrizioni)}")
+            _PAGE_SIZE = 10
+            _total = len(filtered_descrizioni)
+            _total_pages = max(1, (_total + _PAGE_SIZE - 1) // _PAGE_SIZE)
+
+            # Reset pagina quando cambiano i risultati del filtro
+            if st.session_state.get("_ap_last_filter_total") != _total:
+                st.session_state["ap_prodotti_page"] = 0
+            st.session_state["_ap_last_filter_total"] = _total
+
+            if "ap_prodotti_page" not in st.session_state:
+                st.session_state["ap_prodotti_page"] = 0
+            _page = max(0, min(st.session_state["ap_prodotti_page"], _total_pages - 1))
+            st.session_state["ap_prodotti_page"] = _page
+
+            _start = _page * _PAGE_SIZE
+            _end = min(_start + _PAGE_SIZE, _total)
+            page_descrizioni = filtered_descrizioni[_start:_end]
+
+            st.caption(f"Prodotti trovati: {_total} — Pagina {_page + 1} di {_total_pages}")
             with st.container(border=True, key="ap_prodotti_scroll_box"):
-                for idx, row in enumerate(filtered_descrizioni):
+                for idx, row in enumerate(page_descrizioni):
                     descrizione_key = row["descrizione_key"]
                     existing_selection = st.session_state.ap_selected_descrizioni
                     is_selected = descrizione_key in existing_selection
@@ -1440,8 +1458,21 @@ elif st.session_state.ap_tab_attivo == "gestione":
                     else:
                         st.session_state.ap_selected_descrizioni.pop(descrizione_key, None)
 
-                    if idx < len(filtered_descrizioni) - 1:
+                    if idx < len(page_descrizioni) - 1:
                         st.markdown("<hr style='margin: 0.35rem 0 0.75rem 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.35);'>", unsafe_allow_html=True)
+
+            if _total_pages > 1:
+                nav_prev, nav_info, nav_next = st.columns([1, 2, 1])
+                with nav_prev:
+                    if st.button("← Precedente", key="ap_prod_prev", disabled=_page == 0, use_container_width=True):
+                        st.session_state["ap_prodotti_page"] = _page - 1
+                        st.rerun()
+                with nav_info:
+                    st.caption(f"Risultati {_start + 1}–{_end} di {_total}")
+                with nav_next:
+                    if st.button("Successivo →", key="ap_prod_next", disabled=_page >= _total_pages - 1, use_container_width=True):
+                        st.session_state["ap_prodotti_page"] = _page + 1
+                        st.rerun()
 
 
     st.markdown("<div style='margin-top: 1.4rem;'></div>", unsafe_allow_html=True)
