@@ -1446,49 +1446,50 @@ elif st.session_state.ap_tab_attivo == "gestione":
 
 
     st.markdown("<div style='margin-top: 1.4rem;'></div>", unsafe_allow_html=True)
-    st.markdown('<h3 style="color:#1e40af; font-weight:700;">🏷️ Gestione Tag</h3>', unsafe_allow_html=True)
-    # stExpander Gestione Tag + ap_delete_box CSS ora in common.css
-    if custom_tags:
-        for tag in custom_tags:
-            tag_id = int(tag["id"])
-            tag_label = _tag_label(tag)
-            associazioni_tag = tag_associazioni_map.get(tag_id, [])
-            num_prodotti = len(associazioni_tag)
+    with st.container(key="ap_gestione_tag_section"):
+        st.markdown('<h3 style="color:#1e40af; font-weight:700;">🏷️ Gestione Tag</h3>', unsafe_allow_html=True)
+        # stExpander Gestione Tag + ap_delete_box CSS ora in common.css
+        if custom_tags:
+            for tag in custom_tags:
+                tag_id = int(tag["id"])
+                tag_label = _tag_label(tag)
+                associazioni_tag = tag_associazioni_map.get(tag_id, [])
+                num_prodotti = len(associazioni_tag)
 
-            col_expander, col_delete_tag = st.columns([6, 1])
-            with col_expander:
-                with st.expander(f"{tag_label} • {num_prodotti} prodotti associati", expanded=False):
-                    if associazioni_tag:
-                        for idx, assoc in enumerate(associazioni_tag):
-                            col_assoc, col_remove = st.columns([6, 1])
-                            with col_assoc:
-                                st.markdown(f"- {assoc['descrizione']}")
-                            with col_remove:
-                                if st.button("Rimuovi", key=f"ap_remove_assoc_{assoc['id']}"):
-                                    rimuovi_associazione(int(assoc["id"]), user_id)
-                                    st.success("✅ Associazione rimossa.")
-                                    st.rerun()
+                col_expander, col_delete_tag = st.columns([6, 1])
+                with col_expander:
+                    with st.expander(f"{tag_label} • {num_prodotti} prodotti associati", expanded=False):
+                        if associazioni_tag:
+                            for idx, assoc in enumerate(associazioni_tag):
+                                col_assoc, col_remove = st.columns([6, 1])
+                                with col_assoc:
+                                    st.markdown(f"- {assoc['descrizione']}")
+                                with col_remove:
+                                    if st.button("Rimuovi", key=f"ap_remove_assoc_{assoc['id']}"):
+                                        rimuovi_associazione(int(assoc["id"]), user_id)
+                                        st.success("✅ Associazione rimossa.")
+                                        st.rerun()
 
-                            if idx < len(associazioni_tag) - 1:
-                                st.markdown("<hr style='margin: 0.25rem 0 0.6rem 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.25);'>", unsafe_allow_html=True)
-                    else:
-                        st.info("📭 Nessun prodotto associato a questo tag.")
+                                if idx < len(associazioni_tag) - 1:
+                                    st.markdown("<hr style='margin: 0.25rem 0 0.6rem 0; border: none; border-top: 1px solid rgba(148, 163, 184, 0.25);'>", unsafe_allow_html=True)
+                        else:
+                            st.info("📭 Nessun prodotto associato a questo tag.")
 
-            with col_delete_tag:
-                with st.container(key=f"ap_delete_box_{tag_id}"):
-                    confirm_key = f"ap_confirm_delete_{tag_id}"
-                    if st.session_state.get(confirm_key, False):
-                        if st.button("⚠️ Conferma", key=f"ap_delete_tag_confirm_{tag_id}", use_container_width=True):
-                            elimina_tag(tag_id, user_id)
-                            if st.session_state.ap_tag_selezionato_id == tag_id:
-                                st.session_state.ap_tag_selezionato_id = None
-                            st.session_state.pop(confirm_key, None)
-                            clear_tags_cache()
-                            st.success("✅ Tag eliminato.")
-                            st.rerun()
-                    else:
-                        if st.button("Elimina", key=f"ap_delete_tag_{tag_id}", use_container_width=True):
-                            st.session_state[confirm_key] = True
-                            st.rerun()
-    else:
-        st.info("📭 Nessun tag creato.")
+                with col_delete_tag:
+                    with st.container(key=f"ap_delete_box_{tag_id}"):
+                        confirm_key = f"ap_confirm_delete_{tag_id}"
+                        if st.session_state.get(confirm_key, False):
+                            if st.button("⚠️ Conferma", key=f"ap_delete_tag_confirm_{tag_id}", use_container_width=True):
+                                elimina_tag(tag_id, user_id)
+                                if st.session_state.ap_tag_selezionato_id == tag_id:
+                                    st.session_state.ap_tag_selezionato_id = None
+                                st.session_state.pop(confirm_key, None)
+                                clear_tags_cache()
+                                st.success("✅ Tag eliminato.")
+                                st.rerun()
+                        else:
+                            if st.button("Elimina", key=f"ap_delete_tag_{tag_id}", use_container_width=True):
+                                st.session_state[confirm_key] = True
+                                st.rerun()
+        else:
+            st.info("📭 Nessun tag creato.")
