@@ -182,24 +182,33 @@ button,
     }
 
     [data-testid="stMetricValue"] > div {
-        font-size: 1.8rem !important;
+        font-size: clamp(1.15rem, 4.8vw, 1.6rem) !important;
+        line-height: 1.1 !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
     }
 
     [data-testid="stMetricLabel"] > div,
     .kpi-card .kpi-label,
     .kpi-card-cp .kpi-label,
     .admin-metric-label {
-        font-size: 1rem !important;
+        font-size: clamp(0.8rem, 3.2vw, 0.95rem) !important;
+        line-height: 1.25 !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
     }
 
     .kpi-card .kpi-value,
     .kpi-card-cp .kpi-value,
     .admin-metric-value {
-        font-size: 1.4rem !important;
+        font-size: clamp(1rem, 4.4vw, 1.35rem) !important;
+        line-height: 1.12 !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
     }
 
     /* Font minimo leggibile */
-    p, li, label, span, div,
+    p, li, label,
     [data-testid="stMarkdownContainer"],
     [data-testid="stCaptionContainer"] {
         font-size: max(16px, 1rem);
