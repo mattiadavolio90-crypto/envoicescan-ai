@@ -15,7 +15,10 @@ import time
 from collections import defaultdict
 from typing import Dict, Any, List
 import pandas as pd
-import streamlit as st
+try:
+    import streamlit as st
+except ImportError:
+    st = None
 
 # Import config
 from config.constants import CATEGORIE_SPESE_GENERALI, LEGACY_CATEGORY_ALIASES, PRICE_ALERT_THRESHOLD_DEFAULT
@@ -38,6 +41,18 @@ def filter_active(query):
 _filter_active = filter_active
 
 
+def _make_cache(**kwargs):
+    """Returns st.cache_data decorator when Streamlit is available, else a noop with .clear()."""
+    try:
+        import streamlit as _st
+        return _st.cache_data(**kwargs)
+    except Exception:
+        def _noop(fn):
+            fn.clear = lambda: None
+            return fn
+        return _noop
+
+
 def _clamp_price_alert_threshold(value: float | int | None) -> float:
     """Normalizza la soglia alert prezzo nel range [0, 100]."""
     try:
@@ -47,7 +62,7 @@ def _clamp_price_alert_threshold(value: float | int | None) -> float:
     return max(0.0, min(100.0, raw))
 
 
-@st.cache_data(ttl=120, show_spinner=False)
+@_make_cache(ttl=120, show_spinner=False)
 def get_price_alert_threshold(user_id: str) -> float:
     """Legge la soglia alert prezzo utente da users.price_alert_threshold con fallback default."""
     user_id_norm = str(user_id or '').strip()
@@ -116,7 +131,7 @@ def _normalize_custom_tag_key(text: str) -> str:
     return re.sub(r"\s+", " ", str(text).strip().upper())
 
 
-@st.cache_data(ttl=120, show_spinner=False)
+@_make_cache(ttl=120, show_spinner=False)
 def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
     """
     Funzione interna cached: carica fatture da Supabase.
@@ -213,7 +228,7 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         return pd.DataFrame()
 
 
-@st.cache_data(ttl=120, show_spinner=False)
+@_make_cache(ttl=120, show_spinner=False)
 def _fetch_numero_documento_map_cached(user_id: str, ristorante_id=None) -> Dict[str, str]:
     """Mappa file_origine -> numero_documento dalla tabella fatture_documenti."""
     from services import get_supabase_client
@@ -1354,7 +1369,7 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None, ristoranteid: str 
         return {"success": False, "error": str(e), "righe_eliminate": 0, "fatture_eliminate": 0}
 
 
-@st.cache_data(ttl=60, show_spinner=False)
+@_make_cache(ttl=60, show_spinner=False)
 def get_fatture_stats(user_id: str, ristorante_id: str = None) -> Dict[str, Any]:
     """
     Ottiene statistiche fatture da Supabase (cachate 60s).
@@ -1436,10 +1451,14 @@ def clear_fatture_cache() -> None:
     """Invalida tutti i cache fatture e dati derivati (righe, costi, etc.)."""
     import sys
     logger.debug(f"[CACHE] clear_fatture_cache() chiamata — ts={time.time():.3f}")
-    _carica_fatture_da_supabase.clear()
-    _fetch_numero_documento_map_cached.clear()
-    get_fatture_stats.clear()
-    get_descrizioni_distinte.clear()
+    if hasattr(_carica_fatture_da_supabase, 'clear'):
+        _carica_fatture_da_supabase.clear()
+    if hasattr(_fetch_numero_documento_map_cached, 'clear'):
+        _fetch_numero_documento_map_cached.clear()
+    if hasattr(get_fatture_stats, 'clear'):
+        get_fatture_stats.clear()
+    if hasattr(get_descrizioni_distinte, 'clear'):
+        get_descrizioni_distinte.clear()
     # Invalida anche il cestino
     if hasattr(get_fatture_cestino, 'clear'):
         get_fatture_cestino.clear()
@@ -1461,7 +1480,7 @@ def clear_fatture_cache() -> None:
 # CESTINO FATTURE (soft-delete)
 # ============================================================
 
-@st.cache_data(ttl=60, show_spinner=False)
+@_make_cache(ttl=60, show_spinner=False)
 def get_fatture_cestino(user_id: str, ristorante_id: str = None, supabase_client=None) -> List[Dict[str, Any]]:
     """
     Restituisce le fatture nel cestino raggruppate per file_origine.
@@ -1835,7 +1854,7 @@ def purge_fatture_retention(batch_size: int = RETENTION_BATCH_SIZE, supabase_cli
         return {"success": False, "righe_eliminate": 0, "righe_da_cestino": 0, "error": str(e)}
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@_make_cache(ttl=300, show_spinner=False)
 def get_custom_tags(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
     """Carica i custom tag dell'utente per il ristorante corrente."""
     try:
@@ -1855,7 +1874,7 @@ def get_custom_tags(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
         return []
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@_make_cache(ttl=300, show_spinner=False)
 def get_custom_tag_prodotti(tag_id: int, user_id: str) -> List[Dict[str, Any]]:
     """Carica le associazioni descrizione per un singolo tag."""
     try:
@@ -1875,7 +1894,7 @@ def get_custom_tag_prodotti(tag_id: int, user_id: str) -> List[Dict[str, Any]]:
         return []
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@_make_cache(ttl=300, show_spinner=False)
 def get_descrizioni_distinte(user_id: str, ristorante_id: str) -> List[Dict[str, Any]]:
     """
     Carica le descrizioni fattura e le aggrega in Python per descrizione_key.
@@ -1976,9 +1995,12 @@ def get_descrizioni_distinte(user_id: str, ristorante_id: str) -> List[Dict[str,
 def clear_tags_cache() -> None:
     """Invalida solo la cache legata ai custom tag."""
     logger.debug(f"[CACHE] clear_tags_cache() chiamata — ts={time.time():.3f}")
-    get_custom_tags.clear()
-    get_custom_tag_prodotti.clear()
-    get_descrizioni_distinte.clear()
+    if hasattr(get_custom_tags, 'clear'):
+        get_custom_tags.clear()
+    if hasattr(get_custom_tag_prodotti, 'clear'):
+        get_custom_tag_prodotti.clear()
+    if hasattr(get_descrizioni_distinte, 'clear'):
+        get_descrizioni_distinte.clear()
 
 
 def crea_tag(user_id: str, ristorante_id: str, nome: str, emoji: str = None, colore: str = None) -> Dict[str, Any]:

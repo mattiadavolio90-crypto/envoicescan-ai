@@ -10,12 +10,26 @@ Gestisce:
 
 import pandas as pd
 import io
-import streamlit as st
+try:
+    import streamlit as st
+except ImportError:
+    st = None
 from datetime import datetime, timezone
 from config.logger_setup import get_logger
 from config.constants import CATEGORIE_FOOD, CATEGORIE_SPESE_GENERALI, KPI_SOGLIE
 
 logger = get_logger('margine_service')
+
+
+def _make_cache(**kwargs):
+    try:
+        import streamlit as _st
+        return _st.cache_data(**kwargs)
+    except Exception:
+        def _noop(fn):
+            fn.clear = lambda: None
+            return fn
+        return _noop
 
 
 def get_supabase_client():
@@ -32,7 +46,7 @@ MESI_NOMI = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
 # COSTI AUTOMATICI DA FATTURE
 # ============================================
 
-@st.cache_data(ttl=300, show_spinner="Calcolo costi da fatture...")
+@_make_cache(ttl=300, show_spinner="Calcolo costi da fatture...")
 def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: int) -> tuple:
     """
     Calcola costi F&B e Spese Generali aggregati per mese dalle fatture.
@@ -138,7 +152,7 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
 # COSTI PER CATEGORIA (Analisi Avanzate)
 # ============================================
 
-@st.cache_data(ttl=300, show_spinner="Caricamento dati per analisi...")
+@_make_cache(ttl=300, show_spinner="Caricamento dati per analisi...")
 def carica_costi_per_categoria(user_id: str, ristorante_id: str,
                                 date_from: str, date_to: str) -> pd.DataFrame:
     """
