@@ -1,0 +1,47 @@
+#!/usr/bin/env sh
+# ONEFLUX guardrail: consenti push verso origin SOLO del branch main
+
+remote_name="$1"
+remote_url="$2"
+
+if [ "$remote_name" != "origin" ]; then
+  exit 0
+fi
+
+current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+if [ "$current_branch" != "main" ]; then
+  echo ""
+  echo "BLOCCO PUSH: su origin e consentito solo push da branch 'main'." >&2
+  echo "Branch corrente: '$current_branch'" >&2
+  echo "" >&2
+  exit 1
+fi
+
+# stdin: <local_ref> <local_sha> <remote_ref> <remote_sha>
+while read local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main)
+      ;;
+    *)
+      echo "" >&2
+      echo "BLOCCO PUSH: e consentito aggiornare su origin solo refs/heads/main." >&2
+      echo "Target richiesto: '$remote_ref'" >&2
+      echo "" >&2
+      exit 1
+      ;;
+  esac
+
+  case "$local_ref" in
+    refs/heads/main)
+      ;;
+    *)
+      echo "" >&2
+      echo "BLOCCO PUSH: la sorgente del push deve essere refs/heads/main." >&2
+      echo "Sorgente richiesta: '$local_ref'" >&2
+      echo "" >&2
+      exit 1
+      ;;
+  esac
+done
+
+exit 0

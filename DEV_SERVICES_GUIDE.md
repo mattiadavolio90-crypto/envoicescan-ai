@@ -85,14 +85,17 @@ railway info
 
 ### Services & Deployment
 ```powershell
-# Lista servizi
-railway service list
+# Policy hard: push/deploy cloud solo da main (una volta per clone)
+git config core.hooksPath .githooks
+
+# Lista stato servizi
+railway service status
 
 # Visualizza log servizio
 railway logs <service-name> --tail 100
 
-# Deploy
-railway up
+# Deploy cloud (SOLO da main)
+.\scripts\deploy-cloud-main-only.ps1
 
 # Status servizi
 railway status
@@ -180,9 +183,9 @@ supabase db reset
 # 2. Crea tag e release su GitHub
 gh release create v1.0.0 --generate-notes
 
-# 3. Deploy su Railway
+# 3. Deploy su Railway (guardrail: solo branch main)
 railway project select
-railway up
+.\scripts\deploy-cloud-main-only.ps1
 
 # 4. Verifica status
 railway status
