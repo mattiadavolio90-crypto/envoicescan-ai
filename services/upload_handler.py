@@ -106,8 +106,8 @@ def _acquire_upload_lock(supabase_client, ristorante_id: str, user_id: str) -> b
             except Exception:
                 return False
     except Exception as exc:
-        logger.warning(f"[UPLOAD][M8] Errore acquire lock (fail-open): {exc}")
-        return True  # fail-open: non bloccare upload se DB fa storie
+        logger.error(f"[UPLOAD][M8] Errore acquire lock (fail-closed): {exc} — upload bloccato per sicurezza")
+        return False  # fail-closed: meglio bloccare temporaneamente che rischiare duplicati
 
 
 def _release_upload_lock(supabase_client, ristorante_id: str) -> None:

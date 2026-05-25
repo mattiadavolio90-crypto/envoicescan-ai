@@ -188,6 +188,35 @@ def _handle_legacy_user(supabase, user) -> None:
             logger.error(f"❌ ERRORE DETTAGLIATO creazione ristorante: {str(create_err)}")
             logger.error(f"   Tipo errore: {type(create_err).__name__}")
             st.warning(f"⚠️ Problemi di configurazione rilevati: {str(create_err)[:100]}")
+    elif user_id:
+        # P.IVA assente ma user_id presente: crea ristorante con placeholder
+        logger.warning(
+            f"⚠️ Utente {user_id} senza ristoranti e senza P.IVA — creazione ristorante con placeholder"
+        )
+        try:
+            _piva_placeholder = f"TEMP{user_id.replace('-', '')[:11].upper()}"
+            _nome_rist = nome or f"Account {user_id[:8]}"
+            new_rist = supabase.table('ristoranti').insert({
+                'user_id': user_id,
+                'nome_ristorante': _nome_rist,
+                'partita_iva': _piva_placeholder,
+                'ragione_sociale': user.get('ragione_sociale', ''),
+                'attivo': True,
+            }).execute()
+            if new_rist.data:
+                st.session_state.ristoranti = new_rist.data
+                st.session_state.ristorante_id = new_rist.data[0]['id']
+                st.session_state.partita_iva = _piva_placeholder
+                st.session_state.nome_ristorante = _nome_rist
+                logger.info(f"✅ Ristorante placeholder creato: {new_rist.data[0]['id']}")
+                st.warning("⚠️ P.IVA mancante — completa i dati nelle impostazioni del profilo.")
+                st.rerun()
+            else:
+                logger.error(f"❌ Creazione ristorante placeholder fallita per utente {user_id}")
+                st.error("⚠️ Configurazione account incompleta. Contatta l'assistenza.")
+        except Exception as _placeholder_err:
+            logger.error(f"❌ Errore creazione ristorante senza P.IVA: {_placeholder_err}")
+            st.error(f"⚠️ Problemi di configurazione: {str(_placeholder_err)[:100]}")
     else:
         logger.warning(f"⚠️ Utente {user_id} senza ristoranti e dati incompleti - accesso limitato")
         st.warning(

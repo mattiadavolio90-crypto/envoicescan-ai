@@ -85,12 +85,19 @@ st.set_page_config(
 
 # ============================================================
 # GUARDIA ANTI-LOOP: Limita rerun consecutivi (safety net)
+# Usa finestra sliding di 60s per distinguere loop infiniti da flussi legittimi
 # ============================================================
 _rerun_count = st.session_state.get('_rerun_guard', 0)
-if _rerun_count > 8:
+_rerun_last_reset = st.session_state.get('_rerun_last_reset', time.time())
+# Auto-reset counter ogni 60 secondi (finestra sliding)
+if (time.time() - _rerun_last_reset) > 60:
+    _rerun_count = 0
+    st.session_state._rerun_last_reset = time.time()
+if _rerun_count > 15:
     import logging as _logging_guard
-    _logging_guard.getLogger('fci_app').critical(f"🚨 RERUN LOOP DETECTED ({_rerun_count} consecutivi) - reset forzato")
+    _logging_guard.getLogger('fci_app').critical(f"🚨 RERUN LOOP DETECTED ({_rerun_count} consecutivi in <60s) - reset forzato")
     st.session_state._rerun_guard = 0
+    st.session_state._rerun_last_reset = time.time()
     st.session_state.force_reload = False
     st.error("⚠️ Rilevato loop di aggiornamento. La pagina è stata stabilizzata.")
     st.stop()

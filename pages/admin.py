@@ -520,6 +520,7 @@ def _carica_stats_clienti_admin(admin_emails_tuple: tuple):
             fatture_resp = sb.table('fatture')\
                 .select('user_id, ristorante_id, file_origine, created_at, data_documento, totale_riga, categoria, needs_review')\
                 .in_('user_id', chunk_ids)\
+                .is_('deleted_at', 'null')\
                 .order('created_at', desc=False)\
                 .range(offset, offset + page_size - 1)\
                 .execute()

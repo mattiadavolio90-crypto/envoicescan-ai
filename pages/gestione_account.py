@@ -227,6 +227,7 @@ with tab2:
                         fatture_query = supabase.table('fatture').select(
                             'file_origine, fornitore, data_documento, totale_riga, categoria, ristorante_id'
                         ).eq('user_id', user_id)\
+                         .is_('deleted_at', 'null')\
                          .order('id', desc=False)\
                          .range(offset, offset + page_size - 1)\
                          .execute()

@@ -272,8 +272,15 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
     # Questo previene che dati cached riappaiano dopo eliminazione massiva
     try:
         if hasattr(st, 'session_state') and st.session_state.get('force_empty_until_upload', False):
-            logger.info(f"🚫 FORCE EMPTY attivo: ritorno DataFrame vuoto per user_id={user_id}")
-            return pd.DataFrame()
+            # Safety TTL: auto-reset se il flag è attivo da più di 10 minuti (evita blocco permanente)
+            _force_set_at = st.session_state.get('_force_empty_set_at', 0)
+            if _force_set_at and (time.time() - _force_set_at) > 600:
+                logger.warning("⚠️ force_empty_until_upload attivo da >10 min — auto-reset (safety TTL)")
+                st.session_state.force_empty_until_upload = False
+                st.session_state.pop('_force_empty_set_at', None)
+            else:
+                logger.info(f"🚫 FORCE EMPTY attivo: ritorno DataFrame vuoto per user_id={user_id}")
+                return pd.DataFrame()
     except Exception as e:
         logger.warning(f"⚠️ Impossibile controllare force_empty flag: {e}")
     

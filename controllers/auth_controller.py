@@ -110,8 +110,18 @@ def check_impersonation_timeout(cookie_manager) -> None:
                 pass
         st.warning("⏰ Sessione impersonazione scaduta (30 min). Sei tornato admin.")
         st.rerun()
-    except (ValueError, TypeError):
-        pass
+    except (ValueError, TypeError) as _parse_err:
+        logger.error(
+            f"🔒 impersonation_started_at non parsabile ({_parse_err!r}) — forzo fine impersonazione per sicurezza"
+        )
+        if "admin_original_user" in st.session_state:
+            st.session_state.user_data = st.session_state.admin_original_user.copy()
+            del st.session_state.admin_original_user
+        st.session_state.impersonating = False
+        st.session_state.user_is_admin = True
+        st.session_state.pop("impersonation_started_at", None)
+        st.warning("⚠️ Sessione impersonazione ripristinata per anomalia tecnica.")
+        st.rerun()
 
 
 # ============================================================
