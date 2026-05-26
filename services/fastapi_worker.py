@@ -730,6 +730,16 @@ def _is_admin_email(email: Optional[str]) -> bool:
     return email.strip().lower() in admin_emails
 
 
+def _normalize_pagine(raw) -> Optional[List[str]]:
+    if raw is None:
+        return None
+    if isinstance(raw, list):
+        return [str(p) for p in raw]
+    if isinstance(raw, dict):
+        return [k for k, v in raw.items() if v]
+    return None
+
+
 @app.post(
     "/api/auth/login",
     response_model=LoginResponse,
@@ -779,7 +789,7 @@ async def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
             id=str(user["id"]),
             email=user["email"],
             nome_ristorante=user.get("nome_ristorante"),
-            pagine_abilitate=user.get("pagine_abilitate"),
+            pagine_abilitate=_normalize_pagine(user.get("pagine_abilitate")),
             is_admin=_is_admin_email(user.get("email")),
         ),
     )
@@ -811,7 +821,7 @@ async def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
         id=str(user["id"]),
         email=user["email"],
         nome_ristorante=user.get("nome_ristorante"),
-        pagine_abilitate=user.get("pagine_abilitate"),
+        pagine_abilitate=_normalize_pagine(user.get("pagine_abilitate")),
         is_admin=_is_admin_email(user.get("email")),
     )
 
