@@ -97,6 +97,12 @@ dettaglio_*.xlsx
 # Archivi test
 __test_archive__/
 
+# Next.js (apps/web)
+apps/web/node_modules/
+apps/web/.next/
+apps/web/out/
+apps/web/.env*.local
+
 # Ambiente virtuale
 .venv/
 venv/

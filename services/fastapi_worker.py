@@ -701,6 +701,149 @@ async def invoicetronic_webhook_disabled() -> JSONResponse:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# AUTH (usato da Next.js — server-to-server con WORKER_SECRET_KEY)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class LoginRequest(BaseModel):
+    email: str = Field(..., max_length=255, description="Email utente")
+    password: str = Field(..., max_length=255, description="Password in chiaro")
+
+
+class UserPublic(BaseModel):
+    id: str
+    email: str
+    nome_ristorante: Optional[str] = None
+    pagine_abilitate: Optional[List[str]] = None
+    is_admin: bool = False
+
+
+class LoginResponse(BaseModel):
+    token: str = Field(..., description="Session token da settare in cookie HTTP-only")
+    user: UserPublic
+
+
+def _is_admin_email(email: Optional[str]) -> bool:
+    if not email:
+        return False
+    admin_emails_raw = os.getenv("ADMIN_EMAILS", "md@oneflux.it")
+    admin_emails = {e.strip().lower() for e in admin_emails_raw.split(",") if e.strip()}
+    return email.strip().lower() in admin_emails
+
+
+@app.post(
+    "/api/auth/login",
+    response_model=LoginResponse,
+    summary="Login utente — restituisce session token",
+    tags=["Auth"],
+    responses={
+        401: {"description": "Credenziali errate"},
+        429: {"description": "Rate limit superato (lockout)"},
+        503: {"description": "Servizio auth non disponibile"},
+    },
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
+    _check_rate_limit(request.client.host if request.client else "unknown")
+
+    from services.auth_service import verifica_credenziali, AuthServiceUnavailableError
+    from datetime import datetime, timezone
+    import secrets as _secrets
+
+    try:
+        user, error = verifica_credenziali(body.email, body.password)
+    except AuthServiceUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    if error or not user:
+        raise HTTPException(status_code=401, detail=error or "Credenziali non valide")
+
+    token = user.get("_jwt_refresh_token")
+
+    if not token:
+        token = _secrets.token_urlsafe(32)
+        try:
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
+            supabase_client.table("users").update({
+                "session_token": token,
+                "session_token_created_at": datetime.now(timezone.utc).isoformat(),
+                "last_seen_at": datetime.now(timezone.utc).isoformat(),
+            }).eq("id", user["id"]).execute()
+        except Exception:
+            logger.exception("Errore creazione session_token legacy")
+            raise HTTPException(status_code=500, detail="Errore creazione sessione")
+
+    return LoginResponse(
+        token=token,
+        user=UserPublic(
+            id=str(user["id"]),
+            email=user["email"],
+            nome_ristorante=user.get("nome_ristorante"),
+            pagine_abilitate=user.get("pagine_abilitate"),
+            is_admin=_is_admin_email(user.get("email")),
+        ),
+    )
+
+
+@app.get(
+    "/api/auth/me",
+    response_model=UserPublic,
+    summary="Verifica sessione corrente",
+    tags=["Auth"],
+    responses={401: {"description": "Sessione non valida"}},
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Token mancante")
+
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Token vuoto")
+
+    from services.auth_service import verifica_sessione_da_cookie
+    user = verifica_sessione_da_cookie(token)
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Sessione non valida o scaduta")
+
+    return UserPublic(
+        id=str(user["id"]),
+        email=user["email"],
+        nome_ristorante=user.get("nome_ristorante"),
+        pagine_abilitate=user.get("pagine_abilitate"),
+        is_admin=_is_admin_email(user.get("email")),
+    )
+
+
+@app.post(
+    "/api/auth/logout",
+    summary="Logout — invalida session_token legacy",
+    tags=["Auth"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def auth_logout(authorization: Optional[str] = Header(None)) -> Dict[str, str]:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return {"status": "ok"}
+
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        return {"status": "ok"}
+
+    try:
+        from services import get_supabase_client
+        supabase_client = get_supabase_client()
+        supabase_client.table("users").update({
+            "session_token": None,
+            "session_token_created_at": None,
+        }).eq("session_token", token).execute()
+    except Exception as exc:
+        logger.warning(f"Logout: errore invalidazione session_token: {exc}")
+
+    return {"status": "ok"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # UTILITY
 # ═══════════════════════════════════════════════════════════════════════════
 

@@ -1,11 +1,17 @@
 {
   "permissions": {
     "allow": [
-      "PowerShell(Get-ChildItem *)",
-      "PowerShell(Test-Path *)",
-      "PowerShell(pip show *)",
-      "PowerShell(pip list)",
-      "PowerShell(pip list *)"
+      "Bash(*)",
+      "PowerShell(*)",
+      "Read(*)",
+      "Write(*)",
+      "Edit(*)",
+      "Glob(*)",
+      "Grep(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "TodoWrite(*)",
+      "Agent(*)"
     ]
   }
 }
