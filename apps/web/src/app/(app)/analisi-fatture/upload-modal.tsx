@@ -110,6 +110,14 @@ export function UploadModal() {
       return;
     }
 
+    // Segnala al worker l'inizio sessione: aggiorna nuovi_da = now().
+    // I prodotti di questa sessione avranno created_at >= nuovi_da → badge "Nuovo".
+    // I prodotti delle sessioni precedenti perderanno il badge.
+    await fetch(`${workerUrl}/api/upload/start-session`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => null); // non bloccare l'upload se fallisce
+
     for (const entry of toUpload) {
       setFiles((prev) => prev.map((f) => (f.id === entry.id ? { ...f, status: "uploading" } : f)));
       const form = new FormData();

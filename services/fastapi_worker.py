@@ -1045,6 +1045,22 @@ def _get_ristorante_id_for_user(user_id: str, supabase_client) -> Optional[str]:
     return None
 
 
+@app.post("/api/upload/start-session", tags=["Upload"])
+async def upload_start_session(authorization: Optional[str] = Header(None)):
+    """Marca l'inizio di una nuova sessione di caricamento: aggiorna nuovi_da = now().
+    I prodotti caricati in questa sessione avranno created_at >= nuovi_da → badge 'Nuovo'.
+    I prodotti delle sessioni precedenti avranno created_at < nuovi_da → badge rimosso."""
+    from datetime import datetime, timezone
+    user = _resolve_user_from_token(authorization)
+    supabase_client = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    supabase_client.table("ristoranti").update({"nuovi_da": now_iso}).eq("id", ristorante_id).execute()
+    return {"ok": True, "nuovi_da": now_iso}
+
+
 @app.post(
     "/api/upload/invoice",
     response_model=UploadInvoiceResponse,
@@ -1720,9 +1736,16 @@ async def get_articoli_aggregati(
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     supabase_client = _get_supabase_client()
-    # Una riga e "nuova" se created_at e nelle ultime 24h
+
+    # cutoff "Nuovo": usa nuovi_da dal ristorante (impostato all'inizio di ogni sessione upload).
+    # Fallback a 24h se nuovi_da non è ancora impostato (primo avvio).
     from datetime import datetime, timedelta, timezone
-    cutoff_nuovo = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    ristorante_row = supabase_client.table("ristoranti").select("nuovi_da").eq("id", ristorante_id).single().execute()
+    nuovi_da_raw = (ristorante_row.data or {}).get("nuovi_da")
+    if nuovi_da_raw:
+        cutoff_nuovo = nuovi_da_raw
+    else:
+        cutoff_nuovo = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
 
     rows = _fetch_fatture_rows(
         supabase_client, ristorante_id, data_da, data_a, tipo_prodotti, search
