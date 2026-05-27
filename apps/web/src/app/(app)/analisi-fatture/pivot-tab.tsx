@@ -46,6 +46,13 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
   const [vista, setVista] = useState<"tabella" | "grafico">("tabella");
   const [selectedForTrend, setSelectedForTrend] = useState<string[]>([]);
 
+  // Quando cambiano i dati pivot (es. cambio tipo/periodo), rimuove dal set di confronto
+  // le voci che non esistono più nel nuovo dataset, così le pill non restano "fantasma".
+  useEffect(() => {
+    const available = new Set(pivot.rows.map((r) => r.dimensione));
+    setSelectedForTrend((prev) => prev.filter((v) => available.has(v)));
+  }, [pivot.rows]);
+
   function setParam(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(sp.toString());
     for (const [k, v] of Object.entries(updates)) {

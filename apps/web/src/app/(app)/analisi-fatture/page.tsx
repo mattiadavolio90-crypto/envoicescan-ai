@@ -1,7 +1,6 @@
 import {
   fetchArticoliAggregati,
   fetchCategorie,
-  fetchFornitori,
   fetchKpi,
   fetchMesiDisponibili,
   fetchPivot,
@@ -71,11 +70,10 @@ export default async function AnalisiFatturePage({
   const soloVerifica = sp.verifica === "1";
 
   // Carico in parallelo i dati base sempre necessari
-  const [kpi, mesi, categorieRes, fornitoriList] = await Promise.all([
+  const [kpi, mesi, categorieRes] = await Promise.all([
     fetchKpi(data_da, data_a, tipoProdotti),
     fetchMesiDisponibili(),
     fetchCategorie(),
-    fetchFornitori(),
   ]);
 
   // Tab Articoli: filtri categoria/fornitore/search/nuovi/verifica gestiti
@@ -124,7 +122,6 @@ export default async function AnalisiFatturePage({
         <ArticoliTab
           articoli={articoliRes?.articoli ?? []}
           categorie={categorieRes.categorie}
-          fornitori={fornitoriList}
           soloNuovi={soloNuovi}
           soloVerifica={soloVerifica}
           filtri={{ data_da, data_a, tipo_prodotti: tipoProdotti }}

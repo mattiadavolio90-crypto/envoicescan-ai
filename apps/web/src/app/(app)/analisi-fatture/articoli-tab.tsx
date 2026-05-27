@@ -22,7 +22,6 @@ import { categoriaIcon, formatData, formatEuro } from "./periodi";
 type Props = {
   articoli: ArticoloAggregato[];
   categorie: string[];
-  fornitori: string[];
   soloNuovi: boolean;
   soloVerifica: boolean;
   filtri: {
@@ -105,7 +104,6 @@ function SortableHeader({
 export function ArticoliTab({
   articoli,
   categorie,
-  fornitori,
   soloNuovi,
   soloVerifica,
   filtri,

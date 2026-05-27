@@ -18,12 +18,9 @@ export function TabsSwitcher({ active }: { active: string }) {
   function setTab(key: string) {
     const params = new URLSearchParams(sp.toString());
     params.set("tab", key);
-    // pulisco filtri specifici di un tab quando cambio
+    // I toggle del tab Articoli (nuovi/verifica) sono in URL: li azzeriamo al cambio tab.
     params.delete("nuovi");
     params.delete("verifica");
-    params.delete("search");
-    params.delete("fornitore");
-    params.delete("cat");
     startTransition(() => {
       router.push(`${pathname}?${params.toString()}`);
     });

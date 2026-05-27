@@ -109,18 +109,6 @@ export type TrendResponse = {
   periodi_labels: string[];
 };
 
-export type FattureFilters = {
-  data_da?: string;
-  data_a?: string;
-  tipo_prodotti?: TipoProdotti;
-  fornitore?: string;
-  categoria?: string;
-  needs_review?: boolean;
-  search?: string;
-  page?: number;
-  page_size?: number;
-};
-
 async function getToken(): Promise<string | null> {
   const cookieStore = await cookies();
   return cookieStore.get(SESSION_COOKIE)?.value ?? null;
@@ -188,36 +176,11 @@ export async function fetchArticoliAggregati(filters: {
   return workerGet<ArticoliResponse>("/api/fatture/articoli-aggregati", filters);
 }
 
-export async function fetchRigheArticolo(
-  descrizione: string,
-  data_da?: string,
-  data_a?: string,
-): Promise<RigaFattura[]> {
-  const data = await workerGet<RigaFattura[]>("/api/fatture/righe-articolo", {
-    descrizione,
-    data_da,
-    data_a,
-  });
-  return data ?? [];
-}
-
 export async function fetchPivot(
   dimensione: "categoria" | "fornitore",
   filters: { data_da?: string; data_a?: string; tipo_prodotti?: TipoProdotti } = {},
 ): Promise<PivotResponse | null> {
   return workerGet<PivotResponse>("/api/fatture/pivot", { dimensione, ...filters });
-}
-
-export async function fetchTrend(
-  dimensione: "categoria" | "fornitore",
-  valori: string[],
-  filters: { data_da?: string; data_a?: string; tipo_prodotti?: TipoProdotti } = {},
-): Promise<TrendResponse | null> {
-  return workerGet<TrendResponse>("/api/fatture/trend", {
-    dimensione,
-    valori: valori.join(","),
-    ...filters,
-  });
 }
 
 export async function fetchCategorie(): Promise<{ categorie: string[]; usate: string[] }> {
@@ -229,16 +192,3 @@ export async function fetchCategorie(): Promise<{ categorie: string[]; usate: st
   return data ?? { categorie: [], usate: [] };
 }
 
-export async function fetchFornitori(): Promise<string[]> {
-  const data = await workerGet<{ fornitori: string[] }>("/api/fatture/fornitori", {}, 60);
-  return data?.fornitori ?? [];
-}
-
-export async function fetchFatture(filters: FattureFilters = {}): Promise<{
-  righe: RigaFattura[];
-  total: number;
-  page: number;
-  page_size: number;
-} | null> {
-  return workerGet("/api/fatture", { ...filters, page: filters.page ?? 1, page_size: filters.page_size ?? 50 });
-}
