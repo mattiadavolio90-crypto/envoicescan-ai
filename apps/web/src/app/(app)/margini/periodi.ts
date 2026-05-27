@@ -1,0 +1,106 @@
+export type PeriodoPreset =
+  | "mese_corrente"
+  | "trimestre_corrente"
+  | "semestre_corrente"
+  | "anno_corrente"
+  | "anno_precedente"
+  | "q1" | "q2" | "q3" | "q4"
+  | "h1" | "h2"
+  | "personalizzato";
+
+export type PeriodoCalcolato = {
+  data_da: string;
+  data_a: string;
+  label: string;
+};
+
+function fmt(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function lastDay(year: number, month1Based: number): Date {
+  return new Date(year, month1Based, 0);
+}
+
+export function calcolaPeriodo(preset: PeriodoPreset, oggi: Date = new Date()): PeriodoCalcolato {
+  const y = oggi.getFullYear();
+  const m = oggi.getMonth(); // 0-indexed
+
+  switch (preset) {
+    case "mese_corrente": {
+      const inizio = new Date(y, m, 1);
+      return { data_da: fmt(inizio), data_a: fmt(oggi), label: "Mese in corso" };
+    }
+    case "trimestre_corrente": {
+      const trim = Math.floor(m / 3) * 3;
+      const inizio = new Date(y, trim, 1);
+      return { data_da: fmt(inizio), data_a: fmt(oggi), label: "Trimestre" };
+    }
+    case "semestre_corrente": {
+      const sem = m < 6 ? 0 : 6;
+      const inizio = new Date(y, sem, 1);
+      return { data_da: fmt(inizio), data_a: fmt(oggi), label: "Semestre" };
+    }
+    case "anno_corrente": {
+      const inizio = new Date(y, 0, 1);
+      return { data_da: fmt(inizio), data_a: fmt(oggi), label: "Anno in corso" };
+    }
+    case "anno_precedente": {
+      const inizio = new Date(y - 1, 0, 1);
+      const fine = new Date(y - 1, 11, 31);
+      return { data_da: fmt(inizio), data_a: fmt(fine), label: `Anno ${y - 1}` };
+    }
+    case "q1": return { data_da: fmt(new Date(y, 0, 1)), data_a: fmt(lastDay(y, 3)), label: `Q1 ${y}` };
+    case "q2": return { data_da: fmt(new Date(y, 3, 1)), data_a: fmt(lastDay(y, 6)), label: `Q2 ${y}` };
+    case "q3": return { data_da: fmt(new Date(y, 6, 1)), data_a: fmt(lastDay(y, 9)), label: `Q3 ${y}` };
+    case "q4": return { data_da: fmt(new Date(y, 9, 1)), data_a: fmt(lastDay(y, 12)), label: `Q4 ${y}` };
+    case "h1": return { data_da: fmt(new Date(y, 0, 1)), data_a: fmt(lastDay(y, 6)), label: `H1 ${y}` };
+    case "h2": return { data_da: fmt(new Date(y, 6, 1)), data_a: fmt(lastDay(y, 12)), label: `H2 ${y}` };
+    default: {
+      const inizio = new Date(y, 0, 1);
+      return { data_da: fmt(inizio), data_a: fmt(oggi), label: "Anno in corso" };
+    }
+  }
+}
+
+export function formatEuro(v: number, decimali = 0): string {
+  return v.toLocaleString("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: decimali,
+    maximumFractionDigits: decimali,
+  });
+}
+
+export function formatEuroCompact(v: number): string {
+  const abs = Math.abs(v);
+  if (abs >= 1_000_000) return `€ ${(v / 1_000_000).toFixed(1)}M`;
+  if (abs >= 1000) return `€ ${(v / 1000).toFixed(1)}k`;
+  return formatEuro(v);
+}
+
+export function formatPct(v: number, decimali = 1): string {
+  if (!isFinite(v)) return "—";
+  return `${v.toFixed(decimali)}%`;
+}
+
+export function formatData(iso: string | null): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+export const MESI_NOMI_LUNGHI = [
+  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
+];
+
+export const MESI_NOMI_SHORT = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+
+export function meseLabel(year: number, month1Based: number, short = false): string {
+  const arr = short ? MESI_NOMI_SHORT : MESI_NOMI_LUNGHI;
+  return `${arr[month1Based - 1]} ${year}`;
+}

@@ -2,10 +2,12 @@
 
 import { useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { TrendingUp, Calculator, FlaskConical } from "lucide-react";
 
 const TABS = [
-  { key: "calcolo", label: "Calcolo Ricavi-Costi-Margini" },
-  { key: "analisi", label: "Analisi Avanzate" },
+  { key: "ricavi", label: "Ricavi", icon: TrendingUp },
+  { key: "calcolo", label: "Marginalità", icon: Calculator },
+  { key: "analisi", label: "Analisi Avanzate", icon: FlaskConical },
 ];
 
 export function TabsSwitcher({ active }: { active: string }) {
@@ -17,27 +19,30 @@ export function TabsSwitcher({ active }: { active: string }) {
   function setTab(key: string) {
     const params = new URLSearchParams(sp.toString());
     params.set("tab", key);
-    startTransition(() => {
-      router.push(`${pathname}?${params.toString()}`);
-    });
+    startTransition(() => router.push(`${pathname}?${params.toString()}`));
   }
 
   return (
     <div className={`flex gap-1 border-b border-border ${pending ? "opacity-70" : ""}`}>
-      {TABS.map((t) => (
-        <button
-          key={t.key}
-          disabled={pending}
-          onClick={() => setTab(t.key)}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors disabled:opacity-60 ${
-            active === t.key
-              ? "border-primary text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          {t.label}
-        </button>
-      ))}
+      {TABS.map((t) => {
+        const Icon = t.icon;
+        const isActive = active === t.key;
+        return (
+          <button
+            key={t.key}
+            disabled={pending}
+            onClick={() => setTab(t.key)}
+            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors disabled:opacity-60 ${
+              isActive
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon className="size-3.5" />
+            {t.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

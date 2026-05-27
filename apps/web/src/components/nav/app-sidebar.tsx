@@ -10,7 +10,6 @@ import {
   Receipt,
   Search,
   Settings,
-  TrendingUp,
   Utensils,
 } from "lucide-react";
 import Link from "next/link";
@@ -42,7 +41,6 @@ import {
 const navMain = [
   { title: "Home", url: "/dashboard", icon: Home },
   { title: "Analisi Fatture", url: "/analisi-fatture", icon: FileText },
-  { title: "Ricavi", url: "/ricavi", icon: TrendingUp },
   { title: "Prezzi", url: "/prezzi", icon: Search },
   { title: "Margini", url: "/margini", icon: BarChart3 },
   { title: "Foodcost", url: "/foodcost", icon: Utensils },
