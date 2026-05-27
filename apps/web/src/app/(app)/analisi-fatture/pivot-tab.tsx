@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2 } from "lucide-react";
 import * as XLSX from "xlsx";
 import {
   type PivotResponse,
@@ -30,6 +30,13 @@ const VISTE = [
   { key: "tabella", label: "Tabella" },
   { key: "grafico", label: "Grafico" },
 ];
+
+const SPESE_GENERALI_SET = new Set([
+  "SERVIZI E CONSULENZE",
+  "UTENZE E LOCALI",
+  "MANUTENZIONE E ATTREZZATURE",
+  "MATERIALE DI CONSUMO",
+]);
 
 export function PivotTab({ pivot, dimensione, filtri }: Props) {
   const router = useRouter();
@@ -217,6 +224,40 @@ function Sparkline({ values }: { values: number[] }) {
   );
 }
 
+type SortState = { key: string | null; dir: "asc" | "desc" | null };
+
+function PivotSortHeader({
+  label,
+  sortKey,
+  current,
+  align,
+  onClick,
+}: {
+  label: string;
+  sortKey: string;
+  current: SortState;
+  align?: "left" | "right";
+  onClick: (k: string) => void;
+}) {
+  const isActive = current.key === sortKey && current.dir !== null;
+  const Icon = isActive ? (current.dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <button
+      onClick={() => onClick(sortKey)}
+      className={`group inline-flex items-center gap-1 hover:text-foreground transition-colors ${
+        align === "right" ? "justify-end w-full" : ""
+      }`}
+    >
+      <span>{label}</span>
+      <Icon
+        className={`size-3 shrink-0 ${
+          isActive ? "text-primary" : "text-muted-foreground/40 group-hover:text-muted-foreground"
+        }`}
+      />
+    </button>
+  );
+}
+
 function PivotTable({
   pivot,
   dimensione,
@@ -230,13 +271,57 @@ function PivotTable({
 }) {
   const labelDim = dimensione === "categoria" ? "Categoria" : "Fornitore";
 
+  const [sort, setSort] = useState<SortState>({ key: "totale", dir: "desc" });
+
+  function cycleSort(k: string) {
+    setSort((prev) => {
+      if (prev.key !== k) return { key: k, dir: "asc" };
+      if (prev.dir === "asc") return { key: k, dir: "desc" };
+      if (prev.dir === "desc") return { key: null, dir: null };
+      return { key: k, dir: "asc" };
+    });
+  }
+
+  const sortedRows = useMemo(() => {
+    if (!sort.key || !sort.dir) return pivot.rows;
+    return [...pivot.rows].sort((a, b) => {
+      let va: number | string;
+      let vb: number | string;
+      if (sort.key === "dimensione") {
+        va = a.dimensione;
+        vb = b.dimensione;
+      } else if (sort.key === "totale") {
+        va = a.totale;
+        vb = b.totale;
+      } else if (sort.key === "incidenza_pct") {
+        va = a.incidenza_pct;
+        vb = b.incidenza_pct;
+      } else {
+        va = a.periodi[sort.key!] ?? 0;
+        vb = b.periodi[sort.key!] ?? 0;
+      }
+      let cmp: number;
+      if (typeof va === "string" && typeof vb === "string") {
+        cmp = va.localeCompare(vb, "it", { sensitivity: "base" });
+      } else {
+        cmp = (va as number) - (vb as number);
+      }
+      return sort.dir === "asc" ? cmp : -cmp;
+    });
+  }, [pivot.rows, sort]);
+
   return (
     <div className="rounded-lg border overflow-x-auto">
       <table className="w-full text-xs">
         <thead className="bg-muted/50 border-b">
           <tr>
             <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap min-w-44">
-              {labelDim}
+              <PivotSortHeader
+                label={labelDim}
+                sortKey="dimensione"
+                current={sort}
+                onClick={cycleSort}
+              />
             </th>
             <th className="text-center px-2 py-2 font-medium text-muted-foreground w-20">Trend</th>
             {pivot.periodi.map((p, idx) => (
@@ -244,19 +329,37 @@ function PivotTable({
                 key={p}
                 className="text-right px-2 py-2 font-medium text-muted-foreground whitespace-nowrap min-w-24"
               >
-                {pivot.periodi_labels[idx]}
+                <PivotSortHeader
+                  label={pivot.periodi_labels[idx]}
+                  sortKey={p}
+                  current={sort}
+                  align="right"
+                  onClick={cycleSort}
+                />
               </th>
             ))}
             <th className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap min-w-24">
-              Totale
+              <PivotSortHeader
+                label="Totale"
+                sortKey="totale"
+                current={sort}
+                align="right"
+                onClick={cycleSort}
+              />
             </th>
             <th className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap min-w-16">
-              %
+              <PivotSortHeader
+                label="%"
+                sortKey="incidenza_pct"
+                current={sort}
+                align="right"
+                onClick={cycleSort}
+              />
             </th>
           </tr>
         </thead>
         <tbody>
-          {pivot.rows.map((row) => {
+          {sortedRows.map((row) => {
             const rowMax = maxRowValue(row.periodi);
             const isSelected = selectedForTrend.includes(row.dimensione);
             return (
@@ -346,6 +449,24 @@ function intensityToBg(intensity: number): string {
 
 const COLORI_LINEE = ["#0ea5e9", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"];
 
+function sortRowsForPills(
+  rows: PivotResponse["rows"],
+  dimensione: "categoria" | "fornitore",
+): PivotResponse["rows"] {
+  if (dimensione !== "categoria") {
+    return [...rows].sort((a, b) =>
+      a.dimensione.localeCompare(b.dimensione, "it", { sensitivity: "base" }),
+    );
+  }
+  const fb = rows
+    .filter((r) => !SPESE_GENERALI_SET.has(r.dimensione.toUpperCase()))
+    .sort((a, b) => a.dimensione.localeCompare(b.dimensione, "it", { sensitivity: "base" }));
+  const sg = rows
+    .filter((r) => SPESE_GENERALI_SET.has(r.dimensione.toUpperCase()))
+    .sort((a, b) => a.dimensione.localeCompare(b.dimensione, "it", { sensitivity: "base" }));
+  return [...fb, ...sg];
+}
+
 function TrendChart({
   pivot,
   dimensione,
@@ -409,6 +530,8 @@ function TrendChart({
     );
   }
 
+  const orderedRows = useMemo(() => sortRowsForPills(pivot.rows, dimensione), [pivot.rows, dimensione]);
+
   return (
     <div className="rounded-lg border p-4 space-y-3">
       {/* Selettore voci da confrontare */}
@@ -417,7 +540,7 @@ function TrendChart({
           Confronta (max 5) — clicca per aggiungere o togliere
         </p>
         <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-          {pivot.rows.map((r, idx) => {
+          {orderedRows.map((r) => {
             const isSel = selectedForTrend.includes(r.dimensione);
             const colorIdx = isSel ? selectedForTrend.indexOf(r.dimensione) % COLORI_LINEE.length : 0;
             return (
@@ -458,16 +581,20 @@ function TrendChart({
         <>
           <TrendSvg trend={trend} />
           <div className="flex flex-wrap gap-3 mt-3 justify-center">
-            {trend.serie.map((s, i) => (
-              <span key={s.valore} className="inline-flex items-center gap-1.5 text-xs">
-                <span
-                  className="inline-block w-3 h-1 rounded-sm"
-                  style={{ backgroundColor: COLORI_LINEE[i % COLORI_LINEE.length] }}
-                />
-                <span className="font-medium">{s.valore}</span>
-                <span className="text-muted-foreground">· tot {formatEuroCompact(s.totale)}</span>
-              </span>
-            ))}
+            {trend.serie.map((s, i) => {
+              const avg = s.punti.length > 0 ? s.totale / s.punti.length : 0;
+              return (
+                <span key={s.valore} className="inline-flex items-center gap-1.5 text-xs">
+                  <span
+                    className="inline-block w-3 h-1 rounded-sm"
+                    style={{ backgroundColor: COLORI_LINEE[i % COLORI_LINEE.length] }}
+                  />
+                  <span className="font-medium">{s.valore}</span>
+                  <span className="text-muted-foreground">· tot {formatEuroCompact(s.totale)}</span>
+                  <span className="text-rose-500">· ⌀ {formatEuroCompact(avg)}</span>
+                </span>
+              );
+            })}
           </div>
         </>
       )}
@@ -507,8 +634,13 @@ function TrendSvg({ trend }: { trend: TrendResponse }) {
       .join(" ");
   }
 
+  function yForValue(v: number): number {
+    return PAD_T + innerH - ((v - yMin) / (yMax - yMin || 1)) * innerH;
+  }
+
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: "300px" }}>
+      {/* Griglia Y */}
       {yLabels.map((v, i) => {
         const y = PAD_T + innerH - (i / yTicks) * innerH;
         return (
@@ -529,6 +661,8 @@ function TrendSvg({ trend }: { trend: TrendResponse }) {
           </g>
         );
       })}
+
+      {/* Label asse X */}
       {periodi.map((p, i) => {
         const total = periodi.length;
         const skip = total > 12 ? Math.ceil(total / 8) : 1;
@@ -546,6 +680,27 @@ function TrendSvg({ trend }: { trend: TrendResponse }) {
           </text>
         );
       })}
+
+      {/* Linee medie (rosse tratteggiate) */}
+      {trend.serie.map((s) => {
+        const avg = s.punti.length > 0 ? s.totale / s.punti.length : 0;
+        const y = yForValue(avg);
+        return (
+          <line
+            key={`avg-${s.valore}`}
+            x1={PAD_L}
+            y1={y}
+            x2={PAD_L + innerW}
+            y2={y}
+            stroke="#ef4444"
+            strokeWidth="1.2"
+            strokeDasharray="6,4"
+            strokeOpacity="0.75"
+          />
+        );
+      })}
+
+      {/* Linee serie */}
       {trend.serie.map((s, idx) => (
         <g key={s.valore}>
           <path
