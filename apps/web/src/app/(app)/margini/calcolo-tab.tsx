@@ -1,360 +1,517 @@
 "use client";
 
-import { useState, useMemo, useTransition } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Save, Info } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Info, Lock, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import type { MarginiMese } from "@/lib/margini";
+import { formatEuro, formatPct } from "./periodi";
 
-const MESI_SHORT = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
-const ANNO_CORRENTE = new Date().getFullYear();
-
-type MeseState = Omit<MarginiMese, "mese">;
-
-type Computed = {
-  fatt_netto: number;
-  costi_fb_tot: number;
+type MesePivot = {
+  anno: number;
+  mese: number;
+  label: string;
+  fatturato_iva10: number;
+  fatturato_iva22: number;
+  altri_ricavi_noiva: number;
+  fatturato_netto: number;
+  costi_fb_auto: number;
+  altri_costi_fb: number;
+  costi_fb_totali: number;
   primo_margine: number;
-  costi_spese_tot: number;
-  costi_pers: number;
+  costi_spese_auto: number;
+  altri_costi_spese: number;
+  costi_spese_totali: number;
+  costo_dipendenti: number;
+  costo_personale_extra: number;
+  costi_personale: number;
   mol: number;
 };
 
-type Totals = MeseState & Computed;
-
-function emptyMese(): MeseState {
-  return {
-    fatturato_iva10: 0, fatturato_iva22: 0, altri_ricavi_noiva: 0,
-    altri_costi_fb: 0, altri_costi_spese: 0, costo_dipendenti: 0,
-    costo_personale_extra: 0, costi_fb_auto: 0, costi_spese_auto: 0,
-  };
-}
-
-function computeMese(d: MeseState): Computed {
-  const fatt_netto = d.fatturato_iva10 / 1.10 + d.fatturato_iva22 / 1.22 + d.altri_ricavi_noiva;
-  const costi_fb_tot = d.costi_fb_auto + d.altri_costi_fb;
-  const primo_margine = fatt_netto - costi_fb_tot;
-  const costi_spese_tot = d.costi_spese_auto + d.altri_costi_spese;
-  const costi_pers = d.costo_dipendenti + d.costo_personale_extra;
-  const mol = primo_margine - costi_spese_tot - costi_pers;
-  return { fatt_netto, costi_fb_tot, primo_margine, costi_spese_tot, costi_pers, mol };
-}
-
-function fmt(v: number): string {
-  if (v === 0) return "—";
-  return new Intl.NumberFormat("it-IT", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(v));
-}
-
-function fmtEuro(v: number): string {
-  if (v === 0) return "—";
-  const sign = v < 0 ? "-" : "";
-  return `${sign}€ ${new Intl.NumberFormat("it-IT", { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.abs(Math.round(v)))}`;
-}
-
-function fmtPct(v: number): string {
-  return v === 0 ? "—" : `${v.toFixed(1)}%`;
-}
-
-function sumField(mesi: Record<number, MeseState>, key: keyof MeseState): number {
-  return Object.values(mesi).reduce((acc, m) => acc + (m[key] as number), 0);
-}
-
-type RowDef =
-  | { type: "input"; key: keyof MeseState; label: string }
-  | { type: "auto"; key: keyof MeseState; label: string }
-  | { type: "computed"; label: string; getValue: (c: Computed) => number; highlight: "blue" | "green" | "mol" };
-
-const ROW_DEFS: RowDef[] = [
-  { type: "input",    key: "fatturato_iva10",       label: "Ricavi IVA 10%" },
-  { type: "input",    key: "fatturato_iva22",       label: "Ricavi IVA 22%" },
-  { type: "input",    key: "altri_ricavi_noiva",    label: "Altri ricavi (no IVA)" },
-  { type: "computed", label: "= Fatturato Netto",   getValue: c => c.fatt_netto,    highlight: "blue" },
-  { type: "auto",     key: "costi_fb_auto",         label: "Costi F&B (Fatture)" },
-  { type: "input",    key: "altri_costi_fb",        label: "Altri Costi F&B" },
-  { type: "computed", label: "= Costi F&B Totali",  getValue: c => c.costi_fb_tot,  highlight: "blue" },
-  { type: "computed", label: "= 1° Margine",        getValue: c => c.primo_margine, highlight: "green" },
-  { type: "auto",     key: "costi_spese_auto",      label: "Spese Gen. (Fatture)" },
-  { type: "input",    key: "altri_costi_spese",     label: "Altre Spese Generali" },
-  { type: "input",    key: "costo_dipendenti",      label: "Costo Personale Lordo" },
-  { type: "input",    key: "costo_personale_extra", label: "Costo Personale Extra" },
-  { type: "computed", label: "= 2° Margine (MOL)",  getValue: c => c.mol,           highlight: "mol" },
-];
-
-const SEPARATOR_BEFORE = new Set([3, 7]);
-const HL: Record<string, string> = {
-  blue: "bg-sky-50 dark:bg-sky-950/30 font-semibold",
-  green: "bg-emerald-50 dark:bg-emerald-950/20 font-semibold",
+type Commento = {
+  kpi_nome: string;
+  percentuale: string;
+  commento: string;
+  emoji: string;
+  colore: string;
 };
 
-function molCls(v: number) {
-  if (v > 0) return "bg-emerald-100 dark:bg-emerald-900/30 font-bold text-emerald-700 dark:text-emerald-400";
-  if (v < 0) return "bg-rose-100 dark:bg-rose-900/30 font-bold text-rose-700 dark:text-rose-400";
-  return "bg-muted font-bold";
-}
+type AnalisiResponse = {
+  mesi: MesePivot[];
+  totali: MesePivot;
+  fatt_medio_mensile: number;
+  food_cost_perc: number;
+  primo_margine_perc: number;
+  spese_gen_perc: number;
+  personale_perc: number;
+  mol_perc: number;
+  num_mesi_attivi: number;
+  commenti: Commento[];
+};
 
-type Props = { anno: number; mesi: MarginiMese[] };
+type EditableField =
+  | "altri_costi_fb" | "altri_costi_spese" | "costo_dipendenti" | "costo_personale_extra";
 
-export function CalcoloTab({ anno, mesi }: Props) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const sp = useSearchParams();
-  const [, startNav] = useTransition();
+type Section = "ricavi" | "fb" | "spese" | "personale" | "margine";
 
-  const initState = useMemo<Record<number, MeseState>>(() => {
-    const s: Record<number, MeseState> = {};
-    for (let m = 1; m <= 12; m++) {
-      const found = mesi.find(x => x.mese === m);
-      s[m] = found ? { ...found } : emptyMese();
-    }
-    return s;
-  }, [mesi]);
+type RowDef = {
+  key: keyof MesePivot;
+  label: string;
+  type: "input-readonly" | "input-readonly-tooltip" | "input-editable" | "computed";
+  field?: EditableField;
+  section: Section;
+  isMetric?: boolean;
+  isMolMargin?: boolean;
+  isPrimoMargin?: boolean;
+  isFattNetto?: boolean;
+};
 
-  const [mesiState, setMesiState] = useState<Record<number, MeseState>>(initState);
-  const [isDirty, setIsDirty] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+const ROWS: RowDef[] = [
+  { key: "fatturato_iva10",       label: "Ricavi IVA 10%",         type: "input-readonly-tooltip", section: "ricavi" },
+  { key: "fatturato_iva22",       label: "Ricavi IVA 22%",         type: "input-readonly-tooltip", section: "ricavi" },
+  { key: "altri_ricavi_noiva",    label: "Altri ricavi (no IVA)",  type: "input-readonly-tooltip", section: "ricavi" },
+  { key: "fatturato_netto",       label: "= Fatturato Netto",      type: "computed", section: "ricavi", isMetric: true, isFattNetto: true },
+  { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb" },
+  { key: "altri_costi_fb",        label: "Altri Costi F&B",        type: "input-editable", field: "altri_costi_fb", section: "fb" },
+  { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true },
+  { key: "primo_margine",         label: "= 1° Margine",           type: "computed", section: "margine", isMetric: true, isPrimoMargin: true },
+  { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese" },
+  { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese" },
+  { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale" },
+  { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale" },
+  { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true },
+];
 
-  function updateMese(m: number, key: keyof MeseState, raw: string) {
-    const val = raw === "" ? 0 : parseFloat(raw.replace(",", ".")) || 0;
-    setMesiState(prev => ({ ...prev, [m]: { ...prev[m], [key]: val } }));
-    setIsDirty(true);
-  }
+const SECTION_CONFIG: Record<Section, { color: string; bg: string; border: string }> = {
+  ricavi: {
+    color: "text-sky-700 dark:text-sky-300",
+    bg: "bg-sky-500/8",
+    border: "border-l-sky-500",
+  },
+  fb: {
+    color: "text-orange-700 dark:text-orange-300",
+    bg: "bg-orange-500/8",
+    border: "border-l-orange-500",
+  },
+  spese: {
+    color: "text-purple-700 dark:text-purple-300",
+    bg: "bg-purple-500/8",
+    border: "border-l-purple-500",
+  },
+  personale: {
+    color: "text-pink-700 dark:text-pink-300",
+    bg: "bg-pink-500/8",
+    border: "border-l-pink-500",
+  },
+  margine: {
+    color: "text-emerald-700 dark:text-emerald-300",
+    bg: "bg-emerald-500/10",
+    border: "border-l-emerald-500",
+  },
+};
 
-  function changeAnno(newAnno: number) {
-    const params = new URLSearchParams(sp.toString());
-    params.set("anno", String(newAnno));
-    startNav(() => router.push(`${pathname}?${params.toString()}`));
-  }
+type Props = {
+  dataDa: string;
+  dataA: string;
+};
 
-  async function handleSave() {
-    setIsSaving(true);
+export function CalcoloTab({ dataDa, dataA }: Props) {
+  const [data, setData] = useState<AnalisiResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
     try {
-      const body = {
-        anno,
-        mesi: Array.from({ length: 12 }, (_, i) => ({ mese: i + 1, ...mesiState[i + 1] })),
-      };
-      const res = await fetch("/api/margini", {
+      const res = await fetch(
+        `/api/margini/analisi?${new URLSearchParams({ data_da: dataDa, data_a: dataA })}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) throw new Error();
+      const d: AnalisiResponse = await res.json();
+      setData(d);
+    } catch {
+      toast.error("Errore nel caricamento margini");
+    } finally {
+      setLoading(false);
+    }
+  }, [dataDa, dataA]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Mostra solo mesi con almeno un valore (ricavi o costi)
+  const mesiVisibili = useMemo(() => {
+    if (!data) return [];
+    return data.mesi.filter(
+      (m) =>
+        m.fatturato_netto > 0 ||
+        m.costi_fb_totali > 0 ||
+        m.costi_spese_totali > 0 ||
+        m.costi_personale > 0,
+    );
+  }, [data]);
+
+  async function saveCell(anno: number, mese: number, field: EditableField, value: number) {
+    try {
+      const res = await fetch("/api/margini/cella", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ anno, mese, field, value }),
       });
       if (!res.ok) throw new Error();
-      setIsDirty(false);
-      toast.success("Dati salvati");
+      toast.success("Salvato");
+      // Reload to refresh derived metrics
+      load();
     } catch {
       toast.error("Errore nel salvataggio");
-    } finally {
-      setIsSaving(false);
     }
   }
 
-  const computed = useMemo(() => {
-    const c: Record<number, Computed> = {};
-    for (let m = 1; m <= 12; m++) c[m] = computeMese(mesiState[m]);
-    return c;
-  }, [mesiState]);
+  if (loading && !data) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-8 text-center text-sm text-muted-foreground">
+        Caricamento dati margini...
+      </div>
+    );
+  }
 
-  const totals = useMemo<Totals>(() => {
-    const iva10 = sumField(mesiState, "fatturato_iva10");
-    const iva22 = sumField(mesiState, "fatturato_iva22");
-    const altri = sumField(mesiState, "altri_ricavi_noiva");
-    const fatt_netto = iva10 / 1.10 + iva22 / 1.22 + altri;
-    const fbAuto = sumField(mesiState, "costi_fb_auto");
-    const altriFb = sumField(mesiState, "altri_costi_fb");
-    const costi_fb_tot = fbAuto + altriFb;
-    const primo_margine = fatt_netto - costi_fb_tot;
-    const speseAuto = sumField(mesiState, "costi_spese_auto");
-    const altreSpese = sumField(mesiState, "altri_costi_spese");
-    const costi_spese_tot = speseAuto + altreSpese;
-    const pers = sumField(mesiState, "costo_dipendenti");
-    const extra = sumField(mesiState, "costo_personale_extra");
-    const costi_pers = pers + extra;
-    const mol = primo_margine - costi_spese_tot - costi_pers;
-    return {
-      fatturato_iva10: iva10, fatturato_iva22: iva22, altri_ricavi_noiva: altri,
-      costi_fb_auto: fbAuto, altri_costi_fb: altriFb,
-      costi_spese_auto: speseAuto, altri_costi_spese: altreSpese,
-      costo_dipendenti: pers, costo_personale_extra: extra,
-      fatt_netto, costi_fb_tot, primo_margine, costi_spese_tot, costi_pers, mol,
-    };
-  }, [mesiState]);
-
-  function getTotForRow(row: RowDef): number {
-    if (row.type === "computed") return row.getValue(totals);
-    return totals[row.key as keyof Totals] as number;
+  if (!data || mesiVisibili.length === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-8 text-center space-y-2">
+        <p className="text-sm font-medium">Nessun dato margini nel periodo selezionato</p>
+        <p className="text-xs text-muted-foreground">
+          Inserisci ricavi nel tab Ricavi o carica fatture per popolare automaticamente i costi.
+        </p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => changeAnno(anno - 1)}
-            className="size-7 flex items-center justify-center rounded border border-border hover:bg-muted transition-colors"
-          >
-            <ChevronLeft className="size-4" />
-          </button>
-          <span className="text-lg font-bold w-14 text-center">{anno}</span>
-          <button
-            onClick={() => changeAnno(anno + 1)}
-            disabled={anno >= ANNO_CORRENTE}
-            className="size-7 flex items-center justify-center rounded border border-border hover:bg-muted transition-colors disabled:opacity-40"
-          >
-            <ChevronRight className="size-4" />
-          </button>
-        </div>
+      {/* Toolbar */}
+      <div className="flex items-center gap-2">
         <button
-          onClick={handleSave}
-          disabled={isSaving || !isDirty}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+          onClick={load}
+          disabled={loading}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors"
         >
-          <Save className="size-3.5" />
-          {isSaving ? "Salvataggio…" : "Salva Anno"}
+          <RefreshCw className={`size-3 ${loading ? "animate-spin" : ""}`} />
+          Aggiorna
         </button>
+        <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+          <Info className="size-3" />
+          Modifica le righe in bianco; le altre sono calcolate o ereditate (Tab Ricavi, fatture).
+        </p>
       </div>
 
-      <div className="flex items-start gap-1.5 text-xs text-muted-foreground p-2 rounded-md bg-muted/40 border border-border/50">
-        <Info className="size-3.5 mt-0.5 shrink-0" />
-        <span>
-          Inserisci i ricavi e i costi manuali. I campi con sfondo grigio (Costi da Fatture) sono calcolati
-          automaticamente dalle fatture caricate. Le righe <span className="font-medium text-foreground">= </span>
-          sono calcolate in tempo reale. Clicca <span className="font-medium text-foreground">Salva Anno</span> per salvare.
-        </span>
+      {/* Legenda colori */}
+      <div className="flex flex-wrap gap-1.5">
+        {([
+          { label: "Ricavi", section: "ricavi" as Section },
+          { label: "Costi F&B", section: "fb" as Section },
+          { label: "Spese Generali", section: "spese" as Section },
+          { label: "Personale", section: "personale" as Section },
+          { label: "Totali & Margini", section: "margine" as Section },
+        ]).map((c) => (
+          <span
+            key={c.label}
+            className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${SECTION_CONFIG[c.section].color} border ${SECTION_CONFIG[c.section].border.replace("border-l-", "border-")}/40`}
+          >
+            {c.label}
+          </span>
+        ))}
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border">
-        <table className="min-w-max text-xs border-collapse">
-          <thead>
-            <tr className="bg-muted/60">
-              <th className="sticky left-0 z-10 bg-muted/80 text-left px-3 py-2 font-semibold border-r border-border min-w-[210px]">
-                Voce
-              </th>
-              {MESI_SHORT.map(m => (
-                <th key={m} className="text-center px-1 py-2 font-semibold border-r border-border min-w-[88px]">
-                  {m}
+      {/* Tabella trasposta */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-sm border-collapse">
+            <thead className="bg-muted/40">
+              <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                <th className="sticky left-0 z-20 bg-muted/40 text-left px-3 py-2 font-semibold border-r border-border min-w-[200px]">
+                  Voce
                 </th>
-              ))}
-              <th className="text-center px-2 py-2 font-semibold bg-muted min-w-[100px]">TOT ANNO</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ROW_DEFS.map((row, ri) => (
-              <tr
-                key={ri}
-                className={`border-t border-border ${SEPARATOR_BEFORE.has(ri) ? "border-t-2 border-t-border/60" : ""}`}
-              >
-                {/* Label */}
-                <td
-                  className={`sticky left-0 z-10 px-3 py-1.5 border-r border-border whitespace-nowrap ${
-                    row.type === "computed"
-                      ? row.highlight === "mol"
-                        ? "bg-muted font-semibold"
-                        : `${HL[row.highlight]} bg-clip-padding`
-                      : row.type === "auto"
-                      ? "bg-muted/30 text-muted-foreground"
-                      : "bg-background"
-                  }`}
-                >
-                  {row.label}
-                </td>
-
-                {/* Month cells */}
-                {Array.from({ length: 12 }, (_, i) => i + 1).map(m => {
-                  const c = computed[m];
-                  if (row.type === "computed") {
-                    const v = row.getValue(c);
-                    const cls = row.highlight === "mol" ? molCls(v) : HL[row.highlight];
-                    return (
-                      <td key={m} className={`text-right px-2 py-1.5 border-r border-border ${cls}`}>
-                        {fmt(v)}
-                      </td>
-                    );
-                  }
-                  if (row.type === "auto") {
-                    return (
-                      <td key={m} className="text-right px-2 py-1.5 border-r border-border bg-muted/20 text-muted-foreground">
-                        {fmt(mesiState[m][row.key] as number)}
-                      </td>
-                    );
-                  }
-                  const val = mesiState[m][row.key] as number;
-                  return (
-                    <td key={m} className="border-r border-border p-0">
-                      <input
-                        type="number"
-                        step="1"
-                        min="0"
-                        value={val === 0 ? "" : val}
-                        placeholder="0"
-                        onChange={e => updateMese(m, row.key, e.target.value)}
-                        className="w-full h-full px-2 py-1.5 text-right bg-transparent border-0 outline-none focus:bg-sky-50 dark:focus:bg-sky-950/20 focus:ring-inset focus:ring-1 focus:ring-sky-400 text-xs"
-                      />
-                    </td>
-                  );
-                })}
-
-                {/* Total */}
-                {(() => {
-                  const tv = getTotForRow(row);
-                  const cls =
-                    row.type === "computed"
-                      ? row.highlight === "mol"
-                        ? molCls(tv)
-                        : HL[row.highlight]
-                      : row.type === "auto"
-                      ? "text-muted-foreground"
-                      : "";
-                  return (
-                    <td className={`text-right px-2 py-1.5 font-medium bg-muted/40 ${cls}`}>
-                      {fmt(tv)}
-                    </td>
-                  );
-                })()}
+                {mesiVisibili.map((m) => (
+                  <th
+                    key={`${m.anno}-${m.mese}`}
+                    className="text-right px-2 py-2 font-semibold border-r border-border min-w-[100px]"
+                  >
+                    {m.label}
+                  </th>
+                ))}
+                <th className="sticky right-0 z-20 bg-primary/10 text-right px-3 py-2 font-bold border-l-2 border-primary min-w-[110px]">
+                  Totale
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {ROWS.map((row, ri) => {
+                const cfg = SECTION_CONFIG[row.section];
+                const isMetric = row.isMetric;
+                return (
+                  <tr
+                    key={ri}
+                    className={`border-t border-border ${isMetric ? cfg.bg : ""} ${isMetric ? "font-semibold" : ""}`}
+                  >
+                    <td
+                      className={`sticky left-0 z-10 px-3 py-1.5 border-r border-border whitespace-nowrap ${
+                        isMetric ? `${cfg.bg} ${cfg.color} border-l-4 ${cfg.border} font-bold` : "bg-card"
+                      }`}
+                    >
+                      {row.label}
+                    </td>
+                    {mesiVisibili.map((m) => (
+                      <Cell
+                        key={`${m.anno}-${m.mese}`}
+                        row={row}
+                        mese={m}
+                        cfg={cfg}
+                        onSave={saveCell}
+                      />
+                    ))}
+                    {/* Total column */}
+                    <TotalCell row={row} totali={data.totali} cfg={cfg} />
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      {/* KPI */}
-      {(totals.fatt_netto !== 0 || totals.mol !== 0) && (
-        <KpiRow totals={totals} />
+      {/* KPI riassunto periodo */}
+      <PeriodoKpiRow data={data} />
+
+      {/* Commenti automatici */}
+      {data.commenti.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold flex items-center gap-1.5">
+            💬 Analisi automatica
+          </h3>
+          <div className="space-y-1.5">
+            {data.commenti.map((c, i) => (
+              <div
+                key={i}
+                className="flex items-start gap-3 rounded-md border border-border bg-card p-3"
+                style={{ borderLeftWidth: 4, borderLeftColor: c.colore }}
+              >
+                <span className="text-lg font-bold shrink-0" style={{ color: c.colore }}>
+                  {c.emoji} {c.percentuale}
+                </span>
+                <div className="text-sm">
+                  <strong>{c.kpi_nome}</strong>
+                  <span className="text-muted-foreground"> · {c.commento}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
 }
 
-function KpiRow({ totals }: { totals: Totals }) {
-  const fn = totals.fatt_netto > 0 ? totals.fatt_netto : 1;
-  const fc_pct = totals.fatt_netto > 0 ? totals.costi_fb_tot / fn * 100 : 0;
-  const pm_pct = totals.fatt_netto > 0 ? totals.primo_margine / fn * 100 : 0;
-  const mol_pct = totals.fatt_netto > 0 ? totals.mol / fn * 100 : 0;
+/* ============================================================ */
+/* Cell                                                          */
+/* ============================================================ */
+function Cell({
+  row,
+  mese,
+  cfg,
+  onSave,
+}: {
+  row: RowDef;
+  mese: MesePivot;
+  cfg: { bg: string; color: string; border: string };
+  onSave: (anno: number, mese: number, field: EditableField, value: number) => void;
+}) {
+  const raw = mese[row.key] as number;
+  const isMetric = row.isMetric;
+  const isMolMargin = row.isMolMargin;
+  const display = raw === 0 ? "—" : formatEuro(raw);
 
-  const kpis = [
-    { label: "Fatturato Netto", value: fmtEuro(totals.fatt_netto), color: "" },
-    {
-      label: "Food Cost %", value: fmtPct(fc_pct),
-      color: fc_pct > 35 ? "text-rose-600" : fc_pct > 30 ? "text-amber-600" : "text-emerald-600",
-    },
-    {
-      label: "1° Margine %", value: fmtPct(pm_pct),
-      color: pm_pct < 60 ? "text-rose-600" : pm_pct < 67 ? "text-amber-600" : "text-emerald-600",
-    },
-    {
-      label: "2° Margine (MOL)", value: fmtEuro(totals.mol),
-      color: totals.mol >= 0 ? "text-emerald-600" : "text-rose-600",
-    },
-    {
-      label: "MOL %", value: fmtPct(mol_pct),
-      color: mol_pct < 5 ? "text-rose-600" : mol_pct < 10 ? "text-amber-600" : "text-emerald-600",
-    },
+  // Color logic for MOL: positive emerald, negative rose
+  const metricCls = isMolMargin
+    ? raw > 0
+      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold"
+      : raw < 0
+      ? "bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold"
+      : "bg-muted/30 font-bold"
+    : isMetric
+    ? `${cfg.bg} ${cfg.color} font-bold`
+    : "";
+
+  if (row.type === "input-editable" && row.field) {
+    return (
+      <EditableCell
+        value={raw}
+        onSave={(v) => onSave(mese.anno, mese.mese, row.field!, v)}
+      />
+    );
+  }
+
+  if (row.type === "input-readonly-tooltip") {
+    return (
+      <td className={`text-right px-2 py-1.5 border-r border-border tabular-nums text-muted-foreground/80 ${metricCls}`}>
+        <span title="Modifica da Tab Ricavi" className="inline-flex items-center gap-1 cursor-help">
+          {display}
+          <Lock className="size-3 opacity-40" />
+        </span>
+      </td>
+    );
+  }
+
+  if (row.type === "input-readonly") {
+    return (
+      <td className={`text-right px-2 py-1.5 border-r border-border tabular-nums text-muted-foreground/80 ${metricCls}`}>
+        <span title="Calcolato dalle fatture caricate" className="inline-flex items-center gap-1 cursor-help">
+          {display}
+          <Lock className="size-3 opacity-40" />
+        </span>
+      </td>
+    );
+  }
+
+  // computed
+  return (
+    <td className={`text-right px-2 py-1.5 border-r border-border tabular-nums ${metricCls}`}>
+      {display}
+    </td>
+  );
+}
+
+function EditableCell({
+  value,
+  onSave,
+}: {
+  value: number;
+  onSave: (v: number) => void;
+}) {
+  const [local, setLocal] = useState(value > 0 ? String(value) : "");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setLocal(value > 0 ? String(value) : "");
+  }, [value]);
+
+  async function commit() {
+    const newVal = parseFloat(local.replace(",", ".")) || 0;
+    if (Math.abs(newVal - value) < 0.001) return;
+    setSaving(true);
+    try {
+      await onSave(newVal);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 800);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <td className="border-r border-border p-0">
+      <input
+        type="number"
+        step="0.01"
+        min="0"
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") {
+            setLocal(value > 0 ? String(value) : "");
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        placeholder="—"
+        className={`w-full h-full px-2 py-1.5 text-right tabular-nums bg-transparent border-0 outline-none transition-colors text-sm ${
+          saved
+            ? "bg-emerald-500/10"
+            : saving
+            ? "bg-sky-500/5"
+            : "hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset"
+        }`}
+      />
+    </td>
+  );
+}
+
+function TotalCell({
+  row,
+  totali,
+  cfg,
+}: {
+  row: RowDef;
+  totali: MesePivot;
+  cfg: { bg: string; color: string; border: string };
+}) {
+  const raw = totali[row.key] as number;
+  const display = raw === 0 ? "—" : formatEuro(raw);
+
+  const isMolMargin = row.isMolMargin;
+  const isMetric = row.isMetric;
+
+  const cls = isMolMargin
+    ? raw > 0
+      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold"
+      : raw < 0
+      ? "bg-rose-500/15 text-rose-700 dark:text-rose-400 font-bold"
+      : "bg-primary/10 font-bold"
+    : isMetric
+    ? `${cfg.bg} ${cfg.color} font-bold`
+    : "bg-primary/5";
+
+  return (
+    <td className={`sticky right-0 z-10 text-right px-3 py-1.5 tabular-nums border-l-2 border-primary ${cls}`}>
+      {display}
+    </td>
+  );
+}
+
+/* ============================================================ */
+/* KPI riassunto periodo                                         */
+/* ============================================================ */
+function PeriodoKpiRow({ data }: { data: AnalisiResponse }) {
+  const cards = [
+    { label: "Fatturato Totale", value: formatEuro(data.totali.fatturato_netto), sub: `${data.num_mesi_attivi} mesi attivi`, tone: "primary" as const },
+    { label: "Fatturato Medio", value: formatEuro(data.fatt_medio_mensile), sub: "media mensile", tone: "default" as const },
+    { label: "Food Cost", value: formatEuro(data.totali.costi_fb_totali), sub: `incidenza ${formatPct(data.food_cost_perc)}`, tone: "default" as const },
+    { label: "1° Margine", value: formatEuro(data.totali.primo_margine), sub: `incidenza ${formatPct(data.primo_margine_perc)}`, tone: data.totali.primo_margine >= 0 ? "positive" as const : "negative" as const },
+    { label: "Spese Generali", value: formatEuro(data.totali.costi_spese_totali), sub: `incidenza ${formatPct(data.spese_gen_perc)}`, tone: "default" as const },
+    { label: "Costo del Lavoro", value: formatEuro(data.totali.costi_personale), sub: `incidenza ${formatPct(data.personale_perc)}`, tone: "default" as const },
+    { label: "MOL", value: formatEuro(data.totali.mol), sub: `incidenza ${formatPct(data.mol_perc)}`, tone: data.totali.mol >= 0 ? "positive" as const : "negative" as const },
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-      {kpis.map(k => (
-        <div key={k.label} className="rounded-md border border-border p-3 bg-card">
-          <p className="text-xs text-muted-foreground">{k.label}</p>
-          <p className={`text-base font-bold mt-0.5 ${k.color}`}>{k.value}</p>
+    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+      {cards.map((c) => (
+        <div
+          key={c.label}
+          className={`rounded-lg border p-3 ${
+            c.tone === "primary"
+              ? "border-primary/30 bg-primary/5"
+              : c.tone === "positive"
+              ? "border-emerald-500/30 bg-emerald-500/5"
+              : c.tone === "negative"
+              ? "border-rose-500/30 bg-rose-500/5"
+              : "border-border bg-card"
+          }`}
+        >
+          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{c.label}</p>
+          <p
+            className={`text-base font-bold mt-0.5 leading-tight ${
+              c.tone === "primary"
+                ? "text-primary"
+                : c.tone === "positive"
+                ? "text-emerald-700 dark:text-emerald-400"
+                : c.tone === "negative"
+                ? "text-rose-700 dark:text-rose-400"
+                : ""
+            }`}
+          >
+            {c.value}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{c.sub}</p>
         </div>
       ))}
     </div>

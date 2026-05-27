@@ -1,7 +1,6 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "@/lib/auth";
-import { fetchMarginiAnno } from "@/lib/margini";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FiltriPeriodo } from "./filtri-periodo";
 import { KpiBar, type KpiData } from "./kpi-bar";
@@ -89,10 +88,7 @@ export default async function MarginiPage({
     10,
   );
 
-  const [kpi, marginiData] = await Promise.all([
-    fetchKpiData(data_da, data_a),
-    tab === "calcolo" ? fetchMarginiAnno(anno) : Promise.resolve(null),
-  ]);
+  const kpi = await fetchKpiData(data_da, data_a);
 
   return (
     <div className="space-y-5">
@@ -114,7 +110,7 @@ export default async function MarginiPage({
         {tab === "ricavi" && <RicaviTab dataDa={data_da} dataA={data_a} />}
         {tab === "calcolo" && (
           <Suspense>
-            <CalcoloTab anno={anno} mesi={marginiData?.mesi ?? []} />
+            <CalcoloTab dataDa={data_da} dataA={data_a} />
           </Suspense>
         )}
         {tab === "analisi" && (

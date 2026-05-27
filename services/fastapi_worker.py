@@ -3137,6 +3137,366 @@ async def get_storico_prodotto(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# MARGINI — analisi completa per periodo + cell update + commenti
+# ═══════════════════════════════════════════════════════════════════════════
+
+_KPI_SOGLIE_MARGINI = {
+    "food_cost": [
+        (28, "🟢", "Food cost eccellente — ottimo controllo acquisti e sprechi"),
+        (33, "🟡", "Food cost nella norma per il settore ristorazione"),
+        (38, "🟠", "Food cost sopra la media — valutare ottimizzazione acquisti o menù"),
+        (100, "🔴", "Food cost critico — necessaria revisione fornitori, porzioni e sprechi"),
+    ],
+    "spese_generali": [
+        (15, "🟢", "Spese generali contenute — gestione efficiente"),
+        (22, "🟡", "Spese generali nella norma"),
+        (28, "🟠", "Spese generali elevate — verificare utenze e contratti"),
+        (100, "🔴", "Spese generali fuori controllo — necessaria rinegoziazione"),
+    ],
+    "personale": [
+        (24, "🟢", "Costo del lavoro contenuto — buona efficienza del personale"),
+        (30, "🟡", "Costo del lavoro nella norma per il settore"),
+        (35, "🟠", "Costo del lavoro elevato — verificare turni, produttività e coperti"),
+        (100, "🔴", "Costo del lavoro critico — incidenza troppo alta sul fatturato"),
+    ],
+    "primo_margine": [
+        (55, "🔴", "1° Margine molto basso — costi F&B troppo alti rispetto al fatturato"),
+        (62, "🟠", "1° Margine sotto la media — margine di miglioramento sui costi"),
+        (70, "🟡", "1° Margine nella norma per il settore"),
+        (200, "🟢", "1° Margine eccellente — ottima marginalità sui prodotti"),
+    ],
+    "mol": [
+        (5, "🔴", "MOL critico — l'attività non genera margine sufficiente"),
+        (12, "🟠", "MOL basso — necessario contenere costi o incrementare ricavi"),
+        (20, "🟡", "MOL nella norma — margine operativo adeguato"),
+        (200, "🟢", "MOL eccellente — ottima redditività operativa"),
+    ],
+}
+
+_COLORI_EMOJI = {"🟢": "#16a34a", "🟡": "#ca8a04", "🟠": "#ea580c", "🔴": "#dc2626", "ℹ️": "#2563eb"}
+
+_CELL_FIELDS_EDITABILI = {
+    "altri_costi_fb", "altri_costi_spese", "costo_dipendenti", "costo_personale_extra",
+}
+
+
+def _valuta_soglia_margine(valore: float, key: str, crescente: bool = True) -> tuple:
+    soglie = _KPI_SOGLIE_MARGINI.get(key, [])
+    if not soglie:
+        return ("ℹ️", "")
+    for soglia, emoji, testo in soglie:
+        if valore <= soglia:
+            return (emoji, testo)
+    return (soglie[-1][1], soglie[-1][2])
+
+
+class MarginiCellaRequest(BaseModel):
+    anno: int = Field(..., ge=2000, le=2100)
+    mese: int = Field(..., ge=1, le=12)
+    field: str
+    value: float
+
+
+class MarginiCellaResponse(BaseModel):
+    anno: int
+    mese: int
+    field: str
+    value: float
+
+
+class CommentoKpi(BaseModel):
+    kpi_nome: str
+    percentuale: str
+    commento: str
+    emoji: str
+    colore: str
+
+
+class MesiPivot(BaseModel):
+    anno: int
+    mese: int
+    label: str
+    fatturato_iva10: float
+    fatturato_iva22: float
+    altri_ricavi_noiva: float
+    fatturato_netto: float
+    costi_fb_auto: float
+    altri_costi_fb: float
+    costi_fb_totali: float
+    primo_margine: float
+    costi_spese_auto: float
+    altri_costi_spese: float
+    costi_spese_totali: float
+    costo_dipendenti: float
+    costo_personale_extra: float
+    costi_personale: float
+    mol: float
+
+
+class MarginiAnalisiResponse(BaseModel):
+    mesi: List[MesiPivot]
+    totali: MesiPivot
+    fatt_medio_mensile: float
+    food_cost_perc: float
+    primo_margine_perc: float
+    spese_gen_perc: float
+    personale_perc: float
+    mol_perc: float
+    num_mesi_attivi: int
+    commenti: List[CommentoKpi]
+
+
+def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -> tuple:
+    """Aggrega costi F&B e Spese Generali dalle fatture per il mese specifico."""
+    from datetime import date as _date
+    from calendar import monthrange
+    last_day = monthrange(anno, mese)[1]
+    data_da = f"{anno}-{mese:02d}-01"
+    data_a = f"{anno}-{mese:02d}-{last_day:02d}"
+
+    spese_gen_categorie = {
+        "SERVIZI E CONSULENZE", "UTENZE E LOCALI",
+        "MANUTENZIONE E ATTREZZATURE", "MATERIALE DI CONSUMO",
+    }
+
+    fb_tot = 0.0
+    spese_tot = 0.0
+    page = 0
+    page_size = 1000
+    while True:
+        resp = (
+            sb.table("fatture")
+            .select("categoria,totale_riga,data_documento,data_competenza")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .or_(
+                f"and(data_competenza.gte.{data_da},data_competenza.lte.{data_a}),"
+                f"and(data_competenza.is.null,data_documento.gte.{data_da},data_documento.lte.{data_a})"
+            )
+            .range(page * page_size, (page + 1) * page_size - 1)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            break
+        for r in rows:
+            cat = str(r.get("categoria") or "")
+            try:
+                tot = float(r.get("totale_riga") or 0)
+            except (TypeError, ValueError):
+                tot = 0.0
+            if cat in spese_gen_categorie:
+                spese_tot += tot
+            elif cat and cat != "📝 NOTE E DICITURE":
+                fb_tot += tot
+        if len(rows) < page_size:
+            break
+        page += 1
+
+    return round(fb_tot, 2), round(spese_tot, 2)
+
+
+@app.post("/api/margini/cella", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def update_margini_cella(
+    body: MarginiCellaRequest,
+    authorization: Optional[str] = Header(None),
+) -> MarginiCellaResponse:
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    if body.field not in _CELL_FIELDS_EDITABILI:
+        raise HTTPException(status_code=400, detail=f"Field non editable: {body.field}")
+
+    val = max(0.0, float(body.value))
+
+    # Upsert preservando altri campi: prima leggi riga esistente, poi update
+    existing = (
+        sb.table("margini_mensili")
+        .select("*")
+        .eq("ristorante_id", ristorante_id)
+        .eq("anno", body.anno)
+        .eq("mese", body.mese)
+        .limit(1)
+        .execute()
+    )
+
+    if existing.data:
+        sb.table("margini_mensili").update({
+            body.field: val,
+            "updated_at": "now()",
+        }).eq("ristorante_id", ristorante_id).eq("anno", body.anno).eq("mese", body.mese).execute()
+    else:
+        new_row = {
+            "user_id": user["id"],
+            "ristorante_id": ristorante_id,
+            "anno": body.anno,
+            "mese": body.mese,
+            body.field: val,
+        }
+        sb.table("margini_mensili").insert(new_row).execute()
+
+    return MarginiCellaResponse(anno=body.anno, mese=body.mese, field=body.field, value=val)
+
+
+@app.get("/api/margini/analisi", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def get_margini_analisi(
+    data_da: str,
+    data_a: str,
+    authorization: Optional[str] = Header(None),
+) -> MarginiAnalisiResponse:
+    from datetime import date as _date
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    d_da = _date.fromisoformat(data_da)
+    d_a = _date.fromisoformat(data_a)
+
+    # Costruisci lista (anno, mese) in range
+    mesi_target = []
+    y, m = d_da.year, d_da.month
+    while (y, m) <= (d_a.year, d_a.month):
+        mesi_target.append((y, m))
+        m += 1
+        if m > 12:
+            y += 1
+            m = 1
+
+    # Carica margini_mensili (manuali + ricavi sincronizzati)
+    annos = sorted({y for y, _ in mesi_target})
+    margini_resp = (
+        sb.table("margini_mensili")
+        .select("*")
+        .eq("ristorante_id", ristorante_id)
+        .in_("anno", annos)
+        .execute()
+    )
+    margini_map = {(int(r["anno"]), int(r["mese"])): r for r in (margini_resp.data or [])}
+
+    mesi_pivot: List[MesiPivot] = []
+    for (y, m) in mesi_target:
+        r = margini_map.get((y, m), {})
+        fb_auto, spese_auto = _calcola_costi_auto_per_mese(sb, ristorante_id, y, m)
+
+        iva10 = float(r.get("fatturato_iva10") or 0)
+        iva22 = float(r.get("fatturato_iva22") or 0)
+        altri = float(r.get("altri_ricavi_noiva") or 0)
+        netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
+
+        altri_fb = float(r.get("altri_costi_fb") or 0)
+        altri_sp = float(r.get("altri_costi_spese") or 0)
+        cd = float(r.get("costo_dipendenti") or 0)
+        cpe = float(r.get("costo_personale_extra") or 0)
+
+        fb_tot = fb_auto + altri_fb
+        sp_tot = spese_auto + altri_sp
+        pers = cd + cpe
+        pm = netto - fb_tot
+        mol_v = pm - sp_tot - pers
+
+        MESI_NOMI_BR = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
+        mesi_pivot.append(MesiPivot(
+            anno=y, mese=m, label=f"{MESI_NOMI_BR[m-1]} {y}",
+            fatturato_iva10=round(iva10, 2),
+            fatturato_iva22=round(iva22, 2),
+            altri_ricavi_noiva=round(altri, 2),
+            fatturato_netto=round(netto, 2),
+            costi_fb_auto=fb_auto,
+            altri_costi_fb=round(altri_fb, 2),
+            costi_fb_totali=round(fb_tot, 2),
+            primo_margine=round(pm, 2),
+            costi_spese_auto=spese_auto,
+            altri_costi_spese=round(altri_sp, 2),
+            costi_spese_totali=round(sp_tot, 2),
+            costo_dipendenti=round(cd, 2),
+            costo_personale_extra=round(cpe, 2),
+            costi_personale=round(pers, 2),
+            mol=round(mol_v, 2),
+        ))
+
+    # Totali periodo
+    tot_iva10 = sum(p.fatturato_iva10 for p in mesi_pivot)
+    tot_iva22 = sum(p.fatturato_iva22 for p in mesi_pivot)
+    tot_altri = sum(p.altri_ricavi_noiva for p in mesi_pivot)
+    tot_netto = sum(p.fatturato_netto for p in mesi_pivot)
+    tot_fb_auto = sum(p.costi_fb_auto for p in mesi_pivot)
+    tot_altri_fb = sum(p.altri_costi_fb for p in mesi_pivot)
+    tot_fb_totali = sum(p.costi_fb_totali for p in mesi_pivot)
+    tot_pm = sum(p.primo_margine for p in mesi_pivot)
+    tot_spese_auto = sum(p.costi_spese_auto for p in mesi_pivot)
+    tot_altri_spese = sum(p.altri_costi_spese for p in mesi_pivot)
+    tot_spese_totali = sum(p.costi_spese_totali for p in mesi_pivot)
+    tot_cd = sum(p.costo_dipendenti for p in mesi_pivot)
+    tot_cpe = sum(p.costo_personale_extra for p in mesi_pivot)
+    tot_pers = sum(p.costi_personale for p in mesi_pivot)
+    tot_mol = sum(p.mol for p in mesi_pivot)
+
+    totali = MesiPivot(
+        anno=0, mese=0, label="Totale periodo",
+        fatturato_iva10=round(tot_iva10, 2), fatturato_iva22=round(tot_iva22, 2),
+        altri_ricavi_noiva=round(tot_altri, 2), fatturato_netto=round(tot_netto, 2),
+        costi_fb_auto=round(tot_fb_auto, 2), altri_costi_fb=round(tot_altri_fb, 2),
+        costi_fb_totali=round(tot_fb_totali, 2), primo_margine=round(tot_pm, 2),
+        costi_spese_auto=round(tot_spese_auto, 2), altri_costi_spese=round(tot_altri_spese, 2),
+        costi_spese_totali=round(tot_spese_totali, 2),
+        costo_dipendenti=round(tot_cd, 2), costo_personale_extra=round(tot_cpe, 2),
+        costi_personale=round(tot_pers, 2), mol=round(tot_mol, 2),
+    )
+
+    # KPI medie sui mesi attivi (fatturato > 0)
+    mesi_attivi = [p for p in mesi_pivot if p.fatturato_netto > 0]
+    n_attivi = len(mesi_attivi)
+
+    if n_attivi > 0:
+        fatt_medio = sum(p.fatturato_netto for p in mesi_attivi) / n_attivi
+        fc_perc = (tot_fb_totali / tot_netto * 100) if tot_netto > 0 else 0.0
+        pm_perc = (tot_pm / tot_netto * 100) if tot_netto > 0 else 0.0
+        sg_perc = (tot_spese_totali / tot_netto * 100) if tot_netto > 0 else 0.0
+        pers_perc = (tot_pers / tot_netto * 100) if tot_netto > 0 else 0.0
+        mol_perc = (tot_mol / tot_netto * 100) if tot_netto > 0 else 0.0
+    else:
+        fatt_medio = 0.0
+        fc_perc = pm_perc = sg_perc = pers_perc = mol_perc = 0.0
+
+    # Commenti automatici
+    commenti: List[CommentoKpi] = []
+    if n_attivi > 0:
+        for key, val, crescente, nome in [
+            ("food_cost", fc_perc, True, "Food Cost"),
+            ("primo_margine", pm_perc, False, "1° Margine"),
+            ("spese_generali", sg_perc, True, "Spese Generali"),
+            ("personale", pers_perc, True, "Costo del Lavoro"),
+            ("mol", mol_perc, False, "MOL"),
+        ]:
+            emoji, testo = _valuta_soglia_margine(val, key, crescente)
+            commenti.append(CommentoKpi(
+                kpi_nome=nome,
+                percentuale=f"{val:.1f}%",
+                commento=testo,
+                emoji=emoji,
+                colore=_COLORI_EMOJI.get(emoji, "#6b7280"),
+            ))
+
+    return MarginiAnalisiResponse(
+        mesi=mesi_pivot,
+        totali=totali,
+        fatt_medio_mensile=round(fatt_medio, 2),
+        food_cost_perc=round(fc_perc, 2),
+        primo_margine_perc=round(pm_perc, 2),
+        spese_gen_perc=round(sg_perc, 2),
+        personale_perc=round(pers_perc, 2),
+        mol_perc=round(mol_perc, 2),
+        num_mesi_attivi=n_attivi,
+        commenti=commenti,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # RICAVI GIORNALIERI — sorgente di verità ricavi (sync mensile via trigger DB)
 # ═══════════════════════════════════════════════════════════════════════════
 
