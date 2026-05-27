@@ -854,6 +854,157 @@ async def auth_logout(authorization: Optional[str] = Header(None)) -> Dict[str, 
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# DASHBOARD
+# ═══════════════════════════════════════════════════════════════════════════
+
+class DashboardKpi(BaseModel):
+    fatture_uniche: int
+    righe_totali: int
+    spesa_totale: float
+    spesa_mese_corrente: float
+    spesa_mese_precedente: float
+    prima_fattura: Optional[str] = None
+    ultima_fattura: Optional[str] = None
+
+
+class SpesaMensilePoint(BaseModel):
+    mese: str
+    spesa: float
+
+
+class TopItem(BaseModel):
+    nome: str
+    spesa: float
+    righe: int
+
+
+class DashboardStats(BaseModel):
+    kpi: DashboardKpi
+    spesa_mensile: List[SpesaMensilePoint]
+    top_fornitori: List[TopItem]
+    top_categorie: List[TopItem]
+
+
+def _resolve_user_from_token(authorization: Optional[str]) -> Dict[str, Any]:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Token mancante")
+    token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Token vuoto")
+    from services.auth_service import verifica_sessione_da_cookie
+    user = verifica_sessione_da_cookie(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sessione non valida o scaduta")
+    return user
+
+
+@app.get(
+    "/api/dashboard/stats",
+    response_model=DashboardStats,
+    summary="Statistiche dashboard utente — KPI + grafici",
+    tags=["Dashboard"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardStats:
+    from datetime import date, timedelta
+    from collections import defaultdict
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+
+    rows: List[Dict[str, Any]] = []
+    page_size = 1000
+    start = 0
+    while True:
+        resp = (
+            supabase_client.table("fatture")
+            .select("file_origine,data_documento,fornitore,categoria,totale_riga")
+            .eq("user_id", user_id)
+            .is_("deleted_at", "null")
+            .range(start, start + page_size - 1)
+            .execute()
+        )
+        batch = resp.data or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        start += page_size
+
+    today = date.today()
+    mese_corrente_key = today.strftime("%Y-%m")
+    primo_giorno_mese = today.replace(day=1)
+    ultimo_giorno_prec = primo_giorno_mese - timedelta(days=1)
+    mese_precedente_key = ultimo_giorno_prec.strftime("%Y-%m")
+
+    spesa_totale = 0.0
+    spesa_mese_corr = 0.0
+    spesa_mese_prec = 0.0
+    file_origini = set()
+    spesa_per_mese: Dict[str, float] = defaultdict(float)
+    spesa_per_fornitore: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"spesa": 0.0, "righe": 0})
+    spesa_per_categoria: Dict[str, Dict[str, Any]] = defaultdict(lambda: {"spesa": 0.0, "righe": 0})
+    prima_data: Optional[str] = None
+    ultima_data: Optional[str] = None
+
+    for r in rows:
+        totale = float(r.get("totale_riga") or 0)
+        data_doc = r.get("data_documento")
+        fornitore = (r.get("fornitore") or "—").strip() or "—"
+        categoria = (r.get("categoria") or "—").strip() or "—"
+        file_o = r.get("file_origine")
+
+        spesa_totale += totale
+        if file_o:
+            file_origini.add(file_o)
+
+        if data_doc:
+            mese_key = str(data_doc)[:7]
+            spesa_per_mese[mese_key] += totale
+            if mese_key == mese_corrente_key:
+                spesa_mese_corr += totale
+            elif mese_key == mese_precedente_key:
+                spesa_mese_prec += totale
+            if prima_data is None or str(data_doc) < prima_data:
+                prima_data = str(data_doc)
+            if ultima_data is None or str(data_doc) > ultima_data:
+                ultima_data = str(data_doc)
+
+        spesa_per_fornitore[fornitore]["spesa"] += totale
+        spesa_per_fornitore[fornitore]["righe"] += 1
+        spesa_per_categoria[categoria]["spesa"] += totale
+        spesa_per_categoria[categoria]["righe"] += 1
+
+    spesa_mensile_sorted = sorted(spesa_per_mese.items())[-12:]
+    spesa_mensile = [SpesaMensilePoint(mese=m, spesa=round(s, 2)) for m, s in spesa_mensile_sorted]
+
+    top_forn = sorted(spesa_per_fornitore.items(), key=lambda x: x[1]["spesa"], reverse=True)[:5]
+    top_fornitori = [TopItem(nome=n, spesa=round(d["spesa"], 2), righe=d["righe"]) for n, d in top_forn]
+
+    top_cat = sorted(spesa_per_categoria.items(), key=lambda x: x[1]["spesa"], reverse=True)[:5]
+    top_categorie = [TopItem(nome=n, spesa=round(d["spesa"], 2), righe=d["righe"]) for n, d in top_cat]
+
+    kpi = DashboardKpi(
+        fatture_uniche=len(file_origini),
+        righe_totali=len(rows),
+        spesa_totale=round(spesa_totale, 2),
+        spesa_mese_corrente=round(spesa_mese_corr, 2),
+        spesa_mese_precedente=round(spesa_mese_prec, 2),
+        prima_fattura=prima_data,
+        ultima_fattura=ultima_data,
+    )
+
+    return DashboardStats(
+        kpi=kpi,
+        spesa_mensile=spesa_mensile,
+        top_fornitori=top_fornitori,
+        top_categorie=top_categorie,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # UTILITY
 # ═══════════════════════════════════════════════════════════════════════════
 
