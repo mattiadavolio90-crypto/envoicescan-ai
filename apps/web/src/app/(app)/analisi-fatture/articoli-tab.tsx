@@ -12,7 +12,6 @@ import {
   ChevronRight,
   Loader2,
   Search,
-  Sparkles,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
@@ -23,6 +22,8 @@ type Props = {
   articoli: ArticoloAggregato[];
   categorie: string[];
   fornitori: string[];
+  soloNuovi: boolean;
+  soloVerifica: boolean;
   filtri: {
     data_da?: string;
     data_a?: string;
@@ -93,7 +94,14 @@ function SortableHeader({
   );
 }
 
-export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
+export function ArticoliTab({
+  articoli,
+  categorie,
+  fornitori,
+  soloNuovi,
+  soloVerifica,
+  filtri,
+}: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -103,8 +111,6 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
   const [search, setSearch] = useState("");
   const [fornitoreFilter, setFornitoreFilter] = useState("");
   const [categoriaFilter, setCategoriaFilter] = useState("");
-  const [soloNuovi, setSoloNuovi] = useState(false);
-  const [soloVerifica, setSoloVerifica] = useState(false);
 
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
@@ -113,10 +119,13 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
     dir: "desc",
   });
 
-  // Reset paginazione quando cambiano filtri client
+  // Reset paginazione quando cambiano filtri client / URL
   useEffect(() => {
     setPage(1);
   }, [search, fornitoreFilter, categoriaFilter, soloNuovi, soloVerifica, sort]);
+
+  // Quando i toggle "Nuovi/Verifica" via URL cambiano: nessun reset extra
+  // (useEffect sopra gia copre).
 
   function cycleSort(k: SortKey) {
     setSort((prev) => {
@@ -259,23 +268,6 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
             </option>
           ))}
         </select>
-
-        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={soloNuovi}
-            onChange={(e) => setSoloNuovi(e.target.checked)}
-          />
-          <Sparkles className="size-3 text-amber-500" /> Nuovi caricati
-        </label>
-        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={soloVerifica}
-            onChange={(e) => setSoloVerifica(e.target.checked)}
-          />
-          <AlertTriangle className="size-3 text-amber-500" /> Solo verifica categoria
-        </label>
 
         <button
           onClick={exportXls}
@@ -430,7 +422,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
 
   return (
     <>
-      <tr className={`border-b hover:bg-muted/30 ${articolo.is_nuovo ? "bg-amber-50/30" : ""}`}>
+      <tr className="border-b hover:bg-sky-100/40 dark:hover:bg-sky-900/20 transition-colors">
         <td className="px-1 align-top pt-2.5">
           <button onClick={onToggle} className="text-muted-foreground hover:text-foreground">
             {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
@@ -583,6 +575,8 @@ function RigheArticolo({
     return <p className="text-xs text-muted-foreground">Nessuna riga da mostrare.</p>;
   }
 
+  const cutoffNuovo = Date.now() - 24 * 60 * 60 * 1000;
+
   return (
     <table className="w-full text-xs">
       <thead>
@@ -596,24 +590,38 @@ function RigheArticolo({
         </tr>
       </thead>
       <tbody>
-        {righe.map((r) => (
-          <tr key={r.id} className="border-b last:border-0">
-            <td className="py-1 text-muted-foreground">{formatData(r.data_documento)}</td>
-            <td className="py-1">{r.fornitore}</td>
-            <td className="py-1 text-muted-foreground truncate max-w-40" title={r.file_origine}>
-              {r.file_origine}
-            </td>
-            <td className="py-1 text-right tabular-nums">
-              {r.quantita ?? "—"} {r.unita_misura ?? ""}
-            </td>
-            <td className="py-1 text-right tabular-nums">
-              {r.prezzo_unitario != null ? formatEuro(r.prezzo_unitario, 2) : "—"}
-            </td>
-            <td className="py-1 text-right tabular-nums font-medium">
-              {r.totale_riga != null ? formatEuro(r.totale_riga, 2) : "—"}
-            </td>
-          </tr>
-        ))}
+        {righe.map((r) => {
+          const isNuova =
+            r.created_at && new Date(r.created_at).getTime() >= cutoffNuovo;
+          return (
+            <tr
+              key={r.id}
+              className="border-b last:border-0 hover:bg-sky-100/40 dark:hover:bg-sky-900/20 transition-colors"
+            >
+              <td className="py-1 text-muted-foreground">{formatData(r.data_documento)}</td>
+              <td className="py-1">
+                {r.fornitore}
+                {isNuova && (
+                  <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold whitespace-nowrap">
+                    Nuovo
+                  </span>
+                )}
+              </td>
+              <td className="py-1 text-muted-foreground truncate max-w-40" title={r.file_origine}>
+                {r.file_origine}
+              </td>
+              <td className="py-1 text-right tabular-nums">
+                {r.quantita ?? "—"} {r.unita_misura ?? ""}
+              </td>
+              <td className="py-1 text-right tabular-nums">
+                {r.prezzo_unitario != null ? formatEuro(r.prezzo_unitario, 2) : "—"}
+              </td>
+              <td className="py-1 text-right tabular-nums font-medium">
+                {r.totale_riga != null ? formatEuro(r.totale_riga, 2) : "—"}
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

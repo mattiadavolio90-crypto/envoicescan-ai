@@ -106,6 +106,7 @@ export function AppSidebar({
                 <SidebarMenuButton
                   render={<Link href={item.url} />}
                   isActive={pathname === item.url}
+                  className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
                 >
                   <item.icon />
                   <span>{item.title}</span>
@@ -125,6 +126,7 @@ export function AppSidebar({
                 <SidebarMenuButton
                   render={<Link href={item.url} />}
                   isActive={pathname === item.url}
+                  className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
                 >
                   <item.icon />
                   <span>{item.title}</span>

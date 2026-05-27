@@ -1080,6 +1080,40 @@ async def upload_invoice(
 
     ristorante_id = _get_ristorante_id_for_user(user_id, supabase_client)
 
+    # Calcola nome canonico (dopo eventuale .p7m → .xml) per check duplicati
+    filename_canonico = filename[:-4] if ext == "p7m" else filename
+
+    # Genera variante "normalizzata" rimuovendo suffissi tipo " (1)", " (2)" ecc.
+    import re as _re
+    def _strip_suffix_n(name: str) -> str:
+        return _re.sub(r"\s*\(\d+\)(\.[^.]+)$", r"\1", name, count=1)
+
+    nomi_da_controllare = list({filename_canonico, _strip_suffix_n(filename_canonico)})
+
+    # Check duplicato: se gia esiste una fattura con stesso nome (o nome senza suffisso (N)), scarta
+    if ristorante_id:
+        try:
+            existing = (
+                supabase_client.table("fatture")
+                .select("file_origine")
+                .eq("ristorante_id", ristorante_id)
+                .is_("deleted_at", "null")
+                .in_("file_origine", nomi_da_controllare)
+                .limit(1)
+                .execute()
+            )
+            if existing.data:
+                trovato = existing.data[0].get("file_origine", "")
+                return UploadInvoiceResponse(
+                    success=False,
+                    filename=filename_canonico,
+                    righe_salvate=0,
+                    error=f"ALREADY_LOADED:{trovato}",
+                    elapsed_ms=int((_time.monotonic() - t0) * 1000),
+                )
+        except Exception as dup_err:
+            logger.warning(f"Check duplicato fallito (non bloccante): {dup_err}")
+
     # Estrai XML da P7M se necessario
     if ext == "p7m":
         from services.invoice_service import estrai_xml_da_p7m

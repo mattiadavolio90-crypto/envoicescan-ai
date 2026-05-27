@@ -12,6 +12,7 @@ import { FiltriPeriodo } from "./filtri-periodo";
 import { KpiBar } from "./kpi-bar";
 import { PivotTab } from "./pivot-tab";
 import { TabsSwitcher } from "./tabs-switcher";
+import { ToggleFiltri } from "./toggle-filtri";
 import { UploadModal } from "./upload-modal";
 import { calcolaPeriodo, type PeriodoPreset } from "./periodi";
 
@@ -67,6 +68,8 @@ export default async function AnalisiFatturePage({
   const tab = sp.tab ?? "articoli";
   const { data_da, data_a, preset, mese } = resolvePeriodo(sp);
   const tipoProdotti = normalizeTipo(sp.tipo);
+  const soloNuovi = sp.nuovi === "1";
+  const soloVerifica = sp.verifica === "1";
 
   // Carico in parallelo i dati base sempre necessari
   const [kpi, mesi, categorieRes, fornitoriList] = await Promise.all([
@@ -102,14 +105,17 @@ export default async function AnalisiFatturePage({
         <UploadModal />
       </div>
 
-      {/* Filtri temporali */}
-      <FiltriPeriodo
-        presetCorrente={preset}
-        dataDa={data_da}
-        dataA={data_a}
-        meseSelezionato={mese}
-        mesiDisponibili={mesi}
-      />
+      {/* Filtri temporali + toggle */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <FiltriPeriodo
+          presetCorrente={preset}
+          dataDa={data_da}
+          dataA={data_a}
+          meseSelezionato={mese}
+          mesiDisponibili={mesi}
+        />
+        <ToggleFiltri soloNuovi={soloNuovi} soloVerifica={soloVerifica} />
+      </div>
 
       {/* KPI bar */}
       <KpiBar kpi={kpi} />
@@ -123,6 +129,8 @@ export default async function AnalisiFatturePage({
           articoli={articoliRes?.articoli ?? []}
           categorie={categorieRes.categorie}
           fornitori={fornitoriList}
+          soloNuovi={soloNuovi}
+          soloVerifica={soloVerifica}
           filtri={{ data_da, data_a, tipo_prodotti: tipoProdotti }}
         />
       )}

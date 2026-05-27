@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle, FileText, Loader2, Upload, X, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle,
+  FileText,
+  Info,
+  Loader2,
+  Upload,
+  X,
+  XCircle,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,7 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
-type FileStatus = "waiting" | "uploading" | "success" | "error";
+type FileStatus = "waiting" | "uploading" | "success" | "error" | "skipped";
 
 type FileEntry = {
   id: string;
@@ -23,6 +32,7 @@ type FileEntry = {
   data_documento?: string;
   needs_review?: number;
   error?: string;
+  skip_motivo?: string;
 };
 
 const ACCEPTED_EXTS = [".xml", ".p7m"];
@@ -31,6 +41,7 @@ const MAX_SIZE_MB = 50;
 function StatusIcon({ status }: { status: FileStatus }) {
   if (status === "uploading") return <Loader2 className="size-4 animate-spin text-primary shrink-0" />;
   if (status === "success") return <CheckCircle className="size-4 text-emerald-500 shrink-0" />;
+  if (status === "skipped") return <Info className="size-4 text-sky-500 shrink-0" />;
   if (status === "error") return <XCircle className="size-4 text-destructive shrink-0" />;
   return <FileText className="size-4 text-muted-foreground shrink-0" />;
 }
@@ -119,18 +130,27 @@ export function UploadModal() {
             ),
           );
         } else {
+          const errStr = String(data.error ?? "");
+          const isAlreadyLoaded = errStr.startsWith("ALREADY_LOADED:");
           setFiles((prev) =>
             prev.map((f) =>
               f.id === entry.id
                 ? {
                     ...f,
-                    status: data.success ? "success" : "error",
+                    status: data.success
+                      ? "success"
+                      : isAlreadyLoaded
+                        ? "skipped"
+                        : "error",
                     righe: data.righe_salvate,
                     righe_preesistenti: data.righe_preesistenti ?? 0,
                     fornitore: data.fornitore,
                     data_documento: data.data_documento,
                     needs_review: data.needs_review_count,
-                    error: data.success ? undefined : data.error,
+                    error: data.success || isAlreadyLoaded ? undefined : data.error,
+                    skip_motivo: isAlreadyLoaded
+                      ? errStr.slice("ALREADY_LOADED:".length) || "fattura già presente"
+                      : undefined,
                   }
                 : f,
             ),
@@ -155,6 +175,7 @@ export function UploadModal() {
 
   const pending = files.filter((f) => f.status === "waiting" || f.status === "error").length;
   const success = files.filter((f) => f.status === "success").length;
+  const skipped = files.filter((f) => f.status === "skipped").length;
   const totRighe = files.reduce((sum, f) => sum + (f.righe ?? 0), 0);
 
   return (
@@ -221,17 +242,17 @@ export function UploadModal() {
                       {entry.fornitore ? `${entry.fornitore} · ` : ""}
                       {entry.righe} righe
                       {entry.data_documento ? ` · ${entry.data_documento}` : ""}
-                      {(entry.righe_preesistenti ?? 0) > 0 && (
-                        <span className="text-sky-600 ml-1">
-                          · {entry.righe_preesistenti} sostituite
-                        </span>
-                      )}
                       {(entry.needs_review ?? 0) > 0 && (
                         <span className="text-amber-500 ml-1">
                           <AlertTriangle className="size-3 inline mr-0.5" />
                           {entry.needs_review} da verificare
                         </span>
                       )}
+                    </p>
+                  )}
+                  {entry.status === "skipped" && (
+                    <p className="text-sky-600 mt-0.5">
+                      Fattura scartata perché già caricata in precedenza.
                     </p>
                   )}
                   {entry.status === "error" && (
@@ -258,9 +279,14 @@ export function UploadModal() {
                 {success === 1 ? "1 caricata" : `${success} caricate`} · {totRighe} righe
               </span>
             )}
+            {skipped > 0 && (
+              <span className="text-sky-600 font-medium ml-2">
+                · {skipped} scartata{skipped !== 1 ? "e" : ""}
+              </span>
+            )}
           </span>
           <div className="flex gap-2">
-            {success > 0 && (
+            {(success > 0 || skipped > 0) && (
               <Button variant="outline" size="sm" onClick={closeAndRefresh}>
                 Chiudi e aggiorna
               </Button>

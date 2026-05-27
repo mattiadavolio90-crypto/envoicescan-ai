@@ -35,9 +35,11 @@ export function KpiBar({ kpi }: Props) {
 
 function KpiCard({ label, value, delta }: { label: string; value: string; delta: number | null }) {
   return (
-    <div className="rounded-lg border bg-card p-3">
+    <div className="rounded-lg border border-sky-500/40 bg-card p-3 hover:border-sky-500/70 transition-colors">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-xl font-bold tracking-tight mt-1">{value}</p>
+      <p className="text-xl font-bold tracking-tight mt-1 text-sky-600 dark:text-sky-400">
+        {value}
+      </p>
       <div className="mt-1">
         <Delta pct={delta} />
       </div>
