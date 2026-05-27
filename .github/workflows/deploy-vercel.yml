@@ -1,0 +1,20 @@
+name: Deploy to Vercel (oneflux-web)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Vercel
+        working-directory: apps/web
+        run: npx vercel --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: team_5OlgezzF9BDRstz292VJYKEp
+          VERCEL_PROJECT_ID: prj_58N27B3gFDgvpUObP1KU1dHMB10O

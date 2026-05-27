@@ -329,7 +329,7 @@ export function ArticoliTab({
       </div>
 
       {/* Counter */}
-      <div className="text-xs text-muted-foreground">
+      <div className="text-xs text-muted-foreground pt-2 border-t border-border/50">
         {sorted.length === articoli.length
           ? `${sorted.length} prodotti`
           : `${sorted.length} di ${articoli.length} prodotti`}

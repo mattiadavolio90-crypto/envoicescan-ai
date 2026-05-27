@@ -44,9 +44,7 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
   const sp = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [vista, setVista] = useState<"tabella" | "grafico">("tabella");
-  const [selectedForTrend, setSelectedForTrend] = useState<string[]>(
-    pivot.rows.slice(0, 3).map((r) => r.dimensione),
-  );
+  const [selectedForTrend, setSelectedForTrend] = useState<string[]>([]);
 
   function setParam(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(sp.toString());
@@ -578,25 +576,36 @@ function TrendChart({
       )}
 
       {trend && trend.serie.length > 0 && !loading && (
-        <>
-          <TrendSvg trend={trend} />
-          <div className="flex flex-wrap gap-3 mt-3 justify-center">
+        <div className="flex gap-4 items-start">
+          {/* Legenda sinistra */}
+          <div className="shrink-0 w-40 space-y-4 pt-1">
             {trend.serie.map((s, i) => {
+              const color = COLORI_LINEE[i % COLORI_LINEE.length];
               const avg = s.punti.length > 0 ? s.totale / s.punti.length : 0;
               return (
-                <span key={s.valore} className="inline-flex items-center gap-1.5 text-xs">
-                  <span
-                    className="inline-block w-3 h-1 rounded-sm"
-                    style={{ backgroundColor: COLORI_LINEE[i % COLORI_LINEE.length] }}
-                  />
-                  <span className="font-medium">{s.valore}</span>
-                  <span className="text-muted-foreground">· tot {formatEuroCompact(s.totale)}</span>
-                  <span className="text-rose-500">· ⌀ {formatEuroCompact(avg)}</span>
-                </span>
+                <div key={s.valore} className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-block w-4 h-0.5 rounded-sm" style={{ backgroundColor: color }} />
+                    <span className="text-xs font-semibold truncate" title={s.valore}>{s.valore}</span>
+                  </div>
+                  <div className="pl-5 space-y-0.5 text-[11px] text-muted-foreground">
+                    <div>Totale: <span className="text-foreground font-medium">{formatEuroCompact(s.totale)}</span></div>
+                    <div className="flex items-center gap-1">
+                      <svg width="14" height="6" className="shrink-0">
+                        <line x1="0" y1="3" x2="14" y2="3" stroke={color} strokeWidth="1.5" strokeDasharray="3,2" />
+                      </svg>
+                      <span>Media: <span className="text-foreground font-medium">{formatEuroCompact(avg)}</span></span>
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
-        </>
+          {/* Grafico */}
+          <div className="flex-1 min-w-0">
+            <TrendSvg trend={trend} />
+          </div>
+        </div>
       )}
     </div>
   );
@@ -681,8 +690,8 @@ function TrendSvg({ trend }: { trend: TrendResponse }) {
         );
       })}
 
-      {/* Linee medie (rosse tratteggiate) */}
-      {trend.serie.map((s) => {
+      {/* Linee medie tratteggiate (stesso colore della serie) */}
+      {trend.serie.map((s, idx) => {
         const avg = s.punti.length > 0 ? s.totale / s.punti.length : 0;
         const y = yForValue(avg);
         return (
@@ -692,10 +701,10 @@ function TrendSvg({ trend }: { trend: TrendResponse }) {
             y1={y}
             x2={PAD_L + innerW}
             y2={y}
-            stroke="#ef4444"
+            stroke={COLORI_LINEE[idx % COLORI_LINEE.length]}
             strokeWidth="1.2"
             strokeDasharray="6,4"
-            strokeOpacity="0.75"
+            strokeOpacity="0.65"
           />
         );
       })}
