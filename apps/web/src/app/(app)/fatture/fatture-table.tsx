@@ -151,7 +151,9 @@ export function FattureTable({ righe, total, page, totalPages, categorie }: Prop
                 </TableCell>
                 <TableCell>
                   {r.needs_review && (
-                    <AlertTriangle className="size-3.5 text-amber-500" title="Da verificare" />
+                    <span title="Da verificare">
+                      <AlertTriangle className="size-3.5 text-amber-500" />
+                    </span>
                   )}
                 </TableCell>
               </TableRow>
