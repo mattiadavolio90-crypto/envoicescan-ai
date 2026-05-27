@@ -26,11 +26,17 @@ const TIPO_OPTIONS = [
   { key: "spese_generali", label: "Spese Generali" },
 ];
 
+const VISTE = [
+  { key: "tabella", label: "Tabella" },
+  { key: "grafico", label: "Grafico" },
+];
+
 export function PivotTab({ pivot, dimensione, filtri }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
   const [pending, startTransition] = useTransition();
+  const [vista, setVista] = useState<"tabella" | "grafico">("tabella");
   const [selectedForTrend, setSelectedForTrend] = useState<string[]>(
     pivot.rows.slice(0, 3).map((r) => r.dimensione),
   );
@@ -51,11 +57,20 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
     const labels = pivot.periodi_labels;
     const dimLabel = dimensione === "categoria" ? "Categoria" : "Fornitore";
 
-    const header: string[] = [dimLabel, ...labels, "Totale", "Media", "% sul totale"];
+    const header: string[] = [dimLabel];
+    labels.forEach((l) => {
+      header.push(l, `${l} %`);
+    });
+    header.push("Totale", "Media", "% sul totale");
+
     const dataRows = pivot.rows.map((r) => {
       const row: Record<string, string | number> = { [dimLabel]: r.dimensione };
       periodi.forEach((p, i) => {
-        row[labels[i]] = Math.round((r.periodi[p] ?? 0) * 100) / 100;
+        const v = r.periodi[p] ?? 0;
+        const totMese = pivot.totali_periodo[p] ?? 0;
+        const pct = totMese > 0 ? (v / totMese) * 100 : 0;
+        row[labels[i]] = Math.round(v * 100) / 100;
+        row[`${labels[i]} %`] = `${pct.toFixed(1)}%`;
       });
       row["Totale"] = Math.round(r.totale * 100) / 100;
       row["Media"] = Math.round(r.media * 100) / 100;
@@ -65,6 +80,7 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
     const totaleRow: Record<string, string | number> = { [dimLabel]: "TOTALE" };
     periodi.forEach((p, i) => {
       totaleRow[labels[i]] = Math.round((pivot.totali_periodo[p] ?? 0) * 100) / 100;
+      totaleRow[`${labels[i]} %`] = "100%";
     });
     totaleRow["Totale"] = Math.round(pivot.grand_total * 100) / 100;
     totaleRow["Media"] = "";
@@ -123,23 +139,47 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
         </div>
       ) : (
         <>
-          <PivotTable
-            pivot={pivot}
-            dimensione={dimensione}
-            selectedForTrend={selectedForTrend}
-            onToggleSelect={(d) => {
-              setSelectedForTrend((prev) =>
-                prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].slice(-5),
-              );
-            }}
-          />
-          <TrendChart
-            dimensione={dimensione}
-            valori={selectedForTrend}
-            dataDa={filtri.data_da}
-            dataA={filtri.data_a}
-            tipoProdotti={filtri.tipo_prodotti}
-          />
+          {/* Sub-tab Tabella/Grafico */}
+          <div className="flex gap-1 border-b border-border">
+            {VISTE.map((v) => (
+              <button
+                key={v.key}
+                onClick={() => setVista(v.key as "tabella" | "grafico")}
+                className={`px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors ${
+                  vista === v.key
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+
+          {vista === "tabella" && (
+            <PivotTable
+              pivot={pivot}
+              dimensione={dimensione}
+              selectedForTrend={selectedForTrend}
+              onToggleSelect={(d) => {
+                setSelectedForTrend((prev) =>
+                  prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d].slice(-5),
+                );
+              }}
+            />
+          )}
+
+          {vista === "grafico" && (
+            <TrendChart
+              pivot={pivot}
+              dimensione={dimensione}
+              selectedForTrend={selectedForTrend}
+              setSelectedForTrend={setSelectedForTrend}
+              dataDa={filtri.data_da}
+              dataA={filtri.data_a}
+              tipoProdotti={filtri.tipo_prodotti}
+            />
+          )}
         </>
       )}
     </div>
@@ -202,7 +242,7 @@ function PivotTable({
             {pivot.periodi.map((p, idx) => (
               <th
                 key={p}
-                className="text-right px-2 py-2 font-medium text-muted-foreground whitespace-nowrap min-w-20"
+                className="text-right px-2 py-2 font-medium text-muted-foreground whitespace-nowrap min-w-24"
               >
                 {pivot.periodi_labels[idx]}
               </th>
@@ -243,26 +283,33 @@ function PivotTable({
                 </td>
                 {pivot.periodi.map((p) => {
                   const v = row.periodi[p] ?? 0;
+                  const totMese = pivot.totali_periodo[p] ?? 0;
+                  const incPct = totMese > 0 ? (v / totMese) * 100 : 0;
                   const intensity = v / rowMax;
                   const bg = intensityToBg(intensity);
-                  const pct = pivot.totali_periodo[p]
-                    ? ((v / pivot.totali_periodo[p]) * 100).toFixed(0)
-                    : "0";
                   return (
                     <td
                       key={p}
                       className="text-right px-2 py-1.5 tabular-nums relative whitespace-nowrap"
                       style={{ backgroundColor: bg }}
-                      title={`${formatEuro(v)} · ${pct}% del ${p}`}
                     >
-                      {v > 0 ? formatEuroCompact(v) : <span className="text-muted-foreground">—</span>}
+                      {v > 0 ? (
+                        <div className="flex flex-col items-end leading-tight">
+                          <span>{formatEuroCompact(v)}</span>
+                          <span className="text-[10px] font-medium text-amber-600">
+                            {incPct.toFixed(0)}%
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </td>
                   );
                 })}
                 <td className="px-3 py-1.5 text-right font-semibold tabular-nums whitespace-nowrap">
                   {formatEuro(row.totale)}
                 </td>
-                <td className="px-3 py-1.5 text-right font-medium tabular-nums text-muted-foreground">
+                <td className="px-3 py-1.5 text-right font-medium tabular-nums text-amber-600">
                   {row.incidenza_pct.toFixed(0)}%
                 </td>
               </tr>
@@ -289,7 +336,6 @@ function PivotTable({
   );
 }
 
-// Mappa intensita 0-1 a un colore di sfondo blu sky tenue
 function intensityToBg(intensity: number): string {
   if (intensity <= 0.02) return "transparent";
   const alpha = Math.min(0.35, intensity * 0.4);
@@ -301,39 +347,51 @@ function intensityToBg(intensity: number): string {
 const COLORI_LINEE = ["#0ea5e9", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"];
 
 function TrendChart({
+  pivot,
   dimensione,
-  valori,
+  selectedForTrend,
+  setSelectedForTrend,
   dataDa,
   dataA,
   tipoProdotti,
 }: {
+  pivot: PivotResponse;
   dimensione: "categoria" | "fornitore";
-  valori: string[];
+  selectedForTrend: string[];
+  setSelectedForTrend: (s: string[]) => void;
   dataDa?: string;
   dataA?: string;
   tipoProdotti?: string;
 }) {
   const [trend, setTrend] = useState<TrendResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (valori.length === 0) {
+    if (selectedForTrend.length === 0) {
       setTrend(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
+    setError(null);
     const params = new URLSearchParams({
       dimensione,
-      valori: valori.join(","),
+      valori: selectedForTrend.join(","),
     });
     if (dataDa) params.set("data_da", dataDa);
     if (dataA) params.set("data_a", dataA);
     if (tipoProdotti) params.set("tipo_prodotti", tipoProdotti);
     fetch(`/api/fatture/trend?${params}`)
-      .then((res) => (res.ok ? res.json() : null))
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
         if (!cancelled) setTrend(data);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(String(e));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -341,46 +399,85 @@ function TrendChart({
     return () => {
       cancelled = true;
     };
-  }, [dimensione, valori.join("|"), dataDa, dataA, tipoProdotti]);
+  }, [dimensione, selectedForTrend.join("|"), dataDa, dataA, tipoProdotti]);
 
-  if (valori.length === 0) {
-    return (
-      <div className="rounded-lg border p-6 text-center text-xs text-muted-foreground">
-        Seleziona una riga della tabella per visualizzare il trend (max 5 confronti)
-      </div>
+  function toggleSelect(d: string) {
+    setSelectedForTrend(
+      selectedForTrend.includes(d)
+        ? selectedForTrend.filter((x) => x !== d)
+        : [...selectedForTrend, d].slice(-5),
     );
   }
 
   return (
-    <div className="rounded-lg border p-4">
-      <div className="flex items-center justify-between mb-3">
+    <div className="rounded-lg border p-4 space-y-3">
+      {/* Selettore voci da confrontare */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-2">
+          Confronta (max 5) — clicca per aggiungere o togliere
+        </p>
+        <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+          {pivot.rows.map((r, idx) => {
+            const isSel = selectedForTrend.includes(r.dimensione);
+            const colorIdx = isSel ? selectedForTrend.indexOf(r.dimensione) % COLORI_LINEE.length : 0;
+            return (
+              <button
+                key={r.dimensione}
+                onClick={() => toggleSelect(r.dimensione)}
+                className={`px-2 py-1 text-[11px] rounded-full border transition-colors inline-flex items-center gap-1.5 ${
+                  isSel
+                    ? "border-transparent text-white"
+                    : "bg-background border-input hover:bg-muted text-foreground"
+                }`}
+                style={isSel ? { backgroundColor: COLORI_LINEE[colorIdx] } : undefined}
+              >
+                {dimensione === "categoria" && <span>{categoriaIcon(r.dimensione)}</span>}
+                <span className="truncate max-w-32">{r.dimensione}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">Andamento nel tempo</h3>
         {loading && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
       </div>
-      {trend && trend.serie.length > 0 ? (
-        <TrendSvg trend={trend} />
-      ) : (
-        <p className="text-xs text-muted-foreground text-center py-8">Caricamento...</p>
+
+      {error && (
+        <p className="text-xs text-rose-600">Errore caricamento grafico: {error}</p>
       )}
-      <div className="flex flex-wrap gap-3 mt-3 justify-center">
-        {trend?.serie.map((s, i) => (
-          <span key={s.valore} className="inline-flex items-center gap-1.5 text-xs">
-            <span
-              className="inline-block w-3 h-1 rounded-sm"
-              style={{ backgroundColor: COLORI_LINEE[i % COLORI_LINEE.length] }}
-            />
-            <span className="font-medium">{s.valore}</span>
-            <span className="text-muted-foreground">· tot {formatEuroCompact(s.totale)}</span>
-          </span>
-        ))}
-      </div>
+
+      {!loading && !error && selectedForTrend.length === 0 && (
+        <p className="text-xs text-muted-foreground text-center py-8">
+          Seleziona almeno una voce sopra per visualizzare il grafico.
+        </p>
+      )}
+
+      {trend && trend.serie.length > 0 && !loading && (
+        <>
+          <TrendSvg trend={trend} />
+          <div className="flex flex-wrap gap-3 mt-3 justify-center">
+            {trend.serie.map((s, i) => (
+              <span key={s.valore} className="inline-flex items-center gap-1.5 text-xs">
+                <span
+                  className="inline-block w-3 h-1 rounded-sm"
+                  style={{ backgroundColor: COLORI_LINEE[i % COLORI_LINEE.length] }}
+                />
+                <span className="font-medium">{s.valore}</span>
+                <span className="text-muted-foreground">· tot {formatEuroCompact(s.totale)}</span>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 function TrendSvg({ trend }: { trend: TrendResponse }) {
   const W = 720;
-  const H = 220;
+  const H = 240;
   const PAD_L = 50;
   const PAD_R = 16;
   const PAD_T = 12;
@@ -411,8 +508,7 @@ function TrendSvg({ trend }: { trend: TrendResponse }) {
   }
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: "280px" }}>
-      {/* griglia Y */}
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: "300px" }}>
       {yLabels.map((v, i) => {
         const y = PAD_T + innerH - (i / yTicks) * innerH;
         return (
@@ -433,9 +529,7 @@ function TrendSvg({ trend }: { trend: TrendResponse }) {
           </g>
         );
       })}
-      {/* assi X labels */}
       {periodi.map((p, i) => {
-        // mostra label solo a inizio, fine, e ogni N
         const total = periodi.length;
         const skip = total > 12 ? Math.ceil(total / 8) : 1;
         if (i !== 0 && i !== total - 1 && i % skip !== 0) return null;
@@ -452,7 +546,6 @@ function TrendSvg({ trend }: { trend: TrendResponse }) {
           </text>
         );
       })}
-      {/* linee */}
       {trend.serie.map((s, idx) => (
         <g key={s.valore}>
           <path

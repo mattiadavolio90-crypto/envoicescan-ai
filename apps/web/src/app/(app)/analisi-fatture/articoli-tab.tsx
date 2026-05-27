@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
   ArrowDown,
   ArrowUp,
+  ArrowUpDown,
   ChevronDown,
   ChevronRight,
   Loader2,
@@ -17,6 +18,61 @@ import * as XLSX from "xlsx";
 import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
 import { Input } from "@/components/ui/input";
 import { categoriaIcon, formatData, formatEuro } from "./periodi";
+
+type SortKey =
+  | "descrizione"
+  | "categoria"
+  | "fornitore"
+  | "ultimo_acquisto"
+  | "quantita_totale"
+  | "prezzo_unit_medio"
+  | "totale_speso"
+  | "num_acquisti";
+
+type SortDir = "asc" | "desc" | null;
+
+function compareValues(a: any, b: any, dir: SortDir): number {
+  if (dir === null) return 0;
+  if (a == null && b == null) return 0;
+  if (a == null) return 1;
+  if (b == null) return -1;
+  let cmp: number;
+  if (typeof a === "number" && typeof b === "number") cmp = a - b;
+  else cmp = String(a).localeCompare(String(b), "it", { sensitivity: "base" });
+  return dir === "asc" ? cmp : -cmp;
+}
+
+function SortableHeader({
+  label,
+  sortKey,
+  current,
+  align,
+  onClick,
+}: {
+  label: string;
+  sortKey: SortKey;
+  current: { key: SortKey | null; dir: SortDir };
+  align?: "left" | "right";
+  onClick: (k: SortKey) => void;
+}) {
+  const isActive = current.key === sortKey && current.dir !== null;
+  const Icon = isActive ? (current.dir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <button
+      onClick={() => onClick(sortKey)}
+      className={`group inline-flex items-center gap-1 hover:text-foreground transition-colors ${
+        align === "right" ? "justify-end" : ""
+      }`}
+    >
+      <span>{label}</span>
+      <Icon
+        className={`size-3 ${
+          isActive ? "text-primary" : "text-muted-foreground/40 group-hover:text-muted-foreground"
+        }`}
+      />
+    </button>
+  );
+}
 
 type Props = {
   articoli: ArticoloAggregato[];
@@ -46,6 +102,30 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
   const sp = useSearchParams();
   const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [sort, setSort] = useState<{ key: SortKey | null; dir: SortDir }>({
+    key: "totale_speso",
+    dir: "desc",
+  });
+
+  function cycleSort(k: SortKey) {
+    setSort((prev) => {
+      if (prev.key !== k) return { key: k, dir: "asc" };
+      if (prev.dir === "asc") return { key: k, dir: "desc" };
+      if (prev.dir === "desc") return { key: null, dir: null };
+      return { key: k, dir: "asc" };
+    });
+  }
+
+  const sortedArticoli = useMemo(() => {
+    if (!sort.key || !sort.dir) return articoli;
+    const k = sort.key;
+    const d = sort.dir;
+    return [...articoli].sort((a, b) => {
+      const va = k === "fornitore" ? a.fornitore_principale : (a as any)[k];
+      const vb = k === "fornitore" ? b.fornitore_principale : (b as any)[k];
+      return compareValues(va, vb, d);
+    });
+  }, [articoli, sort]);
 
   function setParam(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(sp.toString());
@@ -187,18 +267,34 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
             <thead className="bg-muted/50 border-b">
               <tr className="text-xs text-muted-foreground">
                 <th className="w-6"></th>
-                <th className="text-left px-3 py-2 font-medium">Categoria</th>
-                <th className="text-left px-3 py-2 font-medium">Descrizione</th>
-                <th className="text-left px-3 py-2 font-medium">Fornitore</th>
-                <th className="text-left px-3 py-2 font-medium whitespace-nowrap">Ultimo acq.</th>
-                <th className="text-right px-3 py-2 font-medium">Q.tà</th>
-                <th className="text-right px-3 py-2 font-medium whitespace-nowrap">€ unit.</th>
-                <th className="text-right px-3 py-2 font-medium">Totale</th>
-                <th className="text-right px-3 py-2 font-medium">N°</th>
+                <th className="text-left px-3 py-2 font-medium">
+                  <SortableHeader label="Descrizione" sortKey="descrizione" current={sort} onClick={cycleSort} />
+                </th>
+                <th className="text-left px-3 py-2 font-medium">
+                  <SortableHeader label="Categoria" sortKey="categoria" current={sort} onClick={cycleSort} />
+                </th>
+                <th className="text-left px-3 py-2 font-medium">
+                  <SortableHeader label="Fornitore" sortKey="fornitore" current={sort} onClick={cycleSort} />
+                </th>
+                <th className="text-left px-3 py-2 font-medium whitespace-nowrap">
+                  <SortableHeader label="Ultimo acq." sortKey="ultimo_acquisto" current={sort} onClick={cycleSort} />
+                </th>
+                <th className="text-right px-3 py-2 font-medium">
+                  <SortableHeader label="Q.tà" sortKey="quantita_totale" current={sort} align="right" onClick={cycleSort} />
+                </th>
+                <th className="text-right px-3 py-2 font-medium whitespace-nowrap">
+                  <SortableHeader label="€ medio" sortKey="prezzo_unit_medio" current={sort} align="right" onClick={cycleSort} />
+                </th>
+                <th className="text-right px-3 py-2 font-medium">
+                  <SortableHeader label="Totale" sortKey="totale_speso" current={sort} align="right" onClick={cycleSort} />
+                </th>
+                <th className="text-right px-3 py-2 font-medium">
+                  <SortableHeader label="N°" sortKey="num_acquisti" current={sort} align="right" onClick={cycleSort} />
+                </th>
               </tr>
             </thead>
             <tbody>
-              {articoli.map((a) => (
+              {sortedArticoli.map((a) => (
                 <ArticoloRiga
                   key={a.descrizione}
                   articolo={a}
@@ -276,6 +372,23 @@ function ArticoloRiga({
             {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
           </button>
         </td>
+        <td className="px-3 py-2 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="font-medium truncate max-w-72" title={articolo.descrizione}>
+              {articolo.descrizione}
+            </span>
+            {articolo.is_nuovo && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold whitespace-nowrap">
+                Nuovo
+              </span>
+            )}
+            {articolo.needs_review && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap">
+                <AlertTriangle className="size-2.5" /> Verifica
+              </span>
+            )}
+          </div>
+        </td>
         <td className="px-3 py-2">
           {editingCat ? (
             <select
@@ -304,23 +417,6 @@ function ArticoloRiga({
               {saving && <Loader2 className="size-3 animate-spin" />}
             </button>
           )}
-        </td>
-        <td className="px-3 py-2 text-xs">
-          <div className="flex items-center gap-1.5">
-            <span className="font-medium truncate max-w-72" title={articolo.descrizione}>
-              {articolo.descrizione}
-            </span>
-            {articolo.is_nuovo && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold whitespace-nowrap">
-                Nuovo
-              </span>
-            )}
-            {articolo.needs_review && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap">
-                <AlertTriangle className="size-2.5" /> Verifica
-              </span>
-            )}
-          </div>
         </td>
         <td className="px-3 py-2 text-xs">
           <span className="truncate inline-block max-w-32" title={articolo.fornitore_principale}>

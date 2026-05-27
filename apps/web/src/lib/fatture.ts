@@ -134,13 +134,21 @@ function buildParams(obj: Record<string, string | number | boolean | undefined |
   return p.toString();
 }
 
-async function workerGet<T>(path: string, params: Record<string, any> = {}): Promise<T | null> {
+async function workerGet<T>(
+  path: string,
+  params: Record<string, any> = {},
+  revalidateSec?: number,
+): Promise<T | null> {
   const token = await getToken();
   if (!token) return null;
   const qs = buildParams(params);
   const url = `${WORKER_URL}${path}${qs ? `?${qs}` : ""}`;
+  const init: RequestInit & { next?: { revalidate?: number; tags?: string[] } } =
+    revalidateSec
+      ? { headers: workerHeaders(token), next: { revalidate: revalidateSec } }
+      : { headers: workerHeaders(token), cache: "no-store" };
   try {
-    const res = await fetch(url, { headers: workerHeaders(token), cache: "no-store" });
+    const res = await fetch(url, init);
     if (!res.ok) return null;
     return (await res.json()) as T;
   } catch {
@@ -157,7 +165,12 @@ export async function fetchKpi(
 }
 
 export async function fetchMesiDisponibili(): Promise<MeseDisponibile[]> {
-  const data = await workerGet<{ mesi: MeseDisponibile[] }>("/api/fatture/mesi-disponibili");
+  // Cambia solo dopo upload — cache 60s
+  const data = await workerGet<{ mesi: MeseDisponibile[] }>(
+    "/api/fatture/mesi-disponibili",
+    {},
+    60,
+  );
   return data?.mesi ?? [];
 }
 
@@ -207,12 +220,16 @@ export async function fetchTrend(
 }
 
 export async function fetchCategorie(): Promise<{ categorie: string[]; usate: string[] }> {
-  const data = await workerGet<{ categorie: string[]; usate: string[] }>("/api/fatture/categorie");
+  const data = await workerGet<{ categorie: string[]; usate: string[] }>(
+    "/api/fatture/categorie",
+    {},
+    60,
+  );
   return data ?? { categorie: [], usate: [] };
 }
 
 export async function fetchFornitori(): Promise<string[]> {
-  const data = await workerGet<{ fornitori: string[] }>("/api/fatture/fornitori");
+  const data = await workerGet<{ fornitori: string[] }>("/api/fatture/fornitori", {}, 60);
   return data?.fornitori ?? [];
 }
 
