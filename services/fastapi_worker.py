@@ -1005,6 +1005,161 @@ async def dashboard_stats(authorization: Optional[str] = Header(None)) -> Dashbo
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# UPLOAD
+# ═══════════════════════════════════════════════════════════════════════════
+
+class UploadInvoiceResponse(BaseModel):
+    success: bool
+    filename: str
+    righe_salvate: int
+    righe_preesistenti: int = 0
+    needs_review_count: int = 0
+    fornitore: Optional[str] = None
+    data_documento: Optional[str] = None
+    error: Optional[str] = None
+    elapsed_ms: int = 0
+
+
+def _get_ristorante_id_for_user(user_id: str, supabase_client) -> Optional[str]:
+    try:
+        resp = supabase_client.table("users") \
+            .select("ultimo_ristorante_id") \
+            .eq("id", user_id) \
+            .single() \
+            .execute()
+        if resp.data:
+            return resp.data.get("ultimo_ristorante_id")
+    except Exception:
+        pass
+    try:
+        resp2 = supabase_client.table("ristoranti") \
+            .select("id") \
+            .eq("user_id", user_id) \
+            .limit(1) \
+            .execute()
+        if resp2.data:
+            return resp2.data[0]["id"]
+    except Exception:
+        pass
+    return None
+
+
+@app.post(
+    "/api/upload/invoice",
+    response_model=UploadInvoiceResponse,
+    summary="Upload fattura XML/P7M — parsing + salvataggio su DB",
+    tags=["Upload"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def upload_invoice(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    file: UploadFile = File(...),
+) -> UploadInvoiceResponse:
+    import time as _time
+    t0 = _time.monotonic()
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+
+    filename = file.filename or "fattura"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    if ext not in ("xml", "p7m"):
+        raise HTTPException(
+            status_code=422,
+            detail=f"Formato non supportato: '{ext}'. Carica un file XML o P7M.",
+        )
+
+    contents = await file.read()
+    if len(contents) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File troppo grande (max 50MB).")
+
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+
+    ristorante_id = _get_ristorante_id_for_user(user_id, supabase_client)
+
+    # Estrai XML da P7M se necessario
+    if ext == "p7m":
+        from services.invoice_service import estrai_xml_da_p7m
+        xml_bytes = estrai_xml_da_p7m(io.BytesIO(contents))
+        if xml_bytes is None:
+            raise HTTPException(status_code=422, detail="Impossibile estrarre XML dal file P7M.")
+        contents = xml_bytes.read() if hasattr(xml_bytes, "read") else xml_bytes
+        filename = filename[:-4]
+
+    # Parse fattura
+    from services.invoice_service import estrai_dati_da_xml, salva_fattura_processata
+    from services.ai_service import carica_memoria_completa
+
+    try:
+        carica_memoria_completa(user_id)
+    except Exception:
+        pass
+
+    file_like = io.BytesIO(contents)
+    file_like.name = filename  # type: ignore[attr-defined]
+
+    import streamlit as _st
+    _prev = _st.session_state.get("user_data")
+    try:
+        _st.session_state["user_data"] = {"id": user_id}
+        righe = estrai_dati_da_xml(file_like)
+    finally:
+        if _prev is None:
+            _st.session_state.pop("user_data", None)
+        else:
+            _st.session_state["user_data"] = _prev
+
+    if not righe:
+        return UploadInvoiceResponse(
+            success=False,
+            filename=filename,
+            righe_salvate=0,
+            error="Nessuna riga estratta dal file.",
+            elapsed_ms=int((_time.monotonic() - t0) * 1000),
+        )
+
+    # Salva su DB (idempotente — rimuove eventuali duplicati)
+    result = salva_fattura_processata(
+        nome_file=filename,
+        dati_prodotti=righe,
+        supabase_client=supabase_client,
+        silent=True,
+        ristoranteid=ristorante_id,
+        user_id=user_id,
+        ingestion_source="nextjs_upload",
+    )
+
+    elapsed_ms = int((_time.monotonic() - t0) * 1000)
+
+    if not result.get("success"):
+        return UploadInvoiceResponse(
+            success=False,
+            filename=filename,
+            righe_salvate=0,
+            error=result.get("error", "Errore salvataggio"),
+            elapsed_ms=elapsed_ms,
+        )
+
+    needs_review_count = sum(1 for r in righe if r.get("needs_review"))
+    fornitore = righe[0].get("Fornitore") if righe else None
+    data_doc = righe[0].get("Data_Documento") if righe else None
+
+    return UploadInvoiceResponse(
+        success=True,
+        filename=filename,
+        righe_salvate=result.get("righe", len(righe)),
+        righe_preesistenti=result.get("righe_preesistenti", 0),
+        needs_review_count=needs_review_count,
+        fornitore=str(fornitore) if fornitore else None,
+        data_documento=str(data_doc) if data_doc else None,
+        elapsed_ms=elapsed_ms,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # UTILITY
 # ═══════════════════════════════════════════════════════════════════════════
 
