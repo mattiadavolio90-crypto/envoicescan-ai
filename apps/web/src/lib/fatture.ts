@@ -62,6 +62,7 @@ export type KpiResponse = {
   delta_righe_pct: number | null;
   delta_prodotti_pct: number | null;
   delta_media_pct: number | null;
+  confronto_label?: string;
 };
 
 export type MeseDisponibile = {

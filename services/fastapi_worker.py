@@ -1459,6 +1459,7 @@ class KpiResponse(BaseModel):
     delta_righe_pct: Optional[float]
     delta_prodotti_pct: Optional[float]
     delta_media_pct: Optional[float]
+    confronto_label: str = "periodo prec."
 
 
 class MesiDisponibiliResponse(BaseModel):
@@ -1632,19 +1633,59 @@ async def get_fatture_kpi(
     rows = _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a, tipo_prodotti)
     tot, nr, np, med = _calc(rows)
 
+    from datetime import date as _date, timedelta as _timedelta
+
     delta_tot = delta_nr = delta_np = delta_med = None
-    prev_da, prev_a = _compute_periodo_precedente(data_da, data_a)
+    confronto_label = "periodo prec."
+    use_media_anno = False
+
+    # Per periodi brevi (≤ 31 giorni) confronta vs media mensile dell'anno in corso
+    if data_da and data_a:
+        try:
+            d_da = _date.fromisoformat(data_da)
+            d_a = _date.fromisoformat(data_a)
+            durata = (d_a - d_da).days + 1
+            if durata <= 31:
+                anno_inizio = _date(d_da.year, 1, 1)
+                giorno_prima = d_da - _timedelta(days=1)
+                if giorno_prima >= anno_inizio:
+                    prev_da = anno_inizio.isoformat()
+                    prev_a = giorno_prima.isoformat()
+                    use_media_anno = True
+                    confronto_label = "media anno in corso"
+                else:
+                    prev_da, prev_a = _compute_periodo_precedente(data_da, data_a)
+            else:
+                prev_da, prev_a = _compute_periodo_precedente(data_da, data_a)
+        except Exception:
+            prev_da, prev_a = _compute_periodo_precedente(data_da, data_a)
+    else:
+        prev_da, prev_a = _compute_periodo_precedente(data_da, data_a)
+
     if prev_da and prev_a:
         prev_rows = _fetch_fatture_rows(supabase_client, ristorante_id, prev_da, prev_a, tipo_prodotti)
         ptot, pnr, pnp, pmed = _calc(prev_rows)
-        def _delta(curr, prev):
-            if prev == 0:
+
+        def _delta(curr, prev_val):
+            if prev_val == 0:
                 return None
-            return round((curr - prev) / prev * 100, 1)
-        delta_tot = _delta(tot, ptot)
-        delta_nr = _delta(nr, pnr)
-        delta_np = _delta(np, pnp)
-        delta_med = _delta(med, pmed)
+            return round((curr - prev_val) / prev_val * 100, 1)
+
+        if use_media_anno:
+            # pmed = media mensile del periodo baseline (gen→giorno prima)
+            prev_mesi_set = {(r.get("data_documento") or "")[:7] for r in prev_rows if r.get("data_documento")}
+            num_prev_mesi = max(len(prev_mesi_set), 1)
+            pmed_righe = pnr / num_prev_mesi
+            pmed_prod = pnp / num_prev_mesi
+            delta_tot = _delta(tot, pmed)
+            delta_nr = _delta(nr, pmed_righe)
+            delta_np = _delta(np, pmed_prod)
+            delta_med = _delta(med, pmed)
+        else:
+            delta_tot = _delta(tot, ptot)
+            delta_nr = _delta(nr, pnr)
+            delta_np = _delta(np, pnp)
+            delta_med = _delta(med, pmed)
 
     return KpiResponse(
         totale=round(tot, 2),
@@ -1655,6 +1696,7 @@ async def get_fatture_kpi(
         delta_righe_pct=delta_nr,
         delta_prodotti_pct=delta_np,
         delta_media_pct=delta_med,
+        confronto_label=confronto_label,
     )
 
 

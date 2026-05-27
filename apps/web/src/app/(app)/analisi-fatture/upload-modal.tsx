@@ -168,9 +168,8 @@ export function UploadModal() {
   }
 
   function closeAndRefresh() {
-    // Hard reload: garantisce dati freschi e sessione preservata,
-    // evita problemi con router.refresh() dopo upload diretto al worker.
-    window.location.reload();
+    setOpen(false);
+    setTimeout(() => window.location.reload(), 80);
   }
 
   const pending = files.filter((f) => f.status === "waiting" || f.status === "error").length;
@@ -245,7 +244,7 @@ export function UploadModal() {
                       {(entry.needs_review ?? 0) > 0 && (
                         <span className="text-amber-500 ml-1">
                           <AlertTriangle className="size-3 inline mr-0.5" />
-                          {entry.needs_review} da verificare
+                          {entry.needs_review} {entry.needs_review === 1 ? "riga ha" : "righe hanno"} categoria da verificare
                         </span>
                       )}
                     </p>

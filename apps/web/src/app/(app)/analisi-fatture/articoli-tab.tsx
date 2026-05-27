@@ -307,7 +307,7 @@ export function ArticoliTab({
       </div>
 
       {/* Toggle: Nuovi / Solo verifica */}
-      <div className={`flex items-center gap-4 ${pending ? "opacity-70" : ""}`}>
+      <div className={`flex items-center gap-3 px-3 py-1.5 rounded-md border border-sky-500/30 bg-sky-500/5 w-fit ${pending ? "opacity-70" : ""}`}>
         <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none">
           <input
             type="checkbox"
