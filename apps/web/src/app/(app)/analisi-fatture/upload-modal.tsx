@@ -279,8 +279,8 @@ export function UploadModal() {
               </span>
             )}
             {skipped > 0 && (
-              <span className="text-sky-600 font-medium ml-2">
-                · {skipped} scartata{skipped !== 1 ? "e" : ""}
+              <span className="text-amber-600 font-medium ml-2">
+                · {skipped} {skipped === 1 ? "scartata" : "scartate"}
               </span>
             )}
           </span>
