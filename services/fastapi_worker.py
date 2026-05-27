@@ -3137,6 +3137,374 @@ async def get_storico_prodotto(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# RICAVI GIORNALIERI — sorgente di verità ricavi (sync mensile via trigger DB)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class RicavoGiornalieroItem(BaseModel):
+    id: Optional[str] = None
+    data: str  # YYYY-MM-DD
+    fatturato_iva10: float = 0.0
+    fatturato_iva22: float = 0.0
+    altri_ricavi_noiva: float = 0.0
+    source: str = "manuale"
+
+
+class RicaviGiornalieriResponse(BaseModel):
+    items: List[RicavoGiornalieroItem]
+    totale_iva10: float
+    totale_iva22: float
+    totale_altri: float
+    totale_netto: float
+    giorni_con_dati: int
+
+
+class RicavoUpsertRequest(BaseModel):
+    data: str
+    fatturato_iva10: float = 0.0
+    fatturato_iva22: float = 0.0
+    altri_ricavi_noiva: float = 0.0
+
+
+class RicaviBatchUpsertRequest(BaseModel):
+    items: List[RicavoUpsertRequest]
+    source: str = "manuale"
+    source_meta: Optional[Dict[str, Any]] = None
+
+
+class RicaviBatchUpsertResponse(BaseModel):
+    inserted: int
+    updated: int
+    skipped: int
+    errors: List[str] = []
+
+
+class RicaviImportXlsResponse(BaseModel):
+    parsed_rows: int
+    inserted: int
+    updated: int
+    skipped: int
+    errors: List[str] = []
+    preview: List[RicavoGiornalieroItem] = []
+
+
+def _calc_netto(iva10: float, iva22: float, altri: float) -> float:
+    return round((iva10 / 1.10) + (iva22 / 1.22) + altri, 2)
+
+
+@app.get("/api/ricavi/giornalieri", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
+async def get_ricavi_giornalieri(
+    data_da: str,
+    data_a: str,
+    authorization: Optional[str] = Header(None),
+) -> RicaviGiornalieriResponse:
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    resp = (
+        sb.table("ricavi_giornalieri")
+        .select("id,data,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,source")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data", data_da)
+        .lte("data", data_a)
+        .order("data", desc=False)
+        .execute()
+    )
+    rows = resp.data or []
+
+    items = [
+        RicavoGiornalieroItem(
+            id=str(r.get("id")),
+            data=str(r.get("data")),
+            fatturato_iva10=float(r.get("fatturato_iva10") or 0),
+            fatturato_iva22=float(r.get("fatturato_iva22") or 0),
+            altri_ricavi_noiva=float(r.get("altri_ricavi_noiva") or 0),
+            source=str(r.get("source") or "manuale"),
+        )
+        for r in rows
+    ]
+
+    tot10 = sum(x.fatturato_iva10 for x in items)
+    tot22 = sum(x.fatturato_iva22 for x in items)
+    tot_altri = sum(x.altri_ricavi_noiva for x in items)
+
+    return RicaviGiornalieriResponse(
+        items=items,
+        totale_iva10=round(tot10, 2),
+        totale_iva22=round(tot22, 2),
+        totale_altri=round(tot_altri, 2),
+        totale_netto=_calc_netto(tot10, tot22, tot_altri),
+        giorni_con_dati=len(items),
+    )
+
+
+@app.post("/api/ricavi/giornalieri", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
+async def upsert_ricavo_giornaliero(
+    body: RicavoUpsertRequest,
+    authorization: Optional[str] = Header(None),
+) -> RicavoGiornalieroItem:
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    payload = {
+        "user_id": user["id"],
+        "ristorante_id": ristorante_id,
+        "data": body.data,
+        "fatturato_iva10": max(0.0, float(body.fatturato_iva10)),
+        "fatturato_iva22": max(0.0, float(body.fatturato_iva22)),
+        "altri_ricavi_noiva": max(0.0, float(body.altri_ricavi_noiva)),
+        "source": "manuale",
+    }
+
+    resp = (
+        sb.table("ricavi_giornalieri")
+        .upsert(payload, on_conflict="ristorante_id,data")
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=500, detail="Salvataggio fallito")
+
+    r = resp.data[0]
+    return RicavoGiornalieroItem(
+        id=str(r.get("id")),
+        data=str(r.get("data")),
+        fatturato_iva10=float(r.get("fatturato_iva10") or 0),
+        fatturato_iva22=float(r.get("fatturato_iva22") or 0),
+        altri_ricavi_noiva=float(r.get("altri_ricavi_noiva") or 0),
+        source=str(r.get("source") or "manuale"),
+    )
+
+
+@app.delete("/api/ricavi/giornalieri", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
+async def delete_ricavo_giornaliero(
+    data: str,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    sb.table("ricavi_giornalieri").delete()\
+      .eq("ristorante_id", ristorante_id)\
+      .eq("data", data).execute()
+    return {"deleted": True, "data": data}
+
+
+@app.post("/api/ricavi/batch", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
+async def upsert_ricavi_batch(
+    body: RicaviBatchUpsertRequest,
+    authorization: Optional[str] = Header(None),
+) -> RicaviBatchUpsertResponse:
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    inserted = 0
+    updated = 0
+    skipped = 0
+    errors: List[str] = []
+    source = body.source if body.source in ("manuale", "xls", "email") else "manuale"
+
+    # Pre-check esistenti per contare inserted vs updated
+    if body.items:
+        dates = [it.data for it in body.items]
+        existing = (
+            sb.table("ricavi_giornalieri")
+            .select("data")
+            .eq("ristorante_id", ristorante_id)
+            .in_("data", dates)
+            .execute()
+        )
+        existing_set = {str(r["data"]) for r in (existing.data or [])}
+    else:
+        existing_set = set()
+
+    rows_to_upsert = []
+    for it in body.items:
+        try:
+            d = it.data
+            if not d:
+                skipped += 1
+                continue
+            iva10 = max(0.0, float(it.fatturato_iva10 or 0))
+            iva22 = max(0.0, float(it.fatturato_iva22 or 0))
+            altri = max(0.0, float(it.altri_ricavi_noiva or 0))
+            if iva10 + iva22 + altri <= 0:
+                skipped += 1
+                continue
+            rows_to_upsert.append({
+                "user_id": user["id"],
+                "ristorante_id": ristorante_id,
+                "data": d,
+                "fatturato_iva10": iva10,
+                "fatturato_iva22": iva22,
+                "altri_ricavi_noiva": altri,
+                "source": source,
+                "source_meta": body.source_meta or None,
+            })
+        except Exception as e:
+            errors.append(f"riga {it.data}: {e}")
+
+    if rows_to_upsert:
+        try:
+            resp = (
+                sb.table("ricavi_giornalieri")
+                .upsert(rows_to_upsert, on_conflict="ristorante_id,data")
+                .execute()
+            )
+            for row in (resp.data or []):
+                if str(row.get("data")) in existing_set:
+                    updated += 1
+                else:
+                    inserted += 1
+        except Exception as e:
+            errors.append(f"upsert: {e}")
+
+    return RicaviBatchUpsertResponse(
+        inserted=inserted, updated=updated, skipped=skipped, errors=errors,
+    )
+
+
+@app.post("/api/ricavi/import-xls", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
+async def import_ricavi_xls(
+    file: UploadFile = File(...),
+    authorization: Optional[str] = Header(None),
+) -> RicaviImportXlsResponse:
+    """Importa ricavi giornalieri da XLS/XLSX.
+
+    Colonne attese (case-insensitive, ordine indifferente):
+      - data (DD/MM/YYYY o YYYY-MM-DD o Excel date)
+      - iva10 / fatturato_iva10 / iva_10
+      - iva22 / fatturato_iva22 / iva_22
+      - altri / altri_ricavi / altri_ricavi_noiva (opzionale)
+    """
+    import io as _io
+    from datetime import date, datetime as _dt
+    import pandas as pd
+
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    content = await file.read()
+    filename = (file.filename or "ricavi.xlsx").lower()
+
+    try:
+        if filename.endswith(".csv"):
+            df = pd.read_csv(_io.BytesIO(content), sep=None, engine="python")
+        else:
+            df = pd.read_excel(_io.BytesIO(content), engine="openpyxl")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"File non leggibile: {e}")
+
+    if df.empty:
+        return RicaviImportXlsResponse(parsed_rows=0, inserted=0, updated=0, skipped=0,
+                                       errors=["File vuoto"])
+
+    # Normalizza nomi colonne
+    df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+    col_data = next((c for c in df.columns if c in ("data", "date", "giorno", "data_documento")), None)
+    col_iva10 = next((c for c in df.columns if c in ("iva10", "iva_10", "fatturato_iva10")), None)
+    col_iva22 = next((c for c in df.columns if c in ("iva22", "iva_22", "fatturato_iva22")), None)
+    col_altri = next((c for c in df.columns if c in ("altri", "altri_ricavi", "altri_ricavi_noiva", "noiva")), None)
+
+    if not col_data:
+        return RicaviImportXlsResponse(parsed_rows=len(df), inserted=0, updated=0, skipped=len(df),
+                                       errors=["Colonna 'data' non trovata"])
+
+    items: List[RicavoUpsertRequest] = []
+    errors: List[str] = []
+
+    for idx, row in df.iterrows():
+        raw_data = row.get(col_data)
+        try:
+            if isinstance(raw_data, (date, _dt)):
+                d = raw_data.date() if isinstance(raw_data, _dt) else raw_data
+                data_iso = d.isoformat()
+            else:
+                s = str(raw_data).strip()
+                if not s or s.lower() in ("nan", "none", ""):
+                    continue
+                # Prova vari formati
+                parsed = None
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y"):
+                    try:
+                        parsed = _dt.strptime(s, fmt).date()
+                        break
+                    except ValueError:
+                        continue
+                if parsed is None:
+                    errors.append(f"riga {idx + 2}: data non riconosciuta '{s}'")
+                    continue
+                data_iso = parsed.isoformat()
+        except Exception as e:
+            errors.append(f"riga {idx + 2}: {e}")
+            continue
+
+        def _f(v):
+            try:
+                if v is None or (isinstance(v, float) and pd.isna(v)):
+                    return 0.0
+                return max(0.0, float(str(v).replace(",", ".")))
+            except Exception:
+                return 0.0
+
+        iva10 = _f(row.get(col_iva10)) if col_iva10 else 0.0
+        iva22 = _f(row.get(col_iva22)) if col_iva22 else 0.0
+        altri = _f(row.get(col_altri)) if col_altri else 0.0
+
+        if iva10 + iva22 + altri <= 0:
+            continue
+
+        items.append(RicavoUpsertRequest(
+            data=data_iso,
+            fatturato_iva10=iva10,
+            fatturato_iva22=iva22,
+            altri_ricavi_noiva=altri,
+        ))
+
+    if not items:
+        return RicaviImportXlsResponse(parsed_rows=len(df), inserted=0, updated=0,
+                                       skipped=len(df), errors=errors or ["Nessuna riga valida"])
+
+    # Riusa logica batch
+    batch_req = RicaviBatchUpsertRequest(
+        items=items,
+        source="xls",
+        source_meta={"filename": file.filename or ""},
+    )
+    batch_res = await upsert_ricavi_batch(batch_req, authorization=authorization)
+
+    preview = [RicavoGiornalieroItem(
+        data=it.data,
+        fatturato_iva10=it.fatturato_iva10,
+        fatturato_iva22=it.fatturato_iva22,
+        altri_ricavi_noiva=it.altri_ricavi_noiva,
+        source="xls",
+    ) for it in items[:10]]
+
+    return RicaviImportXlsResponse(
+        parsed_rows=len(df),
+        inserted=batch_res.inserted,
+        updated=batch_res.updated,
+        skipped=batch_res.skipped + (len(df) - len(items)),
+        errors=errors + batch_res.errors,
+        preview=preview,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # ENTRY POINT (avvio diretto: python services/fastapi_worker.py)
 # ═══════════════════════════════════════════════════════════════════════════
 
