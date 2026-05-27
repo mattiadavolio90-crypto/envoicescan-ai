@@ -1260,6 +1260,254 @@ async def dismiss_notifica(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# FATTURE — lista righe con filtri, pivot categorie/fornitori, aggiorna categoria
+# ═══════════════════════════════════════════════════════════════════════════
+
+class RigaFattura(BaseModel):
+    id: int
+    file_origine: str
+    numero_riga: int
+    data_documento: Optional[str]
+    fornitore: str
+    descrizione: str
+    quantita: Optional[float]
+    unita_misura: Optional[str]
+    prezzo_unitario: Optional[float]
+    totale_riga: Optional[float]
+    categoria: Optional[str]
+    needs_review: Optional[bool]
+    tipo_documento: Optional[str]
+    data_competenza: Optional[str]
+    piva_cedente: Optional[str]
+
+
+class FattureListResponse(BaseModel):
+    righe: List[RigaFattura]
+    total: int
+    page: int
+    page_size: int
+
+
+class PivotRow(BaseModel):
+    dimensione: str
+    mesi: Dict[str, float]
+    totale: float
+
+
+class PivotResponse(BaseModel):
+    rows: List[PivotRow]
+    mesi_disponibili: List[str]
+
+
+class AggiornaCategoriaRequest(BaseModel):
+    categoria: str
+
+
+@app.get(
+    "/api/fatture",
+    response_model=FattureListResponse,
+    summary="Lista righe fattura con filtri opzionali",
+)
+async def get_fatture(
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    fornitore: Optional[str] = None,
+    categoria: Optional[str] = None,
+    needs_review: Optional[bool] = None,
+    page: int = 1,
+    page_size: int = 50,
+    authorization: Optional[str] = Header(None),
+) -> FattureListResponse:
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = user.get("ristorante_id")
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato all'utente")
+
+    supabase_client = _get_supabase_client()
+
+    q = (
+        supabase_client.table("fatture")
+        .select(
+            "id,file_origine,numero_riga,data_documento,fornitore,descrizione,"
+            "quantita,unita_misura,prezzo_unitario,totale_riga,categoria,"
+            "needs_review,tipo_documento,data_competenza,piva_cedente"
+        )
+        .eq("ristorante_id", ristorante_id)
+        .is_("deleted_at", "null")
+        .order("data_documento", desc=True)
+        .order("id", desc=True)
+    )
+
+    if data_da:
+        q = q.gte("data_documento", data_da)
+    if data_a:
+        q = q.lte("data_documento", data_a)
+    if fornitore:
+        q = q.ilike("fornitore", f"%{fornitore}%")
+    if categoria:
+        q = q.eq("categoria", categoria)
+    if needs_review is not None:
+        q = q.eq("needs_review", needs_review)
+
+    offset = (page - 1) * page_size
+    res = q.range(offset, offset + page_size - 1).execute()
+    rows = res.data or []
+
+    # count totale (senza paginazione)
+    count_q = (
+        supabase_client.table("fatture")
+        .select("id", count="exact")
+        .eq("ristorante_id", ristorante_id)
+        .is_("deleted_at", "null")
+    )
+    if data_da:
+        count_q = count_q.gte("data_documento", data_da)
+    if data_a:
+        count_q = count_q.lte("data_documento", data_a)
+    if fornitore:
+        count_q = count_q.ilike("fornitore", f"%{fornitore}%")
+    if categoria:
+        count_q = count_q.eq("categoria", categoria)
+    if needs_review is not None:
+        count_q = count_q.eq("needs_review", needs_review)
+    count_res = count_q.execute()
+    total = count_res.count or len(rows)
+
+    righe = [RigaFattura(**{k: v for k, v in r.items() if k in RigaFattura.model_fields}) for r in rows]
+    return FattureListResponse(righe=righe, total=total, page=page, page_size=page_size)
+
+
+@app.get(
+    "/api/fatture/pivot",
+    response_model=PivotResponse,
+    summary="Pivot spesa mensile per categoria o fornitore",
+)
+async def get_fatture_pivot(
+    dimensione: str = "categoria",  # "categoria" | "fornitore"
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+) -> PivotResponse:
+    if dimensione not in ("categoria", "fornitore"):
+        raise HTTPException(status_code=400, detail="dimensione deve essere 'categoria' o 'fornitore'")
+
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = user.get("ristorante_id")
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato all'utente")
+
+    supabase_client = _get_supabase_client()
+
+    col = "categoria" if dimensione == "categoria" else "fornitore"
+    q = (
+        supabase_client.table("fatture")
+        .select(f"{col},data_documento,totale_riga")
+        .eq("ristorante_id", ristorante_id)
+        .is_("deleted_at", "null")
+        .gt("totale_riga", 0)
+        .neq("categoria", "📝 NOTE E DICITURE")
+        .neq("categoria", "NOTE E DICITURE")
+    )
+    if data_da:
+        q = q.gte("data_documento", data_da)
+    if data_a:
+        q = q.lte("data_documento", data_a)
+
+    res = q.execute()
+    rows = res.data or []
+
+    from collections import defaultdict
+    import calendar
+
+    # Aggrega: {dim_value: {YYYY-MM: totale}}
+    agg: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    mesi_set: set = set()
+
+    for r in rows:
+        dim_val = r.get(col) or "N/D"
+        data_raw = r.get("data_documento")
+        totale = float(r.get("totale_riga") or 0)
+        if not data_raw:
+            continue
+        mese_key = str(data_raw)[:7]  # YYYY-MM
+        agg[dim_val][mese_key] += totale
+        mesi_set.add(mese_key)
+
+    mesi_disponibili = sorted(mesi_set)
+
+    pivot_rows: List[PivotRow] = []
+    for dim_val, mesi_dict in agg.items():
+        totale = sum(mesi_dict.values())
+        pivot_rows.append(PivotRow(dimensione=dim_val, mesi=dict(mesi_dict), totale=totale))
+
+    pivot_rows.sort(key=lambda r: r.totale, reverse=True)
+    return PivotResponse(rows=pivot_rows, mesi_disponibili=mesi_disponibili)
+
+
+@app.get(
+    "/api/fatture/categorie",
+    summary="Lista categorie distinte presenti nelle fatture",
+)
+async def get_categorie_disponibili(
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = user.get("ristorante_id")
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato all'utente")
+
+    supabase_client = _get_supabase_client()
+    res = (
+        supabase_client.table("fatture")
+        .select("categoria")
+        .eq("ristorante_id", ristorante_id)
+        .is_("deleted_at", "null")
+        .execute()
+    )
+    rows = res.data or []
+    categorie = sorted({r["categoria"] for r in rows if r.get("categoria")})
+    return {"categorie": categorie}
+
+
+@app.patch(
+    "/api/fatture/{riga_id}/categoria",
+    summary="Aggiorna categoria di una riga fattura",
+)
+async def aggiorna_categoria_riga(
+    riga_id: int,
+    body: AggiornaCategoriaRequest,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = user.get("ristorante_id")
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato all'utente")
+
+    categoria = body.categoria.strip()
+    if not categoria or categoria in ("Da Clasificare", "Da Classificare"):
+        raise HTTPException(status_code=400, detail="Categoria non valida")
+
+    supabase_client = _get_supabase_client()
+    # Verifica che la riga appartenga al ristorante
+    check = (
+        supabase_client.table("fatture")
+        .select("id")
+        .eq("id", riga_id)
+        .eq("ristorante_id", ristorante_id)
+        .is_("deleted_at", "null")
+        .execute()
+    )
+    if not check.data:
+        raise HTTPException(status_code=404, detail="Riga non trovata")
+
+    supabase_client.table("fatture").update(
+        {"categoria": categoria, "needs_review": False}
+    ).eq("id", riga_id).execute()
+
+    return {"ok": True, "id": riga_id, "categoria": categoria}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # UTILITY
 # ═══════════════════════════════════════════════════════════════════════════
 
