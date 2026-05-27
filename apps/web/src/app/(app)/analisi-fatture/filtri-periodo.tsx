@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { Calendar, Settings2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { calcolaPeriodo, calcolaMese, type PeriodoPreset } from "./periodi";
@@ -15,13 +15,6 @@ type Props = {
   mesiDisponibili: MeseDisponibile[];
 };
 
-const PRESETS: { key: PeriodoPreset; label: string }[] = [
-  { key: "mese_corrente", label: "Mese" },
-  { key: "trimestre_corrente", label: "Trimestre" },
-  { key: "semestre_corrente", label: "Semestre" },
-  { key: "anno_corrente", label: "Anno" },
-];
-
 export function FiltriPeriodo({
   presetCorrente,
   dataDa,
@@ -32,6 +25,7 @@ export function FiltriPeriodo({
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
+  const [pending, startTransition] = useTransition();
   const [showCustom, setShowCustom] = useState(presetCorrente === "personalizzato");
   const [showMese, setShowMese] = useState(presetCorrente === "mese_specifico");
 
@@ -41,7 +35,9 @@ export function FiltriPeriodo({
       if (v === undefined || v === "") params.delete(k);
       else params.set(k, v);
     }
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
   }
 
   function applyPreset(preset: PeriodoPreset) {
@@ -81,40 +77,33 @@ export function FiltriPeriodo({
 
   const activePreset = presetCorrente ?? "anno_corrente";
 
+  const chipBase =
+    "px-3 py-1.5 text-xs font-medium rounded-full border transition-colors inline-flex items-center gap-1.5 disabled:opacity-60";
+  const chipActive = "bg-primary text-primary-foreground border-primary";
+  const chipIdle = "bg-background border-input hover:bg-muted";
+
   return (
     <div className="space-y-2">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {PRESETS.map((p) => (
-          <button
-            key={p.key}
-            onClick={() => applyPreset(p.key)}
-            className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
-              activePreset === p.key
-                ? "bg-primary text-primary-foreground border-primary"
-                : "bg-background border-input hover:bg-muted"
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
+      <div className={`flex flex-wrap items-center gap-1.5 ${pending ? "opacity-70" : ""}`}>
         <button
-          onClick={showMesePanel}
-          className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors inline-flex items-center gap-1.5 ${
-            activePreset === "mese_specifico"
-              ? "bg-primary text-primary-foreground border-primary"
-              : "bg-background border-input hover:bg-muted"
-          }`}
+          disabled={pending}
+          onClick={() => applyPreset("anno_corrente")}
+          className={`${chipBase} ${activePreset === "anno_corrente" ? chipActive : chipIdle}`}
         >
-          <Calendar className="size-3" />
-          Mese specifico
+          Anno in corso
         </button>
         <button
+          disabled={pending}
+          onClick={showMesePanel}
+          className={`${chipBase} ${activePreset === "mese_specifico" ? chipActive : chipIdle}`}
+        >
+          <Calendar className="size-3" />
+          Seleziona mese
+        </button>
+        <button
+          disabled={pending}
           onClick={showCustomPanel}
-          className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors inline-flex items-center gap-1.5 ${
-            activePreset === "personalizzato"
-              ? "bg-primary text-primary-foreground border-primary"
-              : "bg-background border-input hover:bg-muted"
-          }`}
+          className={`${chipBase} ${activePreset === "personalizzato" ? chipActive : chipIdle}`}
         >
           <Settings2 className="size-3" />
           Personalizzato

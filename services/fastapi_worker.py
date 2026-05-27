@@ -198,6 +198,7 @@ def _build_allowed_origins() -> List[str]:
             "https://envoicescan-ai-production.up.railway.app",
             "https://oneflux.it",
             "https://www.oneflux.it",
+            "https://nuovo.oneflux.it",
             "https://frontend-production-aa79.up.railway.app",
         ]
 
@@ -232,7 +233,7 @@ app.add_middleware(_ContentSizeLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_build_allowed_origins(),
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -1047,9 +1048,8 @@ def _get_ristorante_id_for_user(user_id: str, supabase_client) -> Optional[str]:
 @app.post(
     "/api/upload/invoice",
     response_model=UploadInvoiceResponse,
-    summary="Upload fattura XML/P7M — parsing + salvataggio su DB",
+    summary="Upload fattura XML/P7M — parsing + salvataggio su DB (auth solo via Bearer per upload diretto dal browser)",
     tags=["Upload"],
-    dependencies=[Depends(_verify_worker_key)],
 )
 async def upload_invoice(
     request: Request,
@@ -1271,6 +1271,37 @@ CATEGORIE_SPESE_GENERALI_WORKER = {
     "MATERIALE DI CONSUMO",
 }
 CATEGORIE_NOTE_WORKER = {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
+
+
+def _resolve_ristorante_id(user: Dict[str, Any], supabase_client) -> Optional[str]:
+    """Risolve ristorante_id dal dict user (chiamato da _resolve_user_from_token).
+
+    Priorita:
+      1) user.ristorante_id (impostato esplicitamente)
+      2) user.ultimo_ristorante_id (selezione utente)
+      3) primo ristorante attivo dell'utente
+    """
+    rid = user.get("ristorante_id") or user.get("ultimo_ristorante_id")
+    if rid:
+        return str(rid)
+    uid = user.get("id")
+    if not uid:
+        return None
+    try:
+        resp = (
+            supabase_client.table("ristoranti")
+            .select("id")
+            .eq("user_id", uid)
+            .eq("attivo", True)
+            .order("created_at")
+            .limit(1)
+            .execute()
+        )
+        if resp.data:
+            return str(resp.data[0]["id"])
+    except Exception:
+        pass
+    return None
 
 
 def _build_fatture_base_query(supabase_client, ristorante_id: str):
@@ -1506,7 +1537,7 @@ async def get_mesi_disponibili(
     authorization: Optional[str] = Header(None),
 ) -> MesiDisponibiliResponse:
     user = _resolve_user_from_token(authorization)
-    ristorante_id = user.get("ristorante_id")
+    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1548,7 +1579,7 @@ async def get_fatture_kpi(
     authorization: Optional[str] = Header(None),
 ) -> KpiResponse:
     user = _resolve_user_from_token(authorization)
-    ristorante_id = user.get("ristorante_id")
+    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1601,13 +1632,14 @@ async def get_articoli_aggregati(
     data_a: Optional[str] = None,
     tipo_prodotti: Optional[str] = None,
     categoria: Optional[str] = None,
+    fornitore: Optional[str] = None,
     search: Optional[str] = None,
     solo_nuovi: bool = False,
     solo_da_verificare: bool = False,
     authorization: Optional[str] = Header(None),
 ) -> ArticoliResponse:
     user = _resolve_user_from_token(authorization)
-    ristorante_id = user.get("ristorante_id")
+    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1619,6 +1651,8 @@ async def get_articoli_aggregati(
     )
     if categoria:
         rows = [r for r in rows if r.get("categoria") == categoria]
+    if fornitore:
+        rows = [r for r in rows if r.get("fornitore") == fornitore]
     if solo_da_verificare:
         rows = [r for r in rows if r.get("needs_review")]
 
@@ -1730,7 +1764,7 @@ async def get_righe_articolo(
     authorization: Optional[str] = Header(None),
 ) -> List[RigaFattura]:
     user = _resolve_user_from_token(authorization)
-    ristorante_id = user.get("ristorante_id")
+    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1759,7 +1793,7 @@ async def get_fatture_pivot(
         raise HTTPException(status_code=400, detail="dimensione deve essere 'categoria' o 'fornitore'")
 
     user = _resolve_user_from_token(authorization)
-    ristorante_id = user.get("ristorante_id")
+    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1841,7 +1875,7 @@ async def get_fatture_trend(
         raise HTTPException(status_code=400, detail="dimensione invalida")
 
     user = _resolve_user_from_token(authorization)
-    ristorante_id = user.get("ristorante_id")
+    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1886,6 +1920,41 @@ async def get_fatture_trend(
     return TrendResponse(serie=serie, periodi=periodi, periodi_labels=periodi_labels)
 
 
+# ─── Endpoint: fornitori distinti del ristorante ───────────────────────────
+
+@app.get("/api/fatture/fornitori")
+async def get_fornitori_disponibili(
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    user = _resolve_user_from_token(authorization)
+    supabase_client = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    rows: List[Dict[str, Any]] = []
+    page_size = 1000
+    offset = 0
+    while True:
+        res = (
+            supabase_client.table("fatture")
+            .select("fornitore")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = res.data or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+        if offset >= 50000:
+            break
+    fornitori = sorted({(r.get("fornitore") or "").strip() for r in rows if r.get("fornitore")}, key=lambda s: s.casefold())
+    return {"fornitori": fornitori}
+
+
 # ─── Endpoint: categorie disponibili ───────────────────────────────────────
 
 @app.get("/api/fatture/categorie")
@@ -1893,7 +1962,7 @@ async def get_categorie_disponibili(
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
     user = _resolve_user_from_token(authorization)
-    ristorante_id = user.get("ristorante_id")
+    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -1933,7 +2002,7 @@ async def categoria_batch(
 ) -> Dict[str, Any]:
     user = _resolve_user_from_token(authorization)
     user_id = user.get("id")
-    ristorante_id = user.get("ristorante_id")
+    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
     if not ristorante_id or not user_id:
         raise HTTPException(status_code=400, detail="Utente o ristorante mancante")
 
@@ -2010,7 +2079,7 @@ async def get_fatture(
     authorization: Optional[str] = Header(None),
 ) -> FattureListResponse:
     user = _resolve_user_from_token(authorization)
-    ristorante_id = user.get("ristorante_id")
+    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
@@ -2044,7 +2113,7 @@ async def aggiorna_categoria_riga(
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
     user = _resolve_user_from_token(authorization)
-    ristorante_id = user.get("ristorante_id")
+    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 

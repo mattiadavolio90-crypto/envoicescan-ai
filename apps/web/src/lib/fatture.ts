@@ -166,6 +166,7 @@ export async function fetchArticoliAggregati(filters: {
   data_a?: string;
   tipo_prodotti?: TipoProdotti;
   categoria?: string;
+  fornitore?: string;
   search?: string;
   solo_nuovi?: boolean;
   solo_da_verificare?: boolean;
@@ -208,6 +209,11 @@ export async function fetchTrend(
 export async function fetchCategorie(): Promise<{ categorie: string[]; usate: string[] }> {
   const data = await workerGet<{ categorie: string[]; usate: string[] }>("/api/fatture/categorie");
   return data ?? { categorie: [], usate: [] };
+}
+
+export async function fetchFornitori(): Promise<string[]> {
+  const data = await workerGet<{ fornitori: string[] }>("/api/fatture/fornitori");
+  return data?.fornitori ?? [];
 }
 
 export async function fetchFatture(filters: FattureFilters = {}): Promise<{

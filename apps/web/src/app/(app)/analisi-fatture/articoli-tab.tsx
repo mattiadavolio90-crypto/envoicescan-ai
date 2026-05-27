@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -13,6 +13,7 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
 import { Input } from "@/components/ui/input";
 import { categoriaIcon, formatData, formatEuro } from "./periodi";
@@ -20,11 +21,14 @@ import { categoriaIcon, formatData, formatEuro } from "./periodi";
 type Props = {
   articoli: ArticoloAggregato[];
   categorie: string[];
+  fornitori: string[];
   filtri: {
     data_da?: string;
     data_a?: string;
     tipo_prodotti?: string;
     search?: string;
+    fornitore?: string;
+    categoria?: string;
     solo_nuovi?: boolean;
     solo_da_verificare?: boolean;
   };
@@ -36,10 +40,11 @@ const TIPO_OPTIONS = [
   { key: "spese_generali", label: "Spese Generali" },
 ];
 
-export function ArticoliTab({ articoli, categorie, filtri }: Props) {
+export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
+  const [pending, startTransition] = useTransition();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   function setParam(updates: Record<string, string | undefined>) {
@@ -48,7 +53,9 @@ export function ArticoliTab({ articoli, categorie, filtri }: Props) {
       if (v === undefined || v === "") params.delete(k);
       else params.set(k, v);
     }
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
   }
 
   function toggleExpand(desc: string) {
@@ -60,45 +67,37 @@ export function ArticoliTab({ articoli, categorie, filtri }: Props) {
     });
   }
 
-  async function exportXls() {
-    const rows = [
-      ["Categoria", "Descrizione", "Fornitore", "Altri fornitori", "Ultimo acquisto", "Quantità", "UM", "Prezzo unit. medio", "Trend %", "Totale speso", "N° acquisti"],
-      ...articoli.map((a) => [
-        a.categoria ?? "",
-        a.descrizione,
-        a.fornitore_principale,
-        a.altri_fornitori.join("; "),
-        a.ultimo_acquisto ?? "",
-        String(a.quantita_totale),
-        a.unita_misura ?? "",
-        a.prezzo_unit_medio?.toFixed(2) ?? "",
-        a.prezzo_unit_trend_pct?.toFixed(1) ?? "",
-        a.totale_speso.toFixed(2),
-        String(a.num_acquisti),
-      ]),
-    ];
-    const csv = rows
-      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `articoli_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  function exportXls() {
+    const data = articoli.map((a) => ({
+      Categoria: a.categoria ?? "",
+      Descrizione: a.descrizione,
+      Fornitore: a.fornitore_principale,
+      "Altri fornitori": a.altri_fornitori.join("; "),
+      "Ultimo acquisto": a.ultimo_acquisto ?? "",
+      "Quantità": a.quantita_totale,
+      UM: a.unita_misura ?? "",
+      "Prezzo unit. medio": a.prezzo_unit_medio ?? "",
+      "Trend prezzo %": a.prezzo_unit_trend_pct ?? "",
+      "Totale speso": a.totale_speso,
+      "N° acquisti": a.num_acquisti,
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Articoli");
+    XLSX.writeFile(wb, `articoli_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   return (
-    <div className="space-y-3">
+    <div className={`space-y-3 ${pending ? "opacity-70" : ""}`}>
       {/* Sub-filtri */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1">
           {TIPO_OPTIONS.map((t) => (
             <button
               key={t.key}
+              disabled={pending}
               onClick={() => setParam({ tipo: t.key === "tutti" ? undefined : t.key })}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
+              className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-60 ${
                 (filtri.tipo_prodotti ?? "tutti") === t.key
                   ? "bg-primary text-primary-foreground border-primary"
                   : "bg-background border-input hover:bg-muted"
@@ -109,19 +108,48 @@ export function ArticoliTab({ articoli, categorie, filtri }: Props) {
           ))}
         </div>
 
-        <div className="relative flex-1 min-w-48 max-w-72">
+        <div className="relative w-56">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <Input
             type="text"
-            placeholder="Cerca prodotto, fornitore, categoria..."
+            placeholder="Cerca prodotto..."
             defaultValue={filtri.search ?? ""}
             onKeyDown={(e) => {
-              if (e.key === "Enter") setParam({ search: (e.target as HTMLInputElement).value || undefined });
+              if (e.key === "Enter")
+                setParam({ search: (e.target as HTMLInputElement).value || undefined });
             }}
             onBlur={(e) => setParam({ search: e.target.value || undefined })}
             className="h-7 text-xs pl-7"
           />
         </div>
+
+        <select
+          value={filtri.fornitore ?? ""}
+          onChange={(e) => setParam({ fornitore: e.target.value || undefined })}
+          disabled={pending}
+          className="h-7 text-xs rounded-md border border-input bg-background px-2 max-w-48"
+        >
+          <option value="">Tutti i fornitori</option>
+          {fornitori.map((f) => (
+            <option key={f} value={f}>
+              {f}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={filtri.categoria ?? ""}
+          onChange={(e) => setParam({ cat: e.target.value || undefined })}
+          disabled={pending}
+          className="h-7 text-xs rounded-md border border-input bg-background px-2 max-w-48"
+        >
+          <option value="">Tutte le categorie</option>
+          {categorie.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
 
         <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer">
           <input
@@ -137,14 +165,15 @@ export function ArticoliTab({ articoli, categorie, filtri }: Props) {
             checked={filtri.solo_da_verificare ?? false}
             onChange={(e) => setParam({ verifica: e.target.checked ? "1" : undefined })}
           />
-          <AlertTriangle className="size-3 text-amber-500" /> Solo da verificare
+          <AlertTriangle className="size-3 text-amber-500" /> Solo verifica categoria
         </label>
 
         <button
           onClick={exportXls}
-          className="ml-auto text-xs px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted font-medium"
+          disabled={articoli.length === 0}
+          className="ml-auto text-xs px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted font-medium disabled:opacity-50"
         >
-          Esporta CSV
+          Esporta Excel
         </button>
       </div>
 
@@ -269,7 +298,9 @@ function ArticoloRiga({
               className="text-xs inline-flex items-center gap-1.5 hover:text-primary hover:underline text-left"
             >
               <span className="text-base leading-none">{icon}</span>
-              <span className="font-medium">{currentCat || <em className="text-muted-foreground">N/D</em>}</span>
+              <span className="font-medium">
+                {currentCat || <em className="text-muted-foreground">N/D</em>}
+              </span>
               {saving && <Loader2 className="size-3 animate-spin" />}
             </button>
           )}
@@ -347,7 +378,11 @@ function ArticoloRiga({
         <tr className="bg-muted/20 border-b">
           <td></td>
           <td colSpan={8} className="px-3 py-2">
-            <RigheArticolo descrizione={articolo.descrizione} dataDa={filtri.data_da} dataA={filtri.data_a} />
+            <RigheArticolo
+              descrizione={articolo.descrizione}
+              dataDa={filtri.data_da}
+              dataA={filtri.data_a}
+            />
           </td>
         </tr>
       )}

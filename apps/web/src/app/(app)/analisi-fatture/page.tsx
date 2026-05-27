@@ -1,6 +1,7 @@
 import {
   fetchArticoliAggregati,
   fetchCategorie,
+  fetchFornitori,
   fetchKpi,
   fetchMesiDisponibili,
   fetchPivot,
@@ -22,6 +23,8 @@ type SearchParams = {
   mese?: string;
   tipo?: string;
   search?: string;
+  fornitore?: string;
+  cat?: string;
   nuovi?: string;
   verifica?: string;
 };
@@ -68,11 +71,15 @@ export default async function AnalisiFatturePage({
   const soloNuovi = sp.nuovi === "1";
   const soloDaVerificare = sp.verifica === "1";
 
+  const fornitoreFilter = sp.fornitore;
+  const categoriaFilter = sp.cat;
+
   // Carico in parallelo i dati base sempre necessari
-  const [kpi, mesi, categorieRes] = await Promise.all([
+  const [kpi, mesi, categorieRes, fornitoriList] = await Promise.all([
     fetchKpi(data_da, data_a, tipoProdotti),
     fetchMesiDisponibili(),
     fetchCategorie(),
+    fetchFornitori(),
   ]);
 
   // Carico in base al tab attivo
@@ -83,6 +90,8 @@ export default async function AnalisiFatturePage({
           data_a,
           tipo_prodotti: tipoProdotti,
           search,
+          fornitore: fornitoreFilter,
+          categoria: categoriaFilter,
           solo_nuovi: soloNuovi,
           solo_da_verificare: soloDaVerificare,
         })
@@ -123,11 +132,14 @@ export default async function AnalisiFatturePage({
         <ArticoliTab
           articoli={articoliRes?.articoli ?? []}
           categorie={categorieRes.categorie}
+          fornitori={fornitoriList}
           filtri={{
             data_da,
             data_a,
             tipo_prodotti: tipoProdotti,
             search,
+            fornitore: fornitoreFilter,
+            categoria: categoriaFilter,
             solo_nuovi: soloNuovi,
             solo_da_verificare: soloDaVerificare,
           }}

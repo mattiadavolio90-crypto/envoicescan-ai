@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import * as XLSX from "xlsx";
 import {
   type PivotResponse,
   type TrendResponse,
@@ -29,6 +30,7 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
+  const [pending, startTransition] = useTransition();
   const [selectedForTrend, setSelectedForTrend] = useState<string[]>(
     pivot.rows.slice(0, 3).map((r) => r.dimensione),
   );
@@ -39,33 +41,39 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
       if (v === undefined || v === "") params.delete(k);
       else params.set(k, v);
     }
-    router.push(`${pathname}?${params.toString()}`);
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
   }
 
   function exportXls() {
     const periodi = pivot.periodi;
     const labels = pivot.periodi_labels;
-    const rows = [
-      [dimensione === "categoria" ? "Categoria" : "Fornitore", ...labels, "Totale", "Media", "% sul totale"],
-      ...pivot.rows.map((r) => [
-        r.dimensione,
-        ...periodi.map((p) => (r.periodi[p] ?? 0).toFixed(2)),
-        r.totale.toFixed(2),
-        r.media.toFixed(2),
-        r.incidenza_pct.toFixed(1) + "%",
-      ]),
-      ["TOTALE", ...periodi.map((p) => (pivot.totali_periodo[p] ?? 0).toFixed(2)), pivot.grand_total.toFixed(2), "", ""],
-    ];
-    const csv = rows
-      .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${dimensione}_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const dimLabel = dimensione === "categoria" ? "Categoria" : "Fornitore";
+
+    const header: string[] = [dimLabel, ...labels, "Totale", "Media", "% sul totale"];
+    const dataRows = pivot.rows.map((r) => {
+      const row: Record<string, string | number> = { [dimLabel]: r.dimensione };
+      periodi.forEach((p, i) => {
+        row[labels[i]] = Math.round((r.periodi[p] ?? 0) * 100) / 100;
+      });
+      row["Totale"] = Math.round(r.totale * 100) / 100;
+      row["Media"] = Math.round(r.media * 100) / 100;
+      row["% sul totale"] = `${r.incidenza_pct.toFixed(1)}%`;
+      return row;
+    });
+    const totaleRow: Record<string, string | number> = { [dimLabel]: "TOTALE" };
+    periodi.forEach((p, i) => {
+      totaleRow[labels[i]] = Math.round((pivot.totali_periodo[p] ?? 0) * 100) / 100;
+    });
+    totaleRow["Totale"] = Math.round(pivot.grand_total * 100) / 100;
+    totaleRow["Media"] = "";
+    totaleRow["% sul totale"] = "100%";
+
+    const ws = XLSX.utils.json_to_sheet([...dataRows, totaleRow], { header });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, dimLabel);
+    XLSX.writeFile(wb, `${dimensione}_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   const granuLabel =
@@ -76,15 +84,16 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
         : "anno";
 
   return (
-    <div className="space-y-4">
+    <div className={`space-y-4 ${pending ? "opacity-70" : ""}`}>
       {/* Sub-filtri */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1">
           {TIPO_OPTIONS.map((t) => (
             <button
               key={t.key}
+              disabled={pending}
               onClick={() => setParam({ tipo: t.key === "tutti" ? undefined : t.key })}
-              className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors ${
+              className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-60 ${
                 (filtri.tipo_prodotti ?? "tutti") === t.key
                   ? "bg-primary text-primary-foreground border-primary"
                   : "bg-background border-input hover:bg-muted"
@@ -101,9 +110,10 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
         )}
         <button
           onClick={exportXls}
-          className="ml-auto text-xs px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted font-medium"
+          disabled={pivot.rows.length === 0}
+          className="ml-auto text-xs px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted font-medium disabled:opacity-50"
         >
-          Esporta CSV
+          Esporta Excel
         </button>
       </div>
 
