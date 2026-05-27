@@ -1160,6 +1160,106 @@ async def upload_invoice(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# NOTIFICHE
+# ═══════════════════════════════════════════════════════════════════════════
+
+class NotificaItem(BaseModel):
+    id: str
+    topic_key: Optional[str] = None
+    source_type: Optional[str] = None
+    severity: str = "info"
+    title: str
+    body: Optional[str] = None
+    action_page: Optional[str] = None
+    dismissed_at: Optional[str] = None
+    expires_at: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class NotificheResponse(BaseModel):
+    notifiche: List[NotificaItem]
+    total: int
+    unread: int
+
+
+@app.get(
+    "/api/notifiche",
+    response_model=NotificheResponse,
+    summary="Lista notifiche utente (attive + non scadute)",
+    tags=["Notifiche"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def get_notifiche(
+    authorization: Optional[str] = Header(None),
+    include_dismissed: bool = False,
+) -> NotificheResponse:
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+
+    query = (
+        supabase_client.table("notification_inbox")
+        .select("id,topic_key,source_type,severity,title,body,action_page,dismissed_at,expires_at,created_at")
+        .eq("user_id", user_id)
+        .or_("expires_at.is.null,expires_at.gt." + __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat())
+        .order("created_at", desc=True)
+        .limit(100)
+    )
+
+    resp = query.execute()
+    rows = resp.data or []
+
+    if not include_dismissed:
+        rows = [r for r in rows if not r.get("dismissed_at")]
+
+    notifiche = [
+        NotificaItem(
+            id=str(r["id"]),
+            topic_key=r.get("topic_key"),
+            source_type=r.get("source_type"),
+            severity=r.get("severity") or "info",
+            title=r.get("title") or "",
+            body=r.get("body"),
+            action_page=r.get("action_page"),
+            dismissed_at=str(r["dismissed_at"]) if r.get("dismissed_at") else None,
+            expires_at=str(r["expires_at"]) if r.get("expires_at") else None,
+            created_at=str(r["created_at"]) if r.get("created_at") else None,
+        )
+        for r in rows
+    ]
+
+    unread = sum(1 for n in notifiche if not n.dismissed_at)
+
+    return NotificheResponse(notifiche=notifiche, total=len(notifiche), unread=unread)
+
+
+@app.post(
+    "/api/notifiche/{notifica_id}/dismiss",
+    summary="Segna notifica come letta/archiviata",
+    tags=["Notifiche"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def dismiss_notifica(
+    notifica_id: str,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, str]:
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+
+    from services import get_supabase_client
+    from datetime import datetime, timezone
+    supabase_client = get_supabase_client()
+
+    supabase_client.table("notification_inbox").update(
+        {"dismissed_at": datetime.now(timezone.utc).isoformat()}
+    ).eq("id", notifica_id).eq("user_id", user_id).execute()
+
+    return {"status": "ok"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # UTILITY
 # ═══════════════════════════════════════════════════════════════════════════
 

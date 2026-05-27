@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  Bell,
   ChevronsUpDown,
   FileText,
   Home,
@@ -48,6 +49,7 @@ const navMain = [
 ];
 
 const navSecondary = [
+  { title: "Notifiche", url: "/notifiche", icon: Bell },
   { title: "Report", url: "/report", icon: Receipt },
   { title: "Impostazioni", url: "/impostazioni", icon: Settings },
 ];
@@ -56,12 +58,14 @@ type AppSidebarProps = {
   userEmail?: string;
   userInitials?: string;
   ristoranteNome?: string;
+  unreadNotifiche?: number;
 };
 
 export function AppSidebar({
   userEmail = "utente@oneflux.it",
   userInitials = "U",
   ristoranteNome = "Ristorante",
+  unreadNotifiche = 0,
 }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -126,6 +130,11 @@ export function AppSidebar({
                 >
                   <item.icon />
                   <span>{item.title}</span>
+                  {item.url === "/notifiche" && unreadNotifiche > 0 && (
+                    <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-semibold">
+                      {unreadNotifiche > 9 ? "9+" : unreadNotifiche}
+                    </span>
+                  )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}

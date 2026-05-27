@@ -3,6 +3,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { AppSidebar } from "@/components/nav/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { getCurrentUser } from "@/lib/auth";
+import { fetchNotifiche } from "@/lib/notifiche";
 
 function getInitials(nome: string | null, email: string): string {
   if (nome) {
@@ -20,12 +21,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
+  const notificheData = await fetchNotifiche(false);
+  const unreadNotifiche = notificheData?.unread ?? 0;
+
   return (
     <SidebarProvider>
       <AppSidebar
         userEmail={user.email}
         userInitials={getInitials(user.nome_ristorante, user.email)}
         ristoranteNome={user.nome_ristorante ?? "Ristorante"}
+        unreadNotifiche={unreadNotifiche}
       />
       <SidebarInset>
         <header className="flex h-14 items-center gap-2 px-4 border-b border-border">
