@@ -767,21 +767,21 @@ async def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
     if error or not user:
         raise HTTPException(status_code=401, detail=error or "Credenziali non valide")
 
-    token = user.get("_jwt_refresh_token")
-
-    if not token:
-        token = _secrets.token_urlsafe(32)
-        try:
-            from services import get_supabase_client
-            supabase_client = get_supabase_client()
-            supabase_client.table("users").update({
-                "session_token": token,
-                "session_token_created_at": datetime.now(timezone.utc).isoformat(),
-                "last_seen_at": datetime.now(timezone.utc).isoformat(),
-            }).eq("id", user["id"]).execute()
-        except Exception:
-            logger.exception("Errore creazione session_token legacy")
-            raise HTTPException(status_code=500, detail="Errore creazione sessione")
+    # Genera sempre session_token legacy (43 char base64url) e salvalo in DB.
+    # Questo garantisce che verifica_sessione_da_cookie() funzioni via path legacy,
+    # indipendentemente dal formato del refresh token Supabase Auth.
+    token = _secrets.token_urlsafe(32)
+    try:
+        from services import get_supabase_client
+        supabase_client = get_supabase_client()
+        supabase_client.table("users").update({
+            "session_token": token,
+            "session_token_created_at": datetime.now(timezone.utc).isoformat(),
+            "last_seen_at": datetime.now(timezone.utc).isoformat(),
+        }).eq("id", user["id"]).execute()
+    except Exception:
+        logger.exception("Errore creazione session_token")
+        raise HTTPException(status_code=500, detail="Errore creazione sessione")
 
     return LoginResponse(
         token=token,
