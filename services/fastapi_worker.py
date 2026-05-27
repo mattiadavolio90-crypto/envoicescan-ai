@@ -2653,6 +2653,276 @@ async def get_analisi_centri(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# ANALISI AVANZATA CENTRI — drill-down categorie + andamento mensile + commenti
+# ═══════════════════════════════════════════════════════════════════════════
+
+_ICONE_CENTRI = {"FOOD": "🍖", "BEVERAGE": "☕", "ALCOLICI": "🍷", "DOLCI": "🍰", "SHOP": "🛒"}
+
+
+class CategoriaDetail(BaseModel):
+    categoria: str
+    costo: float
+    pct_su_centro: float
+
+
+class CentroDetailItem(BaseModel):
+    centro: str
+    icona: str
+    categorie_def: List[str]
+    categorie_dettaglio: List[CategoriaDetail]
+    costo_totale: float
+    fatturato: float
+    margine: float
+    margine_pct: float
+    incidenza_su_fatt: float
+    incidenza_su_fb: float
+    has_fatturato: bool
+
+
+class AndamentoMese(BaseModel):
+    anno: int
+    mese: int
+    label: str
+    food: float
+    beverage: float
+    alcolici: float
+    dolci: float
+    shop: float
+
+
+class AnalisiAvanzataResponse(BaseModel):
+    centri: List[CentroDetailItem]
+    andamento_mensile: List[AndamentoMese]
+    commenti: List[CommentoKpi]
+    totale_costi_fb: float
+    fatturato_netto_periodo: float
+    fatturato_per_centro_totale: float
+    primo_margine: float
+    primo_margine_pct: float
+    fatturato_split_attivo: bool
+    mesi_con_dati: List[int]
+
+
+def _load_fatture_fb_per_categoria_e_mese(
+    sb, ristorante_id: str, data_da: str, data_a: str,
+) -> "Dict[tuple, float]":
+    """Ritorna dict {(anno, mese, categoria): totale}."""
+    import pandas as pd
+    page_size = 1000
+    all_rows: List[Dict[str, Any]] = []
+    offset = 0
+    while True:
+        q = (
+            sb.table("fatture")
+            .select("data_documento,totale_riga,categoria")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .neq("categoria", "Da Classificare")
+            .gte("data_documento", data_da)
+            .lte("data_documento", data_a)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = q.data or []
+        all_rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+    if not all_rows:
+        return {}
+    df = pd.DataFrame(all_rows)
+    df["totale_riga"] = pd.to_numeric(df.get("totale_riga"), errors="coerce").fillna(0)
+    df = df[df["categoria"].isin(_CATEGORIE_FB_M) & (df["totale_riga"] > 0)].copy()
+    if df.empty:
+        return {}
+    df["data_documento"] = pd.to_datetime(df["data_documento"], errors="coerce")
+    df = df.dropna(subset=["data_documento"])
+    df["anno"] = df["data_documento"].dt.year
+    df["mese"] = df["data_documento"].dt.month
+    grouped = df.groupby(["anno", "mese", "categoria"])["totale_riga"].sum()
+    return {(int(a), int(m), str(c)): float(v) for (a, m, c), v in grouped.items()}
+
+
+@app.get("/api/margini/analisi-avanzata", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def get_analisi_avanzata(
+    data_da: str,
+    data_a: str,
+    authorization: Optional[str] = Header(None),
+) -> AnalisiAvanzataResponse:
+    from datetime import date as _date
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    d_da = _date.fromisoformat(data_da)
+    d_a = _date.fromisoformat(data_a)
+
+    # Lista (anno, mese) target
+    mesi_target = []
+    y, m = d_da.year, d_da.month
+    while (y, m) <= (d_a.year, d_a.month):
+        mesi_target.append((y, m))
+        m += 1
+        if m > 12:
+            y += 1
+            m = 1
+
+    # Costi mensili per categoria
+    costi_map = _load_fatture_fb_per_categoria_e_mese(sb, ristorante_id, data_da, data_a)
+
+    # Aggregato per categoria periodo
+    costi_per_cat: Dict[str, float] = {}
+    for (_a, _m, cat), tot in costi_map.items():
+        costi_per_cat[cat] = costi_per_cat.get(cat, 0) + tot
+
+    # Carica margini_mensili per ricavi e split centri
+    annos = sorted({y for y, _ in mesi_target})
+    margini_resp = (
+        sb.table("margini_mensili")
+        .select("anno,mese,fatturato_netto,fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci")
+        .eq("ristorante_id", ristorante_id)
+        .in_("anno", annos)
+        .execute()
+    )
+
+    fatturato_netto_periodo = 0.0
+    fatturato_per_centro: Dict[str, float] = {c: 0.0 for c in _CENTRI_CON_FATTURATO}
+    mesi_con_dati: List[int] = []
+    split_attivo = False
+
+    margini_map = {}
+    for r in (margini_resp.data or []):
+        anno_r = int(r.get("anno", 0))
+        mese_r = int(r.get("mese", 0))
+        if (anno_r, mese_r) in [(y, m) for y, m in mesi_target]:
+            margini_map[(anno_r, mese_r)] = r
+            fatt = float(r.get("fatturato_netto") or 0)
+            fatturato_netto_periodo += fatt
+            if fatt > 0:
+                mesi_con_dati.append(mese_r)
+            for c in _CENTRI_CON_FATTURATO:
+                v = float(r.get(f"fatturato_{c.lower()}") or 0)
+                fatturato_per_centro[c] += v
+                if v > 0:
+                    split_attivo = True
+
+    fatturato_per_centro_tot = sum(fatturato_per_centro.values())
+    totale_costi_fb = sum(costi_per_cat.values())
+
+    # Costruisci CentroDetailItem
+    centri_out: List[CentroDetailItem] = []
+    for centro, cats in _CENTRI_DI_PRODUZIONE.items():
+        costo = sum(costi_per_cat.get(cat, 0) for cat in cats)
+        fatt_c = fatturato_per_centro.get(centro, 0.0)
+        has_fatt = centro in _CENTRI_CON_FATTURATO and split_attivo and fatt_c > 0
+        margine = fatt_c - costo if has_fatt else 0.0
+        margine_pct = (margine / fatt_c * 100) if fatt_c > 0 else 0.0
+        incidenza = (costo / fatt_c * 100) if fatt_c > 0 else 0.0
+        # Per centri senza fatt proprio: % su fatturato totale split
+        if not has_fatt and fatturato_per_centro_tot > 0:
+            incidenza = (costo / fatturato_per_centro_tot * 100)
+
+        # Categorie con dettaglio
+        cat_details = []
+        for cat in cats:
+            c_cost = costi_per_cat.get(cat, 0)
+            if c_cost > 0:
+                cat_details.append(CategoriaDetail(
+                    categoria=cat,
+                    costo=round(c_cost, 2),
+                    pct_su_centro=round(c_cost / costo * 100, 2) if costo > 0 else 0.0,
+                ))
+        cat_details.sort(key=lambda x: x.costo, reverse=True)
+
+        centri_out.append(CentroDetailItem(
+            centro=centro,
+            icona=_ICONE_CENTRI.get(centro, "📁"),
+            categorie_def=cats,
+            categorie_dettaglio=cat_details,
+            costo_totale=round(costo, 2),
+            fatturato=round(fatt_c, 2),
+            margine=round(margine, 2),
+            margine_pct=round(margine_pct, 2),
+            incidenza_su_fatt=round(incidenza, 2),
+            incidenza_su_fb=round(costo / totale_costi_fb * 100, 2) if totale_costi_fb > 0 else 0.0,
+            has_fatturato=has_fatt,
+        ))
+
+    primo_margine = fatturato_netto_periodo - totale_costi_fb
+    primo_margine_pct = (primo_margine / fatturato_netto_periodo * 100) if fatturato_netto_periodo > 0 else 0.0
+
+    # Andamento mensile per centro
+    andamento: List[AndamentoMese] = []
+    MESI_NOMI_BR = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
+    for (yy, mm) in mesi_target:
+        costi_centri = {c: 0.0 for c in _CENTRI_DI_PRODUZIONE.keys()}
+        for (a2, m2, cat), tot in costi_map.items():
+            if a2 == yy and m2 == mm:
+                centro_n = _CAT_TO_CENTRO.get(cat)
+                if centro_n:
+                    costi_centri[centro_n] += tot
+        andamento.append(AndamentoMese(
+            anno=yy, mese=mm, label=f"{MESI_NOMI_BR[mm-1]} {yy}",
+            food=round(costi_centri.get("FOOD", 0), 2),
+            beverage=round(costi_centri.get("BEVERAGE", 0), 2),
+            alcolici=round(costi_centri.get("ALCOLICI", 0), 2),
+            dolci=round(costi_centri.get("DOLCI", 0), 2),
+            shop=round(costi_centri.get("SHOP", 0), 2),
+        ))
+
+    # Commenti automatici per centro
+    commenti: List[CommentoKpi] = []
+    for c in centri_out:
+        if not c.has_fatturato or c.costo_totale == 0:
+            continue
+        fc = c.incidenza_su_fatt
+        emoji, testo = _valuta_soglia_margine(fc, "food_cost", crescente=True)
+        commenti.append(CommentoKpi(
+            kpi_nome=f"{c.icona} {c.centro} — Incidenza costi",
+            percentuale=f"{fc:.1f}%",
+            commento=testo,
+            emoji=emoji,
+            colore=_COLORI_EMOJI.get(emoji, "#6b7280"),
+        ))
+
+    # Centro più performante / meno performante
+    centri_con_fatt = [c for c in centri_out if c.has_fatturato and c.fatturato > 0]
+    if centri_con_fatt:
+        best = max(centri_con_fatt, key=lambda x: x.margine_pct)
+        worst = min(centri_con_fatt, key=lambda x: x.margine_pct)
+        if best.centro != worst.centro:
+            commenti.append(CommentoKpi(
+                kpi_nome=f"{best.icona} Centro più performante",
+                percentuale=f"{best.margine_pct:.1f}%",
+                commento=f"{best.centro} ha il margine % più alto del periodo",
+                emoji="🟢",
+                colore=_COLORI_EMOJI["🟢"],
+            ))
+            commenti.append(CommentoKpi(
+                kpi_nome=f"{worst.icona} Centro più critico",
+                percentuale=f"{worst.margine_pct:.1f}%",
+                commento=f"{worst.centro} ha il margine % più basso — verificare costi e prezzi",
+                emoji="🔴",
+                colore=_COLORI_EMOJI["🔴"],
+            ))
+
+    return AnalisiAvanzataResponse(
+        centri=centri_out,
+        andamento_mensile=andamento,
+        commenti=commenti,
+        totale_costi_fb=round(totale_costi_fb, 2),
+        fatturato_netto_periodo=round(fatturato_netto_periodo, 2),
+        fatturato_per_centro_totale=round(fatturato_per_centro_tot, 2),
+        primo_margine=round(primo_margine, 2),
+        primo_margine_pct=round(primo_margine_pct, 2),
+        fatturato_split_attivo=split_attivo,
+        mesi_con_dati=sorted(set(mesi_con_dati)),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # PREZZI — Variazioni, Sconti, Omaggi, Note di Credito
 # ═══════════════════════════════════════════════════════════════════════════
 

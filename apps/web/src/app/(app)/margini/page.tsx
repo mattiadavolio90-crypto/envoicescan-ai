@@ -115,7 +115,7 @@ export default async function MarginiPage({
         )}
         {tab === "analisi" && (
           <Suspense>
-            <AnalisiTab anno={anno} />
+            <AnalisiTab dataDa={data_da} dataA={data_a} />
           </Suspense>
         )}
       </div>
