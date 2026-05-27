@@ -307,8 +307,8 @@ export function ArticoliTab({
       </div>
 
       {/* Toggle: Nuovi / Solo verifica */}
-      <div className={`flex items-center gap-3 px-3 py-1.5 rounded-md border border-sky-500/30 bg-sky-500/5 w-fit ${pending ? "opacity-70" : ""}`}>
-        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none">
+      <div className={`flex items-center gap-2 ${pending ? "opacity-70" : ""}`}>
+        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none px-3 py-1.5 rounded-md border border-sky-500/30 bg-sky-500/5">
           <input
             type="checkbox"
             checked={soloNuovi}
@@ -317,7 +317,7 @@ export function ArticoliTab({
           <Sparkles className="size-3.5 text-amber-500" />
           Nuovi caricati
         </label>
-        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none">
+        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none px-3 py-1.5 rounded-md border border-sky-500/30 bg-sky-500/5">
           <input
             type="checkbox"
             checked={soloVerifica}
