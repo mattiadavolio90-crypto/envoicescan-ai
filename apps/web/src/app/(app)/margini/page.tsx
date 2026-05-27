@@ -1,17 +1,37 @@
-import { BarChart3 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Suspense } from "react";
+import { fetchMarginiAnno } from "@/lib/margini";
+import { TabsSwitcher } from "./tabs-switcher";
+import { CalcoloTab } from "./calcolo-tab";
+import { AnalisiTab } from "./analisi-tab";
 
-export default function MarginiPage() {
+export default async function MarginiPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string; anno?: string }>;
+}) {
+  const sp = await searchParams;
+  const tab = sp.tab ?? "calcolo";
+  const anno = parseInt(sp.anno ?? String(new Date().getFullYear()), 10);
+
+  const margini = tab === "calcolo" ? await fetchMarginiAnno(anno) : null;
+
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold tracking-tight">Margini</h1>
-      <Card>
-        <CardContent className="py-16 text-center">
-          <BarChart3 className="mx-auto size-12 text-muted-foreground/40" />
-          <p className="mt-4 text-base font-medium">In costruzione</p>
-          <p className="text-sm text-muted-foreground mt-1">Questa sezione sarà disponibile nella Fase 5.</p>
-        </CardContent>
-      </Card>
+      <h1 className="text-2xl font-bold tracking-tight">Marginalità</h1>
+      <Suspense>
+        <TabsSwitcher active={tab} />
+      </Suspense>
+      <div className="mt-2">
+        {tab === "calcolo" ? (
+          <Suspense>
+            <CalcoloTab anno={anno} mesi={margini?.mesi ?? []} />
+          </Suspense>
+        ) : (
+          <Suspense>
+            <AnalisiTab anno={anno} />
+          </Suspense>
+        )}
+      </div>
     </div>
   );
 }

@@ -2268,6 +2268,391 @@ def _serialize_rows(rows: List[Any]) -> List[Dict[str, Any]]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# MARGINALITÀ
+# ═══════════════════════════════════════════════════════════════════════════
+
+_CENTRI_DI_PRODUZIONE: Dict[str, List[str]] = {
+    "FOOD": ["CARNE","PESCE","LATTICINI","SALUMI","UOVA","SCATOLAME E CONSERVE","OLIO E CONDIMENTI","PASTA E CEREALI","VERDURE","FRUTTA","SALSE E CREME","PRODOTTI DA FORNO","SPEZIE E AROMI","SUSHI VARIE"],
+    "BEVERAGE": ["ACQUA","BEVANDE","CAFFE E THE","VARIE BAR"],
+    "ALCOLICI": ["BIRRE","VINI","DISTILLATI","AMARI/LIQUORI"],
+    "DOLCI": ["PASTICCERIA","GELATI E DESSERT"],
+    "SHOP": ["SHOP"],
+}
+_CAT_TO_CENTRO: Dict[str, str] = {cat: c for c, cats in _CENTRI_DI_PRODUZIONE.items() for cat in cats}
+_CATEGORIE_FB_M: List[str] = list(_CAT_TO_CENTRO.keys())
+_CATEGORIE_SPESE_M: List[str] = ["SERVIZI E CONSULENZE","UTENZE E LOCALI","MANUTENZIONE E ATTREZZATURE","MATERIALE DI CONSUMO"]
+_CENTRI_CON_FATTURATO = ["FOOD","BEVERAGE","ALCOLICI","DOLCI"]
+
+
+class MarginiMeseData(BaseModel):
+    mese: int
+    fatturato_iva10: float = 0.0
+    fatturato_iva22: float = 0.0
+    altri_ricavi_noiva: float = 0.0
+    altri_costi_fb: float = 0.0
+    altri_costi_spese: float = 0.0
+    costo_dipendenti: float = 0.0
+    costo_personale_extra: float = 0.0
+    costi_fb_auto: float = 0.0
+    costi_spese_auto: float = 0.0
+
+
+class MarginiAnnoResponse(BaseModel):
+    anno: int
+    mesi: List[MarginiMeseData]
+
+
+class SalvaMarginiRequest(BaseModel):
+    anno: int
+    mesi: List[MarginiMeseData]
+
+
+class FatturatoCentriData(BaseModel):
+    anno: int
+    mese: int
+    fatturato_food: float = 0.0
+    fatturato_beverage: float = 0.0
+    fatturato_alcolici: float = 0.0
+    fatturato_dolci: float = 0.0
+
+
+class CentroCostoItem(BaseModel):
+    centro: str
+    categorie: List[str]
+    costo_totale: float
+    fatturato: float = 0.0
+    margine: float = 0.0
+    incidenza_su_fatt: float = 0.0
+    incidenza_su_fb: float = 0.0
+
+
+class AnalisiCentriResponse(BaseModel):
+    centri: List[CentroCostoItem]
+    totale_costi_fb: float
+    fatturato_netto_periodo: float
+    primo_margine: float
+    primo_margine_pct: float
+    mesi_con_dati: List[int]
+
+
+def _load_fatture_fb_for_period(
+    sb, ristorante_id: str, data_da: str, data_a: str
+) -> "Dict[str, float]":
+    import pandas as pd
+    page_size = 1000
+    all_rows: List[Dict[str, Any]] = []
+    offset = 0
+    while True:
+        q = (
+            sb.table("fatture")
+            .select("data_documento,totale_riga,categoria")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .neq("categoria", "Da Classificare")
+            .gte("data_documento", data_da)
+            .lte("data_documento", data_a)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = q.data or []
+        all_rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+    if not all_rows:
+        return {}
+    df = pd.DataFrame(all_rows)
+    df["totale_riga"] = pd.to_numeric(df.get("totale_riga"), errors="coerce").fillna(0)
+    df = df[df["categoria"].isin(_CATEGORIE_FB_M) & (df["totale_riga"] > 0)]
+    return df.groupby("categoria")["totale_riga"].sum().to_dict()
+
+
+@app.get("/api/margini", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def get_margini(
+    anno: Optional[int] = None,
+    authorization: Optional[str] = Header(None),
+) -> MarginiAnnoResponse:
+    import pandas as pd
+    from datetime import datetime as _dt
+    if anno is None:
+        anno = _dt.now().year
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    resp = (
+        sb.table("margini_mensili")
+        .select("mese,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,altri_costi_fb,altri_costi_spese,costo_dipendenti,costo_personale_extra")
+        .eq("ristorante_id", ristorante_id)
+        .eq("anno", anno)
+        .execute()
+    )
+    saved = {int(r["mese"]): r for r in (resp.data or [])}
+
+    page_size = 1000
+    all_rows: List[Dict[str, Any]] = []
+    offset = 0
+    while True:
+        q = (
+            sb.table("fatture")
+            .select("data_documento,data_competenza,totale_riga,categoria")
+            .eq("user_id", user_id)
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .neq("categoria", "Da Classificare")
+            .or_(
+                f"and(data_documento.gte.{anno}-01-01,data_documento.lt.{anno+1}-01-01),"
+                f"and(data_competenza.gte.{anno}-01-01,data_competenza.lt.{anno+1}-01-01)"
+            )
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        batch = q.data or []
+        all_rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+
+    costi_fb_auto: Dict[int, float] = {}
+    costi_spese_auto: Dict[int, float] = {}
+    if all_rows:
+        df = pd.DataFrame(all_rows)
+        df["data_documento"] = pd.to_datetime(df.get("data_documento"), errors="coerce")
+        df["data_competenza"] = pd.to_datetime(df.get("data_competenza"), errors="coerce")
+        df["data_rif"] = df["data_competenza"].combine_first(df["data_documento"])
+        df = df.dropna(subset=["data_rif"])
+        df = df[df["data_rif"].dt.year == anno]
+        df["mese"] = df["data_rif"].dt.month
+        df["totale_riga"] = pd.to_numeric(df.get("totale_riga"), errors="coerce").fillna(0)
+        costi_fb_auto = df[df["categoria"].isin(_CATEGORIE_FB_M)].groupby("mese")["totale_riga"].sum().to_dict()
+        costi_spese_auto = df[df["categoria"].isin(_CATEGORIE_SPESE_M)].groupby("mese")["totale_riga"].sum().to_dict()
+
+    mesi = []
+    for m in range(1, 13):
+        s = saved.get(m, {})
+        mesi.append(MarginiMeseData(
+            mese=m,
+            fatturato_iva10=float(s.get("fatturato_iva10") or 0),
+            fatturato_iva22=float(s.get("fatturato_iva22") or 0),
+            altri_ricavi_noiva=float(s.get("altri_ricavi_noiva") or 0),
+            altri_costi_fb=float(s.get("altri_costi_fb") or 0),
+            altri_costi_spese=float(s.get("altri_costi_spese") or 0),
+            costo_dipendenti=float(s.get("costo_dipendenti") or 0),
+            costo_personale_extra=float(s.get("costo_personale_extra") or 0),
+            costi_fb_auto=float(costi_fb_auto.get(m, 0)),
+            costi_spese_auto=float(costi_spese_auto.get(m, 0)),
+        ))
+
+    return MarginiAnnoResponse(anno=anno, mesi=mesi)
+
+
+@app.post("/api/margini", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def save_margini(
+    body: SalvaMarginiRequest,
+    authorization: Optional[str] = Header(None),
+):
+    from datetime import datetime as _dt, timezone as _tz
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    try:
+        ex_resp = (
+            sb.table("margini_mensili")
+            .select("mese,fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci")
+            .eq("ristorante_id", ristorante_id)
+            .eq("anno", body.anno)
+            .execute()
+        )
+        existing_centri = {int(r["mese"]): r for r in (ex_resp.data or [])}
+    except Exception:
+        existing_centri = {}
+
+    now_iso = _dt.now(_tz.utc).isoformat()
+    records = []
+    for m in body.mesi:
+        if not 1 <= m.mese <= 12:
+            continue
+        fatt_netto = (m.fatturato_iva10 / 1.10) + (m.fatturato_iva22 / 1.22) + m.altri_ricavi_noiva
+        costi_fb_tot = m.costi_fb_auto + m.altri_costi_fb
+        costi_spese_tot = m.costi_spese_auto + m.altri_costi_spese
+        costi_pers = m.costo_dipendenti + m.costo_personale_extra
+        primo_margine = fatt_netto - costi_fb_tot
+        mol = primo_margine - costi_spese_tot - costi_pers
+        fn = fatt_netto if fatt_netto > 0 else 1.0
+        ec = existing_centri.get(m.mese, {})
+        records.append({
+            "user_id": user_id,
+            "ristorante_id": ristorante_id,
+            "anno": body.anno,
+            "mese": m.mese,
+            "fatturato_iva10": m.fatturato_iva10,
+            "fatturato_iva22": m.fatturato_iva22,
+            "altri_ricavi_noiva": m.altri_ricavi_noiva,
+            "altri_costi_fb": m.altri_costi_fb,
+            "altri_costi_spese": m.altri_costi_spese,
+            "costo_dipendenti": m.costo_dipendenti,
+            "costo_personale_extra": m.costo_personale_extra,
+            "costi_fb_auto": m.costi_fb_auto,
+            "costi_spese_auto": m.costi_spese_auto,
+            "fatturato_netto": round(fatt_netto, 2),
+            "costi_fb_totali": round(costi_fb_tot, 2),
+            "primo_margine": round(primo_margine, 2),
+            "mol": round(mol, 2),
+            "food_cost_perc": round(costi_fb_tot / fn * 100, 2) if fatt_netto > 0 else 0.0,
+            "spese_perc": round(costi_spese_tot / fn * 100, 2) if fatt_netto > 0 else 0.0,
+            "personale_perc": round(costi_pers / fn * 100, 2) if fatt_netto > 0 else 0.0,
+            "mol_perc": round(mol / fn * 100, 2) if fatt_netto > 0 else 0.0,
+            "fatturato_food": float(ec.get("fatturato_food") or 0),
+            "fatturato_beverage": float(ec.get("fatturato_beverage") or 0),
+            "fatturato_alcolici": float(ec.get("fatturato_alcolici") or 0),
+            "fatturato_dolci": float(ec.get("fatturato_dolci") or 0),
+            "updated_at": now_iso,
+        })
+
+    sb.table("margini_mensili").upsert(records, on_conflict="ristorante_id,anno,mese").execute()
+    return {"ok": True, "saved": len(records)}
+
+
+@app.get("/api/margini/fatturato-centri", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def get_fatturato_centri(
+    anno: int,
+    mese: int,
+    authorization: Optional[str] = Header(None),
+) -> FatturatoCentriData:
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    try:
+        resp = (
+            sb.table("margini_mensili")
+            .select("fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci")
+            .eq("ristorante_id", ristorante_id)
+            .eq("anno", anno)
+            .eq("mese", mese)
+            .execute()
+        )
+        row = (resp.data or [{}])[0]
+    except Exception:
+        row = {}
+
+    return FatturatoCentriData(
+        anno=anno, mese=mese,
+        fatturato_food=float(row.get("fatturato_food") or 0),
+        fatturato_beverage=float(row.get("fatturato_beverage") or 0),
+        fatturato_alcolici=float(row.get("fatturato_alcolici") or 0),
+        fatturato_dolci=float(row.get("fatturato_dolci") or 0),
+    )
+
+
+@app.post("/api/margini/fatturato-centri", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def save_fatturato_centri(
+    body: FatturatoCentriData,
+    authorization: Optional[str] = Header(None),
+):
+    from datetime import datetime as _dt, timezone as _tz
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    sb.table("margini_mensili").upsert({
+        "user_id": user_id,
+        "ristorante_id": ristorante_id,
+        "anno": body.anno,
+        "mese": body.mese,
+        "fatturato_food": body.fatturato_food,
+        "fatturato_beverage": body.fatturato_beverage,
+        "fatturato_alcolici": body.fatturato_alcolici,
+        "fatturato_dolci": body.fatturato_dolci,
+        "updated_at": _dt.now(_tz.utc).isoformat(),
+    }, on_conflict="ristorante_id,anno,mese").execute()
+    return {"ok": True}
+
+
+@app.get("/api/margini/analisi-centri", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def get_analisi_centri(
+    data_da: str,
+    data_a: str,
+    authorization: Optional[str] = Header(None),
+) -> AnalisiCentriResponse:
+    from datetime import date as _date
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    costi_per_cat = _load_fatture_fb_for_period(sb, ristorante_id, data_da, data_a)
+
+    d_da = _date.fromisoformat(data_da)
+    d_a = _date.fromisoformat(data_a)
+    margini_resp = (
+        sb.table("margini_mensili")
+        .select("anno,mese,fatturato_netto,fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci")
+        .eq("ristorante_id", ristorante_id)
+        .gte("anno", d_da.year)
+        .lte("anno", d_a.year)
+        .execute()
+    )
+
+    fatturato_netto_periodo = 0.0
+    fatturato_per_centro: Dict[str, float] = {c: 0.0 for c in _CENTRI_CON_FATTURATO}
+    mesi_con_dati: List[int] = []
+
+    for r in (margini_resp.data or []):
+        anno_r, mese_r = int(r.get("anno", 0)), int(r.get("mese", 0))
+        if not (1 <= mese_r <= 12):
+            continue
+        row_d = _date(anno_r, mese_r, 1)
+        if not (_date(d_da.year, d_da.month, 1) <= row_d <= _date(d_a.year, d_a.month, 1)):
+            continue
+        fatt = float(r.get("fatturato_netto") or 0)
+        fatturato_netto_periodo += fatt
+        if fatt > 0:
+            mesi_con_dati.append(mese_r)
+        for c in _CENTRI_CON_FATTURATO:
+            fatturato_per_centro[c] += float(r.get(f"fatturato_{c.lower()}") or 0)
+
+    totale_costi_fb = sum(costi_per_cat.values())
+    centri_out = []
+    for centro, cats in _CENTRI_DI_PRODUZIONE.items():
+        costo = sum(costi_per_cat.get(cat, 0) for cat in cats)
+        fatt_c = fatturato_per_centro.get(centro, 0.0)
+        margine = fatt_c - costo
+        centri_out.append(CentroCostoItem(
+            centro=centro,
+            categorie=cats,
+            costo_totale=round(costo, 2),
+            fatturato=round(fatt_c, 2),
+            margine=round(margine, 2),
+            incidenza_su_fatt=round(costo / fatt_c * 100, 2) if fatt_c > 0 else 0.0,
+            incidenza_su_fb=round(costo / totale_costi_fb * 100, 2) if totale_costi_fb > 0 else 0.0,
+        ))
+
+    primo_margine = fatturato_netto_periodo - totale_costi_fb
+    return AnalisiCentriResponse(
+        centri=centri_out,
+        totale_costi_fb=round(totale_costi_fb, 2),
+        fatturato_netto_periodo=round(fatturato_netto_periodo, 2),
+        primo_margine=round(primo_margine, 2),
+        primo_margine_pct=round(primo_margine / fatturato_netto_periodo * 100, 2) if fatturato_netto_periodo > 0 else 0.0,
+        mesi_con_dati=sorted(set(mesi_con_dati)),
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # ENTRY POINT (avvio diretto: python services/fastapi_worker.py)
 # ═══════════════════════════════════════════════════════════════════════════
 
