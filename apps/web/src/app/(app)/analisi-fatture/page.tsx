@@ -12,7 +12,6 @@ import { FiltriPeriodo } from "./filtri-periodo";
 import { KpiBar } from "./kpi-bar";
 import { PivotTab } from "./pivot-tab";
 import { TabsSwitcher } from "./tabs-switcher";
-import { ToggleFiltri } from "./toggle-filtri";
 import { UploadModal } from "./upload-modal";
 import { calcolaPeriodo, type PeriodoPreset } from "./periodi";
 
@@ -105,17 +104,14 @@ export default async function AnalisiFatturePage({
         <UploadModal />
       </div>
 
-      {/* Filtri temporali + toggle */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <FiltriPeriodo
-          presetCorrente={preset}
-          dataDa={data_da}
-          dataA={data_a}
-          meseSelezionato={mese}
-          mesiDisponibili={mesi}
-        />
-        <ToggleFiltri soloNuovi={soloNuovi} soloVerifica={soloVerifica} />
-      </div>
+      {/* Filtri temporali */}
+      <FiltriPeriodo
+        presetCorrente={preset}
+        dataDa={data_da}
+        dataA={data_a}
+        meseSelezionato={mese}
+        mesiDisponibili={mesi}
+      />
 
       {/* KPI bar */}
       <KpiBar kpi={kpi} />

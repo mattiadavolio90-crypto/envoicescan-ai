@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Loader2,
   Search,
+  Sparkles,
 } from "lucide-react";
 import * as XLSX from "xlsx";
 import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
@@ -48,6 +49,13 @@ const TIPO_OPTIONS = [
   { key: "food_beverage", label: "Food & Beverage" },
   { key: "spese_generali", label: "Spese Generali" },
 ];
+
+const SPESE_GENERALI_SET = new Set([
+  "SERVIZI E CONSULENZE",
+  "UTENZE E LOCALI",
+  "MANUTENZIONE E ATTREZZATURE",
+  "MATERIALE DI CONSUMO",
+]);
 
 const PAGE_SIZE = 100;
 
@@ -124,8 +132,28 @@ export function ArticoliTab({
     setPage(1);
   }, [search, fornitoreFilter, categoriaFilter, soloNuovi, soloVerifica, sort]);
 
-  // Quando i toggle "Nuovi/Verifica" via URL cambiano: nessun reset extra
-  // (useEffect sopra gia copre).
+  // Reset dropdown selection quando cambia tipo (il valore scelto potrebbe non esistere nel nuovo set)
+  useEffect(() => {
+    setFornitoreFilter("");
+    setCategoriaFilter("");
+  }, [filtri.tipo_prodotti]);
+
+  // Fornitori disponibili derivati dagli articoli già filtrati per tipo (server-side)
+  const fornitoriFiltered = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of articoli) {
+      if (a.fornitore_principale) set.add(a.fornitore_principale);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
+  }, [articoli]);
+
+  // Categorie disponibili filtrate per tipo
+  const categorieFiltered = useMemo(() => {
+    const tipo = filtri.tipo_prodotti;
+    if (tipo === "food_beverage") return categorie.filter((c) => !SPESE_GENERALI_SET.has(c.toUpperCase()));
+    if (tipo === "spese_generali") return categorie.filter((c) => SPESE_GENERALI_SET.has(c.toUpperCase()));
+    return categorie;
+  }, [categorie, filtri.tipo_prodotti]);
 
   function cycleSort(k: SortKey) {
     setSort((prev) => {
@@ -249,7 +277,7 @@ export function ArticoliTab({
           className="h-7 text-xs rounded-md border border-input bg-background px-2 max-w-48"
         >
           <option value="">Tutti i fornitori</option>
-          {fornitori.map((f) => (
+          {fornitoriFiltered.map((f) => (
             <option key={f} value={f}>
               {f}
             </option>
@@ -262,7 +290,7 @@ export function ArticoliTab({
           className="h-7 text-xs rounded-md border border-input bg-background px-2 max-w-48"
         >
           <option value="">Tutte le categorie</option>
-          {categorie.map((c) => (
+          {categorieFiltered.map((c) => (
             <option key={c} value={c}>
               {c}
             </option>
@@ -276,6 +304,28 @@ export function ArticoliTab({
         >
           Esporta Excel
         </button>
+      </div>
+
+      {/* Toggle: Nuovi / Solo verifica */}
+      <div className={`flex items-center gap-4 ${pending ? "opacity-70" : ""}`}>
+        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={soloNuovi}
+            onChange={(e) => setUrlParam({ nuovi: e.target.checked ? "1" : undefined })}
+          />
+          <Sparkles className="size-3.5 text-amber-500" />
+          Nuovi caricati
+        </label>
+        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={soloVerifica}
+            onChange={(e) => setUrlParam({ verifica: e.target.checked ? "1" : undefined })}
+          />
+          <AlertTriangle className="size-3.5 text-amber-500" />
+          Solo verifica categoria
+        </label>
       </div>
 
       {/* Counter */}
@@ -420,6 +470,22 @@ const ArticoloRiga = memo(function ArticoloRiga({
   const icon = categoriaIcon(currentCat);
   const trendPct = articolo.prezzo_unit_trend_pct;
 
+  const fbCats = useMemo(
+    () =>
+      categorie
+        .filter((c) => !SPESE_GENERALI_SET.has(c.toUpperCase()) && c !== "Da Classificare")
+        .sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" })),
+    [categorie],
+  );
+  const sgCats = useMemo(
+    () =>
+      categorie
+        .filter((c) => SPESE_GENERALI_SET.has(c.toUpperCase()))
+        .sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" })),
+    [categorie],
+  );
+  const hasDaClassificare = categorie.includes("Da Classificare");
+
   return (
     <>
       <tr className="border-b hover:bg-sky-100/40 dark:hover:bg-sky-900/20 transition-colors">
@@ -455,11 +521,29 @@ const ArticoloRiga = memo(function ArticoloRiga({
               onBlur={() => setEditingCat(false)}
               className="h-6 text-xs rounded border border-input bg-background px-1 max-w-44"
             >
-              {categorie.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+              {fbCats.length > 0 && (
+                <optgroup label="🥗 Food & Beverage">
+                  {fbCats.map((c) => (
+                    <option key={c} value={c}>
+                      {categoriaIcon(c)} {c}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {sgCats.length > 0 && (
+                <optgroup label="📊 Spese Generali">
+                  {sgCats.map((c) => (
+                    <option key={c} value={c}>
+                      {categoriaIcon(c)} {c}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {hasDaClassificare && (
+                <option value="Da Classificare" style={{ color: "red" }}>
+                  Da Classificare
                 </option>
-              ))}
+              )}
             </select>
           ) : (
             <button
