@@ -10,6 +10,8 @@ function workerHeaders(token: string): Record<string, string> {
   return h;
 }
 
+export type TipoProdotti = "food_beverage" | "spese_generali" | "tutti";
+
 export type RigaFattura = {
   id: number;
   file_origine: string;
@@ -26,32 +28,94 @@ export type RigaFattura = {
   tipo_documento: string | null;
   data_competenza: string | null;
   piva_cedente: string | null;
+  created_at: string | null;
 };
 
-export type FattureListResponse = {
-  righe: RigaFattura[];
+export type ArticoloAggregato = {
+  descrizione: string;
+  categoria: string | null;
+  fornitore_principale: string;
+  altri_fornitori: string[];
+  ultimo_acquisto: string | null;
+  quantita_totale: number;
+  unita_misura: string | null;
+  prezzo_unit_medio: number | null;
+  prezzo_unit_trend_pct: number | null;
+  totale_speso: number;
+  num_acquisti: number;
+  righe_ids: number[];
+  needs_review: boolean;
+  is_nuovo: boolean;
+};
+
+export type ArticoliResponse = {
+  articoli: ArticoloAggregato[];
   total: number;
-  page: number;
-  page_size: number;
 };
 
-export type PivotRow = {
-  dimensione: string;
-  mesi: Record<string, number>;
+export type KpiResponse = {
   totale: number;
+  num_righe: number;
+  num_prodotti: number;
+  media_mensile: number;
+  delta_totale_pct: number | null;
+  delta_righe_pct: number | null;
+  delta_prodotti_pct: number | null;
+  delta_media_pct: number | null;
+};
+
+export type MeseDisponibile = {
+  year: number;
+  month: number;
+  label: string;
+  count: number;
+};
+
+export type PivotRowData = {
+  dimensione: string;
+  periodi: Record<string, number>;
+  totale: number;
+  media: number;
+  incidenza_pct: number;
+  sparkline: number[];
 };
 
 export type PivotResponse = {
-  rows: PivotRow[];
-  mesi_disponibili: string[];
+  rows: PivotRowData[];
+  periodi: string[];
+  periodi_labels: string[];
+  granularita: "mese" | "trimestre" | "anno";
+  totali_periodo: Record<string, number>;
+  grand_total: number;
+};
+
+export type TrendPunto = {
+  periodo: string;
+  label: string;
+  valore: number;
+};
+
+export type TrendSerie = {
+  valore: string;
+  punti: TrendPunto[];
+  media: number;
+  totale: number;
+};
+
+export type TrendResponse = {
+  serie: TrendSerie[];
+  periodi: string[];
+  periodi_labels: string[];
 };
 
 export type FattureFilters = {
   data_da?: string;
   data_a?: string;
+  tipo_prodotti?: TipoProdotti;
   fornitore?: string;
   categoria?: string;
   needs_review?: boolean;
+  search?: string;
   page?: number;
   page_size?: number;
 };
@@ -61,67 +125,96 @@ async function getToken(): Promise<string | null> {
   return cookieStore.get(SESSION_COOKIE)?.value ?? null;
 }
 
-export async function fetchFatture(filters: FattureFilters = {}): Promise<FattureListResponse | null> {
+function buildParams(obj: Record<string, string | number | boolean | undefined | null>): string {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined || v === null || v === "") continue;
+    p.set(k, String(v));
+  }
+  return p.toString();
+}
+
+async function workerGet<T>(path: string, params: Record<string, any> = {}): Promise<T | null> {
   const token = await getToken();
   if (!token) return null;
-
-  const params = new URLSearchParams();
-  if (filters.data_da) params.set("data_da", filters.data_da);
-  if (filters.data_a) params.set("data_a", filters.data_a);
-  if (filters.fornitore) params.set("fornitore", filters.fornitore);
-  if (filters.categoria) params.set("categoria", filters.categoria);
-  if (filters.needs_review !== undefined) params.set("needs_review", String(filters.needs_review));
-  params.set("page", String(filters.page ?? 1));
-  params.set("page_size", String(filters.page_size ?? 50));
-
+  const qs = buildParams(params);
+  const url = `${WORKER_URL}${path}${qs ? `?${qs}` : ""}`;
   try {
-    const res = await fetch(`${WORKER_URL}/api/fatture?${params}`, {
-      headers: workerHeaders(token),
-      cache: "no-store",
-    });
+    const res = await fetch(url, { headers: workerHeaders(token), cache: "no-store" });
     if (!res.ok) return null;
-    return (await res.json()) as FattureListResponse;
+    return (await res.json()) as T;
   } catch {
     return null;
   }
+}
+
+export async function fetchKpi(
+  data_da?: string,
+  data_a?: string,
+  tipo_prodotti?: TipoProdotti,
+): Promise<KpiResponse | null> {
+  return workerGet<KpiResponse>("/api/fatture/kpi", { data_da, data_a, tipo_prodotti });
+}
+
+export async function fetchMesiDisponibili(): Promise<MeseDisponibile[]> {
+  const data = await workerGet<{ mesi: MeseDisponibile[] }>("/api/fatture/mesi-disponibili");
+  return data?.mesi ?? [];
+}
+
+export async function fetchArticoliAggregati(filters: {
+  data_da?: string;
+  data_a?: string;
+  tipo_prodotti?: TipoProdotti;
+  categoria?: string;
+  search?: string;
+  solo_nuovi?: boolean;
+  solo_da_verificare?: boolean;
+}): Promise<ArticoliResponse | null> {
+  return workerGet<ArticoliResponse>("/api/fatture/articoli-aggregati", filters);
+}
+
+export async function fetchRigheArticolo(
+  descrizione: string,
+  data_da?: string,
+  data_a?: string,
+): Promise<RigaFattura[]> {
+  const data = await workerGet<RigaFattura[]>("/api/fatture/righe-articolo", {
+    descrizione,
+    data_da,
+    data_a,
+  });
+  return data ?? [];
 }
 
 export async function fetchPivot(
   dimensione: "categoria" | "fornitore",
-  data_da?: string,
-  data_a?: string,
+  filters: { data_da?: string; data_a?: string; tipo_prodotti?: TipoProdotti } = {},
 ): Promise<PivotResponse | null> {
-  const token = await getToken();
-  if (!token) return null;
-
-  const params = new URLSearchParams({ dimensione });
-  if (data_da) params.set("data_da", data_da);
-  if (data_a) params.set("data_a", data_a);
-
-  try {
-    const res = await fetch(`${WORKER_URL}/api/fatture/pivot?${params}`, {
-      headers: workerHeaders(token),
-      cache: "no-store",
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as PivotResponse;
-  } catch {
-    return null;
-  }
+  return workerGet<PivotResponse>("/api/fatture/pivot", { dimensione, ...filters });
 }
 
-export async function fetchCategorie(): Promise<string[]> {
-  const token = await getToken();
-  if (!token) return [];
-  try {
-    const res = await fetch(`${WORKER_URL}/api/fatture/categorie`, {
-      headers: workerHeaders(token),
-      cache: "no-store",
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.categorie ?? [];
-  } catch {
-    return [];
-  }
+export async function fetchTrend(
+  dimensione: "categoria" | "fornitore",
+  valori: string[],
+  filters: { data_da?: string; data_a?: string; tipo_prodotti?: TipoProdotti } = {},
+): Promise<TrendResponse | null> {
+  return workerGet<TrendResponse>("/api/fatture/trend", {
+    dimensione,
+    valori: valori.join(","),
+    ...filters,
+  });
+}
+
+export async function fetchCategorie(): Promise<{ categorie: string[]; usate: string[] }> {
+  const data = await workerGet<{ categorie: string[]; usate: string[] }>("/api/fatture/categorie");
+  return data ?? { categorie: [], usate: [] };
+}
+
+export async function fetchFatture(filters: FattureFilters = {}): Promise<{
+  righe: RigaFattura[];
+  total: number;
+  page: number;
+  page_size: number;
+} | null> {
+  return workerGet("/api/fatture", { ...filters, page: filters.page ?? 1, page_size: filters.page_size ?? 50 });
 }

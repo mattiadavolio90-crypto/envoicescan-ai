@@ -1260,8 +1260,89 @@ async def dismiss_notifica(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# FATTURE — lista righe con filtri, pivot categorie/fornitori, aggiorna categoria
+# FATTURE — analisi, KPI, articoli aggregati, pivot, trend, batch update
 # ═══════════════════════════════════════════════════════════════════════════
+
+# Categorie classificate come "Spese Generali" (NON Food & Beverage)
+CATEGORIE_SPESE_GENERALI_WORKER = {
+    "SERVIZI E CONSULENZE",
+    "UTENZE E LOCALI",
+    "MANUTENZIONE E ATTREZZATURE",
+    "MATERIALE DI CONSUMO",
+}
+CATEGORIE_NOTE_WORKER = {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
+
+
+def _build_fatture_base_query(supabase_client, ristorante_id: str):
+    """Query base righe attive per il ristorante (no deleted, no NOTE)."""
+    return (
+        supabase_client.table("fatture")
+        .select(
+            "id,file_origine,numero_riga,data_documento,fornitore,descrizione,"
+            "quantita,unita_misura,prezzo_unitario,totale_riga,categoria,"
+            "needs_review,tipo_documento,data_competenza,piva_cedente,created_at"
+        )
+        .eq("ristorante_id", ristorante_id)
+        .is_("deleted_at", "null")
+    )
+
+
+def _apply_tipo_prodotti_filter(rows: List[Dict[str, Any]], tipo: Optional[str]) -> List[Dict[str, Any]]:
+    """Filtra le righe per tipo prodotti: food_beverage / spese_generali / tutti."""
+    if not tipo or tipo == "tutti":
+        return rows
+    if tipo == "food_beverage":
+        return [r for r in rows if (r.get("categoria") or "") not in CATEGORIE_SPESE_GENERALI_WORKER]
+    if tipo == "spese_generali":
+        return [r for r in rows if (r.get("categoria") or "") in CATEGORIE_SPESE_GENERALI_WORKER]
+    return rows
+
+
+def _exclude_note_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [r for r in rows if (r.get("categoria") or "") not in CATEGORIE_NOTE_WORKER]
+
+
+def _fetch_fatture_rows(
+    supabase_client,
+    ristorante_id: str,
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    tipo_prodotti: Optional[str] = None,
+    search: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Recupera righe fattura filtrate con paginazione interna per superare il limite Supabase di 1000."""
+    all_rows: List[Dict[str, Any]] = []
+    page_size = 1000
+    offset = 0
+    while True:
+        q = _build_fatture_base_query(supabase_client, ristorante_id)
+        if data_da:
+            q = q.gte("data_documento", data_da)
+        if data_a:
+            q = q.lte("data_documento", data_a)
+        if search:
+            term = search.strip()
+            if term:
+                # cerca trasversalmente in descrizione, fornitore, categoria
+                q = q.or_(
+                    f"descrizione.ilike.%{term}%,fornitore.ilike.%{term}%,categoria.ilike.%{term}%"
+                )
+        q = q.order("data_documento", desc=True).order("id", desc=True)
+        res = q.range(offset, offset + page_size - 1).execute()
+        batch = res.data or []
+        all_rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        offset += page_size
+        if offset >= 50000:  # safety cap
+            break
+
+    all_rows = _exclude_note_rows(all_rows)
+    all_rows = _apply_tipo_prodotti_filter(all_rows, tipo_prodotti)
+    return all_rows
+
+
+# ─── Modelli pydantic ──────────────────────────────────────────────────────
 
 class RigaFattura(BaseModel):
     id: int
@@ -1279,113 +1360,399 @@ class RigaFattura(BaseModel):
     tipo_documento: Optional[str]
     data_competenza: Optional[str]
     piva_cedente: Optional[str]
+    created_at: Optional[str] = None
 
 
-class FattureListResponse(BaseModel):
-    righe: List[RigaFattura]
+class ArticoloAggregato(BaseModel):
+    descrizione: str
+    categoria: Optional[str]
+    fornitore_principale: str
+    altri_fornitori: List[str]
+    ultimo_acquisto: Optional[str]
+    quantita_totale: float
+    unita_misura: Optional[str]
+    prezzo_unit_medio: Optional[float]
+    prezzo_unit_trend_pct: Optional[float]  # % rispetto al periodo precedente
+    totale_speso: float
+    num_acquisti: int
+    righe_ids: List[int]  # per batch operations
+    needs_review: bool
+    is_nuovo: bool  # arrivato dopo l'ultimo accesso utente
+
+
+class ArticoliResponse(BaseModel):
+    articoli: List[ArticoloAggregato]
     total: int
-    page: int
-    page_size: int
+
+
+class KpiResponse(BaseModel):
+    totale: float
+    num_righe: int
+    num_prodotti: int
+    media_mensile: float
+    delta_totale_pct: Optional[float]
+    delta_righe_pct: Optional[float]
+    delta_prodotti_pct: Optional[float]
+    delta_media_pct: Optional[float]
+
+
+class MesiDisponibiliResponse(BaseModel):
+    mesi: List[Dict[str, Any]]  # [{year, month, label, count}, ...]
 
 
 class PivotRow(BaseModel):
     dimensione: str
-    mesi: Dict[str, float]
+    periodi: Dict[str, float]  # chiave: YYYY-MM o YYYY-Qn o YYYY
     totale: float
+    media: float
+    incidenza_pct: float  # % sul grand total
+    sparkline: List[float]  # ultimi N periodi per mini-grafico
 
 
 class PivotResponse(BaseModel):
     rows: List[PivotRow]
-    mesi_disponibili: List[str]
+    periodi: List[str]
+    periodi_labels: List[str]
+    granularita: str  # "mese" | "trimestre" | "anno"
+    totali_periodo: Dict[str, float]
+    grand_total: float
 
 
-class AggiornaCategoriaRequest(BaseModel):
-    categoria: str
+class TrendPunto(BaseModel):
+    periodo: str
+    label: str
+    valore: float
 
 
-@app.get(
-    "/api/fatture",
-    response_model=FattureListResponse,
-    summary="Lista righe fattura con filtri opzionali",
-)
-async def get_fatture(
-    data_da: Optional[str] = None,
-    data_a: Optional[str] = None,
-    fornitore: Optional[str] = None,
-    categoria: Optional[str] = None,
-    needs_review: Optional[bool] = None,
-    page: int = 1,
-    page_size: int = 50,
+class TrendSerie(BaseModel):
+    valore: str
+    punti: List[TrendPunto]
+    media: float
+    totale: float
+
+
+class TrendResponse(BaseModel):
+    serie: List[TrendSerie]
+    periodi: List[str]
+    periodi_labels: List[str]
+
+
+class CategoriaBatchRequest(BaseModel):
+    descrizione: str
+    nuova_categoria: str
+    riga_ids: Optional[List[int]] = None  # se fornito, aggiorna solo questi id
+
+
+_MESI_LABEL_IT = ["", "Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
+                  "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
+
+
+def _period_key(date_str: str, granularita: str) -> str:
+    """Restituisce chiave periodo per granularita selezionata."""
+    if not date_str or len(date_str) < 10:
+        return ""
+    y = date_str[:4]
+    m = int(date_str[5:7])
+    if granularita == "anno":
+        return y
+    if granularita == "trimestre":
+        q = (m - 1) // 3 + 1
+        return f"{y}-Q{q}"
+    return f"{y}-{m:02d}"  # mese
+
+
+def _period_label(key: str, granularita: str) -> str:
+    if not key:
+        return ""
+    if granularita == "anno":
+        return key
+    if granularita == "trimestre":
+        return key.replace("-Q", " T")  # "2026 T1"
+    # mese
+    y, m = key.split("-")
+    return f"{_MESI_LABEL_IT[int(m)]} {y[2:]}"
+
+
+def _scegli_granularita(periodi_set: set) -> str:
+    """Sceglie granularita automatica basata sul numero di mesi nel periodo."""
+    n = len(periodi_set)
+    if n <= 12:
+        return "mese"
+    if n <= 36:
+        return "trimestre"
+    return "anno"
+
+
+def _compute_periodo_precedente(data_da: Optional[str], data_a: Optional[str]) -> tuple:
+    """Calcola il periodo precedente di stessa durata."""
+    from datetime import date, timedelta
+    if not data_da or not data_a:
+        return None, None
+    try:
+        d_da = date.fromisoformat(data_da)
+        d_a = date.fromisoformat(data_a)
+        durata = (d_a - d_da).days + 1
+        prev_a = d_da - timedelta(days=1)
+        prev_da = prev_a - timedelta(days=durata - 1)
+        return prev_da.isoformat(), prev_a.isoformat()
+    except Exception:
+        return None, None
+
+
+# ─── Endpoint: lista mesi disponibili ──────────────────────────────────────
+
+@app.get("/api/fatture/mesi-disponibili", response_model=MesiDisponibiliResponse)
+async def get_mesi_disponibili(
     authorization: Optional[str] = Header(None),
-) -> FattureListResponse:
+) -> MesiDisponibiliResponse:
     user = _resolve_user_from_token(authorization)
     ristorante_id = user.get("ristorante_id")
     if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato all'utente")
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    supabase_client = _get_supabase_client()
+    res = (
+        supabase_client.table("fatture")
+        .select("data_documento")
+        .eq("ristorante_id", ristorante_id)
+        .is_("deleted_at", "null")
+        .not_.is_("data_documento", "null")
+        .execute()
+    )
+    rows = res.data or []
+    counts: Dict[str, int] = {}
+    for r in rows:
+        d = r.get("data_documento")
+        if d and len(d) >= 7:
+            counts[d[:7]] = counts.get(d[:7], 0) + 1
+
+    mesi = []
+    for ym in sorted(counts.keys(), reverse=True):
+        y, m = ym.split("-")
+        mesi.append({
+            "year": int(y),
+            "month": int(m),
+            "label": f"{_MESI_LABEL_IT[int(m)]} {y}",
+            "count": counts[ym],
+        })
+    return MesiDisponibiliResponse(mesi=mesi)
+
+
+# ─── Endpoint: KPI con delta vs periodo precedente ─────────────────────────
+
+@app.get("/api/fatture/kpi", response_model=KpiResponse)
+async def get_fatture_kpi(
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    tipo_prodotti: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+) -> KpiResponse:
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = user.get("ristorante_id")
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     supabase_client = _get_supabase_client()
 
-    q = (
-        supabase_client.table("fatture")
-        .select(
-            "id,file_origine,numero_riga,data_documento,fornitore,descrizione,"
-            "quantita,unita_misura,prezzo_unitario,totale_riga,categoria,"
-            "needs_review,tipo_documento,data_competenza,piva_cedente"
-        )
-        .eq("ristorante_id", ristorante_id)
-        .is_("deleted_at", "null")
-        .order("data_documento", desc=True)
-        .order("id", desc=True)
+    def _calc(rows):
+        rows_valid = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) > 0]
+        totale = sum(float(r["totale_riga"]) for r in rows_valid)
+        num_righe = len(rows_valid)
+        prodotti = {r.get("descrizione", "").strip().lower() for r in rows_valid if r.get("descrizione")}
+        mesi = {(r.get("data_documento") or "")[:7] for r in rows_valid if r.get("data_documento")}
+        num_mesi = max(len(mesi), 1)
+        media = totale / num_mesi
+        return totale, num_righe, len(prodotti), media
+
+    rows = _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a, tipo_prodotti)
+    tot, nr, np, med = _calc(rows)
+
+    delta_tot = delta_nr = delta_np = delta_med = None
+    prev_da, prev_a = _compute_periodo_precedente(data_da, data_a)
+    if prev_da and prev_a:
+        prev_rows = _fetch_fatture_rows(supabase_client, ristorante_id, prev_da, prev_a, tipo_prodotti)
+        ptot, pnr, pnp, pmed = _calc(prev_rows)
+        def _delta(curr, prev):
+            if prev == 0:
+                return None
+            return round((curr - prev) / prev * 100, 1)
+        delta_tot = _delta(tot, ptot)
+        delta_nr = _delta(nr, pnr)
+        delta_np = _delta(np, pnp)
+        delta_med = _delta(med, pmed)
+
+    return KpiResponse(
+        totale=round(tot, 2),
+        num_righe=nr,
+        num_prodotti=np,
+        media_mensile=round(med, 2),
+        delta_totale_pct=delta_tot,
+        delta_righe_pct=delta_nr,
+        delta_prodotti_pct=delta_np,
+        delta_media_pct=delta_med,
     )
 
+
+# ─── Endpoint: articoli aggregati (vista default tab Articoli) ─────────────
+
+@app.get("/api/fatture/articoli-aggregati", response_model=ArticoliResponse)
+async def get_articoli_aggregati(
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    tipo_prodotti: Optional[str] = None,
+    categoria: Optional[str] = None,
+    search: Optional[str] = None,
+    solo_nuovi: bool = False,
+    solo_da_verificare: bool = False,
+    authorization: Optional[str] = Header(None),
+) -> ArticoliResponse:
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = user.get("ristorante_id")
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    supabase_client = _get_supabase_client()
+    user_login_at = user.get("last_login_precedente")  # per badge "Nuovo"
+
+    rows = _fetch_fatture_rows(
+        supabase_client, ristorante_id, data_da, data_a, tipo_prodotti, search
+    )
+    if categoria:
+        rows = [r for r in rows if r.get("categoria") == categoria]
+    if solo_da_verificare:
+        rows = [r for r in rows if r.get("needs_review")]
+
+    # Aggrega per descrizione normalizzata
+    from collections import defaultdict
+    groups: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+    for r in rows:
+        desc = (r.get("descrizione") or "").strip()
+        if not desc:
+            continue
+        groups[desc].append(r)
+
+    # Periodo precedente per trend prezzo
+    prev_da, prev_a = _compute_periodo_precedente(data_da, data_a)
+    prev_prices: Dict[str, float] = {}
+    if prev_da and prev_a:
+        prev_rows = _fetch_fatture_rows(
+            supabase_client, ristorante_id, prev_da, prev_a, tipo_prodotti
+        )
+        prev_groups: Dict[str, List[float]] = defaultdict(list)
+        for pr in prev_rows:
+            desc = (pr.get("descrizione") or "").strip()
+            pu = pr.get("prezzo_unitario")
+            if desc and pu is not None and float(pu) > 0:
+                prev_groups[desc].append(float(pu))
+        for desc, prices in prev_groups.items():
+            if prices:
+                prev_prices[desc] = sum(prices) / len(prices)
+
+    articoli: List[ArticoloAggregato] = []
+    for desc, items in groups.items():
+        # fornitori
+        forn_counts: Dict[str, int] = defaultdict(int)
+        for it in items:
+            f = (it.get("fornitore") or "").strip()
+            if f:
+                forn_counts[f] += 1
+        forn_sorted = sorted(forn_counts.items(), key=lambda x: -x[1])
+        forn_principale = forn_sorted[0][0] if forn_sorted else ""
+        altri_forn = [f for f, _ in forn_sorted[1:]]
+
+        # categoria piu frequente
+        cat_counts: Dict[str, int] = defaultdict(int)
+        for it in items:
+            c = it.get("categoria")
+            if c:
+                cat_counts[c] += 1
+        categoria_principale = max(cat_counts.items(), key=lambda x: x[1])[0] if cat_counts else None
+
+        # date e quantita
+        date_list = [it.get("data_documento") for it in items if it.get("data_documento")]
+        ultimo_acq = max(date_list) if date_list else None
+        qta_totale = sum(float(it.get("quantita") or 0) for it in items)
+        um = next((it.get("unita_misura") for it in items if it.get("unita_misura")), None)
+        prezzi = [float(it["prezzo_unitario"]) for it in items if it.get("prezzo_unitario") and float(it["prezzo_unitario"]) > 0]
+        prezzo_medio = sum(prezzi) / len(prezzi) if prezzi else None
+        totale_speso = sum(float(it.get("totale_riga") or 0) for it in items)
+        num_acq = len(items)
+
+        # trend prezzo vs periodo precedente
+        trend_pct = None
+        if prezzo_medio is not None and desc in prev_prices and prev_prices[desc] > 0:
+            trend_pct = round((prezzo_medio - prev_prices[desc]) / prev_prices[desc] * 100, 1)
+
+        # needs_review se almeno una riga
+        nr = any(it.get("needs_review") for it in items)
+
+        # is_nuovo: created_at di almeno una riga > last_login_precedente
+        is_nuovo = False
+        if user_login_at:
+            for it in items:
+                ca = it.get("created_at")
+                if ca and ca > user_login_at:
+                    is_nuovo = True
+                    break
+
+        if solo_nuovi and not is_nuovo:
+            continue
+
+        articoli.append(ArticoloAggregato(
+            descrizione=desc,
+            categoria=categoria_principale,
+            fornitore_principale=forn_principale,
+            altri_fornitori=altri_forn,
+            ultimo_acquisto=ultimo_acq,
+            quantita_totale=round(qta_totale, 2),
+            unita_misura=um,
+            prezzo_unit_medio=round(prezzo_medio, 2) if prezzo_medio else None,
+            prezzo_unit_trend_pct=trend_pct,
+            totale_speso=round(totale_speso, 2),
+            num_acquisti=num_acq,
+            righe_ids=[int(it["id"]) for it in items if it.get("id")],
+            needs_review=nr,
+            is_nuovo=is_nuovo,
+        ))
+
+    # Ordina per totale_speso desc (i piu impattanti in alto)
+    articoli.sort(key=lambda a: -a.totale_speso)
+    return ArticoliResponse(articoli=articoli, total=len(articoli))
+
+
+# ─── Endpoint: righe singole (per espansione articolo) ─────────────────────
+
+@app.get("/api/fatture/righe-articolo", response_model=List[RigaFattura])
+async def get_righe_articolo(
+    descrizione: str,
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+) -> List[RigaFattura]:
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = user.get("ristorante_id")
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    supabase_client = _get_supabase_client()
+    q = _build_fatture_base_query(supabase_client, ristorante_id).eq("descrizione", descrizione)
     if data_da:
         q = q.gte("data_documento", data_da)
     if data_a:
         q = q.lte("data_documento", data_a)
-    if fornitore:
-        q = q.ilike("fornitore", f"%{fornitore}%")
-    if categoria:
-        q = q.eq("categoria", categoria)
-    if needs_review is not None:
-        q = q.eq("needs_review", needs_review)
-
-    offset = (page - 1) * page_size
-    res = q.range(offset, offset + page_size - 1).execute()
-    rows = res.data or []
-
-    # count totale (senza paginazione)
-    count_q = (
-        supabase_client.table("fatture")
-        .select("id", count="exact")
-        .eq("ristorante_id", ristorante_id)
-        .is_("deleted_at", "null")
-    )
-    if data_da:
-        count_q = count_q.gte("data_documento", data_da)
-    if data_a:
-        count_q = count_q.lte("data_documento", data_a)
-    if fornitore:
-        count_q = count_q.ilike("fornitore", f"%{fornitore}%")
-    if categoria:
-        count_q = count_q.eq("categoria", categoria)
-    if needs_review is not None:
-        count_q = count_q.eq("needs_review", needs_review)
-    count_res = count_q.execute()
-    total = count_res.count or len(rows)
-
-    righe = [RigaFattura(**{k: v for k, v in r.items() if k in RigaFattura.model_fields}) for r in rows]
-    return FattureListResponse(righe=righe, total=total, page=page, page_size=page_size)
+    q = q.order("data_documento", desc=True)
+    res = q.execute()
+    return [RigaFattura(**{k: v for k, v in r.items() if k in RigaFattura.model_fields}) for r in (res.data or [])]
 
 
-@app.get(
-    "/api/fatture/pivot",
-    response_model=PivotResponse,
-    summary="Pivot spesa mensile per categoria o fornitore",
-)
+# ─── Endpoint: pivot estesa (mese/trimestre/anno auto) ─────────────────────
+
+@app.get("/api/fatture/pivot", response_model=PivotResponse)
 async def get_fatture_pivot(
     dimensione: str = "categoria",  # "categoria" | "fornitore"
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
+    tipo_prodotti: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ) -> PivotResponse:
     if dimensione not in ("categoria", "fornitore"):
@@ -1394,69 +1761,144 @@ async def get_fatture_pivot(
     user = _resolve_user_from_token(authorization)
     ristorante_id = user.get("ristorante_id")
     if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato all'utente")
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     supabase_client = _get_supabase_client()
+    rows = _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a, tipo_prodotti)
+    rows = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) > 0]
+
+    # Determina granularita dai mesi presenti
+    mesi_presenti = {(r.get("data_documento") or "")[:7] for r in rows if r.get("data_documento")}
+    mesi_presenti.discard("")
+    granularita = _scegli_granularita(mesi_presenti)
 
     col = "categoria" if dimensione == "categoria" else "fornitore"
-    q = (
-        supabase_client.table("fatture")
-        .select(f"{col},data_documento,totale_riga")
-        .eq("ristorante_id", ristorante_id)
-        .is_("deleted_at", "null")
-        .gt("totale_riga", 0)
-        .neq("categoria", "📝 NOTE E DICITURE")
-        .neq("categoria", "NOTE E DICITURE")
-    )
-    if data_da:
-        q = q.gte("data_documento", data_da)
-    if data_a:
-        q = q.lte("data_documento", data_a)
-
-    res = q.execute()
-    rows = res.data or []
-
     from collections import defaultdict
-    import calendar
-
-    # Aggrega: {dim_value: {YYYY-MM: totale}}
     agg: Dict[str, Dict[str, float]] = defaultdict(lambda: defaultdict(float))
-    mesi_set: set = set()
-
+    periodi_set: set = set()
     for r in rows:
-        dim_val = r.get(col) or "N/D"
-        data_raw = r.get("data_documento")
-        totale = float(r.get("totale_riga") or 0)
-        if not data_raw:
+        d = r.get("data_documento")
+        if not d:
             continue
-        mese_key = str(data_raw)[:7]  # YYYY-MM
-        agg[dim_val][mese_key] += totale
-        mesi_set.add(mese_key)
+        key = _period_key(d, granularita)
+        if not key:
+            continue
+        dim_val = (r.get(col) or "N/D")
+        agg[dim_val][key] += float(r.get("totale_riga") or 0)
+        periodi_set.add(key)
 
-    mesi_disponibili = sorted(mesi_set)
+    periodi = sorted(periodi_set)
+    periodi_labels = [_period_label(p, granularita) for p in periodi]
+
+    grand_total = sum(sum(d.values()) for d in agg.values())
+    totali_periodo: Dict[str, float] = {p: 0.0 for p in periodi}
+    for d in agg.values():
+        for k, v in d.items():
+            totali_periodo[k] = totali_periodo.get(k, 0) + v
+
+    # sparkline: ultimi min(12, len(periodi)) periodi
+    spark_n = min(12, len(periodi))
+    spark_periodi = periodi[-spark_n:] if spark_n > 0 else []
 
     pivot_rows: List[PivotRow] = []
-    for dim_val, mesi_dict in agg.items():
-        totale = sum(mesi_dict.values())
-        pivot_rows.append(PivotRow(dimensione=dim_val, mesi=dict(mesi_dict), totale=totale))
+    for dim_val, periodi_dict in agg.items():
+        tot = sum(periodi_dict.values())
+        media = tot / len(periodi) if periodi else 0
+        inc = (tot / grand_total * 100) if grand_total > 0 else 0
+        spark = [round(periodi_dict.get(p, 0), 2) for p in spark_periodi]
+        pivot_rows.append(PivotRow(
+            dimensione=dim_val,
+            periodi={k: round(v, 2) for k, v in periodi_dict.items()},
+            totale=round(tot, 2),
+            media=round(media, 2),
+            incidenza_pct=round(inc, 1),
+            sparkline=spark,
+        ))
+    pivot_rows.sort(key=lambda x: -x.totale)
 
-    pivot_rows.sort(key=lambda r: r.totale, reverse=True)
-    return PivotResponse(rows=pivot_rows, mesi_disponibili=mesi_disponibili)
+    return PivotResponse(
+        rows=pivot_rows,
+        periodi=periodi,
+        periodi_labels=periodi_labels,
+        granularita=granularita,
+        totali_periodo={k: round(v, 2) for k, v in totali_periodo.items()},
+        grand_total=round(grand_total, 2),
+    )
 
 
-@app.get(
-    "/api/fatture/categorie",
-    summary="Lista categorie distinte presenti nelle fatture",
-)
+# ─── Endpoint: trend temporale (grafico multi-select) ──────────────────────
+
+@app.get("/api/fatture/trend", response_model=TrendResponse)
+async def get_fatture_trend(
+    dimensione: str = "categoria",
+    valori: Optional[str] = None,  # CSV: "CARNE,PESCE,..." o "Marini,Demare"
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    tipo_prodotti: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+) -> TrendResponse:
+    if dimensione not in ("categoria", "fornitore"):
+        raise HTTPException(status_code=400, detail="dimensione invalida")
+
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = user.get("ristorante_id")
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    supabase_client = _get_supabase_client()
+    rows = _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a, tipo_prodotti)
+    rows = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) > 0]
+
+    mesi_presenti = {(r.get("data_documento") or "")[:7] for r in rows if r.get("data_documento")}
+    mesi_presenti.discard("")
+    granularita = _scegli_granularita(mesi_presenti)
+    periodi = sorted(mesi_presenti) if granularita == "mese" else sorted({_period_key(r.get("data_documento", ""), granularita) for r in rows if r.get("data_documento")})
+    periodi_labels = [_period_label(p, granularita) for p in periodi]
+
+    col = "categoria" if dimensione == "categoria" else "fornitore"
+    selected = [v.strip() for v in (valori or "").split(",") if v.strip()] if valori else []
+    if not selected:
+        # top 3 di default
+        from collections import defaultdict
+        tots = defaultdict(float)
+        for r in rows:
+            tots[(r.get(col) or "N/D")] += float(r.get("totale_riga") or 0)
+        selected = [k for k, _ in sorted(tots.items(), key=lambda x: -x[1])[:3]]
+
+    serie: List[TrendSerie] = []
+    for val in selected:
+        from collections import defaultdict
+        per_periodo = defaultdict(float)
+        for r in rows:
+            if (r.get(col) or "N/D") != val:
+                continue
+            d = r.get("data_documento")
+            if not d:
+                continue
+            key = _period_key(d, granularita)
+            if key:
+                per_periodo[key] += float(r.get("totale_riga") or 0)
+        punti = [TrendPunto(periodo=p, label=_period_label(p, granularita), valore=round(per_periodo.get(p, 0), 2)) for p in periodi]
+        tot = sum(per_periodo.values())
+        media = tot / len(periodi) if periodi else 0
+        serie.append(TrendSerie(valore=val, punti=punti, media=round(media, 2), totale=round(tot, 2)))
+
+    return TrendResponse(serie=serie, periodi=periodi, periodi_labels=periodi_labels)
+
+
+# ─── Endpoint: categorie disponibili ───────────────────────────────────────
+
+@app.get("/api/fatture/categorie")
 async def get_categorie_disponibili(
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
     user = _resolve_user_from_token(authorization)
     ristorante_id = user.get("ristorante_id")
     if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato all'utente")
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     supabase_client = _get_supabase_client()
+    # Categorie usate dal ristorante
     res = (
         supabase_client.table("fatture")
         .select("categoria")
@@ -1465,14 +1907,137 @@ async def get_categorie_disponibili(
         .execute()
     )
     rows = res.data or []
-    categorie = sorted({r["categoria"] for r in rows if r.get("categoria")})
-    return {"categorie": categorie}
+    categorie_usate = sorted({
+        r["categoria"] for r in rows
+        if r.get("categoria") and r["categoria"] not in CATEGORIE_NOTE_WORKER
+    })
+
+    # Categorie canoniche (lista master) — facciamo query semplice
+    try:
+        res_master = supabase_client.table("categorie").select("nome").execute()
+        canoniche = sorted({c["nome"] for c in (res_master.data or []) if c.get("nome") and "DICITURE" not in c["nome"].upper()})
+    except Exception:
+        canoniche = []
+
+    # Unione
+    tutte = sorted(set(categorie_usate) | set(canoniche))
+    return {"categorie": tutte, "usate": categorie_usate}
 
 
-@app.patch(
-    "/api/fatture/{riga_id}/categoria",
-    summary="Aggiorna categoria di una riga fattura",
-)
+# ─── Endpoint: batch update categoria (stessa descrizione) + memoria AI ────
+
+@app.post("/api/fatture/categoria-batch")
+async def categoria_batch(
+    body: CategoriaBatchRequest,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    user = _resolve_user_from_token(authorization)
+    user_id = user.get("id")
+    ristorante_id = user.get("ristorante_id")
+    if not ristorante_id or not user_id:
+        raise HTTPException(status_code=400, detail="Utente o ristorante mancante")
+
+    nuova_cat = body.nuova_categoria.strip()
+    if not nuova_cat or nuova_cat in ("Da Clasificare", "Da Classificare"):
+        raise HTTPException(status_code=400, detail="Categoria non valida")
+
+    descrizione = body.descrizione.strip()
+    if not descrizione:
+        raise HTTPException(status_code=400, detail="Descrizione mancante")
+
+    supabase_client = _get_supabase_client()
+    # Aggiorna tutte le righe con stessa descrizione del ristorante
+    update_q = (
+        supabase_client.table("fatture")
+        .update({"categoria": nuova_cat, "needs_review": False})
+        .eq("ristorante_id", ristorante_id)
+        .eq("descrizione", descrizione)
+        .is_("deleted_at", "null")
+    )
+    res_update = update_q.execute()
+    righe_aggiornate = len(res_update.data or [])
+
+    # Salva memoria AI locale (prodotti_utente)
+    try:
+        existing = (
+            supabase_client.table("prodotti_utente")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("descrizione", descrizione)
+            .limit(1)
+            .execute()
+        )
+        if existing.data:
+            supabase_client.table("prodotti_utente").update({
+                "categoria": nuova_cat,
+                "classificato_da": "User",
+                "updated_at": "now()",
+            }).eq("id", existing.data[0]["id"]).execute()
+        else:
+            supabase_client.table("prodotti_utente").insert({
+                "user_id": user_id,
+                "descrizione": descrizione,
+                "categoria": nuova_cat,
+                "classificato_da": "User",
+                "volte_visto": 1,
+            }).execute()
+    except Exception as e:
+        logger.warning(f"Memoria AI non salvata per '{descrizione}': {e}")
+
+    return {"ok": True, "righe_aggiornate": righe_aggiornate, "descrizione": descrizione, "nuova_categoria": nuova_cat}
+
+
+# ─── Endpoint: lista righe paginata (compat con vecchio /api/fatture) ──────
+
+class FattureListResponse(BaseModel):
+    righe: List[RigaFattura]
+    total: int
+    page: int
+    page_size: int
+
+
+@app.get("/api/fatture", response_model=FattureListResponse)
+async def get_fatture(
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    fornitore: Optional[str] = None,
+    categoria: Optional[str] = None,
+    needs_review: Optional[bool] = None,
+    tipo_prodotti: Optional[str] = None,
+    search: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 50,
+    authorization: Optional[str] = Header(None),
+) -> FattureListResponse:
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = user.get("ristorante_id")
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    supabase_client = _get_supabase_client()
+    rows = _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a, tipo_prodotti, search)
+    if fornitore:
+        rows = [r for r in rows if fornitore.lower() in (r.get("fornitore") or "").lower()]
+    if categoria:
+        rows = [r for r in rows if r.get("categoria") == categoria]
+    if needs_review is not None:
+        rows = [r for r in rows if bool(r.get("needs_review")) == bool(needs_review)]
+
+    total = len(rows)
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_rows = rows[start:end]
+    righe = [RigaFattura(**{k: v for k, v in r.items() if k in RigaFattura.model_fields}) for r in page_rows]
+    return FattureListResponse(righe=righe, total=total, page=page, page_size=page_size)
+
+
+# ─── Endpoint legacy compat: PATCH categoria singola riga ──────────────────
+
+class AggiornaCategoriaRequest(BaseModel):
+    categoria: str
+
+
+@app.patch("/api/fatture/{riga_id}/categoria")
 async def aggiorna_categoria_riga(
     riga_id: int,
     body: AggiornaCategoriaRequest,
@@ -1481,14 +2046,13 @@ async def aggiorna_categoria_riga(
     user = _resolve_user_from_token(authorization)
     ristorante_id = user.get("ristorante_id")
     if not ristorante_id:
-        raise HTTPException(status_code=400, detail="Nessun ristorante associato all'utente")
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     categoria = body.categoria.strip()
     if not categoria or categoria in ("Da Clasificare", "Da Classificare"):
         raise HTTPException(status_code=400, detail="Categoria non valida")
 
     supabase_client = _get_supabase_client()
-    # Verifica che la riga appartenga al ristorante
     check = (
         supabase_client.table("fatture")
         .select("id")
@@ -1503,7 +2067,6 @@ async def aggiorna_categoria_riga(
     supabase_client.table("fatture").update(
         {"categoria": categoria, "needs_review": False}
     ).eq("id", riga_id).execute()
-
     return {"ok": True, "id": riga_id, "categoria": categoria}
 
 
