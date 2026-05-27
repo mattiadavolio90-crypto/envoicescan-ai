@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { memo, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -19,6 +19,17 @@ import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
 import { Input } from "@/components/ui/input";
 import { categoriaIcon, formatData, formatEuro } from "./periodi";
 
+type Props = {
+  articoli: ArticoloAggregato[];
+  categorie: string[];
+  fornitori: string[];
+  filtri: {
+    data_da?: string;
+    data_a?: string;
+    tipo_prodotti?: string;
+  };
+};
+
 type SortKey =
   | "descrizione"
   | "categoria"
@@ -30,6 +41,14 @@ type SortKey =
   | "num_acquisti";
 
 type SortDir = "asc" | "desc" | null;
+
+const TIPO_OPTIONS = [
+  { key: "tutti", label: "Tutti" },
+  { key: "food_beverage", label: "Food & Beverage" },
+  { key: "spese_generali", label: "Spese Generali" },
+];
+
+const PAGE_SIZE = 100;
 
 function compareValues(a: any, b: any, dir: SortDir): number {
   if (dir === null) return 0;
@@ -74,38 +93,30 @@ function SortableHeader({
   );
 }
 
-type Props = {
-  articoli: ArticoloAggregato[];
-  categorie: string[];
-  fornitori: string[];
-  filtri: {
-    data_da?: string;
-    data_a?: string;
-    tipo_prodotti?: string;
-    search?: string;
-    fornitore?: string;
-    categoria?: string;
-    solo_nuovi?: boolean;
-    solo_da_verificare?: boolean;
-  };
-};
-
-const TIPO_OPTIONS = [
-  { key: "tutti", label: "Tutti" },
-  { key: "food_beverage", label: "Food & Beverage" },
-  { key: "spese_generali", label: "Spese Generali" },
-];
-
 export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
   const [pending, startTransition] = useTransition();
+
+  // Filtri CLIENT-SIDE (no round-trip server)
+  const [search, setSearch] = useState("");
+  const [fornitoreFilter, setFornitoreFilter] = useState("");
+  const [categoriaFilter, setCategoriaFilter] = useState("");
+  const [soloNuovi, setSoloNuovi] = useState(false);
+  const [soloVerifica, setSoloVerifica] = useState(false);
+
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [page, setPage] = useState(1);
   const [sort, setSort] = useState<{ key: SortKey | null; dir: SortDir }>({
     key: "totale_speso",
     dir: "desc",
   });
+
+  // Reset paginazione quando cambiano filtri client
+  useEffect(() => {
+    setPage(1);
+  }, [search, fornitoreFilter, categoriaFilter, soloNuovi, soloVerifica, sort]);
 
   function cycleSort(k: SortKey) {
     setSort((prev) => {
@@ -116,18 +127,7 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
     });
   }
 
-  const sortedArticoli = useMemo(() => {
-    if (!sort.key || !sort.dir) return articoli;
-    const k = sort.key;
-    const d = sort.dir;
-    return [...articoli].sort((a, b) => {
-      const va = k === "fornitore" ? a.fornitore_principale : (a as any)[k];
-      const vb = k === "fornitore" ? b.fornitore_principale : (b as any)[k];
-      return compareValues(va, vb, d);
-    });
-  }, [articoli, sort]);
-
-  function setParam(updates: Record<string, string | undefined>) {
+  function setUrlParam(updates: Record<string, string | undefined>) {
     const params = new URLSearchParams(sp.toString());
     for (const [k, v] of Object.entries(updates)) {
       if (v === undefined || v === "") params.delete(k);
@@ -137,6 +137,41 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
       router.push(`${pathname}?${params.toString()}`);
     });
   }
+
+  // Applico filtri client-side
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return articoli.filter((a) => {
+      if (fornitoreFilter && a.fornitore_principale !== fornitoreFilter) {
+        if (!a.altri_fornitori.includes(fornitoreFilter)) return false;
+      }
+      if (categoriaFilter && a.categoria !== categoriaFilter) return false;
+      if (soloNuovi && !a.is_nuovo) return false;
+      if (soloVerifica && !a.needs_review) return false;
+      if (term) {
+        const inDesc = a.descrizione.toLowerCase().includes(term);
+        const inForn = a.fornitore_principale.toLowerCase().includes(term);
+        const inCat = (a.categoria ?? "").toLowerCase().includes(term);
+        if (!inDesc && !inForn && !inCat) return false;
+      }
+      return true;
+    });
+  }, [articoli, search, fornitoreFilter, categoriaFilter, soloNuovi, soloVerifica]);
+
+  const sorted = useMemo(() => {
+    if (!sort.key || !sort.dir) return filtered;
+    const k = sort.key;
+    const d = sort.dir;
+    return [...filtered].sort((a, b) => {
+      const va = k === "fornitore" ? a.fornitore_principale : (a as any)[k];
+      const vb = k === "fornitore" ? b.fornitore_principale : (b as any)[k];
+      return compareValues(va, vb, d);
+    });
+  }, [filtered, sort]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const visible = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   function toggleExpand(desc: string) {
     setExpanded((prev) => {
@@ -148,15 +183,15 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
   }
 
   function exportXls() {
-    const data = articoli.map((a) => ({
-      Categoria: a.categoria ?? "",
+    const data = sorted.map((a) => ({
       Descrizione: a.descrizione,
+      Categoria: a.categoria ?? "",
       Fornitore: a.fornitore_principale,
       "Altri fornitori": a.altri_fornitori.join("; "),
       "Ultimo acquisto": a.ultimo_acquisto ?? "",
-      "Quantità": a.quantita_totale,
+      Quantità: a.quantita_totale,
       UM: a.unita_misura ?? "",
-      "Prezzo unit. medio": a.prezzo_unit_medio ?? "",
+      "€ medio": a.prezzo_unit_medio ?? "",
       "Trend prezzo %": a.prezzo_unit_trend_pct ?? "",
       "Totale speso": a.totale_speso,
       "N° acquisti": a.num_acquisti,
@@ -168,7 +203,7 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
   }
 
   return (
-    <div className={`space-y-3 ${pending ? "opacity-70" : ""}`}>
+    <div className="space-y-3">
       {/* Sub-filtri */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1">
@@ -176,7 +211,7 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
             <button
               key={t.key}
               disabled={pending}
-              onClick={() => setParam({ tipo: t.key === "tutti" ? undefined : t.key })}
+              onClick={() => setUrlParam({ tipo: t.key === "tutti" ? undefined : t.key })}
               className={`px-2.5 py-1 text-xs font-medium rounded-md border transition-colors disabled:opacity-60 ${
                 (filtri.tipo_prodotti ?? "tutti") === t.key
                   ? "bg-primary text-primary-foreground border-primary"
@@ -193,20 +228,15 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
           <Input
             type="text"
             placeholder="Cerca prodotto..."
-            defaultValue={filtri.search ?? ""}
-            onKeyDown={(e) => {
-              if (e.key === "Enter")
-                setParam({ search: (e.target as HTMLInputElement).value || undefined });
-            }}
-            onBlur={(e) => setParam({ search: e.target.value || undefined })}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="h-7 text-xs pl-7"
           />
         </div>
 
         <select
-          value={filtri.fornitore ?? ""}
-          onChange={(e) => setParam({ fornitore: e.target.value || undefined })}
-          disabled={pending}
+          value={fornitoreFilter}
+          onChange={(e) => setFornitoreFilter(e.target.value)}
           className="h-7 text-xs rounded-md border border-input bg-background px-2 max-w-48"
         >
           <option value="">Tutti i fornitori</option>
@@ -218,9 +248,8 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
         </select>
 
         <select
-          value={filtri.categoria ?? ""}
-          onChange={(e) => setParam({ cat: e.target.value || undefined })}
-          disabled={pending}
+          value={categoriaFilter}
+          onChange={(e) => setCategoriaFilter(e.target.value)}
           className="h-7 text-xs rounded-md border border-input bg-background px-2 max-w-48"
         >
           <option value="">Tutte le categorie</option>
@@ -231,99 +260,136 @@ export function ArticoliTab({ articoli, categorie, fornitori, filtri }: Props) {
           ))}
         </select>
 
-        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer">
+        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none">
           <input
             type="checkbox"
-            checked={filtri.solo_nuovi ?? false}
-            onChange={(e) => setParam({ nuovi: e.target.checked ? "1" : undefined })}
+            checked={soloNuovi}
+            onChange={(e) => setSoloNuovi(e.target.checked)}
           />
-          <Sparkles className="size-3 text-amber-500" /> Solo nuovi
+          <Sparkles className="size-3 text-amber-500" /> Nuovi caricati
         </label>
-        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer">
+        <label className="text-xs inline-flex items-center gap-1.5 cursor-pointer select-none">
           <input
             type="checkbox"
-            checked={filtri.solo_da_verificare ?? false}
-            onChange={(e) => setParam({ verifica: e.target.checked ? "1" : undefined })}
+            checked={soloVerifica}
+            onChange={(e) => setSoloVerifica(e.target.checked)}
           />
           <AlertTriangle className="size-3 text-amber-500" /> Solo verifica categoria
         </label>
 
         <button
           onClick={exportXls}
-          disabled={articoli.length === 0}
+          disabled={sorted.length === 0}
           className="ml-auto text-xs px-2.5 py-1 rounded-md border border-input bg-background hover:bg-muted font-medium disabled:opacity-50"
         >
           Esporta Excel
         </button>
       </div>
 
-      {articoli.length === 0 ? (
+      {/* Counter */}
+      <div className="text-xs text-muted-foreground">
+        {sorted.length === articoli.length
+          ? `${sorted.length} prodotti`
+          : `${sorted.length} di ${articoli.length} prodotti`}
+      </div>
+
+      {sorted.length === 0 ? (
         <div className="text-center py-16 text-sm text-muted-foreground">
           Nessun prodotto trovato con i filtri selezionati.
         </div>
       ) : (
-        <div className="rounded-lg border overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 border-b">
-              <tr className="text-xs text-muted-foreground">
-                <th className="w-6"></th>
-                <th className="text-left px-3 py-2 font-medium">
-                  <SortableHeader label="Descrizione" sortKey="descrizione" current={sort} onClick={cycleSort} />
-                </th>
-                <th className="text-left px-3 py-2 font-medium">
-                  <SortableHeader label="Categoria" sortKey="categoria" current={sort} onClick={cycleSort} />
-                </th>
-                <th className="text-left px-3 py-2 font-medium">
-                  <SortableHeader label="Fornitore" sortKey="fornitore" current={sort} onClick={cycleSort} />
-                </th>
-                <th className="text-left px-3 py-2 font-medium whitespace-nowrap">
-                  <SortableHeader label="Ultimo acq." sortKey="ultimo_acquisto" current={sort} onClick={cycleSort} />
-                </th>
-                <th className="text-right px-3 py-2 font-medium">
-                  <SortableHeader label="Q.tà" sortKey="quantita_totale" current={sort} align="right" onClick={cycleSort} />
-                </th>
-                <th className="text-right px-3 py-2 font-medium whitespace-nowrap">
-                  <SortableHeader label="€ medio" sortKey="prezzo_unit_medio" current={sort} align="right" onClick={cycleSort} />
-                </th>
-                <th className="text-right px-3 py-2 font-medium">
-                  <SortableHeader label="Totale" sortKey="totale_speso" current={sort} align="right" onClick={cycleSort} />
-                </th>
-                <th className="text-right px-3 py-2 font-medium">
-                  <SortableHeader label="N°" sortKey="num_acquisti" current={sort} align="right" onClick={cycleSort} />
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedArticoli.map((a) => (
-                <ArticoloRiga
-                  key={a.descrizione}
-                  articolo={a}
-                  expanded={expanded.has(a.descrizione)}
-                  onToggle={() => toggleExpand(a.descrizione)}
-                  categorie={categorie}
-                  filtri={filtri}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="rounded-lg border overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 border-b">
+                <tr className="text-xs text-muted-foreground">
+                  <th className="w-6"></th>
+                  <th className="text-left px-3 py-2 font-medium">
+                    <SortableHeader label="Descrizione" sortKey="descrizione" current={sort} onClick={cycleSort} />
+                  </th>
+                  <th className="text-left px-3 py-2 font-medium">
+                    <SortableHeader label="Categoria" sortKey="categoria" current={sort} onClick={cycleSort} />
+                  </th>
+                  <th className="text-left px-3 py-2 font-medium">
+                    <SortableHeader label="Fornitore" sortKey="fornitore" current={sort} onClick={cycleSort} />
+                  </th>
+                  <th className="text-left px-3 py-2 font-medium whitespace-nowrap">
+                    <SortableHeader label="Ultimo acq." sortKey="ultimo_acquisto" current={sort} onClick={cycleSort} />
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium">
+                    <SortableHeader label="Q.tà" sortKey="quantita_totale" current={sort} align="right" onClick={cycleSort} />
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium whitespace-nowrap">
+                    <SortableHeader label="€ medio" sortKey="prezzo_unit_medio" current={sort} align="right" onClick={cycleSort} />
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium">
+                    <SortableHeader label="Totale" sortKey="totale_speso" current={sort} align="right" onClick={cycleSort} />
+                  </th>
+                  <th className="text-right px-3 py-2 font-medium">
+                    <SortableHeader label="N°" sortKey="num_acquisti" current={sort} align="right" onClick={cycleSort} />
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((a) => (
+                  <ArticoloRiga
+                    key={a.descrizione}
+                    articolo={a}
+                    expanded={expanded.has(a.descrizione)}
+                    onToggle={() => toggleExpand(a.descrizione)}
+                    categorie={categorie}
+                    dataDa={filtri.data_da}
+                    dataA={filtri.data_a}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Paginazione */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                Pagina {safePage} di {totalPages} · {sorted.length.toLocaleString("it-IT")} prodotti
+              </span>
+              <div className="flex gap-2">
+                <button
+                  className="px-2 py-1 rounded border border-input bg-background hover:bg-muted disabled:opacity-50"
+                  disabled={safePage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  ← Precedente
+                </button>
+                <button
+                  className="px-2 py-1 rounded border border-input bg-background hover:bg-muted disabled:opacity-50"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Successiva →
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function ArticoloRiga({
+const ArticoloRiga = memo(function ArticoloRiga({
   articolo,
   expanded,
   onToggle,
   categorie,
-  filtri,
+  dataDa,
+  dataA,
 }: {
   articolo: ArticoloAggregato;
   expanded: boolean;
   onToggle: () => void;
   categorie: string[];
-  filtri: { data_da?: string; data_a?: string };
+  dataDa?: string;
+  dataA?: string;
 }) {
   const [editingCat, setEditingCat] = useState(false);
   const [currentCat, setCurrentCat] = useState(articolo.categoria ?? "");
@@ -364,9 +430,7 @@ function ArticoloRiga({
 
   return (
     <>
-      <tr
-        className={`border-b hover:bg-muted/30 ${articolo.is_nuovo ? "bg-amber-50/30" : ""}`}
-      >
+      <tr className={`border-b hover:bg-muted/30 ${articolo.is_nuovo ? "bg-amber-50/30" : ""}`}>
         <td className="px-1 align-top pt-2.5">
           <button onClick={onToggle} className="text-muted-foreground hover:text-foreground">
             {expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
@@ -450,11 +514,7 @@ function ArticoloRiga({
                   }`}
                   title={`Variazione vs periodo precedente: ${trendPct > 0 ? "+" : ""}${trendPct}%`}
                 >
-                  {trendPct > 0 ? (
-                    <ArrowUp className="size-2.5" />
-                  ) : (
-                    <ArrowDown className="size-2.5" />
-                  )}
+                  {trendPct > 0 ? <ArrowUp className="size-2.5" /> : <ArrowDown className="size-2.5" />}
                   {Math.abs(trendPct).toFixed(0)}%
                 </span>
               )}
@@ -466,25 +526,19 @@ function ArticoloRiga({
         <td className="px-3 py-2 text-xs text-right font-semibold tabular-nums">
           {formatEuro(articolo.totale_speso)}
         </td>
-        <td className="px-3 py-2 text-xs text-right text-muted-foreground">
-          {articolo.num_acquisti}
-        </td>
+        <td className="px-3 py-2 text-xs text-right text-muted-foreground">{articolo.num_acquisti}</td>
       </tr>
       {expanded && (
         <tr className="bg-muted/20 border-b">
           <td></td>
           <td colSpan={8} className="px-3 py-2">
-            <RigheArticolo
-              descrizione={articolo.descrizione}
-              dataDa={filtri.data_da}
-              dataA={filtri.data_a}
-            />
+            <RigheArticolo descrizione={articolo.descrizione} dataDa={dataDa} dataA={dataA} />
           </td>
         </tr>
       )}
     </>
   );
-}
+});
 
 function RigheArticolo({
   descrizione,

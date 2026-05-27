@@ -1,11 +1,9 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AlertTriangle, CheckCircle, FileText, Loader2, Upload, X, XCircle } from "lucide-react";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogTitle,
@@ -20,6 +18,7 @@ type FileEntry = {
   file: File;
   status: FileStatus;
   righe?: number;
+  righe_preesistenti?: number;
   fornitore?: string;
   data_documento?: string;
   needs_review?: number;
@@ -48,8 +47,6 @@ export function UploadModal() {
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const router = useRouter();
-
   const addFiles = useCallback((incoming: FileList | File[]) => {
     const arr = Array.from(incoming);
     const valid = arr.filter((f) => {
@@ -129,6 +126,7 @@ export function UploadModal() {
                     ...f,
                     status: data.success ? "success" : "error",
                     righe: data.righe_salvate,
+                    righe_preesistenti: data.righe_preesistenti ?? 0,
                     fornitore: data.fornitore,
                     data_documento: data.data_documento,
                     needs_review: data.needs_review_count,
@@ -150,9 +148,9 @@ export function UploadModal() {
   }
 
   function closeAndRefresh() {
-    setOpen(false);
-    setFiles([]);
-    router.refresh();
+    // Hard reload: garantisce dati freschi e sessione preservata,
+    // evita problemi con router.refresh() dopo upload diretto al worker.
+    window.location.reload();
   }
 
   const pending = files.filter((f) => f.status === "waiting" || f.status === "error").length;
@@ -172,7 +170,7 @@ export function UploadModal() {
       <DialogContent className="!max-w-2xl">
         <DialogTitle>Carica fatture</DialogTitle>
         <DialogDescription>
-          Trascina i file XML o P7M qui sotto · max {MAX_SIZE_MB}MB per file · idempotente
+          Formati accettati: XML, P7M · ricaricando lo stesso file le righe vengono sostituite, non duplicate.
         </DialogDescription>
 
         <div
@@ -223,6 +221,11 @@ export function UploadModal() {
                       {entry.fornitore ? `${entry.fornitore} · ` : ""}
                       {entry.righe} righe
                       {entry.data_documento ? ` · ${entry.data_documento}` : ""}
+                      {(entry.righe_preesistenti ?? 0) > 0 && (
+                        <span className="text-sky-600 ml-1">
+                          · {entry.righe_preesistenti} sostituite
+                        </span>
+                      )}
                       {(entry.needs_review ?? 0) > 0 && (
                         <span className="text-amber-500 ml-1">
                           <AlertTriangle className="size-3 inline mr-0.5" />
@@ -252,7 +255,7 @@ export function UploadModal() {
           <span className="text-xs text-muted-foreground">
             {success > 0 && (
               <span className="text-emerald-600 font-medium">
-                {success} caricata{success !== 1 ? "e" : ""} · {totRighe} righe
+                {success === 1 ? "1 caricata" : `${success} caricate`} · {totRighe} righe
               </span>
             )}
           </span>

@@ -1644,7 +1644,9 @@ async def get_articoli_aggregati(
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     supabase_client = _get_supabase_client()
-    user_login_at = user.get("last_login_precedente")  # per badge "Nuovo"
+    # Una riga e "nuova" se created_at e nelle ultime 24h
+    from datetime import datetime, timedelta, timezone
+    cutoff_nuovo = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
 
     rows = _fetch_fatture_rows(
         supabase_client, ristorante_id, data_da, data_a, tipo_prodotti, search
@@ -1720,14 +1722,13 @@ async def get_articoli_aggregati(
         # needs_review se almeno una riga
         nr = any(it.get("needs_review") for it in items)
 
-        # is_nuovo: created_at di almeno una riga > last_login_precedente
+        # is_nuovo: created_at di almeno una riga nelle ultime 24h
         is_nuovo = False
-        if user_login_at:
-            for it in items:
-                ca = it.get("created_at")
-                if ca and ca > user_login_at:
-                    is_nuovo = True
-                    break
+        for it in items:
+            ca = it.get("created_at")
+            if ca and ca >= cutoff_nuovo:
+                is_nuovo = True
+                break
 
         if solo_nuovi and not is_nuovo:
             continue

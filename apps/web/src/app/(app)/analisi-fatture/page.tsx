@@ -67,12 +67,6 @@ export default async function AnalisiFatturePage({
   const tab = sp.tab ?? "articoli";
   const { data_da, data_a, preset, mese } = resolvePeriodo(sp);
   const tipoProdotti = normalizeTipo(sp.tipo);
-  const search = sp.search;
-  const soloNuovi = sp.nuovi === "1";
-  const soloDaVerificare = sp.verifica === "1";
-
-  const fornitoreFilter = sp.fornitore;
-  const categoriaFilter = sp.cat;
 
   // Carico in parallelo i dati base sempre necessari
   const [kpi, mesi, categorieRes, fornitoriList] = await Promise.all([
@@ -82,18 +76,14 @@ export default async function AnalisiFatturePage({
     fetchFornitori(),
   ]);
 
-  // Carico in base al tab attivo
+  // Tab Articoli: filtri categoria/fornitore/search/nuovi/verifica gestiti
+  // CLIENT-SIDE. Server fetcha solo per periodo + tipo prodotti.
   const [articoliRes, pivotCategorie, pivotFornitori] = await Promise.all([
     tab === "articoli"
       ? fetchArticoliAggregati({
           data_da,
           data_a,
           tipo_prodotti: tipoProdotti,
-          search,
-          fornitore: fornitoreFilter,
-          categoria: categoriaFilter,
-          solo_nuovi: soloNuovi,
-          solo_da_verificare: soloDaVerificare,
         })
       : Promise.resolve(null),
     tab === "categorie"
@@ -133,16 +123,7 @@ export default async function AnalisiFatturePage({
           articoli={articoliRes?.articoli ?? []}
           categorie={categorieRes.categorie}
           fornitori={fornitoriList}
-          filtri={{
-            data_da,
-            data_a,
-            tipo_prodotti: tipoProdotti,
-            search,
-            fornitore: fornitoreFilter,
-            categoria: categoriaFilter,
-            solo_nuovi: soloNuovi,
-            solo_da_verificare: soloDaVerificare,
-          }}
+          filtri={{ data_da, data_a, tipo_prodotti: tipoProdotti }}
         />
       )}
 
