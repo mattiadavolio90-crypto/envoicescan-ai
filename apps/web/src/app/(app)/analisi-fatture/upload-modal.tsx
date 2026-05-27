@@ -250,7 +250,7 @@ export function UploadModal() {
                     </p>
                   )}
                   {entry.status === "skipped" && (
-                    <p className="text-sky-600 mt-0.5">
+                    <p className="text-amber-600 mt-0.5">
                       Fattura scartata perché già caricata in precedenza.
                     </p>
                   )}
