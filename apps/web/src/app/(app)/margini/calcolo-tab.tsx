@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Info, Lock, RefreshCw, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { formatEuro } from "./periodi";
@@ -65,24 +65,23 @@ type RowDef = {
   derive?: (m: MesePivot) => number;   // righe virtuali calcolate
   labelColor?: string;                 // classe tailwind per la prima colonna
   valueColor: ValueColor;              // colore dei valori nelle celle
-  outlineRgb?: string;                 // macro-voci: colore contorno full-row "r,g,b"
 };
 
 const ROWS: RowDef[] = [
   { key: "fatturato_iva10",       label: "Ricavi IVA 10%",         type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
   { key: "fatturato_iva22",       label: "Ricavi IVA 22%",         type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
   { key: "altri_ricavi_noiva",    label: "Altri ricavi (no IVA)",  type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
-  { key: "fatturato_netto",       label: "= Fatturato Netto",      type: "computed", section: "ricavi", isMetric: true, labelColor: "text-sky-500 dark:text-sky-400", valueColor: "sky", outlineRgb: "14,165,233" },
+  { key: "fatturato_netto",       label: "= Fatturato Netto",      type: "computed", section: "ricavi", isMetric: true, labelColor: "text-sky-500 dark:text-sky-400", valueColor: "sky" },
   { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb", valueColor: "white" },
   { key: "altri_costi_fb",        label: "Altri Costi F&B",        type: "input-editable", field: "altri_costi_fb", section: "fb", valueColor: "white" },
-  { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true, labelColor: "text-orange-500 dark:text-orange-400", valueColor: "orange", outlineRgb: "249,115,22" },
-  { key: "primo_margine",         label: "= 1° Margine",           type: "computed", section: "margine", isMetric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "sign", outlineRgb: "16,185,129" },
+  { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true, labelColor: "text-orange-500 dark:text-orange-400", valueColor: "orange" },
+  { key: "primo_margine",         label: "= 1° Margine",           type: "computed", section: "margine", isMetric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "sign" },
   { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", valueColor: "white" },
   { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
   { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", valueColor: "white" },
   { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", valueColor: "white" },
-  { key: "totale_costi",          label: "= Costi gestione totali", type: "computed", section: "spese", isMetric: true, derive: (m) => m.costi_fb_totali + m.costi_spese_totali + m.costi_personale, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple", outlineRgb: "139,92,246" },
-  { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign", outlineRgb: "34,197,94" },
+  { key: "totale_costi",          label: "= Costi gestione totali", type: "computed", section: "spese", isMetric: true, derive: (m) => m.costi_fb_totali + m.costi_spese_totali + m.costi_personale, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
+  { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign" },
 ];
 
 // Separatori tra blocchi: bordo top più marcato prima di questi indici
@@ -111,16 +110,6 @@ function valueColorCls(vc: ValueColor, raw: number): string {
 function pctIncidenza(raw: number, netto: number): string | null {
   if (!netto || netto === 0 || raw === 0) return null;
   return `${((raw / netto) * 100).toFixed(0)}%`;
-}
-
-// Stile contorno full-row per le macro-voci. side: "left" | "mid" | "right".
-function outlineStyle(rgb: string | undefined, side: "left" | "mid" | "right"): CSSProperties | undefined {
-  if (!rgb) return undefined;
-  const c = `rgba(${rgb},0.55)`;
-  const base: CSSProperties = { borderTop: `1.5px solid ${c}`, borderBottom: `1.5px solid ${c}` };
-  if (side === "left") base.borderLeft = `1.5px solid ${c}`;
-  if (side === "right") base.borderRight = `1.5px solid ${c}`;
-  return base;
 }
 
 const ANNO_MESE_CORRENTE = (() => {
@@ -300,10 +289,17 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
       {/* Tabella trasposta — desktop */}
       <div className="hidden md:block rounded-lg border border-border bg-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full text-sm border-collapse">
+          <table className="w-full table-fixed text-[15px] border-collapse">
+            <colgroup>
+              <col className="w-[220px]" />
+              {mesiVisibili.map((m) => (
+                <col key={`c-${m.anno}-${m.mese}`} />
+              ))}
+              <col className="w-[130px]" />
+            </colgroup>
             <thead className="bg-muted/40">
-              <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                <th className="sticky left-0 z-20 bg-muted/40 text-left px-3 py-2 font-semibold border-r border-border min-w-[200px]">
+              <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
+                <th className="sticky left-0 z-20 bg-muted/40 text-left px-3 py-2.5 font-semibold border-r border-border">
                   Voce
                 </th>
                 {mesiVisibili.map((m) => {
@@ -311,7 +307,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                   return (
                     <th
                       key={`${m.anno}-${m.mese}`}
-                      className={`text-right px-2 py-2 font-semibold border-r border-border min-w-[100px] ${
+                      className={`text-right px-3 py-2.5 font-semibold border-r border-border ${
                         isCurrent ? "text-sky-500 dark:text-sky-400 bg-sky-500/5" : ""
                       }`}
                     >
@@ -320,7 +316,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                     </th>
                   );
                 })}
-                <th className="sticky right-0 z-20 bg-primary/15 text-right px-3 py-2 font-bold border-l-2 border-primary min-w-[110px]">
+                <th className="sticky right-0 z-20 bg-primary/15 text-right px-3 py-2.5 font-bold border-l-2 border-primary">
                   Totale
                 </th>
               </tr>
@@ -328,15 +324,15 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
             <tbody>
               {ROWS.map((row, ri) => {
                 const isMetric = row.isMetric;
-                const showPctAlways = !!isMetric;
                 return (
                   <tr
                     key={ri}
-                    className={`group ${SEP_BEFORE.has(ri) ? "border-t-[3px] border-t-border" : "border-t border-border"} ${isMetric ? "font-semibold" : ""}`}
+                    className={`${SEP_BEFORE.has(ri) ? "border-t-[3px] border-t-border" : "border-t border-border"} ${
+                      isMetric ? "font-semibold bg-muted/[0.04]" : ""
+                    }`}
                   >
                     <td
-                      style={outlineStyle(row.outlineRgb, "left")}
-                      className={`sticky left-0 z-10 bg-card px-3 py-1.5 border-r border-border whitespace-nowrap ${
+                      className={`sticky left-0 z-10 bg-card px-3 py-2 border-r border-border whitespace-nowrap ${
                         isMetric ? `font-bold ${row.labelColor ?? ""}` : ""
                       }`}
                     >
@@ -347,13 +343,11 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                         key={`${m.anno}-${m.mese}`}
                         row={row}
                         mese={m}
-                        showPctAlways={showPctAlways}
-                        outline={row.outlineRgb}
                         onSave={saveCell}
                       />
                     ))}
                     {/* Total column */}
-                    <TotalCell row={row} totali={data.totali} showPctAlways={showPctAlways} outline={row.outlineRgb} />
+                    <TotalCell row={row} totali={data.totali} />
                   </tr>
                 );
               })}
@@ -379,14 +373,10 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
 function Cell({
   row,
   mese,
-  showPctAlways,
-  outline,
   onSave,
 }: {
   row: RowDef;
   mese: MesePivot;
-  showPctAlways: boolean;
-  outline?: string;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
 }) {
   const raw = rowVal(row, mese);
@@ -412,7 +402,7 @@ function Cell({
   const showLock = row.type === "input-readonly-tooltip" || row.type === "input-readonly";
 
   return (
-    <td style={outlineStyle(outline, "mid")} className="text-right px-2 py-1.5 border-r border-border align-middle">
+    <td className="text-right px-3 py-2 border-r border-border align-middle">
       <div
         title={tooltip}
         className={`inline-flex items-center justify-end gap-1 tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls} ${showLock ? "cursor-help" : ""}`}
@@ -420,15 +410,7 @@ function Cell({
         {display}
         {showLock && <Lock className="size-3 opacity-30" />}
       </div>
-      {pct && (
-        <div
-          className={`text-[10px] tabular-nums ${colorCls} ${
-            showPctAlways ? "opacity-65" : "opacity-0 group-hover:opacity-65 transition-opacity"
-          }`}
-        >
-          {pct}
-        </div>
-      )}
+      {pct && <div className={`text-[11px] tabular-nums opacity-70 ${colorCls}`}>{pct}</div>}
     </td>
   );
 }
@@ -484,7 +466,7 @@ function EditableCell({
           }
         }}
         placeholder="—"
-        className={`w-full px-2 pt-1.5 pb-0 text-right tabular-nums bg-transparent border-0 outline-none transition-colors text-sm ${
+        className={`w-full px-3 pt-2 pb-0 text-right tabular-nums bg-transparent border-0 outline-none transition-colors text-[15px] ${
           saved
             ? "bg-emerald-500/10"
             : saving
@@ -493,9 +475,7 @@ function EditableCell({
         }`}
       />
       {pct && (
-        <div className="px-2 pb-1 text-right text-[10px] tabular-nums opacity-0 group-hover:opacity-65 transition-opacity">
-          {pct}
-        </div>
+        <div className="px-3 pb-1.5 text-right text-[11px] tabular-nums opacity-70">{pct}</div>
       )}
     </td>
   );
@@ -504,13 +484,9 @@ function EditableCell({
 function TotalCell({
   row,
   totali,
-  showPctAlways,
-  outline,
 }: {
   row: RowDef;
   totali: MesePivot;
-  showPctAlways: boolean;
-  outline?: string;
 }) {
   const raw = rowVal(row, totali);
   const display = raw === 0 ? "—" : formatEuro(raw);
@@ -519,20 +495,9 @@ function TotalCell({
   const pct = pctIncidenza(raw, totali.fatturato_netto);
 
   return (
-    <td
-      style={outlineStyle(outline, "right")}
-      className="sticky right-0 z-10 bg-muted/40 text-right px-3 py-1.5 tabular-nums border-l-2 border-primary align-middle"
-    >
+    <td className="sticky right-0 z-10 bg-muted/40 text-right px-3 py-2 tabular-nums border-l-2 border-primary align-middle">
       <div className={`tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls}`}>{display}</div>
-      {pct && (
-        <div
-          className={`text-[10px] tabular-nums ${colorCls} ${
-            showPctAlways ? "opacity-65" : "opacity-0 group-hover:opacity-65 transition-opacity"
-          }`}
-        >
-          {pct}
-        </div>
-      )}
+      {pct && <div className={`text-[11px] tabular-nums opacity-70 ${colorCls}`}>{pct}</div>}
     </td>
   );
 }
