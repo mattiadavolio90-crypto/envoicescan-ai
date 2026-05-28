@@ -36,8 +36,7 @@ const TONE: Record<Tone, { border: string; hover: string; value: string }> = {
 type CardDef = {
   label: string;
   value: string;
-  sub: string;
-  subColored: boolean;
+  sub?: string; // solo Fatturato Lordo ha il sub
   tone: Tone;
 };
 
@@ -45,43 +44,12 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
   const molTone: Tone = kpi.mol >= 0 ? "emerald" : "rose";
 
   const cards: CardDef[] = [
-    {
-      label: "Fatturato Lordo",
-      value: formatEuro(kpi.fatturato_lordo),
-      sub: `netto ${formatEuro(kpi.fatturato_netto)}`,
-      subColored: false, tone: "sky",
-    },
-    {
-      label: "Costi F&B",
-      value: formatEuro(kpi.costi_fb),
-      sub: `food cost ${kpi.food_cost_perc.toFixed(1)}%`,
-      subColored: true, tone: "orange",
-    },
-    {
-      label: "Margine Lordo",
-      value: formatEuro(kpi.primo_margine),
-      sub: `${kpi.primo_margine_perc.toFixed(1)}% del fatturato`,
-      subColored: true,
-      tone: kpi.primo_margine >= 0 ? "emerald" : "rose",
-    },
-    {
-      label: "Spese Generali",
-      value: formatEuro(kpi.spese_generali),
-      sub: `${kpi.spese_perc.toFixed(1)}% del fatturato`,
-      subColored: true, tone: "violet",
-    },
-    {
-      label: "Costo Personale",
-      value: formatEuro(kpi.costo_personale),
-      sub: `${kpi.personale_perc.toFixed(1)}% del fatturato`,
-      subColored: true, tone: "pink",
-    },
-    {
-      label: "MOL",
-      value: formatEuro(kpi.mol),
-      sub: `${kpi.mol_perc.toFixed(1)}% del fatturato`,
-      subColored: true, tone: molTone,
-    },
+    { label: "Fatturato Lordo",  value: formatEuro(kpi.fatturato_lordo), sub: `netto ${formatEuro(kpi.fatturato_netto)}`, tone: "sky" },
+    { label: "Costi F&B",        value: formatEuro(kpi.costi_fb),         tone: "orange" },
+    { label: "Margine Lordo",    value: formatEuro(kpi.primo_margine),    tone: kpi.primo_margine >= 0 ? "emerald" : "rose" },
+    { label: "Spese Generali",   value: formatEuro(kpi.spese_generali),   tone: "violet" },
+    { label: "Costo Personale",  value: formatEuro(kpi.costo_personale),  tone: "pink" },
+    { label: "MOL",              value: formatEuro(kpi.mol),              tone: molTone },
   ];
 
   return (
@@ -99,9 +67,7 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
             <p className={`text-2xl font-bold tracking-tight mt-1.5 leading-tight ${t.value}`}>
               {c.value}
             </p>
-            <p className={`text-[13px] font-semibold mt-1 ${c.subColored ? t.value : "text-muted-foreground"}`}>
-              {c.sub}
-            </p>
+            {c.sub && <p className="text-[11px] text-muted-foreground mt-1">{c.sub}</p>}
           </div>
         );
       })}
