@@ -1,4 +1,3 @@
-import { ArrowDown, ArrowUp } from "lucide-react";
 import { formatEuro } from "./periodi";
 
 export type KpiData = {
@@ -23,22 +22,6 @@ export type KpiData = {
   confronto_label: string;
 };
 
-function Delta({ pct, label, costIsGood }: { pct: number | null; label: string; costIsGood: boolean }) {
-  if (pct === null || pct === undefined) {
-    return <span className="text-xs text-muted-foreground">vs {label}</span>;
-  }
-  const isGood = costIsGood ? pct < 0 : pct >= 0;
-  const Icon = pct >= 0 ? ArrowUp : ArrowDown;
-  const cls = isGood ? "text-emerald-500" : "text-rose-500";
-  return (
-    <span className={`text-xs font-medium inline-flex items-center gap-0.5 ${cls}`}>
-      <Icon className="size-3" />
-      {Math.abs(pct).toFixed(0)}%
-      <span className="text-muted-foreground font-normal ml-0.5">vs {label}</span>
-    </span>
-  );
-}
-
 type Tone = "sky" | "orange" | "emerald" | "rose" | "violet" | "pink";
 
 const TONE: Record<Tone, { border: string; hover: string; value: string }> = {
@@ -54,14 +37,11 @@ type CardDef = {
   label: string;
   value: string;
   sub: string;
-  subColored: boolean; // true = sub usa il colore del tone
-  delta: number | null;
-  costIsGood: boolean;
+  subColored: boolean;
   tone: Tone;
 };
 
 export function KpiBar({ kpi }: { kpi: KpiData }) {
-  const label = kpi.confronto_label ?? "periodo prec.";
   const molTone: Tone = kpi.mol >= 0 ? "emerald" : "rose";
 
   const cards: CardDef[] = [
@@ -69,44 +49,38 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
       label: "Fatturato Lordo",
       value: formatEuro(kpi.fatturato_lordo),
       sub: `netto ${formatEuro(kpi.fatturato_netto)}`,
-      subColored: false,
-      delta: kpi.delta_lordo_pct, costIsGood: false, tone: "sky",
+      subColored: false, tone: "sky",
     },
     {
       label: "Costi F&B",
       value: formatEuro(kpi.costi_fb),
       sub: `food cost ${kpi.food_cost_perc.toFixed(1)}%`,
-      subColored: true,
-      delta: kpi.delta_fb_pct, costIsGood: true, tone: "orange",
+      subColored: true, tone: "orange",
     },
     {
       label: "Margine Lordo",
       value: formatEuro(kpi.primo_margine),
       sub: `${kpi.primo_margine_perc.toFixed(1)}% del fatturato`,
       subColored: true,
-      delta: kpi.delta_margine_pct, costIsGood: false,
       tone: kpi.primo_margine >= 0 ? "emerald" : "rose",
     },
     {
       label: "Spese Generali",
       value: formatEuro(kpi.spese_generali),
       sub: `${kpi.spese_perc.toFixed(1)}% del fatturato`,
-      subColored: true,
-      delta: kpi.delta_spese_pct, costIsGood: true, tone: "violet",
+      subColored: true, tone: "violet",
     },
     {
       label: "Costo Personale",
       value: formatEuro(kpi.costo_personale),
       sub: `${kpi.personale_perc.toFixed(1)}% del fatturato`,
-      subColored: true,
-      delta: kpi.delta_personale_pct, costIsGood: true, tone: "pink",
+      subColored: true, tone: "pink",
     },
     {
       label: "MOL",
       value: formatEuro(kpi.mol),
       sub: `${kpi.mol_perc.toFixed(1)}% del fatturato`,
-      subColored: true,
-      delta: kpi.delta_mol_pct, costIsGood: false, tone: molTone,
+      subColored: true, tone: molTone,
     },
   ];
 
@@ -128,9 +102,6 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
             <p className={`text-[13px] font-semibold mt-1 ${c.subColored ? t.value : "text-muted-foreground"}`}>
               {c.sub}
             </p>
-            <div className="mt-1.5">
-              <Delta pct={c.delta} label={label} costIsGood={c.costIsGood} />
-            </div>
           </div>
         );
       })}
