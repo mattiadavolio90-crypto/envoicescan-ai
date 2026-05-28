@@ -307,8 +307,10 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                   return (
                     <th
                       key={`${m.anno}-${m.mese}`}
-                      className={`text-right px-3 py-2.5 font-semibold border-r border-border ${
-                        isCurrent ? "text-sky-500 dark:text-sky-400 bg-sky-500/5" : ""
+                      className={`text-right px-3 py-2.5 font-semibold ${
+                        isCurrent
+                          ? "text-sky-500 dark:text-sky-400 bg-sky-500/8 border-l border-r border-sky-500/50"
+                          : "border-r border-border"
                       }`}
                     >
                       {isCurrent && <span className="mr-1 inline-block size-1.5 rounded-full bg-sky-400 align-middle" />}
@@ -316,7 +318,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                     </th>
                   );
                 })}
-                <th className="sticky right-0 z-20 bg-primary/15 text-right px-3 py-2.5 font-bold border-l-2 border-primary">
+                <th className="sticky right-0 z-20 bg-sky-500/8 text-right px-3 py-2.5 font-bold border-l-2 border-r border-sky-500/50 text-sky-600 dark:text-sky-400">
                   Totale
                 </th>
               </tr>
@@ -338,14 +340,18 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                     >
                       {row.label}
                     </td>
-                    {mesiVisibili.map((m) => (
-                      <Cell
-                        key={`${m.anno}-${m.mese}`}
-                        row={row}
-                        mese={m}
-                        onSave={saveCell}
-                      />
-                    ))}
+                    {mesiVisibili.map((m) => {
+                      const isCurrent = m.anno === ANNO_MESE_CORRENTE.anno && m.mese === ANNO_MESE_CORRENTE.mese;
+                      return (
+                        <Cell
+                          key={`${m.anno}-${m.mese}`}
+                          row={row}
+                          mese={m}
+                          isCurrent={isCurrent}
+                          onSave={saveCell}
+                        />
+                      );
+                    })}
                     {/* Total column */}
                     <TotalCell row={row} totali={data.totali} />
                   </tr>
@@ -373,10 +379,12 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
 function Cell({
   row,
   mese,
+  isCurrent,
   onSave,
 }: {
   row: RowDef;
   mese: MesePivot;
+  isCurrent: boolean;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
 }) {
   const raw = rowVal(row, mese);
@@ -385,11 +393,16 @@ function Cell({
   const pct = pctIncidenza(raw, mese.fatturato_netto);
   const display = raw === 0 ? "—" : formatEuro(raw);
 
+  const currentCls = isCurrent
+    ? "bg-sky-500/8 border-l border-r border-sky-500/40"
+    : "border-r border-border";
+
   if (row.type === "input-editable" && row.field) {
     return (
       <EditableCell
         value={raw}
         netto={mese.fatturato_netto}
+        isCurrent={isCurrent}
         onSave={(v) => onSave(mese.anno, mese.mese, row.field!, v, raw)}
       />
     );
@@ -402,7 +415,7 @@ function Cell({
   const showLock = row.type === "input-readonly-tooltip" || row.type === "input-readonly";
 
   return (
-    <td className="text-right px-3 py-2 border-r border-border align-middle">
+    <td className={`text-right px-3 py-2 align-middle ${currentCls}`}>
       <div
         title={tooltip}
         className={`inline-flex items-center justify-end gap-1 tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls} ${showLock ? "cursor-help" : ""}`}
@@ -418,10 +431,12 @@ function Cell({
 function EditableCell({
   value,
   netto,
+  isCurrent,
   onSave,
 }: {
   value: number;
   netto: number;
+  isCurrent: boolean;
   onSave: (v: number) => void;
 }) {
   const initStr = value > 0 ? String(Math.round(value)) : "";
@@ -449,8 +464,12 @@ function EditableCell({
   const liveVal = parseFloat(local.replace(",", ".")) || 0;
   const pct = pctIncidenza(liveVal, netto);
 
+  const currentCls = isCurrent
+    ? "bg-sky-500/8 border-l border-r border-sky-500/40"
+    : "border-r border-border";
+
   return (
-    <td className="border-r border-border p-0 align-middle">
+    <td className={`p-0 align-middle ${currentCls}`}>
       <input
         type="number"
         step="1"
@@ -495,7 +514,7 @@ function TotalCell({
   const pct = pctIncidenza(raw, totali.fatturato_netto);
 
   return (
-    <td className="sticky right-0 z-10 bg-muted/40 text-right px-3 py-2 tabular-nums border-l-2 border-primary align-middle">
+    <td className="sticky right-0 z-10 bg-sky-500/8 text-right px-3 py-2 tabular-nums border-l-2 border-r border-sky-500/50 align-middle">
       <div className={`tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls}`}>{display}</div>
       {pct && <div className={`text-[11px] tabular-nums opacity-70 ${colorCls}`}>{pct}</div>}
     </td>
