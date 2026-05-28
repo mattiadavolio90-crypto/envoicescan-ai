@@ -50,6 +50,7 @@ async function fetchKpiData(data_da: string, data_a: string): Promise<KpiData> {
     const res = await fetch(`${WORKER_URL}/api/ricavi/giornalieri?${qs}`, {
       headers: h,
       cache: "no-store",
+      signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return fallback;
     const data = await res.json();

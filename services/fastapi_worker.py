@@ -2690,6 +2690,14 @@ class AndamentoMese(BaseModel):
     shop: float
 
 
+class CommentoKpi(BaseModel):
+    kpi_nome: str
+    percentuale: str
+    commento: str
+    emoji: str
+    colore: str
+
+
 class AnalisiAvanzataResponse(BaseModel):
     centri: List[CentroDetailItem]
     andamento_mensile: List[AndamentoMese]
@@ -3472,14 +3480,6 @@ class MarginiCellaResponse(BaseModel):
     mese: int
     field: str
     value: float
-
-
-class CommentoKpi(BaseModel):
-    kpi_nome: str
-    percentuale: str
-    commento: str
-    emoji: str
-    colore: str
 
 
 class MesiPivot(BaseModel):
