@@ -222,7 +222,8 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
         <div className="px-4 py-3 border-b border-border">
           <h3 className="text-sm font-semibold">Dettaglio Centri / Categorie</h3>
         </div>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[560px]">
           <thead className="bg-muted/40">
             <tr className="text-[10px] uppercase tracking-wider text-muted-foreground">
               <th className="text-left px-3 py-2 font-medium w-1/3">Centro / Categoria</th>
@@ -254,6 +255,7 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
             </tr>
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Commenti automatici */}

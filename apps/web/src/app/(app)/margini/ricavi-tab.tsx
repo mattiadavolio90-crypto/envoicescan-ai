@@ -286,6 +286,21 @@ function GiornoRow({
   const parsedAltri = parseFloat(altri.replace(",", ".")) || 0;
   const netto = parsedIva10 / 1.10 + parsedIva22 / 1.22 + parsedAltri;
 
+  async function postValue(field: "iva10" | "iva22" | "altri", value: number) {
+    const payload = {
+      data: row.data,
+      fatturato_iva10: field === "iva10" ? value : row.fatturato_iva10,
+      fatturato_iva22: field === "iva22" ? value : row.fatturato_iva22,
+      altri_ricavi_noiva: field === "altri" ? value : row.altri_ricavi_noiva,
+    };
+    const res = await fetch("/api/ricavi/giornalieri", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error();
+  }
+
   async function save(field: "iva10" | "iva22" | "altri", value: number) {
     const original = field === "iva10" ? row.fatturato_iva10
                    : field === "iva22" ? row.fatturato_iva22
@@ -294,21 +309,23 @@ function GiornoRow({
 
     setSavingField(field);
     try {
-      const payload = {
-        data: row.data,
-        fatturato_iva10: field === "iva10" ? value : row.fatturato_iva10,
-        fatturato_iva22: field === "iva22" ? value : row.fatturato_iva22,
-        altri_ricavi_noiva: field === "altri" ? value : row.altri_ricavi_noiva,
-      };
-      const res = await fetch("/api/ricavi/giornalieri", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error();
+      await postValue(field, value);
       setSavedField(field);
       setTimeout(() => setSavedField(null), 800);
-      toast.success(`Salvato ${formatData(row.data)}`);
+      toast.success(`Salvato ${formatData(row.data)}`, {
+        action: {
+          label: "Annulla",
+          onClick: async () => {
+            try {
+              await postValue(field, original);
+              toast.success("Modifica annullata");
+              onChanged();
+            } catch {
+              toast.error("Impossibile annullare");
+            }
+          },
+        },
+      });
       onChanged();
     } catch {
       toast.error("Errore nel salvataggio");

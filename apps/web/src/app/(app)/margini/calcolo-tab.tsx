@@ -150,15 +150,38 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
     );
   }, [data]);
 
-  async function saveCell(anno: number, mese: number, field: EditableField, value: number) {
+  async function postCella(anno: number, mese: number, field: EditableField, value: number) {
+    const res = await fetch("/api/margini/cella", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ anno, mese, field, value }),
+    });
+    if (!res.ok) throw new Error();
+  }
+
+  async function saveCell(
+    anno: number,
+    mese: number,
+    field: EditableField,
+    value: number,
+    prevValue: number,
+  ) {
     try {
-      const res = await fetch("/api/margini/cella", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ anno, mese, field, value }),
+      await postCella(anno, mese, field, value);
+      toast.success("Salvato", {
+        action: {
+          label: "Annulla",
+          onClick: async () => {
+            try {
+              await postCella(anno, mese, field, prevValue);
+              toast.success("Modifica annullata");
+              load();
+            } catch {
+              toast.error("Impossibile annullare");
+            }
+          },
+        },
       });
-      if (!res.ok) throw new Error();
-      toast.success("Salvato");
       // Reload to refresh derived metrics
       load();
     } catch {
@@ -221,8 +244,8 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
         ))}
       </div>
 
-      {/* Tabella trasposta */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
+      {/* Tabella trasposta — desktop */}
+      <div className="hidden md:block rounded-lg border border-border bg-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm border-collapse">
             <thead className="bg-muted/40">
@@ -278,6 +301,11 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
         </div>
       </div>
 
+      {/* Vista mobile — card per mese */}
+      <div className="md:hidden">
+        <MobileMeseView mesi={mesiVisibili} totali={data.totali} onSave={saveCell} />
+      </div>
+
       {/* KPI riassunto periodo */}
       <PeriodoKpiRow data={data} />
 
@@ -322,7 +350,7 @@ function Cell({
   row: RowDef;
   mese: MesePivot;
   cfg: { bg: string; color: string; border: string };
-  onSave: (anno: number, mese: number, field: EditableField, value: number) => void;
+  onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
 }) {
   const raw = mese[row.key] as number;
   const isMetric = row.isMetric;
@@ -344,7 +372,7 @@ function Cell({
     return (
       <EditableCell
         value={raw}
-        onSave={(v) => onSave(mese.anno, mese.mese, row.field!, v)}
+        onSave={(v) => onSave(mese.anno, mese.mese, row.field!, v, raw)}
       />
     );
   }
@@ -465,6 +493,130 @@ function TotalCell({
     <td className={`sticky right-0 z-10 text-right px-3 py-1.5 tabular-nums border-l-2 border-primary ${cls}`}>
       {display}
     </td>
+  );
+}
+
+/* ============================================================ */
+/* Vista mobile — card per mese                                  */
+/* ============================================================ */
+function MobileMeseView({
+  mesi,
+  totali,
+  onSave,
+}: {
+  mesi: MesePivot[];
+  totali: MesePivot;
+  onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
+}) {
+  const [selIdx, setSelIdx] = useState(mesi.length - 1);
+  const isTotal = selIdx >= mesi.length;
+  const current = isTotal ? totali : mesi[Math.min(selIdx, mesi.length - 1)];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <label className="text-xs text-muted-foreground font-medium">Mese</label>
+        <select
+          value={selIdx}
+          onChange={(e) => setSelIdx(Number(e.target.value))}
+          className="flex-1 rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+        >
+          {mesi.map((m, i) => (
+            <option key={`${m.anno}-${m.mese}`} value={i}>{m.label}</option>
+          ))}
+          <option value={mesi.length}>Totale periodo</option>
+        </select>
+      </div>
+
+      <div className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden">
+        {ROWS.map((row, ri) => {
+          const cfg = SECTION_CONFIG[row.section];
+          const raw = current[row.key] as number;
+          const isMetric = row.isMetric;
+          const editable = row.type === "input-editable" && !isTotal;
+
+          const valueCls = row.isMolMargin
+            ? raw > 0
+              ? "text-emerald-700 dark:text-emerald-400 font-bold"
+              : raw < 0
+              ? "text-rose-700 dark:text-rose-400 font-bold"
+              : "font-bold"
+            : isMetric
+            ? `${cfg.color} font-bold`
+            : "tabular-nums";
+
+          return (
+            <div
+              key={ri}
+              className={`flex items-center justify-between gap-3 px-3 py-2.5 ${
+                isMetric ? `${cfg.bg} border-l-4 ${cfg.border}` : ""
+              }`}
+            >
+              <span className={`text-sm ${isMetric ? `${cfg.color} font-semibold` : ""}`}>
+                {row.label}
+              </span>
+              {editable ? (
+                <MobileEditInput
+                  value={raw}
+                  onSave={(v) => onSave(current.anno, current.mese, row.field!, v, raw)}
+                />
+              ) : (
+                <span className={`text-sm shrink-0 tabular-nums ${valueCls}`}>
+                  {raw === 0 ? "—" : formatEuro(raw)}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MobileEditInput({
+  value,
+  onSave,
+}: {
+  value: number;
+  onSave: (v: number) => void | Promise<void>;
+}) {
+  const [local, setLocal] = useState(value > 0 ? String(value) : "");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setLocal(value > 0 ? String(value) : "");
+  }, [value]);
+
+  async function commit() {
+    const newVal = parseFloat(local.replace(",", ".")) || 0;
+    if (Math.abs(newVal - value) < 0.001) return;
+    await onSave(newVal);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 800);
+  }
+
+  return (
+    <input
+      type="number"
+      step="0.01"
+      min="0"
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") {
+          setLocal(value > 0 ? String(value) : "");
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      placeholder="—"
+      className={`w-32 h-8 px-2 text-right tabular-nums rounded border bg-transparent outline-none transition-colors text-sm ${
+        saved
+          ? "border-emerald-500 bg-emerald-500/10"
+          : "border-input focus:border-primary focus:bg-background"
+      }`}
+    />
   );
 }
 
