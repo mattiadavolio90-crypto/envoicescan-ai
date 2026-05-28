@@ -309,7 +309,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                       key={`${m.anno}-${m.mese}`}
                       className={`text-right px-3 py-2.5 font-semibold ${
                         isCurrent
-                          ? "text-sky-500 dark:text-sky-400 bg-sky-500/8 border-l border-r border-sky-500/50"
+                          ? "text-sky-500 dark:text-sky-400 border-l border-r border-sky-500/50"
                           : "border-r border-border"
                       }`}
                     >
@@ -394,7 +394,7 @@ function Cell({
   const display = raw === 0 ? "—" : formatEuro(raw);
 
   const currentCls = isCurrent
-    ? "bg-sky-500/8 border-l border-r border-sky-500/40"
+    ? "border-l border-r border-sky-500/50"
     : "border-r border-border";
 
   if (row.type === "input-editable" && row.field) {
@@ -465,7 +465,7 @@ function EditableCell({
   const pct = pctIncidenza(liveVal, netto);
 
   const currentCls = isCurrent
-    ? "bg-sky-500/8 border-l border-r border-sky-500/40"
+    ? "border-l border-r border-sky-500/50"
     : "border-r border-border";
 
   return (

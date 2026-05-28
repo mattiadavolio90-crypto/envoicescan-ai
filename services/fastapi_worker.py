@@ -3790,6 +3790,68 @@ class MarginiKpiResponse(BaseModel):
     delta_personale_pct: Optional[float] = None
     delta_mol_pct: Optional[float] = None
     confronto_label: str
+    spark_lordo: List[float] = []
+    spark_fb: List[float] = []
+    spark_margine: List[float] = []
+    spark_spese: List[float] = []
+    spark_personale: List[float] = []
+    spark_mol: List[float] = []
+
+
+def _aggrega_mensili_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
+    """Come _aggrega_totali_margini ma ritorna anche i valori per singolo mese (per le sparkline)."""
+    mesi_target = []
+    y, m = d_da.year, d_da.month
+    while (y, m) <= (d_a.year, d_a.month):
+        mesi_target.append((y, m))
+        m += 1
+        if m > 12:
+            y += 1
+            m = 1
+
+    annos = sorted({yy for yy, _ in mesi_target}) or [d_da.year]
+    margini_resp = (
+        sb.table("margini_mensili")
+        .select("*")
+        .eq("ristorante_id", ristorante_id)
+        .in_("anno", annos)
+        .execute()
+    )
+    margini_map = {(int(r["anno"]), int(r["mese"])): r for r in (margini_resp.data or [])}
+
+    tot = {"lordo": 0.0, "netto": 0.0, "fb": 0.0, "pm": 0.0,
+           "spese": 0.0, "pers": 0.0, "mol": 0.0, "mesi_attivi": 0,
+           "spark_lordo": [], "spark_fb": [], "spark_margine": [],
+           "spark_spese": [], "spark_personale": [], "spark_mol": []}
+    for (yy, mm) in mesi_target:
+        r = margini_map.get((yy, mm), {})
+        fb_auto, spese_auto = _calcola_costi_auto_per_mese(sb, ristorante_id, yy, mm)
+        iva10 = float(r.get("fatturato_iva10") or 0)
+        iva22 = float(r.get("fatturato_iva22") or 0)
+        altri = float(r.get("altri_ricavi_noiva") or 0)
+        lordo = iva10 + iva22 + altri
+        netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
+        fb_tot = fb_auto + float(r.get("altri_costi_fb") or 0)
+        sp_tot = spese_auto + float(r.get("altri_costi_spese") or 0)
+        pers = float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
+        pm = netto - fb_tot
+        mol_v = pm - sp_tot - pers
+        tot["lordo"] += lordo
+        tot["netto"] += netto
+        tot["fb"] += fb_tot
+        tot["pm"] += pm
+        tot["spese"] += sp_tot
+        tot["pers"] += pers
+        tot["mol"] += mol_v
+        if netto > 0:
+            tot["mesi_attivi"] += 1
+        tot["spark_lordo"].append(round(lordo, 2))
+        tot["spark_fb"].append(round(fb_tot, 2))
+        tot["spark_margine"].append(round(pm, 2))
+        tot["spark_spese"].append(round(sp_tot, 2))
+        tot["spark_personale"].append(round(pers, 2))
+        tot["spark_mol"].append(round(mol_v, 2))
+    return tot
 
 
 def _aggrega_totali_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
@@ -3855,18 +3917,7 @@ async def get_margini_kpi(
 
     d_da = _date.fromisoformat(data_da)
     d_a = _date.fromisoformat(data_a)
-    cur = _aggrega_totali_margini(sb, ristorante_id, d_da, d_a)
-
-    # Periodo precedente: stessa durata, subito prima
-    delta_days = (d_a - d_da).days + 1
-    prev_a = d_da - _timedelta(days=1)
-    prev_da = prev_a - _timedelta(days=delta_days - 1)
-    prev = _aggrega_totali_margini(sb, ristorante_id, prev_da, prev_a)
-
-    def _pct(cur_v: float, prev_v: float):
-        if abs(prev_v) > 0.01:
-            return round((cur_v - prev_v) / abs(prev_v) * 100, 1)
-        return None
+    cur = _aggrega_mensili_margini(sb, ristorante_id, d_da, d_a)
 
     netto = cur["netto"]
     return MarginiKpiResponse(
@@ -3882,13 +3933,13 @@ async def get_margini_kpi(
         spese_perc=round(cur["spese"] / netto * 100, 1) if netto > 0 else 0.0,
         personale_perc=round(cur["pers"] / netto * 100, 1) if netto > 0 else 0.0,
         mol_perc=round(cur["mol"] / netto * 100, 1) if netto > 0 else 0.0,
-        delta_lordo_pct=_pct(cur["lordo"], prev["lordo"]),
-        delta_fb_pct=_pct(cur["fb"], prev["fb"]),
-        delta_margine_pct=_pct(cur["pm"], prev["pm"]),
-        delta_spese_pct=_pct(cur["spese"], prev["spese"]),
-        delta_personale_pct=_pct(cur["pers"], prev["pers"]),
-        delta_mol_pct=_pct(cur["mol"], prev["mol"]),
-        confronto_label="periodo prec.",
+        confronto_label="",
+        spark_lordo=cur["spark_lordo"],
+        spark_fb=cur["spark_fb"],
+        spark_margine=cur["spark_margine"],
+        spark_spese=cur["spark_spese"],
+        spark_personale=cur["spark_personale"],
+        spark_mol=cur["spark_mol"],
     )
 
 

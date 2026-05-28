@@ -20,7 +20,39 @@ export type KpiData = {
   delta_personale_pct: number | null;
   delta_mol_pct: number | null;
   confronto_label: string;
+  spark_lordo?: number[];
+  spark_fb?: number[];
+  spark_margine?: number[];
+  spark_spese?: number[];
+  spark_personale?: number[];
+  spark_mol?: number[];
 };
+
+function Sparkline({ values, color }: { values: number[]; color: string }) {
+  if (!values || values.length < 2) return null;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const w = 72;
+  const h = 28;
+  const step = w / (values.length - 1);
+  const points = values
+    .map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / range) * h).toFixed(1)}`)
+    .join(" ");
+  return (
+    <svg width={w} height={h} className="inline-block shrink-0">
+      <polyline
+        fill="none"
+        stroke={color}
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points}
+        opacity={0.85}
+      />
+    </svg>
+  );
+}
 
 type Tone = "sky" | "orange" | "emerald" | "rose" | "violet" | "pink";
 
@@ -33,23 +65,34 @@ const TONE: Record<Tone, { border: string; hover: string; value: string }> = {
   pink:    { border: "border-pink-500/40",    hover: "hover:border-pink-500/70",    value: "text-pink-600 dark:text-pink-400" },
 };
 
+// Colori hex allineati al TONE per i tratti SVG sparkline
+const TONE_COLOR: Record<Tone, string> = {
+  sky:     "#0ea5e9",
+  orange:  "#f97316",
+  emerald: "#10b981",
+  rose:    "#f43f5e",
+  violet:  "#8b5cf6",
+  pink:    "#ec4899",
+};
+
 type CardDef = {
   label: string;
   value: string;
-  sub?: string; // solo Fatturato Lordo ha il sub
+  sub?: string;
   tone: Tone;
+  spark?: number[];
 };
 
 export function KpiBar({ kpi }: { kpi: KpiData }) {
   const molTone: Tone = kpi.mol >= 0 ? "emerald" : "rose";
 
   const cards: CardDef[] = [
-    { label: "Fatturato Lordo",  value: formatEuro(kpi.fatturato_lordo), sub: `netto ${formatEuro(kpi.fatturato_netto)}`, tone: "sky" },
-    { label: "Costi F&B",        value: formatEuro(kpi.costi_fb),         tone: "orange" },
-    { label: "Margine Lordo",    value: formatEuro(kpi.primo_margine),    tone: kpi.primo_margine >= 0 ? "emerald" : "rose" },
-    { label: "Spese Generali",   value: formatEuro(kpi.spese_generali),   tone: "violet" },
-    { label: "Costo Personale",  value: formatEuro(kpi.costo_personale),  tone: "pink" },
-    { label: "MOL",              value: formatEuro(kpi.mol),              tone: molTone },
+    { label: "Fatturato Lordo",  value: formatEuro(kpi.fatturato_lordo), sub: `netto ${formatEuro(kpi.fatturato_netto)}`, tone: "sky",    spark: kpi.spark_lordo },
+    { label: "Costi F&B",        value: formatEuro(kpi.costi_fb),                                                          tone: "orange", spark: kpi.spark_fb },
+    { label: "Margine Lordo",    value: formatEuro(kpi.primo_margine),                                                     tone: kpi.primo_margine >= 0 ? "emerald" : "rose", spark: kpi.spark_margine },
+    { label: "Spese Generali",   value: formatEuro(kpi.spese_generali),                                                    tone: "violet", spark: kpi.spark_spese },
+    { label: "Costo Personale",  value: formatEuro(kpi.costo_personale),                                                   tone: "pink",   spark: kpi.spark_personale },
+    { label: "MOL",              value: formatEuro(kpi.mol),                                                                tone: molTone,  spark: kpi.spark_mol },
   ];
 
   return (
@@ -59,15 +102,20 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
         return (
           <div
             key={c.label}
-            className={`rounded-lg border ${t.border} ${t.hover} bg-card p-4 transition-colors`}
+            className={`rounded-lg border ${t.border} ${t.hover} bg-card p-4 transition-colors flex flex-col min-h-[96px]`}
           >
             <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
               {c.label}
             </p>
-            <p className={`text-2xl font-bold tracking-tight mt-1.5 leading-tight ${t.value}`}>
-              {c.value}
-            </p>
-            {c.sub && <p className="text-[11px] text-muted-foreground mt-1">{c.sub}</p>}
+            <div className="flex items-end justify-between gap-2 mt-1.5">
+              <p className={`text-2xl font-bold tracking-tight leading-tight ${t.value}`}>
+                {c.value}
+              </p>
+              {c.spark && c.spark.length >= 2 && (
+                <Sparkline values={c.spark} color={TONE_COLOR[c.tone]} />
+              )}
+            </div>
+            {c.sub && <p className="text-[11px] text-muted-foreground mt-auto pt-2">{c.sub}</p>}
           </div>
         );
       })}
