@@ -42,7 +42,7 @@ const navMain = [
   { title: "Home", url: "/dashboard", icon: Home },
   { title: "Analisi Fatture", url: "/analisi-fatture", icon: FileText },
   { title: "Prezzi", url: "/prezzi", icon: Search },
-  { title: "Margini", url: "/margini", icon: BarChart3 },
+  { title: "Ricavi e Margini", url: "/margini", icon: BarChart3 },
   { title: "Foodcost", url: "/foodcost", icon: Utensils },
 ];
 

@@ -18,16 +18,18 @@ type SearchParams = {
   data_da?: string;
   data_a?: string;
   anno?: string;
+  mese?: string;
 };
 
 function resolvePeriodo(sp: SearchParams): {
   data_da: string;
   data_a: string;
   preset: PeriodoPreset;
+  mese?: string;
 } {
   const preset = (sp.preset ?? "anno_corrente") as PeriodoPreset;
-  if (preset === "personalizzato" && sp.data_da && sp.data_a) {
-    return { data_da: sp.data_da, data_a: sp.data_a, preset };
+  if ((preset === "personalizzato" || preset === "mese_specifico") && sp.data_da && sp.data_a) {
+    return { data_da: sp.data_da, data_a: sp.data_a, preset, mese: sp.mese };
   }
   const calc = calcolaPeriodo(preset);
   return { data_da: calc.data_da, data_a: calc.data_a, preset };
@@ -37,8 +39,13 @@ async function fetchKpiData(data_da: string, data_a: string): Promise<KpiData> {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   const fallback: KpiData = {
-    fatturato_netto: 0, ricavi_iva10: 0, ricavi_iva22: 0, altri_ricavi: 0,
-    giorni_con_dati: 0, giorni_periodo: 0, media_giornaliera: 0,
+    fatturato_lordo: 0, fatturato_netto: 0, costi_fb: 0, primo_margine: 0,
+    spese_generali: 0, costo_personale: 0, mol: 0,
+    food_cost_perc: 0, primo_margine_perc: 0, spese_perc: 0,
+    personale_perc: 0, mol_perc: 0,
+    delta_lordo_pct: null, delta_fb_pct: null, delta_margine_pct: null,
+    delta_spese_pct: null, delta_personale_pct: null, delta_mol_pct: null,
+    confronto_label: "periodo prec.",
   };
   if (!token) return fallback;
 
@@ -47,29 +54,13 @@ async function fetchKpiData(data_da: string, data_a: string): Promise<KpiData> {
 
   try {
     const qs = new URLSearchParams({ data_da, data_a });
-    const res = await fetch(`${WORKER_URL}/api/ricavi/giornalieri?${qs}`, {
+    const res = await fetch(`${WORKER_URL}/api/margini/kpi?${qs}`, {
       headers: h,
       cache: "no-store",
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return fallback;
-    const data = await res.json();
-
-    const giorniPeriodo = Math.round(
-      (new Date(data_a).getTime() - new Date(data_da).getTime()) / 86400000,
-    ) + 1;
-
-    return {
-      fatturato_netto: data.totale_netto ?? 0,
-      ricavi_iva10: data.totale_iva10 ?? 0,
-      ricavi_iva22: data.totale_iva22 ?? 0,
-      altri_ricavi: data.totale_altri ?? 0,
-      giorni_con_dati: data.giorni_con_dati ?? 0,
-      giorni_periodo: Math.max(1, giorniPeriodo),
-      media_giornaliera: data.giorni_con_dati > 0
-        ? (data.totale_netto ?? 0) / data.giorni_con_dati
-        : 0,
-    };
+    return (await res.json()) as KpiData;
   } catch {
     return fallback;
   }
@@ -82,7 +73,7 @@ export default async function MarginiPage({
 }) {
   const sp = await searchParams;
   const tab = sp.tab ?? "ricavi";
-  const { data_da, data_a, preset } = resolvePeriodo(sp);
+  const { data_da, data_a, preset, mese } = resolvePeriodo(sp);
 
   const anno = parseInt(
     sp.anno ?? String(parseInt(data_da.slice(0, 4), 10)),
@@ -94,11 +85,11 @@ export default async function MarginiPage({
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Marginalità</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Ricavi e Margini</h1>
       </div>
 
       <Suspense>
-        <FiltriPeriodo presetCorrente={preset} dataDa={data_da} dataA={data_a} />
+        <FiltriPeriodo presetCorrente={preset} dataDa={data_da} dataA={data_a} meseSelezionato={mese} />
       </Suspense>
 
       <KpiBar kpi={kpi} />

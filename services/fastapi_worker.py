@@ -3767,6 +3767,132 @@ async def get_margini_analisi(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# KPI condivisi (hub Ricavi e Margini) — 6 metriche + delta vs periodo prec.
+# ═══════════════════════════════════════════════════════════════════════════
+
+class MarginiKpiResponse(BaseModel):
+    fatturato_lordo: float
+    fatturato_netto: float
+    costi_fb: float
+    primo_margine: float
+    spese_generali: float
+    costo_personale: float
+    mol: float
+    food_cost_perc: float
+    primo_margine_perc: float
+    spese_perc: float
+    personale_perc: float
+    mol_perc: float
+    delta_lordo_pct: Optional[float] = None
+    delta_fb_pct: Optional[float] = None
+    delta_margine_pct: Optional[float] = None
+    delta_spese_pct: Optional[float] = None
+    delta_personale_pct: Optional[float] = None
+    delta_mol_pct: Optional[float] = None
+    confronto_label: str
+
+
+def _aggrega_totali_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
+    """Aggrega i totali del conto economico nel periodo [d_da, d_a] (oggetti date)."""
+    mesi_target = []
+    y, m = d_da.year, d_da.month
+    while (y, m) <= (d_a.year, d_a.month):
+        mesi_target.append((y, m))
+        m += 1
+        if m > 12:
+            y += 1
+            m = 1
+
+    annos = sorted({yy for yy, _ in mesi_target}) or [d_da.year]
+    margini_resp = (
+        sb.table("margini_mensili")
+        .select("*")
+        .eq("ristorante_id", ristorante_id)
+        .in_("anno", annos)
+        .execute()
+    )
+    margini_map = {(int(r["anno"]), int(r["mese"])): r for r in (margini_resp.data or [])}
+
+    tot = {"lordo": 0.0, "netto": 0.0, "fb": 0.0, "pm": 0.0,
+           "spese": 0.0, "pers": 0.0, "mol": 0.0, "mesi_attivi": 0}
+    for (yy, mm) in mesi_target:
+        r = margini_map.get((yy, mm), {})
+        fb_auto, spese_auto = _calcola_costi_auto_per_mese(sb, ristorante_id, yy, mm)
+        iva10 = float(r.get("fatturato_iva10") or 0)
+        iva22 = float(r.get("fatturato_iva22") or 0)
+        altri = float(r.get("altri_ricavi_noiva") or 0)
+        lordo = iva10 + iva22 + altri
+        netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
+        fb_tot = fb_auto + float(r.get("altri_costi_fb") or 0)
+        sp_tot = spese_auto + float(r.get("altri_costi_spese") or 0)
+        pers = float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
+        pm = netto - fb_tot
+        mol_v = pm - sp_tot - pers
+        tot["lordo"] += lordo
+        tot["netto"] += netto
+        tot["fb"] += fb_tot
+        tot["pm"] += pm
+        tot["spese"] += sp_tot
+        tot["pers"] += pers
+        tot["mol"] += mol_v
+        if netto > 0:
+            tot["mesi_attivi"] += 1
+    return tot
+
+
+@app.get("/api/margini/kpi", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def get_margini_kpi(
+    data_da: str,
+    data_a: str,
+    authorization: Optional[str] = Header(None),
+) -> MarginiKpiResponse:
+    from datetime import date as _date, timedelta as _timedelta
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    d_da = _date.fromisoformat(data_da)
+    d_a = _date.fromisoformat(data_a)
+    cur = _aggrega_totali_margini(sb, ristorante_id, d_da, d_a)
+
+    # Periodo precedente: stessa durata, subito prima
+    delta_days = (d_a - d_da).days + 1
+    prev_a = d_da - _timedelta(days=1)
+    prev_da = prev_a - _timedelta(days=delta_days - 1)
+    prev = _aggrega_totali_margini(sb, ristorante_id, prev_da, prev_a)
+
+    def _pct(cur_v: float, prev_v: float):
+        if abs(prev_v) > 0.01:
+            return round((cur_v - prev_v) / abs(prev_v) * 100, 1)
+        return None
+
+    netto = cur["netto"]
+    return MarginiKpiResponse(
+        fatturato_lordo=round(cur["lordo"], 2),
+        fatturato_netto=round(cur["netto"], 2),
+        costi_fb=round(cur["fb"], 2),
+        primo_margine=round(cur["pm"], 2),
+        spese_generali=round(cur["spese"], 2),
+        costo_personale=round(cur["pers"], 2),
+        mol=round(cur["mol"], 2),
+        food_cost_perc=round(cur["fb"] / netto * 100, 1) if netto > 0 else 0.0,
+        primo_margine_perc=round(cur["pm"] / netto * 100, 1) if netto > 0 else 0.0,
+        spese_perc=round(cur["spese"] / netto * 100, 1) if netto > 0 else 0.0,
+        personale_perc=round(cur["pers"] / netto * 100, 1) if netto > 0 else 0.0,
+        mol_perc=round(cur["mol"] / netto * 100, 1) if netto > 0 else 0.0,
+        delta_lordo_pct=_pct(cur["lordo"], prev["lordo"]),
+        delta_fb_pct=_pct(cur["fb"], prev["fb"]),
+        delta_margine_pct=_pct(cur["pm"], prev["pm"]),
+        delta_spese_pct=_pct(cur["spese"], prev["spese"]),
+        delta_personale_pct=_pct(cur["pers"], prev["pers"]),
+        delta_mol_pct=_pct(cur["mol"], prev["mol"]),
+        confronto_label="periodo prec.",
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # RICAVI GIORNALIERI — sorgente di verità ricavi (sync mensile via trigger DB)
 # ═══════════════════════════════════════════════════════════════════════════
 

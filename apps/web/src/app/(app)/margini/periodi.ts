@@ -6,6 +6,7 @@ export type PeriodoPreset =
   | "anno_precedente"
   | "q1" | "q2" | "q3" | "q4"
   | "h1" | "h2"
+  | "mese_specifico"
   | "personalizzato";
 
 export type PeriodoCalcolato = {
@@ -64,6 +65,29 @@ export function calcolaPeriodo(preset: PeriodoPreset, oggi: Date = new Date()): 
       return { data_da: fmt(inizio), data_a: fmt(oggi), label: "Anno in corso" };
     }
   }
+}
+
+export function calcolaMese(year: number, month1Based: number): PeriodoCalcolato {
+  const inizio = new Date(year, month1Based - 1, 1);
+  const fine = lastDay(year, month1Based);
+  return {
+    data_da: fmt(inizio),
+    data_a: fmt(fine),
+    label: meseLabel(year, month1Based),
+  };
+}
+
+// Genera gli ultimi N mesi (default 24) terminando con il mese corrente.
+export function mesiSelezionabili(n = 24, oggi: Date = new Date()): { year: number; month: number; label: string }[] {
+  const out: { year: number; month: number; label: string }[] = [];
+  let y = oggi.getFullYear();
+  let m = oggi.getMonth() + 1; // 1-based
+  for (let i = 0; i < n; i++) {
+    out.push({ year: y, month: m, label: meseLabel(y, m) });
+    m -= 1;
+    if (m < 1) { m = 12; y -= 1; }
+  }
+  return out;
 }
 
 export function formatEuro(v: number, decimali = 0): string {

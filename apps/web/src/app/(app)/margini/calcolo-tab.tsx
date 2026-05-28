@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Info, Lock, RefreshCw } from "lucide-react";
+import { Info, Lock, RefreshCw, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
-import { formatEuro, formatPct } from "./periodi";
+import { formatEuro } from "./periodi";
 
 type MesePivot = {
   anno: number;
@@ -80,31 +80,36 @@ const ROWS: RowDef[] = [
   { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true },
 ];
 
-const SECTION_CONFIG: Record<Section, { color: string; bg: string; border: string }> = {
+const SECTION_CONFIG: Record<Section, { color: string; bg: string; border: string; rgb: string }> = {
   ricavi: {
     color: "text-sky-700 dark:text-sky-300",
     bg: "bg-sky-500/8",
     border: "border-l-sky-500",
+    rgb: "14,165,233",
   },
   fb: {
     color: "text-orange-700 dark:text-orange-300",
     bg: "bg-orange-500/8",
     border: "border-l-orange-500",
+    rgb: "249,115,22",
   },
   spese: {
     color: "text-purple-700 dark:text-purple-300",
     bg: "bg-purple-500/8",
     border: "border-l-purple-500",
+    rgb: "168,85,247",
   },
   personale: {
     color: "text-pink-700 dark:text-pink-300",
     bg: "bg-pink-500/8",
     border: "border-l-pink-500",
+    rgb: "236,72,153",
   },
   margine: {
     color: "text-emerald-700 dark:text-emerald-300",
     bg: "bg-emerald-500/10",
     border: "border-l-emerald-500",
+    rgb: "16,185,129",
   },
 };
 
@@ -270,6 +275,10 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
               {ROWS.map((row, ri) => {
                 const cfg = SECTION_CONFIG[row.section];
                 const isMetric = row.isMetric;
+                // Max assoluto sulla riga per la heatmap (solo righe dati, non risultato)
+                const rowMax = isMetric
+                  ? 0
+                  : Math.max(0, ...mesiVisibili.map((m) => Math.abs(m[row.key] as number)));
                 return (
                   <tr
                     key={ri}
@@ -288,6 +297,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                         row={row}
                         mese={m}
                         cfg={cfg}
+                        rowMax={rowMax}
                         onSave={saveCell}
                       />
                     ))}
@@ -306,34 +316,8 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
         <MobileMeseView mesi={mesiVisibili} totali={data.totali} onSave={saveCell} />
       </div>
 
-      {/* KPI riassunto periodo */}
-      <PeriodoKpiRow data={data} />
-
-      {/* Commenti automatici */}
-      {data.commenti.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold flex items-center gap-1.5">
-            💬 Analisi automatica
-          </h3>
-          <div className="space-y-1.5">
-            {data.commenti.map((c, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-3 rounded-md border border-border bg-card p-3"
-                style={{ borderLeftWidth: 4, borderLeftColor: c.colore }}
-              >
-                <span className="text-lg font-bold shrink-0" style={{ color: c.colore }}>
-                  {c.emoji} {c.percentuale}
-                </span>
-                <div className="text-sm">
-                  <strong>{c.kpi_nome}</strong>
-                  <span className="text-muted-foreground"> · {c.commento}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Analisi visiva: cascata conto economico + gauge + commenti */}
+      <AnalisiVisiva data={data} />
     </div>
   );
 }
@@ -345,11 +329,13 @@ function Cell({
   row,
   mese,
   cfg,
+  rowMax,
   onSave,
 }: {
   row: RowDef;
   mese: MesePivot;
-  cfg: { bg: string; color: string; border: string };
+  cfg: { bg: string; color: string; border: string; rgb: string };
+  rowMax: number;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
 }) {
   const raw = mese[row.key] as number;
@@ -368,6 +354,12 @@ function Cell({
     ? `${cfg.bg} ${cfg.color} font-bold`
     : "";
 
+  // Heatmap: intensità sfondo proporzionale al valore (solo righe dati read-only)
+  const heatStyle =
+    !isMetric && rowMax > 0 && Math.abs(raw) > 0
+      ? { backgroundColor: `rgba(${cfg.rgb},${(0.06 + 0.34 * (Math.abs(raw) / rowMax)).toFixed(3)})` }
+      : undefined;
+
   if (row.type === "input-editable" && row.field) {
     return (
       <EditableCell
@@ -379,7 +371,10 @@ function Cell({
 
   if (row.type === "input-readonly-tooltip") {
     return (
-      <td className={`text-right px-2 py-1.5 border-r border-border tabular-nums text-muted-foreground/80 ${metricCls}`}>
+      <td
+        style={heatStyle}
+        className={`text-right px-2 py-1.5 border-r border-border tabular-nums ${heatStyle ? "" : "text-muted-foreground/80"} ${metricCls}`}
+      >
         <span title="Modifica da Tab Ricavi" className="inline-flex items-center gap-1 cursor-help">
           {display}
           <Lock className="size-3 opacity-40" />
@@ -390,7 +385,10 @@ function Cell({
 
   if (row.type === "input-readonly") {
     return (
-      <td className={`text-right px-2 py-1.5 border-r border-border tabular-nums text-muted-foreground/80 ${metricCls}`}>
+      <td
+        style={heatStyle}
+        className={`text-right px-2 py-1.5 border-r border-border tabular-nums ${heatStyle ? "" : "text-muted-foreground/80"} ${metricCls}`}
+      >
         <span title="Calcolato dalle fatture caricate" className="inline-flex items-center gap-1 cursor-help">
           {display}
           <Lock className="size-3 opacity-40" />
@@ -621,51 +619,151 @@ function MobileEditInput({
 }
 
 /* ============================================================ */
-/* KPI riassunto periodo                                         */
+/* Analisi visiva: cascata conto economico + gauge + commenti    */
 /* ============================================================ */
-function PeriodoKpiRow({ data }: { data: AnalisiResponse }) {
-  const cards = [
-    { label: "Fatturato Totale", value: formatEuro(data.totali.fatturato_netto), sub: `${data.num_mesi_attivi} mesi attivi`, tone: "primary" as const },
-    { label: "Fatturato Medio", value: formatEuro(data.fatt_medio_mensile), sub: "media mensile", tone: "default" as const },
-    { label: "Food Cost", value: formatEuro(data.totali.costi_fb_totali), sub: `incidenza ${formatPct(data.food_cost_perc)}`, tone: "default" as const },
-    { label: "1° Margine", value: formatEuro(data.totali.primo_margine), sub: `incidenza ${formatPct(data.primo_margine_perc)}`, tone: data.totali.primo_margine >= 0 ? "positive" as const : "negative" as const },
-    { label: "Spese Generali", value: formatEuro(data.totali.costi_spese_totali), sub: `incidenza ${formatPct(data.spese_gen_perc)}`, tone: "default" as const },
-    { label: "Costo del Lavoro", value: formatEuro(data.totali.costi_personale), sub: `incidenza ${formatPct(data.personale_perc)}`, tone: "default" as const },
-    { label: "MOL", value: formatEuro(data.totali.mol), sub: `incidenza ${formatPct(data.mol_perc)}`, tone: data.totali.mol >= 0 ? "positive" as const : "negative" as const },
-  ];
+const GAUGE_GREEN = "#10b981";
+const GAUGE_AMBER = "#f59e0b";
+const GAUGE_ROSE = "#f43f5e";
+
+function clamp01(v: number) {
+  return Math.max(0, Math.min(1, v));
+}
+
+function AnalisiVisiva({ data }: { data: AnalisiResponse }) {
+  const t = data.totali;
+  const hasData = t.fatturato_netto > 0 || t.costi_fb_totali > 0;
+
+  // Colori gauge per soglia
+  const fc = data.food_cost_perc;
+  const fcColor = fc <= 28 ? GAUGE_GREEN : fc <= 33 ? GAUGE_AMBER : GAUGE_ROSE;
+  const pm = data.primo_margine_perc;
+  const pmColor = pm >= 67 ? GAUGE_GREEN : pm >= 60 ? GAUGE_AMBER : GAUGE_ROSE;
+  const mol = data.mol_perc;
+  const molColor = mol >= 10 ? GAUGE_GREEN : mol >= 5 ? GAUGE_AMBER : GAUGE_ROSE;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-      {cards.map((c) => (
-        <div
-          key={c.label}
-          className={`rounded-lg border p-3 ${
-            c.tone === "primary"
-              ? "border-primary/30 bg-primary/5"
-              : c.tone === "positive"
-              ? "border-emerald-500/30 bg-emerald-500/5"
-              : c.tone === "negative"
-              ? "border-rose-500/30 bg-rose-500/5"
-              : "border-border bg-card"
-          }`}
-        >
-          <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">{c.label}</p>
-          <p
-            className={`text-base font-bold mt-0.5 leading-tight ${
-              c.tone === "primary"
-                ? "text-primary"
-                : c.tone === "positive"
-                ? "text-emerald-700 dark:text-emerald-400"
-                : c.tone === "negative"
-                ? "text-rose-700 dark:text-rose-400"
-                : ""
-            }`}
-          >
-            {c.value}
-          </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5 truncate">{c.sub}</p>
-        </div>
-      ))}
+    <div className="rounded-lg border border-border bg-card p-4 space-y-5">
+      <h3 className="text-sm font-semibold flex items-center gap-1.5">
+        <BarChart3 className="size-4 text-primary" />
+        Analisi visiva
+      </h3>
+
+      {!hasData ? (
+        <p className="text-sm text-muted-foreground py-6 text-center">
+          Inserisci ricavi e carica fatture per generare l'analisi.
+        </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* Cascata P&L */}
+            <div className="lg:col-span-3 space-y-2.5">
+              <p className="text-xs text-muted-foreground">
+                Dal fatturato al margine operativo
+              </p>
+              <CascataPL t={t} />
+            </div>
+
+            {/* Gauge */}
+            <div className="lg:col-span-2 grid grid-cols-3 gap-2 self-center">
+              <Gauge label="Food Cost" valueText={`${fc.toFixed(0)}%`} fraction={clamp01(fc / 100)} color={fcColor} />
+              <Gauge label="1° Margine" valueText={`${pm.toFixed(0)}%`} fraction={clamp01(pm / 100)} color={pmColor} />
+              <Gauge label="MOL" valueText={`${mol.toFixed(0)}%`} fraction={clamp01(mol / 100)} color={molColor} />
+            </div>
+          </div>
+
+          {/* Commenti automatici integrati */}
+          {data.commenti.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              {data.commenti.map((c, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-2.5 rounded-md bg-muted/30 p-2.5"
+                  style={{ borderLeft: `3px solid ${c.colore}` }}
+                >
+                  <span className="text-sm font-bold shrink-0" style={{ color: c.colore }}>
+                    {c.emoji} {c.percentuale}
+                  </span>
+                  <span className="text-xs leading-snug">
+                    <strong>{c.kpi_nome}</strong>
+                    <span className="text-muted-foreground"> · {c.commento}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function CascataPL({ t }: { t: MesePivot }) {
+  const steps: { label: string; value: number; kind: "result" | "cost"; rgb: string }[] = [
+    { label: "Fatturato Netto", value: t.fatturato_netto, kind: "result", rgb: "14,165,233" },
+    { label: "− Costi F&B", value: t.costi_fb_totali, kind: "cost", rgb: "249,115,22" },
+    { label: "= 1° Margine", value: t.primo_margine, kind: "result", rgb: t.primo_margine >= 0 ? "16,185,129" : "244,63,94" },
+    { label: "− Spese Generali", value: t.costi_spese_totali, kind: "cost", rgb: "168,85,247" },
+    { label: "− Costo Personale", value: t.costi_personale, kind: "cost", rgb: "236,72,153" },
+    { label: "= MOL", value: t.mol, kind: "result", rgb: t.mol >= 0 ? "16,185,129" : "244,63,94" },
+  ];
+  const refMax = Math.max(1, ...steps.map((s) => Math.abs(s.value)));
+
+  return (
+    <div className="space-y-1.5">
+      {steps.map((s) => {
+        const w = Math.min(100, (Math.abs(s.value) / refMax) * 100);
+        const isResult = s.kind === "result";
+        return (
+          <div key={s.label} className="flex items-center gap-2">
+            <span className={`w-28 sm:w-32 shrink-0 text-xs ${isResult ? "font-bold" : "text-muted-foreground"}`}>
+              {s.label}
+            </span>
+            <div className={`flex-1 h-6 rounded overflow-hidden ${isResult ? "bg-muted/40" : "bg-muted/20"}`}>
+              <div
+                className="h-full rounded transition-all duration-500"
+                style={{
+                  width: `${w}%`,
+                  backgroundColor: `rgb(${s.rgb})`,
+                  opacity: isResult ? 0.95 : 0.65,
+                  boxShadow: isResult ? `0 0 12px rgba(${s.rgb},0.5)` : undefined,
+                }}
+              />
+            </div>
+            <span
+              className={`w-20 sm:w-24 shrink-0 text-right text-xs tabular-nums ${isResult ? "font-bold" : "text-muted-foreground"}`}
+              style={isResult ? { color: `rgb(${s.rgb})` } : undefined}
+            >
+              {formatEuro(s.value)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Gauge({
+  label,
+  valueText,
+  fraction,
+  color,
+}: {
+  label: string;
+  valueText: string;
+  fraction: number;
+  color: string;
+}) {
+  const f = clamp01(fraction);
+  // Arco semicircolare superiore: da (8,50) a (92,50) passando in alto (sweep=0)
+  const ARC = "M 8 50 A 42 42 0 0 0 92 50";
+  return (
+    <div className="flex flex-col items-center">
+      <svg viewBox="0 0 100 56" className="w-full max-w-[120px]">
+        <path d={ARC} fill="none" stroke="currentColor" className="text-muted-foreground/20" strokeWidth="9" strokeLinecap="round" pathLength={100} />
+        <path d={ARC} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round" pathLength={100} strokeDasharray={`${f * 100} 100`} />
+        <text x="50" y="44" textAnchor="middle" className="fill-foreground font-bold" fontSize="17">{valueText}</text>
+      </svg>
+      <span className="text-[11px] text-muted-foreground -mt-1">{label}</span>
     </div>
   );
 }
