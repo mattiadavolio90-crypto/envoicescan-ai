@@ -52,33 +52,60 @@ type EditableField =
 
 type Section = "ricavi" | "fb" | "spese" | "personale" | "margine";
 
+type ValueColor = "white" | "sign" | "purple";
+
 type RowDef = {
-  key: keyof MesePivot;
+  key: string;
   label: string;
   type: "input-readonly" | "input-readonly-tooltip" | "input-editable" | "computed";
   field?: EditableField;
   section: Section;
   isMetric?: boolean;
   isMolMargin?: boolean;
-  isPrimoMargin?: boolean;
-  isFattNetto?: boolean;
+  derive?: (m: MesePivot) => number;   // righe virtuali calcolate (es. Totale Costi)
+  labelColor?: string;                 // classe tailwind per la prima colonna
+  valueColor: ValueColor;              // colore dei valori nelle celle
 };
 
 const ROWS: RowDef[] = [
-  { key: "fatturato_iva10",       label: "Ricavi IVA 10%",         type: "input-readonly-tooltip", section: "ricavi" },
-  { key: "fatturato_iva22",       label: "Ricavi IVA 22%",         type: "input-readonly-tooltip", section: "ricavi" },
-  { key: "altri_ricavi_noiva",    label: "Altri ricavi (no IVA)",  type: "input-readonly-tooltip", section: "ricavi" },
-  { key: "fatturato_netto",       label: "= Fatturato Netto",      type: "computed", section: "ricavi", isMetric: true, isFattNetto: true },
-  { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb" },
-  { key: "altri_costi_fb",        label: "Altri Costi F&B",        type: "input-editable", field: "altri_costi_fb", section: "fb" },
-  { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true },
-  { key: "primo_margine",         label: "= 1° Margine",           type: "computed", section: "margine", isMetric: true, isPrimoMargin: true },
-  { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese" },
-  { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese" },
-  { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale" },
-  { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale" },
-  { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true },
+  { key: "fatturato_iva10",       label: "Ricavi IVA 10%",         type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
+  { key: "fatturato_iva22",       label: "Ricavi IVA 22%",         type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
+  { key: "altri_ricavi_noiva",    label: "Altri ricavi (no IVA)",  type: "input-readonly-tooltip", section: "ricavi", valueColor: "white" },
+  { key: "fatturato_netto",       label: "= Fatturato Netto",      type: "computed", section: "ricavi", isMetric: true, labelColor: "text-sky-500 dark:text-sky-400", valueColor: "white" },
+  { key: "costi_fb_auto",         label: "Costi F&B (Fatture)",    type: "input-readonly", section: "fb", valueColor: "white" },
+  { key: "altri_costi_fb",        label: "Altri Costi F&B",        type: "input-editable", field: "altri_costi_fb", section: "fb", valueColor: "white" },
+  { key: "costi_fb_totali",       label: "= Costi F&B Totali",     type: "computed", section: "fb", isMetric: true, labelColor: "text-orange-500 dark:text-orange-400", valueColor: "white" },
+  { key: "primo_margine",         label: "= 1° Margine",           type: "computed", section: "margine", isMetric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "sign" },
+  { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", valueColor: "white" },
+  { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
+  { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", valueColor: "white" },
+  { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", valueColor: "white" },
+  { key: "totale_costi",          label: "= Totale Costi",         type: "computed", section: "spese", isMetric: true, derive: (m) => m.costi_fb_totali + m.costi_spese_totali + m.costi_personale, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
+  { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign" },
 ];
+
+function rowVal(row: RowDef, m: MesePivot): number {
+  if (row.derive) return row.derive(m);
+  return (m[row.key as keyof MesePivot] as number) ?? 0;
+}
+
+// Colore dei valori (e della % incidenza) in base al value-color mode.
+function valueColorCls(vc: ValueColor, raw: number): string {
+  if (vc === "sign") {
+    return raw > 0
+      ? "text-emerald-600 dark:text-emerald-400"
+      : raw < 0
+      ? "text-rose-600 dark:text-rose-400"
+      : "text-muted-foreground";
+  }
+  if (vc === "purple") return "text-violet-600 dark:text-violet-400";
+  return ""; // white = foreground
+}
+
+function pctIncidenza(raw: number, netto: number): string | null {
+  if (!netto || netto === 0 || raw === 0) return null;
+  return `${((raw / netto) * 100).toFixed(0)}%`;
+}
 
 const SECTION_CONFIG: Record<Section, { color: string; bg: string; border: string; rgb: string }> = {
   ricavi: {
@@ -227,7 +254,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
         </button>
         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
           <Info className="size-3" />
-          Modifica le righe in bianco; le altre sono calcolate o ereditate (Tab Ricavi, fatture).
+          Modifica le righe in bianco; le altre sono calcolate o ereditate (Tab Ricavi e Tab Fatture).
         </p>
       </div>
 
@@ -273,20 +300,15 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
             </thead>
             <tbody>
               {ROWS.map((row, ri) => {
-                const cfg = SECTION_CONFIG[row.section];
                 const isMetric = row.isMetric;
-                // Max assoluto sulla riga per la heatmap (solo righe dati, non risultato)
-                const rowMax = isMetric
-                  ? 0
-                  : Math.max(0, ...mesiVisibili.map((m) => Math.abs(m[row.key] as number)));
                 return (
                   <tr
                     key={ri}
-                    className={`border-t border-border ${isMetric ? cfg.bg : ""} ${isMetric ? "font-semibold" : ""}`}
+                    className={`border-t border-border ${isMetric ? "font-semibold" : ""}`}
                   >
                     <td
-                      className={`sticky left-0 z-10 px-3 py-1.5 border-r border-border whitespace-nowrap ${
-                        isMetric ? `${cfg.bg} ${cfg.color} border-l-4 ${cfg.border} font-bold` : "bg-card"
+                      className={`sticky left-0 z-10 bg-card px-3 py-1.5 border-r border-border whitespace-nowrap ${
+                        isMetric ? `font-bold ${row.labelColor ?? ""}` : ""
                       }`}
                     >
                       {row.label}
@@ -296,13 +318,11 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                         key={`${m.anno}-${m.mese}`}
                         row={row}
                         mese={m}
-                        cfg={cfg}
-                        rowMax={rowMax}
                         onSave={saveCell}
                       />
                     ))}
                     {/* Total column */}
-                    <TotalCell row={row} totali={data.totali} cfg={cfg} />
+                    <TotalCell row={row} totali={data.totali} />
                   </tr>
                 );
               })}
@@ -328,88 +348,55 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
 function Cell({
   row,
   mese,
-  cfg,
-  rowMax,
   onSave,
 }: {
   row: RowDef;
   mese: MesePivot;
-  cfg: { bg: string; color: string; border: string; rgb: string };
-  rowMax: number;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
 }) {
-  const raw = mese[row.key] as number;
+  const raw = rowVal(row, mese);
   const isMetric = row.isMetric;
-  const isMolMargin = row.isMolMargin;
+  const colorCls = valueColorCls(row.valueColor, raw);
+  const pct = pctIncidenza(raw, mese.fatturato_netto);
   const display = raw === 0 ? "—" : formatEuro(raw);
-
-  // Color logic for MOL: positive emerald, negative rose
-  const metricCls = isMolMargin
-    ? raw > 0
-      ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold"
-      : raw < 0
-      ? "bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold"
-      : "bg-muted/30 font-bold"
-    : isMetric
-    ? `${cfg.bg} ${cfg.color} font-bold`
-    : "";
-
-  // Heatmap: intensità sfondo proporzionale al valore (solo righe dati read-only)
-  const heatStyle =
-    !isMetric && rowMax > 0 && Math.abs(raw) > 0
-      ? { backgroundColor: `rgba(${cfg.rgb},${(0.06 + 0.34 * (Math.abs(raw) / rowMax)).toFixed(3)})` }
-      : undefined;
 
   if (row.type === "input-editable" && row.field) {
     return (
       <EditableCell
         value={raw}
+        netto={mese.fatturato_netto}
         onSave={(v) => onSave(mese.anno, mese.mese, row.field!, v, raw)}
       />
     );
   }
 
-  if (row.type === "input-readonly-tooltip") {
-    return (
-      <td
-        style={heatStyle}
-        className={`text-right px-2 py-1.5 border-r border-border tabular-nums ${heatStyle ? "" : "text-muted-foreground/80"} ${metricCls}`}
-      >
-        <span title="Modifica da Tab Ricavi" className="inline-flex items-center gap-1 cursor-help">
-          {display}
-          <Lock className="size-3 opacity-40" />
-        </span>
-      </td>
-    );
-  }
+  const tooltip =
+    row.type === "input-readonly-tooltip" ? "Modifica da Tab Ricavi"
+    : row.type === "input-readonly" ? "Calcolato dalle fatture caricate"
+    : undefined;
+  const showLock = row.type === "input-readonly-tooltip" || row.type === "input-readonly";
 
-  if (row.type === "input-readonly") {
-    return (
-      <td
-        style={heatStyle}
-        className={`text-right px-2 py-1.5 border-r border-border tabular-nums ${heatStyle ? "" : "text-muted-foreground/80"} ${metricCls}`}
-      >
-        <span title="Calcolato dalle fatture caricate" className="inline-flex items-center gap-1 cursor-help">
-          {display}
-          <Lock className="size-3 opacity-40" />
-        </span>
-      </td>
-    );
-  }
-
-  // computed
   return (
-    <td className={`text-right px-2 py-1.5 border-r border-border tabular-nums ${metricCls}`}>
-      {display}
+    <td className="text-right px-2 py-1.5 border-r border-border align-middle">
+      <div
+        title={tooltip}
+        className={`inline-flex items-center justify-end gap-1 tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls} ${showLock ? "cursor-help" : ""}`}
+      >
+        {display}
+        {showLock && <Lock className="size-3 opacity-30" />}
+      </div>
+      {pct && <div className={`text-[10px] tabular-nums opacity-65 ${colorCls}`}>{pct}</div>}
     </td>
   );
 }
 
 function EditableCell({
   value,
+  netto,
   onSave,
 }: {
   value: number;
+  netto: number;
   onSave: (v: number) => void;
 }) {
   const [local, setLocal] = useState(value > 0 ? String(value) : "");
@@ -433,8 +420,11 @@ function EditableCell({
     }
   }
 
+  const liveVal = parseFloat(local.replace(",", ".")) || 0;
+  const pct = pctIncidenza(liveVal, netto);
+
   return (
-    <td className="border-r border-border p-0">
+    <td className="border-r border-border p-0 align-middle">
       <input
         type="number"
         step="0.01"
@@ -450,7 +440,7 @@ function EditableCell({
           }
         }}
         placeholder="—"
-        className={`w-full h-full px-2 py-1.5 text-right tabular-nums bg-transparent border-0 outline-none transition-colors text-sm ${
+        className={`w-full px-2 pt-1.5 pb-0 text-right tabular-nums bg-transparent border-0 outline-none transition-colors text-sm ${
           saved
             ? "bg-emerald-500/10"
             : saving
@@ -458,6 +448,7 @@ function EditableCell({
             : "hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset"
         }`}
       />
+      {pct && <div className="px-2 pb-1 text-right text-[10px] tabular-nums opacity-65">{pct}</div>}
     </td>
   );
 }
@@ -465,31 +456,20 @@ function EditableCell({
 function TotalCell({
   row,
   totali,
-  cfg,
 }: {
   row: RowDef;
   totali: MesePivot;
-  cfg: { bg: string; color: string; border: string };
 }) {
-  const raw = totali[row.key] as number;
+  const raw = rowVal(row, totali);
   const display = raw === 0 ? "—" : formatEuro(raw);
-
-  const isMolMargin = row.isMolMargin;
   const isMetric = row.isMetric;
-
-  const cls = isMolMargin
-    ? raw > 0
-      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 font-bold"
-      : raw < 0
-      ? "bg-rose-500/15 text-rose-700 dark:text-rose-400 font-bold"
-      : "bg-primary/10 font-bold"
-    : isMetric
-    ? `${cfg.bg} ${cfg.color} font-bold`
-    : "bg-primary/5";
+  const colorCls = valueColorCls(row.valueColor, raw);
+  const pct = pctIncidenza(raw, totali.fatturato_netto);
 
   return (
-    <td className={`sticky right-0 z-10 text-right px-3 py-1.5 tabular-nums border-l-2 border-primary ${cls}`}>
-      {display}
+    <td className="sticky right-0 z-10 bg-card text-right px-3 py-1.5 tabular-nums border-l-2 border-primary align-middle">
+      <div className={`tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls}`}>{display}</div>
+      {pct && <div className={`text-[10px] tabular-nums opacity-65 ${colorCls}`}>{pct}</div>}
     </td>
   );
 }
@@ -528,29 +508,15 @@ function MobileMeseView({
 
       <div className="rounded-lg border border-border bg-card divide-y divide-border overflow-hidden">
         {ROWS.map((row, ri) => {
-          const cfg = SECTION_CONFIG[row.section];
-          const raw = current[row.key] as number;
+          const raw = rowVal(row, current);
           const isMetric = row.isMetric;
           const editable = row.type === "input-editable" && !isTotal;
-
-          const valueCls = row.isMolMargin
-            ? raw > 0
-              ? "text-emerald-700 dark:text-emerald-400 font-bold"
-              : raw < 0
-              ? "text-rose-700 dark:text-rose-400 font-bold"
-              : "font-bold"
-            : isMetric
-            ? `${cfg.color} font-bold`
-            : "tabular-nums";
+          const colorCls = valueColorCls(row.valueColor, raw);
+          const pct = pctIncidenza(raw, current.fatturato_netto);
 
           return (
-            <div
-              key={ri}
-              className={`flex items-center justify-between gap-3 px-3 py-2.5 ${
-                isMetric ? `${cfg.bg} border-l-4 ${cfg.border}` : ""
-              }`}
-            >
-              <span className={`text-sm ${isMetric ? `${cfg.color} font-semibold` : ""}`}>
+            <div key={ri} className="flex items-center justify-between gap-3 px-3 py-2.5">
+              <span className={`text-sm ${isMetric ? `font-semibold ${row.labelColor ?? ""}` : ""}`}>
                 {row.label}
               </span>
               {editable ? (
@@ -559,8 +525,9 @@ function MobileMeseView({
                   onSave={(v) => onSave(current.anno, current.mese, row.field!, v, raw)}
                 />
               ) : (
-                <span className={`text-sm shrink-0 tabular-nums ${valueCls}`}>
+                <span className={`text-sm shrink-0 text-right tabular-nums ${isMetric ? "font-bold" : ""} ${colorCls}`}>
                   {raw === 0 ? "—" : formatEuro(raw)}
+                  {pct && <span className="block text-[10px] opacity-65">{pct}</span>}
                 </span>
               )}
             </div>
