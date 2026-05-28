@@ -33,14 +33,14 @@ function Sparkline({ values, color }: { values: number[]; color: string }) {
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);
   const range = max - min || 1;
-  const w = 72;
-  const h = 28;
+  const w = 100;
+  const h = 24;
   const step = w / (values.length - 1);
   const points = values
-    .map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / range) * h).toFixed(1)}`)
+    .map((v, i) => `${(i * step).toFixed(1)},${(h - ((v - min) / range) * (h - 2) - 1).toFixed(1)}`)
     .join(" ");
   return (
-    <svg width={w} height={h} className="inline-block shrink-0">
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block w-full">
       <polyline
         fill="none"
         stroke={color}
@@ -102,20 +102,22 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
         return (
           <div
             key={c.label}
-            className={`rounded-lg border ${t.border} ${t.hover} bg-card p-4 transition-colors flex flex-col min-h-[96px]`}
+            className={`rounded-lg border ${t.border} ${t.hover} bg-card px-4 pt-3 pb-2 transition-colors flex flex-col gap-1`}
           >
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium leading-none">
               {c.label}
             </p>
-            <div className="flex items-end justify-between gap-2 mt-1.5">
-              <p className={`text-2xl font-bold tracking-tight leading-tight ${t.value}`}>
-                {c.value}
-              </p>
-              {c.spark && c.spark.length >= 2 && (
+            <p className={`text-2xl font-bold tracking-tight leading-tight ${t.value} truncate`}>
+              {c.value}
+            </p>
+            {c.sub && (
+              <p className="text-[11px] text-muted-foreground leading-none">{c.sub}</p>
+            )}
+            {c.spark && c.spark.length >= 2 && (
+              <div className="mt-1">
                 <Sparkline values={c.spark} color={TONE_COLOR[c.tone]} />
-              )}
-            </div>
-            {c.sub && <p className="text-[11px] text-muted-foreground mt-auto pt-2">{c.sub}</p>}
+              </div>
+            )}
           </div>
         );
       })}
