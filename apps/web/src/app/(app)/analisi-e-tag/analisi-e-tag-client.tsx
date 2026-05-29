@@ -635,7 +635,7 @@ export function AnalisiETagClient({
         refreshing={refreshingSuggestions}
       />
 
-      {/* ── Chip tag ── */}
+      {/* ── Chip tag + azioni ── */}
       <div className="flex flex-wrap items-center gap-2">
         {tags.map(tag => (
           <button
@@ -657,6 +657,17 @@ export function AnalisiETagClient({
         >
           <Plus className="size-3.5" />
           Nuovo tag
+        </button>
+
+        {/* Bottone suggerimenti — sempre visibile */}
+        <button
+          onClick={async () => { await refreshSuggestions(); await reloadTags(); }}
+          disabled={refreshingSuggestions}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 disabled:opacity-50 transition-colors ml-auto"
+          title="Cerca suggerimenti intelligenti sui tuoi prodotti non ancora taggati"
+        >
+          <RefreshCw className={`size-3.5 ${refreshingSuggestions ? "animate-spin" : ""}`} />
+          {refreshingSuggestions ? "Analisi…" : suggestions.length > 0 ? `💡 ${suggestions.length} suggeriment${suggestions.length === 1 ? "o" : "i"}` : "💡 Suggerimenti"}
         </button>
       </div>
 
