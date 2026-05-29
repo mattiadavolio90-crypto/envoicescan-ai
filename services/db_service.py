@@ -1917,10 +1917,12 @@ def get_descrizioni_distinte(user_id: str, ristorante_id: str) -> List[Dict[str,
 
             offset = page * page_size
             response = (
-                supabase_client.table("fatture")
-                .select("descrizione,fornitore,data_documento,unita_misura")
-                .eq("user_id", user_id)
-                .eq("ristorante_id", ristorante_id)
+                _filter_active(
+                    supabase_client.table("fatture")
+                    .select("descrizione,fornitore,data_documento,unita_misura")
+                    .eq("user_id", user_id)
+                    .eq("ristorante_id", ristorante_id)
+                )
                 .range(offset, offset + page_size - 1)
                 .execute()
             )

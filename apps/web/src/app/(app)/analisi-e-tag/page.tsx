@@ -11,7 +11,11 @@ async function fetchInitial<T>(path: string, token: string): Promise<T | null> {
   try {
     const h: Record<string, string> = { Authorization: `Bearer ${token}` };
     if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
-    const res = await fetch(`${WORKER_URL}${path}`, { headers: h, cache: "no-store" });
+    const res = await fetch(`${WORKER_URL}${path}`, {
+      headers: h,
+      cache: "no-store",
+      signal: AbortSignal.timeout(8000),
+    });
     if (!res.ok) return null;
     return res.json();
   } catch {

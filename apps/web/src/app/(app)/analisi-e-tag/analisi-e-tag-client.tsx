@@ -49,9 +49,9 @@ const TOOLTIP_STYLE = {
 /* ── Componenti KPI ── */
 function KpiCard({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: string }) {
   return (
-    <div className={`rounded-lg border ${tone} bg-card px-4 pt-3 pb-2 flex flex-col gap-1`}>
-      <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{label}</p>
-      <p className="text-xl font-bold tracking-tight">{value}</p>
+    <div className={`rounded-lg border ${tone} bg-card px-4 pt-3 pb-2.5 flex flex-col gap-1 transition-colors`}>
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium leading-tight min-h-[28px] flex items-start">{label}</p>
+      <p className="text-xl font-bold tracking-tight truncate">{value}</p>
       {sub && <p className="text-[11px] text-muted-foreground">{sub}</p>}
     </div>
   );
@@ -104,7 +104,7 @@ function TagDialog({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   tag: CustomTag | null;
-  onSaved: () => void;
+  onSaved: (saved: CustomTag, isNew: boolean) => void;
 }) {
   const [nome, setNome] = useState("");
   const [emoji, setEmoji] = useState("");
@@ -126,12 +126,17 @@ function TagDialog({
       const res = tag
         ? await fetch(`/api/tag/${tag.id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
         : await fetch("/api/tag", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const msg = res.status === 401 ? "Sessione scaduta, ricarica la pagina" : "Errore nel salvataggio";
+        throw new Error(msg);
+      }
+      const data = await res.json();
+      const saved: CustomTag | null = data?.tag ?? null;
       toast.success(tag ? "Tag aggiornato" : "Tag creato");
-      onSaved();
+      if (saved) onSaved(saved, !tag);
       onOpenChange(false);
-    } catch {
-      toast.error("Errore nel salvataggio");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Errore nel salvataggio");
     } finally {
       setSaving(false);
     }
@@ -625,14 +630,10 @@ export function AnalisiETagClient({
     loadProdotti(id);
   }
 
+  // Mount: carica analisi + prodotti del primo tag selezionato
   useEffect(() => {
     if (selectedTagId) {
       loadAnalisi(selectedTagId, anno, mese);
-    }
-  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (selectedTagId) {
       loadProdotti(selectedTagId);
     }
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
@@ -1038,15 +1039,12 @@ export function AnalisiETagClient({
         open={dialogTag.open}
         onOpenChange={v => setDialogTag(d => ({ ...d, open: v }))}
         tag={dialogTag.tag}
-        onSaved={async () => {
-          await reloadTags();
-          const res = await fetch("/api/tag").then(r => r.json()).catch(() => null);
-          if (res?.tags) {
-            setTags(res.tags);
-            const updated = res.tags.find((t: CustomTag) => t.nome === dialogTag.tag?.nome || !dialogTag.tag);
-            if (updated && !dialogTag.tag) {
-              selectTag(updated.id);
-            }
+        onSaved={(saved, isNew) => {
+          if (isNew) {
+            setTags(prev => [...prev, saved].sort((a, b) => a.nome.localeCompare(b.nome)));
+            selectTag(saved.id);
+          } else {
+            setTags(prev => prev.map(t => (t.id === saved.id ? saved : t)));
           }
         }}
       />
