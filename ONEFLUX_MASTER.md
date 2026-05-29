@@ -1,6 +1,6 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 29 maggio 2026 (rev. 6 — aggiunta Analisi e Tag, aggiornamento roadmap)
+**Ultima revisione:** 29 maggio 2026 (rev. 7 — 3 bug Prezzi chiusi, reset password Next.js completato)
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -397,7 +397,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Fase 1 | — | ✅ (26/5) | Next.js scaffold + Vercel + nuovo.oneflux.it |
 | Fase 1b | — | ✅ | Design system: palette sky `#0ea5e9`, shadcn completo, sidebar collapsible, style-guide |
 | Fase 1.5 | — | ⏸️ rimandata | Studio competitor — non bloccante |
-| Fase 2 | 2-3 sett. | 🟡 quasi | Auth login/logout/me ✅ — **manca**: reset password + onboarding lato Next.js |
+| Fase 2 | 2-3 sett. | 🟡 quasi | Auth login/logout/me ✅ · reset password ✅ — **manca**: onboarding (primo accesso) lato Next.js |
 | Fase 3 | 2-3 sett. | 🟡 parziale | Dashboard ✅ · Notifiche ✅ · Upload ✅ — **manca**: Home con briefing AI + notifiche actionable |
 | Fase 4 | 1-2 sett. | 🟡 parziale | Analisi Fatture ✅ · Analisi e Tag ✅ — **manca**: Scadenziario + Cestino |
 | Fase 5 | 2-3 sett. | ✅ **chiusa (28/5) + hardening (29/5)** | Margini ✅ · Ricavi ✅ · Analisi Avanzate ✅ · Prezzi ✅ · DB migrated · contratto FE↔worker allineato |
@@ -419,7 +419,9 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 **Pagine**
 | Sezione | Stato | Note |
 |---|---|---|
-| Login | ✅ | Reset password → rimanda a `app.oneflux.it` (workaround temporaneo) |
+| Login | ✅ | Link "Hai dimenticato la password?" → `/forgot-password` (Next.js nativo) |
+| Forgot password | ✅ | Form email → link Brevo → `/reset-password?token=XXX` |
+| Reset password | ✅ | Token pre-compilato da URL + nuova password + redirect login |
 | Dashboard (Home) | 🟡 | KPI cards, grafico spesa, top fornitori/categorie. **Manca** briefing AI |
 | Analisi Fatture | ✅ | KPI bar, filtri periodo, tab Articoli + Categorie + Fornitori, edit categoria batch, upload modal |
 | Ricavi e Margini | ✅ | Tab Marginalità + Analisi Avanzate (vedi changelog §14) |
@@ -430,7 +432,9 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Report | ⏳ | Placeholder |
 | Impostazioni/Account | ⏳ | Placeholder |
 
-**Non ancora iniziato (zero codice):** Scadenziario · Cestino fatture · Admin Panel · Assistenza/Marketplace · Multi-ristorante (dropdown switch) · Reset password e Onboarding lato Next.js · PWA/mobile · fattore_kg UI (Analisi e Tag v2)
+**Non ancora iniziato (zero codice):** Scadenziario · Cestino fatture · Admin Panel · Assistenza/Marketplace · Multi-ristorante (dropdown switch) · Onboarding primo accesso lato Next.js · PWA/mobile · fattore_kg UI (Analisi e Tag v2)
+
+**Prerequisito Railway:** aggiungere env var `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` per attivare reset password in produzione.
 
 ### Changelog sessioni
 
@@ -458,10 +462,10 @@ Bug strutturali scoperti durante audit approfondito (il frontend era stato svilu
 **Prezzi — Redesign tab + audit (29 maggio 2026)**
 Tutti e 3 i tab di Controllo Prezzi allineati allo stesso design system di Variazioni (auto-load on mount, filtro periodo a pill mese + "Tutto l'anno", filtri secondari ricerca/categoria/fornitore, banner KPI reattivo ai filtri). Sconti/Omaggi e Note di Credito separati in 2 tab distinti (scelta confermata). Aggiunta colonna **N. Documento** (numero reale fattura/NC) come penultima colonna in Sconti e NC: `numero_documento` deriva da `fatture_documenti` via map `{file_origine → numero_documento}` (`_load_num_documento_map`), nessun JOIN SQL (non supportato dall'SDK Supabase Python).
 
-Audit di correttezza dei 3 tab — **3 bug da chiudere** (non ancora fixati):
-1. **Doppio conteggio Sconti ↔ NC.** Le righe a `totale_riga < 0` di una fattura normale finiscono sia nel tab Sconti sia nel tab Note di Credito (`mask_totale_neg` in `get_note_credito`), gonfiando i KPI di entrambi. Fix: identificare le NC via `fatture_documenti.segno_compensazione = -1` invece del fallback su totale negativo.
-2. **`storico-prodotto` scarica tutta la tabella `fatture`** e filtra prodotto/fornitore in pandas. Fix: spingere `ilike(descrizione)` + `eq(fornitore)` a livello query DB.
-3. **Join `numero_documento` fragile** per il filtro ridondante su `data_documento` in `_load_num_documento_map`. Fix: chiave solo `file_origine` (già univoca per ristorante).
+Audit di correttezza dei 3 tab — **✅ tutti e 3 chiusi (29/5):**
+1. **Doppio conteggio Sconti ↔ NC** — `mask_totale_neg` ora limitata ai `file_origine` con `segno_compensazione=-1` in `fatture_documenti`; nuovo helper `_load_nc_file_origini`.
+2. **`storico-prodotto` full-scan** — push `.ilike("descrizione")` + `.eq("fornitore")` a livello DB prima del loop pagine.
+3. **Join `numero_documento` fragile** — rimosso filtro date da `_load_num_documento_map`; `file_origine` è univoco per ristorante.
 
 Migliorie minori individuate (non bloccanti): estrarre `isoDateRange/fmtEuro/fmtData/MESI` condivisi tra i 3 tab; helper `lib/worker.ts` per de-duplicare le 5 route proxy; reset filtri secondari al cambio periodo anche in Sconti/NC (oggi solo in Variazioni); valutare falsi positivi dell'heuristica omaggi (riga a valore zero).
 
@@ -496,15 +500,15 @@ Pagina fuori roadmap originale, aggiunta su richiesta. Non segue la numerazione 
 - `fattore_kg` supportato nel backend ma UI rimandata a v2
 - Confronto multi-tag rimandato a v2
 
-### Prossimi passi concreti (post sessione Analisi e Tag)
+### Prossimi passi concreti (aggiornato 29/5 — rev.7)
 
-**Aperti dalla sessione precedente (prezzi — 29/5):**
-1. **Chiudere i 3 bug Prezzi** dell'audit 29/5: doppio conteggio Sconti↔NC · `storico-prodotto` full-scan · join `numero_documento` fragile
+**Prerequisito immediato (non è codice):**
+- Aggiungere env var `BREVO_API_KEY` / `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME` su Railway per attivare reset password in produzione
 
 **Roadmap funzionale (ordine di priorità concordato):**
 1. **Scadenziario** (Fase 4) — zero codice, alto valore per clienti
 2. **Cestino fatture** (Fase 4) — zero codice
-3. **Reset password + Onboarding** lato Next.js (completa Fase 2)
+3. **Onboarding primo accesso** lato Next.js — completa Fase 2 (riusa la stessa `/reset-password` già costruita, basta gestire il caso `password_hash = NULL`)
 4. **Home AI** — briefing giornaliero, notifiche actionable inline (Fase 3)
 5. **Impostazioni/Account** — contatori piano, preferenze (Fase 8 light)
 6. **Foodcost** — riscrittura completa da zero (Fase 6)
