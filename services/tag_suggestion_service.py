@@ -1,17 +1,16 @@
 """Motore suggerimenti tag (new_tag + extend_tag) con workflow assistito.
 
-Pipeline v1:
-- analizza fatture ultimi N giorni (default 30)
-- genera suggerimenti pending con soglie min prodotti/min occorrenze
-- persiste suggerimenti + items
-- genera notifiche inbox aggregate per i due topic richiesti
+Pipeline v2 — logica a radice:
+- identifica la prima parola significativa di ogni descrizione (radice)
+- new_tag: prodotti non taggati con stessa radice → suggerisci creazione tag
+- extend_tag: prodotto non taggato con radice già presente in un tag → suggerisci aggiunta
+- nessuna similarità fuzzy, nessuna aggregazione per unità di misura
 """
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
 
 from config.logger_setup import get_logger
@@ -22,9 +21,9 @@ from services.notification_inbox_service import build_notification_record, upser
 logger = get_logger('tag_suggestion_service')
 
 WINDOW_DAYS_DEFAULT = 30
-MIN_PRODUCTS_DEFAULT = 6
-MIN_ROWS_DEFAULT = 12
-MIN_SCORE_EXTEND_DEFAULT = 0.82
+MIN_PRODUCTS_DEFAULT = 3   # new_tag: minimo prodotti distinti con stessa radice
+MIN_ROWS_DEFAULT = 5       # new_tag: minimo occorrenze totali
+MIN_OCCURRENZE_EXTEND = 2  # extend_tag: il prodotto deve essere stato acquistato ≥ N volte
 MAX_POOL_ROWS = 12000
 MAX_SUGGESTIONS_PER_TYPE = 20
 
@@ -38,25 +37,19 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _tokenize_key(descrizione_key: str) -> List[str]:
-    tokens = [t.strip() for t in str(descrizione_key or '').split(' ') if t.strip()]
-    return [t for t in tokens if len(t) >= 3 and t not in _STOPWORDS]
+def _get_product_root(descrizione_key: str) -> Optional[str]:
+    """Prima parola significativa della descrizione (radice = nome del prodotto).
 
-
-def _similarity_score(a_key: str, b_key: str) -> float:
-    if not a_key or not b_key:
-        return 0.0
-    a_tokens = set(_tokenize_key(a_key))
-    b_tokens = set(_tokenize_key(b_key))
-
-    token_overlap = 0.0
-    if a_tokens or b_tokens:
-        inter = len(a_tokens & b_tokens)
-        union = len(a_tokens | b_tokens)
-        token_overlap = (inter / union) if union > 0 else 0.0
-
-    fuzzy = SequenceMatcher(None, a_key, b_key).ratio()
-    return max(token_overlap, fuzzy)
+    Criteri: lunghezza ≥ 4, non in STOPWORDS, nessuna cifra nel token.
+    Restituisce il primo token che soddisfa tutti i criteri, None se nessuno.
+    """
+    for token in str(descrizione_key or '').split():
+        token = token.strip()
+        if (len(token) >= 4
+                and token not in _STOPWORDS
+                and not any(c.isdigit() for c in token)):
+            return token
+    return None
 
 
 def _fetch_recent_rows(
@@ -165,15 +158,15 @@ def _build_new_tag_suggestions(
     min_rows: int,
     window_days: int,
 ) -> List[Dict[str, Any]]:
-    token_to_keys: Dict[str, List[str]] = defaultdict(list)
-
+    """Raggruppa prodotti non taggati per radice comune → suggerisci creazione tag."""
+    root_to_keys: Dict[str, List[str]] = defaultdict(list)
     for key in untagged_pool.keys():
-        seen = set(_tokenize_key(key))
-        for tok in seen:
-            token_to_keys[tok].append(key)
+        root = _get_product_root(key)
+        if root:
+            root_to_keys[root].append(key)
 
     suggestions: List[Dict[str, Any]] = []
-    for token, keys in token_to_keys.items():
+    for root, keys in root_to_keys.items():
         uniq_keys = sorted(set(keys))
         if len(uniq_keys) < min_products:
             continue
@@ -182,28 +175,26 @@ def _build_new_tag_suggestions(
         if matched_rows < min_rows:
             continue
 
-        items = []
-        for k in uniq_keys:
-            p = untagged_pool[k]
-            items.append(
-                {
-                    'descrizione': p['descrizione'],
-                    'descrizione_key': p['descrizione_key'],
-                    'occorrenze': int(p['occorrenze']),
-                    'fornitori_count': int(p['fornitori_count']),
-                    'last_seen_date': p['ultima_data'],
-                    'selected_by_default': True,
-                }
-            )
+        items = [
+            {
+                'descrizione': untagged_pool[k]['descrizione'],
+                'descrizione_key': untagged_pool[k]['descrizione_key'],
+                'occorrenze': int(untagged_pool[k]['occorrenze']),
+                'fornitori_count': int(untagged_pool[k]['fornitori_count']),
+                'last_seen_date': untagged_pool[k]['ultima_data'],
+                'selected_by_default': True,
+            }
+            for k in uniq_keys
+        ]
 
-        confidence = min(100.0, 60.0 + len(uniq_keys) * 2.0)
+        confidence = min(100.0, 70.0 + len(uniq_keys) * 3.0)
         suggestions.append(
             {
                 'suggestion_type': 'new_tag',
                 'status': 'pending',
-                'suggested_tag_name': token.title(),
+                'suggested_tag_name': root.title(),
                 'target_tag_id': None,
-                'cluster_key': f'new_tag::{token}',
+                'cluster_key': f'new_tag::{root}',
                 'confidence_score': round(confidence, 2),
                 'detection_window_days': int(window_days),
                 'matched_products_count': len(uniq_keys),
@@ -220,57 +211,55 @@ def _build_extend_tag_suggestions(
     tags: List[Dict[str, Any]],
     tag_assoc_keys: Dict[int, List[str]],
     untagged_pool: Dict[str, Dict[str, Any]],
-    min_products: int,
-    min_score: float,
+    min_occurrenze: int,
     window_days: int,
 ) -> List[Dict[str, Any]]:
+    """Suggerisci aggiunta a tag esistente quando un nuovo prodotto ha la stessa radice.
+
+    Logica: estrae le radici dei prodotti già nel tag → se un prodotto non taggato
+    ha la stessa radice e almeno min_occurrenze acquisti → suggerisci estensione.
+    """
     tag_by_id = {int(t['id']): t for t in tags if t.get('id') is not None}
-    matched_by_tag: Dict[int, List[tuple[str, float]]] = defaultdict(list)
 
-    for key in untagged_pool.keys():
-        best_tag_id = None
-        best_score = 0.0
+    # radice → tag_ids che già contengono prodotti con quella radice
+    root_to_tag_ids: Dict[str, List[int]] = defaultdict(list)
+    for tag_id, assoc_keys in tag_assoc_keys.items():
+        tag_roots: set = set()
+        for key in assoc_keys:
+            root = _get_product_root(key)
+            if root:
+                tag_roots.add(root)
+        for root in tag_roots:
+            root_to_tag_ids[root].append(int(tag_id))
 
-        for tag_id, assoc_keys in tag_assoc_keys.items():
-            if not assoc_keys:
-                continue
-            score = max(_similarity_score(key, candidate) for candidate in assoc_keys)
-            if score > best_score:
-                best_score = score
-                best_tag_id = tag_id
-
-        if best_tag_id is not None and best_score >= float(min_score):
-            matched_by_tag[int(best_tag_id)].append((key, best_score))
+    # per ogni prodotto non taggato con occorrenze sufficienti, controlla radice
+    matched_by_tag: Dict[int, List[str]] = defaultdict(list)
+    for key, pool_item in untagged_pool.items():
+        if int(pool_item.get('occorrenze', 0)) < min_occurrenze:
+            continue
+        root = _get_product_root(key)
+        if not root:
+            continue
+        for tag_id in root_to_tag_ids.get(root, []):
+            matched_by_tag[tag_id].append(key)
 
     suggestions: List[Dict[str, Any]] = []
-    for tag_id, rows in matched_by_tag.items():
-        uniq_keys = sorted({k for k, _ in rows})
-        if len(uniq_keys) < min_products:
-            continue
-
-        items = []
-        matched_rows = 0
-        avg_score = 0.0
-        for key, score in rows:
-            p = untagged_pool[key]
-            matched_rows += int(p['occorrenze'])
-            avg_score += score
-            items.append(
-                {
-                    'descrizione': p['descrizione'],
-                    'descrizione_key': p['descrizione_key'],
-                    'occorrenze': int(p['occorrenze']),
-                    'fornitori_count': int(p['fornitori_count']),
-                    'last_seen_date': p['ultima_data'],
-                    'selected_by_default': True,
-                }
-            )
-
-        if not items:
-            continue
-
-        avg_score = avg_score / len(rows)
+    for tag_id, keys in matched_by_tag.items():
+        uniq_keys = sorted(set(keys))
+        matched_rows = sum(int(untagged_pool[k]['occorrenze']) for k in uniq_keys)
         tag_name = str((tag_by_id.get(tag_id) or {}).get('nome') or f'Tag {tag_id}')
+
+        items = [
+            {
+                'descrizione': untagged_pool[k]['descrizione'],
+                'descrizione_key': untagged_pool[k]['descrizione_key'],
+                'occorrenze': int(untagged_pool[k]['occorrenze']),
+                'fornitori_count': int(untagged_pool[k]['fornitori_count']),
+                'last_seen_date': untagged_pool[k]['ultima_data'],
+                'selected_by_default': True,
+            }
+            for k in uniq_keys
+        ]
 
         suggestions.append(
             {
@@ -279,9 +268,9 @@ def _build_extend_tag_suggestions(
                 'suggested_tag_name': None,
                 'target_tag_id': int(tag_id),
                 'cluster_key': f'extend_tag::{tag_id}',
-                'confidence_score': round(min(100.0, avg_score * 100.0), 2),
+                'confidence_score': 95.0,  # match per radice = alta confidenza
                 'detection_window_days': int(window_days),
-                'matched_products_count': len(sorted({i['descrizione_key'] for i in items})),
+                'matched_products_count': len(uniq_keys),
                 'matched_rows_count': matched_rows,
                 'tag_name': tag_name,
                 'items': items,
@@ -306,8 +295,8 @@ def build_recent_product_pool(
 def suggest_new_tags(
     user_id: str,
     ristorante_id: str,
-    min_products: int,
-    min_rows: int,
+    min_products: int = MIN_PRODUCTS_DEFAULT,
+    min_rows: int = MIN_ROWS_DEFAULT,
     supabase_client=None,
 ) -> List[Dict[str, Any]]:
     rows = _fetch_recent_rows(user_id, ristorante_id, window_days=WINDOW_DAYS_DEFAULT, supabase_client=supabase_client)
@@ -320,8 +309,7 @@ def suggest_new_tags(
 def suggest_extend_existing_tags(
     user_id: str,
     ristorante_id: str,
-    min_products: int,
-    min_score: float,
+    min_occurrenze: int = MIN_OCCURRENZE_EXTEND,
     supabase_client=None,
 ) -> List[Dict[str, Any]]:
     rows = _fetch_recent_rows(user_id, ristorante_id, window_days=WINDOW_DAYS_DEFAULT, supabase_client=supabase_client)
@@ -332,8 +320,7 @@ def suggest_extend_existing_tags(
         tags,
         tag_assoc,
         untagged,
-        min_products=min_products,
-        min_score=min_score,
+        min_occurrenze=min_occurrenze,
         window_days=WINDOW_DAYS_DEFAULT,
     )
 
@@ -723,7 +710,7 @@ def run_tag_suggestion_pipeline(
     supabase_client=None,
     min_products: int = MIN_PRODUCTS_DEFAULT,
     min_rows: int = MIN_ROWS_DEFAULT,
-    min_score_extend: float = MIN_SCORE_EXTEND_DEFAULT,
+    min_occurrenze_extend: int = MIN_OCCURRENZE_EXTEND,
 ) -> Dict[str, Any]:
     """Esegue detection + upsert suggerimenti + upsert notifiche (best effort)."""
     if not user_id or not ristorante_id:
@@ -746,8 +733,7 @@ def run_tag_suggestion_pipeline(
             tags,
             tag_assoc_keys,
             untagged,
-            min_products=int(min_products),
-            min_score=float(min_score_extend),
+            min_occurrenze=int(min_occurrenze_extend),
             window_days=WINDOW_DAYS_DEFAULT,
         )
 
