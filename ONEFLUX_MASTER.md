@@ -516,6 +516,8 @@ Pagina fuori roadmap originale, aggiunta su richiesta. Non segue la numerazione 
 8. **Assistenza/Marketplace** (Fase 8)
 9. **Test, performance, switch dominio** (Fasi 9-11)
 
+> Nota: i punti A (Scadenziario) e B (Cestino) della roadmap precedente erano stati saltati per prioritizzare Analisi e Tag + fix Prezzi + reset password. Sono i prossimi da implementare.
+
 ---
 
 ## 15. STRATEGIA BRANCH GIT
