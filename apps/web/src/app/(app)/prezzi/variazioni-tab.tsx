@@ -513,6 +513,15 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
       {/* Lista alert */}
       {variazioni.length > 0 && (
         <>
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose-500 shrink-0" />Critico &gt;€100/mese</span>
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-orange-500 shrink-0" />Alto &gt;€30/mese</span>
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-400 shrink-0" />Medio &lt;€30/mese</span>
+          </div>
+        </>
+      )}
+      {variazioni.length > 0 && (
+        <>
           <div className="relative max-w-sm">
             <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
             <input
