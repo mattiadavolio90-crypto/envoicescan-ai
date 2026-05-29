@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, X, RefreshCw, Download, ChevronDown, ChevronUp,
-  Search, Check, Trash2, Tags,
+  Search, Check, Trash2, Tags, Lightbulb,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -323,6 +323,178 @@ function AggiungiProdottiDialog({
   );
 }
 
+/* ── Card suggerimento espandibile ── */
+function SuggestionCard({
+  s, onAccepted, onDismissed,
+}: {
+  s: TagSuggestion;
+  onAccepted: () => void;
+  onDismissed: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [tagName, setTagName] = useState(
+    s.suggestion_type === "new_tag" ? (s.suggested_tag_name ?? "") : (s.tag_name ?? "")
+  );
+  const [selected, setSelected] = useState<Set<string>>(
+    new Set(s.items.map(i => i.descrizione_key))
+  );
+  const [acting, setActing] = useState(false);
+
+  function toggleItem(key: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(prev =>
+      prev.size === s.items.length ? new Set() : new Set(s.items.map(i => i.descrizione_key))
+    );
+  }
+
+  async function accept() {
+    if (selected.size === 0) { toast.error("Seleziona almeno un prodotto"); return; }
+    setActing(true);
+    try {
+      const body = s.suggestion_type === "new_tag"
+        ? { suggestion_type: "new_tag", tag_name: tagName.trim() || s.suggested_tag_name }
+        : { suggestion_type: "extend_tag", tag_id: s.target_tag_id };
+      const res = await fetch(`/api/tag/suggestions/${s.id}/accept`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(
+        s.suggestion_type === "new_tag"
+          ? `Tag "${tagName || s.suggested_tag_name}" creato`
+          : `Prodotti aggiunti al tag "${s.tag_name}"`
+      );
+      onAccepted();
+    } catch {
+      toast.error("Errore nell'accettazione");
+    } finally {
+      setActing(false);
+    }
+  }
+
+  async function dismiss() {
+    setActing(true);
+    try {
+      await fetch(`/api/tag/suggestions/${s.id}/dismiss`, { method: "POST" });
+      toast.success("Suggerimento ignorato");
+      onDismissed();
+    } catch {
+      toast.error("Errore");
+    } finally {
+      setActing(false);
+    }
+  }
+
+  const isNewTag = s.suggestion_type === "new_tag";
+
+  return (
+    <div className="rounded-xl border border-amber-500/30 bg-card overflow-hidden">
+      {/* Header cliccabile */}
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full text-left px-4 py-3 hover:bg-amber-500/5 transition-colors"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold">
+              {isNewTag ? `Crea tag "${s.suggested_tag_name}"` : `Aggiungi al tag "${s.tag_name}"`}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {s.matched_products_count} prodott{s.matched_products_count === 1 ? "o" : "i"} ·{" "}
+              {s.matched_rows_count} acquist{s.matched_rows_count === 1 ? "o" : "i"} negli ultimi 30 giorni
+            </p>
+            {!expanded && (
+              <p className="text-xs text-muted-foreground mt-1 truncate">
+                {s.items.slice(0, 3).map(i => i.descrizione).join(" · ")}
+                {s.items.length > 3 && ` + altri ${s.items.length - 3}`}
+              </p>
+            )}
+          </div>
+          {expanded ? <ChevronUp className="size-4 text-muted-foreground shrink-0 mt-0.5" /> : <ChevronDown className="size-4 text-muted-foreground shrink-0 mt-0.5" />}
+        </div>
+      </button>
+
+      {/* Dettaglio espanso */}
+      {expanded && (
+        <div className="border-t border-amber-500/20 px-4 pb-4 pt-3 space-y-3">
+          {/* Nome tag modificabile */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              {isNewTag ? "Nome del nuovo tag" : "Tag di destinazione"}
+            </label>
+            <input
+              className="w-full rounded-md border border-border px-3 py-1.5 text-sm bg-background font-medium"
+              value={tagName}
+              onChange={e => setTagName(e.target.value)}
+              disabled={!isNewTag}
+              placeholder="Nome tag…"
+            />
+          </div>
+
+          {/* Lista prodotti con checkbox */}
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                Prodotti ({selected.size}/{s.items.length} selezionati)
+              </label>
+              <button
+                type="button"
+                onClick={toggleAll}
+                className="text-xs text-primary hover:underline"
+              >
+                {selected.size === s.items.length ? "Deseleziona tutti" : "Seleziona tutti"}
+              </button>
+            </div>
+            <div className="rounded-lg border border-border divide-y divide-border max-h-52 overflow-y-auto">
+              {s.items.map(item => {
+                const sel = selected.has(item.descrizione_key);
+                return (
+                  <button
+                    key={item.descrizione_key}
+                    type="button"
+                    onClick={() => toggleItem(item.descrizione_key)}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-muted/40 ${sel ? "" : "opacity-50"}`}
+                  >
+                    <span className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? "bg-primary border-primary" : "border-border"}`}>
+                      {sel && <Check className="size-2.5 text-primary-foreground" />}
+                    </span>
+                    <span className="flex-1 truncate font-medium">{item.descrizione}</span>
+                    <span className="text-xs text-muted-foreground shrink-0">{item.occorrenze} occ.</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Azioni */}
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={accept}
+              disabled={acting || selected.size === 0}
+              className="flex-1 py-2 text-sm font-medium rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {acting ? "…" : isNewTag ? `✓ Crea tag` : `✓ Aggiungi al tag`}
+            </button>
+            <button
+              onClick={dismiss}
+              disabled={acting}
+              className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted disabled:opacity-50 transition-colors"
+            >
+              Ignora
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Banner Suggerimenti ── */
 function SuggerimentiBanner({
   suggestions, onRefresh, refreshing,
@@ -331,103 +503,31 @@ function SuggerimentiBanner({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
-  const [expanded, setExpanded] = useState(true);
-  const [acting, setActing] = useState<number | null>(null);
-
   if (suggestions.length === 0) return null;
 
-  async function accept(s: TagSuggestion) {
-    setActing(s.id);
-    try {
-      const body = s.suggestion_type === "new_tag"
-        ? { suggestion_type: "new_tag", tag_name: s.suggested_tag_name }
-        : { suggestion_type: "extend_tag", tag_id: s.target_tag_id };
-      const res = await fetch(`/api/tag/suggestions/${s.id}/accept`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-      });
-      if (!res.ok) throw new Error();
-      toast.success(s.suggestion_type === "new_tag" ? `Tag "${s.suggested_tag_name}" creato` : "Prodotti aggiunti al tag");
-      onRefresh();
-    } catch {
-      toast.error("Errore nell'accettazione");
-    } finally {
-      setActing(null);
-    }
-  }
-
-  async function dismiss(s: TagSuggestion) {
-    setActing(s.id);
-    try {
-      await fetch(`/api/tag/suggestions/${s.id}/dismiss`, { method: "POST" });
-      toast.success("Suggerimento ignorato");
-      onRefresh();
-    } catch {
-      toast.error("Errore");
-    } finally {
-      setActing(null);
-    }
-  }
-
   return (
-    <div className="rounded-lg border border-amber-500/30 bg-amber-500/5">
-      <button
-        onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-amber-700 dark:text-amber-400"
-      >
-        <span>💡 {suggestions.length} suggerimt{suggestions.length === 1 ? "o" : "i"} intelligenti</span>
+    <div className="rounded-xl border border-amber-500/40 bg-amber-500/8 p-4 space-y-3">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <button
-            onClick={e => { e.stopPropagation(); onRefresh(); }}
-            disabled={refreshing}
-            className="p-1 rounded hover:bg-amber-500/10 transition-colors"
-            title="Aggiorna suggerimenti"
-          >
-            <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
-          </button>
-          {expanded ? <ChevronUp className="size-4" /> : <ChevronDown className="size-4" />}
+          <Lightbulb className="size-4 text-amber-500 shrink-0" />
+          <span className="text-sm font-semibold text-amber-700 dark:text-amber-400">
+            {suggestions.length} suggerimt{suggestions.length === 1 ? "o" : "i"} intelligent{suggestions.length === 1 ? "e" : "i"}
+          </span>
         </div>
-      </button>
-      {expanded && (
-        <div className="px-4 pb-4 space-y-3 border-t border-amber-500/20 pt-3">
-          {suggestions.slice(0, 5).map(s => (
-            <div key={s.id} className="rounded-md border border-border bg-card p-3 space-y-2">
-              <div>
-                <p className="text-sm font-semibold">
-                  {s.suggestion_type === "new_tag"
-                    ? `Crea tag "${s.suggested_tag_name}"`
-                    : `Aggiungi al tag "${s.tag_name}"`}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {s.matched_products_count} prodott{s.matched_products_count === 1 ? "o" : "i"} ·{" "}
-                  {s.matched_rows_count} acquist{s.matched_rows_count === 1 ? "o" : "i"} negli ultimi 30 giorni
-                </p>
-                {s.items.length > 0 && (
-                  <p className="text-xs text-muted-foreground mt-1 truncate">
-                    {s.items.slice(0, 4).map(i => i.descrizione).join(" · ")}
-                    {s.items.length > 4 && ` + altri ${s.items.length - 4}`}
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => accept(s)}
-                  disabled={acting === s.id}
-                  className="flex-1 px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-                >
-                  {acting === s.id ? "…" : "✓ Accetta"}
-                </button>
-                <button
-                  onClick={() => dismiss(s)}
-                  disabled={acting === s.id}
-                  className="px-3 py-1.5 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors"
-                >
-                  Ignora
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="p-1.5 rounded-md hover:bg-amber-500/15 transition-colors text-amber-600 dark:text-amber-400 disabled:opacity-50"
+          title="Aggiorna suggerimenti"
+        >
+          <RefreshCw className={`size-3.5 ${refreshing ? "animate-spin" : ""}`} />
+        </button>
+      </div>
+      <div className="space-y-2">
+        {suggestions.slice(0, 5).map(s => (
+          <SuggestionCard key={s.id} s={s} onAccepted={onRefresh} onDismissed={onRefresh} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -659,15 +759,27 @@ export function AnalisiETagClient({
           Nuovo tag
         </button>
 
-        {/* Bottone suggerimenti — sempre visibile */}
+        {/* Bottone suggerimenti — widget colorato */}
         <button
           onClick={async () => { await refreshSuggestions(); await reloadTags(); }}
           disabled={refreshingSuggestions}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm border border-border text-muted-foreground hover:text-foreground hover:border-foreground/40 disabled:opacity-50 transition-colors ml-auto"
-          title="Cerca suggerimenti intelligenti sui tuoi prodotti non ancora taggati"
+          className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-medium border transition-all disabled:opacity-60 ml-auto ${
+            suggestions.length > 0
+              ? "bg-amber-500/15 border-amber-500/50 text-amber-700 dark:text-amber-400 hover:bg-amber-500/25"
+              : "bg-muted border-border text-muted-foreground hover:text-foreground hover:bg-muted/80"
+          }`}
+          title="Analizza prodotti non taggati e trova suggerimenti"
         >
-          <RefreshCw className={`size-3.5 ${refreshingSuggestions ? "animate-spin" : ""}`} />
-          {refreshingSuggestions ? "Analisi…" : suggestions.length > 0 ? `💡 ${suggestions.length} suggeriment${suggestions.length === 1 ? "o" : "i"}` : "💡 Suggerimenti"}
+          {refreshingSuggestions
+            ? <RefreshCw className="size-3.5 animate-spin" />
+            : <Lightbulb className="size-3.5" />
+          }
+          {refreshingSuggestions
+            ? "Analisi in corso…"
+            : suggestions.length > 0
+              ? <><span className="inline-flex items-center justify-center size-5 rounded-full bg-amber-500 text-white text-[10px] font-bold">{suggestions.length}</span> Suggerimenti</>
+              : "Suggerimenti"
+          }
         </button>
       </div>
 
