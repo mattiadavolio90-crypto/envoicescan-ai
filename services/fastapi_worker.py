@@ -3203,16 +3203,14 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float) -> list:
         else:
             trend = "↕"
 
-        qta_rec = pd.to_numeric(acquisti['quantita'].tail(3), errors='coerce').dropna()
-        qta_ref = float(qta_rec.mean()) if not qta_rec.empty else 1.0
+        qta_all = pd.to_numeric(acquisti['quantita'], errors='coerce').dropna()
+        qta_ref = float(qta_all.mean()) if not qta_all.empty else 1.0
 
-        date_rec = pd.to_datetime(acquisti['data_documento'].tail(4), errors='coerce').dropna().sort_values()
+        date_all = pd.to_datetime(acquisti['data_documento'], errors='coerce').dropna().sort_values()
         freq = 1.0
-        if len(date_rec) >= 2:
-            intervals = date_rec.diff().dt.days.dropna()
-            intervals = intervals[intervals > 0]
-            if not intervals.empty:
-                freq = max(1.0, min(6.0, 30.0 / float(intervals.mean())))
+        if len(date_all) >= 2:
+            n_mesi = max(1.0, (date_all.iloc[-1] - date_all.iloc[0]).days / 30.0)
+            freq = len(date_all) / n_mesi
 
         alert_list.append({
             'prodotto': (str(group['descrizione'].mode()[0]) + nota)[:60],
