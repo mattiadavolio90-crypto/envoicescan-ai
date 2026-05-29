@@ -47,10 +47,9 @@ function fmtData(s: string): string {
 type Gravita = "critico" | "alto" | "medio";
 
 function gravita(r: VariazionePrezzo): Gravita {
-  const pct = Math.abs(r.aumento_perc);
   const imp = Math.abs(r.impatto_stimato);
-  if (pct >= 50 || imp >= 100) return "critico";
-  if (pct >= 20 || imp >= 30) return "alto";
+  if (imp >= 100) return "critico";
+  if (imp >= 30) return "alto";
   return "medio";
 }
 
