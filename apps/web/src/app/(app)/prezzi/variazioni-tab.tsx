@@ -289,6 +289,8 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [storico, setStorico] = useState<StoricoPrezzoResponse | null>(null);
   const [storicoLoading, setStoricoLoading] = useState(false);
+  const [filtroCategoria, setFiltroCategoria] = useState("");
+  const [filtroFornitore, setFiltroFornitore] = useState("");
   const [currentRange, setCurrentRange] = useState<{ data_da: string; data_a: string }>(
     isoDateRange(ANNO_CORRENTE, null),
   );
@@ -297,6 +299,8 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     setLoading(true);
     setExpandedKey(null);
     setStorico(null);
+    setFiltroCategoria("");
+    setFiltroFornitore("");
     const range = isoDateRange(annoArg, meseArg);
     setCurrentRange(range);
     try {
@@ -363,15 +367,29 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
 
   const variazioni = data?.variazioni ?? [];
   const sorted = [...variazioni].sort((a, b) => Math.abs(b.impatto_stimato) - Math.abs(a.impatto_stimato));
-  const filtered = search
-    ? sorted.filter(
-        (r) =>
-          r.prodotto.toLowerCase().includes(search.toLowerCase()) ||
-          r.fornitore.toLowerCase().includes(search.toLowerCase()),
-      )
-    : sorted;
 
-  const nCritici = variazioni.filter((r) => gravita(r) === "critico").length;
+  // valori unici per i select categoria/fornitore
+  const categorieDisp = Array.from(new Set(sorted.map((r) => r.categoria).filter(Boolean))).sort();
+  const fornitoriDisp = Array.from(new Set(sorted.map((r) => r.fornitore).filter(Boolean))).sort();
+
+  const filtered = sorted.filter((r) => {
+    const matchSearch =
+      !search ||
+      r.prodotto.toLowerCase().includes(search.toLowerCase()) ||
+      r.fornitore.toLowerCase().includes(search.toLowerCase());
+    const matchCat = !filtroCategoria || r.categoria === filtroCategoria;
+    const matchForn = !filtroFornitore || r.fornitore === filtroFornitore;
+    return matchSearch && matchCat && matchForn;
+  });
+
+  // KPI calcolati sul filtered
+  const nCritici = filtered.filter((r) => gravita(r) === "critico").length;
+  const impattoFiltrato = filtered.reduce((acc, r) => acc + r.impatto_stimato, 0);
+  const scostamentoFiltrato =
+    filtered.length > 0
+      ? filtered.reduce((acc, r) => acc + r.aumento_perc, 0) / filtered.length
+      : 0;
+  const fornitoriFiltrati = new Set(filtered.map((r) => r.fornitore)).size;
 
   return (
     <div className="space-y-4">
@@ -459,36 +477,86 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
         </button>
       </div>
 
-      {/* Banner riepilogo — il valore della pagina a colpo d'occhio */}
+      {/* Filtri di secondo livello — visibili solo quando ci sono dati */}
+      {variazioni.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center">
+          <div className="relative">
+            <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Cerca prodotto…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="rounded-md border border-border pl-9 pr-3 py-1.5 text-sm bg-background w-52"
+            />
+          </div>
+          <select
+            value={filtroCategoria}
+            onChange={(e) => setFiltroCategoria(e.target.value)}
+            className="rounded-md border border-border px-2 py-1.5 text-sm bg-background"
+          >
+            <option value="">Tutte le categorie</option>
+            {categorieDisp.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select
+            value={filtroFornitore}
+            onChange={(e) => setFiltroFornitore(e.target.value)}
+            className="rounded-md border border-border px-2 py-1.5 text-sm bg-background"
+          >
+            <option value="">Tutti i fornitori</option>
+            {fornitoriDisp.map((f) => <option key={f} value={f}>{f}</option>)}
+          </select>
+          {(search || filtroCategoria || filtroFornitore) && (
+            <button
+              onClick={() => { setSearch(""); setFiltroCategoria(""); setFiltroFornitore(""); }}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Azzera filtri
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Banner riepilogo — riflette sempre i filtri attivi */}
       {data && variazioni.length > 0 && (
         <div className="rounded-lg border border-border bg-card p-4">
           <div className="flex items-center gap-2 mb-3">
             <TriangleAlert className="size-4 text-rose-500" />
             <p className="text-sm font-semibold">
-              {variazioni.length} variazioni sopra il {soglia}%
-              {nCritici > 0 && (
-                <span className="text-rose-600"> · {nCritici} critiche</span>
+              {filtered.length} variazioni
+              {filtered.length !== variazioni.length && (
+                <span className="text-muted-foreground font-normal"> (filtrate da {variazioni.length})</span>
               )}
+              {nCritici > 0 && <span className="text-rose-600"> · {nCritici} critiche</span>}
             </p>
           </div>
           <div className="grid grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-muted-foreground">Impatto stimato/mese</p>
-              <p className={`text-xl font-bold ${data.impatto_netto > 0 ? "text-rose-600" : data.impatto_netto < 0 ? "text-emerald-600" : ""}`}>
-                {data.impatto_netto !== 0 ? fmtEuro(data.impatto_netto, true) : "—"}
+              <p className={`text-xl font-bold ${impattoFiltrato > 0 ? "text-rose-600" : impattoFiltrato < 0 ? "text-emerald-600" : ""}`}>
+                {impattoFiltrato !== 0 ? fmtEuro(impattoFiltrato, true) : "—"}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Scostamento medio</p>
-              <p className={`text-xl font-bold ${data.scostamento_medio > 0 ? "text-rose-600" : data.scostamento_medio < 0 ? "text-emerald-600" : ""}`}>
-                {fmtPct(data.scostamento_medio)}
+              <p className={`text-xl font-bold ${scostamentoFiltrato > 0 ? "text-rose-600" : scostamentoFiltrato < 0 ? "text-emerald-600" : ""}`}>
+                {filtered.length > 0 ? fmtPct(scostamentoFiltrato) : "—"}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Fornitori coinvolti</p>
-              <p className="text-xl font-bold">{data.fornitori_coinvolti}</p>
+              <p className="text-xl font-bold">{fornitoriFiltrati}</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Legenda gravità */}
+      {variazioni.length > 0 && (
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose-500 shrink-0" />Critico &gt;€100/mese</span>
+          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-orange-500 shrink-0" />Alto &gt;€30/mese</span>
+          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-400 shrink-0" />Medio &lt;€30/mese</span>
         </div>
       )}
 
@@ -510,29 +578,9 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
         </div>
       )}
 
-      {/* Lista alert */}
+      {/* Lista card */}
       {variazioni.length > 0 && (
         <>
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose-500 shrink-0" />Critico &gt;€100/mese</span>
-            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-orange-500 shrink-0" />Alto &gt;€30/mese</span>
-            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-400 shrink-0" />Medio &lt;€30/mese</span>
-          </div>
-        </>
-      )}
-      {variazioni.length > 0 && (
-        <>
-          <div className="relative max-w-sm">
-            <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Cerca prodotto o fornitore…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-md border border-border pl-9 pr-3 py-1.5 text-sm bg-background"
-            />
-          </div>
-
           <div className="space-y-2">
             {filtered.map((r) => {
               const key = `${r.prodotto}|${r.fornitore}`;
@@ -548,9 +596,8 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
               );
             })}
           </div>
-
           {filtered.length === 0 && (
-            <p className="text-sm text-muted-foreground py-6 text-center">Nessun risultato per &quot;{search}&quot;</p>
+            <p className="text-sm text-muted-foreground py-6 text-center">Nessun risultato per i filtri selezionati</p>
           )}
         </>
       )}
