@@ -1292,38 +1292,53 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
             logger.error(f"Impossibile salvare codice reset per {email} — né DB né alternativa disponibile")
             return False, "Errore temporaneo, riprova tra qualche minuto"
         
-        # Configurazione Brevo
-        brevo_cfg = st.secrets.get('brevo')
-        if not brevo_cfg:
-            logger.error('Sezione [brevo] non trovata in secrets.toml')
-            return False, "Errore nell'invio email"
-        
-        api_key = brevo_cfg.get('api_key')
+        # Configurazione Brevo — env var (Railway/FastAPI) o st.secrets (Streamlit)
+        import os as _os
+        api_key = _os.environ.get('BREVO_API_KEY')
+        sender_email = _os.environ.get('BREVO_SENDER_EMAIL', 'contact@updates.brevo.com')
+        sender_name = _os.environ.get('BREVO_SENDER_NAME', 'ONEFLUX')
+
         if not api_key:
-            logger.error('Brevo API key non configurata')
+            try:
+                brevo_cfg = st.secrets.get('brevo') if hasattr(st, 'secrets') else {}
+                api_key = api_key or brevo_cfg.get('api_key')
+                sender_email = brevo_cfg.get('sender_email', sender_email)
+                sender_name = brevo_cfg.get('sender_name', sender_name)
+            except Exception:
+                pass
+
+        if not api_key:
+            logger.error('Brevo API key non configurata (né BREVO_API_KEY né secrets.toml)')
             return False, "Errore nell'invio email"
         
-        sender_email = brevo_cfg.get('sender_email', 'contact@updates.brevo.com')
-        sender_name = brevo_cfg.get('sender_name', 'ONEFLUX')
-        
-        # Payload email
+        reset_url = f"https://nuovo.oneflux.it/reset-password?token={code}"
         payload = {
             "sender": {"name": sender_name, "email": sender_email},
             "to": [{"email": email}],
-            "subject": "🔑 Codice Recupero Password - ONEFLUX",
+            "subject": "🔑 Recupero Password - ONEFLUX",
             "htmlContent": f"""
             <html>
             <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #2c5aa0;">🔑 Recupero Password</h2>
+                <h2 style="color: #0ea5e9;">Recupera la tua password</h2>
                 <p>Hai richiesto di reimpostare la password per il tuo account <strong>ONEFLUX</strong>.</p>
-                <p>Il tuo codice di reset è:</p>
-                <div style="text-align: center; margin: 20px 0;">
-                    <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #1e3a8a; background: #f0f4ff; padding: 12px 24px; border-radius: 8px; display: inline-block;">{code}</span>
-                </div>
-                <p>Il codice scadrà tra <strong>1 ora</strong>.</p>
-                <p style="color: #888; font-size: 13px;">Se non hai richiesto questo reset, ignora questa email.</p>
+                <p style="margin: 24px 0; text-align: center;">
+                    <a href="{reset_url}"
+                       style="background: #0ea5e9; color: #fff; text-decoration: none;
+                              padding: 14px 32px; border-radius: 8px; font-size: 16px;
+                              font-weight: 600; display: inline-block;">
+                        Reimposta password
+                    </a>
+                </p>
+                <p style="color: #64748b; font-size: 13px;">
+                    Il link è valido per <strong>1 ora</strong>.<br>
+                    Se il pulsante non funziona, copia questo indirizzo nel browser:<br>
+                    <a href="{reset_url}" style="color:#0ea5e9; word-break: break-all;">{reset_url}</a>
+                </p>
                 <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;">
-                <p style="color: #666; font-size: 13px;">---<br><strong>Oneflux Team</strong><br>📧 Support: md@oneflux.it</p>
+                <p style="color: #94a3b8; font-size: 12px;">
+                    Se non hai richiesto il reset, ignora questa email.<br>
+                    <strong>ONEFLUX</strong> — md@oneflux.it
+                </p>
             </body>
             </html>
             """

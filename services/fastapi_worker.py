@@ -3267,18 +3267,36 @@ def _load_fatture_for_prezzi(
     return all_rows
 
 
-def _load_num_documento_map(sb, ristorante_id: str, data_da: str, data_a: str) -> dict:
-    """Restituisce {file_origine: numero_documento} da fatture_documenti per il periodo."""
+def _load_num_documento_map(sb, ristorante_id: str) -> dict:
+    """Restituisce {file_origine: numero_documento} da fatture_documenti (tutto il ristorante).
+    Nessun filtro date: file_origine è univoco per ristorante, il filtro date era ridondante
+    e causava miss su documenti ai bordi del periodo.
+    """
     resp = (
         sb.table("fatture_documenti")
         .select("file_origine,numero_documento")
         .eq("ristorante_id", ristorante_id)
         .is_("deleted_at", "null")
+        .execute()
+    )
+    return {r["file_origine"]: (r.get("numero_documento") or "") for r in (resp.data or [])}
+
+
+def _load_nc_file_origini(sb, ristorante_id: str, data_da: str, data_a: str) -> set:
+    """Set di file_origine che sono vere note di credito (segno_compensazione=-1).
+    Usato per distinguere sconti su fattura normale (→ Sconti tab) da NC reali.
+    """
+    resp = (
+        sb.table("fatture_documenti")
+        .select("file_origine")
+        .eq("ristorante_id", ristorante_id)
+        .eq("segno_compensazione", -1)
+        .is_("deleted_at", "null")
         .gte("data_documento", data_da)
         .lte("data_documento", data_a)
         .execute()
     )
-    return {r["file_origine"]: (r.get("numero_documento") or "") for r in (resp.data or [])}
+    return {r["file_origine"] for r in (resp.data or [])}
 
 
 @app.get("/api/prezzi/soglia-alert", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
@@ -3363,7 +3381,7 @@ async def get_sconti_omaggi(
     if not all_rows:
         return ScontiOmaggiResponse(items=[], totale_risparmiato=0.0, n_sconti=0, n_omaggi=0)
 
-    num_map = _load_num_documento_map(sb, ristorante_id, data_da, data_a)
+    num_map = _load_num_documento_map(sb, ristorante_id)
 
     df = pd.DataFrame(all_rows)
     df['prezzo_unitario'] = pd.to_numeric(df['prezzo_unitario'], errors='coerce').fillna(0.0)
@@ -3440,16 +3458,19 @@ async def get_note_credito(
     if not all_rows:
         return NoteCreditoResponse(note=[], totale_credito=0.0, n_documenti=0)
 
-    num_map = _load_num_documento_map(sb, ristorante_id, data_da, data_a)
+    num_map = _load_num_documento_map(sb, ristorante_id)
+    # NC reali identificate via segno_compensazione=-1 in fatture_documenti.
+    # Evita doppio conteggio con tab Sconti: righe negative su fatture normali
+    # finivano sia in Sconti sia qui. Ora mask_totale_neg è limitata ai file NC.
+    nc_files = _load_nc_file_origini(sb, ristorante_id, data_da, data_a)
 
     df = pd.DataFrame(all_rows)
     df['prezzo_unitario'] = pd.to_numeric(df['prezzo_unitario'], errors='coerce').fillna(0.0)
     df['totale_riga'] = pd.to_numeric(df['totale_riga'], errors='coerce').fillna(0.0)
     df['quantita'] = pd.to_numeric(df.get('quantita', pd.Series(dtype=float)), errors='coerce').fillna(1.0)
 
-    # Nota di credito = documento di tipo NC oppure totale negativo significativo
     mask_tipo_nc = df['tipo_documento'].astype(str).str.upper().str.contains("NC|NOTA DI CREDITO|CREDIT", na=False)
-    mask_totale_neg = df['totale_riga'] < -0.01
+    mask_totale_neg = (df['totale_riga'] < -0.01) & (df['file_origine'].isin(nc_files))
     df_nc = df[mask_tipo_nc | mask_totale_neg].copy()
 
     if df_nc.empty:
@@ -3492,6 +3513,14 @@ async def get_storico_prodotto(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
+    # Pulisce il nome prodotto dai suffissi UI prima di usarlo nei filtri DB
+    prod_upper = prodotto.strip().upper()
+    for suffix in [" ⚠️ >6M", " ⚠ >6M"]:
+        if prod_upper.endswith(suffix):
+            prod_upper = prod_upper[:-len(suffix)].strip()
+    # Prefisso per ilike (primi 40 chars, sicuro per Supabase)
+    prod_prefix = prod_upper[:40]
+
     all_rows: list = []
     page = 0
     page_size = 1000
@@ -3502,6 +3531,7 @@ async def get_storico_prodotto(
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .gt("prezzo_unitario", 0)
+            .ilike("descrizione", f"{prod_prefix}%")
             .order("data_documento", desc=False)
             .range(page * page_size, (page + 1) * page_size - 1)
         )
@@ -3509,6 +3539,8 @@ async def get_storico_prodotto(
             q = q.gte("data_documento", data_da)
         if data_a:
             q = q.lte("data_documento", data_a)
+        if fornitore:
+            q = q.eq("fornitore", fornitore.strip())
         resp = q.execute()
         if not resp.data:
             break
@@ -3525,12 +3557,7 @@ async def get_storico_prodotto(
     df['_desc'] = df['descrizione'].astype(str).str.strip().str.upper()
     df['_forn'] = df['fornitore'].astype(str).str.strip().str.upper()
 
-    prod_upper = prodotto.strip().upper()
-    # Remove the ⚠️ >6m suffix if present
-    for suffix in [" ⚠️ >6m", " ⚠ >6m"]:
-        if prod_upper.endswith(suffix.upper()):
-            prod_upper = prod_upper[:-len(suffix)].strip()
-
+    # Corrispondenza esatta prima, fallback su startswith
     mask = df['_desc'] == prod_upper
     if mask.sum() == 0:
         mask = df['_desc'].str.startswith(prod_upper[:30], na=False)
@@ -4757,6 +4784,49 @@ async def upsert_ricavi_modalita(
         fatturato_iva22=float(r.get("fatturato_iva22") or 0),
         altri_ricavi_noiva=float(r.get("altri_ricavi_noiva") or 0),
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# AUTH — Reset password
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class ResetRequestBody(BaseModel):
+    email: str
+
+
+class ResetConfirmBody(BaseModel):
+    token: str
+    password: str
+
+
+@app.post("/api/auth/reset-request", tags=["Auth"])
+async def reset_password_request(body: ResetRequestBody):
+    """Invia email con link di reset. Non richiede auth — qualsiasi email può richiederlo.
+    Risponde sempre con successo generico per non rivelare se l'email è registrata.
+    """
+    from services.auth_service import invia_codice_reset
+    email = (body.email or "").strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Email non valida")
+    ok, msg = invia_codice_reset(email)
+    if not ok:
+        raise HTTPException(status_code=500, detail=msg)
+    return {"ok": True, "message": msg}
+
+
+@app.post("/api/auth/reset-confirm", tags=["Auth"])
+async def reset_password_confirm(body: ResetConfirmBody):
+    """Verifica token e imposta nuova password."""
+    from services.auth_service import imposta_password_da_token
+    token = (body.token or "").strip()
+    password = body.password or ""
+    if not token or not password:
+        raise HTTPException(status_code=400, detail="Token e password obbligatori")
+    ok, msg, _ = imposta_password_da_token(token, password)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    return {"ok": True, "message": msg}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

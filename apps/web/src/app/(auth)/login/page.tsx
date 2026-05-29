@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -102,11 +103,9 @@ function LoginForm() {
           </Button>
 
           <p className="text-xs text-center text-muted-foreground pt-2">
-            Hai dimenticato la password? Vai su{" "}
-            <a href="https://app.oneflux.it" className="text-primary hover:underline">
-              app.oneflux.it
-            </a>{" "}
-            per recuperarla.
+            <Link href="/forgot-password" className="text-primary hover:underline">
+              Hai dimenticato la password?
+            </Link>
           </p>
         </form>
       </CardContent>
