@@ -10,6 +10,7 @@ import {
   Receipt,
   Search,
   Settings,
+  Tags,
   Utensils,
 } from "lucide-react";
 import Link from "next/link";
@@ -44,6 +45,7 @@ const navMain = [
   { title: "Prezzi", url: "/prezzi", icon: Search },
   { title: "Ricavi e Margini", url: "/margini", icon: BarChart3 },
   { title: "Foodcost", url: "/foodcost", icon: Utensils },
+  { title: "Analisi e Tag", url: "/analisi-e-tag", icon: Tags },
 ];
 
 const navSecondary = [
