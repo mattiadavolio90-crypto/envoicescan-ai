@@ -4,6 +4,7 @@ export type VariazionePrezzo = {
   fornitore: string;
   storico: string;
   media: number;
+  penultimo: number;
   ultimo: number;
   aumento_perc: number;
   data: string;

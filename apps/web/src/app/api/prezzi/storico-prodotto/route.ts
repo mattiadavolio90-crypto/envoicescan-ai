@@ -19,11 +19,15 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const prodotto = searchParams.get("prodotto");
   const fornitore = searchParams.get("fornitore") ?? "";
+  const data_da = searchParams.get("data_da");
+  const data_a = searchParams.get("data_a");
   if (!prodotto)
     return NextResponse.json({ error: "Missing param: prodotto" }, { status: 400 });
 
   try {
     const qs = new URLSearchParams({ prodotto, fornitore });
+    if (data_da) qs.set("data_da", data_da);
+    if (data_a) qs.set("data_a", data_a);
     const res = await fetch(`${WORKER_URL}/api/prezzi/storico-prodotto?${qs}`, {
       headers: workerHeaders(token),
     });

@@ -2284,6 +2284,32 @@ _CATEGORIE_SPESE_M: List[str] = ["SERVIZI E CONSULENZE","UTENZE E LOCALI","MANUT
 _CENTRI_CON_FATTURATO = ["FOOD","BEVERAGE","ALCOLICI","DOLCI"]
 
 
+def _load_mensile_overrides(sb, ristorante_id: str, annos: List[int]) -> Dict[tuple, Dict[str, float]]:
+    """Mesi in modalità 'mensile': i ricavi vengono dal totale mensile inserito,
+    non dall'aggregato giornaliero. Ritorna {(anno,mese): {iva10,iva22,altri}}."""
+    if not annos:
+        return {}
+    try:
+        resp = (
+            sb.table("ricavi_modalita_mensile")
+            .select("anno,mese,modalita,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+            .eq("ristorante_id", ristorante_id)
+            .in_("anno", annos)
+            .eq("modalita", "mensile")
+            .execute()
+        )
+    except Exception:
+        return {}
+    out: Dict[tuple, Dict[str, float]] = {}
+    for r in (resp.data or []):
+        out[(int(r["anno"]), int(r["mese"]))] = {
+            "iva10": float(r.get("fatturato_iva10") or 0),
+            "iva22": float(r.get("fatturato_iva22") or 0),
+            "altri": float(r.get("altri_ricavi_noiva") or 0),
+        }
+    return out
+
+
 class MarginiMeseData(BaseModel):
     mese: int
     fatturato_iva10: float = 0.0
@@ -2581,6 +2607,91 @@ async def save_fatturato_centri(
     return {"ok": True}
 
 
+class FatturatoCentriGiornoItem(BaseModel):
+    data: str
+    food: float = 0.0
+    beverage: float = 0.0
+    alcolici: float = 0.0
+    dolci: float = 0.0
+    shop: float = 0.0
+
+
+@app.get("/api/margini/fatturato-centri-giorni", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def get_fatturato_centri_giorni(
+    anno: int,
+    mese: int,
+    authorization: Optional[str] = Header(None),
+) -> List[FatturatoCentriGiornoItem]:
+    """Fatturato giornaliero stimato per centro.
+
+    Non esiste uno split per singolo giorno: la ripartizione è mensile (% per
+    centro su margini_mensili). Il valore giornaliero per centro è derivato
+    distribuendo la quota mensile del centro sul fatturato netto di ogni giorno.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    from calendar import monthrange
+    mese_str = f"{mese:02d}"
+    last_day = monthrange(anno, mese)[1]
+    data_da = f"{anno}-{mese_str}-01"
+    data_a = f"{anno}-{mese_str}-{last_day:02d}"
+
+    # Ricavi giornalieri → netto per giorno
+    ric_resp = (
+        sb.table("ricavi_giornalieri")
+        .select("data,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data", data_da)
+        .lte("data", data_a)
+        .order("data", desc=False)
+        .execute()
+    )
+    netto_per_giorno: Dict[str, float] = {}
+    for r in (ric_resp.data or []):
+        netto_per_giorno[str(r.get("data"))] = _calc_netto(
+            float(r.get("fatturato_iva10") or 0),
+            float(r.get("fatturato_iva22") or 0),
+            float(r.get("altri_ricavi_noiva") or 0),
+        )
+    netto_mese = sum(netto_per_giorno.values())
+    if netto_mese <= 0:
+        return []
+
+    # Quote mensili per centro (euro) → frazione sul netto del mese
+    mc_resp = (
+        sb.table("margini_mensili")
+        .select("fatturato_food,fatturato_beverage,fatturato_alcolici,fatturato_dolci")
+        .eq("ristorante_id", ristorante_id)
+        .eq("anno", anno)
+        .eq("mese", mese)
+        .limit(1)
+        .execute()
+    )
+    mc = (mc_resp.data or [{}])[0]
+    frazioni = {
+        "food": float(mc.get("fatturato_food") or 0) / netto_mese,
+        "beverage": float(mc.get("fatturato_beverage") or 0) / netto_mese,
+        "alcolici": float(mc.get("fatturato_alcolici") or 0) / netto_mese,
+        "dolci": float(mc.get("fatturato_dolci") or 0) / netto_mese,
+    }
+
+    items: List[FatturatoCentriGiornoItem] = []
+    for data_iso, netto_g in sorted(netto_per_giorno.items()):
+        items.append(FatturatoCentriGiornoItem(
+            data=data_iso,
+            food=round(netto_g * frazioni["food"], 2),
+            beverage=round(netto_g * frazioni["beverage"], 2),
+            alcolici=round(netto_g * frazioni["alcolici"], 2),
+            dolci=round(netto_g * frazioni["dolci"], 2),
+            shop=0.0,
+        ))
+    return items
+
+
 @app.get("/api/margini/analisi-centri", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
 async def get_analisi_centri(
     data_da: str,
@@ -2795,18 +2906,22 @@ async def get_analisi_avanzata(
         .execute()
     )
 
+    mensile_overrides = _load_mensile_overrides(sb, ristorante_id, annos)
+
     fatturato_netto_periodo = 0.0
     fatturato_per_centro: Dict[str, float] = {c: 0.0 for c in _CENTRI_CON_FATTURATO}
     mesi_con_dati: List[int] = []
     split_attivo = False
 
+    mesi_target_set = {(y, m) for y, m in mesi_target}
     margini_map = {}
     for r in (margini_resp.data or []):
         anno_r = int(r.get("anno", 0))
         mese_r = int(r.get("mese", 0))
-        if (anno_r, mese_r) in [(y, m) for y, m in mesi_target]:
+        if (anno_r, mese_r) in mesi_target_set:
             margini_map[(anno_r, mese_r)] = r
-            fatt = float(r.get("fatturato_netto") or 0)
+            ov = mensile_overrides.get((anno_r, mese_r))
+            fatt = _calc_netto(ov["iva10"], ov["iva22"], ov["altri"]) if ov else float(r.get("fatturato_netto") or 0)
             fatturato_netto_periodo += fatt
             if fatt > 0:
                 mesi_con_dati.append(mese_r)
@@ -2947,6 +3062,7 @@ class VariazionePrezzo(BaseModel):
     fornitore: str
     storico: str
     media: float
+    penultimo: float
     ultimo: float
     aumento_perc: float
     data: str
@@ -3065,9 +3181,8 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float) -> list:
         except Exception:
             pass
 
-        ultimi5 = acquisti.tail(5)
-        storico = " → ".join(f"€{p:.2f}" for p in ultimi5['prezzo_unitario'])
-        media = float(ultimi5['prezzo_unitario'].mean())
+        storico = " → ".join(f"€{p:.2f}" for p in acquisti.tail(5)['prezzo_unitario'])
+        media = float(acquisti['prezzo_unitario'].mean())
 
         prezzi_rec = pd.to_numeric(acquisti['prezzo_unitario'].tail(4), errors='coerce').dropna().tolist()
         var_rec = [
@@ -3105,6 +3220,7 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float) -> list:
             'fornitore': str(group['fornitore'].mode()[0])[:30],
             'storico': storico,
             'media': round(media, 4),
+            'penultimo': round(prezzo_pen, 4),
             'ultimo': round(prezzo_ult, 4),
             'aumento_perc': round(var_pct, 2),
             'data': str(ultimo.get('data_documento', '')),
@@ -3340,6 +3456,8 @@ async def get_note_credito(
 async def get_storico_prodotto(
     prodotto: str,
     fornitore: str = "",
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
     authorization: Optional[str] = Header(None),
 ) -> StoricoPrezzoResponse:
     import pandas as pd
@@ -3363,6 +3481,10 @@ async def get_storico_prodotto(
             .order("data_documento", desc=False)
             .range(page * page_size, (page + 1) * page_size - 1)
         )
+        if data_da:
+            q = q.gte("data_documento", data_da)
+        if data_a:
+            q = q.lte("data_documento", data_a)
         resp = q.execute()
         if not resp.data:
             break
@@ -3647,15 +3769,17 @@ async def get_margini_analisi(
         .execute()
     )
     margini_map = {(int(r["anno"]), int(r["mese"])): r for r in (margini_resp.data or [])}
+    mensile_overrides = _load_mensile_overrides(sb, ristorante_id, annos)
 
     mesi_pivot: List[MesiPivot] = []
     for (y, m) in mesi_target:
         r = margini_map.get((y, m), {})
         fb_auto, spese_auto = _calcola_costi_auto_per_mese(sb, ristorante_id, y, m)
 
-        iva10 = float(r.get("fatturato_iva10") or 0)
-        iva22 = float(r.get("fatturato_iva22") or 0)
-        altri = float(r.get("altri_ricavi_noiva") or 0)
+        ov = mensile_overrides.get((y, m))
+        iva10 = ov["iva10"] if ov else float(r.get("fatturato_iva10") or 0)
+        iva22 = ov["iva22"] if ov else float(r.get("fatturato_iva22") or 0)
+        altri = ov["altri"] if ov else float(r.get("altri_ricavi_noiva") or 0)
         netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
 
         altri_fb = float(r.get("altri_costi_fb") or 0)
@@ -3818,6 +3942,7 @@ def _aggrega_mensili_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
         .execute()
     )
     margini_map = {(int(r["anno"]), int(r["mese"])): r for r in (margini_resp.data or [])}
+    mensile_overrides = _load_mensile_overrides(sb, ristorante_id, annos)
 
     tot = {"lordo": 0.0, "netto": 0.0, "fb": 0.0, "pm": 0.0,
            "spese": 0.0, "pers": 0.0, "mol": 0.0, "mesi_attivi": 0,
@@ -3826,9 +3951,10 @@ def _aggrega_mensili_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
     for (yy, mm) in mesi_target:
         r = margini_map.get((yy, mm), {})
         fb_auto, spese_auto = _calcola_costi_auto_per_mese(sb, ristorante_id, yy, mm)
-        iva10 = float(r.get("fatturato_iva10") or 0)
-        iva22 = float(r.get("fatturato_iva22") or 0)
-        altri = float(r.get("altri_ricavi_noiva") or 0)
+        ov = mensile_overrides.get((yy, mm))
+        iva10 = ov["iva10"] if ov else float(r.get("fatturato_iva10") or 0)
+        iva22 = ov["iva22"] if ov else float(r.get("fatturato_iva22") or 0)
+        altri = ov["altri"] if ov else float(r.get("altri_ricavi_noiva") or 0)
         lordo = iva10 + iva22 + altri
         netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
         fb_tot = fb_auto + float(r.get("altri_costi_fb") or 0)
@@ -3874,15 +4000,17 @@ def _aggrega_totali_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
         .execute()
     )
     margini_map = {(int(r["anno"]), int(r["mese"])): r for r in (margini_resp.data or [])}
+    mensile_overrides = _load_mensile_overrides(sb, ristorante_id, annos)
 
     tot = {"lordo": 0.0, "netto": 0.0, "fb": 0.0, "pm": 0.0,
            "spese": 0.0, "pers": 0.0, "mol": 0.0, "mesi_attivi": 0}
     for (yy, mm) in mesi_target:
         r = margini_map.get((yy, mm), {})
         fb_auto, spese_auto = _calcola_costi_auto_per_mese(sb, ristorante_id, yy, mm)
-        iva10 = float(r.get("fatturato_iva10") or 0)
-        iva22 = float(r.get("fatturato_iva22") or 0)
-        altri = float(r.get("altri_ricavi_noiva") or 0)
+        ov = mensile_overrides.get((yy, mm))
+        iva10 = ov["iva10"] if ov else float(r.get("fatturato_iva10") or 0)
+        iva22 = ov["iva22"] if ov else float(r.get("fatturato_iva22") or 0)
+        altri = ov["altri"] if ov else float(r.get("altri_ricavi_noiva") or 0)
         lordo = iva10 + iva22 + altri
         netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
         fb_tot = fb_auto + float(r.get("altri_costi_fb") or 0)
@@ -4188,11 +4316,9 @@ async def import_ricavi_xls(
 ) -> RicaviImportXlsResponse:
     """Importa ricavi giornalieri da XLS/XLSX.
 
-    Colonne attese (case-insensitive, ordine indifferente):
-      - data (DD/MM/YYYY o YYYY-MM-DD o Excel date)
-      - iva10 / fatturato_iva10 / iva_10
-      - iva22 / fatturato_iva22 / iva_22
-      - altri / altri_ricavi / altri_ricavi_noiva (opzionale)
+    Riconosce automaticamente il formato del gestionale:
+      - Passbi v1: colonne Data|Ragione sociale|Tipo documento|Codice (IVA)|Importo
+      - Generico: colonne data|iva10|iva22|altri (formato precedente)
     """
     import io as _io
     from datetime import date, datetime as _dt
@@ -4209,41 +4335,277 @@ async def import_ricavi_xls(
 
     try:
         if filename.endswith(".csv"):
-            df = pd.read_csv(_io.BytesIO(content), sep=None, engine="python")
+            raw_df = pd.read_csv(_io.BytesIO(content), sep=None, engine="python", header=None)
         else:
-            df = pd.read_excel(_io.BytesIO(content), engine="openpyxl")
+            raw_df = pd.read_excel(_io.BytesIO(content), engine="openpyxl", header=None)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"File non leggibile: {e}")
 
-    if df.empty:
+    if raw_df.empty:
         return RicaviImportXlsResponse(parsed_rows=0, inserted=0, updated=0, skipped=0,
                                        errors=["File vuoto"])
 
-    # Normalizza nomi colonne
-    df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+    # ── Riconoscimento versione gestionale ───────────────────────────────────
+    gestionale_version = _detect_gestionale_version(raw_df)
+
+    if gestionale_version == "passbi_v1":
+        items, errors, parsed_rows = _parse_passbi_v1(raw_df, ristorante_id, sb)
+    else:
+        items, errors, parsed_rows = _parse_generico(raw_df)
+
+    if not items:
+        return RicaviImportXlsResponse(parsed_rows=parsed_rows, inserted=0, updated=0,
+                                       skipped=parsed_rows, errors=errors or ["Nessuna riga valida"])
+
+    batch_req = RicaviBatchUpsertRequest(
+        items=items,
+        source="xls",
+        source_meta={"filename": file.filename or "", "gestionale": gestionale_version},
+    )
+    batch_res = await upsert_ricavi_batch(batch_req, authorization=authorization)
+
+    preview = [RicavoGiornalieroItem(
+        data=it.data,
+        fatturato_iva10=it.fatturato_iva10,
+        fatturato_iva22=it.fatturato_iva22,
+        altri_ricavi_noiva=it.altri_ricavi_noiva,
+        source="xls",
+    ) for it in items[:10]]
+
+    return RicaviImportXlsResponse(
+        parsed_rows=parsed_rows,
+        inserted=batch_res.inserted,
+        updated=batch_res.updated,
+        skipped=batch_res.skipped + (parsed_rows - len(items)),
+        errors=errors + batch_res.errors,
+        preview=preview,
+    )
+
+
+def _detect_gestionale_version(raw_df) -> str:
+    """Identifica il formato del file dal contenuto della prima riga."""
+    import pandas as pd
+    first_row_vals = [str(v).strip().lower() for v in raw_df.iloc[0].tolist() if pd.notna(v)]
+    # Passbi v1: prima cella contiene "oneflux export" oppure le colonne header
+    # tipiche sono data/ragione sociale/tipo documento
+    combined = " ".join(first_row_vals)
+    if "oneflux export" in combined:
+        return "passbi_v1"
+    # Controlla anche la riga header (riga 3 in Passbi v1)
+    if len(raw_df) >= 4:
+        header_row = [str(v).strip().lower() for v in raw_df.iloc[3].tolist() if str(v).strip()]
+        header_combined = " ".join(header_row)
+        if "ragione sociale" in header_combined or "tipo documento" in header_combined:
+            return "passbi_v1"
+    return "generico"
+
+
+def _parse_passbi_v1(raw_df, ristorante_id: str, sb) -> tuple:
+    """
+    Parser per Passbi v1.
+    Struttura: righe 0-2 header/metadati, riga 3 colonne, righe 4..N dati, ultima riga footer.
+    Colonne: Data | Ragione sociale | Tipo documento | Codice (IVA) | Importo
+    Regole mapping:
+      - tipo_doc 'proforma' o vuoto, oppure IVA vuota → altri_ricavi_noiva (importo = netto già)
+      - tipo_doc 'fattura'/'scontrino' + IVA 10 → fatturato_iva10 (lordo, scorporare)
+      - tipo_doc 'fattura'/'scontrino' + IVA 22 → fatturato_iva22 (lordo, scorporare)
+    """
+    import pandas as pd
+    from datetime import date, datetime as _dt
+    from collections import defaultdict
+
+    # Trova riga header cercando colonna "data" (tollerante)
+    header_idx = None
+    for i, row in raw_df.iterrows():
+        vals = [str(v).strip().lower() for v in row.tolist()]
+        if any("data" in v for v in vals):
+            header_idx = i
+            break
+    if header_idx is None:
+        return [], ["Header colonne non trovato nel file Passbi"], len(raw_df)
+
+    headers = [str(v).strip() for v in raw_df.iloc[header_idx].tolist()]
+    data_rows = raw_df.iloc[header_idx + 1:].reset_index(drop=True)
+    parsed_rows = len(data_rows)
+
+    # Mappa colonne per nome (tollerante a newline e varianti)
+    def _find_col(names: list) -> Optional[int]:
+        for i, h in enumerate(headers):
+            norm = h.lower().replace("\n", " ").replace("  ", " ").strip()
+            for n in names:
+                if n in norm:
+                    return i
+        return None
+
+    idx_data = _find_col(["data"])
+    idx_ragione = _find_col(["ragione sociale", "azienda"])
+    idx_tipo = _find_col(["tipo documento", "testata", "tipo_documento"])
+    idx_iva = _find_col(["codice", "iva"])
+    idx_importo = _find_col(["importo", "totale"])
+
+    if idx_data is None or idx_importo is None:
+        return [], ["Colonne Data o Importo non trovate nel file Passbi"], parsed_rows
+
+    # Carica mapping ragione_sociale → ristorante_id
+    mapping_resp = sb.table("ricavi_ragione_sociale_map").select("ragione_sociale_norm,ristorante_id").execute()
+    ragione_map: Dict[str, str] = {
+        str(r["ragione_sociale_norm"]).strip().lower(): str(r["ristorante_id"])
+        for r in (mapping_resp.data or [])
+    }
+
+    def _parse_date(v) -> Optional[str]:
+        from datetime import date as _date, datetime as _dt2
+        if isinstance(v, (_date, _dt)):
+            d = v.date() if isinstance(v, _dt) else v
+            return d.isoformat()
+        s = str(v).strip()
+        if not s or s.lower() in ("nan", "none", ""):
+            return None
+        for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                return _dt.strptime(s, fmt).date().isoformat()
+            except ValueError:
+                continue
+        return None
+
+    def _to_float(v) -> float:
+        if v is None:
+            return 0.0
+        import pandas as pd
+        if isinstance(v, float) and pd.isna(v):
+            return 0.0
+        try:
+            return max(0.0, float(str(v).replace(",", ".")))
+        except Exception:
+            return 0.0
+
+    # Aggrega per (ristorante_id, data) → {iva10, iva22, altri}
+    aggregato: Dict[tuple, Dict[str, float]] = defaultdict(lambda: {"iva10": 0.0, "iva22": 0.0, "altri": 0.0})
+    warnings_ragione: set = set()
+    errors: List[str] = []
+
+    for i, row in data_rows.iterrows():
+        vals = row.tolist()
+
+        # Scarta footer (data vuota + importo non vuoto)
+        raw_data_val = vals[idx_data] if idx_data < len(vals) else None
+        data_iso = _parse_date(raw_data_val)
+        if data_iso is None:
+            continue
+
+        importo = _to_float(vals[idx_importo] if idx_importo < len(vals) else None)
+        if importo <= 0:
+            continue
+
+        # Risolvi ristorante
+        raw_ragione = str(vals[idx_ragione]).strip() if idx_ragione is not None and idx_ragione < len(vals) else ""
+        import pandas as pd
+        if not raw_ragione or raw_ragione.lower() in ("nan", "none"):
+            target_ristorante = ristorante_id
+        else:
+            norm_ragione = raw_ragione.lower().strip()
+            target_ristorante = ragione_map.get(norm_ragione)
+            if target_ristorante is None:
+                warnings_ragione.add(raw_ragione)
+                target_ristorante = ristorante_id  # fallback: usa ristorante corrente
+
+        tipo_doc = str(vals[idx_tipo]).strip().lower() if idx_tipo is not None and idx_tipo < len(vals) else ""
+        raw_iva = vals[idx_iva] if idx_iva is not None and idx_iva < len(vals) else None
+        iva_str = "" if raw_iva is None or (isinstance(raw_iva, float) and pd.isna(raw_iva)) else str(raw_iva).strip()
+
+        key = (target_ristorante, data_iso)
+
+        # Applica regole mapping
+        if tipo_doc in ("proforma", "") or iva_str == "":
+            aggregato[key]["altri"] += importo
+        else:
+            try:
+                iva_val = int(float(iva_str))
+            except (ValueError, TypeError):
+                aggregato[key]["altri"] += importo
+                continue
+            if iva_val == 10:
+                aggregato[key]["iva10"] += importo
+            elif iva_val == 22:
+                aggregato[key]["iva22"] += importo
+            else:
+                aggregato[key]["altri"] += importo
+
+    if warnings_ragione:
+        errors.append(f"Ragioni sociali non mappate (usato ristorante corrente): {', '.join(sorted(warnings_ragione))}")
+
+    # L'import salva solo sul ristorante corrente. Le righe mappate ad altri
+    # ristoranti vengono ignorate (il batch upsert non sa scrivere su ristoranti
+    # diversi da quello del token): l'utente importa il file dal ristorante giusto.
+    items: List[RicavoUpsertRequest] = []
+    giorni_altri_ristoranti = 0
+    for (rid, data_iso), buckets in aggregato.items():
+        if buckets["iva10"] + buckets["iva22"] + buckets["altri"] <= 0:
+            continue
+        if rid != ristorante_id:
+            giorni_altri_ristoranti += 1
+            continue
+        # Salva lordi; il calcolo netto avviene in lettura con scorporo
+        items.append(RicavoUpsertRequest(
+            data=data_iso,
+            fatturato_iva10=round(buckets["iva10"], 4),
+            fatturato_iva22=round(buckets["iva22"], 4),
+            altri_ricavi_noiva=round(buckets["altri"], 4),
+        ))
+
+    if giorni_altri_ristoranti:
+        errors.append(
+            f"{giorni_altri_ristoranti} giorni di altri ristoranti (mappati via ragione sociale) "
+            f"ignorati: importa il file dal ristorante corrispondente."
+        )
+
+    return items, errors, parsed_rows
+
+
+def _parse_generico(raw_df) -> tuple:
+    """Parser generico per file con colonne data|iva10|iva22|altri (formato precedente)."""
+    import pandas as pd
+    from datetime import date, datetime as _dt
+
+    df = raw_df.copy()
+    # Prova a usare prima riga come header se sembra tale
+    first_row = [str(v).strip().lower() for v in df.iloc[0].tolist()]
+    if any(v in ("data", "date", "giorno") for v in first_row):
+        df.columns = first_row
+        df = df.iloc[1:].reset_index(drop=True)
+    else:
+        df.columns = [str(c).strip().lower().replace(" ", "_") for c in df.columns]
+
     col_data = next((c for c in df.columns if c in ("data", "date", "giorno", "data_documento")), None)
     col_iva10 = next((c for c in df.columns if c in ("iva10", "iva_10", "fatturato_iva10")), None)
     col_iva22 = next((c for c in df.columns if c in ("iva22", "iva_22", "fatturato_iva22")), None)
     col_altri = next((c for c in df.columns if c in ("altri", "altri_ricavi", "altri_ricavi_noiva", "noiva")), None)
 
     if not col_data:
-        return RicaviImportXlsResponse(parsed_rows=len(df), inserted=0, updated=0, skipped=len(df),
-                                       errors=["Colonna 'data' non trovata"])
+        return [], ["Colonna 'data' non trovata"], len(df)
 
     items: List[RicavoUpsertRequest] = []
     errors: List[str] = []
 
+    def _f(v) -> float:
+        try:
+            if v is None or (isinstance(v, float) and pd.isna(v)):
+                return 0.0
+            return max(0.0, float(str(v).replace(",", ".")))
+        except Exception:
+            return 0.0
+
     for idx, row in df.iterrows():
         raw_data = row.get(col_data)
         try:
-            if isinstance(raw_data, (date, _dt)):
-                d = raw_data.date() if isinstance(raw_data, _dt) else raw_data
-                data_iso = d.isoformat()
+            if isinstance(raw_data, (_dt,)):
+                data_iso = raw_data.date().isoformat()
+            elif hasattr(raw_data, "isoformat"):
+                data_iso = raw_data.isoformat()
             else:
                 s = str(raw_data).strip()
                 if not s or s.lower() in ("nan", "none", ""):
                     continue
-                # Prova vari formati
                 parsed = None
                 for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d/%m/%y"):
                     try:
@@ -4259,14 +4621,6 @@ async def import_ricavi_xls(
             errors.append(f"riga {idx + 2}: {e}")
             continue
 
-        def _f(v):
-            try:
-                if v is None or (isinstance(v, float) and pd.isna(v)):
-                    return 0.0
-                return max(0.0, float(str(v).replace(",", ".")))
-            except Exception:
-                return 0.0
-
         iva10 = _f(row.get(col_iva10)) if col_iva10 else 0.0
         iva22 = _f(row.get(col_iva22)) if col_iva22 else 0.0
         altri = _f(row.get(col_altri)) if col_altri else 0.0
@@ -4281,33 +4635,103 @@ async def import_ricavi_xls(
             altri_ricavi_noiva=altri,
         ))
 
-    if not items:
-        return RicaviImportXlsResponse(parsed_rows=len(df), inserted=0, updated=0,
-                                       skipped=len(df), errors=errors or ["Nessuna riga valida"])
+    return items, errors, len(df)
 
-    # Riusa logica batch
-    batch_req = RicaviBatchUpsertRequest(
-        items=items,
-        source="xls",
-        source_meta={"filename": file.filename or ""},
+
+# ── Modalità ricavi mensili ──────────────────────────────────────────────────
+
+class RicaviModalitaResponse(BaseModel):
+    anno: int
+    mese: int
+    modalita: str  # "giornaliero" | "mensile"
+    fatturato_iva10: float = 0.0
+    fatturato_iva22: float = 0.0
+    altri_ricavi_noiva: float = 0.0
+
+
+class RicaviModalitaUpsertRequest(BaseModel):
+    anno: int
+    mese: int
+    modalita: str = "giornaliero"
+    fatturato_iva10: float = 0.0
+    fatturato_iva22: float = 0.0
+    altri_ricavi_noiva: float = 0.0
+
+
+@app.get("/api/ricavi/modalita", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
+async def get_ricavi_modalita(
+    anno: int,
+    mese: int,
+    authorization: Optional[str] = Header(None),
+) -> RicaviModalitaResponse:
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    resp = (
+        sb.table("ricavi_modalita_mensile")
+        .select("anno,mese,modalita,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+        .eq("ristorante_id", ristorante_id)
+        .eq("anno", anno)
+        .eq("mese", mese)
+        .limit(1)
+        .execute()
     )
-    batch_res = await upsert_ricavi_batch(batch_req, authorization=authorization)
+    if resp.data:
+        r = resp.data[0]
+        return RicaviModalitaResponse(
+            anno=r["anno"], mese=r["mese"],
+            modalita=str(r.get("modalita") or "giornaliero"),
+            fatturato_iva10=float(r.get("fatturato_iva10") or 0),
+            fatturato_iva22=float(r.get("fatturato_iva22") or 0),
+            altri_ricavi_noiva=float(r.get("altri_ricavi_noiva") or 0),
+        )
+    return RicaviModalitaResponse(anno=anno, mese=mese, modalita="giornaliero")
 
-    preview = [RicavoGiornalieroItem(
-        data=it.data,
-        fatturato_iva10=it.fatturato_iva10,
-        fatturato_iva22=it.fatturato_iva22,
-        altri_ricavi_noiva=it.altri_ricavi_noiva,
-        source="xls",
-    ) for it in items[:10]]
 
-    return RicaviImportXlsResponse(
-        parsed_rows=len(df),
-        inserted=batch_res.inserted,
-        updated=batch_res.updated,
-        skipped=batch_res.skipped + (len(df) - len(items)),
-        errors=errors + batch_res.errors,
-        preview=preview,
+@app.post("/api/ricavi/modalita", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
+async def upsert_ricavi_modalita(
+    body: RicaviModalitaUpsertRequest,
+    authorization: Optional[str] = Header(None),
+) -> RicaviModalitaResponse:
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    if body.modalita not in ("giornaliero", "mensile"):
+        raise HTTPException(status_code=400, detail="modalita deve essere 'giornaliero' o 'mensile'")
+    if not 1 <= body.mese <= 12:
+        raise HTTPException(status_code=400, detail="mese deve essere tra 1 e 12")
+
+    payload = {
+        "ristorante_id": ristorante_id,
+        "anno": body.anno,
+        "mese": body.mese,
+        "modalita": body.modalita,
+        "fatturato_iva10": max(0.0, float(body.fatturato_iva10)),
+        "fatturato_iva22": max(0.0, float(body.fatturato_iva22)),
+        "altri_ricavi_noiva": max(0.0, float(body.altri_ricavi_noiva)),
+    }
+
+    resp = (
+        sb.table("ricavi_modalita_mensile")
+        .upsert(payload, on_conflict="ristorante_id,anno,mese")
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=500, detail="Salvataggio modalità fallito")
+
+    r = resp.data[0]
+    return RicaviModalitaResponse(
+        anno=r["anno"], mese=r["mese"],
+        modalita=str(r.get("modalita") or "giornaliero"),
+        fatturato_iva10=float(r.get("fatturato_iva10") or 0),
+        fatturato_iva22=float(r.get("fatturato_iva22") or 0),
+        altri_ricavi_noiva=float(r.get("altri_ricavi_noiva") or 0),
     )
 
 
