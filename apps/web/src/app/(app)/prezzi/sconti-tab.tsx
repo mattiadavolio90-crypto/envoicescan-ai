@@ -206,7 +206,7 @@ export function ScontiTab() {
           <table className="w-full text-xs border-collapse">
             <thead>
               <tr className="bg-muted/60">
-                {["Tipo", "Prodotto", "Categoria", "Fornitore", "Q.tà", "Valore", "Data", "Documento"].map((h) => (
+                {["Tipo", "Prodotto", "Categoria", "Fornitore", "Q.tà", "Valore", "Data", "N. Documento", "File"].map((h) => (
                   <th key={h} className="text-left px-3 py-2 font-semibold border-r last:border-r-0 border-border">
                     {h}
                   </th>
@@ -237,6 +237,7 @@ export function ScontiTab() {
                     {r.tipo === "sconto" ? fmtEuro(r.valore) : "—"}
                   </td>
                   <td className="px-3 py-2 border-r border-border whitespace-nowrap">{fmtData(r.data)}</td>
+                  <td className="px-3 py-2 border-r border-border font-mono text-[11px] whitespace-nowrap">{r.numero_documento || "—"}</td>
                   <td className="px-3 py-2 text-muted-foreground text-[10px] max-w-[140px] truncate">{r.fattura}</td>
                 </tr>
               ))}

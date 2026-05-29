@@ -30,6 +30,7 @@ export type ScontoOmaggioItem = {
   quantita: number | null;
   valore: number;
   data: string;
+  numero_documento: string;
   fattura: string;
 };
 
@@ -48,6 +49,7 @@ export type NotaCreditoItem = {
   categoria: string;
   quantita: number | null;
   credito: number;
+  numero_documento: string;
 };
 
 export type NoteCreditoResponse = {

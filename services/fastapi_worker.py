@@ -3088,6 +3088,7 @@ class ScontoOmaggioItem(BaseModel):
     quantita: Optional[float]
     valore: float
     data: str
+    numero_documento: str
     fattura: str
 
 
@@ -3106,6 +3107,7 @@ class NotaCreditoItem(BaseModel):
     categoria: str
     quantita: Optional[float]
     credito: float
+    numero_documento: str
 
 
 class NoteCreditoResponse(BaseModel):
@@ -3265,6 +3267,20 @@ def _load_fatture_for_prezzi(
     return all_rows
 
 
+def _load_num_documento_map(sb, ristorante_id: str, data_da: str, data_a: str) -> dict:
+    """Restituisce {file_origine: numero_documento} da fatture_documenti per il periodo."""
+    resp = (
+        sb.table("fatture_documenti")
+        .select("file_origine,numero_documento")
+        .eq("ristorante_id", ristorante_id)
+        .is_("deleted_at", "null")
+        .gte("data_documento", data_da)
+        .lte("data_documento", data_a)
+        .execute()
+    )
+    return {r["file_origine"]: (r.get("numero_documento") or "") for r in (resp.data or [])}
+
+
 @app.get("/api/prezzi/soglia-alert", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
 async def get_soglia_alert(
     authorization: Optional[str] = Header(None),
@@ -3347,6 +3363,8 @@ async def get_sconti_omaggi(
     if not all_rows:
         return ScontiOmaggiResponse(items=[], totale_risparmiato=0.0, n_sconti=0, n_omaggi=0)
 
+    num_map = _load_num_documento_map(sb, ristorante_id, data_da, data_a)
+
     df = pd.DataFrame(all_rows)
     df['prezzo_unitario'] = pd.to_numeric(df['prezzo_unitario'], errors='coerce').fillna(0.0)
     df['totale_riga'] = pd.to_numeric(df['totale_riga'], errors='coerce').fillna(0.0)
@@ -3367,6 +3385,7 @@ async def get_sconti_omaggi(
 
     items = []
     for _, r in df_sconti.iterrows():
+        fo = str(r.get('file_origine', ''))
         items.append(ScontoOmaggioItem(
             tipo="sconto",
             descrizione=str(r.get('descrizione', '')),
@@ -3375,9 +3394,11 @@ async def get_sconti_omaggi(
             quantita=float(r['quantita']) if pd.notna(r['quantita']) else None,
             valore=round(abs(float(r['totale_riga'])), 2),
             data=str(r.get('data_documento', '')),
-            fattura=str(r.get('file_origine', '')),
+            numero_documento=num_map.get(fo, ''),
+            fattura=fo,
         ))
     for _, r in df_omaggi.iterrows():
+        fo = str(r.get('file_origine', ''))
         items.append(ScontoOmaggioItem(
             tipo="omaggio",
             descrizione=str(r.get('descrizione', '')),
@@ -3386,7 +3407,8 @@ async def get_sconti_omaggi(
             quantita=float(r['quantita']) if pd.notna(r['quantita']) else None,
             valore=0.0,
             data=str(r.get('data_documento', '')),
-            fattura=str(r.get('file_origine', '')),
+            numero_documento=num_map.get(fo, ''),
+            fattura=fo,
         ))
 
     items.sort(key=lambda x: x.data, reverse=True)
@@ -3418,6 +3440,8 @@ async def get_note_credito(
     if not all_rows:
         return NoteCreditoResponse(note=[], totale_credito=0.0, n_documenti=0)
 
+    num_map = _load_num_documento_map(sb, ristorante_id, data_da, data_a)
+
     df = pd.DataFrame(all_rows)
     df['prezzo_unitario'] = pd.to_numeric(df['prezzo_unitario'], errors='coerce').fillna(0.0)
     df['totale_riga'] = pd.to_numeric(df['totale_riga'], errors='coerce').fillna(0.0)
@@ -3433,14 +3457,16 @@ async def get_note_credito(
 
     note = []
     for _, r in df_nc.iterrows():
+        fo = str(r.get('file_origine', ''))
         note.append(NotaCreditoItem(
-            documento=str(r.get('file_origine', '')),
+            documento=fo,
             data=str(r.get('data_documento', '')),
             fornitore=str(r.get('fornitore', '')),
             descrizione=str(r.get('descrizione', '')),
             categoria=str(r.get('categoria', '')),
             quantita=float(r['quantita']) if pd.notna(r['quantita']) else None,
             credito=round(abs(float(r['totale_riga'])), 2),
+            numero_documento=num_map.get(fo, ''),
         ))
 
     note.sort(key=lambda x: x.data, reverse=True)
