@@ -149,10 +149,4870 @@
           }
         }
       }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Login utente — restituisce session token",
+        "operationId": "auth_login_api_auth_login_post",
+        "parameters": [
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Credenziali errate"
+          },
+          "429": {
+            "description": "Rate limit superato (lockout)"
+          },
+          "503": {
+            "description": "Servizio auth non disponibile"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Verifica sessione corrente",
+        "operationId": "auth_me_api_auth_me_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserPublic"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sessione non valida"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Logout — invalida session_token legacy",
+        "operationId": "auth_logout_api_auth_logout_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Auth Logout Api Auth Logout Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dashboard/stats": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "summary": "Statistiche dashboard utente — KPI + grafici",
+        "operationId": "dashboard_stats_api_dashboard_stats_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardStats"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/upload/start-session": {
+      "post": {
+        "tags": [
+          "Upload"
+        ],
+        "summary": "Upload Start Session",
+        "description": "Marca l'inizio di una nuova sessione di caricamento: aggiorna nuovi_da = now().\nI prodotti caricati in questa sessione avranno created_at >= nuovi_da → badge 'Nuovo'.\nI prodotti delle sessioni precedenti avranno created_at < nuovi_da → badge rimosso.",
+        "operationId": "upload_start_session_api_upload_start_session_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/upload/invoice": {
+      "post": {
+        "tags": [
+          "Upload"
+        ],
+        "summary": "Upload fattura XML/P7M — parsing + salvataggio su DB (auth solo via Bearer per upload diretto dal browser)",
+        "operationId": "upload_invoice_api_upload_invoice_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_invoice_api_upload_invoice_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadInvoiceResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notifiche": {
+      "get": {
+        "tags": [
+          "Notifiche"
+        ],
+        "summary": "Lista notifiche utente (attive + non scadute)",
+        "operationId": "get_notifiche_api_notifiche_get",
+        "parameters": [
+          {
+            "name": "include_dismissed",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Include Dismissed"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificheResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/notifiche/{notifica_id}/dismiss": {
+      "post": {
+        "tags": [
+          "Notifiche"
+        ],
+        "summary": "Segna notifica come letta/archiviata",
+        "operationId": "dismiss_notifica_api_notifiche__notifica_id__dismiss_post",
+        "parameters": [
+          {
+            "name": "notifica_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Notifica Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Dismiss Notifica Api Notifiche  Notifica Id  Dismiss Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/mesi-disponibili": {
+      "get": {
+        "summary": "Get Mesi Disponibili",
+        "operationId": "get_mesi_disponibili_api_fatture_mesi_disponibili_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MesiDisponibiliResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/kpi": {
+      "get": {
+        "summary": "Get Fatture Kpi",
+        "operationId": "get_fatture_kpi_api_fatture_kpi_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "tipo_prodotti",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo Prodotti"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KpiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/articoli-aggregati": {
+      "get": {
+        "summary": "Get Articoli Aggregati",
+        "operationId": "get_articoli_aggregati_api_fatture_articoli_aggregati_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "tipo_prodotti",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo Prodotti"
+            }
+          },
+          {
+            "name": "categoria",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Categoria"
+            }
+          },
+          {
+            "name": "fornitore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fornitore"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "solo_nuovi",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Solo Nuovi"
+            }
+          },
+          {
+            "name": "solo_da_verificare",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Solo Da Verificare"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArticoliResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/righe-articolo": {
+      "get": {
+        "summary": "Get Righe Articolo",
+        "operationId": "get_righe_articolo_api_fatture_righe_articolo_get",
+        "parameters": [
+          {
+            "name": "descrizione",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Descrizione"
+            }
+          },
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RigaFattura"
+                  },
+                  "title": "Response Get Righe Articolo Api Fatture Righe Articolo Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/pivot": {
+      "get": {
+        "summary": "Get Fatture Pivot",
+        "operationId": "get_fatture_pivot_api_fatture_pivot_get",
+        "parameters": [
+          {
+            "name": "dimensione",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "categoria",
+              "title": "Dimensione"
+            }
+          },
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "tipo_prodotti",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo Prodotti"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PivotResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/trend": {
+      "get": {
+        "summary": "Get Fatture Trend",
+        "operationId": "get_fatture_trend_api_fatture_trend_get",
+        "parameters": [
+          {
+            "name": "dimensione",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "categoria",
+              "title": "Dimensione"
+            }
+          },
+          {
+            "name": "valori",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Valori"
+            }
+          },
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "tipo_prodotti",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo Prodotti"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrendResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/fornitori": {
+      "get": {
+        "summary": "Get Fornitori Disponibili",
+        "operationId": "get_fornitori_disponibili_api_fatture_fornitori_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Fornitori Disponibili Api Fatture Fornitori Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/categorie": {
+      "get": {
+        "summary": "Get Categorie Disponibili",
+        "operationId": "get_categorie_disponibili_api_fatture_categorie_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Categorie Disponibili Api Fatture Categorie Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/categoria-batch": {
+      "post": {
+        "summary": "Categoria Batch",
+        "operationId": "categoria_batch_api_fatture_categoria_batch_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoriaBatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Categoria Batch Api Fatture Categoria Batch Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture": {
+      "get": {
+        "summary": "Get Fatture",
+        "operationId": "get_fatture_api_fatture_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "fornitore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fornitore"
+            }
+          },
+          {
+            "name": "categoria",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Categoria"
+            }
+          },
+          {
+            "name": "needs_review",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Needs Review"
+            }
+          },
+          {
+            "name": "tipo_prodotti",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo Prodotti"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FattureListResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/{riga_id}/categoria": {
+      "patch": {
+        "summary": "Aggiorna Categoria Riga",
+        "operationId": "aggiorna_categoria_riga_api_fatture__riga_id__categoria_patch",
+        "parameters": [
+          {
+            "name": "riga_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Riga Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AggiornaCategoriaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Aggiorna Categoria Riga Api Fatture  Riga Id  Categoria Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/margini": {
+      "get": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Get Margini",
+        "operationId": "get_margini_api_margini_get",
+        "parameters": [
+          {
+            "name": "anno",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Anno"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginiAnnoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Save Margini",
+        "operationId": "save_margini_api_margini_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SalvaMarginiRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/margini/fatturato-centri": {
+      "get": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Get Fatturato Centri",
+        "operationId": "get_fatturato_centri_api_margini_fatturato_centri_get",
+        "parameters": [
+          {
+            "name": "anno",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Anno"
+            }
+          },
+          {
+            "name": "mese",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Mese"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FatturatoCentriData"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Save Fatturato Centri",
+        "operationId": "save_fatturato_centri_api_margini_fatturato_centri_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FatturatoCentriData"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/margini/fatturato-centri-giorni": {
+      "get": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Get Fatturato Centri Giorni",
+        "description": "Fatturato giornaliero stimato per centro.\n\nNon esiste uno split per singolo giorno: la ripartizione è mensile (% per\ncentro su margini_mensili). Il valore giornaliero per centro è derivato\ndistribuendo la quota mensile del centro sul fatturato netto di ogni giorno.",
+        "operationId": "get_fatturato_centri_giorni_api_margini_fatturato_centri_giorni_get",
+        "parameters": [
+          {
+            "name": "anno",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Anno"
+            }
+          },
+          {
+            "name": "mese",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Mese"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FatturatoCentriGiornoItem"
+                  },
+                  "title": "Response Get Fatturato Centri Giorni Api Margini Fatturato Centri Giorni Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/margini/analisi-centri": {
+      "get": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Get Analisi Centri",
+        "operationId": "get_analisi_centri_api_margini_analisi_centri_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalisiCentriResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/margini/analisi-avanzata": {
+      "get": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Get Analisi Avanzata",
+        "operationId": "get_analisi_avanzata_api_margini_analisi_avanzata_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalisiAvanzataResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prezzi/soglia-alert": {
+      "get": {
+        "tags": [
+          "Prezzi"
+        ],
+        "summary": "Get Soglia Alert",
+        "operationId": "get_soglia_alert_api_prezzi_soglia_alert_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SogliaAlertResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Prezzi"
+        ],
+        "summary": "Set Soglia Alert",
+        "operationId": "set_soglia_alert_api_prezzi_soglia_alert_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SogliaAlertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SogliaAlertResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prezzi/variazioni": {
+      "get": {
+        "tags": [
+          "Prezzi"
+        ],
+        "summary": "Get Variazioni Prezzi",
+        "operationId": "get_variazioni_prezzi_api_prezzi_variazioni_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "soglia",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 5.0,
+              "title": "Soglia"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VariazioniResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prezzi/sconti-omaggi": {
+      "get": {
+        "tags": [
+          "Prezzi"
+        ],
+        "summary": "Get Sconti Omaggi",
+        "operationId": "get_sconti_omaggi_api_prezzi_sconti_omaggi_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScontiOmaggiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prezzi/note-credito": {
+      "get": {
+        "tags": [
+          "Prezzi"
+        ],
+        "summary": "Get Note Credito",
+        "operationId": "get_note_credito_api_prezzi_note_credito_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteCreditoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prezzi/storico-prodotto": {
+      "get": {
+        "tags": [
+          "Prezzi"
+        ],
+        "summary": "Get Storico Prodotto",
+        "operationId": "get_storico_prodotto_api_prezzi_storico_prodotto_get",
+        "parameters": [
+          {
+            "name": "prodotto",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Prodotto"
+            }
+          },
+          {
+            "name": "fornitore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Fornitore"
+            }
+          },
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoricoPrezzoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/margini/cella": {
+      "post": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Update Margini Cella",
+        "operationId": "update_margini_cella_api_margini_cella_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarginiCellaRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginiCellaResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/margini/analisi": {
+      "get": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Get Margini Analisi",
+        "operationId": "get_margini_analisi_api_margini_analisi_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginiAnalisiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/margini/kpi": {
+      "get": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Get Margini Kpi",
+        "operationId": "get_margini_kpi_api_margini_kpi_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginiKpiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ricavi/giornalieri": {
+      "get": {
+        "tags": [
+          "Ricavi"
+        ],
+        "summary": "Get Ricavi Giornalieri",
+        "operationId": "get_ricavi_giornalieri_api_ricavi_giornalieri_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RicaviGiornalieriResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Ricavi"
+        ],
+        "summary": "Upsert Ricavo Giornaliero",
+        "operationId": "upsert_ricavo_giornaliero_api_ricavi_giornalieri_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RicavoUpsertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RicavoGiornalieroItem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Ricavi"
+        ],
+        "summary": "Delete Ricavo Giornaliero",
+        "operationId": "delete_ricavo_giornaliero_api_ricavi_giornalieri_delete",
+        "parameters": [
+          {
+            "name": "data",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Delete Ricavo Giornaliero Api Ricavi Giornalieri Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ricavi/batch": {
+      "post": {
+        "tags": [
+          "Ricavi"
+        ],
+        "summary": "Upsert Ricavi Batch",
+        "operationId": "upsert_ricavi_batch_api_ricavi_batch_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RicaviBatchUpsertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RicaviBatchUpsertResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ricavi/import-xls": {
+      "post": {
+        "tags": [
+          "Ricavi"
+        ],
+        "summary": "Import Ricavi Xls",
+        "description": "Importa ricavi giornalieri da XLS/XLSX.\n\nRiconosce automaticamente il formato del gestionale:\n  - Passbi v1: colonne Data|Ragione sociale|Tipo documento|Codice (IVA)|Importo\n  - Generico: colonne data|iva10|iva22|altri (formato precedente)",
+        "operationId": "import_ricavi_xls_api_ricavi_import_xls_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_import_ricavi_xls_api_ricavi_import_xls_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RicaviImportXlsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ricavi/modalita": {
+      "get": {
+        "tags": [
+          "Ricavi"
+        ],
+        "summary": "Get Ricavi Modalita",
+        "operationId": "get_ricavi_modalita_api_ricavi_modalita_get",
+        "parameters": [
+          {
+            "name": "anno",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Anno"
+            }
+          },
+          {
+            "name": "mese",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Mese"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RicaviModalitaResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Ricavi"
+        ],
+        "summary": "Upsert Ricavi Modalita",
+        "operationId": "upsert_ricavi_modalita_api_ricavi_modalita_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RicaviModalitaUpsertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RicaviModalitaResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag": {
+      "get": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "List Tags",
+        "operationId": "list_tags_api_tag_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Create Tag",
+        "operationId": "create_tag_api_tag_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag/{tag_id}": {
+      "put": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Update Tag",
+        "operationId": "update_tag_api_tag__tag_id__put",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TagUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Delete Tag",
+        "operationId": "delete_tag_api_tag__tag_id__delete",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag/descrizioni": {
+      "get": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "List Descrizioni Distinte",
+        "operationId": "list_descrizioni_distinte_api_tag_descrizioni_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag/{tag_id}/prodotti": {
+      "get": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "List Tag Prodotti",
+        "operationId": "list_tag_prodotti_api_tag__tag_id__prodotti_get",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Add Tag Prodotti",
+        "operationId": "add_tag_prodotti_api_tag__tag_id__prodotti_post",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AggiungiAssociazioniRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag/prodotti/{assoc_id}": {
+      "delete": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Remove Tag Prodotto",
+        "operationId": "remove_tag_prodotto_api_tag_prodotti__assoc_id__delete",
+        "parameters": [
+          {
+            "name": "assoc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Assoc Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag/{tag_id}/analisi": {
+      "get": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Analizza Tag Endpoint",
+        "operationId": "analizza_tag_endpoint_api_tag__tag_id__analisi_get",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag/{tag_id}/orfani": {
+      "get": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Tag Orfani Endpoint",
+        "operationId": "tag_orfani_endpoint_api_tag__tag_id__orfani_get",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag/suggestions": {
+      "get": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "List Tag Suggestions",
+        "operationId": "list_tag_suggestions_api_tag_suggestions_get",
+        "parameters": [
+          {
+            "name": "refresh",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Refresh"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag/suggestions/{sid}/accept": {
+      "post": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Accept Tag Suggestion",
+        "operationId": "accept_tag_suggestion_api_tag_suggestions__sid__accept_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Sid"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptSuggestionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag/suggestions/{sid}/snooze": {
+      "post": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Snooze Tag Suggestion Endpoint",
+        "operationId": "snooze_tag_suggestion_endpoint_api_tag_suggestions__sid__snooze_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Sid"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SnoozeSuggestionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tag/suggestions/{sid}/dismiss": {
+      "post": {
+        "tags": [
+          "Tag"
+        ],
+        "summary": "Dismiss Tag Suggestion Endpoint",
+        "operationId": "dismiss_tag_suggestion_endpoint_api_tag_suggestions__sid__dismiss_post",
+        "parameters": [
+          {
+            "name": "sid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Sid"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AcceptSuggestionRequest": {
+        "properties": {
+          "suggestion_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion Type"
+          },
+          "tag_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag Name"
+          },
+          "tag_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tag Id"
+          }
+        },
+        "type": "object",
+        "title": "AcceptSuggestionRequest"
+      },
+      "AggiornaCategoriaRequest": {
+        "properties": {
+          "categoria": {
+            "type": "string",
+            "title": "Categoria"
+          }
+        },
+        "type": "object",
+        "required": [
+          "categoria"
+        ],
+        "title": "AggiornaCategoriaRequest"
+      },
+      "AggiungiAssociazioniRequest": {
+        "properties": {
+          "descrizioni": {
+            "items": {
+              "$ref": "#/components/schemas/AssociazioneItem"
+            },
+            "type": "array",
+            "title": "Descrizioni"
+          }
+        },
+        "type": "object",
+        "required": [
+          "descrizioni"
+        ],
+        "title": "AggiungiAssociazioniRequest"
+      },
+      "AnalisiAvanzataResponse": {
+        "properties": {
+          "centri": {
+            "items": {
+              "$ref": "#/components/schemas/CentroDetailItem"
+            },
+            "type": "array",
+            "title": "Centri"
+          },
+          "andamento_mensile": {
+            "items": {
+              "$ref": "#/components/schemas/AndamentoMese"
+            },
+            "type": "array",
+            "title": "Andamento Mensile"
+          },
+          "commenti": {
+            "items": {
+              "$ref": "#/components/schemas/CommentoKpi"
+            },
+            "type": "array",
+            "title": "Commenti"
+          },
+          "totale_costi_fb": {
+            "type": "number",
+            "title": "Totale Costi Fb"
+          },
+          "fatturato_netto_periodo": {
+            "type": "number",
+            "title": "Fatturato Netto Periodo"
+          },
+          "fatturato_per_centro_totale": {
+            "type": "number",
+            "title": "Fatturato Per Centro Totale"
+          },
+          "primo_margine": {
+            "type": "number",
+            "title": "Primo Margine"
+          },
+          "primo_margine_pct": {
+            "type": "number",
+            "title": "Primo Margine Pct"
+          },
+          "fatturato_split_attivo": {
+            "type": "boolean",
+            "title": "Fatturato Split Attivo"
+          },
+          "mesi_con_dati": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Mesi Con Dati"
+          }
+        },
+        "type": "object",
+        "required": [
+          "centri",
+          "andamento_mensile",
+          "commenti",
+          "totale_costi_fb",
+          "fatturato_netto_periodo",
+          "fatturato_per_centro_totale",
+          "primo_margine",
+          "primo_margine_pct",
+          "fatturato_split_attivo",
+          "mesi_con_dati"
+        ],
+        "title": "AnalisiAvanzataResponse"
+      },
+      "AnalisiCentriResponse": {
+        "properties": {
+          "centri": {
+            "items": {
+              "$ref": "#/components/schemas/CentroCostoItem"
+            },
+            "type": "array",
+            "title": "Centri"
+          },
+          "totale_costi_fb": {
+            "type": "number",
+            "title": "Totale Costi Fb"
+          },
+          "fatturato_netto_periodo": {
+            "type": "number",
+            "title": "Fatturato Netto Periodo"
+          },
+          "primo_margine": {
+            "type": "number",
+            "title": "Primo Margine"
+          },
+          "primo_margine_pct": {
+            "type": "number",
+            "title": "Primo Margine Pct"
+          },
+          "mesi_con_dati": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Mesi Con Dati"
+          }
+        },
+        "type": "object",
+        "required": [
+          "centri",
+          "totale_costi_fb",
+          "fatturato_netto_periodo",
+          "primo_margine",
+          "primo_margine_pct",
+          "mesi_con_dati"
+        ],
+        "title": "AnalisiCentriResponse"
+      },
+      "AndamentoMese": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "food": {
+            "type": "number",
+            "title": "Food"
+          },
+          "beverage": {
+            "type": "number",
+            "title": "Beverage"
+          },
+          "alcolici": {
+            "type": "number",
+            "title": "Alcolici"
+          },
+          "dolci": {
+            "type": "number",
+            "title": "Dolci"
+          },
+          "shop": {
+            "type": "number",
+            "title": "Shop"
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mese",
+          "label",
+          "food",
+          "beverage",
+          "alcolici",
+          "dolci",
+          "shop"
+        ],
+        "title": "AndamentoMese"
+      },
+      "ArticoliResponse": {
+        "properties": {
+          "articoli": {
+            "items": {
+              "$ref": "#/components/schemas/ArticoloAggregato"
+            },
+            "type": "array",
+            "title": "Articoli"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "articoli",
+          "total"
+        ],
+        "title": "ArticoliResponse"
+      },
+      "ArticoloAggregato": {
+        "properties": {
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "fornitore_principale": {
+            "type": "string",
+            "title": "Fornitore Principale"
+          },
+          "altri_fornitori": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Altri Fornitori"
+          },
+          "ultimo_acquisto": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ultimo Acquisto"
+          },
+          "quantita_totale": {
+            "type": "number",
+            "title": "Quantita Totale"
+          },
+          "unita_misura": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unita Misura"
+          },
+          "prezzo_unit_medio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prezzo Unit Medio"
+          },
+          "prezzo_unit_trend_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prezzo Unit Trend Pct"
+          },
+          "totale_speso": {
+            "type": "number",
+            "title": "Totale Speso"
+          },
+          "num_acquisti": {
+            "type": "integer",
+            "title": "Num Acquisti"
+          },
+          "righe_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Righe Ids"
+          },
+          "needs_review": {
+            "type": "boolean",
+            "title": "Needs Review"
+          },
+          "is_nuovo": {
+            "type": "boolean",
+            "title": "Is Nuovo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "descrizione",
+          "categoria",
+          "fornitore_principale",
+          "altri_fornitori",
+          "ultimo_acquisto",
+          "quantita_totale",
+          "unita_misura",
+          "prezzo_unit_medio",
+          "prezzo_unit_trend_pct",
+          "totale_speso",
+          "num_acquisti",
+          "righe_ids",
+          "needs_review",
+          "is_nuovo"
+        ],
+        "title": "ArticoloAggregato"
+      },
+      "AssociazioneItem": {
+        "properties": {
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "descrizione_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descrizione Key"
+          },
+          "fattore_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fattore Kg"
+          }
+        },
+        "type": "object",
+        "required": [
+          "descrizione"
+        ],
+        "title": "AssociazioneItem"
+      },
+      "Body_import_ricavi_xls_api_ricavi_import_xls_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_import_ricavi_xls_api_ricavi_import_xls_post"
+      },
       "Body_parse_invoice_api_parse_post": {
         "properties": {
           "file": {
@@ -179,6 +5039,190 @@
           "file"
         ],
         "title": "Body_parse_invoice_api_parse_post"
+      },
+      "Body_upload_invoice_api_upload_invoice_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_invoice_api_upload_invoice_post"
+      },
+      "CategoriaBatchRequest": {
+        "properties": {
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "nuova_categoria": {
+            "type": "string",
+            "title": "Nuova Categoria"
+          },
+          "riga_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Riga Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "descrizione",
+          "nuova_categoria"
+        ],
+        "title": "CategoriaBatchRequest"
+      },
+      "CategoriaDetail": {
+        "properties": {
+          "categoria": {
+            "type": "string",
+            "title": "Categoria"
+          },
+          "costo": {
+            "type": "number",
+            "title": "Costo"
+          },
+          "pct_su_centro": {
+            "type": "number",
+            "title": "Pct Su Centro"
+          }
+        },
+        "type": "object",
+        "required": [
+          "categoria",
+          "costo",
+          "pct_su_centro"
+        ],
+        "title": "CategoriaDetail"
+      },
+      "CentroCostoItem": {
+        "properties": {
+          "centro": {
+            "type": "string",
+            "title": "Centro"
+          },
+          "categorie": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Categorie"
+          },
+          "costo_totale": {
+            "type": "number",
+            "title": "Costo Totale"
+          },
+          "fatturato": {
+            "type": "number",
+            "title": "Fatturato",
+            "default": 0.0
+          },
+          "margine": {
+            "type": "number",
+            "title": "Margine",
+            "default": 0.0
+          },
+          "incidenza_su_fatt": {
+            "type": "number",
+            "title": "Incidenza Su Fatt",
+            "default": 0.0
+          },
+          "incidenza_su_fb": {
+            "type": "number",
+            "title": "Incidenza Su Fb",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "centro",
+          "categorie",
+          "costo_totale"
+        ],
+        "title": "CentroCostoItem"
+      },
+      "CentroDetailItem": {
+        "properties": {
+          "centro": {
+            "type": "string",
+            "title": "Centro"
+          },
+          "icona": {
+            "type": "string",
+            "title": "Icona"
+          },
+          "categorie_def": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Categorie Def"
+          },
+          "categorie_dettaglio": {
+            "items": {
+              "$ref": "#/components/schemas/CategoriaDetail"
+            },
+            "type": "array",
+            "title": "Categorie Dettaglio"
+          },
+          "costo_totale": {
+            "type": "number",
+            "title": "Costo Totale"
+          },
+          "fatturato": {
+            "type": "number",
+            "title": "Fatturato"
+          },
+          "margine": {
+            "type": "number",
+            "title": "Margine"
+          },
+          "margine_pct": {
+            "type": "number",
+            "title": "Margine Pct"
+          },
+          "incidenza_su_fatt": {
+            "type": "number",
+            "title": "Incidenza Su Fatt"
+          },
+          "incidenza_su_fb": {
+            "type": "number",
+            "title": "Incidenza Su Fb"
+          },
+          "has_fatturato": {
+            "type": "boolean",
+            "title": "Has Fatturato"
+          }
+        },
+        "type": "object",
+        "required": [
+          "centro",
+          "icona",
+          "categorie_def",
+          "categorie_dettaglio",
+          "costo_totale",
+          "fatturato",
+          "margine",
+          "margine_pct",
+          "incidenza_su_fatt",
+          "incidenza_su_fb",
+          "has_fatturato"
+        ],
+        "title": "CentroDetailItem"
       },
       "ClassifyRequest": {
         "properties": {
@@ -335,6 +5379,1082 @@
         ],
         "title": "ClassifyResponse"
       },
+      "CommentoKpi": {
+        "properties": {
+          "kpi_nome": {
+            "type": "string",
+            "title": "Kpi Nome"
+          },
+          "percentuale": {
+            "type": "string",
+            "title": "Percentuale"
+          },
+          "commento": {
+            "type": "string",
+            "title": "Commento"
+          },
+          "emoji": {
+            "type": "string",
+            "title": "Emoji"
+          },
+          "colore": {
+            "type": "string",
+            "title": "Colore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kpi_nome",
+          "percentuale",
+          "commento",
+          "emoji",
+          "colore"
+        ],
+        "title": "CommentoKpi"
+      },
+      "DashboardKpi": {
+        "properties": {
+          "fatture_uniche": {
+            "type": "integer",
+            "title": "Fatture Uniche"
+          },
+          "righe_totali": {
+            "type": "integer",
+            "title": "Righe Totali"
+          },
+          "spesa_totale": {
+            "type": "number",
+            "title": "Spesa Totale"
+          },
+          "spesa_mese_corrente": {
+            "type": "number",
+            "title": "Spesa Mese Corrente"
+          },
+          "spesa_mese_precedente": {
+            "type": "number",
+            "title": "Spesa Mese Precedente"
+          },
+          "prima_fattura": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prima Fattura"
+          },
+          "ultima_fattura": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ultima Fattura"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fatture_uniche",
+          "righe_totali",
+          "spesa_totale",
+          "spesa_mese_corrente",
+          "spesa_mese_precedente"
+        ],
+        "title": "DashboardKpi"
+      },
+      "DashboardStats": {
+        "properties": {
+          "kpi": {
+            "$ref": "#/components/schemas/DashboardKpi"
+          },
+          "spesa_mensile": {
+            "items": {
+              "$ref": "#/components/schemas/SpesaMensilePoint"
+            },
+            "type": "array",
+            "title": "Spesa Mensile"
+          },
+          "top_fornitori": {
+            "items": {
+              "$ref": "#/components/schemas/TopItem"
+            },
+            "type": "array",
+            "title": "Top Fornitori"
+          },
+          "top_categorie": {
+            "items": {
+              "$ref": "#/components/schemas/TopItem"
+            },
+            "type": "array",
+            "title": "Top Categorie"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kpi",
+          "spesa_mensile",
+          "top_fornitori",
+          "top_categorie"
+        ],
+        "title": "DashboardStats"
+      },
+      "FatturatoCentriData": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "fatturato_food": {
+            "type": "number",
+            "title": "Fatturato Food",
+            "default": 0.0
+          },
+          "fatturato_beverage": {
+            "type": "number",
+            "title": "Fatturato Beverage",
+            "default": 0.0
+          },
+          "fatturato_alcolici": {
+            "type": "number",
+            "title": "Fatturato Alcolici",
+            "default": 0.0
+          },
+          "fatturato_dolci": {
+            "type": "number",
+            "title": "Fatturato Dolci",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mese"
+        ],
+        "title": "FatturatoCentriData"
+      },
+      "FatturatoCentriGiornoItem": {
+        "properties": {
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "food": {
+            "type": "number",
+            "title": "Food",
+            "default": 0.0
+          },
+          "beverage": {
+            "type": "number",
+            "title": "Beverage",
+            "default": 0.0
+          },
+          "alcolici": {
+            "type": "number",
+            "title": "Alcolici",
+            "default": 0.0
+          },
+          "dolci": {
+            "type": "number",
+            "title": "Dolci",
+            "default": 0.0
+          },
+          "shop": {
+            "type": "number",
+            "title": "Shop",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "FatturatoCentriGiornoItem"
+      },
+      "FattureListResponse": {
+        "properties": {
+          "righe": {
+            "items": {
+              "$ref": "#/components/schemas/RigaFattura"
+            },
+            "type": "array",
+            "title": "Righe"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "title": "Page Size"
+          }
+        },
+        "type": "object",
+        "required": [
+          "righe",
+          "total",
+          "page",
+          "page_size"
+        ],
+        "title": "FattureListResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "KpiResponse": {
+        "properties": {
+          "totale": {
+            "type": "number",
+            "title": "Totale"
+          },
+          "num_righe": {
+            "type": "integer",
+            "title": "Num Righe"
+          },
+          "num_prodotti": {
+            "type": "integer",
+            "title": "Num Prodotti"
+          },
+          "media_mensile": {
+            "type": "number",
+            "title": "Media Mensile"
+          },
+          "delta_totale_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Totale Pct"
+          },
+          "delta_righe_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Righe Pct"
+          },
+          "delta_prodotti_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Prodotti Pct"
+          },
+          "delta_media_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Media Pct"
+          },
+          "confronto_label": {
+            "type": "string",
+            "title": "Confronto Label",
+            "default": "periodo prec."
+          }
+        },
+        "type": "object",
+        "required": [
+          "totale",
+          "num_righe",
+          "num_prodotti",
+          "media_mensile",
+          "delta_totale_pct",
+          "delta_righe_pct",
+          "delta_prodotti_pct",
+          "delta_media_pct"
+        ],
+        "title": "KpiResponse"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Email",
+            "description": "Email utente"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 255,
+            "title": "Password",
+            "description": "Password in chiaro"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "LoginResponse": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Session token da settare in cookie HTTP-only"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserPublic"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "user"
+        ],
+        "title": "LoginResponse"
+      },
+      "MarginiAnalisiResponse": {
+        "properties": {
+          "mesi": {
+            "items": {
+              "$ref": "#/components/schemas/MesiPivot"
+            },
+            "type": "array",
+            "title": "Mesi"
+          },
+          "totali": {
+            "$ref": "#/components/schemas/MesiPivot"
+          },
+          "fatt_medio_mensile": {
+            "type": "number",
+            "title": "Fatt Medio Mensile"
+          },
+          "food_cost_perc": {
+            "type": "number",
+            "title": "Food Cost Perc"
+          },
+          "primo_margine_perc": {
+            "type": "number",
+            "title": "Primo Margine Perc"
+          },
+          "spese_gen_perc": {
+            "type": "number",
+            "title": "Spese Gen Perc"
+          },
+          "personale_perc": {
+            "type": "number",
+            "title": "Personale Perc"
+          },
+          "mol_perc": {
+            "type": "number",
+            "title": "Mol Perc"
+          },
+          "num_mesi_attivi": {
+            "type": "integer",
+            "title": "Num Mesi Attivi"
+          },
+          "commenti": {
+            "items": {
+              "$ref": "#/components/schemas/CommentoKpi"
+            },
+            "type": "array",
+            "title": "Commenti"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mesi",
+          "totali",
+          "fatt_medio_mensile",
+          "food_cost_perc",
+          "primo_margine_perc",
+          "spese_gen_perc",
+          "personale_perc",
+          "mol_perc",
+          "num_mesi_attivi",
+          "commenti"
+        ],
+        "title": "MarginiAnalisiResponse"
+      },
+      "MarginiAnnoResponse": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mesi": {
+            "items": {
+              "$ref": "#/components/schemas/MarginiMeseData"
+            },
+            "type": "array",
+            "title": "Mesi"
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mesi"
+        ],
+        "title": "MarginiAnnoResponse"
+      },
+      "MarginiCellaRequest": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "maximum": 2100.0,
+            "minimum": 2000.0,
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Mese"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mese",
+          "field",
+          "value"
+        ],
+        "title": "MarginiCellaRequest"
+      },
+      "MarginiCellaResponse": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "value": {
+            "type": "number",
+            "title": "Value"
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mese",
+          "field",
+          "value"
+        ],
+        "title": "MarginiCellaResponse"
+      },
+      "MarginiKpiResponse": {
+        "properties": {
+          "fatturato_lordo": {
+            "type": "number",
+            "title": "Fatturato Lordo"
+          },
+          "fatturato_netto": {
+            "type": "number",
+            "title": "Fatturato Netto"
+          },
+          "costi_fb": {
+            "type": "number",
+            "title": "Costi Fb"
+          },
+          "primo_margine": {
+            "type": "number",
+            "title": "Primo Margine"
+          },
+          "spese_generali": {
+            "type": "number",
+            "title": "Spese Generali"
+          },
+          "costo_personale": {
+            "type": "number",
+            "title": "Costo Personale"
+          },
+          "mol": {
+            "type": "number",
+            "title": "Mol"
+          },
+          "food_cost_perc": {
+            "type": "number",
+            "title": "Food Cost Perc"
+          },
+          "primo_margine_perc": {
+            "type": "number",
+            "title": "Primo Margine Perc"
+          },
+          "spese_perc": {
+            "type": "number",
+            "title": "Spese Perc"
+          },
+          "personale_perc": {
+            "type": "number",
+            "title": "Personale Perc"
+          },
+          "mol_perc": {
+            "type": "number",
+            "title": "Mol Perc"
+          },
+          "delta_lordo_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Lordo Pct"
+          },
+          "delta_fb_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Fb Pct"
+          },
+          "delta_margine_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Margine Pct"
+          },
+          "delta_spese_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Spese Pct"
+          },
+          "delta_personale_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Personale Pct"
+          },
+          "delta_mol_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Mol Pct"
+          },
+          "confronto_label": {
+            "type": "string",
+            "title": "Confronto Label"
+          },
+          "spark_lordo": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Spark Lordo",
+            "default": []
+          },
+          "spark_fb": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Spark Fb",
+            "default": []
+          },
+          "spark_margine": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Spark Margine",
+            "default": []
+          },
+          "spark_spese": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Spark Spese",
+            "default": []
+          },
+          "spark_personale": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Spark Personale",
+            "default": []
+          },
+          "spark_mol": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Spark Mol",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "fatturato_lordo",
+          "fatturato_netto",
+          "costi_fb",
+          "primo_margine",
+          "spese_generali",
+          "costo_personale",
+          "mol",
+          "food_cost_perc",
+          "primo_margine_perc",
+          "spese_perc",
+          "personale_perc",
+          "mol_perc",
+          "confronto_label"
+        ],
+        "title": "MarginiKpiResponse"
+      },
+      "MarginiMeseData": {
+        "properties": {
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "fatturato_iva10": {
+            "type": "number",
+            "title": "Fatturato Iva10",
+            "default": 0.0
+          },
+          "fatturato_iva22": {
+            "type": "number",
+            "title": "Fatturato Iva22",
+            "default": 0.0
+          },
+          "altri_ricavi_noiva": {
+            "type": "number",
+            "title": "Altri Ricavi Noiva",
+            "default": 0.0
+          },
+          "altri_costi_fb": {
+            "type": "number",
+            "title": "Altri Costi Fb",
+            "default": 0.0
+          },
+          "altri_costi_spese": {
+            "type": "number",
+            "title": "Altri Costi Spese",
+            "default": 0.0
+          },
+          "costo_dipendenti": {
+            "type": "number",
+            "title": "Costo Dipendenti",
+            "default": 0.0
+          },
+          "costo_personale_extra": {
+            "type": "number",
+            "title": "Costo Personale Extra",
+            "default": 0.0
+          },
+          "costi_fb_auto": {
+            "type": "number",
+            "title": "Costi Fb Auto",
+            "default": 0.0
+          },
+          "costi_spese_auto": {
+            "type": "number",
+            "title": "Costi Spese Auto",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "mese"
+        ],
+        "title": "MarginiMeseData"
+      },
+      "MesiDisponibiliResponse": {
+        "properties": {
+          "mesi": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Mesi"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mesi"
+        ],
+        "title": "MesiDisponibiliResponse"
+      },
+      "MesiPivot": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "fatturato_iva10": {
+            "type": "number",
+            "title": "Fatturato Iva10"
+          },
+          "fatturato_iva22": {
+            "type": "number",
+            "title": "Fatturato Iva22"
+          },
+          "altri_ricavi_noiva": {
+            "type": "number",
+            "title": "Altri Ricavi Noiva"
+          },
+          "fatturato_netto": {
+            "type": "number",
+            "title": "Fatturato Netto"
+          },
+          "costi_fb_auto": {
+            "type": "number",
+            "title": "Costi Fb Auto"
+          },
+          "altri_costi_fb": {
+            "type": "number",
+            "title": "Altri Costi Fb"
+          },
+          "costi_fb_totali": {
+            "type": "number",
+            "title": "Costi Fb Totali"
+          },
+          "primo_margine": {
+            "type": "number",
+            "title": "Primo Margine"
+          },
+          "costi_spese_auto": {
+            "type": "number",
+            "title": "Costi Spese Auto"
+          },
+          "altri_costi_spese": {
+            "type": "number",
+            "title": "Altri Costi Spese"
+          },
+          "costi_spese_totali": {
+            "type": "number",
+            "title": "Costi Spese Totali"
+          },
+          "costo_dipendenti": {
+            "type": "number",
+            "title": "Costo Dipendenti"
+          },
+          "costo_personale_extra": {
+            "type": "number",
+            "title": "Costo Personale Extra"
+          },
+          "costi_personale": {
+            "type": "number",
+            "title": "Costi Personale"
+          },
+          "mol": {
+            "type": "number",
+            "title": "Mol"
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mese",
+          "label",
+          "fatturato_iva10",
+          "fatturato_iva22",
+          "altri_ricavi_noiva",
+          "fatturato_netto",
+          "costi_fb_auto",
+          "altri_costi_fb",
+          "costi_fb_totali",
+          "primo_margine",
+          "costi_spese_auto",
+          "altri_costi_spese",
+          "costi_spese_totali",
+          "costo_dipendenti",
+          "costo_personale_extra",
+          "costi_personale",
+          "mol"
+        ],
+        "title": "MesiPivot"
+      },
+      "NotaCreditoItem": {
+        "properties": {
+          "documento": {
+            "type": "string",
+            "title": "Documento"
+          },
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore"
+          },
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "categoria": {
+            "type": "string",
+            "title": "Categoria"
+          },
+          "quantita": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantita"
+          },
+          "credito": {
+            "type": "number",
+            "title": "Credito"
+          },
+          "numero_documento": {
+            "type": "string",
+            "title": "Numero Documento"
+          }
+        },
+        "type": "object",
+        "required": [
+          "documento",
+          "data",
+          "fornitore",
+          "descrizione",
+          "categoria",
+          "quantita",
+          "credito",
+          "numero_documento"
+        ],
+        "title": "NotaCreditoItem"
+      },
+      "NoteCreditoResponse": {
+        "properties": {
+          "note": {
+            "items": {
+              "$ref": "#/components/schemas/NotaCreditoItem"
+            },
+            "type": "array",
+            "title": "Note"
+          },
+          "totale_credito": {
+            "type": "number",
+            "title": "Totale Credito"
+          },
+          "n_documenti": {
+            "type": "integer",
+            "title": "N Documenti"
+          }
+        },
+        "type": "object",
+        "required": [
+          "note",
+          "totale_credito",
+          "n_documenti"
+        ],
+        "title": "NoteCreditoResponse"
+      },
+      "NotificaItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "topic_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Key"
+          },
+          "source_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Type"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "info"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "action_page": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Page"
+          },
+          "dismissed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed At"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title"
+        ],
+        "title": "NotificaItem"
+      },
+      "NotificheResponse": {
+        "properties": {
+          "notifiche": {
+            "items": {
+              "$ref": "#/components/schemas/NotificaItem"
+            },
+            "type": "array",
+            "title": "Notifiche"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total"
+          },
+          "unread": {
+            "type": "integer",
+            "title": "Unread"
+          }
+        },
+        "type": "object",
+        "required": [
+          "notifiche",
+          "total",
+          "unread"
+        ],
+        "title": "NotificheResponse"
+      },
       "ParseResponse": {
         "properties": {
           "fatture": {
@@ -361,6 +6481,1224 @@
           "elapsed_ms"
         ],
         "title": "ParseResponse"
+      },
+      "PivotResponse": {
+        "properties": {
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/PivotRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "periodi": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Periodi"
+          },
+          "periodi_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Periodi Labels"
+          },
+          "granularita": {
+            "type": "string",
+            "title": "Granularita"
+          },
+          "totali_periodo": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Totali Periodo"
+          },
+          "grand_total": {
+            "type": "number",
+            "title": "Grand Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rows",
+          "periodi",
+          "periodi_labels",
+          "granularita",
+          "totali_periodo",
+          "grand_total"
+        ],
+        "title": "PivotResponse"
+      },
+      "PivotRow": {
+        "properties": {
+          "dimensione": {
+            "type": "string",
+            "title": "Dimensione"
+          },
+          "periodi": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Periodi"
+          },
+          "totale": {
+            "type": "number",
+            "title": "Totale"
+          },
+          "media": {
+            "type": "number",
+            "title": "Media"
+          },
+          "incidenza_pct": {
+            "type": "number",
+            "title": "Incidenza Pct"
+          },
+          "sparkline": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array",
+            "title": "Sparkline"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dimensione",
+          "periodi",
+          "totale",
+          "media",
+          "incidenza_pct",
+          "sparkline"
+        ],
+        "title": "PivotRow"
+      },
+      "RicaviBatchUpsertRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RicavoUpsertRequest"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "manuale"
+          },
+          "source_meta": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Meta"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "RicaviBatchUpsertRequest"
+      },
+      "RicaviBatchUpsertResponse": {
+        "properties": {
+          "inserted": {
+            "type": "integer",
+            "title": "Inserted"
+          },
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "inserted",
+          "updated",
+          "skipped"
+        ],
+        "title": "RicaviBatchUpsertResponse"
+      },
+      "RicaviGiornalieriResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RicavoGiornalieroItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "totale_iva10": {
+            "type": "number",
+            "title": "Totale Iva10"
+          },
+          "totale_iva22": {
+            "type": "number",
+            "title": "Totale Iva22"
+          },
+          "totale_altri": {
+            "type": "number",
+            "title": "Totale Altri"
+          },
+          "totale_netto": {
+            "type": "number",
+            "title": "Totale Netto"
+          },
+          "giorni_con_dati": {
+            "type": "integer",
+            "title": "Giorni Con Dati"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "totale_iva10",
+          "totale_iva22",
+          "totale_altri",
+          "totale_netto",
+          "giorni_con_dati"
+        ],
+        "title": "RicaviGiornalieriResponse"
+      },
+      "RicaviImportXlsResponse": {
+        "properties": {
+          "parsed_rows": {
+            "type": "integer",
+            "title": "Parsed Rows"
+          },
+          "inserted": {
+            "type": "integer",
+            "title": "Inserted"
+          },
+          "updated": {
+            "type": "integer",
+            "title": "Updated"
+          },
+          "skipped": {
+            "type": "integer",
+            "title": "Skipped"
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors",
+            "default": []
+          },
+          "preview": {
+            "items": {
+              "$ref": "#/components/schemas/RicavoGiornalieroItem"
+            },
+            "type": "array",
+            "title": "Preview",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "parsed_rows",
+          "inserted",
+          "updated",
+          "skipped"
+        ],
+        "title": "RicaviImportXlsResponse"
+      },
+      "RicaviModalitaResponse": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "modalita": {
+            "type": "string",
+            "title": "Modalita"
+          },
+          "fatturato_iva10": {
+            "type": "number",
+            "title": "Fatturato Iva10",
+            "default": 0.0
+          },
+          "fatturato_iva22": {
+            "type": "number",
+            "title": "Fatturato Iva22",
+            "default": 0.0
+          },
+          "altri_ricavi_noiva": {
+            "type": "number",
+            "title": "Altri Ricavi Noiva",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mese",
+          "modalita"
+        ],
+        "title": "RicaviModalitaResponse"
+      },
+      "RicaviModalitaUpsertRequest": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "modalita": {
+            "type": "string",
+            "title": "Modalita",
+            "default": "giornaliero"
+          },
+          "fatturato_iva10": {
+            "type": "number",
+            "title": "Fatturato Iva10",
+            "default": 0.0
+          },
+          "fatturato_iva22": {
+            "type": "number",
+            "title": "Fatturato Iva22",
+            "default": 0.0
+          },
+          "altri_ricavi_noiva": {
+            "type": "number",
+            "title": "Altri Ricavi Noiva",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mese"
+        ],
+        "title": "RicaviModalitaUpsertRequest"
+      },
+      "RicavoGiornalieroItem": {
+        "properties": {
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id"
+          },
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "fatturato_iva10": {
+            "type": "number",
+            "title": "Fatturato Iva10",
+            "default": 0.0
+          },
+          "fatturato_iva22": {
+            "type": "number",
+            "title": "Fatturato Iva22",
+            "default": 0.0
+          },
+          "altri_ricavi_noiva": {
+            "type": "number",
+            "title": "Altri Ricavi Noiva",
+            "default": 0.0
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "manuale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "RicavoGiornalieroItem"
+      },
+      "RicavoUpsertRequest": {
+        "properties": {
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "fatturato_iva10": {
+            "type": "number",
+            "title": "Fatturato Iva10",
+            "default": 0.0
+          },
+          "fatturato_iva22": {
+            "type": "number",
+            "title": "Fatturato Iva22",
+            "default": 0.0
+          },
+          "altri_ricavi_noiva": {
+            "type": "number",
+            "title": "Altri Ricavi Noiva",
+            "default": 0.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "title": "RicavoUpsertRequest"
+      },
+      "RigaFattura": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "file_origine": {
+            "type": "string",
+            "title": "File Origine"
+          },
+          "numero_riga": {
+            "type": "integer",
+            "title": "Numero Riga"
+          },
+          "data_documento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Documento"
+          },
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore"
+          },
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "quantita": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantita"
+          },
+          "unita_misura": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unita Misura"
+          },
+          "prezzo_unitario": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prezzo Unitario"
+          },
+          "totale_riga": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totale Riga"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "needs_review": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Needs Review"
+          },
+          "tipo_documento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo Documento"
+          },
+          "data_competenza": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Competenza"
+          },
+          "piva_cedente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Piva Cedente"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "file_origine",
+          "numero_riga",
+          "data_documento",
+          "fornitore",
+          "descrizione",
+          "quantita",
+          "unita_misura",
+          "prezzo_unitario",
+          "totale_riga",
+          "categoria",
+          "needs_review",
+          "tipo_documento",
+          "data_competenza",
+          "piva_cedente"
+        ],
+        "title": "RigaFattura"
+      },
+      "SalvaMarginiRequest": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mesi": {
+            "items": {
+              "$ref": "#/components/schemas/MarginiMeseData"
+            },
+            "type": "array",
+            "title": "Mesi"
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mesi"
+        ],
+        "title": "SalvaMarginiRequest"
+      },
+      "ScontiOmaggiResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ScontoOmaggioItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "totale_risparmiato": {
+            "type": "number",
+            "title": "Totale Risparmiato"
+          },
+          "n_sconti": {
+            "type": "integer",
+            "title": "N Sconti"
+          },
+          "n_omaggi": {
+            "type": "integer",
+            "title": "N Omaggi"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "totale_risparmiato",
+          "n_sconti",
+          "n_omaggi"
+        ],
+        "title": "ScontiOmaggiResponse"
+      },
+      "ScontoOmaggioItem": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "title": "Tipo"
+          },
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "categoria": {
+            "type": "string",
+            "title": "Categoria"
+          },
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore"
+          },
+          "quantita": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantita"
+          },
+          "valore": {
+            "type": "number",
+            "title": "Valore"
+          },
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "numero_documento": {
+            "type": "string",
+            "title": "Numero Documento"
+          },
+          "fattura": {
+            "type": "string",
+            "title": "Fattura"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo",
+          "descrizione",
+          "categoria",
+          "fornitore",
+          "quantita",
+          "valore",
+          "data",
+          "numero_documento",
+          "fattura"
+        ],
+        "title": "ScontoOmaggioItem"
+      },
+      "SnoozeSuggestionRequest": {
+        "properties": {
+          "days": {
+            "type": "integer",
+            "title": "Days",
+            "default": 30
+          }
+        },
+        "type": "object",
+        "title": "SnoozeSuggestionRequest"
+      },
+      "SogliaAlertRequest": {
+        "properties": {
+          "soglia": {
+            "type": "number",
+            "title": "Soglia"
+          }
+        },
+        "type": "object",
+        "required": [
+          "soglia"
+        ],
+        "title": "SogliaAlertRequest"
+      },
+      "SogliaAlertResponse": {
+        "properties": {
+          "soglia": {
+            "type": "number",
+            "title": "Soglia"
+          }
+        },
+        "type": "object",
+        "required": [
+          "soglia"
+        ],
+        "title": "SogliaAlertResponse"
+      },
+      "SpesaMensilePoint": {
+        "properties": {
+          "mese": {
+            "type": "string",
+            "title": "Mese"
+          },
+          "spesa": {
+            "type": "number",
+            "title": "Spesa"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mese",
+          "spesa"
+        ],
+        "title": "SpesaMensilePoint"
+      },
+      "StoricoPrezzoPoint": {
+        "properties": {
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "prezzo_unitario": {
+            "type": "number",
+            "title": "Prezzo Unitario"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "prezzo_unitario"
+        ],
+        "title": "StoricoPrezzoPoint"
+      },
+      "StoricoPrezzoResponse": {
+        "properties": {
+          "prodotto": {
+            "type": "string",
+            "title": "Prodotto"
+          },
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore"
+          },
+          "punti": {
+            "items": {
+              "$ref": "#/components/schemas/StoricoPrezzoPoint"
+            },
+            "type": "array",
+            "title": "Punti"
+          },
+          "prezzo_medio": {
+            "type": "number",
+            "title": "Prezzo Medio"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prodotto",
+          "fornitore",
+          "punti",
+          "prezzo_medio"
+        ],
+        "title": "StoricoPrezzoResponse"
+      },
+      "TagCreateRequest": {
+        "properties": {
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
+          "colore": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome"
+        ],
+        "title": "TagCreateRequest"
+      },
+      "TagUpdateRequest": {
+        "properties": {
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
+          "colore": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome"
+        ],
+        "title": "TagUpdateRequest"
+      },
+      "TopItem": {
+        "properties": {
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "spesa": {
+            "type": "number",
+            "title": "Spesa"
+          },
+          "righe": {
+            "type": "integer",
+            "title": "Righe"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome",
+          "spesa",
+          "righe"
+        ],
+        "title": "TopItem"
+      },
+      "TrendPunto": {
+        "properties": {
+          "periodo": {
+            "type": "string",
+            "title": "Periodo"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "valore": {
+            "type": "number",
+            "title": "Valore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "periodo",
+          "label",
+          "valore"
+        ],
+        "title": "TrendPunto"
+      },
+      "TrendResponse": {
+        "properties": {
+          "serie": {
+            "items": {
+              "$ref": "#/components/schemas/TrendSerie"
+            },
+            "type": "array",
+            "title": "Serie"
+          },
+          "periodi": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Periodi"
+          },
+          "periodi_labels": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Periodi Labels"
+          }
+        },
+        "type": "object",
+        "required": [
+          "serie",
+          "periodi",
+          "periodi_labels"
+        ],
+        "title": "TrendResponse"
+      },
+      "TrendSerie": {
+        "properties": {
+          "valore": {
+            "type": "string",
+            "title": "Valore"
+          },
+          "punti": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPunto"
+            },
+            "type": "array",
+            "title": "Punti"
+          },
+          "media": {
+            "type": "number",
+            "title": "Media"
+          },
+          "totale": {
+            "type": "number",
+            "title": "Totale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valore",
+          "punti",
+          "media",
+          "totale"
+        ],
+        "title": "TrendSerie"
+      },
+      "UploadInvoiceResponse": {
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "title": "Success"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "righe_salvate": {
+            "type": "integer",
+            "title": "Righe Salvate"
+          },
+          "righe_preesistenti": {
+            "type": "integer",
+            "title": "Righe Preesistenti",
+            "default": 0
+          },
+          "needs_review_count": {
+            "type": "integer",
+            "title": "Needs Review Count",
+            "default": 0
+          },
+          "fornitore": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fornitore"
+          },
+          "data_documento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Documento"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "title": "Elapsed Ms",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "success",
+          "filename",
+          "righe_salvate"
+        ],
+        "title": "UploadInvoiceResponse"
+      },
+      "UserPublic": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "nome_ristorante": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome Ristorante"
+          },
+          "pagine_abilitate": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pagine Abilitate"
+          },
+          "is_admin": {
+            "type": "boolean",
+            "title": "Is Admin",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email"
+        ],
+        "title": "UserPublic"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VariazionePrezzo": {
+        "properties": {
+          "prodotto": {
+            "type": "string",
+            "title": "Prodotto"
+          },
+          "categoria": {
+            "type": "string",
+            "title": "Categoria"
+          },
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore"
+          },
+          "storico": {
+            "type": "string",
+            "title": "Storico"
+          },
+          "media": {
+            "type": "number",
+            "title": "Media"
+          },
+          "penultimo": {
+            "type": "number",
+            "title": "Penultimo"
+          },
+          "ultimo": {
+            "type": "number",
+            "title": "Ultimo"
+          },
+          "aumento_perc": {
+            "type": "number",
+            "title": "Aumento Perc"
+          },
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "n_fattura": {
+            "type": "string",
+            "title": "N Fattura"
+          },
+          "trend": {
+            "type": "string",
+            "title": "Trend"
+          },
+          "impatto_stimato": {
+            "type": "number",
+            "title": "Impatto Stimato"
+          },
+          "delta_euro": {
+            "type": "number",
+            "title": "Delta Euro"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prodotto",
+          "categoria",
+          "fornitore",
+          "storico",
+          "media",
+          "penultimo",
+          "ultimo",
+          "aumento_perc",
+          "data",
+          "n_fattura",
+          "trend",
+          "impatto_stimato",
+          "delta_euro"
+        ],
+        "title": "VariazionePrezzo"
+      },
+      "VariazioniResponse": {
+        "properties": {
+          "variazioni": {
+            "items": {
+              "$ref": "#/components/schemas/VariazionePrezzo"
+            },
+            "type": "array",
+            "title": "Variazioni"
+          },
+          "scostamento_medio": {
+            "type": "number",
+            "title": "Scostamento Medio"
+          },
+          "impatto_netto": {
+            "type": "number",
+            "title": "Impatto Netto"
+          },
+          "fornitori_coinvolti": {
+            "type": "integer",
+            "title": "Fornitori Coinvolti"
+          },
+          "soglia": {
+            "type": "number",
+            "title": "Soglia"
+          }
+        },
+        "type": "object",
+        "required": [
+          "variazioni",
+          "scostamento_medio",
+          "impatto_netto",
+          "fornitori_coinvolti",
+          "soglia"
+        ],
+        "title": "VariazioniResponse"
       }
     }
   }
