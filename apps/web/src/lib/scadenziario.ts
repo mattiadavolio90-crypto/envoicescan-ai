@@ -49,13 +49,13 @@ export type ScadenzarioKpi = {
 };
 
 export const MODALITA_LABELS: Record<string, string> = {
-  rid: "RID / Addebito automatico",
-  "30gg": "30 giorni",
-  "60gg": "60 giorni",
-  "90gg": "90 giorni",
-  "30gg_fm": "30 giorni fine mese",
-  "60gg_fm": "60 giorni fine mese",
-  "90gg_fm": "90 giorni fine mese",
+  rid: "Automatico / RID — già pagato",
+  "30gg": "30 giorni dalla data fattura",
+  "60gg": "60 giorni dalla data fattura",
+  "90gg": "90 giorni dalla data fattura",
+  "30gg_fm": "Fine mese successivo",
+  "60gg_fm": "Fine del 2° mese successivo",
+  "90gg_fm": "Fine del 3° mese successivo",
 };
 
 export function computeKpi(documenti: Documento[]): ScadenzarioKpi {

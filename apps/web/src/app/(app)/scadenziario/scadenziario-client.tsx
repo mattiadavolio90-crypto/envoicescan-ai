@@ -19,7 +19,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue, NativeSelect,
 } from "@/components/ui/select";
 import {
   type Documento, type CalendarGiorno, type RegolaPagamento,
@@ -707,44 +707,39 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
                 <div className="rounded-lg border border-dashed p-3 space-y-2.5 mt-2">
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Nuova regola</p>
 
-                  {/* Riga 1: Fornitore + Modalità */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Fornitore</Label>
-                      <Select
-                        value={selectedFornitore?.fornitore ?? ""}
-                        onValueChange={(nome) => {
-                          const found = fornitoriDisponibili.find(f => f.fornitore === nome) ?? null;
-                          setSelectedFornitore(found);
-                          setPivaManuale("");
-                        }}
-                      >
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Seleziona…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {fornitoriDisponibili.map(f => (
-                            <SelectItem key={f.fornitore} value={f.fornitore}>
-                              {f.fornitore}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {/* Riga 1: Fornitore */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">Fornitore</Label>
+                    <NativeSelect
+                      value={selectedFornitore?.fornitore ?? ""}
+                      onValueChange={(nome) => {
+                        const found = fornitoriDisponibili.find(f => f.fornitore === nome) ?? null;
+                        setSelectedFornitore(found);
+                        setPivaManuale("");
+                      }}
+                      placeholder="Seleziona fornitore..."
+                      className="h-9 text-sm"
+                    >
+                      {fornitoriDisponibili.map(f => (
+                        <option key={f.fornitore} value={f.fornitore}>
+                          {f.fornitore}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </div>
 
-                    <div className="space-y-1">
-                      <Label className="text-xs">Modalità</Label>
-                      <Select value={modalitaInput} onValueChange={setModalitaInput}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(MODALITA_LABELS).map(([k, v]) => (
-                            <SelectItem key={k} value={k}>{v}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  {/* Riga 2: Modalità */}
+                  <div className="space-y-1">
+                    <Label className="text-xs">Modalità di pagamento</Label>
+                    <NativeSelect
+                      value={modalitaInput}
+                      onValueChange={setModalitaInput}
+                      className="h-9 text-sm"
+                    >
+                      {Object.entries(MODALITA_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>{v}</option>
+                      ))}
+                    </NativeSelect>
                   </div>
 
                   {/* P.IVA manuale solo se mancante */}
