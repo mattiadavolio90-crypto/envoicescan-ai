@@ -5868,6 +5868,7 @@ async def svuota_cestino_endpoint(authorization: Optional[str] = Header(None)):
 # ═══════════════════════════════════════════════════════════════════════════
 
 _PIANO_LIMITI: Dict[str, int] = {
+    "free": 50,
     "base": 50,
     "plus": 100,
     "pro": 200,
@@ -6083,7 +6084,7 @@ async def admin_lista_clienti():
     admin_emails = _admin_emails_set()
 
     users_resp = sb.table("users").select(
-        "id,email,nome_ristorante,ragione_sociale,partita_iva,attivo,piano,created_at,"
+        "id,email,nome_ristorante,ragione_sociale,partita_iva,attivo,piano,piano_inizio_at,created_at,"
         "last_seen_at,trial_active,trial_activated_at,pagine_abilitate"
     ).order("email").execute()
     clienti_raw = [u for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
@@ -6124,7 +6125,7 @@ async def admin_lista_clienti():
     except Exception:
         pass
 
-    _PIANO_LIMITI_LOCAL = {"base": 50, "plus": 100, "pro": 200}
+    _PIANO_LIMITI_LOCAL = {"free": 50, "base": 50, "plus": 100, "pro": 200}
 
     result = []
     for u in clienti_raw:
@@ -6152,6 +6153,7 @@ async def admin_lista_clienti():
             "partita_iva": u.get("partita_iva"),
             "attivo": bool(u.get("attivo")),
             "piano": piano,
+            "piano_inizio_at": u.get("piano_inizio_at"),
             "limite_fatture_mese": limite,
             "n_fatture": n_fatture,
             "created_at": u.get("created_at"),
@@ -6190,7 +6192,7 @@ async def admin_dettaglio_cliente(cliente_id: str):
     sedi = sedi_resp.data or []
 
     piano = (u.get("piano") or "base").lower()
-    _PIANO_LIMITI_LOCAL = {"base": 50, "plus": 100, "pro": 200}
+    _PIANO_LIMITI_LOCAL = {"free": 50, "base": 50, "plus": 100, "pro": 200}
     limite = _PIANO_LIMITI_LOCAL.get(piano, 50)
 
     trial_info = None
@@ -6227,7 +6229,8 @@ class AggiornaClienteBody(BaseModel):
     nome_ristorante: Optional[str] = Field(None, max_length=100)
     partita_iva: Optional[str] = Field(None, max_length=11)
     ragione_sociale: Optional[str] = None
-    piano: Optional[str] = Field(None, pattern="^(base|plus|pro)$")
+    piano: Optional[str] = Field(None, pattern="^(free|base|plus|pro)$")
+    piano_inizio_at: Optional[str] = None
 
 
 @app.patch("/api/admin/clienti/{cliente_id}", tags=["Admin"])
@@ -6249,6 +6252,8 @@ async def admin_aggiorna_cliente(cliente_id: str, body: AggiornaClienteBody, adm
         upd["ragione_sociale"] = body.ragione_sociale.strip() or None
     if body.piano is not None:
         upd["piano"] = body.piano
+    if body.piano_inizio_at is not None:
+        upd["piano_inizio_at"] = body.piano_inizio_at if body.piano_inizio_at else None
     if not upd:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
     sb.table("users").update(upd).eq("id", cliente_id).execute()
@@ -6262,7 +6267,7 @@ class NuovoClienteBody(BaseModel):
     nome_ristorante: str = Field(..., max_length=100)
     partita_iva: str = Field(..., max_length=11)
     ragione_sociale: Optional[str] = Field(None, max_length=150)
-    piano: str = Field("base", pattern="^(base|plus|pro)$")
+    piano: str = Field("free", pattern="^(free|base|plus|pro)$")
 
 
 @app.post("/api/admin/clienti", tags=["Admin"], dependencies=[Depends(_verify_admin)])

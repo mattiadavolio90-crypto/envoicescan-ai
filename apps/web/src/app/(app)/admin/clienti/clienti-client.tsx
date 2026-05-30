@@ -9,9 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Plus, ChevronRight, CheckCircle, XCircle, Clock, ArrowRight } from "lucide-react";
-import { Cliente, PIANO_LABEL, PIANO_COLOR, fmtDateTime } from "@/lib/admin";
+import { NativeSelect } from "@/components/ui/select";
+import { Search, Plus, ChevronRight, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Cliente, PIANO_LABEL, PIANO_COLOR, PIANO_OPTIONS, fmtDateTime } from "@/lib/admin";
 
 function StatusBadge({ attivo }: { attivo: boolean }) {
   return attivo ? (
@@ -48,7 +48,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
   const [nNome, setNNome] = useState("");
   const [nPiva, setNPiva] = useState("");
   const [nRagione, setNRagione] = useState("");
-  const [nPiano, setNPiano] = useState("base");
+  const [nPiano, setNPiano] = useState("free");
 
   const filtered = useMemo(() => {
     return clienti.filter((c) => {
@@ -94,7 +94,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
           : `Account creato. Email NON inviata — link: ${data.link_attivazione}`
       );
       setDialogOpen(false);
-      setNEmail(""); setNNome(""); setNPiva(""); setNRagione(""); setNPiano("base");
+      setNEmail(""); setNNome(""); setNPiva(""); setNRagione(""); setNPiano("free");
       router.refresh();
       // aggiorna lista localmente
       const refresh = await fetch("/api/admin/clienti");
@@ -103,6 +103,42 @@ export function ClientiClient({ clientiIniziali }: Props) {
       toast.error("Errore di connessione");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleAggiornaPiano(id: string, piano: string) {
+    setClienti((prev) => prev.map((c) => c.id === id ? { ...c, piano: piano as Cliente["piano"] } : c));
+    try {
+      const res = await fetch(`/api/admin/clienti/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ piano }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        toast.error(d.detail || "Errore aggiornamento piano");
+      } else {
+        toast.success("Piano aggiornato");
+      }
+    } catch {
+      toast.error("Errore di connessione");
+    }
+  }
+
+  async function handleAggiornaInizio(id: string, data: string) {
+    setClienti((prev) => prev.map((c) => c.id === id ? { ...c, piano_inizio_at: data || null } : c));
+    try {
+      const res = await fetch(`/api/admin/clienti/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ piano_inizio_at: data || null }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        toast.error(d.detail || "Errore aggiornamento data");
+      }
+    } catch {
+      toast.error("Errore di connessione");
     }
   }
 
@@ -136,16 +172,11 @@ export function ClientiClient({ clientiIniziali }: Props) {
               className="pl-9"
             />
           </div>
-          <Select value={filtroStato} onValueChange={(v) => setFiltroStato(v as typeof filtroStato)}>
-            <SelectTrigger className="w-32">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="tutti">Tutti</SelectItem>
-              <SelectItem value="attivi">Attivi</SelectItem>
-              <SelectItem value="disattivi">Disattivi</SelectItem>
-            </SelectContent>
-          </Select>
+          <NativeSelect value={filtroStato} onValueChange={(v) => setFiltroStato(v as typeof filtroStato)} className="w-32">
+            <option value="tutti">Tutti</option>
+            <option value="attivi">Attivi</option>
+            <option value="disattivi">Disattivi</option>
+          </NativeSelect>
         </div>
         <Button onClick={() => setDialogOpen(true)}>
           <Plus className="size-4 mr-1" /> Nuovo cliente
@@ -164,6 +195,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
               <th className="px-4 py-3 font-medium hidden md:table-cell">P.IVA</th>
               <th className="px-4 py-3 font-medium">Stato</th>
               <th className="px-4 py-3 font-medium hidden sm:table-cell">Piano</th>
+              <th className="px-4 py-3 font-medium hidden md:table-cell">Inizio piano</th>
               <th className="px-4 py-3 font-medium hidden lg:table-cell">Attività</th>
               <th className="px-4 py-3 font-medium hidden lg:table-cell">N. Fatture</th>
               <th className="px-4 py-3" />
@@ -172,7 +204,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
           <tbody className="divide-y">
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
                   Nessun cliente trovato
                 </td>
               </tr>
@@ -190,10 +222,24 @@ export function ClientiClient({ clientiIniziali }: Props) {
                 </td>
                 <td className="px-4 py-3 hidden md:table-cell text-muted-foreground tabular-nums">{c.partita_iva || "—"}</td>
                 <td className="px-4 py-3"><StatusBadge attivo={c.attivo} /></td>
-                <td className="px-4 py-3 hidden sm:table-cell">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PIANO_COLOR[c.piano] || "bg-slate-100 text-slate-700"}`}>
-                    {PIANO_LABEL[c.piano] || c.piano}
-                  </span>
+                <td className="px-4 py-3 hidden sm:table-cell" onClick={(e) => e.stopPropagation()}>
+                  <NativeSelect
+                    value={c.piano}
+                    onValueChange={(v) => handleAggiornaPiano(c.id, v)}
+                    className={`rounded-full px-2 py-0.5 text-xs font-semibold border-0 cursor-pointer w-auto ${PIANO_COLOR[c.piano] || "bg-slate-100 text-slate-600"}`}
+                  >
+                    {PIANO_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </NativeSelect>
+                </td>
+                <td className="px-4 py-3 hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="date"
+                    value={c.piano_inizio_at ? c.piano_inizio_at.slice(0, 10) : ""}
+                    onChange={(e) => handleAggiornaInizio(c.id, e.target.value)}
+                    className="text-xs bg-transparent border border-input rounded px-2 py-1 text-muted-foreground focus:outline-none focus:border-ring w-[130px]"
+                  />
                 </td>
                 <td className="px-4 py-3 hidden lg:table-cell">
                   <AttivitaLabel lastSeen={c.last_seen_at} />
@@ -237,14 +283,11 @@ export function ClientiClient({ clientiIniziali }: Props) {
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="n-piano">Piano</Label>
-                <Select value={nPiano} onValueChange={setNPiano}>
-                  <SelectTrigger id="n-piano"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="base">Base (50 fatture)</SelectItem>
-                    <SelectItem value="plus">Plus (100 fatture)</SelectItem>
-                    <SelectItem value="pro">Pro (200 fatture)</SelectItem>
-                  </SelectContent>
-                </Select>
+                <NativeSelect value={nPiano} onValueChange={setNPiano}>
+                  {PIANO_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </NativeSelect>
               </div>
               <div className="col-span-2 space-y-1.5">
                 <Label htmlFor="n-ragione">Ragione sociale</Label>

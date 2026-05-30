@@ -19,7 +19,8 @@ export type Cliente = {
   ragione_sociale: string | null;
   partita_iva: string | null;
   attivo: boolean;
-  piano: "base" | "plus" | "pro";
+  piano: "free" | "base" | "plus" | "pro";
+  piano_inizio_at: string | null;
   limite_fatture_mese: number;
   n_fatture: number;
   created_at: string | null;
@@ -35,16 +36,25 @@ export type ClienteDettaglio = Cliente & {
 };
 
 export const PIANO_LABEL: Record<string, string> = {
-  base: "Base",
-  plus: "Plus",
-  pro: "Pro",
+  free: "FREE",
+  base: "50",
+  plus: "100",
+  pro: "100+",
 };
 
 export const PIANO_COLOR: Record<string, string> = {
-  base: "bg-slate-100 text-slate-700",
-  plus: "bg-sky-100 text-sky-700",
+  free: "bg-slate-100 text-slate-600",
+  base: "bg-sky-100 text-sky-700",
+  plus: "bg-emerald-100 text-emerald-700",
   pro: "bg-violet-100 text-violet-700",
 };
+
+export const PIANO_OPTIONS: { value: string; label: string }[] = [
+  { value: "free", label: "FREE" },
+  { value: "base", label: "50 fatture/mese" },
+  { value: "plus", label: "100 fatture/mese" },
+  { value: "pro", label: "100+ fatture/mese" },
+];
 
 // Categorie valide (allineate a config/constants.py TUTTE_LE_CATEGORIE + speciale diciture).
 // "Da Clasificare" è VIETATA da constraint DB — non includerla mai.
