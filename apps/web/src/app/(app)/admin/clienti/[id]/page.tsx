@@ -38,8 +38,8 @@ export default async function ClienteDettaglioPage({ params }: Ctx) {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/admin/clienti"><ChevronLeft className="size-4 mr-1" /> Clienti</Link>
+        <Button variant="ghost" size="sm" render={<Link href="/admin/clienti" />}>
+          <ChevronLeft className="size-4 mr-1" /> Clienti
         </Button>
         <h1 className="text-2xl font-bold tracking-tight">{cliente.nome_ristorante || cliente.email}</h1>
       </div>

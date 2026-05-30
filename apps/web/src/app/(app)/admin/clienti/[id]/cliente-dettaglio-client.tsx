@@ -306,7 +306,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                   </div>
                   <Switch
                     checked={enabled}
-                    onCheckedChange={(v) => handleToggleFlag(f.key, v)}
+                    onCheckedChange={(v: boolean) => handleToggleFlag(f.key, v)}
                   />
                 </div>
               );

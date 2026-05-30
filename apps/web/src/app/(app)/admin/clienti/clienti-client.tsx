@@ -206,10 +206,8 @@ export function ClientiClient({ clientiIniziali }: Props) {
                     <Button size="sm" variant="outline" onClick={() => handleImpersona(c)}>
                       Entra
                     </Button>
-                    <Button size="sm" variant="ghost" asChild>
-                      <Link href={`/admin/clienti/${c.id}`}>
-                        <ChevronRight className="size-4" />
-                      </Link>
+                    <Button size="sm" variant="ghost" render={<Link href={`/admin/clienti/${c.id}`} />}>
+                      <ChevronRight className="size-4" />
                     </Button>
                   </div>
                 </td>

@@ -253,7 +253,7 @@ function RetentionTab() {
               </CardContent>
             </Card>
           ))}
-          {status.error_message && (
+          {Boolean(status.error_message) && (
             <div className="col-span-4 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
               {String(status.error_message)}
             </div>

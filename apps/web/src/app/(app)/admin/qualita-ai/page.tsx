@@ -11,8 +11,8 @@ export default async function QualitaAiPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href="/admin"><ChevronLeft className="size-4 mr-1" /> Admin</Link>
+        <Button variant="ghost" size="sm" render={<Link href="/admin" />}>
+          <ChevronLeft className="size-4 mr-1" /> Admin
         </Button>
         <h1 className="text-2xl font-bold tracking-tight">Qualità AI</h1>
       </div>

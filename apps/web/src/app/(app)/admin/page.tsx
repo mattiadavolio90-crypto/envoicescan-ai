@@ -92,7 +92,7 @@ export default async function AdminPage() {
             <Users className="size-4 text-sky-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">{overview?.n_clienti ?? "—"}</div>
+            <div className="text-2xl font-bold tabular-nums">{overview?.n_clienti != null ? String(overview.n_clienti) : "—"}</div>
           </CardContent>
         </Card>
 
@@ -102,7 +102,7 @@ export default async function AdminPage() {
             <CheckCircle className="size-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">{overview?.n_attivi ?? "—"}</div>
+            <div className="text-2xl font-bold tabular-nums">{overview?.n_attivi != null ? String(overview.n_attivi) : "—"}</div>
           </CardContent>
         </Card>
 
