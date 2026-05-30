@@ -511,6 +511,12 @@ def _get_supabase_client():
     return create_client(url, key, options=options)
 
 
+# Alias modulo: gli endpoint admin chiamano get_supabase_client() senza import
+# locale. Le funzioni che fanno `from services import get_supabase_client`
+# lo shadowano localmente, quindi questo alias non altera il loro comportamento.
+get_supabase_client = _get_supabase_client
+
+
 def _looks_like_supabase_auth_error(exc: Exception) -> bool:
     msg = str(exc).lower()
     return (
