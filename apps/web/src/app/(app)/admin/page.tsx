@@ -1,0 +1,150 @@
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Users, CheckCircle, DollarSign, ChevronRight, Brain, Settings, Map } from "lucide-react";
+import Link from "next/link";
+import { FattureMensiliCard } from "./fatture-mensili-card";
+
+const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
+const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+
+async function fetchOverview(token: string): Promise<{ data: Record<string, unknown> | null; error: string | null }> {
+  try {
+    const h: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
+    const res = await fetch(`${WORKER_URL}/api/admin/overview`, { headers: h, cache: "no-store" });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(`[admin/overview] ${res.status}:`, body.slice(0, 300));
+      return { data: null, error: `Worker ${res.status}: ${body.slice(0, 150)}` };
+    }
+    return { data: await res.json(), error: null };
+  } catch (err) {
+    console.error("[admin/overview] fetch error:", err);
+    return { data: null, error: String(err) };
+  }
+}
+
+const NAV_CARDS = [
+  {
+    href: "/admin/clienti",
+    title: "Clienti",
+    desc: "Lista, crea, impersona, gestisci",
+    icon: Users,
+    border: "border-sky-500/50",
+    bg: "hover:bg-sky-500/5",
+    iconColor: "text-sky-500",
+  },
+  {
+    href: "/admin/qualita-ai",
+    title: "Qualità AI",
+    desc: "Coda review, memoria globale, conflitti",
+    icon: Brain,
+    border: "border-violet-500/50",
+    bg: "hover:bg-violet-500/5",
+    iconColor: "text-violet-500",
+  },
+  {
+    href: "/admin/sistema",
+    title: "Sistema & Salute",
+    desc: "Costi AI, integrità DB, retention",
+    icon: Settings,
+    border: "border-emerald-500/50",
+    bg: "hover:bg-emerald-500/5",
+    iconColor: "text-emerald-500",
+  },
+  {
+    href: "/admin/ragione-sociale",
+    title: "Mapping Ragione Sociale",
+    desc: "Collega ricavi automatici ai ristoranti",
+    icon: Map,
+    border: "border-orange-500/50",
+    bg: "hover:bg-orange-500/5",
+    iconColor: "text-orange-500",
+  },
+];
+
+export default async function AdminPage() {
+  const user = await getCurrentUser();
+  if (!user || !user.is_admin) redirect("/dashboard");
+
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value ?? "";
+  const { data: overview, error: overviewError } = await fetchOverview(token);
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">Pannello Admin</h1>
+        {overviewError && (
+          <p className="text-xs text-amber-500 max-w-xs truncate" title={overviewError}>
+            Worker: {overviewError}
+          </p>
+        )}
+      </div>
+
+      {/* KPI cards — bordo blu uniforme */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="border-sky-500/30">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Clienti totali</CardTitle>
+            <Users className="size-4 text-sky-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold tabular-nums">{overview?.n_clienti ?? "—"}</div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-sky-500/30">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Account attivi</CardTitle>
+            <CheckCircle className="size-4 text-emerald-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold tabular-nums">{overview?.n_attivi ?? "—"}</div>
+          </CardContent>
+        </Card>
+
+        <FattureMensiliCard
+          label="Fatture questo mese"
+          value={overview?.fatture_mese != null ? String(overview.fatture_mese) : "—"}
+          fattureMese={Number(overview?.fatture_mese ?? 0)}
+          fattureMensili={(overview?.fatture_per_mese as { mese: string; count: number }[]) ?? []}
+        />
+
+        <Card className="border-sky-500/30">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Costi AI (30gg)</CardTitle>
+            <DollarSign className="size-4 text-violet-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold tabular-nums">
+              {overview ? `$${Number(overview.costi_ai_mese).toFixed(4)}` : "—"}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Navigation cards — 4 colori */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {NAV_CARDS.map((item) => (
+          <Card key={item.href} className={`border ${item.border} ${item.bg} transition-colors`}>
+            <Link href={item.href} className="block p-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <item.icon className={`size-5 ${item.iconColor} shrink-0`} />
+                  <div>
+                    <p className="font-semibold">{item.title}</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">{item.desc}</p>
+                  </div>
+                </div>
+                <ChevronRight className="size-5 text-muted-foreground shrink-0" />
+              </div>
+            </Link>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}

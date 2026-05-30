@@ -763,10 +763,9 @@ if tab1:
                         try:
                             brevo_api_key = st.secrets["brevo"]["api_key"]
                             sender_email = st.secrets["brevo"]["sender_email"]
-                            app_url = st.secrets.get("app", {}).get("url", "https://envoicescan-ai.streamlit.app")
-                            
-                            # Link con token per impostare password
-                            link_attivazione = f"{app_url}?reset_token={token}"
+
+                            # Sempre Next.js — onboarding=1 personalizza testi della pagina
+                            link_attivazione = f"https://nuovo.oneflux.it/reset-password?token={token}&onboarding=1"
                             
                             url_brevo = "https://api.brevo.com/v3/smtp/email"
                             

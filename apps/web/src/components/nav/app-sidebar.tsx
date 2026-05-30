@@ -12,7 +12,9 @@ import {
   Receipt,
   Search,
   Settings,
+  ShieldCheck,
   Tags,
+  User,
   Utensils,
 } from "lucide-react";
 import Link from "next/link";
@@ -63,6 +65,7 @@ type AppSidebarProps = {
   userInitials?: string;
   ristoranteNome?: string;
   unreadNotifiche?: number;
+  isAdmin?: boolean;
 };
 
 export function AppSidebar({
@@ -70,6 +73,7 @@ export function AppSidebar({
   userInitials = "U",
   ristoranteNome = "Ristorante",
   unreadNotifiche = 0,
+  isAdmin = false,
 }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -127,6 +131,18 @@ export function AppSidebar({
         <SidebarGroup>
           <SidebarGroupLabel>Altro</SidebarGroupLabel>
           <SidebarMenu>
+            {isAdmin && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  render={<Link href="/admin" />}
+                  isActive={pathname.startsWith("/admin")}
+                  className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                >
+                  <ShieldCheck />
+                  <span>Admin</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
             {navSecondary.map((item) => (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton
@@ -179,6 +195,11 @@ export function AppSidebar({
                     <span className="text-xs text-muted-foreground">{userEmail}</span>
                   </div>
                 </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem render={<Link href="/impostazioni" />}>
+                  <User />
+                  Account
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive" onClick={handleLogout}>
                   <LogOut />

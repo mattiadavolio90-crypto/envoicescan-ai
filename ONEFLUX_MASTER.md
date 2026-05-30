@@ -1,6 +1,6 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 30 maggio 2026 (rev. 10 — Scadenziario hardening debug)
+**Ultima revisione:** 30 maggio 2026 (rev. 13 — Admin Panel Blocco 2)
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -397,19 +397,19 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Fase 1 | — | ✅ (26/5) | Next.js scaffold + Vercel + nuovo.oneflux.it |
 | Fase 1b | — | ✅ | Design system: palette sky `#0ea5e9`, shadcn completo, sidebar collapsible, style-guide |
 | Fase 1.5 | — | ⏸️ rimandata | Studio competitor — non bloccante |
-| Fase 2 | 2-3 sett. | 🟡 quasi | Auth login/logout/me ✅ · reset password ✅ — **manca**: onboarding (primo accesso) lato Next.js |
+| Fase 2 | 2-3 sett. | ✅ **chiusa (30/5)** | Auth login/logout/me ✅ · reset password ✅ · onboarding primo accesso ✅ |
 | Fase 3 | 2-3 sett. | 🟡 parziale | Dashboard ✅ · Notifiche ✅ · Upload ✅ — **manca**: Home con briefing AI + notifiche actionable |
 | Fase 4 | 1-2 sett. | ✅ **chiusa (30/5)** | Analisi Fatture ✅ · Analisi e Tag ✅ · Scadenziario ✅ · Cestino ✅ |
 | Fase 5 | 2-3 sett. | ✅ **chiusa (28/5) + hardening (29/5)** | Margini ✅ · Ricavi ✅ · Analisi Avanzate ✅ · Prezzi ✅ · DB migrated · contratto FE↔worker allineato |
 | Fase 6 | 2-3 sett. | ⏳ | Foodcost (riscrittura completa) — oggi placeholder |
-| Fase 7 | 3-4 sett. | ⏳ | Admin redesign + AI categorization + multi-ristorante + UI mapping ragione sociale |
-| Fase 8 | 2-3 sett. | ⏳ | Assistenza marketplace + Report + Account |
+| Fase 7 | 3-4 sett. | ✅ **chiusa (30/5)** | Admin Core ✅ · Qualità AI ✅ (coda review, auto-review, memoria globale, conflitti) · Sistema/Salute ✅ (costi AI, integrità DB, retention) |
+| Fase 8 | 2-3 sett. | 🟡 parziale | Assistenza marketplace ⏳ · Report ⏳ · Account ✅ (dati ristorante, piano, contatori, cambio password) |
 | Fase 9 | 1-2 sett. | ⏳ | Test, performance, sicurezza + comunicazione clienti |
 | Fase 10 | 2-3 sett. | ⏳ | Switch dominio + 30gg coesistenza |
 | Fase 11 | 3-5 giorni | ⏳ | Pulizia Streamlit |
 | **TOTALE** | **~7-9 mesi** | | App completamente migrata |
 
-### Fotografia codice reale (29 maggio 2026)
+### Fotografia codice reale (30 maggio 2026)
 
 **Infrastruttura ✅**
 - `apps/web` su Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4, deploy Vercel, `nuovo.oneflux.it` online
@@ -422,6 +422,8 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Login | ✅ | Link "Hai dimenticato la password?" → `/forgot-password` (Next.js nativo) |
 | Forgot password | ✅ | Form email → link Brevo → `/reset-password?token=XXX` |
 | Reset password | ✅ | Token pre-compilato da URL + nuova password + redirect login |
+| Onboarding primo accesso | ✅ | Stesso `/reset-password?token=XXX&onboarding=1` — testi personalizzati, admin Streamlit invia link Next.js |
+| Account / Impostazioni | ✅ | Dati ristorante, piano + contatore fatture/mese, cambio password |
 | Dashboard (Home) | 🟡 | KPI cards, grafico spesa, top fornitori/categorie. **Manca** briefing AI |
 | Analisi Fatture | ✅ | KPI bar, filtri periodo, tab Articoli + Categorie + Fornitori, edit categoria batch, upload modal |
 | Ricavi e Margini | ✅ | Tab Marginalità + Analisi Avanzate (vedi changelog §14) |
@@ -430,9 +432,10 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Analisi e Tag | ✅ | Chip tag, periodo, KPI bar, trend prezzi, analisi fornitori, prodotti inline, suggerimenti, export XLS |
 | Foodcost | ⏳ | Placeholder "in costruzione" |
 | Report | ⏳ | Placeholder |
-| Impostazioni/Account | ⏳ | Placeholder |
+| Impostazioni/Account | ✅ | Dati ristorante, piano + contatore, cambio password |
+| Admin Panel | ✅ | Core (clienti, onboarding, impersonazione, sedi, flags, mapping) · Qualità AI (coda review, auto-review, memoria globale, conflitti) · Sistema/Salute (costi AI, integrità DB, retention) |
 
-**Non ancora iniziato (zero codice):** Admin Panel · Assistenza/Marketplace · Multi-ristorante (dropdown switch) · Onboarding primo accesso lato Next.js · PWA/mobile · fattore_kg UI (Analisi e Tag v2)
+**Non ancora iniziato (zero codice):** Assistenza/Marketplace · Multi-ristorante (dropdown switch) · PWA/mobile · fattore_kg UI (Analisi e Tag v2)
 
 **Prerequisito Railway:** aggiungere env var `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` per attivare reset password in produzione.
 
@@ -500,6 +503,79 @@ Pagina fuori roadmap originale, aggiunta su richiesta. Non segue la numerazione 
 - `fattore_kg` supportato nel backend ma UI rimandata a v2
 - Confronto multi-tag rimandato a v2
 
+**Onboarding + Account (30 maggio 2026)**
+
+*Onboarding primo accesso:*
+- `/reset-password` accetta ora `?onboarding=1` — testi personalizzati (titolo "Benvenuto", banner info, bottone "Attiva il mio account", messaggio successo "Account attivato")
+- Admin Streamlit (`pages/admin.py`) aggiornato: il link di attivazione inviato via Brevo punta ora a `https://nuovo.oneflux.it/reset-password?token=...&onboarding=1` (prima puntava a Streamlit)
+- Zero modifiche backend necessarie — `reset-confirm` esistente gestisce già `attivo=False → True`
+
+*Pagina Account (Fase 8 light):*
+- `services/fastapi_worker.py` — 2 nuovi endpoint:
+  - `GET /api/account/me` — profilo completo (email, nome ristorante, ragione sociale, P.IVA, piano, limite fatture/mese, fatture usate mese corrente, data iscrizione, ultimo accesso)
+  - `POST /api/account/cambia-password` — verifica password attuale + aggiorna hash Argon2
+- `apps/web/src/app/api/account/` — proxy routes Next.js (`_worker.ts`, `me/route.ts`, `cambia-password/route.ts`)
+- `apps/web/src/app/(app)/impostazioni/page.tsx` — server component che carica dati account
+- `apps/web/src/app/(app)/impostazioni/account-client.tsx` — 3 card: dati ristorante, piano + barra contatore fatture (colore reattivo: verde/amber/rosso), form cambio password
+- Sidebar footer dropdown: aggiunto link "Account" sopra "Esci"
+
+**Admin Panel Core — Fase 7 blocco 1 (30 maggio 2026)**
+
+Audit completo del pannello Streamlit (`pages/admin.py`, 3779 righe) + redesign completo in Next.js come Super Pannello.
+
+*Filosofia adottata:* automation-first — l'admin vede solo le eccezioni, non naviga tutto manualmente. Creazione clienti e sedi tramite **Dialog centrati** (no expander/popover cramped). Routing reale (`/admin/*`) invece dell'hack radio nascosto di Streamlit.
+
+*Backend (`services/fastapi_worker.py` — nuova sezione admin):*
+- **`_verify_admin`**: nuovo guard doppio (worker key + bearer token → utente → `is_admin`). Prima il `_verify_worker_key` non verificava affatto l'identità admin — questo è il prerequisito di sicurezza fondamentale.
+- `GET /api/admin/overview` — KPI flotta (clienti, attivi, fatture mese, costi AI 30gg)
+- `GET /api/admin/clienti` — lista clienti con stats aggregate, sedi, trial
+- `GET /api/admin/clienti/{id}` — dettaglio cliente completo
+- `POST /api/admin/clienti` — crea cliente + ristorante + invia email onboarding Brevo (email HTML centralizzata nel backend, non più duplicata inline in Streamlit)
+- `PATCH /api/admin/clienti/{id}/account` — attiva/disattiva
+- `POST /api/admin/clienti/{id}/reset-password` — token + email Brevo
+- `PATCH /api/admin/clienti/{id}/email` — cambia email + invalida sessione
+- `DELETE /api/admin/clienti/{id}` — elimina cascade (opz: memoria globale)
+- `POST /api/admin/impersona/{id}` — genera session token per cliente target
+- `GET/POST /api/admin/clienti/{id}/sedi` · `DELETE /api/admin/clienti/{id}/sedi/{sid}`
+- `GET/POST /api/admin/ragione-sociale-map` · `DELETE /api/admin/ragione-sociale-map/{mid}`
+- `PATCH /api/admin/clienti/{id}/flags` — feature flags (nuova tassonomia sidebar Next.js) + blocchi temporali
+- `POST /api/admin/clienti/{id}/trial` — attiva trial 7 giorni
+
+*Frontend (`apps/web`):*
+- Layout `/admin` gated: `(app)/admin/layout.tsx` — redirect se non admin
+- Sidebar: prop `isAdmin` + voce "Admin" con icona `ShieldCheck` visibile solo agli admin
+- `(app)/admin/page.tsx` — overview 4 KPI card + link rapidi a sezioni
+- `(app)/admin/clienti/page.tsx` + `clienti-client.tsx` — tabella ricercabile (nome/email/P.IVA), filtro stato, colonne piano/attività/fatture; bottone "+ Nuovo cliente" → Dialog centrato con form completo (email, nome, P.IVA, piano, ragione sociale)
+- `(app)/admin/clienti/[id]/page.tsx` + `cliente-dettaglio-client.tsx` — scheda cliente: dati + 5 azioni rapide + feature flags (8 toggle switch) + gestione sedi (add/delete Dialog) + zona pericolosa (elimina con Dialog conferma)
+- `(app)/admin/ragione-sociale/page.tsx` + `ragione-sociale-client.tsx` — tabella mapping con Dialog centrato per aggiungere nuove associazioni
+- 14 route proxy Next.js under `app/api/admin/`
+- `lib/admin.ts` — tipi condivisi (`Cliente`, `ClienteDettaglio`, `Sede`, `TrialInfo`) + helpers
+- `components/admin/impersona-banner.tsx` — banner sticky ambra con "Esci" (cookie `oneflux_impersonate` + `oneflux_session_backup`)
+
+*Meccanismo impersonazione:* `POST /api/admin/clienti/{id}/impersona` genera nuovo `session_token` per il cliente e ritorna `target_token`. Il frontend salva il token admin in `oneflux_session_backup` (HttpOnly), imposta `oneflux_session` = token cliente, e `oneflux_impersonate` = email cliente (leggibile da JS per il banner). Exit ripristina la sessione admin. Tutto loggato come `IMPERSONATION_START` nel worker.
+
+*Feature flags — nuova tassonomia:* abbandonati i nomi vecchi Streamlit (`workspace/foodcost`, `calcolo_margine`, `controllo_prezzi`, `analisi_personalizzata`). Nuove chiavi: `analisi_fatture`, `prezzi`, `margini`, `foodcost`, `analisi_e_tag`, `scadenziario`, `blocco_anno_precedente`, `blocco_mesi_precedenti`.
+
+*Rimandato al blocco 2 (Fase 7):* Qualità AI (coda classificazione, memoria conflitti) · Sistema/Salute (costi AI, integrità DB, retention monitor) · Audit log admin (`admin_audit` table).
+
+**Admin Panel Blocco 2 — Fase 7 completa (30 maggio 2026)**
+
+*Qualità AI (`/admin/qualita-ai` — 3 tab):*
+- **Coda review**: carica righe speciali di tutti i clienti, le classifica con `classify_special_row_vectorized` (buckets: dicitura/sconto_omaggio/storno/da_verificare), le raggruppa per descrizione. Per ogni gruppo: 1 click per classificare + salvare in `prodotti_master`. Bottone "Auto-review" classifica in automatico tutte le diciture sicure (€=0, nessun hint economico) e sconti/omaggi (conferma categoria attuale) — con guardrail BUG1 (nessuna dicitura con prezzo>0 entra in memoria).
+- **Memoria globale**: browse paginato di `prodotti_master` con ricerca full-text, filtri (tutti/verified/non_verified/sospetti). Per "sospetti": applica `applica_correzioni_dizionario` + `applica_regole_categoria_forti` per trovare divergenze AI→categoria attuale. Edit inline + delete per ogni voce.
+- **Conflitti**: trova descrizioni presenti in `prodotti_utente` con categoria diversa da `prodotti_master`. Per ogni conflitto: "Promuovi" (locale→globale) o "Ignora" (marca come eccezione locale accettata).
+
+*Sistema/Salute (`/admin/sistema` — 3 tab):*
+- **Costi AI**: KPI cards (costo tot, vision, categorizzazioni, token) + quota Vision oggi per ristorante + tabella dettaglio per cliente. Periodi: 7/30/90 giorni. Alimentato da RPC `get_ai_costs_summary`, `get_ai_costs_timeseries`, `ai_usage_events`.
+- **Integrità DB**: scan on-demand (filtro periodo: 30/90/180gg o tutto). 5 check: date invalide, importi estremi (>€50k), quantità negative, descrizioni vuote, totali non corrispondenti. Risultati espandibili per categoria.
+- **Retention**: stato dell'ultimo ciclo automatico (data, righe eliminate, di cui dal cestino, stato ok/errore). Alimentato da `get_retention_last_status`.
+
+*Backend (17 nuovi endpoint sotto `/api/admin/`):*
+`GET /api/admin/qualita-ai/coda` · `POST /coda/classifica` · `POST /coda/auto-review` · `GET /qualita-ai/memoria` · `PATCH /qualita-ai/memoria/{id}` · `DELETE /qualita-ai/memoria/{id}` · `GET /qualita-ai/conflitti` · `POST /qualita-ai/conflitti/risolvi` · `GET /sistema/costi-ai` · `POST /sistema/integrita` · `GET /sistema/retention`
+
+*Route proxy Next.js:* 11 nuovi file sotto `apps/web/src/app/api/admin/qualita-ai/` e `apps/web/src/app/api/admin/sistema/`.
+Pagine overview aggiornata con 4 card di navigazione.
+
 **Scadenziario — hardening debug (30 maggio 2026)**
 Analisi di correttezza della pagina Scadenziario dopo il completamento funzionale. Fix applicati:
 
@@ -513,7 +589,7 @@ Analisi di correttezza della pagina Scadenziario dopo il completamento funzional
 - **N+1 POST nelle Regole multi-fornitore**: `handleSave` cicla una POST per fornitore. Valutare endpoint batch se le selezioni diventano grandi.
 - **Selezione persistente al cambio filtro**: le fatture selezionate restano in `selectedFileOrigini` anche se escono dal filtro (la bulk bar le conta pur non essendo visibili).
 
-### Prossimi passi concreti (aggiornato 30/5 — rev.10)
+### Prossimi passi concreti (aggiornato 30/5 — rev.12)
 
 **Prerequisito immediato (non è codice):**
 - Aggiungere env var `BREVO_API_KEY` / `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME` su Railway per attivare reset password in produzione
@@ -521,13 +597,14 @@ Analisi di correttezza della pagina Scadenziario dopo il completamento funzional
 **Roadmap funzionale (ordine di priorità concordato):**
 1. ~~**Scadenziario** (Fase 4)~~ ✅ **Completato** (29/5)
 2. ~~**Cestino fatture** (Fase 4)~~ ✅ **Completato** (30/5)
-3. **Onboarding primo accesso** lato Next.js — completa Fase 2 (riusa la stessa `/reset-password` già costruita, basta gestire il caso `password_hash = NULL`)
-4. **Home AI** — briefing giornaliero, notifiche actionable inline (Fase 3)
-5. **Impostazioni/Account** — contatori piano, preferenze (Fase 8 light)
-6. **Foodcost** — riscrittura completa da zero (Fase 6)
-7. **Admin Panel** + UI mapping ragione sociale + dropdown switch ristorante (Fase 7)
-8. **Assistenza/Marketplace** (Fase 8)
-9. **Test, performance, switch dominio** (Fasi 9-11)
+3. ~~**Onboarding primo accesso** lato Next.js~~ ✅ **Completato** (30/5)
+4. ~~**Impostazioni/Account**~~ ✅ **Completato** (30/5)
+5. ~~**Admin Panel Core**~~ ✅ **Completato** (30/5) — clienti, onboarding, impersonazione, sedi, flags, mapping
+6. **Home AI** — briefing giornaliero, notifiche actionable inline (Fase 3)
+7. **Foodcost** — riscrittura completa da zero (Fase 6)
+8. ~~**Admin Panel blocco 2**~~ ✅ **Completato** (30/5) — Qualità AI + Sistema/Salute
+9. **Assistenza/Marketplace** (Fase 8)
+10. **Test, performance, switch dominio** (Fasi 9-11)
 
 > Nota: i punti A (Scadenziario) e B (Cestino) della roadmap precedente erano stati saltati per prioritizzare Analisi e Tag + fix Prezzi + reset password. Sono i prossimi da implementare.
 

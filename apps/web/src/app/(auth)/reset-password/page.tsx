@@ -12,6 +12,8 @@ function ResetPasswordForm() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
+  const isOnboarding = searchParams.get("onboarding") === "1";
+
   const [token, setToken] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -65,7 +67,9 @@ function ResetPasswordForm() {
           </div>
           <div>
             <CardTitle>ONEFLUX</CardTitle>
-            <CardDescription>Nuova password</CardDescription>
+            <CardDescription>
+              {isOnboarding ? "Benvenuto — imposta la tua password" : "Nuova password"}
+            </CardDescription>
           </div>
         </div>
       </CardHeader>
@@ -73,7 +77,9 @@ function ResetPasswordForm() {
         {done ? (
           <div className="space-y-4">
             <div className="rounded-md bg-emerald-500/10 border border-emerald-500/30 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
-              Password reimpostata con successo! Verrai reindirizzato al login tra pochi secondi.
+              {isOnboarding
+                ? "Account attivato con successo! Verrai reindirizzato al login tra pochi secondi."
+                : "Password reimpostata con successo! Verrai reindirizzato al login tra pochi secondi."}
             </div>
             <p className="text-xs text-center text-muted-foreground">
               <Link href="/login" className="text-primary hover:underline">Vai al login →</Link>
@@ -81,6 +87,11 @@ function ResetPasswordForm() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            {isOnboarding && (
+              <div className="rounded-md bg-primary/5 border border-primary/20 px-4 py-3 text-sm text-foreground">
+                Il tuo account è stato creato. Scegli una password per iniziare.
+              </div>
+            )}
             {!searchParams.get("token") && (
               <div className="space-y-1.5">
                 <Label htmlFor="token">Codice ricevuto via email</Label>
@@ -97,7 +108,9 @@ function ResetPasswordForm() {
               </div>
             )}
             <div className="space-y-1.5">
-              <Label htmlFor="password">Nuova password</Label>
+              <Label htmlFor="password">
+                {isOnboarding ? "Scegli una password" : "Nuova password"}
+              </Label>
               <Input
                 id="password"
                 type="password"
@@ -134,11 +147,17 @@ function ResetPasswordForm() {
               className="w-full"
               disabled={loading || !token.trim() || !password || !confirm}
             >
-              {loading ? "Salvataggio..." : "Imposta nuova password"}
+              {loading
+                ? "Salvataggio..."
+                : isOnboarding
+                ? "Attiva il mio account"
+                : "Imposta nuova password"}
             </Button>
-            <p className="text-xs text-center text-muted-foreground pt-1">
-              <Link href="/login" className="text-primary hover:underline">← Torna al login</Link>
-            </p>
+            {!isOnboarding && (
+              <p className="text-xs text-center text-muted-foreground pt-1">
+                <Link href="/login" className="text-primary hover:underline">← Torna al login</Link>
+              </p>
+            )}
           </form>
         )}
       </CardContent>

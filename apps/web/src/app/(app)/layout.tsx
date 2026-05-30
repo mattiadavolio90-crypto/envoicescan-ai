@@ -4,6 +4,7 @@ import { AppSidebar } from "@/components/nav/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchNotifiche } from "@/lib/notifiche";
+import { ImpersonaBanner } from "@/components/admin/impersona-banner";
 
 function getInitials(nome: string | null, email: string): string {
   if (nome) {
@@ -25,12 +26,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const unreadNotifiche = notificheData?.unread ?? 0;
 
   return (
+    <>
+    <ImpersonaBanner />
     <SidebarProvider>
       <AppSidebar
         userEmail={user.email}
         userInitials={getInitials(user.nome_ristorante, user.email)}
         ristoranteNome={user.nome_ristorante ?? "Ristorante"}
         unreadNotifiche={unreadNotifiche}
+        isAdmin={user.is_admin}
       />
       <SidebarInset>
         <header className="flex h-14 items-center gap-2 px-4 border-b border-border">
@@ -41,5 +45,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <main className="flex-1 p-6">{children}</main>
       </SidebarInset>
     </SidebarProvider>
+    </>
   );
 }

@@ -5613,6 +5613,1403 @@ async def svuota_cestino_endpoint(authorization: Optional[str] = Header(None)):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# ACCOUNT
+# ═══════════════════════════════════════════════════════════════════════════
+
+_PIANO_LIMITI: Dict[str, int] = {
+    "base": 50,
+    "plus": 100,
+    "pro": 200,
+}
+
+
+@app.get("/api/account/me", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
+async def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Dati account estesi: profilo, piano, contatori utilizzo."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+
+    # Dati utente freschi dal DB (piano, price_alert_threshold, created_at)
+    user_row = (
+        sb.table("users")
+        .select("id, email, nome_ristorante, ragione_sociale, partita_iva, piano, "
+                "price_alert_threshold, created_at, last_login")
+        .eq("id", user_id)
+        .single()
+        .execute()
+    )
+    row = user_row.data or {}
+
+    piano_raw = (row.get("piano") or "base").lower().strip()
+    limite_fatture = _PIANO_LIMITI.get(piano_raw, 50)
+
+    # Contatore fatture del mese corrente (documenti unici, non righe)
+    now = datetime.now(timezone.utc)
+    mese_inizio = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    fatture_mese = 0
+    if ristorante_id:
+        try:
+            # Conta file_origine distinti nel mese corrente
+            fd_resp = (
+                sb.table("fatture_documenti")
+                .select("file_origine")
+                .eq("ristorante_id", ristorante_id)
+                .gte("data_documento", mese_inizio[:10])
+                .execute()
+            )
+            file_origini = {r["file_origine"] for r in (fd_resp.data or [])}
+            fatture_mese = len(file_origini)
+        except Exception:
+            pass
+
+    return {
+        "email": row.get("email", user.get("email", "")),
+        "nome_ristorante": row.get("nome_ristorante", user.get("nome_ristorante", "")),
+        "ragione_sociale": row.get("ragione_sociale"),
+        "partita_iva": row.get("partita_iva"),
+        "piano": piano_raw,
+        "limite_fatture_mese": limite_fatture,
+        "fatture_usate_mese": fatture_mese,
+        "price_alert_threshold": row.get("price_alert_threshold"),
+        "membro_dal": row.get("created_at"),
+        "ultimo_accesso": row.get("last_login"),
+        "is_admin": _is_admin_email(row.get("email")),
+    }
+
+
+class CambioPasswordBody(BaseModel):
+    password_attuale: str
+    nuova_password: str
+
+
+@app.post("/api/account/cambia-password", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
+async def account_cambia_password(
+    body: CambioPasswordBody,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Cambia password con verifica dell'attuale."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+
+    # Carica hash attuale
+    row = (
+        sb.table("users")
+        .select("id, password_hash, email")
+        .eq("id", user_id)
+        .single()
+        .execute()
+    )
+    if not row.data:
+        raise HTTPException(status_code=404, detail="Utente non trovato")
+
+    from services.auth_service import verify_and_migrate_password, ph
+    if not verify_and_migrate_password(row.data, body.password_attuale):
+        raise HTTPException(status_code=400, detail="La password attuale non è corretta")
+
+    if len(body.nuova_password) < 8:
+        raise HTTPException(status_code=400, detail="La nuova password deve essere di almeno 8 caratteri")
+
+    new_hash = ph.hash(body.nuova_password)
+    sb.table("users").update({
+        "password_hash": new_hash,
+        "password_changed_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", user_id).execute()
+
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ADMIN — guard + endpoints /api/admin/*
+# Doppio guard: X-Worker-Key (server-to-server) + Bearer token admin
+# ═══════════════════════════════════════════════════════════════════════════
+
+async def _verify_admin(
+    authorization: Optional[str] = Header(None),
+    x_worker_key: Optional[str] = Header(None),
+) -> dict:
+    """Worker key + bearer token → utente admin verificato. Ritorna il dict utente."""
+    if WORKER_SECRET_KEY and x_worker_key != WORKER_SECRET_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Token admin mancante")
+    token = authorization.split(" ", 1)[1].strip()
+    from services.auth_service import verifica_sessione_da_cookie
+    user = verifica_sessione_da_cookie(token)
+    if not user or not _is_admin_email(user.get("email")):
+        raise HTTPException(status_code=403, detail="Accesso riservato agli amministratori")
+    return user
+
+
+def _admin_emails_set() -> set:
+    raw = os.getenv("ADMIN_EMAILS", "md@oneflux.it")
+    return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+# ── Overview ────────────────────────────────────────────────────────────────
+
+@app.get("/api/admin/overview", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_overview():
+    """KPI flotta: clienti, attivi, fatture mese corrente, costi AI mese."""
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+
+    users_resp = sb.table("users").select("id,email,attivo").execute()
+    all_users = users_resp.data or []
+    clienti = [u for u in all_users if u.get("email", "").lower() not in admin_emails]
+    n_clienti = len(clienti)
+    n_attivi = sum(1 for u in clienti if u.get("attivo"))
+
+    mese_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    try:
+        fatture_resp = sb.table("fatture_documenti").select("id").gte("created_at", mese_start).execute()
+        fatture_mese = len(fatture_resp.data or [])
+    except Exception:
+        try:
+            fatture_resp2 = sb.table("fatture").select("id").gte("created_at", mese_start).is_("deleted_at", "null").execute()
+            fatture_mese = len(fatture_resp2.data or [])
+        except Exception:
+            fatture_mese = 0
+
+    # Breakdown mensile ultimi 12 mesi
+    fatture_per_mese: list = []
+    try:
+        from datetime import date
+        twelve_ago = (datetime.now(timezone.utc).date().replace(day=1) - timedelta(days=365)).isoformat()
+        fd_resp = sb.table("fatture_documenti").select("data_documento").gte("data_documento", twelve_ago).execute()
+        per_mese: dict = {}
+        for r in (fd_resp.data or []):
+            d = r.get("data_documento") or ""
+            if len(d) >= 7:
+                per_mese[d[:7]] = per_mese.get(d[:7], 0) + 1
+        fatture_per_mese = [{"mese": k, "count": v} for k, v in sorted(per_mese.items())]
+    except Exception:
+        try:
+            twelve_ago = (datetime.now(timezone.utc).date().replace(day=1) - timedelta(days=365)).isoformat()
+            fd_resp2 = sb.table("fatture").select("data_documento").gte("data_documento", twelve_ago).is_("deleted_at", "null").execute()
+            per_mese2: dict = {}
+            for r in (fd_resp2.data or []):
+                d = r.get("data_documento") or ""
+                if len(d) >= 7:
+                    per_mese2[d[:7]] = per_mese2.get(d[:7], 0) + 1
+            fatture_per_mese = [{"mese": k, "count": v} for k, v in sorted(per_mese2.items())]
+        except Exception:
+            fatture_per_mese = []
+
+    try:
+        costs_resp = sb.rpc("get_ai_costs_summary", {"p_days": 30}).execute()
+        costi_mese = sum(float(r.get("ai_cost_total", 0)) for r in (costs_resp.data or []))
+    except Exception:
+        costi_mese = 0.0
+
+    return {
+        "n_clienti": n_clienti,
+        "n_attivi": n_attivi,
+        "fatture_mese": fatture_mese,
+        "costi_ai_mese": round(costi_mese, 4),
+        "fatture_per_mese": fatture_per_mese,
+    }
+
+
+# ── Lista clienti ────────────────────────────────────────────────────────────
+
+@app.get("/api/admin/clienti", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_lista_clienti():
+    """Lista tutti i clienti non-admin con stats aggregate (fatture, ultimo accesso, piano, trial)."""
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+
+    users_resp = sb.table("users").select(
+        "id,email,nome_ristorante,ragione_sociale,partita_iva,attivo,piano,created_at,"
+        "last_seen_at,trial_active,trial_activated_at,pagine_abilitate"
+    ).order("email").execute()
+    clienti_raw = [u for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
+    if not clienti_raw:
+        return []
+
+    user_ids = [u["id"] for u in clienti_raw]
+
+    # Fatture del mese corrente per utente
+    mese_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    fatture_mese_map: dict = {}
+    try:
+        chunk_size = 100
+        for i in range(0, len(user_ids), chunk_size):
+            chunk = user_ids[i : i + chunk_size]
+            resp = sb.table("fatture_documenti").select("user_id").in_("user_id", chunk).gte("created_at", mese_start).execute()
+            for r in (resp.data or []):
+                uid = r["user_id"]
+                fatture_mese_map[uid] = fatture_mese_map.get(uid, 0) + 1
+    except Exception:
+        # fatture_documenti potrebbe non avere user_id direttamente — fallback silenzioso
+        pass
+
+    # Sedi per utente
+    sedi_map: dict = {}
+    try:
+        for i in range(0, len(user_ids), 100):
+            chunk = user_ids[i : i + 100]
+            resp = sb.table("ristoranti").select("user_id,id,nome_ristorante,partita_iva,ragione_sociale,attivo").in_("user_id", chunk).execute()
+            for r in (resp.data or []):
+                sedi_map.setdefault(r["user_id"], []).append(r)
+    except Exception:
+        pass
+
+    _PIANO_LIMITI_LOCAL = {"base": 50, "plus": 100, "pro": 200}
+
+    result = []
+    for u in clienti_raw:
+        uid = u["id"]
+        piano = (u.get("piano") or "base").lower()
+        limite = _PIANO_LIMITI_LOCAL.get(piano, 50)
+        sedi = sedi_map.get(uid, [])
+        fatture_mese = fatture_mese_map.get(uid, 0)
+
+        trial_info = None
+        if u.get("trial_active") and u.get("trial_activated_at"):
+            try:
+                activated = datetime.fromisoformat(str(u["trial_activated_at"]).replace("Z", "+00:00"))
+                expires_at = activated + timedelta(days=7)
+                days_rem = max(0, (expires_at - datetime.now(timezone.utc)).days)
+                trial_info = {"active": True, "expires_at": expires_at.isoformat(), "days_remaining": days_rem}
+            except Exception:
+                trial_info = {"active": True}
+
+        result.append({
+            "id": uid,
+            "email": u["email"],
+            "nome_ristorante": u.get("nome_ristorante") or "",
+            "ragione_sociale": u.get("ragione_sociale"),
+            "partita_iva": u.get("partita_iva"),
+            "attivo": bool(u.get("attivo")),
+            "piano": piano,
+            "limite_fatture_mese": limite,
+            "fatture_mese": fatture_mese,
+            "created_at": u.get("created_at"),
+            "last_seen_at": u.get("last_seen_at"),
+            "trial": trial_info,
+            "pagine_abilitate": u.get("pagine_abilitate") or {},
+            "n_sedi": len(sedi),
+            "sedi": sedi,
+        })
+
+    return result
+
+
+# ── Dettaglio cliente ────────────────────────────────────────────────────────
+
+@app.get("/api/admin/clienti/{cliente_id}", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_dettaglio_cliente(cliente_id: str):
+    """Dettaglio completo di un cliente."""
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+
+    resp = sb.table("users").select(
+        "id,email,nome_ristorante,ragione_sociale,partita_iva,attivo,piano,created_at,"
+        "last_seen_at,trial_active,trial_activated_at,pagine_abilitate,price_alert_threshold"
+    ).eq("id", cliente_id).limit(1).execute()
+
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    u = resp.data[0]
+    if u.get("email", "").lower() in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi gestire account admin")
+
+    sedi_resp = sb.table("ristoranti").select(
+        "id,nome_ristorante,partita_iva,ragione_sociale,attivo"
+    ).eq("user_id", cliente_id).execute()
+    sedi = sedi_resp.data or []
+
+    piano = (u.get("piano") or "base").lower()
+    _PIANO_LIMITI_LOCAL = {"base": 50, "plus": 100, "pro": 200}
+    limite = _PIANO_LIMITI_LOCAL.get(piano, 50)
+
+    trial_info = None
+    if u.get("trial_active") and u.get("trial_activated_at"):
+        try:
+            activated = datetime.fromisoformat(str(u["trial_activated_at"]).replace("Z", "+00:00"))
+            expires_at = activated + timedelta(days=7)
+            days_rem = max(0, (expires_at - datetime.now(timezone.utc)).days)
+            trial_info = {"active": True, "expires_at": expires_at.isoformat(), "days_remaining": days_rem}
+        except Exception:
+            trial_info = {"active": True}
+
+    return {
+        "id": u["id"],
+        "email": u["email"],
+        "nome_ristorante": u.get("nome_ristorante") or "",
+        "ragione_sociale": u.get("ragione_sociale"),
+        "partita_iva": u.get("partita_iva"),
+        "attivo": bool(u.get("attivo")),
+        "piano": piano,
+        "limite_fatture_mese": limite,
+        "created_at": u.get("created_at"),
+        "last_seen_at": u.get("last_seen_at"),
+        "price_alert_threshold": u.get("price_alert_threshold"),
+        "trial": trial_info,
+        "pagine_abilitate": u.get("pagine_abilitate") or {},
+        "sedi": sedi,
+    }
+
+
+# ── Crea cliente ─────────────────────────────────────────────────────────────
+
+class NuovoClienteBody(BaseModel):
+    email: str = Field(..., max_length=254)
+    nome_ristorante: str = Field(..., max_length=100)
+    partita_iva: str = Field(..., max_length=11)
+    ragione_sociale: Optional[str] = Field(None, max_length=150)
+    piano: str = Field("base", pattern="^(base|plus|pro)$")
+
+
+@app.post("/api/admin/clienti", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(_verify_admin)):
+    """Crea nuovo cliente + ristorante + invia email onboarding via Brevo."""
+    from services.auth_service import crea_cliente_con_token
+    import html as _html_mod
+    import requests as _requests
+
+    successo, messaggio, token = crea_cliente_con_token(
+        email=body.email,
+        nome_ristorante=body.nome_ristorante,
+        partita_iva=body.partita_iva,
+        ragione_sociale=body.ragione_sociale,
+    )
+    if not successo:
+        raise HTTPException(status_code=400, detail=messaggio)
+
+    # Aggiorna piano se diverso da default
+    if body.piano != "base":
+        try:
+            sb = get_supabase_client()
+            sb.table("users").update({"piano": body.piano}).eq("email", body.email.lower()).execute()
+        except Exception:
+            pass
+
+    link = f"https://nuovo.oneflux.it/reset-password?token={token}&onboarding=1"
+    email_inviata = False
+    brevo_key = os.getenv("BREVO_API_KEY", "")
+    sender_email = os.getenv("BREVO_SENDER_EMAIL", "noreply@oneflux.it")
+    sender_name = os.getenv("BREVO_SENDER_NAME", "ONEFLUX")
+
+    if brevo_key:
+        try:
+            nome_safe = _html_mod.escape(body.nome_ristorante)
+            email_safe = _html_mod.escape(body.email)
+            piva_safe = _html_mod.escape(body.partita_iva)
+            html_body = f"""
+<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+  <h2 style="color:#0ea5e9;">Benvenuto in ONEFLUX</h2>
+  <p>Ciao <strong>{nome_safe}</strong>,</p>
+  <p>Il tuo account è stato creato. Imposta la tua password per iniziare:</p>
+  <div style="text-align:center;margin:30px 0;">
+    <a href="{link}" style="background:#0ea5e9;color:#fff;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">
+      Attiva il mio account
+    </a>
+  </div>
+  <p style="color:#dc2626;"><strong>⚠️ Il link scade tra 24 ore.</strong></p>
+  <p><strong>Email di accesso:</strong> {email_safe}<br><strong>P.IVA:</strong> {piva_safe}</p>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
+  <p style="color:#666;font-size:13px;"><strong>ONEFLUX Team</strong> — md@oneflux.it</p>
+</div>"""
+            payload = {
+                "sender": {"email": sender_email, "name": sender_name},
+                "to": [{"email": body.email, "name": nome_safe}],
+                "replyTo": {"email": "md@oneflux.it", "name": "Mattia - ONEFLUX"},
+                "subject": f"Benvenuto {nome_safe} — Attiva il tuo account ONEFLUX",
+                "htmlContent": html_body,
+            }
+            r = _requests.post(
+                "https://api.brevo.com/v3/smtp/email",
+                json=payload,
+                headers={"api-key": brevo_key, "Content-Type": "application/json"},
+                timeout=10,
+            )
+            email_inviata = r.status_code == 201
+        except Exception as exc:
+            logger.warning("Errore invio email onboarding: %s", exc)
+
+    logger.info("Admin crea_cliente: %s | admin=%s | email_inviata=%s", body.email, admin_user.get("email"), email_inviata)
+    return {"ok": True, "email": body.email, "link_attivazione": link, "email_inviata": email_inviata, "warning": messaggio if "⚠️" in messaggio else None}
+
+
+# ── Qualità AI — Coda review ──────────────────────────────────────────────────
+
+@app.get("/api/admin/qualita-ai/coda", tags=["Admin"])
+async def admin_qualita_coda(
+    cliente_id: Optional[str] = None,
+    bucket: Optional[str] = None,
+    admin_user: dict = Depends(_verify_admin),
+):
+    """Righe speciali (€0/diciture/sconti/storni/da_verificare) raggruppate per descrizione."""
+    import pandas as pd
+    from utils.validation import classify_special_row_vectorized, SPECIAL_ROW_NORMALE
+    from utils.text_utils import pulisci_caratteri_corrotti
+
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+
+    allowed_ids: list = []
+    if cliente_id:
+        allowed_ids = [cliente_id]
+    else:
+        users_resp = sb.table("users").select("id,email").execute()
+        allowed_ids = [u["id"] for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
+    if not allowed_ids:
+        return {"gruppi": [], "stats": {}}
+
+    all_rows: list = []
+    page_size = 1000
+    offset = 0
+    while True:
+        q = (sb.table("fatture")
+             .select("id,descrizione,categoria,fornitore,prezzo_unitario,totale_riga,quantita,tipo_documento,needs_review,user_id")
+             .is_("deleted_at", "null")
+             .in_("user_id", allowed_ids)
+             .order("id")
+             .range(offset, offset + page_size - 1))
+        resp = q.execute()
+        chunk = resp.data or []
+        if not chunk:
+            break
+        all_rows.extend(chunk)
+        if len(chunk) < page_size:
+            break
+        offset += page_size
+
+    if not all_rows:
+        return {"gruppi": [], "stats": {"totale": 0, "diciture": 0, "sconti": 0, "storni": 0, "ambigue": 0}}
+
+    df = pd.DataFrame(all_rows)
+    if "descrizione" in df.columns:
+        df["descrizione"] = df["descrizione"].apply(lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x)
+
+    meta = classify_special_row_vectorized(df)
+    df["bucket_raw"] = meta["bucket"]
+    df["bucket"] = df["bucket_raw"].where(~df["needs_review"].fillna(False).astype(bool), other="da_verificare")
+    df = df[df["bucket"] != SPECIAL_ROW_NORMALE].copy()
+
+    if bucket:
+        df = df[df["bucket"] == bucket]
+
+    if df.empty:
+        return {"gruppi": [], "stats": {"totale": 0, "diciture": 0, "sconti": 0, "storni": 0, "ambigue": 0}}
+
+    stats = {
+        "totale": len(df),
+        "diciture": int((df["bucket"] == "dicitura").sum()),
+        "sconti": int((df["bucket"] == "sconto_omaggio").sum()),
+        "storni": int((df["bucket"] == "storno").sum()),
+        "ambigue": int((df["bucket"] == "da_verificare").sum()),
+    }
+
+    # Raggruppa per descrizione
+    grp = df.groupby("descrizione", as_index=False).agg(
+        bucket=("bucket", "first"),
+        count=("id", "count"),
+        ids=("id", list),
+        categoria=("categoria", "first"),
+        fornitore=("fornitore", "first"),
+        prezzo_max=("prezzo_unitario", "max"),
+    )
+    grp["prezzo_max"] = grp["prezzo_max"].fillna(0).round(4)
+    grp = grp.sort_values(["bucket", "count"], ascending=[True, False])
+
+    gruppi = grp.to_dict("records")
+    for g in gruppi:
+        g["ids"] = [int(i) for i in g["ids"]]
+        g["count"] = int(g["count"])
+        g["prezzo_max"] = float(g["prezzo_max"])
+
+    return {"gruppi": gruppi, "stats": stats}
+
+
+class ClassificaBody(BaseModel):
+    ids: List[int] = Field(..., min_length=1)
+    categoria: str = Field(..., max_length=100)
+    salva_memoria: bool = True
+
+
+@app.post("/api/admin/qualita-ai/coda/classifica", tags=["Admin"])
+async def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_verify_admin)):
+    """Classifica un gruppo di righe e opzionalmente salva in memoria globale."""
+    from datetime import datetime, timezone
+
+    sb = get_supabase_client()
+    now = datetime.now(timezone.utc).isoformat()
+
+    update_payload = {
+        "categoria": body.categoria,
+        "needs_review": False,
+        "reviewed_at": now,
+        "reviewed_by": f"admin:{admin_user.get('email', 'admin')}",
+    }
+    sb.table("fatture").update(update_payload).in_("id", body.ids).is_("deleted_at", "null").execute()
+
+    if body.salva_memoria:
+        # Recupera la descrizione del primo ID per il salvataggio in memoria
+        row_resp = sb.table("fatture").select("descrizione,prezzo_unitario").in_("id", body.ids).limit(1).execute()
+        if row_resp.data:
+            desc = row_resp.data[0].get("descrizione", "")
+            prezzo = float(row_resp.data[0].get("prezzo_unitario") or 0)
+            if desc and not (body.categoria == "📝 NOTE E DICITURE" and prezzo > 0):
+                sb.table("prodotti_master").upsert({
+                    "descrizione": desc,
+                    "categoria": body.categoria,
+                    "confidence": "altissima",
+                    "verified": True,
+                    "classificato_da": f"admin:{admin_user.get('email', 'admin')}",
+                    "ultima_modifica": now,
+                }, on_conflict="descrizione").execute()
+
+    logger.info("admin_qualita_classifica: %d righe → %s | admin=%s", len(body.ids), body.categoria, admin_user.get("email"))
+    return {"ok": True, "righe_aggiornate": len(body.ids)}
+
+
+class AutoReviewBody(BaseModel):
+    cliente_id: Optional[str] = None
+
+
+@app.post("/api/admin/qualita-ai/coda/auto-review", tags=["Admin"])
+async def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_verify_admin)):
+    """Auto-classifica diciture sicure e sconti/omaggi in batch."""
+    import pandas as pd
+    from utils.validation import classify_special_row_vectorized, SPECIAL_ROW_NORMALE, SPECIAL_ROW_DICITURA, SPECIAL_ROW_SCONTO_OMAGGIO
+    from utils.text_utils import pulisci_caratteri_corrotti
+    from utils.validation import is_dicitura_sicura, is_sconto_omaggio_sicuro
+    from datetime import datetime, timezone
+
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+    now = datetime.now(timezone.utc).isoformat()
+
+    if body.cliente_id:
+        allowed_ids = [body.cliente_id]
+    else:
+        users_resp = sb.table("users").select("id,email").execute()
+        allowed_ids = [u["id"] for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
+
+    all_rows: list = []
+    page_size = 1000
+    offset = 0
+    while True:
+        q = (sb.table("fatture")
+             .select("id,descrizione,categoria,prezzo_unitario,totale_riga,quantita,tipo_documento,needs_review")
+             .is_("deleted_at", "null")
+             .in_("user_id", allowed_ids)
+             .order("id")
+             .range(offset, offset + page_size - 1))
+        resp = q.execute()
+        chunk = resp.data or []
+        if not chunk:
+            break
+        all_rows.extend(chunk)
+        if len(chunk) < page_size:
+            break
+        offset += page_size
+
+    if not all_rows:
+        return {"ok": True, "classificate": 0, "salvate_memoria": 0, "errori": 0}
+
+    df = pd.DataFrame(all_rows)
+    df["descrizione"] = df["descrizione"].apply(lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x)
+    meta = classify_special_row_vectorized(df)
+    df["bucket"] = meta["bucket"]
+    df = df[df["bucket"] != SPECIAL_ROW_NORMALE].copy()
+
+    auto_diciture = df[df["bucket"] == SPECIAL_ROW_DICITURA]["descrizione"].dropna().unique().tolist()
+    auto_sconti = df[df["bucket"] == SPECIAL_ROW_SCONTO_OMAGGIO]["descrizione"].dropna().unique().tolist()
+
+    classificate = 0
+    salvate = 0
+    errori = 0
+
+    for desc in auto_diciture:
+        try:
+            prezzo_max = float(df[df["descrizione"] == desc]["prezzo_unitario"].max() or 0)
+            if prezzo_max > 0:
+                errori += 1
+                continue
+            ids = df[df["descrizione"] == desc]["id"].tolist()
+            sb.table("fatture").update({
+                "categoria": "📝 NOTE E DICITURE",
+                "needs_review": False,
+                "reviewed_at": now,
+                "reviewed_by": "auto-review",
+            }).in_("id", ids).is_("deleted_at", "null").execute()
+            sb.table("prodotti_master").upsert({
+                "descrizione": desc,
+                "categoria": "📝 NOTE E DICITURE",
+                "confidence": "altissima",
+                "verified": True,
+                "classificato_da": "auto-review",
+                "ultima_modifica": now,
+            }, on_conflict="descrizione").execute()
+            classificate += len(ids)
+            salvate += 1
+        except Exception as exc:
+            errori += 1
+            logger.warning("auto-review dicitura error '%s': %s", desc[:40], exc)
+
+    for desc in auto_sconti:
+        try:
+            row = df[df["descrizione"] == desc].iloc[0]
+            cat = row.get("categoria") or ""
+            if not cat or cat == "Da Clasificare":
+                continue
+            ids = df[df["descrizione"] == desc]["id"].tolist()
+            sb.table("fatture").update({
+                "needs_review": False,
+                "reviewed_at": now,
+                "reviewed_by": "auto-review",
+            }).in_("id", ids).is_("deleted_at", "null").execute()
+            sb.table("prodotti_master").upsert({
+                "descrizione": desc,
+                "categoria": cat,
+                "confidence": "alta",
+                "verified": True,
+                "classificato_da": "auto-review",
+                "ultima_modifica": now,
+            }, on_conflict="descrizione").execute()
+            classificate += len(ids)
+            salvate += 1
+        except Exception as exc:
+            errori += 1
+            logger.warning("auto-review sconto error '%s': %s", desc[:40], exc)
+
+    logger.info("admin_auto_review: classificate=%d, salvate=%d, errori=%d | admin=%s", classificate, salvate, errori, admin_user.get("email"))
+    return {"ok": True, "classificate": classificate, "salvate_memoria": salvate, "errori": errori}
+
+
+# ── Qualità AI — Memoria globale ─────────────────────────────────────────────
+
+@app.get("/api/admin/qualita-ai/memoria", tags=["Admin"])
+async def admin_qualita_memoria(
+    search: Optional[str] = None,
+    stato: str = "tutti",
+    page: int = 1,
+    per_page: int = 100,
+    admin_user: dict = Depends(_verify_admin),
+):
+    """Prodotti master con filtri. stato: tutti|verified|non_verified|sospette."""
+    from utils.text_utils import pulisci_caratteri_corrotti
+
+    sb = get_supabase_client()
+    per_page = min(per_page, 500)
+    offset = (page - 1) * per_page
+
+    if stato == "sospette":
+        # Carica tutto e filtra lato Python (servono i suggerimenti AI)
+        from services.ai_service import applica_correzioni_dizionario, applica_regole_categoria_forti
+        all_rows: list = []
+        pg_offset = 0
+        while True:
+            resp = sb.table("prodotti_master").select("id,descrizione,categoria,volte_visto,verified,classificato_da").order("id").range(pg_offset, pg_offset + 999).execute()
+            chunk = resp.data or []
+            if not chunk:
+                break
+            all_rows.extend(chunk)
+            if len(chunk) < 1000:
+                break
+            pg_offset += 1000
+
+        sospette = []
+        for row in all_rows:
+            if row.get("verified"):
+                continue
+            desc = row.get("descrizione") or ""
+            cat_attuale = (row.get("categoria") or "Da Classificare").strip()
+            cat_keyword = applica_correzioni_dizionario(desc, "Da Classificare")
+            cat_suggerita, motivo = applica_regole_categoria_forti(desc, cat_keyword)
+            if not cat_suggerita or cat_suggerita == "Da Classificare" or cat_suggerita == cat_attuale:
+                continue
+            sospette.append({**row, "categoria_suggerita": cat_suggerita, "motivo": motivo or ""})
+
+        total = len(sospette)
+        rows = sospette[offset: offset + per_page]
+    else:
+        q = sb.table("prodotti_master").select("id,descrizione,categoria,volte_visto,verified,classificato_da,ultima_modifica")
+        if stato == "verified":
+            q = q.eq("verified", True)
+        elif stato == "non_verified":
+            q = q.eq("verified", False)
+        if search:
+            q = q.ilike("descrizione", f"%{search}%")
+        count_resp = sb.table("prodotti_master").select("id", count="exact")
+        if stato == "verified":
+            count_resp = count_resp.eq("verified", True)
+        elif stato == "non_verified":
+            count_resp = count_resp.eq("verified", False)
+        if search:
+            count_resp = count_resp.ilike("descrizione", f"%{search}%")
+        try:
+            count_r = count_resp.execute()
+            total = count_r.count or 0
+        except Exception:
+            total = 0
+
+        resp = q.order("volte_visto", desc=True).range(offset, offset + per_page - 1).execute()
+        rows = resp.data or []
+        for r in rows:
+            if "descrizione" in r and isinstance(r["descrizione"], str):
+                r["descrizione"] = pulisci_caratteri_corrotti(r["descrizione"])
+
+    return {"rows": rows, "total": total, "page": page, "per_page": per_page}
+
+
+class MemoriaUpdateBody(BaseModel):
+    categoria: Optional[str] = None
+    verified: Optional[bool] = None
+
+
+@app.patch("/api/admin/qualita-ai/memoria/{prod_id}", tags=["Admin"])
+async def admin_qualita_memoria_update(
+    prod_id: str,
+    body: MemoriaUpdateBody,
+    admin_user: dict = Depends(_verify_admin),
+):
+    from datetime import datetime, timezone
+    sb = get_supabase_client()
+    update: dict = {"ultima_modifica": datetime.now(timezone.utc).isoformat()}
+    if body.categoria is not None:
+        update["categoria"] = body.categoria
+        update["verified"] = True
+    if body.verified is not None:
+        update["verified"] = body.verified
+    sb.table("prodotti_master").update(update).eq("id", prod_id).execute()
+    logger.info("admin_memoria_update: id=%s | admin=%s", prod_id, admin_user.get("email"))
+    return {"ok": True}
+
+
+@app.delete("/api/admin/qualita-ai/memoria/{prod_id}", tags=["Admin"])
+async def admin_qualita_memoria_delete(prod_id: str, admin_user: dict = Depends(_verify_admin)):
+    sb = get_supabase_client()
+    sb.table("prodotti_master").delete().eq("id", prod_id).execute()
+    logger.info("admin_memoria_delete: id=%s | admin=%s", prod_id, admin_user.get("email"))
+    return {"ok": True}
+
+
+# ── Qualità AI — Conflitti memoria ───────────────────────────────────────────
+
+@app.get("/api/admin/qualita-ai/conflitti", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_qualita_conflitti():
+    """Descrizioni dove prodotti_utente ha categoria diversa da prodotti_master."""
+    from utils.text_utils import pulisci_caratteri_corrotti
+
+    sb = get_supabase_client()
+    global_rows: list = []
+    local_rows: list = []
+    pg = 0
+    while True:
+        resp = sb.table("prodotti_master").select("id,descrizione,categoria,volte_visto").order("id").range(pg, pg + 999).execute()
+        chunk = resp.data or []
+        if not chunk:
+            break
+        global_rows.extend(chunk)
+        if len(chunk) < 1000:
+            break
+        pg += 1000
+
+    pg = 0
+    while True:
+        resp = sb.table("prodotti_utente").select("id,descrizione,categoria,volte_visto,user_id,classificato_da").order("id").range(pg, pg + 999).execute()
+        chunk = resp.data or []
+        if not chunk:
+            break
+        local_rows.extend(chunk)
+        if len(chunk) < 1000:
+            break
+        pg += 1000
+
+    if not global_rows or not local_rows:
+        return []
+
+    users_resp = sb.table("users").select("id,email,nome_ristorante").execute()
+    users_map = {r["id"]: {"email": r.get("email") or "", "nome": r.get("nome_ristorante") or ""} for r in (users_resp.data or [])}
+
+    global_map = {r["descrizione"]: r for r in global_rows if r.get("descrizione")}
+    conflitti = []
+    for local in local_rows:
+        desc = local.get("descrizione")
+        if not desc:
+            continue
+        if "eccezione locale accettata" in (local.get("classificato_da") or ""):
+            continue
+        glb = global_map.get(desc)
+        if not glb:
+            continue
+        if local.get("categoria") == glb.get("categoria"):
+            continue
+        uid = local.get("user_id") or ""
+        conflitti.append({
+            "local_id": local["id"],
+            "global_id": glb["id"],
+            "descrizione": pulisci_caratteri_corrotti(desc),
+            "categoria_locale": local.get("categoria"),
+            "categoria_globale": glb.get("categoria"),
+            "email_cliente": users_map.get(uid, {}).get("email", "—"),
+            "nome_cliente": users_map.get(uid, {}).get("nome", "—"),
+            "volte_locale": int(local.get("volte_visto") or 0),
+            "volte_globale": int(glb.get("volte_visto") or 0),
+        })
+
+    conflitti.sort(key=lambda x: x["volte_locale"], reverse=True)
+    return conflitti[:500]
+
+
+class RisolviConflittoBody(BaseModel):
+    local_id: str
+    azione: str = Field(..., pattern="^(promuovi|ignora)$")
+
+
+@app.post("/api/admin/qualita-ai/conflitti/risolvi", tags=["Admin"])
+async def admin_qualita_risolvi_conflitto(body: RisolviConflittoBody, admin_user: dict = Depends(_verify_admin)):
+    from datetime import datetime, timezone
+    sb = get_supabase_client()
+    now = datetime.now(timezone.utc).isoformat()
+
+    local_resp = sb.table("prodotti_utente").select("descrizione,categoria").eq("id", body.local_id).limit(1).execute()
+    if not local_resp.data:
+        raise HTTPException(status_code=404, detail="Record locale non trovato")
+    local = local_resp.data[0]
+
+    if body.azione == "promuovi":
+        sb.table("prodotti_master").upsert({
+            "descrizione": local["descrizione"],
+            "categoria": local["categoria"],
+            "verified": True,
+            "classificato_da": f"admin:{admin_user.get('email', 'admin')}",
+            "ultima_modifica": now,
+        }, on_conflict="descrizione").execute()
+    else:
+        sb.table("prodotti_utente").update({
+            "classificato_da": "eccezione locale accettata",
+        }).eq("id", body.local_id).execute()
+
+    logger.info("admin_risolvi_conflitto: local_id=%s azione=%s | admin=%s", body.local_id, body.azione, admin_user.get("email"))
+    return {"ok": True}
+
+
+# ── Sistema/Salute — Costi AI ─────────────────────────────────────────────────
+
+@app.get("/api/admin/sistema/costi-ai", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_sistema_costi_ai(days: int = 30):
+    from datetime import datetime, timezone
+    sb = get_supabase_client()
+
+    summary_args = {"p_days": days} if days else {}
+    timeseries_args = {"p_days": days or 30}
+    recent_args = {"p_days": days or 30, "p_limit": 50}
+
+    try:
+        summary = sb.rpc("get_ai_costs_summary", summary_args).execute().data or []
+    except Exception:
+        summary = []
+    try:
+        timeseries = sb.rpc("get_ai_costs_timeseries", timeseries_args).execute().data or []
+    except Exception:
+        timeseries = []
+    try:
+        recent = sb.rpc("get_ai_recent_operations", recent_args).execute().data or []
+    except Exception:
+        recent = []
+
+    today_start = datetime.now(timezone.utc).strftime("%Y-%m-%dT00:00:00+00:00")
+    try:
+        vision_resp = (sb.table("ai_usage_events")
+                       .select("ristorante_id,operation_type")
+                       .gte("created_at", today_start)
+                       .in_("operation_type", ["pdf", "vision"])
+                       .execute())
+        vision_oggi_by_rist: dict = {}
+        for r in (vision_resp.data or []):
+            rid = r.get("ristorante_id") or ""
+            vision_oggi_by_rist[rid] = vision_oggi_by_rist.get(rid, 0) + 1
+    except Exception:
+        vision_oggi_by_rist = {}
+
+    return {
+        "summary": summary,
+        "timeseries": timeseries,
+        "recent": recent,
+        "vision_oggi_by_ristorante": vision_oggi_by_rist,
+    }
+
+
+# ── Sistema/Salute — Integrità DB ─────────────────────────────────────────────
+
+class IntegritaBody(BaseModel):
+    cliente_id: Optional[str] = None
+    giorni: Optional[int] = None
+
+
+@app.post("/api/admin/sistema/integrita", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_sistema_integrita(body: IntegritaBody):
+    """Esegue scan anomalie sul dataset fatture (on-demand)."""
+    from datetime import datetime, timedelta
+
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+
+    if body.cliente_id:
+        allowed_ids = [body.cliente_id]
+    else:
+        users_resp = sb.table("users").select("id,email").execute()
+        allowed_ids = [u["id"] for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
+    if not allowed_ids:
+        return {"problemi": {}, "totale_problemi": 0, "fatture_analizzate": 0}
+
+    data_limite = None
+    if body.giorni:
+        data_limite = (datetime.now() - timedelta(days=body.giorni)).strftime("%Y-%m-%d")
+
+    all_rows: list = []
+    page_size = 1000
+    offset = 0
+    while True:
+        q = (sb.table("fatture")
+             .select("id,data_documento,prezzo_unitario,quantita,descrizione,totale_riga,fornitore")
+             .is_("deleted_at", "null")
+             .in_("user_id", allowed_ids)
+             .order("id")
+             .range(offset, offset + page_size - 1))
+        if data_limite:
+            q = q.gte("data_documento", data_limite)
+        resp = q.execute()
+        chunk = resp.data or []
+        if not chunk:
+            break
+        all_rows.extend(chunk)
+        if len(chunk) < page_size:
+            break
+        offset += page_size
+
+    if not all_rows:
+        return {"problemi": {}, "totale_problemi": 0, "fatture_analizzate": 0}
+
+    SOGLIA_IMPORTO = 50000.0
+    SOGLIA_TOTALE_DIFF = 1.0
+    SOGLIA_TOTALE_PCT = 0.05
+    oggi = datetime.now().date()
+
+    problemi: dict = {k: [] for k in ["date_invalide", "importi_estremi", "quantita_negative", "descrizioni_vuote", "totali_errati"]}
+
+    for row in all_rows:
+        forn = row.get("fornitore") or "N/A"
+        data_doc = row.get("data_documento") or "N/A"
+        desc = str(row.get("descrizione") or "")[:60]
+        try:
+            prezzo = float(row.get("prezzo_unitario") or 0)
+        except Exception:
+            prezzo = None
+        try:
+            qta = float(row.get("quantita") or 0)
+        except Exception:
+            qta = None
+        try:
+            totale = float(row.get("totale_riga") or 0)
+        except Exception:
+            totale = None
+
+        info = {"fornitore": forn[:40], "descrizione": desc, "data": str(data_doc)}
+
+        if data_doc != "N/A":
+            try:
+                d = datetime.strptime(str(data_doc)[:10], "%Y-%m-%d").date()
+                if d > oggi or d.year < 2000:
+                    problemi["date_invalide"].append({**info, "data_documento": str(data_doc)})
+            except Exception:
+                problemi["date_invalide"].append({**info, "data_documento": str(data_doc)})
+
+        if prezzo is not None and abs(prezzo) > SOGLIA_IMPORTO:
+            problemi["importi_estremi"].append({**info, "valore": prezzo})
+
+        if qta is not None and qta < 0:
+            problemi["quantita_negative"].append({**info, "quantita": qta})
+
+        if not desc.strip():
+            problemi["descrizioni_vuote"].append(info)
+
+        if prezzo is not None and qta is not None and totale is not None:
+            atteso = prezzo * qta
+            diff = abs(totale - atteso)
+            if diff > SOGLIA_TOTALE_DIFF and (atteso == 0 or diff / abs(atteso) > SOGLIA_TOTALE_PCT):
+                problemi["totali_errati"].append({**info, "atteso": round(atteso, 2), "trovato": round(totale, 2), "diff": round(diff, 2)})
+
+    # Tronca a 100 per categoria
+    for k in problemi:
+        problemi[k] = problemi[k][:100]
+
+    totale_problemi = sum(len(v) for v in problemi.values())
+    return {"problemi": problemi, "totale_problemi": totale_problemi, "fatture_analizzate": len(all_rows)}
+
+
+# ── Sistema/Salute — Retention ───────────────────────────────────────────────
+
+@app.get("/api/admin/sistema/retention", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_sistema_retention():
+    from services.db_service import get_retention_last_status
+    status = get_retention_last_status(get_supabase_client())
+    return status
+
+
+# ── Azioni cliente (attiva/disattiva, reset password, cambia email, elimina) ──
+
+class AzioneAccountBody(BaseModel):
+    attivo: Optional[bool] = None
+
+
+@app.patch("/api/admin/clienti/{cliente_id}/account", tags=["Admin"])
+async def admin_aggiorna_account(
+    cliente_id: str,
+    body: AzioneAccountBody,
+    admin_user: dict = Depends(_verify_admin),
+):
+    """Attiva o disattiva account cliente."""
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+    resp = sb.table("users").select("email").eq("id", cliente_id).limit(1).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    if resp.data[0]["email"].lower() in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi modificare account admin")
+
+    update = {}
+    if body.attivo is not None:
+        update["attivo"] = body.attivo
+    if not update:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+
+    sb.table("users").update(update).eq("id", cliente_id).execute()
+    logger.info("admin_aggiorna_account: cliente=%s attivo=%s | admin=%s", cliente_id, body.attivo, admin_user.get("email"))
+    return {"ok": True}
+
+
+@app.post("/api/admin/clienti/{cliente_id}/reset-password", tags=["Admin"])
+async def admin_reset_password(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
+    """Genera token reset password e invia email al cliente."""
+    import html as _html_mod
+    import requests as _requests
+    import secrets as _secrets
+
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+    resp = sb.table("users").select("email,nome_ristorante").eq("id", cliente_id).limit(1).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    u = resp.data[0]
+    if u["email"].lower() in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi modificare account admin")
+
+    token = _secrets.token_urlsafe(32)
+    expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    sb.table("users").update({"reset_code": token, "reset_expires": expires}).eq("id", cliente_id).execute()
+
+    link = f"https://nuovo.oneflux.it/reset-password?token={token}"
+    email_inviata = False
+    brevo_key = os.getenv("BREVO_API_KEY", "")
+    sender_email = os.getenv("BREVO_SENDER_EMAIL", "noreply@oneflux.it")
+    sender_name = os.getenv("BREVO_SENDER_NAME", "ONEFLUX")
+
+    if brevo_key:
+        try:
+            nome_safe = _html_mod.escape(u.get("nome_ristorante") or u["email"])
+            html_body = f"""
+<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+  <h2 style="color:#0ea5e9;">Reset Password ONEFLUX</h2>
+  <p>Ciao <strong>{nome_safe}</strong>,</p>
+  <p>L'amministratore ha richiesto un reset della tua password.</p>
+  <div style="text-align:center;margin:30px 0;">
+    <a href="{link}" style="background:#0ea5e9;color:#fff;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">
+      Imposta nuova password
+    </a>
+  </div>
+  <p style="color:#dc2626;"><strong>⚠️ Il link scade tra 1 ora.</strong></p>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
+  <p style="color:#666;font-size:13px;"><strong>ONEFLUX Team</strong> — md@oneflux.it</p>
+</div>"""
+            r = _requests.post(
+                "https://api.brevo.com/v3/smtp/email",
+                json={
+                    "sender": {"email": sender_email, "name": sender_name},
+                    "to": [{"email": u["email"], "name": nome_safe}],
+                    "replyTo": {"email": "md@oneflux.it", "name": "Mattia - ONEFLUX"},
+                    "subject": "Reset Password — ONEFLUX",
+                    "htmlContent": html_body,
+                },
+                headers={"api-key": brevo_key, "Content-Type": "application/json"},
+                timeout=10,
+            )
+            email_inviata = r.status_code == 201
+        except Exception as exc:
+            logger.warning("Errore invio email reset: %s", exc)
+
+    logger.info("admin_reset_password: cliente=%s | admin=%s | email_inviata=%s", cliente_id, admin_user.get("email"), email_inviata)
+    return {"ok": True, "email_inviata": email_inviata, "link": link}
+
+
+class CambioEmailBody(BaseModel):
+    nuova_email: str = Field(..., max_length=254)
+
+
+@app.patch("/api/admin/clienti/{cliente_id}/email", tags=["Admin"])
+async def admin_cambia_email(
+    cliente_id: str,
+    body: CambioEmailBody,
+    admin_user: dict = Depends(_verify_admin),
+):
+    """Cambia email di login di un cliente e invalida la sua sessione."""
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+    resp = sb.table("users").select("email").eq("id", cliente_id).limit(1).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    old_email = resp.data[0]["email"].lower()
+    if old_email in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi modificare account admin")
+
+    new_email = body.nuova_email.strip().lower()
+    if new_email == old_email:
+        raise HTTPException(status_code=400, detail="La nuova email deve essere diversa da quella attuale")
+
+    dup = sb.table("users").select("id").eq("email", new_email).execute()
+    if dup.data:
+        raise HTTPException(status_code=409, detail="Email già registrata nel sistema")
+
+    sb.table("users").update({
+        "email": new_email,
+        "session_token": None,
+        "session_token_created_at": None,
+    }).eq("id", cliente_id).execute()
+    logger.info("admin_cambia_email: %s → %s | admin=%s", old_email, new_email, admin_user.get("email"))
+    return {"ok": True}
+
+
+@app.delete("/api/admin/clienti/{cliente_id}", tags=["Admin"])
+async def admin_elimina_cliente(
+    cliente_id: str,
+    elimina_memoria: bool = False,
+    admin_user: dict = Depends(_verify_admin),
+):
+    """Elimina account cliente e tutti i suoi dati (cascade)."""
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+    resp = sb.table("users").select("email").eq("id", cliente_id).limit(1).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    email_target = resp.data[0]["email"].lower()
+    if email_target in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi eliminare account admin")
+
+    deleted: dict = {}
+    for table, col in [
+        ("fatture", "user_id"),
+        ("prodotti_utente", "user_id"),
+        ("upload_events", "user_id"),
+        ("classificazioni_manuali", "user_id"),
+        ("ristoranti", "user_id"),
+        ("ricette", "userid"),
+        ("ingredienti_workspace", "userid"),
+    ]:
+        try:
+            r = sb.table(table).delete().eq(col, cliente_id).execute()
+            deleted[table] = len(r.data or [])
+        except Exception as exc:
+            logger.warning("Errore eliminazione %s: %s", table, exc)
+
+    if elimina_memoria:
+        try:
+            r = sb.table("prodotti_master").delete().eq("user_id", cliente_id).execute()
+            deleted["prodotti_master"] = len(r.data or [])
+        except Exception as exc:
+            logger.warning("Errore eliminazione prodotti_master: %s", exc)
+
+    sb.table("users").delete().eq("id", cliente_id).execute()
+    logger.warning("ELIMINAZIONE_ACCOUNT: cliente=%s | admin=%s | deleted=%s | memoria=%s", email_target, admin_user.get("email"), deleted, elimina_memoria)
+    return {"ok": True, "deleted": deleted}
+
+
+# ── Impersonazione ────────────────────────────────────────────────────────────
+
+@app.post("/api/admin/impersona/{cliente_id}", tags=["Admin"])
+async def admin_impersona(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
+    """Genera un session token per il cliente target, ritorna target_token + info."""
+    import secrets as _secrets
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+
+    resp = sb.table("users").select("id,email,nome_ristorante,attivo").eq("id", cliente_id).limit(1).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    u = resp.data[0]
+    if u["email"].lower() in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi impersonare un altro admin")
+
+    target_token = _secrets.token_urlsafe(32)
+    sb.table("users").update({
+        "session_token": target_token,
+        "session_token_created_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", cliente_id).execute()
+
+    logger.warning("IMPERSONATION_START: admin=%s → target=%s (id=%s)", admin_user.get("email"), u["email"], cliente_id)
+    return {
+        "target_token": target_token,
+        "target_email": u["email"],
+        "target_nome": u.get("nome_ristorante") or u["email"],
+    }
+
+
+# ── Sedi (multi-ristorante) ───────────────────────────────────────────────────
+
+class NuovaSedeBody(BaseModel):
+    nome_ristorante: str = Field(..., max_length=150)
+    partita_iva: str = Field(..., max_length=11)
+    ragione_sociale: Optional[str] = Field(None, max_length=150)
+
+
+@app.get("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_lista_sedi(cliente_id: str):
+    sb = get_supabase_client()
+    resp = sb.table("ristoranti").select("id,nome_ristorante,partita_iva,ragione_sociale,attivo").eq("user_id", cliente_id).execute()
+    return resp.data or []
+
+
+@app.post("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"])
+async def admin_crea_sede(
+    cliente_id: str,
+    body: NuovaSedeBody,
+    admin_user: dict = Depends(_verify_admin),
+):
+    from utils.piva_validator import normalizza_piva, valida_formato_piva
+    sb = get_supabase_client()
+    piva = normalizza_piva(body.partita_iva)
+    ok, msg = valida_formato_piva(piva)
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    dup = sb.table("ristoranti").select("id").eq("user_id", cliente_id).eq("partita_iva", piva).execute()
+    if dup.data:
+        raise HTTPException(status_code=409, detail=f"P.IVA {piva} già registrata per questo cliente")
+    r = sb.table("ristoranti").insert({
+        "user_id": cliente_id,
+        "nome_ristorante": body.nome_ristorante.strip(),
+        "partita_iva": piva,
+        "ragione_sociale": body.ragione_sociale.strip() if body.ragione_sociale else None,
+        "attivo": True,
+    }).execute()
+    logger.info("admin_crea_sede: cliente=%s sede=%s | admin=%s", cliente_id, body.nome_ristorante, admin_user.get("email"))
+    return r.data[0] if r.data else {"ok": True}
+
+
+@app.delete("/api/admin/clienti/{cliente_id}/sedi/{sede_id}", tags=["Admin"])
+async def admin_elimina_sede(
+    cliente_id: str,
+    sede_id: str,
+    admin_user: dict = Depends(_verify_admin),
+):
+    sb = get_supabase_client()
+    resp = sb.table("ristoranti").select("id,nome_ristorante").eq("id", sede_id).eq("user_id", cliente_id).limit(1).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Sede non trovata")
+    sb.table("ristoranti").delete().eq("id", sede_id).execute()
+    logger.warning("admin_elimina_sede: sede=%s (%s) | admin=%s", sede_id, resp.data[0].get("nome_ristorante"), admin_user.get("email"))
+    return {"ok": True}
+
+
+# ── Mapping ragione sociale ───────────────────────────────────────────────────
+
+class MappingBody(BaseModel):
+    ragione_sociale: str = Field(..., max_length=200)
+    ristorante_id: str
+
+
+@app.get("/api/admin/ragione-sociale-map", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_lista_mapping():
+    sb = get_supabase_client()
+    resp = sb.table("ricavi_ragione_sociale_map").select("id,ragione_sociale,ristorante_id,created_at").order("ragione_sociale").execute()
+    return resp.data or []
+
+
+@app.post("/api/admin/ragione-sociale-map", tags=["Admin"])
+async def admin_crea_mapping(body: MappingBody, admin_user: dict = Depends(_verify_admin)):
+    sb = get_supabase_client()
+    dup = sb.table("ricavi_ragione_sociale_map").select("id").eq("ragione_sociale", body.ragione_sociale.strip()).execute()
+    if dup.data:
+        raise HTTPException(status_code=409, detail="Ragione sociale già mappata")
+    r = sb.table("ricavi_ragione_sociale_map").insert({
+        "ragione_sociale": body.ragione_sociale.strip(),
+        "ristorante_id": body.ristorante_id,
+    }).execute()
+    logger.info("admin_crea_mapping: %s → %s | admin=%s", body.ragione_sociale, body.ristorante_id, admin_user.get("email"))
+    return r.data[0] if r.data else {"ok": True}
+
+
+@app.delete("/api/admin/ragione-sociale-map/{mapping_id}", tags=["Admin"])
+async def admin_elimina_mapping(mapping_id: str, admin_user: dict = Depends(_verify_admin)):
+    sb = get_supabase_client()
+    sb.table("ricavi_ragione_sociale_map").delete().eq("id", mapping_id).execute()
+    logger.info("admin_elimina_mapping: %s | admin=%s", mapping_id, admin_user.get("email"))
+    return {"ok": True}
+
+
+# ── Feature flags + blocchi + trial ──────────────────────────────────────────
+
+class FlagsBody(BaseModel):
+    pagine_abilitate: Optional[dict] = None
+    attivo: Optional[bool] = None
+    trial_reset: Optional[bool] = None
+
+
+@app.patch("/api/admin/clienti/{cliente_id}/flags", tags=["Admin"])
+async def admin_aggiorna_flags(
+    cliente_id: str,
+    body: FlagsBody,
+    admin_user: dict = Depends(_verify_admin),
+):
+    """Aggiorna feature flags, stato account, trial."""
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+    resp = sb.table("users").select("email,pagine_abilitate").eq("id", cliente_id).limit(1).execute()
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    if resp.data[0]["email"].lower() in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi modificare account admin")
+
+    update: dict = {}
+    if body.pagine_abilitate is not None:
+        existing = resp.data[0].get("pagine_abilitate") or {}
+        if isinstance(existing, dict):
+            merged = {**existing, **body.pagine_abilitate}
+        else:
+            merged = body.pagine_abilitate
+        update["pagine_abilitate"] = merged
+    if body.attivo is not None:
+        update["attivo"] = body.attivo
+    if body.trial_reset:
+        update["trial_active"] = False
+        update["trial_activated_at"] = None
+
+    if not update:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+
+    sb.table("users").update(update).eq("id", cliente_id).execute()
+    logger.info("admin_aggiorna_flags: cliente=%s update=%s | admin=%s", cliente_id, list(update.keys()), admin_user.get("email"))
+    return {"ok": True}
+
+
+@app.post("/api/admin/clienti/{cliente_id}/trial", tags=["Admin"])
+async def admin_attiva_trial(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
+    """Attiva trial 7 giorni per il cliente."""
+    from services.auth_service import attiva_trial
+    ok, msg = attiva_trial(cliente_id, admin_user.get("email", ""), get_supabase_client())
+    if not ok:
+        raise HTTPException(status_code=400, detail=msg)
+    logger.info("admin_attiva_trial: cliente=%s | admin=%s", cliente_id, admin_user.get("email"))
+    return {"ok": True, "message": msg}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # ENTRY POINT (avvio diretto: python services/fastapi_worker.py)
 # ═══════════════════════════════════════════════════════════════════════════
 
