@@ -5848,20 +5848,26 @@ async def admin_lista_clienti():
 
     user_ids = [u["id"] for u in clienti_raw]
 
-    # Fatture del mese corrente per utente
-    mese_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    fatture_mese_map: dict = {}
+    # Totale fatture per utente (storico completo, non solo mese corrente)
+    n_fatture_map: dict = {}
     try:
         chunk_size = 100
         for i in range(0, len(user_ids), chunk_size):
             chunk = user_ids[i : i + chunk_size]
-            resp = sb.table("fatture_documenti").select("user_id").in_("user_id", chunk).gte("created_at", mese_start).execute()
+            resp = sb.table("fatture_documenti").select("user_id").in_("user_id", chunk).limit(500000).execute()
             for r in (resp.data or []):
                 uid = r["user_id"]
-                fatture_mese_map[uid] = fatture_mese_map.get(uid, 0) + 1
+                n_fatture_map[uid] = n_fatture_map.get(uid, 0) + 1
     except Exception:
-        # fatture_documenti potrebbe non avere user_id direttamente — fallback silenzioso
-        pass
+        try:
+            for i in range(0, len(user_ids), chunk_size):
+                chunk = user_ids[i : i + chunk_size]
+                resp = sb.table("fatture").select("user_id").in_("user_id", chunk).is_("deleted_at", "null").limit(500000).execute()
+                for r in (resp.data or []):
+                    uid = r["user_id"]
+                    n_fatture_map[uid] = n_fatture_map.get(uid, 0) + 1
+        except Exception:
+            pass
 
     # Sedi per utente
     sedi_map: dict = {}
@@ -5882,7 +5888,7 @@ async def admin_lista_clienti():
         piano = (u.get("piano") or "base").lower()
         limite = _PIANO_LIMITI_LOCAL.get(piano, 50)
         sedi = sedi_map.get(uid, [])
-        fatture_mese = fatture_mese_map.get(uid, 0)
+        n_fatture = n_fatture_map.get(uid, 0)
 
         trial_info = None
         if u.get("trial_active") and u.get("trial_activated_at"):
@@ -5903,7 +5909,7 @@ async def admin_lista_clienti():
             "attivo": bool(u.get("attivo")),
             "piano": piano,
             "limite_fatture_mese": limite,
-            "fatture_mese": fatture_mese,
+            "n_fatture": n_fatture,
             "created_at": u.get("created_at"),
             "last_seen_at": u.get("last_seen_at"),
             "trial": trial_info,

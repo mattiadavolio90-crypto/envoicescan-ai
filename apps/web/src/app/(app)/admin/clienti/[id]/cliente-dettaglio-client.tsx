@@ -272,8 +272,8 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 <dd className="font-medium">{fmtDateTime(c.last_seen_at)}</dd>
               </div>
               <div>
-                <dt className="text-muted-foreground text-xs">Fatture mese</dt>
-                <dd className="font-medium tabular-nums">{c.fatture_mese ?? "—"} / {c.limite_fatture_mese}</dd>
+                <dt className="text-muted-foreground text-xs">Fatture totali</dt>
+                <dd className="font-medium tabular-nums">{c.n_fatture?.toLocaleString("it-IT") ?? "—"}</dd>
               </div>
               <div>
                 <dt className="text-muted-foreground text-xs">Stato account</dt>

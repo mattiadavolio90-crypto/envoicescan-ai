@@ -21,7 +21,7 @@ export type Cliente = {
   attivo: boolean;
   piano: "base" | "plus" | "pro";
   limite_fatture_mese: number;
-  fatture_mese: number;
+  n_fatture: number;
   created_at: string | null;
   last_seen_at: string | null;
   trial: TrialInfo | null;

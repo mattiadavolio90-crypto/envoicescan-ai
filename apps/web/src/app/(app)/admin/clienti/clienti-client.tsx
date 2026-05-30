@@ -165,7 +165,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
               <th className="px-4 py-3 font-medium">Stato</th>
               <th className="px-4 py-3 font-medium hidden sm:table-cell">Piano</th>
               <th className="px-4 py-3 font-medium hidden lg:table-cell">Attività</th>
-              <th className="px-4 py-3 font-medium hidden lg:table-cell">Fatture/mese</th>
+              <th className="px-4 py-3 font-medium hidden lg:table-cell">N. Fatture</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -198,8 +198,8 @@ export function ClientiClient({ clientiIniziali }: Props) {
                 <td className="px-4 py-3 hidden lg:table-cell">
                   <AttivitaLabel lastSeen={c.last_seen_at} />
                 </td>
-                <td className="px-4 py-3 hidden lg:table-cell tabular-nums text-muted-foreground">
-                  {c.fatture_mese}/{c.limite_fatture_mese}
+                <td className="px-4 py-3 hidden lg:table-cell tabular-nums font-medium">
+                  {c.n_fatture.toLocaleString("it-IT")}
                 </td>
                 <td className="px-4 py-3 text-right">
                   <Link
