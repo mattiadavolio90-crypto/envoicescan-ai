@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
 } from "@/components/ui/sheet";
@@ -837,6 +838,104 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
   );
 }
 
+// ── Fornitore Multi-Select ────────────────────────────────────────────────────
+
+type FornitoreMultiSelectProps = {
+  fornitori: string[];
+  selected: Set<string>;
+  onChange: (next: Set<string>) => void;
+};
+
+function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiSelectProps) {
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? fornitori.filter(f => f.toLowerCase().includes(q)) : fornitori;
+  }, [fornitori, search]);
+
+  function toggle(f: string) {
+    const next = new Set(selected);
+    if (next.has(f)) next.delete(f); else next.add(f);
+    onChange(next);
+  }
+
+  function selectAll() { onChange(new Set(fornitori)); }
+  function clearAll() { onChange(new Set()); }
+
+  const label = selected.size === 0
+    ? "Tutti i fornitori"
+    : selected.size === 1
+      ? Array.from(selected)[0]
+      : `${selected.size} fornitori`;
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            className={`h-8 text-xs gap-1.5 max-w-[240px] justify-start ${selected.size > 0 ? "border-primary text-primary" : ""}`}
+          >
+            <Filter className="size-3.5 flex-shrink-0" />
+            <span className="truncate">{label}</span>
+            {selected.size > 0 && (
+              <span className="ml-auto flex-shrink-0 size-4 flex items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-semibold">
+                {selected.size}
+              </span>
+            )}
+          </Button>
+        }
+      />
+      <PopoverContent className="w-64 p-0" align="start" sideOffset={6}>
+        <div className="p-2 border-b">
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <input
+              className="w-full pl-7 pr-2 py-1.5 text-xs rounded-md border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
+              placeholder="Cerca fornitore..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              autoFocus
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3 px-3 py-1.5 border-b">
+          <button onClick={selectAll} className="text-[11px] text-primary hover:underline">Seleziona tutti</button>
+          <span className="text-muted-foreground text-[11px]">·</span>
+          <button onClick={clearAll} className="text-[11px] text-muted-foreground hover:text-foreground hover:underline">Deseleziona</button>
+          {selected.size > 0 && (
+            <span className="ml-auto text-[11px] text-muted-foreground">{selected.size} sel.</span>
+          )}
+        </div>
+
+        <div className="max-h-56 overflow-y-auto py-1">
+          {filtered.length === 0 ? (
+            <p className="text-xs text-muted-foreground text-center py-3">Nessun fornitore trovato</p>
+          ) : (
+            filtered.map(f => (
+              <label
+                key={f}
+                className="flex items-center gap-2.5 px-3 py-1.5 hover:bg-muted/50 cursor-pointer text-xs"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.has(f)}
+                  onChange={() => toggle(f)}
+                  className="size-3.5 accent-primary flex-shrink-0"
+                />
+                <span className="truncate">{f}</span>
+              </label>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 type Periodo = "tutti" | "scadute" | "settimana" | "mese" | "personalizzato";
@@ -853,18 +952,24 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
 
   // ── Filtri
   const [filtroPeriodo, setFiltroPeriodo] = useState<Periodo>("tutti");
-  const [filtroFornitore, setFiltroFornitore] = useState("");
+  const [filtroFornitori, setFiltroFornitori] = useState<Set<string>>(new Set());
   const [filtroDateDa, setFiltroDateDa] = useState("");
   const [filtroDateA, setFiltroDateA] = useState("");
 
-  const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitore.trim() !== "" || filtroDateDa !== "" || filtroDateA !== "";
+  const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "";
 
   function resetFiltri() {
     setFiltroPeriodo("tutti");
-    setFiltroFornitore("");
+    setFiltroFornitori(new Set());
     setFiltroDateDa("");
     setFiltroDateA("");
   }
+
+  // Lista fornitori unici ordinati
+  const fornitoriUnici = useMemo(() =>
+    [...new Set(documenti.map(d => d.fornitore).filter(Boolean))].sort((a, b) => a.localeCompare(b, "it")),
+    [documenti]
+  );
 
   // ── Documenti filtrati
   const documentiFiltrati = useMemo(() => {
@@ -874,11 +979,8 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     const in30 = new Date(today); in30.setDate(in30.getDate() + 30);
 
     return documenti.filter(d => {
-      // Filtro fornitore
-      if (filtroFornitore.trim()) {
-        const q = filtroFornitore.trim().toLowerCase();
-        if (!d.fornitore.toLowerCase().includes(q)) return false;
-      }
+      // Filtro fornitori (multi)
+      if (filtroFornitori.size > 0 && !filtroFornitori.has(d.fornitore)) return false;
 
       // Filtro periodo (solo su non pagate con scadenza, tranne "tutti")
       if (filtroPeriodo !== "tutti") {
@@ -907,7 +1009,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
 
       return true;
     });
-  }, [documenti, filtroPeriodo, filtroFornitore, filtroDateDa, filtroDateA]);
+  }, [documenti, filtroPeriodo, filtroFornitori, filtroDateDa, filtroDateA]);
 
   // KPI e bucket calcolati sui documenti filtrati
   const kpi = useMemo(() => computeKpi(documentiFiltrati), [documentiFiltrati]);
@@ -1101,18 +1203,16 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
           </div>
         )}
 
-        {/* Ricerca fornitore */}
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Filtra per fornitore..."
-            value={filtroFornitore}
-            onChange={e => setFiltroFornitore(e.target.value)}
-            className="pl-8 h-8 text-sm"
+        {/* Filtro fornitori multi-select */}
+        <div className="flex items-center gap-2">
+          <FornitoreMultiSelect
+            fornitori={fornitoriUnici}
+            selected={filtroFornitori}
+            onChange={setFiltroFornitori}
           />
-          {filtroFornitore && (
-            <button className="absolute right-2.5 top-1/2 -translate-y-1/2" onClick={() => setFiltroFornitore("")}>
-              <X className="size-3.5 text-muted-foreground hover:text-foreground" />
+          {filtroFornitori.size > 0 && (
+            <button onClick={() => setFiltroFornitori(new Set())} className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1">
+              <X className="size-3" /> Rimuovi
             </button>
           )}
         </div>
