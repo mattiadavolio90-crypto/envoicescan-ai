@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  LogIn, Mail, KeyRound, Trash2, Plus, X, Clock, CheckCircle, XCircle, AlertTriangle
+  LogIn, Mail, KeyRound, Trash2, Plus, X, Clock, CheckCircle, XCircle, AlertTriangle, Pencil
 } from "lucide-react";
 import { ClienteDettaglio, Sede, PIANO_LABEL, PIANO_COLOR, fmtDate, fmtDateTime } from "@/lib/admin";
 
@@ -44,6 +44,14 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   const [sPiva, setSPiva] = useState("");
   const [sRagione, setSRagione] = useState("");
   const [sedeSaving, setSedeSaving] = useState(false);
+
+  // Modifica dati dialog
+  const [modificaDialog, setModificaDialog] = useState(false);
+  const [mNome, setMNome] = useState("");
+  const [mPiva, setMPiva] = useState("");
+  const [mRagione, setMRagione] = useState("");
+  const [mPiano, setMPiano] = useState("base");
+  const [modificaSaving, setModificaSaving] = useState(false);
 
   // Elimina account dialog
   const [eliminaDialog, setEliminaDialog] = useState(false);
@@ -104,6 +112,45 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
       router.refresh();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
+    }
+  }
+
+  function openModifica() {
+    setMNome(c.nome_ristorante || "");
+    setMPiva(c.partita_iva || "");
+    setMRagione(c.ragione_sociale || "");
+    setMPiano(c.piano || "base");
+    setModificaDialog(true);
+  }
+
+  async function handleModifica() {
+    setModificaSaving(true);
+    try {
+      const res = await fetch(`/api/admin/clienti/${c.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome_ristorante: mNome.trim() || undefined,
+          partita_iva: mPiva.trim() || undefined,
+          ragione_sociale: mRagione.trim() || null,
+          piano: mPiano,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.detail || "Errore salvataggio"); return; }
+      setC((prev) => ({
+        ...prev,
+        nome_ristorante: mNome.trim() || prev.nome_ristorante,
+        partita_iva: mPiva.trim() || prev.partita_iva,
+        ragione_sociale: mRagione.trim() || null,
+        piano: mPiano as "base" | "plus" | "pro",
+      }));
+      toast.success("Dati aggiornati");
+      setModificaDialog(false);
+    } catch {
+      toast.error("Errore di connessione");
+    } finally {
+      setModificaSaving(false);
     }
   }
 
@@ -182,7 +229,12 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
       <div className="lg:col-span-1 space-y-4">
         {/* Card dati cliente */}
         <Card>
-          <CardHeader><CardTitle className="text-base">Dati cliente</CardTitle></CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <CardTitle className="text-base">Dati cliente</CardTitle>
+            <Button variant="ghost" size="sm" onClick={openModifica}>
+              <Pencil className="size-4 mr-1" /> Modifica
+            </Button>
+          </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <dl className="space-y-2">
               <div>
@@ -381,6 +433,44 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
             <Button variant="outline" onClick={() => setEmailDialog(false)} disabled={emailSaving}>Annulla</Button>
             <Button onClick={handleCambioEmail} disabled={emailSaving || !nuovaEmail.trim()}>
               {emailSaving ? "Salvataggio…" : "Conferma"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog modifica dati cliente */}
+      <Dialog open={modificaDialog} onOpenChange={setModificaDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Modifica dati cliente</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="m-nome">Nome ristorante</Label>
+              <Input id="m-nome" value={mNome} onChange={(e) => setMNome(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="m-piva">P.IVA (11 cifre)</Label>
+              <Input id="m-piva" maxLength={11} value={mPiva} onChange={(e) => setMPiva(e.target.value.replace(/\D/g, ""))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="m-ragione">Ragione sociale</Label>
+              <Input id="m-ragione" placeholder="Opzionale" value={mRagione} onChange={(e) => setMRagione(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="m-piano">Piano</Label>
+              <Select value={mPiano} onValueChange={setMPiano}>
+                <SelectTrigger id="m-piano"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="base">Base (50 fatture)</SelectItem>
+                  <SelectItem value="plus">Plus (100 fatture)</SelectItem>
+                  <SelectItem value="pro">Pro (200 fatture)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setModificaDialog(false)} disabled={modificaSaving}>Annulla</Button>
+            <Button onClick={handleModifica} disabled={modificaSaving}>
+              {modificaSaving ? "Salvataggio…" : "Salva"}
             </Button>
           </DialogFooter>
         </DialogContent>

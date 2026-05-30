@@ -5971,6 +5971,40 @@ async def admin_dettaglio_cliente(cliente_id: str):
     }
 
 
+# ── Aggiorna dati cliente ────────────────────────────────────────────────────
+
+class AggiornaClienteBody(BaseModel):
+    nome_ristorante: Optional[str] = Field(None, max_length=100)
+    partita_iva: Optional[str] = Field(None, max_length=11)
+    ragione_sociale: Optional[str] = None
+    piano: Optional[str] = Field(None, pattern="^(base|plus|pro)$")
+
+
+@app.patch("/api/admin/clienti/{cliente_id}", tags=["Admin"])
+async def admin_aggiorna_cliente(cliente_id: str, body: AggiornaClienteBody, admin_user: dict = Depends(_verify_admin)):
+    """Aggiorna nome ristorante, P.IVA, ragione sociale, piano."""
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+    check = sb.table("users").select("email").eq("id", cliente_id).limit(1).execute()
+    if not check.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    if check.data[0].get("email", "").lower() in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi modificare account admin")
+    upd: dict = {}
+    if body.nome_ristorante is not None:
+        upd["nome_ristorante"] = body.nome_ristorante.strip()
+    if body.partita_iva is not None:
+        upd["partita_iva"] = body.partita_iva.strip()
+    if body.ragione_sociale is not None:
+        upd["ragione_sociale"] = body.ragione_sociale.strip() or None
+    if body.piano is not None:
+        upd["piano"] = body.piano
+    if not upd:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    sb.table("users").update(upd).eq("id", cliente_id).execute()
+    return {"ok": True, "updated": list(upd.keys())}
+
+
 # ── Crea cliente ─────────────────────────────────────────────────────────────
 
 class NuovoClienteBody(BaseModel):

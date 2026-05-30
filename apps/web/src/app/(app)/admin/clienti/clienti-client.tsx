@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter } from "next/navigation"; // usato in handleCreaCliente + handleImpersona
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Plus, ChevronRight, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Search, Plus, ChevronRight, CheckCircle, XCircle, Clock, ArrowRight } from "lucide-react";
 import { Cliente, PIANO_LABEL, PIANO_COLOR, fmtDateTime } from "@/lib/admin";
 
 function StatusBadge({ attivo }: { attivo: boolean }) {
@@ -201,15 +201,13 @@ export function ClientiClient({ clientiIniziali }: Props) {
                 <td className="px-4 py-3 hidden lg:table-cell tabular-nums text-muted-foreground">
                   {c.fatture_mese}/{c.limite_fatture_mese}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2 justify-end">
-                    <Button size="sm" variant="outline" onClick={() => handleImpersona(c)}>
-                      Entra
-                    </Button>
-                    <Button size="sm" variant="ghost" render={<Link href={`/admin/clienti/${c.id}`} />}>
-                      <ChevronRight className="size-4" />
-                    </Button>
-                  </div>
+                <td className="px-4 py-3 text-right">
+                  <Link
+                    href={`/admin/clienti/${c.id}`}
+                    className="inline-flex items-center justify-center size-8 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                  >
+                    <ChevronRight className="size-5" />
+                  </Link>
                 </td>
               </tr>
             ))}
