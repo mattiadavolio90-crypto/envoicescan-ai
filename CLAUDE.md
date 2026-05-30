@@ -5,7 +5,7 @@ Piattaforma SaaS (v5.5) per la gestione automatizzata dei costi di ristoranti.
 Analizza fatture elettroniche XML/P7M/PDF, categorizza prodotti con AI (GPT-4o-mini),
 genera report su margini, prezzi fornitori, foodcost.
 
-**Owner:** Mattia D'Avolio — sviluppatore singolo, nessun cliente reale in produzione.
+**Owner:** Mattia D'Avolio — sviluppatore singolo. 2 clienti in test + 1 operativo.
 
 ---
 
@@ -42,11 +42,11 @@ genera report su margini, prezzi fornitori, foodcost.
 
 ## Stato della migrazione Next.js
 
-Riferimento: `PIANO_MIGRAZIONE_NEXTJS_DEFINITIVO.md`
+Riferimento: `ONEFLUX_MASTER.md` (visione + piano + stato + roadmap)
 
-- **Phase 0** ✅ — `filter_active()` helper, `openapi/openapi.json`, CI drift check
-- **Phase 0.5** — prossimo step: rimuovere `@st.cache_data` da `db_service.py`, `margine_service.py`, `documenti_service.py`
-- **Phase 1+** — scaffold Next.js 14 in `apps/web`, ShadcnUI + Tailwind (`#0ea5e9`), deploy Vercel
+- **Fase 0-1b** ✅ — Next.js 16 online su `nuovo.oneflux.it`, design system completo
+- **Fase 5** ✅ — Ricavi e Margini chiusa e consolidata (hardening 29/5)
+- **Prossimo**: Scadenziario → Cestino → Reset password → Home AI
 
 ---
 
