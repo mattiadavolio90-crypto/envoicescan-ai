@@ -25,7 +25,7 @@ export function FattureMensiliCard({ label, value, fattureMensili }: FattureMens
   return (
     <>
       <Card
-        className="border-sky-500/30 cursor-pointer hover:bg-muted/30 transition-colors"
+        className="ring-1 ring-sky-500/60 cursor-pointer hover:bg-muted/30 transition-colors"
         onClick={() => setOpen(true)}
         title="Clicca per vedere il dettaglio mensile"
       >

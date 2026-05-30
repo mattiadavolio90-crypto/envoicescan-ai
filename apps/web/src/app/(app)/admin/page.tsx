@@ -32,8 +32,8 @@ const NAV_CARDS = [
     title: "Clienti",
     desc: "Lista, crea, impersona, gestisci",
     icon: Users,
-    border: "border-sky-500/50",
-    bg: "hover:bg-sky-500/5",
+    border: "border-sky-500",
+    bg: "hover:bg-sky-500/8",
     iconColor: "text-sky-500",
   },
   {
@@ -41,8 +41,8 @@ const NAV_CARDS = [
     title: "Qualità AI",
     desc: "Coda review, memoria globale, conflitti",
     icon: Brain,
-    border: "border-violet-500/50",
-    bg: "hover:bg-violet-500/5",
+    border: "border-violet-500",
+    bg: "hover:bg-violet-500/8",
     iconColor: "text-violet-500",
   },
   {
@@ -50,8 +50,8 @@ const NAV_CARDS = [
     title: "Sistema & Salute",
     desc: "Costi AI, integrità DB, retention",
     icon: Settings,
-    border: "border-emerald-500/50",
-    bg: "hover:bg-emerald-500/5",
+    border: "border-emerald-500",
+    bg: "hover:bg-emerald-500/8",
     iconColor: "text-emerald-500",
   },
   {
@@ -59,8 +59,8 @@ const NAV_CARDS = [
     title: "Mapping Ragione Sociale",
     desc: "Collega ricavi automatici ai ristoranti",
     icon: Map,
-    border: "border-orange-500/50",
-    bg: "hover:bg-orange-500/5",
+    border: "border-orange-500",
+    bg: "hover:bg-orange-500/8",
     iconColor: "text-orange-500",
   },
 ];
@@ -86,7 +86,7 @@ export default async function AdminPage() {
 
       {/* KPI cards — bordo blu uniforme */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-sky-500/30">
+        <Card className="ring-1 ring-sky-500/60">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Clienti totali</CardTitle>
             <Users className="size-4 text-sky-500" />
@@ -96,7 +96,7 @@ export default async function AdminPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-sky-500/30">
+        <Card className="ring-1 ring-sky-500/60">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Account attivi</CardTitle>
             <CheckCircle className="size-4 text-emerald-500" />
@@ -113,7 +113,7 @@ export default async function AdminPage() {
           fattureMensili={(overview?.fatture_per_mese as { mese: string; count: number }[]) ?? []}
         />
 
-        <Card className="border-sky-500/30">
+        <Card className="ring-1 ring-sky-500/60">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Costi AI (30gg)</CardTitle>
             <DollarSign className="size-4 text-violet-500" />
