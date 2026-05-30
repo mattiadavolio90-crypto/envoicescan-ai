@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RefreshCw, DollarSign, Shield, Clock, AlertTriangle, CheckCircle } from "lucide-react";
+import { RefreshCw, DollarSign, Shield, Clock, CheckCircle } from "lucide-react";
 
 const VISION_DAILY_LIMIT = 50;
 
@@ -117,102 +117,6 @@ function CostiAiTab() {
   );
 }
 
-// ─── TAB INTEGRITÀ ────────────────────────────────────────────────────────────
-const LABELS_PROBLEMI: Record<string, string> = {
-  date_invalide: "Date invalide",
-  importi_estremi: "Importi estremi (>€50k)",
-  quantita_negative: "Quantità negative",
-  descrizioni_vuote: "Descrizioni vuote",
-  totali_errati: "Totali non corrispondenti",
-};
-
-function IntegritaTab() {
-  const [result, setResult] = useState<Record<string, unknown> | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [giorni, setGiorni] = useState("90");
-
-  async function runScan() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/sistema/integrita", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ giorni: giorni === "tutti" ? null : Number(giorni) }),
-      });
-      if (!res.ok) { toast.error("Errore scan"); return; }
-      setResult(await res.json());
-      toast.success("Scan completato");
-    } catch { toast.error("Errore di connessione"); }
-    finally { setLoading(false); }
-  }
-
-  const problemi = (result?.problemi as Record<string, unknown[]>) || {};
-  const totale = (result?.totale_problemi as number) || 0;
-  const fatture = (result?.fatture_analizzate as number) || 0;
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2 items-center">
-        <Select value={giorni} onValueChange={setGiorni}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="30">Ultimi 30gg</SelectItem>
-            <SelectItem value="90">Ultimi 90gg</SelectItem>
-            <SelectItem value="180">Ultimi 180gg</SelectItem>
-            <SelectItem value="tutti">Tutto lo storico</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button onClick={runScan} disabled={loading}>
-          <Shield className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} />
-          {loading ? "Analisi in corso…" : "Verifica integrità"}
-        </Button>
-      </div>
-
-      {result && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            {totale === 0
-              ? <p className="flex items-center gap-2 text-emerald-600 font-medium"><CheckCircle className="size-5" /> Nessun problema trovato su {fatture.toLocaleString()} fatture</p>
-              : <p className="flex items-center gap-2 text-amber-600 font-medium"><AlertTriangle className="size-5" /> {totale} problemi trovati su {fatture.toLocaleString()} fatture</p>
-            }
-          </div>
-          {Object.entries(problemi).map(([key, rows]) =>
-            rows.length > 0 ? (
-              <Card key={key}>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <AlertTriangle className="size-4 text-amber-500" />
-                    {LABELS_PROBLEMI[key] || key}
-                    <span className="ml-auto text-xs font-normal text-muted-foreground">{rows.length} righe</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="rounded border overflow-hidden">
-                    <table className="w-full text-xs">
-                      <tbody className="divide-y">
-                        {rows.slice(0, 20).map((r, i) => (
-                          <tr key={i} className="hover:bg-muted/20">
-                            <td className="px-3 py-1.5 font-medium truncate max-w-[180px]">{String((r as Record<string, unknown>).fornitore || "—")}</td>
-                            <td className="px-3 py-1.5 truncate max-w-[180px] text-muted-foreground">{String((r as Record<string, unknown>).descrizione || "—")}</td>
-                            <td className="px-3 py-1.5 text-muted-foreground">{String((r as Record<string, unknown>).data || (r as Record<string, unknown>).data_documento || "—")}</td>
-                            {(r as Record<string, unknown>).valore !== undefined && <td className="px-3 py-1.5 tabular-nums text-red-600">€{Number((r as Record<string, unknown>).valore).toFixed(2)}</td>}
-                            {(r as Record<string, unknown>).diff !== undefined && <td className="px-3 py-1.5 tabular-nums text-amber-600">Δ€{Number((r as Record<string, unknown>).diff).toFixed(2)}</td>}
-                          </tr>
-                        ))}
-                        {rows.length > 20 && <tr><td colSpan={5} className="px-3 py-1.5 text-center text-muted-foreground">… e altre {rows.length - 20}</td></tr>}
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : null
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── TAB RETENTION ───────────────────────────────────────────────────────────
 function RetentionTab() {
   const [status, setStatus] = useState<Record<string, unknown> | null>(null);
@@ -268,11 +172,11 @@ function RetentionTab() {
 }
 
 // ─── ROOT CLIENT ─────────────────────────────────────────────────────────────
-const TABS = ["costi", "integrita", "retention"] as const;
-const TAB_LABELS: Record<string, string> = { costi: "Costi AI", integrita: "Integrità DB", retention: "Retention" };
+const TABS = ["costi", "retention"] as const;
+const TAB_LABELS: Record<string, string> = { costi: "Costi AI", retention: "Retention" };
 
 export function SistemaClient() {
-  const [tab, setTab] = useState<"costi" | "integrita" | "retention">("costi");
+  const [tab, setTab] = useState<"costi" | "retention">("costi");
   return (
     <div className="space-y-4">
       <div className="flex gap-1 border-b">
@@ -284,7 +188,6 @@ export function SistemaClient() {
         ))}
       </div>
       {tab === "costi" && <CostiAiTab />}
-      {tab === "integrita" && <IntegritaTab />}
       {tab === "retention" && <RetentionTab />}
     </div>
   );
