@@ -28,11 +28,15 @@ const BUCKET_COLOR: Record<string, string> = {
 };
 
 // ─── TAB CODA ────────────────────────────────────────────────────────────────
+type ClienteOpzione = { id: string; nome: string };
+
 function CodaTab() {
   const [loading, setLoading] = useState(false);
   const [gruppi, setGruppi] = useState<Record<string, unknown>[]>([]);
   const [stats, setStats] = useState<Record<string, number>>({});
   const [filtroBucket, setFiltroBucket] = useState("tutti");
+  const [filtroCliente, setFiltroCliente] = useState("tutti");
+  const [clienti, setClienti] = useState<ClienteOpzione[]>([]);
   const [autoRunning, setAutoRunning] = useState(false);
 
   // classify dialog
@@ -41,18 +45,29 @@ function CodaTab() {
   const [classCategoria, setClassCategoria] = useState("📝 NOTE E DICITURE");
   const [classSaving, setClassSaving] = useState(false);
 
+  useEffect(() => {
+    fetch("/api/admin/clienti")
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: { id: string; nome_ristorante: string }[]) =>
+        setClienti(data.map((c) => ({ id: c.id, nome: c.nome_ristorante || c.id })))
+      )
+      .catch(() => {});
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const qs = filtroBucket !== "tutti" ? `?bucket=${filtroBucket}` : "";
-      const res = await fetch(`/api/admin/qualita-ai/coda${qs}`);
+      const qs = new URLSearchParams();
+      if (filtroBucket !== "tutti") qs.set("bucket", filtroBucket);
+      if (filtroCliente !== "tutti") qs.set("cliente_id", filtroCliente);
+      const res = await fetch(`/api/admin/qualita-ai/coda${qs.toString() ? `?${qs}` : ""}`);
       if (!res.ok) { toast.error("Errore caricamento coda"); return; }
       const d = await res.json();
       setGruppi(d.gruppi || []);
       setStats(d.stats || {});
     } catch { toast.error("Errore di connessione"); }
     finally { setLoading(false); }
-  }, [filtroBucket]);
+  }, [filtroBucket, filtroCliente]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -106,6 +121,13 @@ function CodaTab() {
 
       {/* Toolbar */}
       <div className="flex gap-2 flex-wrap">
+        <Select value={filtroCliente} onValueChange={(v) => { setFiltroCliente(v); }}>
+          <SelectTrigger className="w-44"><SelectValue placeholder="Tutti i clienti" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="tutti">Tutti i clienti</SelectItem>
+            {clienti.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <Select value={filtroBucket} onValueChange={setFiltroBucket}>
           <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
           <SelectContent>
