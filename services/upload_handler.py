@@ -33,7 +33,7 @@ from services.invoice_service import (
     salva_fattura_processata,
     VisionDailyLimitExceededError,
 )
-from services.worker_client import parse_file_via_worker, classifica_via_worker
+from services.worker_client import parse_file_via_worker, classifica_via_worker_con_confidenza
 from services.db_service import (
     calcola_alert,
     carica_e_prepara_dataframe,
@@ -539,7 +539,7 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
             hint = [ottieni_hint_per_ai(d, user_id) for d in chunk]
 
             try:
-                categories = classifica_via_worker(
+                categories, confidences = classifica_via_worker_con_confidenza(
                     chunk,
                     fornitori=fornitori,
                     iva=iva,
@@ -550,8 +550,9 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
             except Exception as ai_exc:
                 logger.warning(f"[UPLOAD AI] Fallback AI fallito: {ai_exc}")
                 categories = ['Da Classificare'] * len(chunk)
+                confidences = ['bassa'] * len(chunk)
 
-            for desc, categoria in zip(chunk, categories):
+            for desc, categoria, confidence in zip(chunk, categories, confidences):
                 categoria_finale = str(categoria or '').strip() or 'Da Classificare'
                 meta = desc_map[desc]
 
@@ -583,7 +584,11 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                         needs_review=bool(row.get('needs_review')),
                     )
                     categoria_target = str(special_row['force_categoria'] or categoria_finale)
-                    needs_review_target = bool(special_row['should_review'])
+                    # Confidence routing: media → pre-classificato ma in coda per review
+                    if confidence in ('bassa', 'media') and not special_row['should_review']:
+                        needs_review_target = True
+                    else:
+                        needs_review_target = bool(special_row['should_review'])
                     chunk_update_groups.setdefault((categoria_target, needs_review_target), []).append(row_id)
                     if special_row['include_in_dashboard']:
                         memory_candidate_ids.append(row_id)

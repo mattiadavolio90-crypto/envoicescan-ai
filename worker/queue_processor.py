@@ -54,7 +54,7 @@ if _PROJECT_ROOT not in sys.path:
 
 from services.db_service import filter_active
 from services.invoice_service import estrai_dati_da_xml, salva_fattura_processata
-from services.worker_client import classifica_via_worker
+from services.worker_client import classifica_via_worker_con_confidenza
 
 try:
     from services.ai_service import aggiorna_streak_classificazione
@@ -154,7 +154,7 @@ def _auto_classify_saved_rows(
         fornitori = [desc_map[d][0] for d in chunk]
         iva_list = [desc_map[d][1] for d in chunk]
         try:
-            categorie = classifica_via_worker(
+            categorie, confidenze = classifica_via_worker_con_confidenza(
                 chunk,
                 fornitori=fornitori,
                 iva=iva_list,
@@ -167,6 +167,7 @@ def _auto_classify_saved_rows(
                 i, i + len(chunk), ai_exc,
             )
             categorie = None
+            confidenze = None
 
         # Fallback robusto: se l'AI non ha ritornato una lista allineata, usa
         # il fallback canonico (enforce_no_unclassified_category lo normalizzerà).
@@ -177,18 +178,24 @@ def _auto_classify_saved_rows(
                 None if not isinstance(categorie, list) else len(categorie),
             )
             categorie = [None] * len(chunk)
+            confidenze = ['bassa'] * len(chunk)
 
-        for desc, cat in zip(chunk, categorie):
+        if not isinstance(confidenze, list) or len(confidenze) != len(chunk):
+            confidenze = ['media'] * len(chunk)
+
+        for desc, cat, conf in zip(chunk, categorie, confidenze):
             categoria, fallback_forzato = enforce_no_unclassified_category(
                 cat,
                 desc,
                 source="worker_queue_auto_classify",
             )
+            # Confidence routing: media → pre-classificato ma in coda per review
+            needs_review = bool(fallback_forzato) or conf in ('bassa', 'media')
             resp = (
                 supabase.table("fatture")
                 .update({
                     "categoria": categoria,
-                    "needs_review": bool(fallback_forzato),
+                    "needs_review": needs_review,
                 })
                 .eq("user_id", user_id)
                 .eq("ristorante_id", ristorante_id)
