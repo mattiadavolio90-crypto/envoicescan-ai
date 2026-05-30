@@ -5753,56 +5753,66 @@ def _admin_emails_set() -> set:
 
 @app.get("/api/admin/overview", tags=["Admin"], dependencies=[Depends(_verify_admin)])
 async def admin_overview():
-    """KPI flotta: clienti, attivi, fatture mese corrente, costi AI mese."""
-    sb = get_supabase_client()
-    admin_emails = _admin_emails_set()
+    """KPI flotta: clienti, attivi, fatture mese corrente, costi AI mese.
 
-    users_resp = sb.table("users").select("id,email,attivo").execute()
-    all_users = users_resp.data or []
-    clienti = [u for u in all_users if u.get("email", "").lower() not in admin_emails]
-    n_clienti = len(clienti)
-    n_attivi = sum(1 for u in clienti if u.get("attivo"))
+    Difensivo: ogni sezione è isolata. Non solleva mai 500 — ritorna i dati
+    calcolabili e accumula gli errori in `_errors` per diagnosi.
+    """
+    sb = get_supabase_client()
+    errors: list = []
+
+    n_clienti = 0
+    n_attivi = 0
+    try:
+        admin_emails = _admin_emails_set()
+        all_users = sb.table("users").select("id,email,attivo").execute().data or []
+        clienti = [u for u in all_users if u.get("email", "").lower() not in admin_emails]
+        n_clienti = len(clienti)
+        n_attivi = sum(1 for u in clienti if u.get("attivo"))
+    except Exception as e:
+        logger.exception("admin_overview: users query failed")
+        errors.append(f"users: {type(e).__name__}: {e}")
 
     mese_start = datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+
+    # Conteggio esatto fatture del mese (count, non len cappato a 1000)
+    fatture_mese = 0
     try:
-        fatture_resp = sb.table("fatture_documenti").select("id").gte("created_at", mese_start).execute()
-        fatture_mese = len(fatture_resp.data or [])
-    except Exception:
+        resp = sb.table("fatture_documenti").select("id", count="exact").gte("created_at", mese_start).limit(1).execute()
+        fatture_mese = resp.count or 0
+    except Exception as e1:
         try:
-            fatture_resp2 = sb.table("fatture").select("id").gte("created_at", mese_start).is_("deleted_at", "null").execute()
-            fatture_mese = len(fatture_resp2.data or [])
-        except Exception:
-            fatture_mese = 0
+            resp = sb.table("fatture").select("id", count="exact").gte("created_at", mese_start).is_("deleted_at", "null").limit(1).execute()
+            fatture_mese = resp.count or 0
+        except Exception as e2:
+            logger.exception("admin_overview: fatture count failed")
+            errors.append(f"fatture_mese: {type(e2).__name__}: {e2}")
 
     # Breakdown mensile ultimi 12 mesi
     fatture_per_mese: list = []
     try:
         twelve_ago = (datetime.now(timezone.utc).date().replace(day=1) - timedelta(days=365)).isoformat()
-        fd_resp = sb.table("fatture_documenti").select("data_documento").gte("data_documento", twelve_ago).execute()
         per_mese: dict = {}
-        for r in (fd_resp.data or []):
+        try:
+            rows = sb.table("fatture_documenti").select("data_documento").gte("data_documento", twelve_ago).limit(50000).execute().data or []
+        except Exception:
+            rows = sb.table("fatture").select("data_documento").gte("data_documento", twelve_ago).is_("deleted_at", "null").limit(50000).execute().data or []
+        for r in rows:
             d = r.get("data_documento") or ""
             if len(d) >= 7:
                 per_mese[d[:7]] = per_mese.get(d[:7], 0) + 1
         fatture_per_mese = [{"mese": k, "count": v} for k, v in sorted(per_mese.items())]
-    except Exception:
-        try:
-            twelve_ago = (datetime.now(timezone.utc).date().replace(day=1) - timedelta(days=365)).isoformat()
-            fd_resp2 = sb.table("fatture").select("data_documento").gte("data_documento", twelve_ago).is_("deleted_at", "null").execute()
-            per_mese2: dict = {}
-            for r in (fd_resp2.data or []):
-                d = r.get("data_documento") or ""
-                if len(d) >= 7:
-                    per_mese2[d[:7]] = per_mese2.get(d[:7], 0) + 1
-            fatture_per_mese = [{"mese": k, "count": v} for k, v in sorted(per_mese2.items())]
-        except Exception:
-            fatture_per_mese = []
+    except Exception as e:
+        logger.exception("admin_overview: breakdown mensile failed")
+        errors.append(f"fatture_per_mese: {type(e).__name__}: {e}")
 
+    costi_mese = 0.0
     try:
         costs_resp = sb.rpc("get_ai_costs_summary", {"p_days": 30}).execute()
         costi_mese = sum(float(r.get("ai_cost_total", 0)) for r in (costs_resp.data or []))
-    except Exception:
-        costi_mese = 0.0
+    except Exception as e:
+        logger.exception("admin_overview: costi AI failed")
+        errors.append(f"costi_ai: {type(e).__name__}: {e}")
 
     return {
         "n_clienti": n_clienti,
@@ -5810,6 +5820,7 @@ async def admin_overview():
         "fatture_mese": fatture_mese,
         "costi_ai_mese": round(costi_mese, 4),
         "fatture_per_mese": fatture_per_mese,
+        "_errors": errors,
     }
 
 
