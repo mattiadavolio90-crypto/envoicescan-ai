@@ -600,8 +600,8 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
   const [regole, setRegole] = useState<RegolaPagamento[]>([]);
   const [fornitori, setFornitori] = useState<FornitoreOption[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedFornitore, setSelectedFornitore] = useState<FornitoreOption | null>(null);
-  const [pivaManuale, setPivaManuale] = useState("");
+  const [selectedNomi, setSelectedNomi] = useState<Set<string>>(new Set());
+  const [searchForn, setSearchForn] = useState("");
   const [modalitaInput, setModalitaInput] = useState("30gg");
   const [saving, setSaving] = useState(false);
 
@@ -620,7 +620,7 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
   }, []);
 
   useEffect(() => {
-    if (open) { loadAll(); setSelectedFornitore(null); setPivaManuale(""); setModalitaInput("30gg"); }
+    if (open) { loadAll(); setSelectedNomi(new Set()); setSearchForn(""); setModalitaInput("30gg"); }
   }, [open, loadAll]);
 
   const fornitoriDisponibili = useMemo(() => {
@@ -628,21 +628,51 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
     return fornitori.filter(f => !f.piva_fornitore || !giaCon.has(f.piva_fornitore));
   }, [fornitori, regole]);
 
-  const pivaEffettiva = selectedFornitore?.piva_fornitore ?? pivaManuale.trim();
-  const canSave = !!selectedFornitore && !!pivaEffettiva;
+  const fornitoriFiltrati = useMemo(() => {
+    const q = searchForn.trim().toLowerCase();
+    return q ? fornitoriDisponibili.filter(f => f.fornitore.toLowerCase().includes(q)) : fornitoriDisponibili;
+  }, [fornitoriDisponibili, searchForn]);
 
-  async function handleAdd() {
+  const selectedItems = useMemo(
+    () => fornitoriDisponibili.filter(f => selectedNomi.has(f.fornitore)),
+    [fornitoriDisponibili, selectedNomi]
+  );
+  const conPiva = selectedItems.filter(f => f.piva_fornitore);
+  const senzaPiva = selectedItems.filter(f => !f.piva_fornitore);
+  const canSave = conPiva.length > 0;
+
+  function toggleFornitore(nome: string) {
+    setSelectedNomi(prev => {
+      const next = new Set(prev);
+      if (next.has(nome)) next.delete(nome); else next.add(nome);
+      return next;
+    });
+  }
+
+  function selectAll() { setSelectedNomi(new Set(fornitoriFiltrati.map(f => f.fornitore))); }
+  function clearAll() { setSelectedNomi(new Set()); }
+  const allChecked = fornitoriFiltrati.length > 0 && fornitoriFiltrati.every(f => selectedNomi.has(f.fornitore));
+  const someChecked = !allChecked && fornitoriFiltrati.some(f => selectedNomi.has(f.fornitore));
+
+  async function handleSave() {
     if (!canSave) return;
     setSaving(true);
+    let salvate = 0;
     try {
-      const res = await fetch("/api/scadenziario/regole", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ piva_fornitore: pivaEffettiva, modalita: modalitaInput }),
-      });
-      if (!res.ok) { const d = await res.json(); toast.error(d.detail || "Errore"); return; }
-      toast.success("Regola salvata");
-      setSelectedFornitore(null); setPivaManuale(""); setModalitaInput("30gg");
+      for (const f of conPiva) {
+        const res = await fetch("/api/scadenziario/regole", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ piva_fornitore: f.piva_fornitore, modalita: modalitaInput }),
+        });
+        if (res.ok) salvate++;
+        else { const d = await res.json(); toast.error(`${f.fornitore}: ${d.detail || "Errore"}`); }
+      }
+      if (salvate > 0)
+        toast.success(`${salvate} regol${salvate === 1 ? "a salvata" : "e salvate"}`);
+      if (senzaPiva.length > 0)
+        toast.warning(`${senzaPiva.length} fornitore/i senza P.IVA non salvat${senzaPiva.length === 1 ? "o" : "i"}`);
+      setSelectedNomi(new Set());
       await loadAll();
     } finally {
       setSaving(false);
@@ -665,7 +695,7 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Regole Scadenza Fornitori</DialogTitle>
           <DialogDescription>
@@ -673,24 +703,22 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3 pt-1">
+        <div className="space-y-4 pt-1 max-h-[70vh] overflow-y-auto pr-1">
           {loading ? (
             <p className="text-sm text-muted-foreground text-center py-6">Caricamento...</p>
           ) : (
             <>
-              {/* Lista regole esistenti */}
-              {regole.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-3">Nessuna regola configurata.</p>
-              ) : (
-                <div className="space-y-2">
+              {/* Regole esistenti */}
+              {regole.length > 0 && (
+                <div className="space-y-1.5">
                   {regole.map(reg => (
-                    <div key={reg.id} className="flex items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2.5">
+                    <div key={reg.id} className="flex items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2">
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium truncate">{pivaToNome[reg.piva_fornitore] || reg.piva_fornitore}</p>
                         <p className="text-xs text-muted-foreground">
                           {MODALITA_LABELS[reg.modalita] ?? reg.modalita}
                           <span className="mx-1.5 opacity-40">·</span>
-                          <span className="font-mono">{reg.piva_fornitore}</span>
+                          <span className="font-mono text-[11px]">{reg.piva_fornitore}</span>
                         </p>
                       </div>
                       <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive flex-shrink-0"
@@ -702,69 +730,107 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
                 </div>
               )}
 
-              {/* Form aggiunta — sempre visibile se ci sono fornitori disponibili */}
-              {fornitoriDisponibili.length > 0 && (
-                <div className="rounded-lg border border-dashed p-3 space-y-2.5 mt-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Nuova regola</p>
+              {/* Form nuova regola */}
+              {fornitoriDisponibili.length > 0 ? (
+                <div className="rounded-lg border border-dashed p-3 space-y-3">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Nuova regola{selectedNomi.size > 0 && ` — ${selectedNomi.size} fornitore/i selezionat${selectedNomi.size === 1 ? "o" : "i"}`}
+                  </p>
 
-                  {/* Riga 1: Fornitore */}
-                  <div className="space-y-1">
-                    <Label className="text-xs">Fornitore</Label>
-                    <NativeSelect
-                      value={selectedFornitore?.fornitore ?? ""}
-                      onValueChange={(nome) => {
-                        const found = fornitoriDisponibili.find(f => f.fornitore === nome) ?? null;
-                        setSelectedFornitore(found);
-                        setPivaManuale("");
-                      }}
-                      placeholder="Seleziona fornitore..."
-                      className="h-9 text-sm"
-                    >
-                      {fornitoriDisponibili.map(f => (
-                        <option key={f.fornitore} value={f.fornitore}>
-                          {f.fornitore}
-                        </option>
-                      ))}
-                    </NativeSelect>
-                  </div>
-
-                  {/* Riga 2: Modalità */}
+                  {/* Modalità — prima del fornitore così l'utente imposta prima la regola */}
                   <div className="space-y-1">
                     <Label className="text-xs">Modalità di pagamento</Label>
-                    <NativeSelect
-                      value={modalitaInput}
-                      onValueChange={setModalitaInput}
-                      className="h-9 text-sm"
-                    >
+                    <NativeSelect value={modalitaInput} onValueChange={setModalitaInput} className="h-9 text-sm">
                       {Object.entries(MODALITA_LABELS).map(([k, v]) => (
                         <option key={k} value={k}>{v}</option>
                       ))}
                     </NativeSelect>
                   </div>
 
-                  {/* P.IVA manuale solo se mancante */}
-                  {selectedFornitore && !selectedFornitore.piva_fornitore && (
-                    <div className="space-y-1">
-                      <Label className="text-xs text-muted-foreground">P.IVA (non rilevata dall'XML)</Label>
-                      <Input placeholder="12345678901" value={pivaManuale}
-                        onChange={e => setPivaManuale(e.target.value)} className="h-8 text-xs font-mono" />
+                  {/* Checklist fornitori */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-xs">Fornitori</Label>
+                      <div className="flex gap-3 text-[11px]">
+                        <button onClick={selectAll} className="text-primary hover:underline">Tutti</button>
+                        {selectedNomi.size > 0 && (
+                          <button onClick={clearAll} className="text-muted-foreground hover:underline">Deseleziona</button>
+                        )}
+                      </div>
                     </div>
-                  )}
 
-                  {/* Piva confermata in sola lettura */}
-                  {selectedFornitore?.piva_fornitore && (
-                    <p className="text-[11px] text-muted-foreground font-mono">P.IVA: {selectedFornitore.piva_fornitore}</p>
-                  )}
+                    {/* Ricerca */}
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Cerca..."
+                        value={searchForn}
+                        onChange={e => setSearchForn(e.target.value)}
+                        className="pl-8 h-8 text-xs"
+                      />
+                    </div>
 
-                  <Button size="sm" className="w-full h-8" onClick={handleAdd} disabled={saving || !canSave}>
-                    {saving ? "Salvataggio..." : "Salva regola"}
+                    {/* Lista checkbox */}
+                    <div className="rounded-md border divide-y max-h-44 overflow-y-auto">
+                      {/* Header seleziona tutto filtrati */}
+                      <label className="flex items-center gap-2.5 px-3 py-2 bg-muted/30 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={allChecked}
+                          ref={(el) => { if (el) el.indeterminate = someChecked; }}
+                          onChange={() => allChecked ? clearAll() : selectAll()}
+                          className="size-3.5 accent-primary"
+                        />
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {searchForn ? `${fornitoriFiltrati.length} risultati` : `Tutti (${fornitoriFiltrati.length})`}
+                        </span>
+                      </label>
+
+                      {fornitoriFiltrati.length === 0 ? (
+                        <p className="text-xs text-muted-foreground text-center py-3">Nessun fornitore trovato</p>
+                      ) : (
+                        fornitoriFiltrati.map(f => (
+                          <label key={f.fornitore} className="flex items-center gap-2.5 px-3 py-2 hover:bg-muted/30 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={selectedNomi.has(f.fornitore)}
+                              onChange={() => toggleFornitore(f.fornitore)}
+                              className="size-3.5 accent-primary flex-shrink-0"
+                            />
+                            <span className="text-xs truncate flex-1">{f.fornitore}</span>
+                            {!f.piva_fornitore && (
+                              <span className="text-[10px] text-muted-foreground italic flex-shrink-0">senza P.IVA</span>
+                            )}
+                          </label>
+                        ))
+                      )}
+                    </div>
+
+                    {senzaPiva.length > 0 && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                        {senzaPiva.length} fornitore/i senza P.IVA verranno ignorati al salvataggio.
+                      </p>
+                    )}
+                  </div>
+
+                  <Button
+                    size="sm"
+                    className="w-full h-9"
+                    onClick={handleSave}
+                    disabled={saving || !canSave}
+                  >
+                    {saving
+                      ? "Salvataggio..."
+                      : canSave
+                        ? `Salva regola per ${conPiva.length} fornitore/i`
+                        : "Seleziona almeno un fornitore"}
                   </Button>
                 </div>
-              )}
-
-              {fornitori.length === 0 && (
-                <p className="text-xs text-center text-muted-foreground py-2">
-                  Nessun fornitore trovato. Carica prima le fatture.
+              ) : (
+                <p className="text-xs text-center text-muted-foreground py-4">
+                  {fornitori.length === 0
+                    ? "Nessun fornitore trovato. Carica prima le fatture."
+                    : "Tutti i fornitori hanno già una regola configurata."}
                 </p>
               )}
             </>
