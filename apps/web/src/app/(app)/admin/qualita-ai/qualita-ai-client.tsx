@@ -45,6 +45,7 @@ function CodaTab() {
   const [classGruppo, setClassGruppo] = useState<Record<string, unknown> | null>(null);
   const [classCategoria, setClassCategoria] = useState("📝 NOTE E DICITURE");
   const [classSaving, setClassSaving] = useState(false);
+  const [accepting, setAccepting] = useState<number | null>(null); // indice riga in corso
 
   useEffect(() => {
     fetch("/api/admin/clienti")
@@ -106,6 +107,24 @@ function CodaTab() {
       setGruppi((prev) => prev.filter((g) => g.descrizione !== classGruppo.descrizione));
     } catch { toast.error("Errore"); }
     finally { setClassSaving(false); }
+  }
+
+  async function handleAccetta(g: Record<string, unknown>, idx: number) {
+    const suggerita = String(g.categoria_suggerita || "");
+    if (!suggerita) return;
+    setAccepting(idx);
+    try {
+      const res = await fetch("/api/admin/qualita-ai/coda/classifica", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: g.ids, categoria: suggerita, salva_memoria: true }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.detail || "Errore"); return; }
+      toast.success(`${d.righe_aggiornate} righe → ${suggerita}`);
+      setGruppi((prev) => prev.filter((_, i) => i !== idx));
+    } catch { toast.error("Errore"); }
+    finally { setAccepting(null); }
   }
 
   return (
@@ -173,13 +192,16 @@ function CodaTab() {
                 <th className="px-4 py-2 font-medium">Descrizione</th>
                 <th className="px-4 py-2 font-medium">Tipo</th>
                 <th className="px-4 py-2 font-medium">Occ.</th>
-                <th className="px-4 py-2 font-medium hidden md:table-cell">Categoria attuale</th>
+                <th className="px-4 py-2 font-medium hidden md:table-cell">Attuale</th>
+                <th className="px-4 py-2 font-medium hidden lg:table-cell">Suggerita</th>
                 <th className="px-4 py-2 font-medium hidden lg:table-cell">€ max</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
             <tbody className="divide-y">
-              {gruppi.map((g, i) => (
+              {gruppi.map((g, i) => {
+                const suggerita = g.categoria_suggerita ? String(g.categoria_suggerita) : null;
+                return (
                 <tr key={i} className="hover:bg-muted/30">
                   <td className="px-4 py-2 font-medium max-w-xs truncate" title={String(g.descrizione)}>{String(g.descrizione || "—")}</td>
                   <td className="px-4 py-2">
@@ -188,19 +210,36 @@ function CodaTab() {
                     </span>
                   </td>
                   <td className="px-4 py-2 tabular-nums">{String(g.count)}</td>
-                  <td className="px-4 py-2 hidden md:table-cell text-muted-foreground truncate max-w-[140px]">{String(g.categoria || "—")}</td>
-                  <td className="px-4 py-2 hidden lg:table-cell tabular-nums">€{Number(g.prezzo_max).toFixed(2)}</td>
+                  <td className="px-4 py-2 hidden md:table-cell text-muted-foreground truncate max-w-[130px] text-xs">{String(g.categoria || "—")}</td>
+                  <td className="px-4 py-2 hidden lg:table-cell">
+                    {suggerita ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-semibold truncate max-w-[120px]" title={suggerita}>{suggerita}</span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 px-2 text-xs text-emerald-700 hover:bg-emerald-50"
+                          disabled={accepting === i}
+                          onClick={() => handleAccetta(g, i)}
+                        >
+                          {accepting === i ? "…" : "Accetta"}
+                        </Button>
+                      </span>
+                    ) : <span className="text-xs text-muted-foreground">—</span>}
+                  </td>
+                  <td className="px-4 py-2 hidden lg:table-cell tabular-nums text-xs">€{Number(g.prezzo_max).toFixed(2)}</td>
                   <td className="px-4 py-2">
                     <Button size="sm" variant="outline" onClick={() => {
                       setClassGruppo(g);
-                      setClassCategoria(String(g.bucket) === "dicitura" ? "📝 NOTE E DICITURE" : String(g.categoria || "📝 NOTE E DICITURE"));
+                      setClassCategoria(suggerita || (String(g.bucket) === "dicitura" ? "📝 NOTE E DICITURE" : String(g.categoria || "📝 NOTE E DICITURE")));
                       setClassDialog(true);
                     }}>
                       Classifica
                     </Button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -219,8 +258,8 @@ function CodaTab() {
               <label className="text-sm font-medium">Categoria</label>
               <Select value={classCategoria} onValueChange={setClassCategoria}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {CATEGORIE_SPECIALI.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                <SelectContent className="max-h-72">
+                  {CATEGORIE_TUTTE.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>

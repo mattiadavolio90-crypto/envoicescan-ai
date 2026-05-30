@@ -6174,11 +6174,27 @@ async def admin_qualita_coda(
     grp["prezzo_max"] = grp["prezzo_max"].fillna(0).round(4)
     grp = grp.sort_values(["bucket", "count"], ascending=[True, False])
 
+    from services.ai_service import applica_regole_categoria_forti, applica_correzioni_dizionario
+
     gruppi = grp.to_dict("records")
     for g in gruppi:
         g["ids"] = [int(i) for i in g["ids"]]
         g["count"] = int(g["count"])
         g["prezzo_max"] = float(g["prezzo_max"])
+
+        # Calcola suggerimento deterministico: regola forte → dizionario → None
+        desc = str(g.get("descrizione") or "")
+        cat_attuale = str(g.get("categoria") or "")
+        suggerita = None
+        if desc:
+            cat_forte, _ = applica_regole_categoria_forti(desc, "Da Classificare")
+            if cat_forte and cat_forte != "Da Classificare" and cat_forte != cat_attuale:
+                suggerita = cat_forte
+            elif not suggerita:
+                cat_dict = applica_correzioni_dizionario(desc, "Da Classificare")
+                if cat_dict and cat_dict != "Da Classificare" and cat_dict != cat_attuale:
+                    suggerita = cat_dict
+        g["categoria_suggerita"] = suggerita
 
     return {"gruppi": gruppi, "stats": stats}
 
