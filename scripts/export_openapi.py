@@ -121,8 +121,7 @@ def check_drift() -> int:
 
     committed = json.loads(DEFAULT_OUTPUT.read_text(encoding="utf-8"))
 
-    import tempfile
-    tmp = Path(tempfile.mktemp(suffix=".json"))
+    tmp = _ROOT / "openapi" / ".tmp_drift_check.json"
     try:
         rc = export_schema(output=tmp)
         if rc != 0:
