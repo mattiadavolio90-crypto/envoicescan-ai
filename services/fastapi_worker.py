@@ -5270,6 +5270,34 @@ async def set_scadenza_override_endpoint(
     return result
 
 
+@app.get("/api/scadenziario/anteprima", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
+async def get_anteprima_fattura(file_origine: str, authorization: Optional[str] = Header(None)):
+    """Righe di una fattura specifica per anteprima nello scadenziario."""
+    from services.db_service import filter_active as _fa
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    if not file_origine or not str(file_origine).strip():
+        raise HTTPException(status_code=400, detail="file_origine obbligatorio")
+
+    resp = (
+        _fa(
+            sb.table("fatture")
+            .select("numero_riga,descrizione,quantita,unita_misura,prezzo_unitario,iva_percentuale,totale_riga,categoria")
+            .eq("user_id", str(user["id"]))
+            .eq("ristorante_id", ristorante_id)
+            .eq("file_origine", str(file_origine).strip())
+        )
+        .order("numero_riga", desc=False)
+        .execute()
+    )
+
+    return {"righe": resp.data or [], "file_origine": file_origine, "count": len(resp.data or [])}
+
+
 @app.get("/api/scadenziario/fornitori", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
 async def get_fornitori_scadenziario(authorization: Optional[str] = Header(None)):
     """

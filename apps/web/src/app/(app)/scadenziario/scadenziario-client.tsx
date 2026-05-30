@@ -210,19 +210,21 @@ function CalendarView({ documenti }: CalendarViewProps) {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   const agg = useMemo(() => {
-    const map: Record<number, number> = {};
+    const map: Record<number, { totale: number; count: number }> = {};
     for (const doc of documenti) {
       if (doc.pagata || !doc.scadenza_effettiva) continue;
       const dt = new Date(doc.scadenza_effettiva);
       if (dt.getFullYear() === anno && dt.getMonth() === mese) {
         const d = dt.getDate();
-        map[d] = (map[d] || 0) + (doc.totale_documento || 0);
+        if (!map[d]) map[d] = { totale: 0, count: 0 };
+        map[d].totale += doc.totale_documento || 0;
+        map[d].count += 1;
       }
     }
     return map;
   }, [documenti, anno, mese]);
 
-  const maxVal = useMemo(() => Math.max(0, ...Object.values(agg)), [agg]);
+  const maxVal = useMemo(() => Math.max(0, ...Object.values(agg).map(v => v.totale)), [agg]);
 
   const firstDay = new Date(anno, mese, 1).getDay(); // 0=domenica
   const startOffset = firstDay === 0 ? 6 : firstDay - 1; // lun=0
@@ -271,28 +273,37 @@ function CalendarView({ documenti }: CalendarViewProps) {
         ))}
         {cells.map((day, i) => {
           if (!day) return <div key={`e-${i}`} />;
-          const totale = agg[day] || 0;
+          const data = agg[day];
+          const totale = data?.totale || 0;
+          const count = data?.count || 0;
           const isToday = anno === today.getFullYear() && mese === today.getMonth() && day === today.getDate();
           const hasAmount = totale > 0;
           const intensity = hasAmount && maxVal > 0 ? totale / maxVal : 0;
-          const bgOpacity = hasAmount ? Math.max(0.15, intensity * 0.7) : 0;
+          const bgOpacity = hasAmount ? Math.max(0.18, intensity * 0.85) : 0;
           const isSelected = selectedDay === day;
+          // testo bianco su sfondi scuri (intensity > 0.3), grigio scuro su sfondi chiari
+          const onBg = !isSelected && hasAmount ? (intensity > 0.35 ? "text-white" : "text-orange-950") : "";
 
           return (
             <button
               key={day}
               onClick={() => setSelectedDay(isSelected ? null : day)}
-              className={`relative flex flex-col items-center justify-center rounded-md py-1.5 transition-colors text-xs
-                ${isToday ? "ring-1 ring-primary" : ""}
-                ${isSelected ? "bg-primary text-primary-foreground" : hasAmount ? "hover:bg-orange-100 dark:hover:bg-orange-900/20" : "hover:bg-muted/50"}
+              className={`relative flex flex-col items-center justify-center rounded-md py-1.5 transition-colors text-xs gap-0
+                ${isToday ? "ring-2 ring-primary ring-offset-1" : ""}
+                ${isSelected ? "bg-primary text-primary-foreground" : hasAmount ? "" : "hover:bg-muted/50"}
               `}
-              style={hasAmount && !isSelected ? { backgroundColor: `rgba(249,115,22,${bgOpacity})` } : {}}
+              style={hasAmount && !isSelected ? { backgroundColor: `rgba(194,65,12,${bgOpacity})` } : {}}
             >
-              <span className={`font-medium ${isToday && !isSelected ? "text-primary" : ""}`}>{day}</span>
+              <span className={`font-semibold leading-none ${isToday && !isSelected ? "text-primary" : ""} ${onBg}`}>{day}</span>
               {hasAmount && (
-                <span className={`text-[9px] leading-none mt-0.5 ${isSelected ? "text-primary-foreground/80" : "text-orange-700 dark:text-orange-400"}`}>
-                  {formatEuro(totale).replace("€", "").trim()}
-                </span>
+                <>
+                  <span className={`text-[9px] leading-none mt-0.5 font-medium ${isSelected ? "text-primary-foreground/90" : onBg}`}>
+                    {totale >= 1000 ? `${(totale / 1000).toFixed(1)}k` : Math.round(totale).toString()}€
+                  </span>
+                  <span className={`text-[8px] leading-none mt-0.5 ${isSelected ? "text-primary-foreground/70" : onBg} opacity-80`}>
+                    {count} fatt.
+                  </span>
+                </>
               )}
             </button>
           );
@@ -317,24 +328,53 @@ function CalendarView({ documenti }: CalendarViewProps) {
   );
 }
 
-// ── Peek Sheet ───────────────────────────────────────────────────────────────
+// ── Peek Dialog (centrato) ────────────────────────────────────────────────────
 
-type PeekSheetProps = {
+type RigaFattura = {
+  numero_riga: number;
+  descrizione: string;
+  quantita: number | null;
+  unita_misura: string | null;
+  prezzo_unitario: number | null;
+  iva_percentuale: number | null;
+  totale_riga: number;
+  categoria: string | null;
+};
+
+type PeekDialogProps = {
   doc: Documento | null;
   onClose: () => void;
   onPaga: (doc: Documento, pagata: boolean) => void;
   onSetScadenza: (doc: Documento, data: string | null) => Promise<void>;
 };
 
-function PeekSheet({ doc, onClose, onPaga, onSetScadenza }: PeekSheetProps) {
+function PeekDialog({ doc, onClose, onPaga, onSetScadenza }: PeekDialogProps) {
   const [editingScadenza, setEditingScadenza] = useState(false);
   const [scadenzaInput, setScadenzaInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [anteprimaOpen, setAnteprimaOpen] = useState(false);
+  const [righe, setRighe] = useState<RigaFattura[]>([]);
+  const [loadingRighe, setLoadingRighe] = useState(false);
 
   useEffect(() => {
-    if (doc) setScadenzaInput(doc.scadenza_effettiva ?? "");
+    if (doc) { setScadenzaInput(doc.scadenza_effettiva ?? ""); }
     setEditingScadenza(false);
+    setAnteprimaOpen(false);
+    setRighe([]);
   }, [doc]);
+
+  async function handleToggleAnteprima() {
+    if (anteprimaOpen) { setAnteprimaOpen(false); return; }
+    if (righe.length > 0) { setAnteprimaOpen(true); return; }
+    if (!doc) return;
+    setLoadingRighe(true);
+    setAnteprimaOpen(true);
+    try {
+      const res = await fetch(`/api/scadenziario/anteprima?file_origine=${encodeURIComponent(doc.file_origine)}`);
+      if (res.ok) { const d = await res.json(); setRighe(d.righe ?? []); }
+    } catch { /* silenzioso */ }
+    finally { setLoadingRighe(false); }
+  }
 
   async function handleSaveScadenza() {
     if (!doc) return;
@@ -366,18 +406,19 @@ function PeekSheet({ doc, onClose, onPaga, onSetScadenza }: PeekSheetProps) {
   }
 
   return (
-    <Sheet open={!!doc} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent className="w-full sm:max-w-md overflow-y-auto">
+    <Dialog open={!!doc} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         {doc && (
           <>
-            <SheetHeader>
-              <SheetTitle className="text-base">{doc.fornitore}</SheetTitle>
-              <SheetDescription>
+            <DialogHeader>
+              <DialogTitle>{doc.fornitore}</DialogTitle>
+              <DialogDescription>
                 {doc.numero_documento ? `Fattura #${doc.numero_documento}` : "Documento"} · {formatDate(doc.data_documento)}
-              </SheetDescription>
-            </SheetHeader>
+              </DialogDescription>
+            </DialogHeader>
 
-            <div className="mt-6 space-y-5">
+            <div className="space-y-5 pt-2">
+              {/* Riepilogo */}
               <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Totale documento</span>
@@ -390,75 +431,122 @@ function PeekSheet({ doc, onClose, onPaga, onSetScadenza }: PeekSheetProps) {
                 <div className="flex justify-between text-sm items-center gap-2">
                   <span className="text-muted-foreground">Stato</span>
                   <span className={`font-medium ${doc.pagata ? "text-emerald-600" : ""}`}>
-                    {doc.pagata ? `Pagata ${doc.pagata_at ? `il ${formatDate(doc.pagata_at)}` : ""}` : doc.stato_scadenza}
+                    {doc.pagata ? `Pagata${doc.pagata_at ? ` il ${formatDate(doc.pagata_at)}` : ""}` : doc.stato_scadenza}
                   </span>
                 </div>
               </div>
 
-              <Separator />
-
-              <div className="space-y-3">
+              {/* Scadenza */}
+              <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label className="text-sm font-medium">Scadenza</Label>
                   {!editingScadenza && (
                     <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={() => setEditingScadenza(true)}>
-                      <Pencil className="size-3" /> Modifica
+                      <Pencil className="size-3" /> Modifica data
                     </Button>
                   )}
                 </div>
-
                 {!editingScadenza ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm">{formatDate(doc.scadenza_effettiva)}</span>
                     <ScadenzaBadge source={doc.scadenza_source} />
                     {doc.scadenza_source === "override" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 text-xs text-muted-foreground ml-auto gap-1"
-                        onClick={handleResetScadenza}
-                        disabled={saving}
-                      >
+                      <Button variant="ghost" size="sm" className="h-6 text-xs text-muted-foreground ml-auto gap-1"
+                        onClick={handleResetScadenza} disabled={saving}>
                         <X className="size-3" /> Rimuovi
                       </Button>
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <Input
-                      type="date"
-                      value={scadenzaInput}
-                      onChange={(e) => setScadenzaInput(e.target.value)}
-                      disabled={saving}
-                    />
-                    <div className="flex gap-2">
-                      <Button size="sm" className="h-8 flex-1" onClick={handleSaveScadenza} disabled={saving || !scadenzaInput}>
-                        {saving ? "Salvataggio..." : "Salva"}
-                      </Button>
-                      <Button variant="outline" size="sm" className="h-8" onClick={() => setEditingScadenza(false)}>
-                        Annulla
-                      </Button>
-                    </div>
+                  <div className="flex gap-2">
+                    <Input type="date" value={scadenzaInput} onChange={(e) => setScadenzaInput(e.target.value)} disabled={saving} className="flex-1" />
+                    <Button size="sm" className="h-9" onClick={handleSaveScadenza} disabled={saving || !scadenzaInput}>
+                      {saving ? "..." : "Salva"}
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-9" onClick={() => setEditingScadenza(false)}>Annulla</Button>
                   </div>
                 )}
               </div>
 
               <Separator />
 
+              {/* Anteprima fattura */}
+              <div>
+                <button
+                  className="flex items-center gap-2 text-sm font-medium w-full text-left hover:text-primary transition-colors"
+                  onClick={handleToggleAnteprima}
+                >
+                  {anteprimaOpen ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                  Anteprima fattura
+                  {!anteprimaOpen && righe.length === 0 && (
+                    <span className="text-xs text-muted-foreground ml-1">(clicca per caricare)</span>
+                  )}
+                  {righe.length > 0 && (
+                    <span className="text-xs text-muted-foreground ml-1">{righe.length} righe</span>
+                  )}
+                </button>
+
+                {anteprimaOpen && (
+                  <div className="mt-3 rounded-lg border overflow-hidden">
+                    {loadingRighe ? (
+                      <div className="px-4 py-6 text-center text-sm text-muted-foreground">Caricamento...</div>
+                    ) : righe.length === 0 ? (
+                      <div className="px-4 py-6 text-center text-sm text-muted-foreground">Nessuna riga trovata.</div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">Descrizione</th>
+                              <th className="text-right px-3 py-2 text-muted-foreground font-medium">Qtà</th>
+                              <th className="text-left px-3 py-2 text-muted-foreground font-medium">UM</th>
+                              <th className="text-right px-3 py-2 text-muted-foreground font-medium">Prezzo</th>
+                              <th className="text-right px-3 py-2 text-muted-foreground font-medium">IVA%</th>
+                              <th className="text-right px-3 py-2 text-muted-foreground font-medium">Totale</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/50">
+                            {righe.map((r, i) => (
+                              <tr key={i} className="hover:bg-muted/20">
+                                <td className="px-3 py-2 max-w-[260px]">
+                                  <p className="truncate" title={r.descrizione}>{r.descrizione}</p>
+                                  {r.categoria && <p className="text-[10px] text-muted-foreground">{r.categoria}</p>}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums">{r.quantita ?? "—"}</td>
+                                <td className="px-3 py-2 text-muted-foreground">{r.unita_misura ?? ""}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">
+                                  {r.prezzo_unitario != null ? `€${r.prezzo_unitario.toFixed(4)}` : "—"}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.iva_percentuale ?? "—"}%</td>
+                                <td className="px-3 py-2 text-right tabular-nums font-medium">{formatEuro(r.totale_riga)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="border-t bg-muted/30">
+                            <tr>
+                              <td colSpan={5} className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Totale</td>
+                              <td className="px-3 py-2 text-right font-bold">
+                                {formatEuro(righe.reduce((s, r) => s + (r.totale_riga || 0), 0))}
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Azione pagamento */}
               <div>
                 {doc.pagata ? (
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => { onPaga(doc, false); onClose(); }}
-                  >
+                  <Button variant="outline" className="w-full" onClick={() => { onPaga(doc, false); onClose(); }}>
                     Segna come non pagata
                   </Button>
                 ) : (
-                  <Button
-                    className="w-full gap-2"
-                    onClick={() => { onPaga(doc, true); onClose(); }}
-                  >
+                  <Button className="w-full gap-2" onClick={() => { onPaga(doc, true); onClose(); }}>
                     <Check className="size-4" /> Segna come pagata
                   </Button>
                 )}
@@ -466,8 +554,8 @@ function PeekSheet({ doc, onClose, onPaga, onSetScadenza }: PeekSheetProps) {
             </div>
           </>
         )}
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -944,7 +1032,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
         </div>
       )}
 
-      <PeekSheet
+      <PeekDialog
         doc={peekDoc}
         onClose={() => setPeekDoc(null)}
         onPaga={(doc, pagata) => handlePaga(doc, pagata)}
