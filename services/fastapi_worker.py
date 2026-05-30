@@ -157,21 +157,265 @@ async def _queue_loop() -> None:
         await asyncio.sleep(_QUEUE_LOOP_INTERVAL_SEC)
 
 
+# ── Agent notturno — stato in-memory + loop ──────────────────────────────────
+
+_agent_notturno_state: dict = {
+    "enabled": False,
+    "ora_utc": 2,
+    "last_run_at": None,
+    "last_digest": None,
+    "running": False,
+}
+
+
+def _agent_notturno_load_from_db() -> None:
+    """Legge la configurazione da app_settings al boot."""
+    try:
+        sb = get_supabase_client()
+        resp = sb.table("app_settings").select("value").eq("key", "agent_notturno").limit(1).execute()
+        if resp.data:
+            v = resp.data[0]["value"]
+            _agent_notturno_state["enabled"] = bool(v.get("enabled", False))
+            _agent_notturno_state["ora_utc"] = int(v.get("ora_utc", 2))
+            _agent_notturno_state["last_run_at"] = v.get("last_run_at")
+            _agent_notturno_state["last_digest"] = v.get("last_digest")
+    except Exception as exc:
+        logger.warning("agent_notturno: impossibile caricare config da DB: %s", exc)
+
+
+def _agent_notturno_persist() -> None:
+    """Persiste lo stato corrente (escl. running) in app_settings."""
+    try:
+        sb = get_supabase_client()
+        sb.table("app_settings").upsert({
+            "key": "agent_notturno",
+            "value": {
+                "enabled": _agent_notturno_state["enabled"],
+                "ora_utc": _agent_notturno_state["ora_utc"],
+                "last_run_at": _agent_notturno_state["last_run_at"],
+                "last_digest": _agent_notturno_state["last_digest"],
+            },
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_by": "worker",
+        }, on_conflict="key").execute()
+    except Exception as exc:
+        logger.warning("agent_notturno: impossibile persistere config: %s", exc)
+
+
+async def _run_agent_notturno() -> dict:
+    """Esegue l'agent notturno: auto-review + pre-classificazione media + digest."""
+    if _agent_notturno_state["running"]:
+        logger.info("agent_notturno: già in esecuzione, skip")
+        return {}
+
+    _agent_notturno_state["running"] = True
+    t0 = time.monotonic()
+    logger.info("🤖 Agent notturno: avvio")
+
+    try:
+        import pandas as pd
+        from utils.validation import classify_special_row_vectorized, SPECIAL_ROW_NORMALE, SPECIAL_ROW_DICITURA, SPECIAL_ROW_SCONTO_OMAGGIO
+        from utils.text_utils import pulisci_caratteri_corrotti
+        from utils.validation import is_dicitura_sicura, is_sconto_omaggio_sicuro
+        from services.ai_service import applica_regole_categoria_forti, applica_correzioni_dizionario
+
+        sb = get_supabase_client()
+        admin_emails = _admin_emails_set()
+        now_iso = datetime.now(timezone.utc).isoformat()
+
+        # Carica tutti gli utenti non-admin
+        users_resp = sb.table("users").select("id,email").execute()
+        allowed_ids = [u["id"] for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
+        if not allowed_ids:
+            return {"classificate": 0, "errori": 0, "elapsed_s": 0}
+
+        # Carica righe in coda (needs_review=True, non cancellate)
+        all_rows: list = []
+        page_size = 1000
+        offset = 0
+        while True:
+            q = (sb.table("fatture")
+                 .select("id,descrizione,categoria,prezzo_unitario,totale_riga,quantita,tipo_documento,needs_review")
+                 .is_("deleted_at", "null")
+                 .in_("user_id", allowed_ids)
+                 .eq("needs_review", True)
+                 .order("id")
+                 .range(offset, offset + page_size - 1))
+            resp = q.execute()
+            chunk = resp.data or []
+            if not chunk:
+                break
+            all_rows.extend(chunk)
+            if len(chunk) < page_size:
+                break
+            offset += page_size
+
+        if not all_rows:
+            digest = {"classificate": 0, "auto_review": 0, "suggerite": 0, "errori": 0, "elapsed_s": 0}
+            _agent_notturno_state["last_run_at"] = now_iso
+            _agent_notturno_state["last_digest"] = digest
+            _agent_notturno_persist()
+            return digest
+
+        df = pd.DataFrame(all_rows)
+        df["descrizione"] = df["descrizione"].apply(lambda x: pulisci_caratteri_corrotti(x) if isinstance(x, str) else x)
+
+        meta = classify_special_row_vectorized(df)
+        df["bucket"] = meta["bucket"]
+
+        classificate_auto = 0
+        classificate_suggerite = 0
+        errori = 0
+
+        # ── 1. Auto-review: diciture €0 e sconti/omaggi sicuri ─────────────
+        auto_diciture = df[df["bucket"] == SPECIAL_ROW_DICITURA]["descrizione"].dropna().unique().tolist()
+        auto_sconti = df[df["bucket"] == SPECIAL_ROW_SCONTO_OMAGGIO]["descrizione"].dropna().unique().tolist()
+
+        for desc in auto_diciture:
+            try:
+                prezzo_max = float(df[df["descrizione"] == desc]["prezzo_unitario"].max() or 0)
+                if prezzo_max > 0:
+                    continue
+                ids = df[df["descrizione"] == desc]["id"].tolist()
+                cat_da = str(df[df["descrizione"] == desc]["categoria"].iloc[0] or "")
+                sb.table("fatture").update({
+                    "categoria": "📝 NOTE E DICITURE",
+                    "needs_review": False,
+                    "reviewed_at": now_iso,
+                    "reviewed_by": "agent-notturno",
+                }).in_("id", ids).is_("deleted_at", "null").execute()
+                sb.table("prodotti_master").upsert({
+                    "descrizione": desc, "categoria": "📝 NOTE E DICITURE",
+                    "confidence": "altissima", "verified": True,
+                    "classificato_da": "agent-notturno", "ultima_modifica": now_iso,
+                }, on_conflict="descrizione").execute()
+                _log_review_action(sb, "agent-notturno", "auto_review", "📝 NOTE E DICITURE", ids, desc, cat_da, "notturno:dicitura")
+                classificate_auto += len(ids)
+            except Exception as exc:
+                errori += 1
+                logger.warning("agent_notturno dicitura '%s': %s", desc[:40], exc)
+
+        for desc in auto_sconti:
+            try:
+                row = df[df["descrizione"] == desc].iloc[0]
+                cat = row.get("categoria") or ""
+                if not cat or cat == "Da Clasificare":
+                    continue
+                ids = df[df["descrizione"] == desc]["id"].tolist()
+                sb.table("fatture").update({
+                    "needs_review": False,
+                    "reviewed_at": now_iso,
+                    "reviewed_by": "agent-notturno",
+                }).in_("id", ids).is_("deleted_at", "null").execute()
+                sb.table("prodotti_master").upsert({
+                    "descrizione": desc, "categoria": cat,
+                    "confidence": "alta", "verified": True,
+                    "classificato_da": "agent-notturno", "ultima_modifica": now_iso,
+                }, on_conflict="descrizione").execute()
+                _log_review_action(sb, "agent-notturno", "auto_review", cat, ids, desc, cat, "notturno:sconto_omaggio")
+                classificate_auto += len(ids)
+            except Exception as exc:
+                errori += 1
+                logger.warning("agent_notturno sconto '%s': %s", desc[:40], exc)
+
+        # ── 2. Suggerite: righe NORMALE con suggerimento deterministico forte ─
+        df_normali = df[df["bucket"] == SPECIAL_ROW_NORMALE].copy()
+        if not df_normali.empty:
+            desc_unici = df_normali["descrizione"].dropna().unique().tolist()
+            for desc in desc_unici:
+                try:
+                    cat_forte, _ = applica_regole_categoria_forti(desc, "Da Classificare")
+                    if not cat_forte or cat_forte == "Da Classificare":
+                        continue
+                    ids = df_normali[df_normali["descrizione"] == desc]["id"].tolist()
+                    cat_da = str(df_normali[df_normali["descrizione"] == desc]["categoria"].iloc[0] or "")
+                    sb.table("fatture").update({
+                        "categoria": cat_forte,
+                        "needs_review": False,
+                        "reviewed_at": now_iso,
+                        "reviewed_by": "agent-notturno",
+                    }).in_("id", ids).is_("deleted_at", "null").execute()
+                    sb.table("prodotti_master").upsert({
+                        "descrizione": desc, "categoria": cat_forte,
+                        "confidence": "alta", "verified": True,
+                        "classificato_da": "agent-notturno", "ultima_modifica": now_iso,
+                    }, on_conflict="descrizione").execute()
+                    _log_review_action(sb, "agent-notturno", "auto_review", cat_forte, ids, desc, cat_da, "notturno:regola_forte")
+                    classificate_suggerite += len(ids)
+                except Exception as exc:
+                    errori += 1
+                    logger.warning("agent_notturno suggerita '%s': %s", desc[:40], exc)
+
+        elapsed_s = round(time.monotonic() - t0, 1)
+        digest = {
+            "classificate": classificate_auto + classificate_suggerite,
+            "auto_review": classificate_auto,
+            "suggerite": classificate_suggerite,
+            "errori": errori,
+            "elapsed_s": elapsed_s,
+        }
+
+        _log_review_action(
+            sb, "agent-notturno", "digest_notturno",
+            categoria_a="—",
+            ids_fatture=[],
+            descrizione="Digest notturno",
+            nota=f"auto={classificate_auto} suggerite={classificate_suggerite} errori={errori} elapsed={elapsed_s}s",
+        )
+
+        _agent_notturno_state["last_run_at"] = now_iso
+        _agent_notturno_state["last_digest"] = digest
+        _agent_notturno_persist()
+
+        logger.info("🤖 Agent notturno completato: %s", digest)
+        return digest
+
+    except Exception as exc:
+        logger.exception("agent_notturno: errore critico: %s", exc)
+        _agent_notturno_state["last_run_at"] = datetime.now(timezone.utc).isoformat()
+        _agent_notturno_state["last_digest"] = {"errore": str(exc)[:200]}
+        _agent_notturno_persist()
+        return {}
+    finally:
+        _agent_notturno_state["running"] = False
+
+
+async def _agent_notturno_loop() -> None:
+    """Loop che controlla ogni minuto se è l'ora programmata per l'agent notturno."""
+    await asyncio.sleep(30)  # breve attesa al boot
+    last_run_date: Optional[date] = None
+    while True:
+        try:
+            if _agent_notturno_state["enabled"] and not _agent_notturno_state["running"]:
+                now = datetime.now(timezone.utc)
+                if now.hour == _agent_notturno_state["ora_utc"] and now.minute < 10:
+                    if last_run_date != now.date():
+                        last_run_date = now.date()
+                        asyncio.create_task(_run_agent_notturno(), name="agent-notturno-run")
+        except Exception as exc:
+            logger.warning("agent_notturno_loop: %s", exc)
+        await asyncio.sleep(60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    task = None
+    _agent_notturno_load_from_db()
+
+    tasks = []
     if _ENABLE_INLINE_QUEUE_PROCESSOR:
-        task = asyncio.create_task(_queue_loop(), name="queue-processor-loop")
+        tasks.append(asyncio.create_task(_queue_loop(), name="queue-processor-loop"))
     else:
         logger.info("ℹ️ Inline queue processor disabilitato (ENABLE_INLINE_QUEUE_PROCESSOR=0)")
+
+    tasks.append(asyncio.create_task(_agent_notturno_loop(), name="agent-notturno-loop"))
 
     try:
         yield
     finally:
-        if task is not None:
-            task.cancel()
+        for t in tasks:
+            t.cancel()
             try:
-                await task
+                await t
             except asyncio.CancelledError:
                 pass
 
@@ -6762,6 +7006,51 @@ async def admin_sistema_retention():
     from services.db_service import get_retention_last_status
     status = get_retention_last_status(get_supabase_client())
     return status
+
+
+# ── Sistema — Agent notturno ──────────────────────────────────────────────────
+
+@app.get("/api/admin/sistema/agent-notturno", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+async def admin_agent_notturno_status():
+    """Ritorna lo stato corrente dell'agent notturno."""
+    return {
+        "enabled": _agent_notturno_state["enabled"],
+        "ora_utc": _agent_notturno_state["ora_utc"],
+        "last_run_at": _agent_notturno_state["last_run_at"],
+        "last_digest": _agent_notturno_state["last_digest"],
+        "running": _agent_notturno_state["running"],
+    }
+
+
+class AgentNotturnoToggleBody(BaseModel):
+    enabled: bool
+    ora_utc: Optional[int] = None
+
+
+@app.post("/api/admin/sistema/agent-notturno/toggle", tags=["Admin"])
+async def admin_agent_notturno_toggle(body: AgentNotturnoToggleBody, admin_user: dict = Depends(_verify_admin)):
+    """Abilita o disabilita l'agent notturno. Opzionalmente cambia l'ora di esecuzione (0-23 UTC)."""
+    _agent_notturno_state["enabled"] = body.enabled
+    if body.ora_utc is not None:
+        _agent_notturno_state["ora_utc"] = max(0, min(23, body.ora_utc))
+    _agent_notturno_persist()
+    logger.info("agent_notturno toggle: enabled=%s ora_utc=%s | admin=%s",
+                body.enabled, _agent_notturno_state["ora_utc"], admin_user.get("email"))
+    return {
+        "ok": True,
+        "enabled": _agent_notturno_state["enabled"],
+        "ora_utc": _agent_notturno_state["ora_utc"],
+    }
+
+
+@app.post("/api/admin/sistema/agent-notturno/esegui-ora", tags=["Admin"])
+async def admin_agent_notturno_esegui_ora(admin_user: dict = Depends(_verify_admin)):
+    """Lancia subito l'agent notturno (indipendentemente dall'orario programmato)."""
+    if _agent_notturno_state["running"]:
+        raise HTTPException(status_code=409, detail="Agent già in esecuzione")
+    asyncio.create_task(_run_agent_notturno(), name="agent-notturno-manual")
+    logger.info("agent_notturno esecuzione manuale avviata | admin=%s", admin_user.get("email"))
+    return {"ok": True, "message": "Agent avviato in background — aggiorna lo stato tra qualche secondi"}
 
 
 # ── Azioni cliente (attiva/disattiva, reset password, cambia email, elimina) ──
