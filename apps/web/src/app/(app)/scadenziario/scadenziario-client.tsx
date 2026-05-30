@@ -13,17 +13,12 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription,
-} from "@/components/ui/sheet";
-import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
+import { NativeSelect } from "@/components/ui/select";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue, NativeSelect,
-} from "@/components/ui/select";
-import {
-  type Documento, type CalendarGiorno, type RegolaPagamento,
-  computeKpi, bucketizeDocumenti, formatEuro, formatDate, MODALITA_LABELS,
+  type Documento, type RegolaPagamento,
+  computeKpi, bucketizeDocumenti, formatEuro, formatDate, parseLocalDate, MODALITA_LABELS,
 } from "@/lib/scadenziario";
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
@@ -88,7 +83,10 @@ type DocumentoRowProps = {
 };
 
 function DocumentoRow({ doc, selected, onToggleSelect, onPaga, onPeek }: DocumentoRowProps) {
-  const isOverdue = !doc.pagata && doc.scadenza_effettiva && new Date(doc.scadenza_effettiva) < new Date();
+  const scad = parseLocalDate(doc.scadenza_effettiva);
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const isOverdue = !doc.pagata && scad !== null && scad < todayMidnight;
 
   return (
     <div
@@ -240,9 +238,9 @@ function CalendarView({ documenti }: CalendarViewProps) {
   const agg = useMemo(() => {
     const map: Record<number, { totale: number; count: number }> = {};
     for (const doc of documenti) {
-      if (doc.pagata || !doc.scadenza_effettiva) continue;
-      const dt = new Date(doc.scadenza_effettiva);
-      if (dt.getFullYear() === anno && dt.getMonth() === mese) {
+      if (doc.pagata) continue;
+      const dt = parseLocalDate(doc.scadenza_effettiva);
+      if (dt && dt.getFullYear() === anno && dt.getMonth() === mese) {
         const d = dt.getDate();
         if (!map[d]) map[d] = { totale: 0, count: 0 };
         map[d].totale += doc.totale_documento || 0;
@@ -272,9 +270,9 @@ function CalendarView({ documenti }: CalendarViewProps) {
   const dayDocs = useMemo(() => {
     if (!selectedDay) return [];
     return documenti.filter(d => {
-      if (d.pagata || !d.scadenza_effettiva) return false;
-      const dt = new Date(d.scadenza_effettiva);
-      return dt.getFullYear() === anno && dt.getMonth() === mese && dt.getDate() === selectedDay;
+      if (d.pagata) return false;
+      const dt = parseLocalDate(d.scadenza_effettiva);
+      return !!dt && dt.getFullYear() === anno && dt.getMonth() === mese && dt.getDate() === selectedDay;
     });
   }, [documenti, anno, mese, selectedDay]);
 
@@ -1018,6 +1016,15 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
   const kpi = useMemo(() => computeKpi(documentiFiltrati), [documentiFiltrati]);
   const buckets = useMemo(() => bucketizeDocumenti(documentiFiltrati), [documentiFiltrati]);
 
+  // Il calendario ha già la propria navigazione mensile: applica solo il filtro
+  // fornitore (i chip periodo sono specifici dell'agenda).
+  const documentiCalendario = useMemo(() =>
+    filtroFornitori.size === 0
+      ? documenti
+      : documenti.filter(d => filtroFornitori.has(d.fornitore)),
+    [documenti, filtroFornitori]
+  );
+
   const loadData = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -1265,7 +1272,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
           )}
         </div>
       ) : (
-        <CalendarView documenti={documenti} />
+        <CalendarView documenti={documentiCalendario} />
       )}
 
       {/* Floating bulk action bar */}

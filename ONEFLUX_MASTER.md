@@ -1,6 +1,6 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 30 maggio 2026 (rev. 9 — Scadenziario + Cestino Next.js completati)
+**Ultima revisione:** 30 maggio 2026 (rev. 10 — Scadenziario hardening debug)
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -245,7 +245,7 @@ Briefing AI + KPI cards + notifiche actionable con filtri per categoria. Oggi: K
 Lista con filtri, ricerca, dettaglio peek a destra, azioni rapide (pagata, sposta, elimina). Categorizzazione automatica con review solo per bassa confidenza. **Stato**: ✅ funzionale.
 
 ### 📅 Scadenziario
-Vista agenda (bucket urgenza) + calendario cash-flow. KPI bar 4 card. Scadenza override manuale. Bulk segna pagata. Regole fornitore (Sheet). Pre-notifica aggregata nella inbox. **Stato**: ✅ completato Next.js.
+Vista agenda (bucket urgenza) + calendario cash-flow. KPI bar 4 card reattive ai filtri. Filtri periodo (chip) + multi-fornitore (popover). Scadenza override manuale. Bulk segna pagata + select-all per sezione. Regole fornitore (Dialog centrato, selezione multi-fornitore). Anteprima righe fattura lazy-load nel peek. Pre-notifica aggregata nella inbox. **Stato**: ✅ completato + hardening debug (30/5).
 
 ### 🔔 Notifiche
 Cronologia con filtri per categoria, auto-purge 30 giorni, priorità visiva (🔴🟡🔵).
@@ -500,7 +500,20 @@ Pagina fuori roadmap originale, aggiunta su richiesta. Non segue la numerazione 
 - `fattore_kg` supportato nel backend ma UI rimandata a v2
 - Confronto multi-tag rimandato a v2
 
-### Prossimi passi concreti (aggiornato 29/5 — rev.7)
+**Scadenziario — hardening debug (30 maggio 2026)**
+Analisi di correttezza della pagina Scadenziario dopo il completamento funzionale. Fix applicati:
+
+1. **Bug timezone date-only.** `new Date("YYYY-MM-DD")` veniva interpretata come mezzanotte UTC: in Italia (UTC+1/+2) spostava i confronti di un giorno. Effetto concreto: una fattura **in scadenza oggi** appariva **scaduta** (bordo + testo rossi in `DocumentoRow`), incoerente con `bucketizeDocumenti`. Nuovo helper `parseLocalDate()` in `lib/scadenziario.ts` (parsing come data locale) usato in `computeKpi`, `bucketizeDocumenti`, `DocumentoRow.isOverdue` e `CalendarView` (agg + dettaglio giorno).
+2. **Calendario incoerente coi filtri.** La vista calendario riceveva i documenti grezzi ignorando il filtro fornitore. Ora riceve `documentiCalendario` (filtrato per fornitore; i chip periodo restano specifici dell'agenda perché il calendario ha la propria navigazione mensile).
+3. **Pulizia import morti** in `scadenziario-client.tsx`: rimossi `Sheet*`, `Select/SelectContent/SelectItem/SelectTrigger/SelectValue` (in uso solo `NativeSelect`), tipo `CalendarGiorno`. Rimossi i tipi `CalendarGiorno`/`CalendarResponse` da `lib/scadenziario.ts`.
+
+**Aperto (non bloccante, da valutare):**
+- **Endpoint `/api/scadenziario/calendario` morto**: il `CalendarView` aggrega client-side e non chiama mai quella route. Lasciato in piedi come base per un'eventuale aggregazione server-side (utile se i documenti crescono molto); da rimuovere se si decide di non usarlo.
+- **Reload completo dopo ogni "Paga" singolo**: `handlePaga` rifà `loadData()` (riscansione paginata di tutte le `fatture` sul worker). Per il singolo si potrebbe fare update ottimistico; il bulk già fa una sola chiamata.
+- **N+1 POST nelle Regole multi-fornitore**: `handleSave` cicla una POST per fornitore. Valutare endpoint batch se le selezioni diventano grandi.
+- **Selezione persistente al cambio filtro**: le fatture selezionate restano in `selectedFileOrigini` anche se escono dal filtro (la bulk bar le conta pur non essendo visibili).
+
+### Prossimi passi concreti (aggiornato 30/5 — rev.10)
 
 **Prerequisito immediato (non è codice):**
 - Aggiungere env var `BREVO_API_KEY` / `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME` su Railway per attivare reset password in produzione

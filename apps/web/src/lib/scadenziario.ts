@@ -14,18 +14,6 @@ export type Documento = {
   stato_scadenza: string;
 };
 
-export type CalendarGiorno = {
-  giorno: number;
-  totale: number;
-};
-
-export type CalendarResponse = {
-  anno: number;
-  mese: number;
-  giorni: CalendarGiorno[];
-  totale_mese: number;
-};
-
 export type RegolaPagamento = {
   id: string;
   piva_fornitore: string;
@@ -58,6 +46,21 @@ export const MODALITA_LABELS: Record<string, string> = {
   "90gg_fm": "Fine del 3° mese successivo",
 };
 
+/**
+ * Parsa una data "YYYY-MM-DD" come data LOCALE a mezzanotte.
+ * `new Date("YYYY-MM-DD")` la interpreterebbe come mezzanotte UTC, che in Italia
+ * (UTC+1/+2) sposta confronti e bucket di un giorno. Qui evitiamo l'ambiguità.
+ */
+export function parseLocalDate(iso: string | null): Date | null {
+  if (!iso) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!m) {
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
 export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -86,10 +89,8 @@ export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
     da_pagare_count++;
     da_pagare_totale += totale;
 
-    if (!doc.scadenza_effettiva) continue;
-
-    const scad = new Date(doc.scadenza_effettiva);
-    scad.setHours(0, 0, 0, 0);
+    const scad = parseLocalDate(doc.scadenza_effettiva);
+    if (!scad) continue;
 
     if (scad < today) {
       scadute_count++;
@@ -128,12 +129,11 @@ export function bucketizeDocumenti(documenti: Documento[]) {
       pagate.push(doc);
       continue;
     }
-    if (!doc.scadenza_effettiva) {
+    const scad = parseLocalDate(doc.scadenza_effettiva);
+    if (!scad) {
       senzaScadenza.push(doc);
       continue;
     }
-    const scad = new Date(doc.scadenza_effettiva);
-    scad.setHours(0, 0, 0, 0);
     if (scad < today) scadute.push(doc);
     else if (scad <= in7) settimana.push(doc);
     else if (scad <= in30) mese.push(doc);
