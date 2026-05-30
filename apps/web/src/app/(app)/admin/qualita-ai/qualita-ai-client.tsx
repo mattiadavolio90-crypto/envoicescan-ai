@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import {
   RefreshCw, Bot, CheckCircle, AlertTriangle, Zap, Trash2, ArrowRightLeft, Search
 } from "lucide-react";
+import { CATEGORIE_TUTTE } from "@/lib/admin";
 
 const CATEGORIE_SPECIALI = ["📝 NOTE E DICITURE", "SERVIZI E CONSULENZE", "BEVANDE FREDDE", "FOOD GENERICO", "ALTRI COSTI"];
 
@@ -72,10 +73,16 @@ function CodaTab() {
   useEffect(() => { load(); }, [load]);
 
   async function handleAutoReview() {
-    if (!confirm("Eseguire auto-classificazione su tutte le diciture sicure e sconti/omaggi?")) return;
+    const nomeCliente = filtroCliente !== "tutti" ? clienti.find((c) => c.id === filtroCliente)?.nome : null;
+    const scope = nomeCliente ? `del cliente "${nomeCliente}"` : "di tutti i clienti";
+    if (!confirm(`Eseguire auto-classificazione su diciture sicure e sconti/omaggi ${scope}?`)) return;
     setAutoRunning(true);
     try {
-      const res = await fetch("/api/admin/qualita-ai/coda/auto-review", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const res = await fetch("/api/admin/qualita-ai/coda/auto-review", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(filtroCliente !== "tutti" ? { cliente_id: filtroCliente } : {}),
+      });
       const d = await res.json();
       toast.success(`Auto-review: ${d.classificate} righe classificate, ${d.salvate_memoria} salvate in memoria${d.errori > 0 ? ` (${d.errori} errori)` : ""}`);
       load();
@@ -348,7 +355,12 @@ function MemoriaTab() {
           <DialogHeader><DialogTitle>Modifica categoria</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm truncate text-muted-foreground">{editRow?.descrizione}</p>
-            <Input value={editCat} onChange={(e) => setEditCat(e.target.value)} placeholder="Categoria…" />
+            <Select value={editCat} onValueChange={setEditCat}>
+              <SelectTrigger><SelectValue placeholder="Seleziona categoria…" /></SelectTrigger>
+              <SelectContent className="max-h-72">
+                {CATEGORIE_TUTTE.map((cat) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditRow(null)}>Annulla</Button>

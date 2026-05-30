@@ -48,7 +48,7 @@ const NAV_CARDS = [
   {
     href: "/admin/sistema",
     title: "Sistema & Salute",
-    desc: "Costi AI, integrità DB, retention",
+    desc: "Costi AI, retention",
     icon: Settings,
     border: "border-emerald-500",
     bg: "hover:bg-emerald-500/8",
@@ -72,6 +72,7 @@ export default async function AdminPage() {
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value ?? "";
   const { data: overview, error: overviewError } = await fetchOverview(token);
+  const overviewSubErrors = (overview?._errors as string[] | undefined) ?? [];
 
   return (
     <div className="space-y-6">
@@ -83,6 +84,15 @@ export default async function AdminPage() {
           </p>
         )}
       </div>
+
+      {overviewSubErrors.length > 0 && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-700 space-y-1">
+          <p className="font-medium">Alcuni dati non sono stati calcolati (i KPI relativi possono mostrare 0):</p>
+          <ul className="list-disc list-inside">
+            {overviewSubErrors.map((e, i) => <li key={i} className="truncate" title={e}>{e}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* KPI cards — bordo blu uniforme */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

@@ -46,6 +46,18 @@ export const PIANO_COLOR: Record<string, string> = {
   pro: "bg-violet-100 text-violet-700",
 };
 
+// Categorie valide (allineate a config/constants.py TUTTE_LE_CATEGORIE + speciale diciture).
+// "Da Clasificare" è VIETATA da constraint DB — non includerla mai.
+export const CATEGORIE_TUTTE: string[] = [
+  "📝 NOTE E DICITURE",
+  "CARNE", "PESCE", "LATTICINI", "SALUMI", "UOVA", "SCATOLAME E CONSERVE",
+  "OLIO E CONDIMENTI", "PASTA E CEREALI", "VERDURE", "FRUTTA", "SALSE E CREME",
+  "ACQUA", "BEVANDE", "CAFFE E THE", "BIRRE", "VINI",
+  "VARIE BAR", "DISTILLATI", "AMARI/LIQUORI", "PASTICCERIA",
+  "PRODOTTI DA FORNO", "SPEZIE E AROMI", "GELATI E DESSERT", "SHOP", "SUSHI VARIE",
+  "SERVIZI E CONSULENZE", "UTENZE E LOCALI", "MANUTENZIONE E ATTREZZATURE", "MATERIALE DI CONSUMO",
+];
+
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" });
