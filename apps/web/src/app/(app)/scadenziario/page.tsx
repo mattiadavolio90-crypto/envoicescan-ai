@@ -50,7 +50,7 @@ export default async function ScadenziarioPage() {
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Scadenziario</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Gestione Fatture</h1>
       </div>
       <ScadenziarioClient initialDocumenti={documenti} />
     </div>

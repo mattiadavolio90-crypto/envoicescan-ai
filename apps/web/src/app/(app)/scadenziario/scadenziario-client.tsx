@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import {
-  AlertTriangle, Calendar, CalendarDays, Check, ChevronDown, ChevronRight,
-  Filter, List, Pencil, Plus, Search, Settings2, Trash2, X,
+  AlertTriangle, ArchiveRestore, Calendar, CalendarDays, Check, ChevronDown,
+  ChevronRight, Filter, List, Loader2, Pencil, Plus, Search, Settings2, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -372,22 +372,40 @@ type PeekDialogProps = {
   onClose: () => void;
   onPaga: (doc: Documento, pagata: boolean) => void;
   onSetScadenza: (doc: Documento, data: string | null) => Promise<void>;
+  onElimina: (doc: Documento) => Promise<void>;
 };
 
-function PeekDialog({ doc, onClose, onPaga, onSetScadenza }: PeekDialogProps) {
+function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina }: PeekDialogProps) {
   const [editingScadenza, setEditingScadenza] = useState(false);
   const [scadenzaInput, setScadenzaInput] = useState("");
   const [saving, setSaving] = useState(false);
   const [anteprimaOpen, setAnteprimaOpen] = useState(false);
   const [righe, setRighe] = useState<RigaFattura[]>([]);
   const [loadingRighe, setLoadingRighe] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (doc) { setScadenzaInput(doc.scadenza_effettiva ?? ""); }
     setEditingScadenza(false);
     setAnteprimaOpen(false);
     setRighe([]);
+    setDeleteConfirm(false);
+    setDeleting(false);
   }, [doc]);
+
+  async function handleDelete() {
+    if (!doc) return;
+    setDeleting(true);
+    try {
+      await onElimina(doc);
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Errore durante l'eliminazione");
+      setDeleting(false);
+      setDeleteConfirm(false);
+    }
+  }
 
   async function handleToggleAnteprima() {
     if (anteprimaOpen) { setAnteprimaOpen(false); return; }
@@ -433,7 +451,7 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza }: PeekDialogProps) {
 
   return (
     <Dialog open={!!doc} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         {doc && (
           <>
             <DialogHeader>
@@ -575,6 +593,35 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza }: PeekDialogProps) {
                   <Button className="w-full gap-2" onClick={() => { onPaga(doc, true); onClose(); }}>
                     <Check className="size-4" /> Segna come pagata
                   </Button>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Elimina fattura */}
+              <div>
+                {!deleteConfirm ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full text-muted-foreground hover:text-destructive gap-1.5"
+                    onClick={() => setDeleteConfirm(true)}
+                  >
+                    <Trash2 className="size-4" /> Elimina fattura
+                  </Button>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-center text-muted-foreground">Sposta questa fattura nel cestino?</p>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" className="flex-1" onClick={() => setDeleteConfirm(false)} disabled={deleting}>
+                        Annulla
+                      </Button>
+                      <Button variant="destructive" size="sm" className="flex-1 gap-1.5" onClick={handleDelete} disabled={deleting}>
+                        {deleting && <Loader2 className="size-3.5 animate-spin" />}
+                        Conferma
+                      </Button>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -942,6 +989,27 @@ function FornitoreMultiSelect({ fornitori, selected, onChange }: FornitoreMultiS
 type Periodo = "tutti" | "scadute" | "settimana" | "mese" | "personalizzato";
 type View = "agenda" | "calendario";
 
+type CestinoItem = {
+  file_origine: string;
+  fornitore: string;
+  num_righe: number;
+  totale: number;
+  deleted_at: string;
+  data_documento: string;
+};
+
+function formatDateCestino(iso: string | null) {
+  if (!iso) return "—";
+  try { return new Intl.DateTimeFormat("it-IT", { day: "2-digit", month: "short", year: "numeric" }).format(new Date(iso)); }
+  catch { return iso; }
+}
+
+function daysToCestino(deleted_at: string) {
+  const expiry = new Date(deleted_at);
+  expiry.setDate(expiry.getDate() + 30);
+  return Math.max(0, Math.ceil((expiry.getTime() - Date.now()) / 86400000));
+}
+
 export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Documento[] }) {
   const [documenti, setDocumenti] = useState<Documento[]>(initialDocumenti);
   const [view, setView] = useState<View>("agenda");
@@ -950,6 +1018,13 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
   const [regoleOpen, setRegoleOpen] = useState(false);
   const [bulkPaying, setBulkPaying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // ── Cestino widget
+  const [cestinoOpen, setCestinoOpen] = useState(false);
+  const [cestinoItems, setCestinoItems] = useState<CestinoItem[]>([]);
+  const [cestinoLoading, setCestinoLoading] = useState(false);
+  const [cestinoConfirmElimina, setCestinoConfirmElimina] = useState<CestinoItem | null>(null);
+  const [cestinoActionLoading, setCestinoActionLoading] = useState(false);
 
   // ── Filtri
   const [filtroPeriodo, setFiltroPeriodo] = useState<Periodo>("tutti");
@@ -1112,6 +1187,85 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     await loadData();
   }
 
+  async function handleElimina(doc: Documento) {
+    const res = await fetch("/api/fatture/elimina", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ file_origine: doc.file_origine }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const detail = data.detail ?? "";
+      if (detail === "already_in_trash") throw new Error("La fattura è già nel cestino");
+      throw new Error(detail || "Errore durante l'eliminazione");
+    }
+    toast.success("Fattura spostata nel cestino");
+    setDocumenti(prev => prev.filter(d => d.file_origine !== doc.file_origine));
+    setPeekDoc(null);
+    // Ricarica il cestino se era già aperto
+    if (cestinoOpen) loadCestino();
+  }
+
+  async function loadCestino() {
+    setCestinoLoading(true);
+    try {
+      const res = await fetch("/api/cestino");
+      if (res.ok) { const d = await res.json(); setCestinoItems(d.cestino ?? []); }
+    } finally { setCestinoLoading(false); }
+  }
+
+  function toggleCestino() {
+    if (!cestinoOpen) loadCestino();
+    setCestinoOpen(prev => !prev);
+  }
+
+  async function handleCestinoRipristina(item: CestinoItem) {
+    setCestinoActionLoading(true);
+    try {
+      const res = await fetch("/api/cestino/ripristina", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_origine: item.file_origine }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.detail || "Errore ripristino"); return; }
+      toast.success(`Fattura ripristinata (${data.righe_ripristinate} prodotti)`);
+      await loadCestino();
+      await loadData();
+    } catch { toast.error("Errore di connessione"); }
+    finally { setCestinoActionLoading(false); }
+  }
+
+  async function handleCestinoEliminaConferma() {
+    if (!cestinoConfirmElimina) return;
+    setCestinoActionLoading(true);
+    try {
+      const res = await fetch("/api/cestino/elimina", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_origine: cestinoConfirmElimina.file_origine }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.detail || "Errore eliminazione"); return; }
+      toast.success(`Fattura eliminata definitivamente`);
+      setCestinoConfirmElimina(null);
+      await loadCestino();
+    } catch { toast.error("Errore di connessione"); }
+    finally { setCestinoActionLoading(false); }
+  }
+
+  async function handleCestinoSvuota() {
+    setCestinoActionLoading(true);
+    try {
+      const res = await fetch("/api/cestino/svuota", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.detail || "Errore svuotamento"); return; }
+      toast.success(`Cestino svuotato`);
+      setCestinoItems([]);
+    } catch { toast.error("Errore di connessione"); }
+    finally { setCestinoActionLoading(false); }
+  }
+
   const totaleNonPagateFiltrate = documentiFiltrati.filter(d => !d.pagata).length;
 
   const sharedProps = {
@@ -1164,10 +1318,116 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
           <Settings2 className="size-3.5" /> Regole fornitore
         </Button>
 
-        <Button variant="ghost" size="sm" className="h-8 text-xs ml-auto" onClick={loadData} disabled={refreshing}>
-          {refreshing ? "..." : "Aggiorna"}
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button
+            variant={cestinoOpen ? "secondary" : "outline"}
+            size="sm"
+            className="h-8 gap-1.5 text-xs"
+            onClick={toggleCestino}
+          >
+            <ArchiveRestore className="size-3.5" />
+            Cestino{cestinoItems.length > 0 && ` (${cestinoItems.length})`}
+          </Button>
+          <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={loadData} disabled={refreshing}>
+            {refreshing ? "..." : "Aggiorna"}
+          </Button>
+        </div>
       </div>
+
+      {/* Cestino collassabile */}
+      {cestinoOpen && (
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold flex items-center gap-1.5">
+              <ArchiveRestore className="size-4 text-muted-foreground" />
+              Cestino Fatture
+            </p>
+            <div className="flex items-center gap-2">
+              {cestinoItems.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs text-destructive hover:text-destructive"
+                  onClick={handleCestinoSvuota}
+                  disabled={cestinoActionLoading}
+                >
+                  <Trash2 className="size-3.5 mr-1" /> Svuota tutto
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={loadCestino} disabled={cestinoLoading}>
+                {cestinoLoading ? <Loader2 className="size-3.5 animate-spin" /> : "Aggiorna"}
+              </Button>
+            </div>
+          </div>
+
+          {cestinoLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : cestinoItems.length === 0 ? (
+            <p className="text-sm text-center text-muted-foreground py-4">Cestino vuoto</p>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Le fatture eliminate vengono conservate per 30 giorni.
+              </p>
+              {cestinoItems.map(item => {
+                const days = daysToCestino(item.deleted_at);
+                const urgent = days <= 5;
+                return (
+                  <div key={item.file_origine} className="flex items-center gap-3 px-3 py-2.5 rounded-md border bg-background hover:bg-muted/30 transition-colors">
+                    <div className="flex-1 min-w-0 space-y-0.5">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium truncate">{item.fornitore || item.file_origine}</span>
+                        <span className="text-xs text-muted-foreground">{item.num_righe} prodott{item.num_righe === 1 ? "o" : "i"}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+                        {item.data_documento && <span>Data: {formatDateCestino(item.data_documento)}</span>}
+                        <span>Eliminata: {formatDateCestino(item.deleted_at)}</span>
+                        <span className={`font-medium ${urgent ? "text-rose-600" : ""}`}>
+                          {days === 0 ? "Eliminazione imminente" : `${days}g al 30°`}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-sm font-semibold flex-shrink-0">{formatEuro(item.totale)}</span>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 gap-1 text-xs"
+                        onClick={() => handleCestinoRipristina(item)}
+                        disabled={cestinoActionLoading}
+                      >
+                        <ArchiveRestore className="size-3.5" /> Ripristina
+                      </Button>
+                      {cestinoConfirmElimina?.file_origine === item.file_origine ? (
+                        <div className="flex gap-1">
+                          <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setCestinoConfirmElimina(null)} disabled={cestinoActionLoading}>
+                            Annulla
+                          </Button>
+                          <Button variant="destructive" size="sm" className="h-7 text-xs" onClick={handleCestinoEliminaConferma} disabled={cestinoActionLoading}>
+                            {cestinoActionLoading ? <Loader2 className="size-3.5 animate-spin" /> : "Elimina"}
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => setCestinoConfirmElimina(item)}
+                          disabled={cestinoActionLoading}
+                        >
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filtri (visibili in entrambe le viste) */}
       <div className="rounded-lg border bg-card p-3 space-y-3">
@@ -1301,6 +1561,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
         onClose={() => setPeekDoc(null)}
         onPaga={(doc, pagata) => handlePaga(doc, pagata)}
         onSetScadenza={handleSetScadenza}
+        onElimina={handleElimina}
       />
 
       <RegoleDialog open={regoleOpen} onClose={() => setRegoleOpen(false)} />
