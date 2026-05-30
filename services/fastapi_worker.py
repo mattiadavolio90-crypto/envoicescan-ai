@@ -5142,6 +5142,449 @@ async def dismiss_tag_suggestion_endpoint(sid: int, authorization: Optional[str]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# SCADENZIARIO — gestione pagamenti, scadenze, regole fornitore, notifica
+# ═══════════════════════════════════════════════════════════════════════════
+
+class PagataRequest(BaseModel):
+    file_origini: List[str]
+    pagata: bool = True
+
+
+class ScadenzaOverrideRequest(BaseModel):
+    file_origine: str
+    scadenza_override: Optional[str] = None
+
+
+class FornitoreRegolaRequest(BaseModel):
+    piva_fornitore: str
+    modalita: str
+    note: Optional[str] = None
+
+
+@app.get("/api/scadenziario", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
+async def get_scadenziario(authorization: Optional[str] = Header(None)):
+    from services.documenti_service import get_documenti_scadenziario
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    documenti = get_documenti_scadenziario(str(user["id"]), ristorante_id)
+    return {"documenti": documenti}
+
+
+@app.get("/api/scadenziario/calendario", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
+async def get_scadenziario_calendario(
+    anno: int,
+    mese: int,
+    authorization: Optional[str] = Header(None),
+):
+    from services.documenti_service import get_documenti_scadenziario
+    import calendar as _cal
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    docs = get_documenti_scadenziario(str(user["id"]), ristorante_id)
+    _, last_day = _cal.monthrange(anno, mese)
+    agg: Dict[int, float] = {}
+    for doc in docs:
+        if doc.get("pagata"):
+            continue
+        scad = doc.get("scadenza_effettiva")
+        if not scad:
+            continue
+        try:
+            import pandas as _pd
+            dt = _pd.to_datetime(scad, errors="coerce")
+            if _pd.isna(dt):
+                continue
+            if dt.year == anno and dt.month == mese:
+                day = int(dt.day)
+                agg[day] = agg.get(day, 0.0) + float(doc.get("totale_documento") or 0)
+        except Exception:
+            continue
+
+    return {
+        "anno": anno,
+        "mese": mese,
+        "giorni": [
+            {"giorno": g, "totale": round(agg.get(g, 0.0), 2)}
+            for g in range(1, last_day + 1)
+        ],
+        "totale_mese": round(sum(agg.values()), 2),
+    }
+
+
+@app.post("/api/scadenziario/pagata", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
+async def segna_pagata_endpoint(body: PagataRequest, authorization: Optional[str] = Header(None)):
+    from services.documenti_service import segna_fattura_pagata
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    results = []
+    for fo in body.file_origini:
+        r = segna_fattura_pagata(
+            file_origine=fo,
+            user_id=str(user["id"]),
+            ristorante_id=ristorante_id,
+            pagata=body.pagata,
+        )
+        results.append({"file_origine": fo, **r})
+
+    ok_count = sum(1 for r in results if r.get("success"))
+    return {"ok": ok_count == len(results), "aggiornate": ok_count, "dettaglio": results}
+
+
+@app.post("/api/scadenziario/scadenza", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
+async def set_scadenza_override_endpoint(
+    body: ScadenzaOverrideRequest, authorization: Optional[str] = Header(None)
+):
+    from services.documenti_service import set_scadenza_override
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    file_origine = str(body.file_origine or "").strip()
+    if not file_origine:
+        raise HTTPException(status_code=400, detail="file_origine obbligatorio")
+
+    result = set_scadenza_override(
+        file_origine=file_origine,
+        user_id=str(user["id"]),
+        ristorante_id=ristorante_id,
+        scadenza_override=body.scadenza_override or None,
+    )
+
+    if not result.get("ok"):
+        status = 404 if "trovato" in str(result.get("error", "")).lower() else 400
+        raise HTTPException(status_code=status, detail=result.get("error"))
+
+    return result
+
+
+@app.get("/api/scadenziario/fornitori", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
+async def get_fornitori_scadenziario(authorization: Optional[str] = Header(None)):
+    """
+    Restituisce lista fornitori unici per lo scadenziario.
+
+    Fonte primaria: fatture (sempre popolata) → nomi distinti.
+    Fonte secondaria: fatture_documenti → piva_fornitore (se disponibile).
+    Risultato: lista {fornitore, piva_fornitore | null} ordinata per nome.
+    """
+    from services.db_service import filter_active as _fa
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    uid = str(user["id"])
+
+    # Step 1: nomi distinti da fatture (fonte primaria garantita)
+    nomi_fatture: set = set()
+    page_size = 1000
+    offset = 0
+    while True:
+        r = (
+            _fa(
+                sb.table("fatture")
+                .select("fornitore")
+                .eq("user_id", uid)
+                .eq("ristorante_id", ristorante_id)
+            )
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        for row in (r.data or []):
+            nome = str(row.get("fornitore") or "").strip()
+            if nome:
+                nomi_fatture.add(nome)
+        if len(r.data or []) < page_size:
+            break
+        offset += page_size
+
+    # Step 2: mappa nome → piva da fatture_documenti (opzionale)
+    nome_to_piva: Dict[str, str] = {}
+    try:
+        r2 = (
+            sb.table("fatture_documenti")
+            .select("fornitore,piva_fornitore")
+            .eq("user_id", uid)
+            .eq("ristorante_id", ristorante_id)
+            .not_.is_("piva_fornitore", "null")
+            .execute()
+        )
+        for row in (r2.data or []):
+            nome = str(row.get("fornitore") or "").strip()
+            piva = str(row.get("piva_fornitore") or "").strip()
+            if nome and piva and nome not in nome_to_piva:
+                nome_to_piva[nome] = piva
+    except Exception:
+        pass
+
+    fornitori = sorted(
+        [
+            {
+                "fornitore": nome,
+                "piva_fornitore": nome_to_piva.get(nome),
+            }
+            for nome in nomi_fatture
+        ],
+        key=lambda x: x["fornitore"].casefold(),
+    )
+    return {"fornitori": fornitori}
+
+
+@app.get("/api/scadenziario/regole", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
+async def get_regole_pagamento(authorization: Optional[str] = Header(None)):
+    from services.documenti_service import get_fornitori_pagamenti_config
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    regole = get_fornitori_pagamenti_config(str(user["id"]), ristorante_id)
+    return {"regole": regole}
+
+
+@app.post("/api/scadenziario/regole", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
+async def upsert_regola_pagamento(
+    body: FornitoreRegolaRequest, authorization: Optional[str] = Header(None)
+):
+    from services.documenti_service import upsert_fornitori_pagamenti_config
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    valid_modalita = {"rid", "30gg", "60gg", "90gg", "30gg_fm", "60gg_fm", "90gg_fm"}
+    modalita = str(body.modalita or "").strip().lower()
+    if modalita not in valid_modalita:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Modalità non valida. Consentite: {', '.join(sorted(valid_modalita))}",
+        )
+
+    try:
+        result = upsert_fornitori_pagamenti_config(
+            user_id=str(user["id"]),
+            ristorante_id=ristorante_id,
+            piva_fornitore=body.piva_fornitore,
+            modalita=modalita,
+            note=body.note,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not result.get("ok"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Errore salvataggio"))
+
+    return result
+
+
+@app.delete(
+    "/api/scadenziario/regole/{regola_id}", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)]
+)
+async def delete_regola_pagamento(regola_id: str, authorization: Optional[str] = Header(None)):
+    from services.documenti_service import delete_fornitori_pagamenti_config
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    try:
+        result = delete_fornitori_pagamenti_config(
+            user_id=str(user["id"]),
+            ristorante_id=ristorante_id,
+            regola_id=regola_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if not result.get("ok"):
+        raise HTTPException(status_code=404, detail="Regola non trovata")
+
+    return result
+
+
+@app.post("/api/scadenziario/notifica", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
+async def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
+    """Genera/aggiorna notifica aggregata scadenze nella inbox (upsert idempotente)."""
+    from services.documenti_service import get_documenti_scadenziario
+    from datetime import date as _d
+    import pandas as _pd
+
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    docs = get_documenti_scadenziario(str(user["id"]), ristorante_id)
+    today = _d.today()
+
+    scadute, settimana = [], []
+    for doc in docs:
+        if doc.get("pagata"):
+            continue
+        scad = doc.get("scadenza_effettiva")
+        if not scad:
+            continue
+        try:
+            dt = _pd.to_datetime(scad, errors="coerce")
+            if _pd.isna(dt):
+                continue
+            delta = (dt.date() - today).days
+            if delta < 0:
+                scadute.append(doc)
+            elif delta <= 7:
+                settimana.append(doc)
+        except Exception:
+            continue
+
+    if not scadute and not settimana:
+        return {"ok": True, "notifica": None}
+
+    tot_sc = sum(d.get("totale_documento", 0) or 0 for d in scadute)
+    tot_sw = sum(d.get("totale_documento", 0) or 0 for d in settimana)
+
+    parts = []
+    if scadute:
+        parts.append(f"{len(scadute)} scadut{'a' if len(scadute) == 1 else 'e'} (€{tot_sc:,.0f})")
+    if settimana:
+        parts.append(f"{len(settimana)} in scadenza questa settimana (€{tot_sw:,.0f})")
+
+    record = {
+        "user_id": str(user["id"]),
+        "ristorante_id": ristorante_id,
+        "topic_key": "scadenze_aggregate",
+        "source_type": "scadenziario",
+        "severity": "red" if scadute else "yellow",
+        "title": "Fatture in scadenza",
+        "body": " • ".join(parts),
+        "action_page": "/scadenziario",
+        "dismissed_at": None,
+    }
+
+    try:
+        sb.table("notification_inbox").upsert(
+            record, on_conflict="user_id,ristorante_id,topic_key"
+        ).execute()
+    except Exception as e:
+        logger.warning("Errore upsert notifica scadenze: %s", e)
+        return {"ok": False, "error": str(e)}
+
+    return {"ok": True, "notifica": record}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CESTINO FATTURE — soft-delete, ripristino, svuota
+# ═══════════════════════════════════════════════════════════════════════════
+
+class CestinoRipristinaRequest(BaseModel):
+    file_origine: str
+
+
+class CestinoEliminaRequest(BaseModel):
+    file_origine: str
+
+
+@app.get("/api/cestino", tags=["Cestino"], dependencies=[Depends(_verify_worker_key)])
+async def get_cestino(authorization: Optional[str] = Header(None)):
+    from services.db_service import get_fatture_cestino
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    items = get_fatture_cestino(str(user["id"]), ristorante_id=ristorante_id)
+    return {"cestino": items, "count": len(items)}
+
+
+@app.post("/api/cestino/ripristina", tags=["Cestino"], dependencies=[Depends(_verify_worker_key)])
+async def ripristina_dal_cestino(
+    body: CestinoRipristinaRequest, authorization: Optional[str] = Header(None)
+):
+    from services.db_service import ripristina_fattura
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    file_origine = str(body.file_origine or "").strip()
+    if not file_origine:
+        raise HTTPException(status_code=400, detail="file_origine obbligatorio")
+
+    result = ripristina_fattura(file_origine, user_id=str(user["id"]), ristorante_id=ristorante_id)
+
+    if not result.get("success"):
+        err = result.get("error", "Errore")
+        status = 404 if "not_found" in str(err) else 500
+        raise HTTPException(status_code=status, detail=err)
+
+    return result
+
+
+@app.post("/api/cestino/elimina", tags=["Cestino"], dependencies=[Depends(_verify_worker_key)])
+async def elimina_definitivamente(
+    body: CestinoEliminaRequest, authorization: Optional[str] = Header(None)
+):
+    """Elimina definitivamente una fattura già nel cestino (hard delete)."""
+    from services.db_service import elimina_fattura_completa
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    file_origine = str(body.file_origine or "").strip()
+    if not file_origine:
+        raise HTTPException(status_code=400, detail="file_origine obbligatorio")
+
+    result = elimina_fattura_completa(
+        file_origine,
+        user_id=str(user["id"]),
+        ristoranteid=ristorante_id,
+        soft_delete=False,
+    )
+
+    if not result.get("success"):
+        err = result.get("error", "Errore")
+        status = 404 if "not_found" in str(err) else 500
+        raise HTTPException(status_code=status, detail=err)
+
+    return result
+
+
+@app.post("/api/cestino/svuota", tags=["Cestino"], dependencies=[Depends(_verify_worker_key)])
+async def svuota_cestino_endpoint(authorization: Optional[str] = Header(None)):
+    from services.db_service import svuota_cestino
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    result = svuota_cestino(str(user["id"]), ristorante_id=ristorante_id)
+
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Errore"))
+
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # ENTRY POINT (avvio diretto: python services/fastapi_worker.py)
 # ═══════════════════════════════════════════════════════════════════════════
 

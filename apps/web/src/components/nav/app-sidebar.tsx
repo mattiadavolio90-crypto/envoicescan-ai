@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  ArchiveRestore,
   BarChart3,
   Bell,
+  CalendarDays,
   ChevronsUpDown,
   FileText,
   Home,
@@ -46,10 +48,12 @@ const navMain = [
   { title: "Ricavi e Margini", url: "/margini", icon: BarChart3 },
   { title: "Foodcost", url: "/foodcost", icon: Utensils },
   { title: "Analisi e Tag", url: "/analisi-e-tag", icon: Tags },
+  { title: "Scadenziario", url: "/scadenziario", icon: CalendarDays },
 ];
 
 const navSecondary = [
   { title: "Notifiche", url: "/notifiche", icon: Bell },
+  { title: "Cestino", url: "/cestino", icon: ArchiveRestore },
   { title: "Report", url: "/report", icon: Receipt },
   { title: "Impostazioni", url: "/impostazioni", icon: Settings },
 ];

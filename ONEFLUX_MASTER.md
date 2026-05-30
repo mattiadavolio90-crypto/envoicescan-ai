@@ -1,6 +1,6 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 29 maggio 2026 (rev. 7 — 3 bug Prezzi chiusi, reset password Next.js completato)
+**Ultima revisione:** 30 maggio 2026 (rev. 9 — Scadenziario + Cestino Next.js completati)
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -245,7 +245,7 @@ Briefing AI + KPI cards + notifiche actionable con filtri per categoria. Oggi: K
 Lista con filtri, ricerca, dettaglio peek a destra, azioni rapide (pagata, sposta, elimina). Categorizzazione automatica con review solo per bassa confidenza. **Stato**: ✅ funzionale.
 
 ### 📅 Scadenziario
-Vista calendario + lista. Filtri (oggi, settimana, mese). Notifiche pre-scadenza. **Stato**: ⏳ zero codice.
+Vista agenda (bucket urgenza) + calendario cash-flow. KPI bar 4 card. Scadenza override manuale. Bulk segna pagata. Regole fornitore (Sheet). Pre-notifica aggregata nella inbox. **Stato**: ✅ completato Next.js.
 
 ### 🔔 Notifiche
 Cronologia con filtri per categoria, auto-purge 30 giorni, priorità visiva (🔴🟡🔵).
@@ -399,7 +399,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Fase 1.5 | — | ⏸️ rimandata | Studio competitor — non bloccante |
 | Fase 2 | 2-3 sett. | 🟡 quasi | Auth login/logout/me ✅ · reset password ✅ — **manca**: onboarding (primo accesso) lato Next.js |
 | Fase 3 | 2-3 sett. | 🟡 parziale | Dashboard ✅ · Notifiche ✅ · Upload ✅ — **manca**: Home con briefing AI + notifiche actionable |
-| Fase 4 | 1-2 sett. | 🟡 parziale | Analisi Fatture ✅ · Analisi e Tag ✅ — **manca**: Scadenziario + Cestino |
+| Fase 4 | 1-2 sett. | ✅ **chiusa (30/5)** | Analisi Fatture ✅ · Analisi e Tag ✅ · Scadenziario ✅ · Cestino ✅ |
 | Fase 5 | 2-3 sett. | ✅ **chiusa (28/5) + hardening (29/5)** | Margini ✅ · Ricavi ✅ · Analisi Avanzate ✅ · Prezzi ✅ · DB migrated · contratto FE↔worker allineato |
 | Fase 6 | 2-3 sett. | ⏳ | Foodcost (riscrittura completa) — oggi placeholder |
 | Fase 7 | 3-4 sett. | ⏳ | Admin redesign + AI categorization + multi-ristorante + UI mapping ragione sociale |
@@ -432,7 +432,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Report | ⏳ | Placeholder |
 | Impostazioni/Account | ⏳ | Placeholder |
 
-**Non ancora iniziato (zero codice):** Scadenziario · Cestino fatture · Admin Panel · Assistenza/Marketplace · Multi-ristorante (dropdown switch) · Onboarding primo accesso lato Next.js · PWA/mobile · fattore_kg UI (Analisi e Tag v2)
+**Non ancora iniziato (zero codice):** Admin Panel · Assistenza/Marketplace · Multi-ristorante (dropdown switch) · Onboarding primo accesso lato Next.js · PWA/mobile · fattore_kg UI (Analisi e Tag v2)
 
 **Prerequisito Railway:** aggiungere env var `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` per attivare reset password in produzione.
 
@@ -506,8 +506,8 @@ Pagina fuori roadmap originale, aggiunta su richiesta. Non segue la numerazione 
 - Aggiungere env var `BREVO_API_KEY` / `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME` su Railway per attivare reset password in produzione
 
 **Roadmap funzionale (ordine di priorità concordato):**
-1. **Scadenziario** (Fase 4) — zero codice, alto valore per clienti
-2. **Cestino fatture** (Fase 4) — zero codice
+1. ~~**Scadenziario** (Fase 4)~~ ✅ **Completato** (29/5)
+2. ~~**Cestino fatture** (Fase 4)~~ ✅ **Completato** (30/5)
 3. **Onboarding primo accesso** lato Next.js — completa Fase 2 (riusa la stessa `/reset-password` già costruita, basta gestire il caso `password_hash = NULL`)
 4. **Home AI** — briefing giornaliero, notifiche actionable inline (Fase 3)
 5. **Impostazioni/Account** — contatori piano, preferenze (Fase 8 light)
