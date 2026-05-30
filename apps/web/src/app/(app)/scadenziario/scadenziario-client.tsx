@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, Calendar, CalendarDays, Check, ChevronDown, ChevronRight,
-  List, Pencil, Plus, Settings2, Trash2, X,
+  Filter, List, Pencil, Plus, Search, Settings2, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -148,6 +148,7 @@ type AgendaSectionProps = {
   defaultOpen?: boolean;
   selectedFileOrigini: Set<string>;
   onToggleSelect: (fo: string) => void;
+  onToggleAll: (docs: Documento[], selectAll: boolean) => void;
   onPaga: (doc: Documento) => void;
   onPeek: (doc: Documento) => void;
   accentClass?: string;
@@ -155,26 +156,52 @@ type AgendaSectionProps = {
 
 function AgendaSection({
   title, docs, defaultOpen = true,
-  selectedFileOrigini, onToggleSelect, onPaga, onPeek, accentClass = "",
+  selectedFileOrigini, onToggleSelect, onToggleAll, onPaga, onPeek, accentClass = "",
 }: AgendaSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
-  if (docs.length === 0) return null;
+  const checkboxRef = useRef<HTMLInputElement>(null);
 
+  const selectableDocs = docs.filter(d => !d.pagata);
+  const selectedCount = selectableDocs.filter(d => selectedFileOrigini.has(d.file_origine)).length;
+  const allSelected = selectableDocs.length > 0 && selectedCount === selectableDocs.length;
+  const someSelected = selectedCount > 0 && !allSelected;
+
+  useEffect(() => {
+    if (checkboxRef.current) checkboxRef.current.indeterminate = someSelected;
+  }, [someSelected]);
+
+  if (docs.length === 0) return null;
   const totale = docs.reduce((s, d) => s + (d.totale_documento || 0), 0);
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
-      <button
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
-        onClick={() => setOpen((o) => !o)}
-      >
-        <div className="flex items-center gap-2">
-          {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
-          <span className={`font-semibold text-sm ${accentClass}`}>{title}</span>
-          <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{docs.length}</span>
-        </div>
-        <span className="text-sm font-medium text-muted-foreground">{formatEuro(totale)}</span>
-      </button>
+      <div className="flex items-center px-3 py-3 hover:bg-muted/30 transition-colors">
+        {selectableDocs.length > 0 && (
+          <input
+            ref={checkboxRef}
+            type="checkbox"
+            checked={allSelected}
+            className="size-4 cursor-pointer accent-primary mr-2 flex-shrink-0"
+            onChange={() => onToggleAll(selectableDocs, !allSelected)}
+            onClick={e => e.stopPropagation()}
+            title={allSelected ? "Deseleziona tutto" : "Seleziona tutto"}
+          />
+        )}
+        <button
+          className="flex-1 flex items-center justify-between"
+          onClick={() => setOpen(o => !o)}
+        >
+          <div className="flex items-center gap-2">
+            {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+            <span className={`font-semibold text-sm ${accentClass}`}>{title}</span>
+            <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{docs.length}</span>
+            {selectedCount > 0 && (
+              <span className="text-xs text-primary font-medium">{selectedCount} sel.</span>
+            )}
+          </div>
+          <span className="text-sm font-medium text-muted-foreground">{formatEuro(totale)}</span>
+        </button>
+      </div>
 
       {open && (
         <div className="border-t divide-y divide-border/50">
@@ -812,6 +839,7 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+type Periodo = "tutti" | "scadute" | "settimana" | "mese" | "personalizzato";
 type View = "agenda" | "calendario";
 
 export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Documento[] }) {
@@ -823,8 +851,67 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
   const [bulkPaying, setBulkPaying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const kpi = useMemo(() => computeKpi(documenti), [documenti]);
-  const buckets = useMemo(() => bucketizeDocumenti(documenti), [documenti]);
+  // ── Filtri
+  const [filtroPeriodo, setFiltroPeriodo] = useState<Periodo>("tutti");
+  const [filtroFornitore, setFiltroFornitore] = useState("");
+  const [filtroDateDa, setFiltroDateDa] = useState("");
+  const [filtroDateA, setFiltroDateA] = useState("");
+
+  const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitore.trim() !== "" || filtroDateDa !== "" || filtroDateA !== "";
+
+  function resetFiltri() {
+    setFiltroPeriodo("tutti");
+    setFiltroFornitore("");
+    setFiltroDateDa("");
+    setFiltroDateA("");
+  }
+
+  // ── Documenti filtrati
+  const documentiFiltrati = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const in7 = new Date(today); in7.setDate(in7.getDate() + 7);
+    const in30 = new Date(today); in30.setDate(in30.getDate() + 30);
+
+    return documenti.filter(d => {
+      // Filtro fornitore
+      if (filtroFornitore.trim()) {
+        const q = filtroFornitore.trim().toLowerCase();
+        if (!d.fornitore.toLowerCase().includes(q)) return false;
+      }
+
+      // Filtro periodo (solo su non pagate con scadenza, tranne "tutti")
+      if (filtroPeriodo !== "tutti") {
+        if (d.pagata) return false;
+        if (filtroPeriodo === "scadute") {
+          if (!d.scadenza_effettiva) return false;
+          return new Date(d.scadenza_effettiva) < today;
+        }
+        if (filtroPeriodo === "settimana") {
+          if (!d.scadenza_effettiva) return false;
+          const s = new Date(d.scadenza_effettiva);
+          return s >= today && s <= in7;
+        }
+        if (filtroPeriodo === "mese") {
+          if (!d.scadenza_effettiva) return false;
+          const s = new Date(d.scadenza_effettiva);
+          return s >= today && s <= in30;
+        }
+        if (filtroPeriodo === "personalizzato") {
+          if (!d.scadenza_effettiva) return filtroDateDa === "" && filtroDateA === "";
+          const s = new Date(d.scadenza_effettiva);
+          if (filtroDateDa && s < new Date(filtroDateDa)) return false;
+          if (filtroDateA && s > new Date(filtroDateA)) return false;
+        }
+      }
+
+      return true;
+    });
+  }, [documenti, filtroPeriodo, filtroFornitore, filtroDateDa, filtroDateA]);
+
+  // KPI e bucket calcolati sui documenti filtrati
+  const kpi = useMemo(() => computeKpi(documentiFiltrati), [documentiFiltrati]);
+  const buckets = useMemo(() => bucketizeDocumenti(documentiFiltrati), [documentiFiltrati]);
 
   const loadData = useCallback(async () => {
     setRefreshing(true);
@@ -845,6 +932,26 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
       if (next.has(fo)) next.delete(fo); else next.add(fo);
       return next;
     });
+  }
+
+  function toggleAll(docs: Documento[], selectAll: boolean) {
+    setSelectedFileOrigini(prev => {
+      const next = new Set(prev);
+      for (const d of docs) {
+        if (selectAll) next.add(d.file_origine);
+        else next.delete(d.file_origine);
+      }
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    const all = documentiFiltrati.filter(d => !d.pagata);
+    setSelectedFileOrigini(new Set(all.map(d => d.file_origine)));
+  }
+
+  function deselectAll() {
+    setSelectedFileOrigini(new Set());
   }
 
   async function handlePaga(doc: Documento, pagata = true) {
@@ -893,9 +1000,12 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     await loadData();
   }
 
+  const totaleNonPagateFiltrate = documentiFiltrati.filter(d => !d.pagata).length;
+
   const sharedProps = {
     selectedFileOrigini,
     onToggleSelect: toggleSelect,
+    onToggleAll: toggleAll,
     onPaga: (doc: Documento) => handlePaga(doc, true),
     onPeek: setPeekDoc,
   };
@@ -904,18 +1014,18 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     <div className="space-y-5 pb-20">
       {/* KPI bar */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Scadute" count={kpi.scadute_count} totale={kpi.scadute_totale} tone="rose" />
-        <KpiCard label="Questa settimana" count={kpi.settimana_count} totale={kpi.settimana_totale} tone="orange" />
-        <KpiCard label="Da pagare" count={kpi.da_pagare_count} totale={kpi.da_pagare_totale} tone="sky" />
+        <KpiCard label={filtriAttivi ? "Scadute (filtro)" : "Scadute"} count={kpi.scadute_count} totale={kpi.scadute_totale} tone="rose" />
+        <KpiCard label={filtriAttivi ? "Settimana (filtro)" : "Questa settimana"} count={kpi.settimana_count} totale={kpi.settimana_totale} tone="orange" />
+        <KpiCard label={filtriAttivi ? "Da pagare (filtro)" : "Da pagare"} count={kpi.da_pagare_count} totale={kpi.da_pagare_totale} tone="sky" />
         <KpiCard label="Pagate (mese)" count={kpi.pagate_mese_count} totale={kpi.pagate_mese_totale} tone="emerald" />
       </div>
 
-      {/* Alert senza scadenza */}
-      {buckets.senzaScadenza.length > 0 && (
+      {/* Alert senza scadenza (solo senza filtri attivi per non confondere) */}
+      {!filtriAttivi && buckets.senzaScadenza.length > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-50 dark:bg-amber-900/10 px-4 py-3 text-sm">
           <AlertTriangle className="size-4 text-amber-600 flex-shrink-0" />
           <span className="text-amber-800 dark:text-amber-300 flex-1">
-            <strong>{buckets.senzaScadenza.length}</strong> fattur{buckets.senzaScadenza.length === 1 ? "a senza" : "e senza"} scadenza (€{formatEuro(buckets.senzaScadenza.reduce((s, d) => s + (d.totale_documento || 0), 0))}).
+            <strong>{buckets.senzaScadenza.length}</strong> fattur{buckets.senzaScadenza.length === 1 ? "a senza" : "e senza"} scadenza ({formatEuro(buckets.senzaScadenza.reduce((s, d) => s + (d.totale_documento || 0), 0))}).
             Apri una fattura e imposta la data manualmente.
           </span>
         </div>
@@ -938,72 +1048,116 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
           </button>
         </div>
 
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-8 gap-1.5 text-xs"
-          onClick={() => setRegoleOpen(true)}
-        >
+        <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setRegoleOpen(true)}>
           <Settings2 className="size-3.5" /> Regole fornitore
         </Button>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 text-xs ml-auto"
-          onClick={loadData}
-          disabled={refreshing}
-        >
+        <Button variant="ghost" size="sm" className="h-8 text-xs ml-auto" onClick={loadData} disabled={refreshing}>
           {refreshing ? "..." : "Aggiorna"}
         </Button>
+      </div>
+
+      {/* Filtri (visibili in entrambe le viste) */}
+      <div className="rounded-lg border bg-card p-3 space-y-3">
+        {/* Periodo quick chips */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Filter className="size-3.5 text-muted-foreground flex-shrink-0" />
+          {(["tutti", "scadute", "settimana", "mese", "personalizzato"] as Periodo[]).map(p => {
+            const labels: Record<Periodo, string> = {
+              tutti: "Tutti", scadute: "Solo scadute", settimana: "Questa settimana",
+              mese: "Questo mese", personalizzato: "Personalizzato",
+            };
+            return (
+              <button
+                key={p}
+                onClick={() => setFiltroPeriodo(p)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
+                  ${filtroPeriodo === p
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "border-border hover:bg-muted text-muted-foreground"}`}
+              >
+                {labels[p]}
+              </button>
+            );
+          })}
+
+          {filtriAttivi && (
+            <button
+              onClick={resetFiltri}
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="size-3" /> Pulisci filtri
+            </button>
+          )}
+        </div>
+
+        {/* Date personalizzate */}
+        {filtroPeriodo === "personalizzato" && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-muted-foreground">Scadenza da</span>
+            <Input type="date" value={filtroDateDa} onChange={e => setFiltroDateDa(e.target.value)} className="h-7 text-xs w-36" />
+            <span className="text-xs text-muted-foreground">a</span>
+            <Input type="date" value={filtroDateA} onChange={e => setFiltroDateA(e.target.value)} className="h-7 text-xs w-36" />
+          </div>
+        )}
+
+        {/* Ricerca fornitore */}
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Filtra per fornitore..."
+            value={filtroFornitore}
+            onChange={e => setFiltroFornitore(e.target.value)}
+            className="pl-8 h-8 text-sm"
+          />
+          {filtroFornitore && (
+            <button className="absolute right-2.5 top-1/2 -translate-y-1/2" onClick={() => setFiltroFornitore("")}>
+              <X className="size-3.5 text-muted-foreground hover:text-foreground" />
+            </button>
+          )}
+        </div>
+
+        {/* Risultati + select all */}
+        {view === "agenda" && (
+          <div className="flex items-center justify-between text-xs text-muted-foreground pt-0.5">
+            <span>
+              {filtriAttivi
+                ? `${documentiFiltrati.length} su ${documenti.length} fatture`
+                : `${documenti.length} fatture totali`}
+            </span>
+            <div className="flex gap-3">
+              {totaleNonPagateFiltrate > 0 && (
+                <button className="text-primary hover:underline" onClick={selectAllVisible}>
+                  Seleziona tutte ({totaleNonPagateFiltrate})
+                </button>
+              )}
+              {selectedFileOrigini.size > 0 && (
+                <button className="hover:underline" onClick={deselectAll}>
+                  Deseleziona tutto
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Content */}
       {view === "agenda" ? (
         <div className="space-y-3">
-          <AgendaSection
-            title="Scadute"
-            docs={buckets.scadute}
-            accentClass="text-rose-600 dark:text-rose-400"
-            {...sharedProps}
-          />
-          <AgendaSection
-            title="Questa settimana"
-            docs={buckets.settimana}
-            accentClass="text-orange-600 dark:text-orange-400"
-            {...sharedProps}
-          />
-          <AgendaSection
-            title="Questo mese"
-            docs={buckets.mese}
-            {...sharedProps}
-          />
-          <AgendaSection
-            title="Oltre il mese"
-            docs={buckets.oltre}
-            defaultOpen={false}
-            {...sharedProps}
-          />
-          <AgendaSection
-            title="Senza scadenza"
-            docs={buckets.senzaScadenza}
-            defaultOpen={false}
-            accentClass="text-muted-foreground"
-            {...sharedProps}
-          />
-          <AgendaSection
-            title="Pagate"
-            docs={buckets.pagate}
-            defaultOpen={false}
-            accentClass="text-emerald-600 dark:text-emerald-400"
-            {...sharedProps}
-          />
+          <AgendaSection title="Scadute" docs={buckets.scadute} accentClass="text-rose-600 dark:text-rose-400" {...sharedProps} />
+          <AgendaSection title="Questa settimana" docs={buckets.settimana} accentClass="text-orange-600 dark:text-orange-400" {...sharedProps} />
+          <AgendaSection title="Questo mese" docs={buckets.mese} {...sharedProps} />
+          <AgendaSection title="Oltre il mese" docs={buckets.oltre} defaultOpen={false} {...sharedProps} />
+          <AgendaSection title="Senza scadenza" docs={buckets.senzaScadenza} defaultOpen={false} accentClass="text-muted-foreground" {...sharedProps} />
+          <AgendaSection title="Pagate" docs={buckets.pagate} defaultOpen={false} accentClass="text-emerald-600 dark:text-emerald-400" {...sharedProps} />
 
-          {documenti.length === 0 && (
+          {documentiFiltrati.length === 0 && (
             <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
               <Calendar className="size-10 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Nessun documento trovato.</p>
-              <p className="text-xs mt-1">Le fatture con dati di scadenza appariranno qui.</p>
+              <p className="text-sm">{filtriAttivi ? "Nessuna fattura corrisponde ai filtri." : "Nessun documento trovato."}</p>
+              {filtriAttivi && (
+                <button className="text-xs text-primary mt-2 hover:underline" onClick={resetFiltri}>Pulisci filtri</button>
+              )}
             </div>
           )}
         </div>
