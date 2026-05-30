@@ -16,6 +16,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing file" }, { status: 400 });
   }
 
+  const MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+  if (file.size > MAX_BYTES) {
+    return NextResponse.json(
+      { error: `File troppo grande (max ${MAX_BYTES / 1024 / 1024} MB)` },
+      { status: 413 },
+    );
+  }
+
   const forward = new FormData();
   forward.append("file", file, (file as File).name ?? "ricavi.xlsx");
 
@@ -27,6 +35,7 @@ export async function POST(req: NextRequest) {
       method: "POST",
       headers: h,
       body: forward,
+      signal: AbortSignal.timeout(30000),
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });

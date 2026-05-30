@@ -597,8 +597,8 @@ def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
                     existing_centri_per_mese[int(row['mese'])] = row
                 centri_cols_present = False  # usa schema legacy
             except Exception:
-                logger.warning(f"⚠️ Impossibile rileggere centri prima del salva_margini_anno: {exc_centri}")
-                centri_cols_present = None  # non includere colonne centri
+                logger.error(f"❌ Impossibile rileggere centri prima del salva_margini_anno: {exc_centri}. Salvataggio annullato per evitare perdita dati centri.")
+                return False
 
         for i in range(12):
             mese_num = i + 1
@@ -630,19 +630,16 @@ def salva_margini_anno(user_id: str, ristorante_id: str, anno: int,
                 'updated_at': datetime.now(timezone.utc).isoformat()
             }
 
-            # Re-includi SEMPRE le colonne centri (con valore esistente o 0)
-            # in TUTTI i 12 record per evitare che il bulk-upsert le azzeri.
+            # Re-includi SEMPRE le colonne centri in tutti i 12 record per
+            # evitare che il bulk-upsert le azzeri (comportamento postgrest).
             existing = existing_centri_per_mese.get(mese_num, {})
+            rec['fatturato_food'] = float(existing.get('fatturato_food') or 0)
+            rec['fatturato_alcolici'] = float(existing.get('fatturato_alcolici') or 0)
+            rec['fatturato_dolci'] = float(existing.get('fatturato_dolci') or 0)
             if centri_cols_present is True:
-                rec['fatturato_food'] = float(existing.get('fatturato_food') or 0)
                 rec['fatturato_beverage'] = float(existing.get('fatturato_beverage') or 0)
-                rec['fatturato_alcolici'] = float(existing.get('fatturato_alcolici') or 0)
-                rec['fatturato_dolci'] = float(existing.get('fatturato_dolci') or 0)
-            elif centri_cols_present is False:
-                rec['fatturato_food'] = float(existing.get('fatturato_food') or 0)
+            else:
                 rec['fatturato_bar'] = float(existing.get('fatturato_bar') or 0)
-                rec['fatturato_alcolici'] = float(existing.get('fatturato_alcolici') or 0)
-                rec['fatturato_dolci'] = float(existing.get('fatturato_dolci') or 0)
 
             records.append(rec)
         
@@ -914,7 +911,7 @@ def genera_commenti_kpi(kpi: dict, df_risultati, mesi_filtro: list = None) -> li
     # 3. Spese Generali %
     sg = kpi.get('spese_gen_perc_media', 0.0)
     emoji, testo = _valuta_soglia(sg, 'spese_generali', crescente=True)
-    commenti.append({'kpi_nome': 'Spese Generali', 'percentuale': f'{sg:.1f}%', 'commento': testo, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
+    commenti.append({'kpi_nome': 'Costi Gestione', 'percentuale': f'{sg:.1f}%', 'commento': testo, 'emoji': emoji, 'colore': colori.get(emoji, '#6b7280')})
     
     # 4. MOL %
     mol = kpi.get('mol_perc_medio', 0.0)

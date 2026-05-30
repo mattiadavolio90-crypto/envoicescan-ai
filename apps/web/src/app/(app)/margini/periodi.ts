@@ -90,6 +90,15 @@ export function mesiSelezionabili(n = 24, oggi: Date = new Date()): { year: numb
   return out;
 }
 
+// Scorporo IVA: i ricavi sono salvati lordi, il netto si ottiene dividendo per
+// l'aliquota. Tenuto qui in un solo punto per evitare divergenze tra UI e worker.
+export const IVA_DIVISORE_10 = 1.10;
+export const IVA_DIVISORE_22 = 1.22;
+
+export function scorporoNetto(iva10: number, iva22: number, altri: number): number {
+  return iva10 / IVA_DIVISORE_10 + iva22 / IVA_DIVISORE_22 + altri;
+}
+
 export function formatEuro(v: number, decimali = 0): string {
   return v.toLocaleString("it-IT", {
     style: "currency",

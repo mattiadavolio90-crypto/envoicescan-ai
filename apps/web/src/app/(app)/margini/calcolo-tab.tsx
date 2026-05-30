@@ -1,9 +1,17 @@
 "use client";
 
+import React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Info, Lock, RefreshCw, BarChart3 } from "lucide-react";
+import { Info, Lock, BarChart3, Upload, X as XIcon } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell as RCell,
+} from "recharts";
 import { toast } from "sonner";
-import { formatEuro } from "./periodi";
+import { formatEuro, formatEuroCompact, scorporoNetto } from "./periodi";
+import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 
 type MesePivot = {
   anno: number;
@@ -158,6 +166,9 @@ type Props = {
 export function CalcoloTab({ dataDa, dataA }: Props) {
   const [data, setData] = useState<AnalisiResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [caricaOpen, setCaricaOpen] = useState(false);
+  const [dettaglioOpen, setDettaglioOpen] = useState(false);
+  const [dettaglioMeseSel, setDettaglioMeseSel] = useState<{ anno: number; mese: number; label: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -244,7 +255,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
       <div className="rounded-lg border border-border bg-card p-8 text-center space-y-2">
         <p className="text-sm font-medium">Nessun dato margini nel periodo selezionato</p>
         <p className="text-xs text-muted-foreground">
-          Inserisci ricavi nel tab Ricavi o carica fatture per popolare automaticamente i costi.
+          Usa &quot;Carica ricavi&quot; per inserire i ricavi o carica fatture per popolare automaticamente i costi.
         </p>
       </div>
     );
@@ -254,26 +265,49 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex items-center gap-2">
-        <button
-          onClick={load}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw className={`size-3 ${loading ? "animate-spin" : ""}`} />
-          Aggiorna
-        </button>
         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
           <Info className="size-3" />
-          Modifica le righe in bianco; le altre sono calcolate o ereditate (Tab Ricavi e Tab Fatture).
+          Modifica le righe in bianco; le altre sono calcolate o ereditate dalle fatture.
         </p>
+        <button
+          onClick={() => { setDettaglioMeseSel(mesiVisibili[mesiVisibili.length - 1] ?? null); setDettaglioOpen(true); }}
+          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-input hover:bg-muted transition-colors"
+        >
+          <BarChart3 className="size-3" />
+          Dettaglio giornaliero
+        </button>
+        <button
+          onClick={() => setCaricaOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          <Upload className="size-3" />
+          Carica ricavi
+        </button>
       </div>
+
+      <CaricaRicaviDialog
+        open={caricaOpen}
+        onOpenChange={setCaricaOpen}
+        dataDa={dataDa}
+        dataA={dataA}
+        onImported={() => { setCaricaOpen(false); load(); }}
+      />
+
+      {dettaglioOpen && (
+        <DettaglioGiornalieroDialog
+          mese={dettaglioMeseSel}
+          mesi={mesiVisibili}
+          onMeseChange={setDettaglioMeseSel}
+          onClose={() => setDettaglioOpen(false)}
+        />
+      )}
 
       {/* Legenda colori */}
       <div className="flex flex-wrap gap-1.5">
         {([
           { label: "Ricavi", section: "ricavi" as Section },
           { label: "Costi F&B", section: "fb" as Section },
-          { label: "Spese Generali", section: "spese" as Section },
+          { label: "Costi Gestione", section: "spese" as Section },
           { label: "Personale", section: "personale" as Section },
           { label: "Totali & Margini", section: "margine" as Section },
         ]).map((c) => (
@@ -289,13 +323,13 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
       {/* Tabella trasposta — desktop */}
       <div className="hidden md:block rounded-lg border border-border bg-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full table-fixed text-[15px] border-collapse">
+          <table className="w-full table-auto text-[15px] border-collapse">
             <colgroup>
               <col className="w-[220px]" />
               {mesiVisibili.map((m) => (
-                <col key={`c-${m.anno}-${m.mese}`} />
+                <col key={`c-${m.anno}-${m.mese}`} className="w-[140px]" />
               ))}
-              <col className="w-[130px]" />
+              <col className="w-[160px]" />
             </colgroup>
             <thead className="bg-muted/40">
               <tr className="text-[11px] uppercase tracking-wider text-muted-foreground">
@@ -409,7 +443,7 @@ function Cell({
   }
 
   const tooltip =
-    row.type === "input-readonly-tooltip" ? "Modifica da Tab Ricavi"
+    row.type === "input-readonly-tooltip" ? "Modifica da Carica ricavi"
     : row.type === "input-readonly" ? "Calcolato dalle fatture caricate"
     : undefined;
   const showLock = row.type === "input-readonly-tooltip" || row.type === "input-readonly";
@@ -647,65 +681,60 @@ function AnalisiVisiva({ data }: { data: AnalisiResponse }) {
   const t = data.totali;
   const hasData = t.fatturato_netto > 0 || t.costi_fb_totali > 0;
 
-  // Colori gauge per soglia
   const fc = data.food_cost_perc;
   const fcColor = fc <= 28 ? GAUGE_GREEN : fc <= 33 ? GAUGE_AMBER : GAUGE_ROSE;
   const pm = data.primo_margine_perc;
   const pmColor = pm >= 67 ? GAUGE_GREEN : pm >= 60 ? GAUGE_AMBER : GAUGE_ROSE;
+  const sg = data.spese_gen_perc;
+  const sgColor = sg <= 15 ? GAUGE_GREEN : sg <= 22 ? GAUGE_AMBER : GAUGE_ROSE;
   const mol = data.mol_perc;
   const molColor = mol >= 10 ? GAUGE_GREEN : mol >= 5 ? GAUGE_AMBER : GAUGE_ROSE;
 
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-5">
-      <h3 className="text-sm font-semibold flex items-center gap-1.5">
+      <h3 className="text-base font-semibold flex items-center gap-1.5">
         <BarChart3 className="size-4 text-primary" />
         Analisi visiva
       </h3>
 
       {!hasData ? (
         <p className="text-sm text-muted-foreground py-6 text-center">
-          Inserisci ricavi e carica fatture per generare l'analisi.
+          Inserisci ricavi e carica fatture per generare l&apos;analisi.
         </p>
       ) : (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* Cascata P&L */}
-            <div className="lg:col-span-3 space-y-2.5">
-              <p className="text-xs text-muted-foreground">
-                Dal fatturato al margine operativo
-              </p>
-              <CascataPL t={t} />
-            </div>
-
-            {/* Gauge */}
-            <div className="lg:col-span-2 grid grid-cols-3 gap-2 self-center">
-              <Gauge label="Food Cost" valueText={`${fc.toFixed(0)}%`} fraction={clamp01(fc / 100)} color={fcColor} />
-              <Gauge label="1° Margine" valueText={`${pm.toFixed(0)}%`} fraction={clamp01(pm / 100)} color={pmColor} />
-              <Gauge label="MOL" valueText={`${mol.toFixed(0)}%`} fraction={clamp01(mol / 100)} color={molColor} />
-            </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-20 items-stretch">
+          {/* Cascata P&L */}
+          <div className="flex flex-col justify-around">
+            <CascataPL t={t} />
           </div>
 
-          {/* Commenti automatici integrati */}
-          {data.commenti.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-              {data.commenti.map((c, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-2.5 rounded-md bg-muted/30 p-2.5"
-                  style={{ borderLeft: `3px solid ${c.colore}` }}
-                >
-                  <span className="text-sm font-bold shrink-0" style={{ color: c.colore }}>
-                    {c.emoji} {c.percentuale}
-                  </span>
-                  <span className="text-xs leading-snug">
-                    <strong>{c.kpi_nome}</strong>
-                    <span className="text-muted-foreground"> · {c.commento}</span>
-                  </span>
+          {/* Gauge con diagnosi integrata */}
+          <div className="flex flex-col gap-0 divide-y divide-border">
+            {[
+              { label: "Food Cost",      valueText: `${fc.toFixed(0)}%`,  fraction: clamp01(fc / 100),  trackColor: "#f97316", valueColor: fcColor },
+              { label: "1° Margine",     valueText: `${pm.toFixed(0)}%`,  fraction: clamp01(pm / 100),  trackColor: "#10b981", valueColor: pmColor },
+              { label: "Costi Gestione", valueText: `${sg.toFixed(0)}%`,  fraction: clamp01(sg / 100),  trackColor: "#8b5cf6", valueColor: sgColor },
+              { label: "MOL",            valueText: `${mol.toFixed(0)}%`, fraction: clamp01(mol / 100), trackColor: "#22c55e", valueColor: molColor },
+            ].map((g) => {
+              const commento = data.commenti.find(
+                (c) => c.kpi_nome.toLowerCase().replace(/[°\s]/g, "") === g.label.toLowerCase().replace(/[°\s]/g, "")
+              );
+              return (
+                <div key={g.label} className="flex items-center gap-6 py-5">
+                  <Gauge {...g} size="sm" />
+                  <div className="flex flex-col gap-1.5 min-w-0">
+                    <span className="text-base font-bold leading-tight">
+                      {commento?.emoji} {g.label}
+                    </span>
+                    <span className="text-sm text-muted-foreground leading-snug">
+                      {commento?.commento ?? "—"}
+                    </span>
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </>
+              );
+            })}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -716,35 +745,34 @@ function CascataPL({ t }: { t: MesePivot }) {
     { label: "Fatturato Netto", value: t.fatturato_netto, kind: "result", rgb: "14,165,233" },
     { label: "− Costi F&B", value: t.costi_fb_totali, kind: "cost", rgb: "249,115,22" },
     { label: "= 1° Margine", value: t.primo_margine, kind: "result", rgb: t.primo_margine >= 0 ? "16,185,129" : "244,63,94" },
-    { label: "− Spese Generali", value: t.costi_spese_totali, kind: "cost", rgb: "168,85,247" },
-    { label: "− Costo Personale", value: t.costi_personale, kind: "cost", rgb: "236,72,153" },
+    { label: "− Costi Gestione", value: t.costi_spese_totali, kind: "cost", rgb: "168,85,247" },
     { label: "= MOL", value: t.mol, kind: "result", rgb: t.mol >= 0 ? "16,185,129" : "244,63,94" },
   ];
   const refMax = Math.max(1, ...steps.map((s) => Math.abs(s.value)));
 
   return (
-    <div className="space-y-1.5">
+    <div className="flex flex-col gap-6">
       {steps.map((s) => {
         const w = Math.min(100, (Math.abs(s.value) / refMax) * 100);
         const isResult = s.kind === "result";
         return (
-          <div key={s.label} className="flex items-center gap-2">
-            <span className={`w-28 sm:w-32 shrink-0 text-xs ${isResult ? "font-bold" : "text-muted-foreground"}`}>
+          <div key={s.label} className="flex items-center gap-3">
+            <span className={`w-36 sm:w-40 shrink-0 text-base ${isResult ? "font-bold" : "text-muted-foreground"}`}>
               {s.label}
             </span>
-            <div className={`flex-1 h-6 rounded overflow-hidden ${isResult ? "bg-muted/40" : "bg-muted/20"}`}>
+            <div className={`flex-1 h-9 rounded overflow-hidden ${isResult ? "bg-muted/40" : "bg-muted/20"}`}>
               <div
                 className="h-full rounded transition-all duration-500"
                 style={{
                   width: `${w}%`,
                   backgroundColor: `rgb(${s.rgb})`,
                   opacity: isResult ? 0.95 : 0.65,
-                  boxShadow: isResult ? `0 0 12px rgba(${s.rgb},0.5)` : undefined,
+                  boxShadow: isResult ? `0 0 14px rgba(${s.rgb},0.5)` : undefined,
                 }}
               />
             </div>
             <span
-              className={`w-20 sm:w-24 shrink-0 text-right text-xs tabular-nums ${isResult ? "font-bold" : "text-muted-foreground"}`}
+              className={`w-28 sm:w-32 shrink-0 text-right text-base tabular-nums ${isResult ? "font-bold" : "text-muted-foreground"}`}
               style={isResult ? { color: `rgb(${s.rgb})` } : undefined}
             >
               {formatEuro(s.value)}
@@ -760,24 +788,247 @@ function Gauge({
   label,
   valueText,
   fraction,
-  color,
+  trackColor,
+  valueColor,
+  size = "md",
 }: {
   label: string;
   valueText: string;
   fraction: number;
-  color: string;
+  trackColor: string;
+  valueColor: string;
+  size?: "sm" | "md";
 }) {
   const f = clamp01(fraction);
-  // Arco semicircolare superiore: da (8,50) a (92,50) passando in alto (sweep=0)
-  const ARC = "M 8 50 A 42 42 0 0 0 92 50";
+  const r = 36;
+  const startDeg = 225;
+  const sweepDeg = 270;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const sx = 50 + r * Math.cos(toRad(startDeg));
+  const sy = 50 + r * Math.sin(toRad(startDeg));
+  const endDeg = startDeg + sweepDeg;
+  const ex = 50 + r * Math.cos(toRad(endDeg));
+  const ey = 50 + r * Math.sin(toRad(endDeg));
+  const largeArc = sweepDeg > 180 ? 1 : 0;
+  const ARC = `M ${sx.toFixed(2)} ${sy.toFixed(2)} A ${r} ${r} 0 ${largeArc} 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`;
+
+  const svgSize = size === "sm" ? "w-20 h-20 shrink-0" : "w-full max-w-[110px]";
+
   return (
-    <div className="flex flex-col items-center">
-      <svg viewBox="0 0 100 56" className="w-full max-w-[120px]">
-        <path d={ARC} fill="none" stroke="currentColor" className="text-muted-foreground/20" strokeWidth="9" strokeLinecap="round" pathLength={100} />
-        <path d={ARC} fill="none" stroke={color} strokeWidth="9" strokeLinecap="round" pathLength={100} strokeDasharray={`${f * 100} 100`} />
-        <text x="50" y="44" textAnchor="middle" className="fill-foreground font-bold" fontSize="17">{valueText}</text>
+    <div className={`flex flex-col items-center gap-1 ${size === "sm" ? "shrink-0" : ""}`}>
+      <svg viewBox="0 0 100 100" className={svgSize}>
+        {/* Traccia di sfondo */}
+        <path
+          d={ARC}
+          fill="none"
+          stroke="currentColor"
+          className="text-muted-foreground/15"
+          strokeWidth="10"
+          strokeLinecap="round"
+          pathLength={100}
+        />
+        {/* Arco riempito con colore KPI */}
+        <path
+          d={ARC}
+          fill="none"
+          stroke={trackColor}
+          strokeWidth="10"
+          strokeLinecap="round"
+          pathLength={100}
+          strokeDasharray={`${f * 100} 100`}
+          style={{ filter: f > 0.05 ? `drop-shadow(0 0 4px ${trackColor}90)` : undefined }}
+        />
+        {/* Valore centrato con colore performance */}
+        <text
+          x="50"
+          y="53"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize="18"
+          fontWeight="bold"
+          fill={valueColor}
+        >
+          {valueText}
+        </text>
       </svg>
-      <span className="text-[11px] text-muted-foreground -mt-1">{label}</span>
+      {size !== "sm" && (
+        <span className="text-[11px] text-muted-foreground font-medium text-center leading-tight">{label}</span>
+      )}
+    </div>
+  );
+}
+
+/* ============================================================ */
+/* DettaglioGiornalieroDialog                                    */
+/* ============================================================ */
+type RicavoGiorno = {
+  data: string;
+  fatturato_netto: number;
+};
+
+function DettaglioGiornalieroDialog({
+  mese, mesi, onMeseChange, onClose,
+}: {
+  mese: { anno: number; mese: number; label: string } | null;
+  mesi: MesePivot[];
+  onMeseChange: (m: { anno: number; mese: number; label: string }) => void;
+  onClose: () => void;
+}) {
+  const [giorni, setGiorni] = useState<RicavoGiorno[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const anno = mese?.anno ?? 0;
+  const meseNum = mese?.mese ?? 0;
+  const label = mese?.label ?? "";
+
+  useEffect(() => {
+    if (!meseNum) return;
+    setLoading(true);
+    setGiorni([]);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const lastDay = new Date(anno, meseNum, 0).getDate();
+    const dataDa = `${anno}-${pad(meseNum)}-01`;
+    const dataA = `${anno}-${pad(meseNum)}-${lastDay}`;
+
+    fetch(`/api/ricavi/giornalieri?data_da=${dataDa}&data_a=${dataA}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        const items: { data: string; fatturato_iva10: number; fatturato_iva22: number; altri_ricavi_noiva: number }[] = d?.items ?? [];
+        const byDate = new Map(items.map((i) => [
+          i.data,
+          scorporoNetto(i.fatturato_iva10, i.fatturato_iva22, i.altri_ricavi_noiva),
+        ]));
+        const result: RicavoGiorno[] = [];
+        for (let d = 1; d <= lastDay; d++) {
+          const key = `${anno}-${pad(meseNum)}-${pad(d)}`;
+          result.push({ data: key, fatturato_netto: byDate.get(key) ?? 0 });
+        }
+        setGiorni(result);
+      })
+      .catch(() => setGiorni([]))
+      .finally(() => setLoading(false));
+  }, [anno, meseNum]);
+
+  const compilati = giorni.filter((g) => g.fatturato_netto > 0);
+  const totale = compilati.reduce((s, g) => s + g.fatturato_netto, 0);
+  const media = compilati.length > 0 ? totale / compilati.length : 0;
+  const migliore = compilati.reduce<RicavoGiorno | null>((best, g) => (!best || g.fatturato_netto > best.fatturato_netto) ? g : best, null);
+  const peggiore = compilati.reduce<RicavoGiorno | null>((worst, g) => (!worst || g.fatturato_netto < worst.fatturato_netto) ? g : worst, null);
+
+  const chartData = giorni.map((g) => ({
+    giorno: parseInt(g.data.slice(8), 10),
+    netto: g.fatturato_netto,
+  }));
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent showCloseButton={false} className="!max-w-[min(760px,92vw)] w-full p-0 gap-0">
+        <DialogHeader className="px-6 pt-5 pb-4 border-b border-border shrink-0">
+          <div className="flex items-center justify-between gap-4">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              📅 Fatturato giornaliero
+            </DialogTitle>
+            <button onClick={onClose} className="size-8 flex items-center justify-center rounded-md text-muted-foreground hover:bg-muted transition-colors shrink-0">
+              <XIcon className="size-4" />
+            </button>
+          </div>
+          {/* Selettore mese */}
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {mesi.map((m) => {
+              const active = m.anno === anno && m.mese === meseNum;
+              return (
+                <button
+                  key={`${m.anno}-${m.mese}`}
+                  onClick={() => onMeseChange({ anno: m.anno, mese: m.mese, label: m.label })}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors ${
+                    active
+                      ? "bg-sky-500 text-white border-sky-500"
+                      : "border-input hover:bg-muted"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+        </DialogHeader>
+
+        <div className="px-6 py-5 space-y-5">
+          {loading ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">Caricamento…</p>
+          ) : compilati.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-8 text-center">Nessun dato giornaliero per {label}.</p>
+          ) : (
+            <>
+              {/* Bar chart */}
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
+                  <XAxis
+                    dataKey="giorno"
+                    tick={{ fontSize: 11, fill: "#ffffff" }}
+                    tickLine={false}
+                    axisLine={false}
+                    interval={1}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11, fill: "#ffffff" }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={52}
+                    tickFormatter={(v: number) => formatEuroCompact(v)}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
+                    formatter={(v: unknown) => [formatEuro(typeof v === "number" ? v : 0), "Fatturato netto"]}
+                    labelFormatter={(l) => `Giorno ${l}`}
+                    contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+                  />
+                  <Bar dataKey="netto" radius={[3, 3, 0, 0]} maxBarSize={28}>
+                    {chartData.map((entry, i) => (
+                      <RCell key={i} fill={entry.netto > 0 ? "#0ea5e9" : "hsl(var(--muted))"} opacity={entry.netto > 0 ? 0.9 : 0.3} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+
+              {/* 4 statistiche */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <StatBox label="Giorni compilati" value={`${compilati.length} / ${giorni.length}`} />
+                <StatBox label="Media giornaliera" value={formatEuro(media)} color="text-sky-600 dark:text-sky-400" />
+                <StatBox
+                  label="Giorno migliore"
+                  value={migliore ? formatEuro(migliore.fatturato_netto) : "—"}
+                  sub={migliore ? `${parseInt(migliore.data.slice(8), 10)} ${label}` : undefined}
+                  color="text-emerald-600 dark:text-emerald-400"
+                />
+                <StatBox
+                  label="Giorno peggiore"
+                  value={peggiore ? formatEuro(peggiore.fatturato_netto) : "—"}
+                  sub={peggiore ? `${parseInt(peggiore.data.slice(8), 10)} ${label}` : undefined}
+                  color="text-rose-600 dark:text-rose-400"
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="px-6 pb-5 flex justify-end">
+          <button onClick={onClose} className="inline-flex items-center gap-1.5 px-4 py-2 text-sm rounded-md border border-border hover:bg-muted transition-colors">
+            Chiudi
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StatBox({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-3">
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1">{label}</p>
+      <p className={`text-lg font-bold tabular-nums ${color ?? ""}`}>{value}</p>
+      {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
     </div>
   );
 }

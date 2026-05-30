@@ -2,10 +2,9 @@
 
 import { useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { TrendingUp, Calculator, FlaskConical } from "lucide-react";
+import { Calculator, FlaskConical } from "lucide-react";
 
 const TABS = [
-  { key: "ricavi", label: "Ricavi", icon: TrendingUp },
   { key: "calcolo", label: "Marginalità", icon: Calculator },
   { key: "analisi", label: "Analisi Avanzate", icon: FlaskConical },
 ];

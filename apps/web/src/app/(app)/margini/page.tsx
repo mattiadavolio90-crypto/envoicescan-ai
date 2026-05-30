@@ -4,10 +4,10 @@ import { SESSION_COOKIE } from "@/lib/auth";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FiltriPeriodo } from "./filtri-periodo";
 import { KpiBar, type KpiData } from "./kpi-bar";
-import { RicaviTab } from "./ricavi-tab";
 import { CalcoloTab } from "./calcolo-tab";
 import { AnalisiTab } from "./analisi-tab";
 import { calcolaPeriodo, type PeriodoPreset } from "./periodi";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 
 const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
 const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
@@ -60,7 +60,10 @@ async function fetchKpiData(data_da: string, data_a: string): Promise<KpiData> {
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return fallback;
-    return (await res.json()) as KpiData;
+    const raw = await res.json();
+    // Merge col fallback: garantisce che ogni campo numerico sia sempre definito
+    // anche se il worker ritorna un oggetto parziale.
+    return { ...fallback, ...raw } as KpiData;
   } catch {
     return fallback;
   }
@@ -72,7 +75,7 @@ export default async function MarginiPage({
   searchParams: Promise<SearchParams>;
 }) {
   const sp = await searchParams;
-  const tab = sp.tab ?? "ricavi";
+  const tab = sp.tab ?? "calcolo";
   const { data_da, data_a, preset, mese } = resolvePeriodo(sp);
 
   const anno = parseInt(
@@ -94,21 +97,26 @@ export default async function MarginiPage({
 
       <KpiBar kpi={kpi} />
 
+      <div className="pb-4" />
+
       <Suspense>
         <TabsSwitcher active={tab} />
       </Suspense>
 
       <div>
-        {tab === "ricavi" && <RicaviTab dataDa={data_da} dataA={data_a} />}
         {tab === "calcolo" && (
-          <Suspense>
-            <CalcoloTab dataDa={data_da} dataA={data_a} />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense>
+              <CalcoloTab dataDa={data_da} dataA={data_a} />
+            </Suspense>
+          </ErrorBoundary>
         )}
         {tab === "analisi" && (
-          <Suspense>
-            <AnalisiTab dataDa={data_da} dataA={data_a} />
-          </Suspense>
+          <ErrorBoundary>
+            <Suspense>
+              <AnalisiTab dataDa={data_da} dataA={data_a} />
+            </Suspense>
+          </ErrorBoundary>
         )}
       </div>
     </div>

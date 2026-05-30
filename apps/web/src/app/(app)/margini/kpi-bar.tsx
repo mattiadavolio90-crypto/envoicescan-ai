@@ -87,10 +87,10 @@ export function KpiBar({ kpi }: { kpi: KpiData }) {
   const molTone: Tone = kpi.mol >= 0 ? "emerald" : "rose";
 
   const cards: CardDef[] = [
-    { label: "Fatturato Lordo",  value: formatEuro(kpi.fatturato_lordo), sub: `netto ${formatEuro(kpi.fatturato_netto)}`, tone: "sky",    spark: kpi.spark_lordo },
+    { label: "Fatturato Netto",  value: formatEuro(kpi.fatturato_netto), sub: `lordo ${formatEuro(kpi.fatturato_lordo)}`, tone: "sky",    spark: kpi.spark_lordo },
     { label: "Costi F&B",        value: formatEuro(kpi.costi_fb),                                                          tone: "orange", spark: kpi.spark_fb },
     { label: "Margine Lordo",    value: formatEuro(kpi.primo_margine),                                                     tone: kpi.primo_margine >= 0 ? "emerald" : "rose", spark: kpi.spark_margine },
-    { label: "Spese Generali",   value: formatEuro(kpi.spese_generali),                                                    tone: "violet", spark: kpi.spark_spese },
+    { label: "Costi Gestione",   value: formatEuro(kpi.spese_generali),                                                    tone: "violet", spark: kpi.spark_spese },
     { label: "Costo Personale",  value: formatEuro(kpi.costo_personale),                                                   tone: "pink",   spark: kpi.spark_personale },
     { label: "MOL",              value: formatEuro(kpi.mol),                                                                tone: molTone,  spark: kpi.spark_mol },
   ];

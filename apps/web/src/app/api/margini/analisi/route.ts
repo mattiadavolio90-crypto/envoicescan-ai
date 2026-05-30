@@ -24,6 +24,7 @@ export async function GET(req: NextRequest) {
     const res = await fetch(`${WORKER_URL}/api/margini/analisi?${qs}`, {
       headers: h,
       cache: "no-store",
+      signal: AbortSignal.timeout(12000),
     });
     const data = await res.json();
     return NextResponse.json(data, { status: res.status });
