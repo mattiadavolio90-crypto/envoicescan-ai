@@ -90,6 +90,12 @@ setup_*.sql
 # File temporanei Excel
 dettaglio_*.xlsx
 
+# Esempi export gestionali (file di test locali)
+"esempio export gestionale/"
+esempio export gestionale/
+esempio export.xlsx
+esempio export*.xlsx
+
 # Backup
 *.backup
 *.bak
