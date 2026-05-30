@@ -31,6 +31,7 @@ import threading
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -5776,7 +5777,6 @@ async def admin_overview():
     # Breakdown mensile ultimi 12 mesi
     fatture_per_mese: list = []
     try:
-        from datetime import date
         twelve_ago = (datetime.now(timezone.utc).date().replace(day=1) - timedelta(days=365)).isoformat()
         fd_resp = sb.table("fatture_documenti").select("data_documento").gte("data_documento", twelve_ago).execute()
         per_mese: dict = {}
