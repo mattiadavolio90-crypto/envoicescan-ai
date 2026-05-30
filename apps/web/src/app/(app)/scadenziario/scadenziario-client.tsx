@@ -600,11 +600,9 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
   const [regole, setRegole] = useState<RegolaPagamento[]>([]);
   const [fornitori, setFornitori] = useState<FornitoreOption[]>([]);
   const [loading, setLoading] = useState(false);
-  const [adding, setAdding] = useState(false);
   const [selectedFornitore, setSelectedFornitore] = useState<FornitoreOption | null>(null);
   const [pivaManuale, setPivaManuale] = useState("");
   const [modalitaInput, setModalitaInput] = useState("30gg");
-  const [noteInput, setNoteInput] = useState("");
   const [saving, setSaving] = useState(false);
 
   const loadAll = useCallback(async () => {
@@ -614,22 +612,17 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
         fetch("/api/scadenziario/regole"),
         fetch("/api/scadenziario/fornitori"),
       ]);
-      if (resRegole.ok) {
-        const d = await resRegole.json();
-        setRegole(d.regole ?? []);
-      }
-      if (resFornitori.ok) {
-        const d = await resFornitori.json();
-        setFornitori(d.fornitori ?? []);
-      }
+      if (resRegole.ok) { const d = await resRegole.json(); setRegole(d.regole ?? []); }
+      if (resFornitori.ok) { const d = await resFornitori.json(); setFornitori(d.fornitori ?? []); }
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { if (open) loadAll(); }, [open, loadAll]);
+  useEffect(() => {
+    if (open) { loadAll(); setSelectedFornitore(null); setPivaManuale(""); setModalitaInput("30gg"); }
+  }, [open, loadAll]);
 
-  // Fornitori già configurati → non mostrarli nel select
   const fornitoriDisponibili = useMemo(() => {
     const giaCon = new Set(regole.map(r => r.piva_fornitore));
     return fornitori.filter(f => !f.piva_fornitore || !giaCon.has(f.piva_fornitore));
@@ -639,25 +632,17 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
   const canSave = !!selectedFornitore && !!pivaEffettiva;
 
   async function handleAdd() {
-    if (!selectedFornitore || !pivaEffettiva) return;
+    if (!canSave) return;
     setSaving(true);
     try {
       const res = await fetch("/api/scadenziario/regole", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          piva_fornitore: pivaEffettiva,
-          modalita: modalitaInput,
-          note: noteInput || undefined,
-        }),
+        body: JSON.stringify({ piva_fornitore: pivaEffettiva, modalita: modalitaInput }),
       });
-      if (!res.ok) {
-        const d = await res.json();
-        toast.error(d.detail || "Errore salvataggio");
-        return;
-      }
+      if (!res.ok) { const d = await res.json(); toast.error(d.detail || "Errore"); return; }
       toast.success("Regola salvata");
-      setSelectedFornitore(null); setPivaManuale(""); setNoteInput(""); setAdding(false);
+      setSelectedFornitore(null); setPivaManuale(""); setModalitaInput("30gg");
       await loadAll();
     } finally {
       setSaving(false);
@@ -669,12 +654,9 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
       await fetch(`/api/scadenziario/regole/${id}`, { method: "DELETE" });
       setRegole(r => r.filter(x => x.id !== id));
       toast.success("Regola eliminata");
-    } catch {
-      toast.error("Errore eliminazione");
-    }
+    } catch { toast.error("Errore eliminazione"); }
   }
 
-  // Mappa piva → nome fornitore per mostrarlo nella lista regole
   const pivaToNome = useMemo(() => {
     const m: Record<string, string> = {};
     for (const f of fornitori) if (f.piva_fornitore) m[f.piva_fornitore] = f.fornitore;
@@ -682,150 +664,110 @@ function RegoleDialog({ open, onClose }: RegoleDialogProps) {
   }, [fornitori]);
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) { setAdding(false); onClose(); } }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Regole Scadenza Fornitori</DialogTitle>
           <DialogDescription>
-            Definisci i termini di pagamento per fornitore. Sovrascrivono i dati della fattura XML.
+            Termini di pagamento per fornitore — sovrascrivono i dati della fattura XML.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 pt-2">
+        <div className="space-y-3 pt-1">
           {loading ? (
             <p className="text-sm text-muted-foreground text-center py-6">Caricamento...</p>
           ) : (
             <>
-              {regole.length === 0 && !adding && (
-                <p className="text-sm text-muted-foreground text-center py-6">Nessuna regola configurata.</p>
+              {/* Lista regole esistenti */}
+              {regole.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-3">Nessuna regola configurata.</p>
+              ) : (
+                <div className="space-y-2">
+                  {regole.map(reg => (
+                    <div key={reg.id} className="flex items-center gap-3 rounded-lg border bg-muted/20 px-3 py-2.5">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{pivaToNome[reg.piva_fornitore] || reg.piva_fornitore}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {MODALITA_LABELS[reg.modalita] ?? reg.modalita}
+                          <span className="mx-1.5 opacity-40">·</span>
+                          <span className="font-mono">{reg.piva_fornitore}</span>
+                        </p>
+                      </div>
+                      <Button variant="ghost" size="icon" className="size-7 text-muted-foreground hover:text-destructive flex-shrink-0"
+                        onClick={() => handleDelete(reg.id)}>
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
               )}
 
-              {regole.map(reg => (
-                <div key={reg.id} className="flex items-start justify-between gap-3 rounded-lg border bg-muted/20 p-3">
-                  <div className="space-y-0.5 min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {pivaToNome[reg.piva_fornitore] || reg.piva_fornitore}
-                    </p>
-                    <p className="text-xs text-muted-foreground font-mono">{reg.piva_fornitore}</p>
-                    <p className="text-xs text-muted-foreground">{MODALITA_LABELS[reg.modalita] ?? reg.modalita}</p>
-                    {reg.note && <p className="text-xs text-muted-foreground italic">{reg.note}</p>}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 text-muted-foreground hover:text-destructive flex-shrink-0"
-                    onClick={() => handleDelete(reg.id)}
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </div>
-              ))}
+              {/* Form aggiunta — sempre visibile se ci sono fornitori disponibili */}
+              {fornitoriDisponibili.length > 0 && (
+                <div className="rounded-lg border border-dashed p-3 space-y-2.5 mt-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Nuova regola</p>
 
-              {adding ? (
-                <div className="rounded-lg border p-4 space-y-3 bg-muted/10">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Nuova regola</p>
-
-                  <div className="space-y-1.5">
-                    <Label>Fornitore</Label>
-                    <Select
-                      value={selectedFornitore?.fornitore ?? ""}
-                      onValueChange={(nome) => {
-                        const found = fornitoriDisponibili.find(f => f.fornitore === nome);
-                        setSelectedFornitore(found ?? null);
-                        setPivaManuale("");
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Seleziona fornitore…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {fornitoriDisponibili.length === 0 ? (
-                          <div className="px-3 py-2 text-sm text-muted-foreground">
-                            Tutti i fornitori hanno già una regola.
-                          </div>
-                        ) : (
-                          fornitoriDisponibili.map(f => (
+                  {/* Riga 1: Fornitore + Modalità */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Fornitore</Label>
+                      <Select
+                        value={selectedFornitore?.fornitore ?? ""}
+                        onValueChange={(nome) => {
+                          const found = fornitoriDisponibili.find(f => f.fornitore === nome) ?? null;
+                          setSelectedFornitore(found);
+                          setPivaManuale("");
+                        }}
+                      >
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Seleziona…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {fornitoriDisponibili.map(f => (
                             <SelectItem key={f.fornitore} value={f.fornitore}>
-                              <span className="font-medium">{f.fornitore}</span>
-                              {f.piva_fornitore && (
-                                <span className="ml-2 text-xs text-muted-foreground font-mono">{f.piva_fornitore}</span>
-                              )}
+                              {f.fornitore}
                             </SelectItem>
-                          ))
-                        )}
-                      </SelectContent>
-                    </Select>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">Modalità</Label>
+                      <Select value={modalitaInput} onValueChange={setModalitaInput}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(MODALITA_LABELS).map(([k, v]) => (
+                            <SelectItem key={k} value={k}>{v}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
 
+                  {/* P.IVA manuale solo se mancante */}
                   {selectedFornitore && !selectedFornitore.piva_fornitore && (
-                    <div className="space-y-1.5">
-                      <Label>
-                        P.IVA fornitore
-                        <span className="ml-1 text-xs text-muted-foreground">(non rilevata dall'XML, inserisci manualmente)</span>
-                      </Label>
-                      <Input
-                        placeholder="12345678901"
-                        value={pivaManuale}
-                        onChange={e => setPivaManuale(e.target.value)}
-                        disabled={saving}
-                        className="font-mono"
-                      />
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">P.IVA (non rilevata dall'XML)</Label>
+                      <Input placeholder="12345678901" value={pivaManuale}
+                        onChange={e => setPivaManuale(e.target.value)} className="h-8 text-xs font-mono" />
                     </div>
                   )}
 
+                  {/* Piva confermata in sola lettura */}
                   {selectedFornitore?.piva_fornitore && (
-                    <p className="text-xs text-muted-foreground font-mono">
-                      P.IVA: {selectedFornitore.piva_fornitore}
-                    </p>
+                    <p className="text-[11px] text-muted-foreground font-mono">P.IVA: {selectedFornitore.piva_fornitore}</p>
                   )}
 
-                  <div className="space-y-1.5">
-                    <Label>Modalità pagamento</Label>
-                    <Select value={modalitaInput} onValueChange={setModalitaInput}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(MODALITA_LABELS).map(([k, v]) => (
-                          <SelectItem key={k} value={k}>{v}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label>Note (opzionale)</Label>
-                    <Input
-                      placeholder="es. addebito IBAN IT..."
-                      value={noteInput}
-                      onChange={e => setNoteInput(e.target.value)}
-                      disabled={saving}
-                    />
-                  </div>
-
-                  <div className="flex gap-2 pt-1">
-                    <Button
-                      size="sm"
-                      className="flex-1"
-                      onClick={handleAdd}
-                      disabled={saving || !canSave}
-                    >
-                      {saving ? "Salvataggio..." : "Salva regola"}
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => { setAdding(false); setSelectedFornitore(null); setPivaManuale(""); }}>
-                      Annulla
-                    </Button>
-                  </div>
+                  <Button size="sm" className="w-full h-8" onClick={handleAdd} disabled={saving || !canSave}>
+                    {saving ? "Salvataggio..." : "Salva regola"}
+                  </Button>
                 </div>
-              ) : fornitoriDisponibili.length > 0 ? (
-                <Button variant="outline" className="w-full gap-2" onClick={() => setAdding(true)}>
-                  <Plus className="size-4" /> Aggiungi regola
-                </Button>
-              ) : fornitori.length > 0 ? (
-                <p className="text-xs text-center text-muted-foreground py-2">
-                  Tutti i fornitori hanno già una regola configurata.
-                </p>
-              ) : (
+              )}
+
+              {fornitori.length === 0 && (
                 <p className="text-xs text-center text-muted-foreground py-2">
                   Nessun fornitore trovato. Carica prima le fatture.
                 </p>
