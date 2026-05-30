@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import {
-  RefreshCw, Bot, CheckCircle, AlertTriangle, Zap, Trash2, ArrowRightLeft, Search
+  RefreshCw, Bot, CheckCircle, AlertTriangle, Zap, Trash2, ArrowRightLeft, Search, Undo2, Activity
 } from "lucide-react";
 import { CATEGORIE_TUTTE } from "@/lib/admin";
 
@@ -455,12 +455,178 @@ function ConflittiTab() {
   );
 }
 
+// ─── TAB ATTIVITÀ AI ─────────────────────────────────────────────────────────
+type LogRow = {
+  id: number;
+  created_at: string;
+  attore: string;
+  azione: string;
+  descrizione: string;
+  categoria_da: string;
+  categoria_a: string;
+  righe_count: number;
+  nota: string;
+  annullato_at: string | null;
+};
+
+const AZIONE_LABEL: Record<string, string> = {
+  classifica: "Classifica manuale",
+  auto_review: "Auto-review",
+  risolvi_conflitto: "Risolvi conflitto",
+  annulla: "Annullata",
+};
+const AZIONE_COLOR: Record<string, string> = {
+  classifica: "bg-sky-100 text-sky-700",
+  auto_review: "bg-violet-100 text-violet-700",
+  risolvi_conflitto: "bg-amber-100 text-amber-700",
+  annulla: "bg-slate-100 text-slate-500",
+};
+
+function AttivitaAiTab() {
+  const [rows, setRows] = useState<LogRow[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [soloAnnullabili, setSoloAnnullabili] = useState(false);
+  const [undoing, setUndoing] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const qs = new URLSearchParams({ page: String(page), per_page: "50" });
+      if (soloAnnullabili) qs.set("solo_annullabili", "true");
+      const res = await fetch(`/api/admin/qualita-ai/audit?${qs}`);
+      if (!res.ok) { toast.error("Errore caricamento log"); return; }
+      const d = await res.json();
+      setRows(d.rows || []);
+      setTotal(d.total || 0);
+    } catch { toast.error("Errore di connessione"); }
+    finally { setLoading(false); }
+  }, [page, soloAnnullabili]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function handleAnnulla(row: LogRow) {
+    if (!confirm(`Annullare "${AZIONE_LABEL[row.azione] || row.azione}" su "${row.descrizione || "—"}" (${row.righe_count} righe)?`)) return;
+    setUndoing(row.id);
+    try {
+      const res = await fetch("/api/admin/qualita-ai/audit/annulla", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ log_id: row.id }),
+      });
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.detail || "Errore annullamento"); return; }
+      toast.success(`Annullato: ${d.righe_ripristinate} righe ripristinate a "${row.categoria_da}"`);
+      load();
+    } catch { toast.error("Errore di connessione"); }
+    finally { setUndoing(null); }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 flex-wrap items-center">
+        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
+        </Button>
+        <label className="flex items-center gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={soloAnnullabili}
+            onChange={(e) => { setSoloAnnullabili(e.target.checked); setPage(1); }}
+            className="rounded"
+          />
+          Solo annullabili
+        </label>
+        <span className="text-sm text-muted-foreground">{total} azioni totali</span>
+      </div>
+
+      <div className="rounded-lg border overflow-hidden">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b bg-muted/50 text-left">
+              <th className="px-3 py-2 font-medium">Data</th>
+              <th className="px-3 py-2 font-medium">Tipo</th>
+              <th className="px-3 py-2 font-medium">Descrizione</th>
+              <th className="px-3 py-2 font-medium hidden md:table-cell">Da → A</th>
+              <th className="px-3 py-2 font-medium">N.</th>
+              <th className="px-3 py-2 font-medium hidden lg:table-cell">Attore</th>
+              <th className="px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {rows.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                {loading ? "Caricamento…" : (
+                  <div className="space-y-2">
+                    <Activity className="size-8 text-muted-foreground/50 mx-auto" />
+                    <p>Nessuna azione registrata</p>
+                  </div>
+                )}
+              </td></tr>
+            )}
+            {rows.map((r) => (
+              <tr key={r.id} className={`hover:bg-muted/30 ${r.annullato_at ? "opacity-50" : ""}`}>
+                <td className="px-3 py-2 tabular-nums whitespace-nowrap text-muted-foreground">
+                  {new Date(r.created_at).toLocaleString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </td>
+                <td className="px-3 py-2">
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${AZIONE_COLOR[r.azione] || "bg-slate-100 text-slate-600"}`}>
+                    {AZIONE_LABEL[r.azione] || r.azione}
+                  </span>
+                </td>
+                <td className="px-3 py-2 max-w-[180px] truncate" title={r.descrizione}>{r.descrizione || "—"}</td>
+                <td className="px-3 py-2 hidden md:table-cell">
+                  {r.categoria_da ? (
+                    <span className="text-muted-foreground">{r.categoria_da} <span className="mx-1">→</span> {r.categoria_a}</span>
+                  ) : (
+                    <span>{r.categoria_a}</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 tabular-nums font-medium">{r.righe_count}</td>
+                <td className="px-3 py-2 hidden lg:table-cell text-muted-foreground truncate max-w-[120px]">{r.attore}</td>
+                <td className="px-3 py-2">
+                  {!r.annullato_at && r.azione !== "annulla" && r.categoria_da && r.righe_count > 0 ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs text-amber-600 hover:text-amber-700"
+                      disabled={undoing === r.id}
+                      onClick={() => handleAnnulla(r)}
+                      title="Ripristina categoria precedente"
+                    >
+                      <Undo2 className="size-3 mr-1" />
+                      {undoing === r.id ? "…" : "Annulla"}
+                    </Button>
+                  ) : r.annullato_at ? (
+                    <span className="text-[10px] text-muted-foreground">Annullata</span>
+                  ) : null}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex gap-2">
+        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>← Precedente</Button>
+        <Button variant="outline" size="sm" disabled={rows.length < 50} onClick={() => setPage((p) => p + 1)}>Successiva →</Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── ROOT CLIENT ─────────────────────────────────────────────────────────────
-const TABS = ["coda", "memoria", "conflitti"] as const;
-const TAB_LABELS: Record<string, string> = { coda: "Coda review", memoria: "Memoria globale", conflitti: "Conflitti" };
+const TABS = ["coda", "memoria", "conflitti", "attivita"] as const;
+const TAB_LABELS: Record<string, string> = {
+  coda: "Coda review",
+  memoria: "Memoria globale",
+  conflitti: "Conflitti",
+  attivita: "Attività AI",
+};
 
 export function QualitaAiClient() {
-  const [tab, setTab] = useState<"coda" | "memoria" | "conflitti">("coda");
+  const [tab, setTab] = useState<"coda" | "memoria" | "conflitti" | "attivita">("coda");
   return (
     <div className="space-y-4">
       <div className="flex gap-1 border-b">
@@ -477,6 +643,7 @@ export function QualitaAiClient() {
       {tab === "coda" && <CodaTab />}
       {tab === "memoria" && <MemoriaTab />}
       {tab === "conflitti" && <ConflittiTab />}
+      {tab === "attivita" && <AttivitaAiTab />}
     </div>
   );
 }

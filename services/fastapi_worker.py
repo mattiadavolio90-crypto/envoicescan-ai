@@ -6205,21 +6205,35 @@ async def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depe
     }
     sb.table("fatture").update(update_payload).in_("id", body.ids).is_("deleted_at", "null").execute()
 
-    if body.salva_memoria:
-        # Recupera la descrizione del primo ID per il salvataggio in memoria
-        row_resp = sb.table("fatture").select("descrizione,prezzo_unitario").in_("id", body.ids).limit(1).execute()
-        if row_resp.data:
-            desc = row_resp.data[0].get("descrizione", "")
+    # Recupera info per audit log e memoria
+    row_resp = sb.table("fatture").select("descrizione,prezzo_unitario,categoria").in_("id", body.ids).limit(1).execute()
+    prima_desc = ""
+    prima_cat_da = ""
+    if row_resp.data:
+        prima_desc = row_resp.data[0].get("descrizione", "")
+        prima_cat_da = row_resp.data[0].get("categoria") or ""
+        if body.salva_memoria:
             prezzo = float(row_resp.data[0].get("prezzo_unitario") or 0)
-            if desc and not (body.categoria == "📝 NOTE E DICITURE" and prezzo > 0):
+            if prima_desc and not (body.categoria == "📝 NOTE E DICITURE" and prezzo > 0):
                 sb.table("prodotti_master").upsert({
-                    "descrizione": desc,
+                    "descrizione": prima_desc,
                     "categoria": body.categoria,
                     "confidence": "altissima",
                     "verified": True,
                     "classificato_da": f"admin:{admin_user.get('email', 'admin')}",
                     "ultima_modifica": now,
                 }, on_conflict="descrizione").execute()
+
+    _log_review_action(
+        sb,
+        attore=f"admin:{admin_user.get('email', 'admin')}",
+        azione="classifica",
+        categoria_a=body.categoria,
+        ids_fatture=body.ids,
+        descrizione=prima_desc,
+        categoria_da=prima_cat_da,
+        nota=f"salva_memoria={body.salva_memoria}",
+    )
 
     logger.info("admin_qualita_classifica: %d righe → %s | admin=%s", len(body.ids), body.categoria, admin_user.get("email"))
     return {"ok": True, "righe_aggiornate": len(body.ids)}
@@ -6290,6 +6304,7 @@ async def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Dep
                 errori += 1
                 continue
             ids = df[df["descrizione"] == desc]["id"].tolist()
+            cat_da = str(df[df["descrizione"] == desc]["categoria"].iloc[0] or "")
             sb.table("fatture").update({
                 "categoria": "📝 NOTE E DICITURE",
                 "needs_review": False,
@@ -6304,6 +6319,7 @@ async def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Dep
                 "classificato_da": "auto-review",
                 "ultima_modifica": now,
             }, on_conflict="descrizione").execute()
+            _log_review_action(sb, "auto-review", "auto_review", "📝 NOTE E DICITURE", ids, desc, cat_da, "bucket=dicitura")
             classificate += len(ids)
             salvate += 1
         except Exception as exc:
@@ -6330,6 +6346,7 @@ async def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Dep
                 "classificato_da": "auto-review",
                 "ultima_modifica": now,
             }, on_conflict="descrizione").execute()
+            _log_review_action(sb, "auto-review", "auto_review", cat, ids, desc, cat, "bucket=sconto_omaggio")
             classificate += len(ids)
             salvate += 1
         except Exception as exc:
@@ -6545,8 +6562,133 @@ async def admin_qualita_risolvi_conflitto(body: RisolviConflittoBody, admin_user
             "classificato_da": "eccezione locale accettata",
         }).eq("id", body.local_id).execute()
 
+    _log_review_action(
+        sb,
+        attore=f"admin:{admin_user.get('email', 'admin')}",
+        azione="risolvi_conflitto",
+        categoria_a=local["categoria"],
+        ids_fatture=[],
+        descrizione=local.get("descrizione", ""),
+        nota=f"azione={body.azione} local_id={body.local_id}",
+    )
+
     logger.info("admin_risolvi_conflitto: local_id=%s azione=%s | admin=%s", body.local_id, body.azione, admin_user.get("email"))
     return {"ok": True}
+
+
+# ── Qualità AI — Audit log ────────────────────────────────────────────────────
+
+def _log_review_action(
+    sb,
+    attore: str,
+    azione: str,
+    categoria_a: str,
+    ids_fatture: list,
+    descrizione: str = "",
+    categoria_da: str = "",
+    nota: str = "",
+) -> Optional[int]:
+    """Scrive una riga in ai_review_log. Ritorna l'id inserito o None in caso di errore."""
+    try:
+        res = sb.table("ai_review_log").insert({
+            "attore": attore,
+            "azione": azione,
+            "descrizione": descrizione[:200] if descrizione else "",
+            "categoria_da": categoria_da or "",
+            "categoria_a": categoria_a,
+            "ids_fatture": ids_fatture,
+            "righe_count": len(ids_fatture),
+            "nota": nota[:200] if nota else "",
+        }).execute()
+        return (res.data[0]["id"] if res.data else None)
+    except Exception as exc:
+        logger.warning("_log_review_action failed: %s", exc)
+        return None
+
+
+@app.get("/api/admin/qualita-ai/audit", tags=["Admin"])
+async def admin_qualita_audit(
+    page: int = 1,
+    per_page: int = 50,
+    attore: Optional[str] = None,
+    solo_annullabili: bool = False,
+    admin_user: dict = Depends(_verify_admin),
+):
+    """Feed audit log azioni AI/admin su classificazioni."""
+    per_page = min(per_page, 200)
+    offset = (page - 1) * per_page
+    sb = get_supabase_client()
+
+    q = sb.table("ai_review_log").select("*")
+    if attore:
+        q = q.eq("attore", attore)
+    if solo_annullabili:
+        q = q.is_("annullato_at", "null")
+
+    count_q = sb.table("ai_review_log").select("id", count="exact")
+    if attore:
+        count_q = count_q.eq("attore", attore)
+    if solo_annullabili:
+        count_q = count_q.is_("annullato_at", "null")
+    try:
+        total = count_q.execute().count or 0
+    except Exception:
+        total = 0
+
+    rows = q.order("created_at", desc=True).range(offset, offset + per_page - 1).execute().data or []
+    return {"rows": rows, "total": total, "page": page, "per_page": per_page}
+
+
+class AnnullaBody(BaseModel):
+    log_id: int
+
+
+@app.post("/api/admin/qualita-ai/audit/annulla", tags=["Admin"])
+async def admin_qualita_audit_annulla(body: AnnullaBody, admin_user: dict = Depends(_verify_admin)):
+    """Annulla un'azione loggata: ripristina categoria_da sulle righe fattura."""
+    from datetime import datetime, timezone
+    sb = get_supabase_client()
+    now = datetime.now(timezone.utc).isoformat()
+
+    log_resp = sb.table("ai_review_log").select("*").eq("id", body.log_id).limit(1).execute()
+    if not log_resp.data:
+        raise HTTPException(status_code=404, detail="Azione non trovata")
+    entry = log_resp.data[0]
+
+    if entry.get("annullato_at"):
+        raise HTTPException(status_code=409, detail="Azione già annullata")
+
+    categoria_da = entry.get("categoria_da") or ""
+    if not categoria_da:
+        raise HTTPException(status_code=400, detail="Nessuna categoria precedente salvata, impossibile annullare")
+
+    ids = [int(i) for i in (entry.get("ids_fatture") or [])]
+    if ids:
+        sb.table("fatture").update({
+            "categoria": categoria_da,
+            "needs_review": True,
+            "reviewed_at": None,
+            "reviewed_by": None,
+        }).in_("id", ids).is_("deleted_at", "null").execute()
+
+    sb.table("ai_review_log").update({
+        "annullato_at": now,
+        "annullato_da": f"admin:{admin_user.get('email', 'admin')}",
+    }).eq("id", body.log_id).execute()
+
+    _log_review_action(
+        sb,
+        attore=f"admin:{admin_user.get('email', 'admin')}",
+        azione="annulla",
+        categoria_a=categoria_da,
+        ids_fatture=ids,
+        descrizione=entry.get("descrizione", ""),
+        categoria_da=entry.get("categoria_a", ""),
+        nota=f"annulla log_id={body.log_id}",
+    )
+
+    logger.info("admin_audit_annulla: log_id=%d righe=%d | admin=%s", body.log_id, len(ids), admin_user.get("email"))
+    return {"ok": True, "righe_ripristinate": len(ids)}
 
 
 # ── Sistema/Salute — Costi AI ─────────────────────────────────────────────────
