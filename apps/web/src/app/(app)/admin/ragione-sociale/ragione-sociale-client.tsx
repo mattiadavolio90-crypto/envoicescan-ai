@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { NativeSelect } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -21,7 +21,7 @@ export function RagioneSocialeClient({ mappingsIniziali, sedi }: Props) {
   const [saving, setSaving] = useState(false);
 
   async function handleCrea() {
-    if (!ragione.trim() || !sedeId) { toast.error("Compila tutti i campi"); return; }
+    if (!ragione.trim() || !sedeId) { toast.error(sedi.length === 0 ? "Nessun ristorante disponibile — worker non raggiungibile" : "Compila tutti i campi"); return; }
     setSaving(true);
     try {
       const res = await fetch("/api/admin/ragione-sociale-map", {
@@ -99,14 +99,15 @@ export function RagioneSocialeClient({ mappingsIniziali, sedi }: Props) {
             </div>
             <div className="space-y-1.5">
               <Label>Ristorante ONEFLUX</Label>
-              <Select value={sedeId} onValueChange={setSedeId}>
-                <SelectTrigger><SelectValue placeholder="Seleziona ristorante…" /></SelectTrigger>
-                <SelectContent>
+              {sedi.length === 0 ? (
+                <p className="text-xs text-destructive">Nessun ristorante caricato — worker non raggiungibile</p>
+              ) : (
+                <NativeSelect value={sedeId} onValueChange={setSedeId} placeholder="Seleziona ristorante…">
                   {sedi.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>
+                    <option key={s.id} value={s.id}>{s.label}</option>
                   ))}
-                </SelectContent>
-              </Select>
+                </NativeSelect>
+              )}
             </div>
           </div>
           <DialogFooter>
