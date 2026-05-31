@@ -1,4 +1,6 @@
 import { fetchDashboardStats } from "@/lib/dashboard";
+import { fetchBriefing } from "@/lib/home";
+import { HomeBriefing } from "./home-briefing";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Receipt, Package, Euro } from "lucide-react";
 
@@ -28,7 +30,10 @@ function pctDelta(curr: number, prev: number): { value: number; positive: boolea
 }
 
 export default async function DashboardPage() {
-  const stats = await fetchDashboardStats();
+  const [stats, briefing] = await Promise.all([
+    fetchDashboardStats(),
+    fetchBriefing(),
+  ]);
 
   if (!stats) {
     return (
@@ -49,13 +54,17 @@ export default async function DashboardPage() {
   const isEmpty = kpi.righe_totali === 0;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Panoramica dei tuoi acquisti — aggiornata in tempo reale
-        </p>
-      </div>
+    <div className="space-y-8">
+      {briefing ? (
+        <HomeBriefing briefing={briefing} />
+      ) : (
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Panoramica dei tuoi acquisti — aggiornata in tempo reale
+          </p>
+        </div>
+      )}
 
       {isEmpty ? (
         <Card>
@@ -68,7 +77,8 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       ) : (
-        <>
+        <div className="space-y-6">
+          <h2 className="text-sm font-semibold text-muted-foreground">Panoramica</h2>
           {/* KPI CARDS */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card>
@@ -188,7 +198,7 @@ export default async function DashboardPage() {
               </CardContent>
             </Card>
           </div>
-        </>
+        </div>
       )}
     </div>
   );
