@@ -191,7 +191,7 @@ export function InventarioAggiungiDialog({ open, voce, dataInventario, onClose, 
             <Label className="text-sm font-medium block">UM</Label>
             {/* UM bloccata se prodotto selezionato da fattura (in modalità aggiungi) */}
             {daFattura && !isEdit ? (
-              <div className="h-10 flex items-center px-3 rounded-md border border-border bg-muted text-sm font-medium">
+              <div className="h-10 w-full flex items-center px-3 rounded-md border border-border bg-muted text-sm font-medium">
                 {um}
               </div>
             ) : (
