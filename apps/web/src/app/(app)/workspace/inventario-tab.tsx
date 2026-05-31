@@ -13,6 +13,7 @@ import {
   type SnapshotDate,
 } from "@/lib/inventario";
 import { InventarioAggiungiDialog } from "./inventario-aggiungi-dialog";
+import { InventarioDatePicker } from "./inventario-date-picker";
 
 function fmtEuro(v: number | null | undefined) {
   if (v == null) return "—";
@@ -126,12 +127,11 @@ export function InventarioTab() {
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Date picker */}
-        <input
-          type="date"
+        {/* Date picker con evidenziazione giorni inventario */}
+        <InventarioDatePicker
           value={dataInventario}
-          onChange={e => onDataChange(e.target.value)}
-          className="h-10 rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+          snapshots={snapshots}
+          onChange={onDataChange}
         />
 
         <Button onClick={() => { setEditVoce(null); setDialogOpen(true); }}>
