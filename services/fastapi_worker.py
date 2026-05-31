@@ -8092,9 +8092,8 @@ async def ws_inventario_elimina_data(data: str = Query(..., description="Data in
     """Elimina tutte le voci inventario per una data."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
-    ristorante_id = str(user.get("ristorante_id", ""))
     sb = _get_supabase_client()
-    resp = sb.table("inventario_voci").delete().eq("user_id", user_id).eq("ristorante_id", ristorante_id).eq("data_inventario", data).execute()
+    resp = sb.table("inventario_voci").delete().eq("user_id", user_id).eq("data_inventario", data).execute()
     n = len(resp.data) if resp.data else 0
     return {"ok": True, "n_eliminate": n}
 
