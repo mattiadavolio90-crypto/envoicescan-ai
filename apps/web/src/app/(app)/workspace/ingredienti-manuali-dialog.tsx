@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { UM_OPTIONS, type IngredienteManuale } from "@/lib/foodcost";
 
 interface Props {
   open: boolean;
@@ -19,8 +18,16 @@ interface Props {
 
 const UM_LIST = ["KG", "LT", "PZ", "G", "ML"] as const;
 
+// Tipo che corrisponde alla risposta dell'endpoint /ingredienti-manuali (campo DB prezzo_per_um)
+interface IngredienteDB {
+  id: string;
+  nome: string;
+  prezzo_per_um: number;
+  um: string;
+}
+
 export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
-  const [lista, setLista] = useState<IngredienteManuale[]>([]);
+  const [lista, setLista] = useState<IngredienteDB[]>([]);
   const [loading, setLoading] = useState(false);
 
   // form nuovo
@@ -178,10 +185,10 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
               ) : (
                 <>
                   <span className="flex-1 text-sm font-medium">{ing.nome}</span>
-                  <span className="text-sm text-muted-foreground w-20 text-right">€{ing.prezzo_unitario.toFixed(2)}</span>
+                  <span className="text-sm text-muted-foreground w-20 text-right">€{Number(ing.prezzo_per_um).toFixed(2)}</span>
                   <span className="text-xs text-muted-foreground w-8">/{ing.um}</span>
                   <Button size="icon" variant="ghost" className="size-7"
-                    onClick={() => { setEditId(ing.id); setEditNome(ing.nome); setEditPrezzo(String(ing.prezzo_unitario)); setEditUm(ing.um); }}>
+                    onClick={() => { setEditId(ing.id); setEditNome(ing.nome); setEditPrezzo(String(ing.prezzo_per_um)); setEditUm(ing.um); }}>
                     <Pencil className="size-3.5" />
                   </Button>
                   <Button size="icon" variant="ghost" className="size-7 text-destructive hover:text-destructive"
