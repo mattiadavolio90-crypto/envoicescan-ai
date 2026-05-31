@@ -8125,12 +8125,14 @@ async def ws_diario_list(
 ):
     """Lista eventi diario per il ristorante, opzionalmente filtrati per mese."""
     user = _resolve_user_from_token(authorization)
-    ristorante_id = str(user.get("ristorante_id") or "")
+    user_id = str(user["id"])
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     q = sb.table("diario_eventi").select("*").eq("ristorante_id", ristorante_id)
     if mese:
         anno, mo = mese.split("-")
-        from datetime import date
         import calendar
         ultimo_giorno = calendar.monthrange(int(anno), int(mo))[1]
         q = q.gte("data_evento", f"{mese}-01").lte("data_evento", f"{mese}-{ultimo_giorno:02d}")
@@ -8144,8 +8146,10 @@ async def ws_diario_crea(body: NuovoEventoDiarioBody, authorization: Optional[st
     """Crea un nuovo evento nel diario."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
-    ristorante_id = str(user.get("ristorante_id") or "")
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     payload: dict = {
         "ristorante_id": ristorante_id,
         "user_id": user_id,
@@ -8167,8 +8171,11 @@ async def ws_diario_crea(body: NuovoEventoDiarioBody, authorization: Optional[st
 async def ws_diario_aggiorna(evento_id: str, body: AggiornaEventoDiarioBody, authorization: Optional[str] = Header(None)):
     """Aggiorna un evento diario."""
     user = _resolve_user_from_token(authorization)
-    ristorante_id = str(user.get("ristorante_id") or "")
+    user_id = str(user["id"])
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
@@ -8180,8 +8187,11 @@ async def ws_diario_aggiorna(evento_id: str, body: AggiornaEventoDiarioBody, aut
 async def ws_diario_elimina(evento_id: str, authorization: Optional[str] = Header(None)):
     """Elimina un evento diario."""
     user = _resolve_user_from_token(authorization)
-    ristorante_id = str(user.get("ristorante_id") or "")
+    user_id = str(user["id"])
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     sb.table("diario_eventi").delete().eq("id", evento_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
 
@@ -8232,8 +8242,11 @@ async def ws_personale_list(
 ):
     """Lista turni + nomi distinti + monte ore per persona nel periodo."""
     user = _resolve_user_from_token(authorization)
-    ristorante_id = str(user.get("ristorante_id") or "")
+    user_id = str(user["id"])
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     q = sb.table("turni_personale").select("*").eq("ristorante_id", ristorante_id)
     if da:
         q = q.gte("data_turno", da)
@@ -8259,8 +8272,10 @@ async def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] =
     """Aggiunge un turno (supporta secondo slot per spezzato)."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
-    ristorante_id = str(user.get("ristorante_id") or "")
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     payload: dict = {
         "ristorante_id": ristorante_id,
         "user_id": user_id,
@@ -8283,8 +8298,11 @@ async def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] =
 async def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization: Optional[str] = Header(None)):
     """Aggiorna un turno (i campi ora_inizio2/ora_fine2 possono essere azzerati passando null)."""
     user = _resolve_user_from_token(authorization)
-    ristorante_id = str(user.get("ristorante_id") or "")
+    user_id = str(user["id"])
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     raw = body.model_dump()
     # Campi standard: includi solo se non None
     updates = {k: v for k, v in raw.items() if k not in ("ora_inizio2", "ora_fine2") and v is not None}
@@ -8302,8 +8320,11 @@ async def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authoriz
 async def ws_personale_elimina(turno_id: str, authorization: Optional[str] = Header(None)):
     """Elimina un turno."""
     user = _resolve_user_from_token(authorization)
-    ristorante_id = str(user.get("ristorante_id") or "")
+    user_id = str(user["id"])
     sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     sb.table("turni_personale").delete().eq("id", turno_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
 
