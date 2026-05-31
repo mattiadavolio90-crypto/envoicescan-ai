@@ -124,19 +124,19 @@ export function FoodcostTab() {
       {/* KPI */}
       {kpi && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Card className="border-sky-200 dark:border-sky-800"><CardContent className="py-3 px-4">
+          <Card className="ring-sky-400/60"><CardContent className="py-3 px-4">
             <p className="text-xs text-muted-foreground">Ricette totali</p>
             <p className="text-2xl font-bold">{kpi.totale}</p>
           </CardContent></Card>
-          <Card className="border-sky-200 dark:border-sky-800"><CardContent className="py-3 px-4">
+          <Card className="ring-sky-400/60"><CardContent className="py-3 px-4">
             <p className="text-xs text-muted-foreground">Costo medio ricetta</p>
             <p className="text-2xl font-bold">{fmtEuro(kpi.costo_medio)}</p>
           </CardContent></Card>
-          <Card className="border-sky-200 dark:border-sky-800"><CardContent className="py-3 px-4">
+          <Card className="ring-sky-400/60"><CardContent className="py-3 px-4">
             <p className="text-xs text-muted-foreground">Margine medio</p>
             <p className="text-2xl font-bold">{fmtEuro(kpi.margine_medio)}</p>
           </CardContent></Card>
-          <Card className="border-sky-200 dark:border-sky-800"><CardContent className="py-3 px-4">
+          <Card className="ring-sky-400/60"><CardContent className="py-3 px-4">
             <p className="text-xs text-muted-foreground">Incidenza FC media</p>
             <p className="text-2xl font-bold">{fmtPct(kpi.incidenza_media)}</p>
           </CardContent></Card>

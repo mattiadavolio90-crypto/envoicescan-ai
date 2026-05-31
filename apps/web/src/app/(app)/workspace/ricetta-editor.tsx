@@ -212,13 +212,23 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[min(96vw,720px)] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isNew ? "Nuova ricetta" : `Modifica — ${ricetta?.nome}`}</DialogTitle>
         </DialogHeader>
 
-        {/* Header: categoria / nome / prezzo */}
-        <div className="grid grid-cols-[180px_1fr_160px] gap-3">
+        {/* Riga 1: Nome ricetta — full width */}
+        <div>
+          <Label className="text-xs">Nome ricetta *</Label>
+          <Input
+            placeholder="es. Pizza Margherita, Besciamella, Ragù bolognese…"
+            value={nome}
+            onChange={e => setNome(e.target.value)}
+          />
+        </div>
+
+        {/* Riga 2: Categoria + Prezzo vendita */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <Label className="text-xs">Categoria</Label>
             <select
@@ -230,15 +240,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
             </select>
           </div>
           <div>
-            <Label className="text-xs">Nome ricetta *</Label>
-            <Input
-              placeholder="es. Pizza Margherita, Besciamella…"
-              value={nome}
-              onChange={e => setNome(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="text-xs">Prezzo vendita (IVA 10% incl.)</Label>
+            <Label className="text-xs">Prezzo vendita (IVA 10% inclusa)</Label>
             <Input
               type="number"
               placeholder="0.00"
@@ -251,7 +253,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
         </div>
 
         {categoria === "SEMILAVORATI" && (
-          <p className="text-xs text-sky-600 dark:text-sky-400 -mt-1">
+          <p className="text-xs text-sky-600 dark:text-sky-400 -mt-2">
             I semilavorati possono essere usati come ingredienti in altre ricette.
           </p>
         )}
