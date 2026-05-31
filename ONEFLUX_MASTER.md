@@ -128,7 +128,7 @@ Next.js è usato da Notion, TikTok, Nike, GitHub. Supabase è PostgreSQL. FastAP
 📄 Analisi Fatture
 🏷️ Prezzi
 📊 Ricavi e Margini
-🍽️ Foodcost
+🧰 Strumenti          ← ex Foodcost; pagina-contenitore con tab (Foodcost/Diario/Personale/Inventario)
 🏷️ Analisi e Tag
 📅 Gestione Fatture   ← ex Scadenziario; cestino integrato come widget
 ─────────
@@ -262,8 +262,14 @@ Tab **Analisi Avanzate**: donut centri, line chart, performance card, commenti A
 ### 🏷️ Prezzi
 Alert aumenti, storico prezzi per prodotto, sconti/omaggi, note credito, soglia alert configurabile. **Stato**: ✅ funzionale (UX dei 3 tab allineata al design system, 29/5). **Audit aperto**: vedi changelog §14 "Prezzi — Redesign + audit" per i 3 bug di correttezza da chiudere.
 
-### 🍽️ Foodcost
-**Riscrittura completa** in Fase 6. Nessuna parità con Streamlit richiesta. Design moderno con grafici e pivot. **Stato**: ⏳ placeholder.
+### 🧰 Strumenti (ex Foodcost) — Fase 6
+Pagina-contenitore "layer a parte" con strumenti operativi che il ristoratore farebbe altrimenti su Excel/altre app. Route `/workspace`, etichetta sidebar **"Strumenti"** (icona cassetta attrezzi), flag `workspace` (ri-allineato con Streamlit, che già usava `workspace`). **4 tab:**
+- **Foodcost** — riscrittura completa del foodcost Streamlit (oggi internamente già `workspace`): ricette con ingredienti dalle **fatture reali** o da altre ricette (semilavorati), conversione UM, estrazione grammatura, foodcost/margine/incidenza per piatto. **Upgrade chiave previsto:** matrice **menu engineering** (Stelle/Cavalli/Enigmi/Cani — popolarità × marginalità) che Streamlit non può fare. Riusa le tabelle esistenti (`ricette`, ecc.) per non perdere i dati clienti.
+- **Diario** — calendario **condiviso per ristorante** (stile Google Calendar): eventi/note con data. Migra il vecchio `note_diario` (post-it senza data) come note "senza orario".
+- **Personale** — turni a **nomi liberi** (con autocomplete dai nomi già usati per aggregare) → **monte ore** settimanale/mensile → **export Excel** per ufficio paghe. NON gestionale HR: solo ore.
+- **Inventario** — **conta-giacenze** semplice (articolo + quantità + valore), non movimentazione live (filosofia #4). Articoli pescabili dai prodotti delle fatture.
+
+**Stato**: 🟡 **shell costruita (31/5)** — pagina `/workspace` con nav a 4 tab e placeholder; tab interni da riempire uno alla volta. Ordine di riempimento da concordare.
 
 ### 💼 Assistenza
 Chat AI opzionale + marketplace servizi: consulenza F&B, studio menù, comparatori utenze/POS, lead gen verso partner. Pagamenti **esterni all'app** (no Stripe integrato). **Stato**: ⏳ zero codice.
@@ -411,7 +417,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Fase 3 | 2-3 sett. | 🟡 parziale | Dashboard ✅ · Notifiche ✅ · Upload ✅ — **manca**: Home con briefing AI + notifiche actionable |
 | Fase 4 | 1-2 sett. | ✅ **chiusa (30/5)** | Analisi Fatture ✅ · Analisi e Tag ✅ · Gestione Fatture (ex Scadenziario) ✅ · Cestino ✅ (ora widget integrato) · elimina da peek ✅ |
 | Fase 5 | 2-3 sett. | ✅ **chiusa (28/5) + hardening (29/5)** | Margini ✅ · Ricavi ✅ · Analisi Avanzate ✅ · Prezzi ✅ · DB migrated · contratto FE↔worker allineato |
-| Fase 6 | 2-3 sett. | ⏳ | Foodcost (riscrittura completa) — oggi placeholder |
+| Fase 6 | 2-3 sett. | 🟡 shell (31/5) | **Strumenti** (ex Foodcost): pagina `/workspace` a 4 tab (Foodcost/Diario/Personale/Inventario). Shell pronta, tab interni da riempire |
 | Fase 7 | 3-4 sett. | ✅ **chiusa + over-delivery (30/5)** | Admin Core ✅ · Qualità AI ✅ (coda review, auto-review, memoria globale, conflitti, **audit log + undo**) · Sistema/Salute ✅ (costi AI, retention, **agent notturno on/off**; tab Integrità DB rimosso) · **routing confidenza automatica sull'ingest ✅** |
 | Fase 8 | 2-3 sett. | 🟡 parziale | Assistenza marketplace ⏳ · Report ⏳ · Account ✅ (dati ristorante, piano, contatori, cambio password) |
 | Fase 9 | 1-2 sett. | ⏳ | Test, performance, sicurezza + comunicazione clienti |
@@ -441,7 +447,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Notifiche | ✅ | Lista, severity, dismiss, badge. **Manca** raggruppamento + azioni inline |
 | Analisi e Tag | ✅ | Chip tag, periodo, KPI bar, trend prezzi, analisi fornitori, prodotti inline, suggerimenti, export XLS |
 | Gestione Fatture (ex Scadenziario) | ✅ | Agenda + calendario + KPI bar + regole fornitore + elimina da peek + cestino widget integrato |
-| Foodcost | ⏳ | Placeholder "in costruzione" |
+| Strumenti (ex Foodcost) | 🟡 | Route `/workspace`, shell a 4 tab (Foodcost/Diario/Personale/Inventario) con placeholder; flag `workspace`. Tab interni da costruire |
 | Report | ⏳ | Placeholder — **rimosso dalla sidebar (31/5)**; route `(app)/report/page.tsx` ancora presente ma scollegata. Valutare se eliminarla o ripensare la feature |
 | Impostazioni/Account | ✅ | Dati ristorante, piano + contatore, cambio password |
 | Admin Panel | ✅ | Core (clienti con piano inline + inizio piano, onboarding, impersonazione, sedi, flags, mapping) · Qualità AI (coda review con suggerimento categoria + 1-click, auto-review, memoria globale, conflitti, audit log + undo) · Sistema/Salute (costi AI, retention, **agent notturno on/off**) · routing confidenza sull'ingest |
@@ -626,6 +632,17 @@ Sessione di rifinitura UX/correttezza, nessuna nuova feature:
 - **Brevo in produzione ✅ FUNZIONANTE.** Le 3 env var (`BREVO_API_KEY`/`BREVO_SENDER_EMAIL`/`BREVO_SENDER_NAME`) sono ora sul worker Railway (service `worker`, Online). Test reale `POST /api/auth/reset-request` → `{"ok":true,"message":"Email inviata con successo"}` (HTTP 200). **Blocco #1 pre-switch chiuso.**
 - **Route orfane rimosse:** `(app)/report/page.tsx`, `(app)/cestino/page.tsx`, `(app)/cestino/cestino-client.tsx`. Tolto `/report` da `PROTECTED_PREFIXES` in `proxy.ts`. **Le API proxy `app/api/cestino/*` restano** — servono il widget cestino in Gestione Fatture e l'elimina-da-peek (`api/fatture/elimina` importa `api/cestino/_worker`).
 
+**Strumenti / Workspace — shell (31 maggio 2026, rev. 15)**
+
+Avvio Fase 6 ridefinita: il "Foodcost" diventa **"Strumenti"**, una pagina-contenitore (layer a parte) con 4 tab. Decisioni di design prese con Mattia:
+- **Nome/route:** etichetta sidebar "Strumenti" (icona `Wrench`), route `/workspace`, flag `workspace` (rinominato da `foodcost` → ri-allinea con Streamlit che già usava `workspace`; il Next.js **non fa gating per-pagina**, quindi nessuna migrazione DB distruttiva: i vecchi valori `foodcost` in `users.pagine_abilitate` restano orfani innocui, cleanup opzionale).
+- **4 tab:** Foodcost (rework + menu engineering) · Diario (calendario condiviso per ristorante) · Personale (turni a nomi liberi → monte ore → export Excel, solo ore) · Inventario (conta-giacenze semplice, no movimentazione live).
+- **Ordine:** shell-first, poi un tab alla volta.
+
+*Implementato (shell, frontend reversibile):* `(app)/workspace/page.tsx` + `tabs-switcher.tsx` (pattern URL `?tab=` identico a Prezzi), 4 placeholder. Sidebar: voce "Strumenti"/`/workspace`. Rimossa vecchia route `(app)/foodcost/page.tsx`. `proxy.ts`: `/foodcost`→`/workspace`. Admin flag editor: `foodcost`→`workspace` label "Strumenti" (+ fix label "Scadenziario"→"Gestione Fatture"). `tsc --noEmit` pulito.
+
+*Da costruire:* i 4 tab interni. Modelli dati nuovi richiesti per Diario (eventi calendario), Personale (turni), Inventario (giacenze) — da specificare a inizio di ciascuno.
+
 ### Prossimi passi concreti (aggiornato 31/5 — rev.15)
 
 **⚠️ Prerequisiti / dimenticanze da chiudere (NON codice o cleanup):**
@@ -640,7 +657,7 @@ Sessione di rifinitura UX/correttezza, nessuna nuova feature:
 4. ~~**Impostazioni/Account**~~ ✅ **Completato** (30/5)
 5. ~~**Admin Panel** (Core + blocco 2 + routing confidenza + agent notturno + audit)~~ ✅ **Completato/over-delivered** (30/5)
 6. **➡️ Home AI** — briefing giornaliero + notifiche actionable inline (Fase 3). **È l'unico pezzo core MVP ancora aperto oltre a Foodcost.** Il backend `daily_briefing_service` esiste già, va esposto in Next.js. La dashboard oggi ha solo KPI + grafici, zero briefing.
-7. **Foodcost** — riscrittura completa da zero (Fase 6).
+7. **Strumenti / Workspace** (ex Foodcost, Fase 6) — shell a 4 tab pronta. Riempire i tab: Foodcost (rework + menu engineering), Diario (calendario), Personale (turni→ore→export), Inventario (conta-giacenze). Ordine interno da concordare.
 8. **Assistenza/Marketplace** (Fase 8) — zero codice.
 9. **Notifiche v2** — raggruppamento + azioni inline + filtri con count (4 miglioramenti, Fase 3).
 10. **Test, performance, switch dominio** (Fasi 9-11).

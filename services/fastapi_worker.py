@@ -7486,6 +7486,336 @@ async def admin_attiva_trial(cliente_id: str, admin_user: dict = Depends(_verify
 # ═══════════════════════════════════════════════════════════════════════════
 # ENTRY POINT (avvio diretto: python services/fastapi_worker.py)
 # ═══════════════════════════════════════════════════════════════════════════
+# WORKSPACE / FOODCOST
+# ═══════════════════════════════════════════════════════════════════════════
+
+class NuovaRicettaBody(BaseModel):
+    nome: str
+    categoria: str
+    prezzo_vendita_ivainc: Optional[float] = None
+    righe: list[dict]  # lista ingredienti con quantita/um/tipo/prezzi
+
+
+class CalcolaRigheBody(BaseModel):
+    righe: list[dict]
+
+
+class NuovoIngredienteManualeBody(BaseModel):
+    nome: str
+    prezzo_per_um: float
+    um: str
+
+
+class AggiornaIngredienteManualeBody(BaseModel):
+    nome: Optional[str] = None
+    prezzo_per_um: Optional[float] = None
+    um: Optional[str] = None
+
+
+@app.get("/api/workspace/foodcost/ingredienti", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_ingredienti(authorization: Optional[str] = Header(None)):
+    """Lista unificata: articoli da fatture + ingredienti manuali + semilavorati."""
+    from services.foodcost_service import get_articoli_da_fatture
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    articoli = get_articoli_da_fatture(sb, user_id, ristorante_id)
+
+    manuali_resp = (
+        sb.table("ingredienti_workspace")
+        .select("id,nome,prezzo_per_um,um")
+        .eq("userid", user_id)
+        .eq("ristorante_id", ristorante_id)
+        .order("nome")
+        .execute()
+    )
+    manuali = manuali_resp.data or []
+
+    semi_resp = (
+        sb.table("ricette")
+        .select("id,nome,foodcost_totale")
+        .eq("userid", user_id)
+        .eq("ristorante_id", ristorante_id)
+        .eq("categoria", "SEMILAVORATI")
+        .execute()
+    )
+    semilavorati = semi_resp.data or []
+
+    return {
+        "articoli": [{"tipo": "articolo", **a} for a in articoli],
+        "manuali": [
+            {
+                "tipo": "manuale",
+                "id": m["id"],
+                "nome": m["nome"],
+                "prezzo_unitario": float(m["prezzo_per_um"]),
+                "um": m["um"],
+            }
+            for m in manuali
+        ],
+        "semilavorati": [
+            {
+                "tipo": "semilavorato",
+                "id": s["id"],
+                "nome": s["nome"],
+                "foodcost_ricetta": float(s["foodcost_totale"] or 0),
+            }
+            for s in semilavorati
+        ],
+    }
+
+
+@app.get("/api/workspace/foodcost/ricette", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_ricette(authorization: Optional[str] = Header(None)):
+    """Lista ricette con KPI calcolati (margine, incidenza%)."""
+    from services.foodcost_service import arricchisci_ricetta
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    resp = (
+        sb.table("ricette")
+        .select("id,nome,categoria,foodcost_totale,prezzo_vendita_ivainc,ordine_visualizzazione")
+        .eq("userid", user_id)
+        .eq("ristorante_id", ristorante_id)
+        .order("ordine_visualizzazione")
+        .execute()
+    )
+    ricette = [arricchisci_ricetta(r) for r in (resp.data or [])]
+
+    # KPI globali
+    con_prezzo = [r for r in ricette if r["margine"] is not None]
+    kpi = {
+        "totale": len(ricette),
+        "costo_medio": round(sum(r["foodcost_totale"] for r in ricette) / len(ricette), 2) if ricette else 0,
+        "margine_medio": round(sum(r["margine"] for r in con_prezzo) / len(con_prezzo), 2) if con_prezzo else None,
+        "incidenza_media": round(sum(r["incidenza_pct"] for r in con_prezzo) / len(con_prezzo), 1) if con_prezzo else None,
+    }
+
+    # Aggregati per categoria
+    from collections import defaultdict
+    cat_map: dict = defaultdict(lambda: {"n": 0, "fc": 0.0, "margini": [], "incidenze": []})
+    for r in ricette:
+        c = cat_map[r["categoria"]]
+        c["n"] += 1
+        c["fc"] += float(r["foodcost_totale"] or 0)
+        if r["margine"] is not None:
+            c["margini"].append(r["margine"])
+        if r["incidenza_pct"] is not None:
+            c["incidenze"].append(r["incidenza_pct"])
+
+    categorie = []
+    for cat, d in sorted(cat_map.items()):
+        categorie.append({
+            "categoria": cat,
+            "n_ricette": d["n"],
+            "fc_totale": round(d["fc"], 2),
+            "fc_medio": round(d["fc"] / d["n"], 2),
+            "margine_medio": round(sum(d["margini"]) / len(d["margini"]), 2) if d["margini"] else None,
+            "incidenza_media": round(sum(d["incidenze"]) / len(d["incidenze"]), 1) if d["incidenze"] else None,
+        })
+
+    return {"ricette": ricette, "kpi": kpi, "categorie": categorie}
+
+
+@app.get("/api/workspace/foodcost/ricette/{ricetta_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_ricetta_detail(ricetta_id: str, authorization: Optional[str] = Header(None)):
+    """Ricetta completa con righe ingrediente."""
+    from services.foodcost_service import arricchisci_ricetta
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+
+    resp = (
+        sb.table("ricette")
+        .select("id,nome,categoria,foodcost_totale,prezzo_vendita_ivainc,ingredienti,ordine_visualizzazione")
+        .eq("id", ricetta_id)
+        .eq("userid", user_id)
+        .limit(1)
+        .execute()
+    )
+    if not resp.data:
+        raise HTTPException(status_code=404, detail="Ricetta non trovata")
+
+    r = resp.data[0]
+    ingredienti = r.get("ingredienti") or "[]"
+    if isinstance(ingredienti, str):
+        try:
+            ingredienti = json.loads(ingredienti)
+        except Exception:
+            ingredienti = []
+
+    return {**arricchisci_ricetta(r), "righe": ingredienti}
+
+
+@app.post("/api/workspace/foodcost/calcola", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_calcola(body: CalcolaRigheBody, authorization: Optional[str] = Header(None)):
+    """Ricalcola foodcost righe senza salvare (usato dall'editor live)."""
+    from services.foodcost_service import calcola_ricetta, calcola_costo_riga, IVA_RISTORAZIONE
+
+    _resolve_user_from_token(authorization)
+
+    costi = []
+    for r in body.righe:
+        try:
+            c = calcola_costo_riga(
+                tipo=r.get("tipo", "articolo"),
+                prezzo_unitario=float(r.get("prezzo_unitario", 0) or 0),
+                um_db=r.get("um_db", "KG"),
+                quantita=float(r.get("quantita", 0) or 0),
+                um_richiesta=r.get("um", "KG"),
+                grammatura_confezione=r.get("grammatura_confezione"),
+                grammatura_um=r.get("grammatura_um"),
+                prezzo_override=r.get("prezzo_override"),
+                foodcost_ricetta=r.get("foodcost_ricetta"),
+            )
+        except Exception:
+            c = 0.0
+        costi.append(round(c, 4))
+
+    fc_totale = round(sum(costi), 4)
+    return {"costi_righe": costi, "foodcost_totale": fc_totale}
+
+
+@app.post("/api/workspace/foodcost/ricette", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_crea_ricetta(body: NuovaRicettaBody, authorization: Optional[str] = Header(None)):
+    """Crea nuova ricetta. Il foodcost_totale è calcolato dal server."""
+    from services.foodcost_service import calcola_ricetta, CATEGORIE_RICETTE
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    if body.categoria not in CATEGORIE_RICETTE:
+        raise HTTPException(status_code=422, detail=f"Categoria non valida: {body.categoria}")
+
+    fc_totale = calcola_ricetta(body.righe)
+
+    try:
+        next_ordine_resp = sb.rpc("get_next_ordine_ricetta", {"p_userid": user_id, "p_ristorante_id": ristorante_id}).execute()
+        next_ordine = next_ordine_resp.data if next_ordine_resp.data else 1
+    except Exception:
+        q = sb.table("ricette").select("ordine_visualizzazione").eq("userid", user_id).eq("ristorante_id", ristorante_id).order("ordine_visualizzazione", desc=True).limit(1).execute()
+        next_ordine = (q.data[0]["ordine_visualizzazione"] + 1) if q.data else 1
+
+    payload = {
+        "userid": user_id,
+        "ristorante_id": ristorante_id,
+        "nome": body.nome.strip(),
+        "categoria": body.categoria,
+        "ingredienti": json.dumps(body.righe),
+        "foodcost_totale": fc_totale,
+        "prezzo_vendita_ivainc": round(body.prezzo_vendita_ivainc, 2) if body.prezzo_vendita_ivainc else None,
+        "ordine_visualizzazione": next_ordine,
+    }
+    resp = sb.table("ricette").insert(payload).execute()
+    if not resp.data:
+        raise HTTPException(status_code=500, detail="Errore salvataggio ricetta")
+    return {"ok": True, "id": resp.data[0]["id"], "foodcost_totale": fc_totale}
+
+
+@app.patch("/api/workspace/foodcost/ricette/{ricetta_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_aggiorna_ricetta(ricetta_id: str, body: NuovaRicettaBody, authorization: Optional[str] = Header(None)):
+    """Aggiorna ricetta esistente. Il foodcost_totale è ricalcolato dal server."""
+    from services.foodcost_service import calcola_ricetta, CATEGORIE_RICETTE
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+
+    if body.categoria not in CATEGORIE_RICETTE:
+        raise HTTPException(status_code=422, detail=f"Categoria non valida: {body.categoria}")
+
+    fc_totale = calcola_ricetta(body.righe)
+    payload = {
+        "nome": body.nome.strip(),
+        "categoria": body.categoria,
+        "ingredienti": json.dumps(body.righe),
+        "foodcost_totale": fc_totale,
+        "prezzo_vendita_ivainc": round(body.prezzo_vendita_ivainc, 2) if body.prezzo_vendita_ivainc else None,
+    }
+    sb.table("ricette").update(payload).eq("id", ricetta_id).eq("userid", user_id).execute()
+    return {"ok": True, "foodcost_totale": fc_totale}
+
+
+@app.delete("/api/workspace/foodcost/ricette/{ricetta_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_elimina_ricetta(ricetta_id: str, authorization: Optional[str] = Header(None)):
+    """Elimina ricetta."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    sb.table("ricette").delete().eq("id", ricetta_id).eq("userid", user_id).execute()
+    return {"ok": True}
+
+
+@app.get("/api/workspace/foodcost/ingredienti-manuali", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_ingredienti_manuali(authorization: Optional[str] = Header(None)):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    resp = sb.table("ingredienti_workspace").select("id,nome,prezzo_per_um,um").eq("userid", user_id).eq("ristorante_id", ristorante_id).order("nome").execute()
+    return {"ingredienti": resp.data or []}
+
+
+@app.post("/api/workspace/foodcost/ingredienti-manuali", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_crea_ingrediente_manuale(body: NuovoIngredienteManualeBody, authorization: Optional[str] = Header(None)):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    try:
+        resp = sb.table("ingredienti_workspace").insert({
+            "userid": user_id,
+            "ristorante_id": ristorante_id,
+            "nome": body.nome.strip(),
+            "prezzo_per_um": body.prezzo_per_um,
+            "um": body.um.upper(),
+        }).execute()
+    except Exception as e:
+        if "duplicate" in str(e).lower() or "unique" in str(e).lower():
+            raise HTTPException(status_code=409, detail="Ingrediente già esistente")
+        raise HTTPException(status_code=500, detail="Errore salvataggio")
+    return {"ok": True, "id": resp.data[0]["id"]}
+
+
+@app.patch("/api/workspace/foodcost/ingredienti-manuali/{ing_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_aggiorna_ingrediente_manuale(ing_id: str, body: AggiornaIngredienteManualeBody, authorization: Optional[str] = Header(None)):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    payload = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "um" in payload:
+        payload["um"] = payload["um"].upper()
+    sb.table("ingredienti_workspace").update(payload).eq("id", ing_id).eq("userid", user_id).execute()
+    return {"ok": True}
+
+
+@app.delete("/api/workspace/foodcost/ingredienti-manuali/{ing_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_elimina_ingrediente_manuale(ing_id: str, authorization: Optional[str] = Header(None)):
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    sb.table("ingredienti_workspace").delete().eq("id", ing_id).eq("userid", user_id).execute()
+    return {"ok": True}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     import uvicorn

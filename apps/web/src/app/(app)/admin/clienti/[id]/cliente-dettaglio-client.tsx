@@ -22,9 +22,9 @@ const SIDEBAR_FLAGS: { key: string; label: string; desc: string }[] = [
   { key: "analisi_fatture", label: "Analisi Fatture", desc: "Visualizza e gestisci fatture" },
   { key: "prezzi", label: "Controllo Prezzi", desc: "Variazioni prezzi, sconti, note credito" },
   { key: "margini", label: "Ricavi e Margini", desc: "Calcolo marginalità e analisi avanzate" },
-  { key: "foodcost", label: "Foodcost", desc: "Analisi foodcost" },
+  { key: "workspace", label: "Strumenti", desc: "Foodcost, diario, personale, inventario" },
   { key: "analisi_e_tag", label: "Analisi e Tag", desc: "Tag personalizzati e analytics" },
-  { key: "scadenziario", label: "Scadenziario", desc: "Gestione scadenze e pagamenti" },
+  { key: "scadenziario", label: "Gestione Fatture", desc: "Gestione scadenze e pagamenti" },
   { key: "blocco_anno_precedente", label: "Blocca anno precedente", desc: "Impedisce caricamento fatture dell'anno scorso" },
   { key: "blocco_mesi_precedenti", label: "Blocca mesi precedenti", desc: "Consente solo mese corrente e precedente" },
 ];

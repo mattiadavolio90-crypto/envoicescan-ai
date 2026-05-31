@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE = "oneflux_session";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/fatture", "/ricavi", "/margini", "/foodcost", "/impostazioni", "/style-guide"];
+const PROTECTED_PREFIXES = ["/dashboard", "/fatture", "/ricavi", "/margini", "/workspace", "/impostazioni", "/style-guide"];
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;

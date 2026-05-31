@@ -12,7 +12,7 @@ import {
   Settings,
   ShieldCheck,
   Tags,
-  Utensils,
+  Wrench,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -45,7 +45,7 @@ const navMain = [
   { title: "Analisi Fatture", url: "/analisi-fatture", icon: FileText },
   { title: "Prezzi", url: "/prezzi", icon: Search },
   { title: "Ricavi e Margini", url: "/margini", icon: BarChart3 },
-  { title: "Foodcost", url: "/foodcost", icon: Utensils },
+  { title: "Strumenti", url: "/workspace", icon: Wrench },
   { title: "Analisi e Tag", url: "/analisi-e-tag", icon: Tags },
   { title: "Gestione Fatture", url: "/scadenziario", icon: CalendarDays },
 ];
