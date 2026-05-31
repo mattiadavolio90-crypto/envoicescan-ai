@@ -287,17 +287,24 @@ class TestActionFor:
         # testo riusa _bullet_for
         assert a["testo"] == _bullet_for(n)
 
-    def test_notif_action_page_overrides_fallback(self):
+    def test_notif_action_page_overrides_when_next_path(self):
         n = _notif("fatturato_mancante", "warning", {"mese": "aprile", "anno": 2026})
-        n["action_page"] = "/ricavi/2026/04"
+        n["action_page"] = "/margini/2026/04"
         a = _action_for(n)
-        assert a["cta_page"] == "/ricavi/2026/04"
+        assert a["cta_page"] == "/margini/2026/04"
+
+    def test_legacy_streamlit_action_page_ignored(self):
+        # path Streamlit legacy -> ignorato, si usa il fallback per topic
+        n = _notif("price_alert", "warning", {"count": 2})
+        n["action_page"] = "pages/3_controllo_prezzi.py"
+        a = _action_for(n)
+        assert a["cta_page"] == "/prezzi"
 
     def test_empty_action_page_uses_fallback(self):
         n = _notif("upload_failed", "error", {"count": 1})
         n["action_page"] = ""
         a = _action_for(n)
-        assert a["cta_page"] == "/upload"
+        assert a["cta_page"] == "/analisi-fatture"
 
     def test_unknown_topic_generic_action(self):
         n = _notif("food_cost_alto", "warning", {}, title="FC alto")

@@ -58,12 +58,12 @@ _TOPIC_PRIORITY: Dict[str, int] = {
 # proprio. La Home renderizza il bottone come link generico alla pagina.
 _TOPIC_ACTION: Dict[str, tuple] = {
     'scadenza_superata':        ('Controlla scadenze',   '/scadenziario'),
-    'upload_failed':            ('Riprova upload',        '/upload'),
+    'upload_failed':            ('Riprova upload',        '/analisi-fatture'),
     'scadenza_imminente':       ('Vedi scadenze',         '/scadenziario'),
-    'fatturato_mancante':       ('Inserisci fatturato',   '/ricavi'),
-    'costo_personale_mancante': ('Inserisci costo',       '/personale'),
-    'price_alert':              ('Controlla prezzi',      '/margini'),
-    'uncategorized_rows':       ('Classifica righe',      '/prodotti'),
+    'fatturato_mancante':       ('Inserisci fatturato',   '/margini'),
+    'costo_personale_mancante': ('Inserisci costo',       '/margini'),
+    'price_alert':              ('Controlla prezzi',      '/prezzi'),
+    'uncategorized_rows':       ('Classifica righe',      '/analisi-e-tag'),
 }
 
 
@@ -193,7 +193,11 @@ def _action_for(notif: Dict[str, Any]) -> Dict[str, Any]:
     """
     topic = str(notif.get('topic_key') or '')
     cta_label, fallback_page = _TOPIC_ACTION.get(topic, ('Apri', '/dashboard'))
-    cta_page = str(notif.get('action_page') or '') or fallback_page
+    # action_page della notifica usato come override SOLO se gia' path Next
+    # (inizia con "/"): i path legacy Streamlit ("pages/...", "Dashboard")
+    # romperebbero la nav, quindi si ricade sul fallback per topic.
+    raw_page = str(notif.get('action_page') or '')
+    cta_page = raw_page if raw_page.startswith('/') else fallback_page
 
     return {
         'id':        str(notif.get('id') or ''),
