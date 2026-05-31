@@ -1,6 +1,6 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 31 maggio 2026 (rev. 18 — Strumenti: audit completo dei 4 tab + bugfix fuso orario Personale/Diario; Fase 6 chiusa e hardened)
+**Ultima revisione:** 31 maggio 2026 (rev. 19 — Personale: costo lavoro + ore extra + copia settimana implementati; audit + bugfix rev.18)
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -359,13 +359,13 @@ Implementiamo tabella DB `system_announcements` gestita da Admin Panel.
 9. Integrazioni delivery (Deliveroo, JustEat → ricalcolo margini)
 10. Integrazione CRM prenotazioni (TheFork, 7rooms → analisi coperti)
 
-### Proposte mirate sul tab Personale (da audit rev. 18)
+### Tab Personale — stato evoluzioni (rev. 19)
 
-Due evoluzioni a basso costo di implementazione e alto valore, coerenti con la filosofia (semplici + tie-in con il valore core dell'app). **Da validare con Mattia prima di implementare.**
+1. ~~**Costo del lavoro** (costo orario per dipendente → costo periodo)~~ ✅ **Implementato (rev.19):** colonna `costo_orario`, card "Costo lavoro", costo per persona. **Manca il tie-in finale ⬇️.**
+2. ~~**Copia settimana precedente**~~ ✅ **Implementato (rev.19):** endpoint `copia-settimana` + pulsante in vista Settimana.
+3. ~~**Ore extra ("di cui")**~~ ✅ **Implementato (rev.19):** colonna `ore_extra`, card "Totale extra" (ambra), badge per turno/persona, colonna CSV.
 
-1. **Costo del lavoro % (il tie-in strategico).** Oggi Personale calcola solo le *ore*. Aggiungendo un **costo orario per dipendente** (campo opzionale, default ereditato dall'ultimo turno della persona) si ottiene il **costo del lavoro del periodo** = Σ(ore × costo). Incrociandolo con i **ricavi già presenti in app** (`ricavi_giornalieri`) si mostra il **costo personale %** — la metrica che ogni ristoratore guarda accanto al foodcost. Questo trasforma Personale da "foglio turni" a strumento di controllo gestione, allineato a Margini/Foodcost. *Stima:* 1 colonna `costo_orario` su `turni_personale` (o tabellina `personale_costi` per nome) + 1 KPI card "Costo lavoro" e "Incidenza % sui ricavi" nella sezione monte ore.
-
-2. **Copia settimana precedente (il time-saver).** I ristoranti girano con turni quasi identici ogni settimana. Un pulsante "Copia settimana precedente" che duplica i turni di `[da−7, fine−7]` su `[da, fine]` (saltando i giorni già pieni) azzera il data-entry settimanale. *Stima:* 1 endpoint `POST /api/workspace/personale/copia-settimana` + 1 bottone nella toolbar vista Settimana.
+**🔜 Da fare — interfaccia Personale ↔ Margini (incidenza % costo lavoro):** il dato "Costo lavoro del periodo" esiste già lato Personale; va portato nella pagina **Ricavi e Margini** incrociandolo con `ricavi_giornalieri` per mostrare il **costo personale %** accanto a foodcost e margine — la metrica che ogni ristoratore guarda. *Stima:* nel servizio margini, sommare `Σ(ore × costo_orario)` dei turni nel periodo selezionato e dividere per i ricavi del periodo; 1 KPI card "Costo personale %" + eventuale riga nel conto economico semplificato. Nessuna nuova tabella.
 
 ---
 
@@ -649,6 +649,25 @@ Avvio Fase 6 ridefinita: il "Foodcost" diventa **"Strumenti"**, una pagina-conte
 
 *Implementato (shell, frontend reversibile):* `(app)/workspace/page.tsx` + `tabs-switcher.tsx` (pattern URL `?tab=` identico a Prezzi), 4 placeholder. Sidebar: voce "Strumenti"/`/workspace`. Rimossa vecchia route `(app)/foodcost/page.tsx`. `proxy.ts`: `/foodcost`→`/workspace`. Admin flag editor: `foodcost`→`workspace` label "Strumenti" (+ fix label "Scadenziario"→"Gestione Fatture"). `tsc --noEmit` pulito.
 
+**Personale — costo lavoro + ore extra + copia settimana (31 maggio 2026, rev. 19)**
+
+Implementate le 2 proposte di rev.18 + la richiesta "ore extra" di Mattia (commit `34982d0`).
+
+*DB (migration `20260531140000_turni_costo_e_extra.sql`):* su `turni_personale` aggiunte `costo_orario NUMERIC(6,2)` (EUR/h, opzionale) e `ore_extra NUMERIC(5,2) DEFAULT 0` (quota straordinario, **sottoinsieme** delle ore totali — "di cui").
+
+*Backend:*
+- `GET /api/workspace/personale` ora ritorna anche `extra_per_persona`, `costo_per_persona`, `extra_totale`, `costo_totale` e `costi_noti` (mappa nome→ultimo costo orario, per prefill nel dialog).
+- `POST`/`PATCH` accettano `ore_extra` e `costo_orario` (azzerabili via null nel PATCH).
+- **Nuovo endpoint** `POST /api/workspace/personale/copia-settimana` — copia i turni di `[da−7, a−7]` su `[da, a]` con offset +7 giorni, **saltando i giorni destinazione già pieni** (no duplicati). OpenAPI 111 → 112.
+
+*Frontend (`personale-tab.tsx` + proxy `copia-settimana/route.ts`):*
+- Dialog turno: campi "di cui extra (h)" e "Costo orario (€/h)". Il costo orario si **autocompila** quando selezioni un nome già usato (da `costi_noti`). Validazioni: extra ≤ ore totali, valori ≥ 0. Durata live mostra anche il costo turno.
+- Card totali: **Totale ore** (verde, prima) → **Totale extra** (ambra, seconda, sempre presente) → **Costo lavoro** (sky, solo se ≥1 costo impostato) → card per persona con badge "di cui Xh extra" + costo. Card = grid items → pari altezza per riga (allineate).
+- Pulsante **"Copia settimana prec."** (icona `CopyPlus`, solo vista Settimana).
+- Vista Settimana: indicatore "+Xh extra" (ambra) nelle celle. Vista Mese: extra + costo turno in riga. CSV: colonne "Di cui extra", "Costo orario", "Costo turno" + totali.
+
+*⚠️ DA IMPLEMENTARE (richiesto da Mattia):* **interfaccia Personale ↔ Margini** — il costo del lavoro del periodo NON è ancora incrociato con i ricavi (`ricavi_giornalieri`) per mostrare l'**incidenza % del costo personale sui ricavi** accanto al foodcost. Vedi §12 e prossimi passi.
+
 **Strumenti — audit completo + bugfix fuso orario (31 maggio 2026, rev. 18)**
 
 Audit approfondito dei 4 tab di `/workspace` e delle relative inerenze (frontend, route proxy, endpoint worker, migration). Esito:
@@ -722,12 +741,14 @@ Nota routing: `articoli`, `snapshot-dates`, `copia-snapshot` definiti **prima** 
 6. ~~**Inventario** (Fase 6)~~ ✅ **Completato** (31/5)
 7. ~~**Diario** (Fase 6)~~ ✅ **Completato** (31/5)
 8. ~~**Personale** (Fase 6)~~ ✅ **Completato** (31/5)
-9. **➡️ Home AI** — briefing giornaliero + notifiche actionable inline (Fase 3). Backend `daily_briefing_service` esiste già, va esposto in Next.js. La dashboard oggi ha solo KPI + grafici, zero briefing.
-10. **Assistenza/Marketplace** (Fase 8) — zero codice.
-11. **Notifiche v2** — raggruppamento + azioni inline + filtri con count (4 miglioramenti, Fase 3).
-12. **Test, performance, switch dominio** (Fasi 9-11).
+9. ~~**Personale: costo lavoro + ore extra + copia settimana**~~ ✅ **Completato** (31/5, rev.19)
+10. **Personale ↔ Margini (costo personale %)** — incrociare il costo lavoro del periodo con `ricavi_giornalieri` nella pagina Margini. Dato già calcolato lato Personale, manca solo l'esposizione in Margini. (richiesto da Mattia, rev.19)
+11. **➡️ Home AI** — briefing giornaliero + notifiche actionable inline (Fase 3). Backend `daily_briefing_service` esiste già, va esposto in Next.js. La dashboard oggi ha solo KPI + grafici, zero briefing.
+12. **Assistenza/Marketplace** (Fase 8) — zero codice.
+13. **Notifiche v2** — raggruppamento + azioni inline + filtri con count (4 miglioramenti, Fase 3).
+14. **Test, performance, switch dominio** (Fasi 9-11).
 
-> Stato sintetico rev. 18: Fase 6 chiusa e **hardened** (Foodcost ✅ + Inventario ✅ + Diario ✅ + Personale ✅). Audit completo dei 4 tab eseguito: fixato bug fuso orario (vista Settimana sfasata + turni salvati con data errata) e clear orario Diario. OpenAPI 111 endpoint (invariato). Proposte Personale (costo lavoro %, copia settimana) parcheggiate in §12. **Prossimo: Home AI** (briefing giornaliero + notifiche actionable).
+> Stato sintetico rev. 19: Fase 6 chiusa e **hardened+potenziata** (Foodcost ✅ + Inventario ✅ + Diario ✅ + Personale ✅). Audit + bugfix fuso orario (rev.18). Personale ora con **costo lavoro + ore extra + copia settimana** (rev.19). OpenAPI 112 endpoint. **Aperto:** tie-in Personale↔Margini (costo personale %) — vedi §12. **Prossimo grande step: Home AI** (briefing giornaliero + notifiche actionable).
 
 ---
 
