@@ -210,37 +210,42 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Classe comune per i <select> nativi — focus ring blu coerente con Input
+  const selectCls = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500";
+  const selectSmCls = "h-7 w-full rounded-md border border-input bg-background px-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500";
+
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="w-[min(96vw,720px)] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[min(96vw,860px)] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isNew ? "Nuova ricetta" : `Modifica — ${ricetta?.nome}`}</DialogTitle>
         </DialogHeader>
 
         {/* Riga 1: Nome ricetta — full width */}
         <div>
-          <Label className="text-xs">Nome ricetta *</Label>
+          <Label className="text-xs mb-1 block">Nome ricetta *</Label>
           <Input
             placeholder="es. Pizza Margherita, Besciamella, Ragù bolognese…"
             value={nome}
             onChange={e => setNome(e.target.value)}
+            className="focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
           />
         </div>
 
-        {/* Riga 2: Categoria + Prezzo vendita */}
-        <div className="grid grid-cols-2 gap-3">
+        {/* Riga 2: Categoria + Prezzo vendita — stessa altezza label */}
+        <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label className="text-xs">Categoria</Label>
+            <Label className="text-xs mb-1 block">Categoria</Label>
             <select
               value={categoria}
               onChange={e => setCategoria(e.target.value)}
-              className="flex h-9 w-full items-center rounded-md border border-input bg-background px-3 text-sm"
+              className={selectCls}
             >
               {CATEGORIE_RICETTE.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
-            <Label className="text-xs">Prezzo vendita (IVA 10% inclusa)</Label>
+            <Label className="text-xs mb-1 block">Prezzo vendita (IVA 10% inclusa)</Label>
             <Input
               type="number"
               placeholder="0.00"
@@ -248,6 +253,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
               step="0.50"
               value={prezzoVendita}
               onChange={e => setPrezzoVendita(e.target.value)}
+              className="focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
             />
           </div>
         </div>
@@ -260,12 +266,12 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
 
         {/* Selettore ingrediente */}
         <div>
-          <Label className="text-xs">Aggiungi ingrediente</Label>
+          <Label className="text-xs mb-1 block">Aggiungi ingrediente</Label>
           <div className="relative" ref={dropdownRef}>
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
               <Input
-                className="pl-9"
+                className="pl-9 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Cerca tra le fatture, ingredienti manuali o semilavorati…"
                 value={searchIng}
                 onChange={e => { setSearchIng(e.target.value); setDropdownOpen(true); }}
@@ -297,27 +303,35 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
 
         {/* Tabella ingredienti */}
         {righe.length > 0 && (
-          <div className="rounded-md border border-border overflow-hidden">
-            <table className="w-full text-sm">
+          <div className="rounded-md border border-border overflow-x-hidden">
+            <table className="w-full text-sm table-fixed">
+              <colgroup>
+                <col className="w-[35%]" />
+                <col className="w-[15%]" />
+                <col className="w-[14%]" />
+                <col className="w-[18%]" />
+                <col className="w-[12%]" />
+                <col className="w-[6%]" />
+              </colgroup>
               <thead className="bg-muted/50">
                 <tr>
                   <th className="text-left px-3 py-2 font-medium text-muted-foreground">Ingrediente</th>
-                  <th className="text-right px-2 py-2 font-medium text-muted-foreground w-24">Quantità</th>
-                  <th className="text-center px-2 py-2 font-medium text-muted-foreground w-20">UM</th>
-                  <th className="text-right px-2 py-2 font-medium text-muted-foreground w-28">Gram. conf.</th>
-                  <th className="text-right px-2 py-2 font-medium text-muted-foreground w-24">Costo</th>
-                  <th className="w-8" />
+                  <th className="text-right px-2 py-2 font-medium text-muted-foreground">Quantità</th>
+                  <th className="text-center px-2 py-2 font-medium text-muted-foreground">UM</th>
+                  <th className="text-right px-2 py-2 font-medium text-muted-foreground">Gram. conf.</th>
+                  <th className="text-right px-2 py-2 font-medium text-muted-foreground">Costo</th>
+                  <th />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {righe.map(r => (
                   <tr key={r._key}>
                     <td className="px-3 py-1.5">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0">
                         <span className="text-xs shrink-0">
                           {r.tipo === "articolo" ? "🟢" : r.tipo === "manuale" ? "📝" : "🥘"}
                         </span>
-                        <span className="truncate max-w-[200px]" title={r.nome}>{r.nome}</span>
+                        <span className="truncate" title={r.nome}>{r.nome}</span>
                       </div>
                     </td>
                     <td className="px-2 py-1.5">
@@ -327,14 +341,14 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
                         step="1"
                         value={r.quantita || ""}
                         onChange={e => aggiornaRiga(r._key, { quantita: parseFloat(e.target.value) || 0 })}
-                        className="h-7 text-right text-sm w-full"
+                        className="h-7 text-right text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                       />
                     </td>
                     <td className="px-2 py-1.5">
                       <select
                         value={r.um}
                         onChange={e => aggiornaRiga(r._key, { um: e.target.value })}
-                        className="h-7 w-full rounded-md border border-input bg-background px-2 text-sm"
+                        className={selectSmCls}
                         disabled={r.tipo === "semilavorato"}
                       >
                         {UM_LIST.map(u => <option key={u} value={u}>{u}</option>)}
@@ -346,19 +360,19 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
                           type="number"
                           min="0"
                           placeholder={r.grammatura_confezione ? String(r.grammatura_confezione) : "—"}
-                          value={r.prezzo_override != null ? "" : (r.grammatura_confezione ?? "")}
+                          value={r.grammatura_confezione ?? ""}
                           onChange={e => aggiornaRiga(r._key, { grammatura_confezione: parseFloat(e.target.value) || null })}
-                          className="h-7 text-right text-sm w-full"
+                          className="h-7 text-right text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                           title="Grammatura confezione in g/ml"
                         />
                       ) : (
-                        <span className="text-muted-foreground px-2">—</span>
+                        <span className="text-muted-foreground text-center block">—</span>
                       )}
                     </td>
                     <td className="px-2 py-1.5 text-right font-medium">
                       {r.costo > 0 ? fmtEuro(r.costo) : <span className="text-muted-foreground">—</span>}
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-1 py-1.5 text-center">
                       <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-destructive"
                         onClick={() => rimuoviRiga(r._key)}>
                         <Trash2 className="size-3.5" />
@@ -378,14 +392,12 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
         )}
 
         {/* Totali */}
-        <div className={`flex items-center justify-between rounded-lg border px-4 py-3 ${FC_BADGE_CLASS[colore]}`}>
-          <div className="flex gap-6 text-sm">
-            <span>Foodcost: <strong>{fmtEuro(fcTotale)}</strong></span>
-            {margine !== null && <span>Margine: <strong>{fmtEuro(margine)}</strong></span>}
-            {incidenza !== null && <span>Incidenza FC: <strong>{fmtPct(incidenza)}</strong></span>}
-          </div>
+        <div className={`flex flex-wrap items-center gap-4 rounded-lg border px-4 py-3 ${FC_BADGE_CLASS[colore]}`}>
+          <span className="text-sm">Foodcost: <strong>{fmtEuro(fcTotale)}</strong></span>
+          {margine !== null && <span className="text-sm">Margine: <strong>{fmtEuro(margine)}</strong></span>}
+          {incidenza !== null && <span className="text-sm">Incidenza FC: <strong>{fmtPct(incidenza)}</strong></span>}
           {incidenza === null && fcTotale > 0 && (
-            <span className="text-xs">Imposta il prezzo di vendita per vedere margine e incidenza%</span>
+            <span className="text-xs ml-auto">Imposta il prezzo di vendita per vedere margine e incidenza%</span>
           )}
         </div>
 
