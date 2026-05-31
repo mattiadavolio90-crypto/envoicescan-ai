@@ -427,6 +427,13 @@ export function PersonaleTab() {
       {/* Monte ore per persona */}
       {Object.keys(monteOre).length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {/* Totale fisso sempre prima */}
+          <Card className="ring-1 ring-green-500/60 bg-green-950/20">
+            <CardContent className="py-3 px-4">
+              <p className="text-xs font-medium text-green-500">Totale ore</p>
+              <p className="text-xl font-bold tabular-nums text-green-400">{fmtOreDisplay(totaleOre)}</p>
+            </CardContent>
+          </Card>
           {Object.entries(monteOre).sort((a, b) => b[1] - a[1]).map(([n, ore]) => (
             <Card key={n} className="ring-sky-400/60">
               <CardContent className="py-3 px-4">
@@ -435,14 +442,6 @@ export function PersonaleTab() {
               </CardContent>
             </Card>
           ))}
-          {Object.keys(monteOre).length > 1 && (
-            <Card>
-              <CardContent className="py-3 px-4">
-                <p className="text-xs text-muted-foreground">Totale</p>
-                <p className="text-xl font-bold tabular-nums">{fmtOreDisplay(totaleOre)}</p>
-              </CardContent>
-            </Card>
-          )}
         </div>
       )}
 
