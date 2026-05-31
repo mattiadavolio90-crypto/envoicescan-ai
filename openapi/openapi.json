@@ -2844,6 +2844,92 @@
         }
       }
     },
+    "/api/margini/costo-personale-turni": {
+      "get": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Get Costo Personale Da Turni",
+        "description": "Calcola il costo del personale del mese dai turni (tab Personale).\nRestituisce lo split in EURO coerente con margini_mensili:\n  - costo_dipendenti       = Σ((ore_turno − ore_extra) × costo_orario)\n  - costo_personale_extra  = Σ(ore_extra × costo_orario)\nI turni senza costo_orario impostato non contribuiscono (vengono contati a parte).",
+        "operationId": "get_costo_personale_da_turni_api_margini_costo_personale_turni_get",
+        "parameters": [
+          {
+            "name": "anno",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2100,
+              "minimum": 2000,
+              "title": "Anno"
+            }
+          },
+          {
+            "name": "mese",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 12,
+              "minimum": 1,
+              "title": "Mese"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/margini/analisi": {
       "get": {
         "tags": [

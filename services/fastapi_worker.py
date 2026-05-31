@@ -4035,6 +4035,67 @@ async def update_margini_cella(
     return MarginiCellaResponse(anno=body.anno, mese=body.mese, field=body.field, value=val)
 
 
+@app.get("/api/margini/costo-personale-turni", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+async def get_costo_personale_da_turni(
+    anno: int = Query(..., ge=2000, le=2100),
+    mese: int = Query(..., ge=1, le=12),
+    authorization: Optional[str] = Header(None),
+):
+    """Calcola il costo del personale del mese dai turni (tab Personale).
+    Restituisce lo split in EURO coerente con margini_mensili:
+      - costo_dipendenti       = Σ((ore_turno − ore_extra) × costo_orario)
+      - costo_personale_extra  = Σ(ore_extra × costo_orario)
+    I turni senza costo_orario impostato non contribuiscono (vengono contati a parte)."""
+    from calendar import monthrange
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    last_day = monthrange(anno, mese)[1]
+    data_da = f"{anno}-{mese:02d}-01"
+    data_a = f"{anno}-{mese:02d}-{last_day:02d}"
+
+    turni = (
+        sb.table("turni_personale").select("*")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data_turno", data_da).lte("data_turno", data_a)
+        .execute()
+    ).data or []
+
+    costo_dipendenti = 0.0
+    costo_personale_extra = 0.0
+    ore_totali = 0.0
+    ore_extra_tot = 0.0
+    n_turni = len(turni)
+    n_senza_costo = 0
+    for t in turni:
+        ore = _ore_turno(t)
+        extra = float(t.get("ore_extra") or 0)
+        extra = min(extra, ore)  # l'extra è un sottoinsieme delle ore del turno
+        ore_totali += ore
+        ore_extra_tot += extra
+        co = t.get("costo_orario")
+        if co is None:
+            n_senza_costo += 1
+            continue
+        co = float(co)
+        costo_personale_extra += extra * co
+        costo_dipendenti += (ore - extra) * co
+
+    return {
+        "anno": anno,
+        "mese": mese,
+        "costo_dipendenti": round(costo_dipendenti, 2),
+        "costo_personale_extra": round(costo_personale_extra, 2),
+        "ore_totali": round(ore_totali, 2),
+        "ore_extra": round(ore_extra_tot, 2),
+        "n_turni": n_turni,
+        "n_senza_costo": n_senza_costo,
+    }
+
+
 @app.get("/api/margini/analisi", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
 async def get_margini_analisi(
     data_da: str,

@@ -2,13 +2,14 @@
 
 import React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Info, Lock, BarChart3, Upload, X as XIcon } from "lucide-react";
+import { Info, Lock, BarChart3, Upload, X as XIcon, Pencil } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell as RCell,
 } from "recharts";
 import { toast } from "sonner";
 import { formatEuro, formatEuroCompact, scorporoNetto } from "./periodi";
 import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
+import { CostoPersonaleDialog } from "./costo-personale-dialog";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -169,6 +170,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
   const [caricaOpen, setCaricaOpen] = useState(false);
   const [dettaglioOpen, setDettaglioOpen] = useState(false);
   const [dettaglioMeseSel, setDettaglioMeseSel] = useState<{ anno: number; mese: number; label: string } | null>(null);
+  const [costoPersMese, setCostoPersMese] = useState<MesePivot | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -383,6 +385,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                           mese={m}
                           isCurrent={isCurrent}
                           onSave={saveCell}
+                          onOpenCosto={setCostoPersMese}
                         />
                       );
                     })}
@@ -398,11 +401,24 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
 
       {/* Vista mobile — card per mese */}
       <div className="md:hidden">
-        <MobileMeseView mesi={mesiVisibili} totali={data.totali} onSave={saveCell} />
+        <MobileMeseView mesi={mesiVisibili} totali={data.totali} onSave={saveCell} onOpenCosto={setCostoPersMese} />
       </div>
 
       {/* Analisi visiva: cascata conto economico + gauge + commenti */}
       <AnalisiVisiva data={data} />
+
+      {costoPersMese && (
+        <CostoPersonaleDialog
+          open
+          anno={costoPersMese.anno}
+          mese={costoPersMese.mese}
+          label={costoPersMese.label}
+          costoDipendenti={costoPersMese.costo_dipendenti}
+          costoExtra={costoPersMese.costo_personale_extra}
+          onClose={() => setCostoPersMese(null)}
+          onSaved={load}
+        />
+      )}
     </div>
   );
 }
@@ -415,11 +431,13 @@ function Cell({
   mese,
   isCurrent,
   onSave,
+  onOpenCosto,
 }: {
   row: RowDef;
   mese: MesePivot;
   isCurrent: boolean;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
+  onOpenCosto: (m: MesePivot) => void;
 }) {
   const raw = rowVal(row, mese);
   const isMetric = row.isMetric;
@@ -430,6 +448,26 @@ function Cell({
   const currentCls = isCurrent
     ? "border-l border-r border-sky-500/50"
     : "border-r border-border";
+
+  // Righe personale: cella cliccabile che apre il widget (recupera da Personale o manuale)
+  if (row.section === "personale" && row.type === "input-editable") {
+    return (
+      <td className={`text-right p-0 align-middle ${currentCls}`}>
+        <button
+          type="button"
+          onClick={() => onOpenCosto(mese)}
+          title="Imposta costo (recupera da Personale o inserisci a mano)"
+          className="w-full px-3 py-2 text-right tabular-nums hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset outline-none transition-colors group/cella"
+        >
+          <span className="inline-flex items-center justify-end gap-1">
+            {display === "—" ? <span className="text-muted-foreground/60">—</span> : display}
+            <Pencil className="size-3 opacity-0 group-hover/cella:opacity-40 transition-opacity" />
+          </span>
+          {pct && <span className="block text-[11px] tabular-nums opacity-70">{pct}</span>}
+        </button>
+      </td>
+    );
+  }
 
   if (row.type === "input-editable" && row.field) {
     return (
@@ -562,10 +600,12 @@ function MobileMeseView({
   mesi,
   totali,
   onSave,
+  onOpenCosto,
 }: {
   mesi: MesePivot[];
   totali: MesePivot;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
+  onOpenCosto: (m: MesePivot) => void;
 }) {
   const [selIdx, setSelIdx] = useState(mesi.length - 1);
   const isTotal = selIdx >= mesi.length;
@@ -592,6 +632,7 @@ function MobileMeseView({
           const raw = rowVal(row, current);
           const isMetric = row.isMetric;
           const editable = row.type === "input-editable" && !isTotal;
+          const isPersonale = row.section === "personale" && row.type === "input-editable";
           const colorCls = valueColorCls(row.valueColor, raw);
           const pct = pctIncidenza(raw, current.fatturato_netto);
 
@@ -600,7 +641,16 @@ function MobileMeseView({
               <span className={`text-sm ${isMetric ? `font-semibold ${row.labelColor ?? ""}` : ""}`}>
                 {row.label}
               </span>
-              {editable ? (
+              {isPersonale && !isTotal ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenCosto(current)}
+                  className="inline-flex items-center gap-1.5 text-sm tabular-nums px-2 py-1 rounded-md border border-input hover:bg-muted transition-colors"
+                >
+                  {raw === 0 ? "Imposta" : formatEuro(raw)}
+                  <Pencil className="size-3 opacity-40" />
+                </button>
+              ) : editable ? (
                 <MobileEditInput
                   value={raw}
                   onSave={(v) => onSave(current.anno, current.mese, row.field!, v, raw)}
