@@ -1,17 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+import { X, AlertTriangle, Info, CheckCircle, XCircle } from "lucide-react";
 import { type Notifica } from "@/lib/notifiche";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
+function SeverityIcon({ severity }: { severity: Notifica["severity"] }) {
+  if (severity === "warning") return <AlertTriangle className="size-5 text-amber-500 shrink-0" />;
+  if (severity === "error") return <XCircle className="size-5 text-destructive shrink-0" />;
+  if (severity === "success") return <CheckCircle className="size-5 text-emerald-500 shrink-0" />;
+  return <Info className="size-5 text-sky-500 shrink-0" />;
+}
+
 type Props = {
   notifiche: Notifica[];
-  SeverityIcon: React.ComponentType<{ severity: Notifica["severity"] }>;
 };
 
-export function NotificheList({ notifiche, SeverityIcon }: Props) {
+export function NotificheList({ notifiche }: Props) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<Set<string>>(new Set());
 

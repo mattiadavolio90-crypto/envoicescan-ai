@@ -1,6 +1,6 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 30 maggio 2026 (rev. 13 — Admin Panel Blocco 2)
+**Ultima revisione:** 31 maggio 2026 (rev. 15 — cleanup sidebar: Report rimosso, footer = solo logout, fix Notifiche RSC)
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -125,18 +125,20 @@ Next.js è usato da Notion, TikTok, Nike, GitHub. Supabase è PostgreSQL. FastAP
 ### Sidebar
 ```
 🏠 Home
-📄 Fatture
-📅 Scadenziario
-🔔 Notifiche
-📊 Ricavi e Margini
+📄 Analisi Fatture
 🏷️ Prezzi
+📊 Ricavi e Margini
 🍽️ Foodcost
+🏷️ Analisi e Tag
+📅 Gestione Fatture   ← ex Scadenziario; cestino integrato come widget
 ─────────
-💼 Assistenza      ← chat AI + servizi/marketplace
+🔔 Notifiche
+⚙️ Impostazioni
+🛡️ Admin              ← solo admin
 ─────────
-⚙️ Account
-🚪 Logout
+👤 [nome utente]      ← footer: dropdown con solo "Esci" (logout)
 ```
+> La sidebar reale (rev. 15) differisce dal layout concettuale originale: "Scadenziario" è ora "Gestione Fatture", il "Cestino" non è più una voce ma un widget interno, "Report" è stato **rimosso dalla sidebar** (placeholder non necessario), "Account" non è più voce nel dropdown footer (ridondante con Impostazioni — il footer ora apre solo il logout), "Assistenza" non è ancora presente.
 
 > "Ricavi e Margini" è una voce unica in sidebar (scelta pragmatica confermata, 29/5).
 
@@ -242,10 +244,10 @@ Data;Categoria;Totale_Venduto
 Briefing AI + KPI cards + notifiche actionable con filtri per categoria. Oggi: KPI cards e grafico spesa mensile funzionanti. **Manca**: briefing AI e notifiche actionable inline.
 
 ### 📄 Fatture
-Lista con filtri, ricerca, dettaglio peek a destra, azioni rapide (pagata, sposta, elimina). Categorizzazione automatica con review solo per bassa confidenza. **Stato**: ✅ funzionale.
+Lista con filtri, ricerca, dettaglio peek a destra, azioni rapide (pagata, sposta, elimina). Categorizzazione automatica con review solo per bassa/media confidenza (routing a livelli sull'ingest — vedi §9). **Elimina fattura** disponibile direttamente nel peek anteprima (soft-delete → cestino). **Stato**: ✅ funzionale.
 
-### 📅 Scadenziario
-Vista agenda (bucket urgenza) + calendario cash-flow. KPI bar 4 card reattive ai filtri. Filtri periodo (chip) + multi-fornitore (popover). Scadenza override manuale. Bulk segna pagata + select-all per sezione. Regole fornitore (Dialog centrato, selezione multi-fornitore). Anteprima righe fattura lazy-load nel peek. Pre-notifica aggregata nella inbox. **Stato**: ✅ completato + hardening debug (30/5).
+### 📅 Gestione Fatture (ex Scadenziario)
+Vista agenda (bucket urgenza) + calendario cash-flow. KPI bar 4 card reattive ai filtri. Filtri periodo (chip) + multi-fornitore (popover). Scadenza override manuale. Bulk segna pagata + select-all per sezione. Regole fornitore (Dialog centrato, selezione multi-fornitore). Anteprima righe fattura lazy-load nel peek (con bottone Elimina). Pre-notifica aggregata nella inbox. **Cestino integrato**: widget collassabile aperto dal bottone "Cestino" accanto ad "Aggiorna" (ripristina / elimina definitivo / svuota tutto) — non più pagina separata in sidebar. **Stato**: ✅ completato + hardening debug (30/5) + rename/cestino-widget/elimina-da-peek (30/5).
 
 ### 🔔 Notifiche
 Cronologia con filtri per categoria, auto-purge 30 giorni, priorità visiva (🔴🟡🔵).
@@ -287,11 +289,19 @@ Dati ristorante, contatori utilizzo (fatture/mese, query AI/giorno), preferenze,
 4. Cliente imposta password sua (admin non vede)
 5. Account diventa attivo
 
-### Categorizzazione AI automatica (Fase 7)
-- ≥ 90% confidenza → auto-classificazione + tag "auto"
-- 70-90% → auto-classificazione + flag "da rivedere"
-- < 70% → coda manuale + fallback `"SERVIZI E CONSULENZE"`
-- **MAI** inserire `categoria = 'Da Clasificare'` (constraint DB) — vedi CLAUDE.md
+### Categorizzazione AI automatica — ✅ implementata (routing a livelli sull'ingest, 30/5)
+Realizzata in `upload_handler.py` + `worker/queue_processor.py` via `classifica_via_worker_con_confidenza` (buckets di confidenza, non percentuali):
+- **altissima / alta** → `needs_review=False` — bypassa coda (diciture sicure €0, sconti/omaggi verificati, hit memoria/regole forti)
+- **media** → `needs_review=True` — pre-classificato MA messo in coda admin per review (dizionario fallback, GPT incerto)
+- **bassa** → `needs_review=True` — fallback canonico + coda
+- Guardrail BUG1: nessuna dicitura con prezzo > 0 entra in memoria globale
+- **MAI** inserire `categoria = 'Da Clasificare'` (constraint DB) — vedi CLAUDE.md. Fallback: `"SERVIZI E CONSULENZE"`
+
+### Agent notturno AI — ✅ nuovo (30/5)
+Processo di manutenzione AI schedulabile, gestito da `/admin/sistema` con **toggle on/off** + "Esegui ora". Endpoint worker `/api/admin/sistema/agent-notturno/{toggle,esegui-ora}`. Automatizza la pulizia della coda review (auto-review delle diciture/sconti sicuri) senza intervento manuale dell'admin.
+
+### Audit log azioni AI — ✅ nuovo (30/5)
+Tabella `ai_review_log` (migration `20260530120000_create_ai_review_log.sql`). Ogni azione AI dell'admin (classificazione coda, auto-review, promozione conflitti) è loggata e **annullabile (undo)** dalla pagina Qualità AI.
 
 ### Da aggiungere in Fase 7
 - UI admin per mapping ragione sociale → ristorante (tabella `ricavi_ragione_sociale_map`, già in DB)
@@ -399,10 +409,10 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Fase 1.5 | — | ⏸️ rimandata | Studio competitor — non bloccante |
 | Fase 2 | 2-3 sett. | ✅ **chiusa (30/5)** | Auth login/logout/me ✅ · reset password ✅ · onboarding primo accesso ✅ |
 | Fase 3 | 2-3 sett. | 🟡 parziale | Dashboard ✅ · Notifiche ✅ · Upload ✅ — **manca**: Home con briefing AI + notifiche actionable |
-| Fase 4 | 1-2 sett. | ✅ **chiusa (30/5)** | Analisi Fatture ✅ · Analisi e Tag ✅ · Scadenziario ✅ · Cestino ✅ |
+| Fase 4 | 1-2 sett. | ✅ **chiusa (30/5)** | Analisi Fatture ✅ · Analisi e Tag ✅ · Gestione Fatture (ex Scadenziario) ✅ · Cestino ✅ (ora widget integrato) · elimina da peek ✅ |
 | Fase 5 | 2-3 sett. | ✅ **chiusa (28/5) + hardening (29/5)** | Margini ✅ · Ricavi ✅ · Analisi Avanzate ✅ · Prezzi ✅ · DB migrated · contratto FE↔worker allineato |
 | Fase 6 | 2-3 sett. | ⏳ | Foodcost (riscrittura completa) — oggi placeholder |
-| Fase 7 | 3-4 sett. | ✅ **chiusa (30/5)** | Admin Core ✅ · Qualità AI ✅ (coda review, auto-review, memoria globale, conflitti) · Sistema/Salute ✅ (costi AI, integrità DB, retention) |
+| Fase 7 | 3-4 sett. | ✅ **chiusa + over-delivery (30/5)** | Admin Core ✅ · Qualità AI ✅ (coda review, auto-review, memoria globale, conflitti, **audit log + undo**) · Sistema/Salute ✅ (costi AI, retention, **agent notturno on/off**; tab Integrità DB rimosso) · **routing confidenza automatica sull'ingest ✅** |
 | Fase 8 | 2-3 sett. | 🟡 parziale | Assistenza marketplace ⏳ · Report ⏳ · Account ✅ (dati ristorante, piano, contatori, cambio password) |
 | Fase 9 | 1-2 sett. | ⏳ | Test, performance, sicurezza + comunicazione clienti |
 | Fase 10 | 2-3 sett. | ⏳ | Switch dominio + 30gg coesistenza |
@@ -430,12 +440,15 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Prezzi | ✅ | Variazioni, Sconti/Omaggi, Note Credito, soglia alert |
 | Notifiche | ✅ | Lista, severity, dismiss, badge. **Manca** raggruppamento + azioni inline |
 | Analisi e Tag | ✅ | Chip tag, periodo, KPI bar, trend prezzi, analisi fornitori, prodotti inline, suggerimenti, export XLS |
+| Gestione Fatture (ex Scadenziario) | ✅ | Agenda + calendario + KPI bar + regole fornitore + elimina da peek + cestino widget integrato |
 | Foodcost | ⏳ | Placeholder "in costruzione" |
-| Report | ⏳ | Placeholder |
+| Report | ⏳ | Placeholder — **rimosso dalla sidebar (31/5)**; route `(app)/report/page.tsx` ancora presente ma scollegata. Valutare se eliminarla o ripensare la feature |
 | Impostazioni/Account | ✅ | Dati ristorante, piano + contatore, cambio password |
-| Admin Panel | ✅ | Core (clienti, onboarding, impersonazione, sedi, flags, mapping) · Qualità AI (coda review, auto-review, memoria globale, conflitti) · Sistema/Salute (costi AI, integrità DB, retention) |
+| Admin Panel | ✅ | Core (clienti con piano inline + inizio piano, onboarding, impersonazione, sedi, flags, mapping) · Qualità AI (coda review con suggerimento categoria + 1-click, auto-review, memoria globale, conflitti, audit log + undo) · Sistema/Salute (costi AI, retention, **agent notturno on/off**) · routing confidenza sull'ingest |
 
 **Non ancora iniziato (zero codice):** Assistenza/Marketplace · Multi-ristorante (dropdown switch) · PWA/mobile · fattore_kg UI (Analisi e Tag v2)
+
+**Rimosso/deprecato:** tab "Integrità DB" in `/admin/sistema` (troppi falsi positivi, 30/5) · sidebar voce "Cestino" (ora widget in Gestione Fatture) · route orfana `/cestino/page.tsx` ancora presente ma scollegata dalla sidebar — **da rimuovere** (raggiungibile solo via URL diretto) · sidebar voce "Report" (31/5, placeholder non necessario; route `(app)/report/page.tsx` ancora presente ma scollegata) · voce "Account" nel dropdown footer della sidebar (31/5, ridondante con Impostazioni — il footer ora apre solo "Esci").
 
 **Prerequisito Railway:** aggiungere env var `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` per attivare reset password in produzione.
 
@@ -589,24 +602,50 @@ Analisi di correttezza della pagina Scadenziario dopo il completamento funzional
 - **N+1 POST nelle Regole multi-fornitore**: `handleSave` cicla una POST per fornitore. Valutare endpoint batch se le selezioni diventano grandi.
 - **Selezione persistente al cambio filtro**: le fatture selezionate restano in `selectedFileOrigini` anche se escono dal filtro (la bulk bar le conta pur non essendo visibili).
 
-### Prossimi passi concreti (aggiornato 30/5 — rev.12)
+**Routing confidenza + agent notturno + audit AI + Gestione Fatture (30 maggio 2026, sera — rev. 14)**
 
-**Prerequisito immediato (non è codice):**
-- Aggiungere env var `BREVO_API_KEY` / `BREVO_SENDER_EMAIL` / `BREVO_SENDER_NAME` su Railway per attivare reset password in produzione
+Sessioni successive alla chiusura della Fase 7, non ancora riflesse nelle revisioni precedenti:
+
+- **Routing a livelli di confidenza sull'ingest** (`upload_handler.py`, `worker/queue_processor.py`): `classifica_via_worker_con_confidenza` ritorna i bucket; altissima/alta → no coda, media/bassa → coda con `needs_review=True`. Chiude la "Categorizzazione AI automatica" pianificata in §9.
+- **Agent notturno AI** (`/admin/sistema`): toggle on/off + "Esegui ora", ~300 righe worker, 3 route proxy. Pulizia automatica della coda review.
+- **Audit log + undo azioni AI**: tabella `ai_review_log`, ogni azione AI admin annullabile da `/admin/qualita-ai`.
+- **Coda review**: suggerimento categoria automatico + "Accetta" 1-click; filtro per cliente.
+- **Admin clienti**: piano modificabile inline + colonna "inizio piano"; N. Fatture = totale storico (non solo mese corrente); freccia naviga al dettaglio.
+- **Integrità DB**: tab rimosso da `/admin/sistema` (troppi falsi positivi).
+- **Gestione Fatture** (ex Scadenziario): rename pagina + sidebar; bottone "Elimina fattura" nel peek anteprima (soft-delete via nuovo `POST /api/fatture/elimina` sul worker); cestino come widget collassabile accanto ad "Aggiorna"; anteprima allargata (`sm:max-w-3xl`). Root cause "not found" risolta: era un gap di deploy (route worker non ancora su Railway), non un bug.
+- Fix vari admin: `get_supabase_client`/`datetime` import a livello modulo (risolveva 500 su tutti gli endpoint admin), overview difensivo, fix build TypeScript Vercel.
+
+**Cleanup sidebar + fix Notifiche (31 maggio 2026 — rev. 15)**
+
+Sessione di rifinitura UX/correttezza, nessuna nuova feature:
+- **Footer sidebar = solo logout.** Il dropdown sul nome utente in basso causava crash al click per incompatibilità Base UI (NON Radix): `MenuPrimitive.GroupLabel` richiede un `<Menu.Group>` padre, e `nativeButton` non è prop valida su `Menu.Trigger`/`Item`. Fix: `DropdownMenuLabel` riscritto come `<div>` semplice in `dropdown-menu.tsx`; rimossa `nativeButton` dal trigger; `DropdownMenuContent` con `side="top" align="start" className="w-56"` (la var Radix `--radix-dropdown-menu-trigger-width` dava larghezza 0 in Base UI). Voce "Account" rimossa dal dropdown (ridondante con Impostazioni → stessa destinazione): ora resta solo "Esci".
+- **Report rimosso dalla sidebar.** Voce e import `Receipt` tolti da `app-sidebar.tsx`. `navSecondary` ora = `[Notifiche, Impostazioni]`. Il file route `(app)/report/page.tsx` (placeholder) resta presente ma scollegato.
+- **Fix Notifiche — RSC violation.** "Functions cannot be passed directly to Client Components": `SeverityIcon` veniva passata come prop da `page.tsx` (server) a `notifiche-list.tsx` (client). Spostata dentro il client component con i propri import lucide; `page.tsx` ora renderizza `<NotificheList notifiche={notifiche} />` senza prop funzione.
+
+**Cleanup route orfane + Brevo verificato (31/5, seguito):**
+- **Brevo in produzione ✅ FUNZIONANTE.** Le 3 env var (`BREVO_API_KEY`/`BREVO_SENDER_EMAIL`/`BREVO_SENDER_NAME`) sono ora sul worker Railway (service `worker`, Online). Test reale `POST /api/auth/reset-request` → `{"ok":true,"message":"Email inviata con successo"}` (HTTP 200). **Blocco #1 pre-switch chiuso.**
+- **Route orfane rimosse:** `(app)/report/page.tsx`, `(app)/cestino/page.tsx`, `(app)/cestino/cestino-client.tsx`. Tolto `/report` da `PROTECTED_PREFIXES` in `proxy.ts`. **Le API proxy `app/api/cestino/*` restano** — servono il widget cestino in Gestione Fatture e l'elimina-da-peek (`api/fatture/elimina` importa `api/cestino/_worker`).
+
+### Prossimi passi concreti (aggiornato 31/5 — rev.15)
+
+**⚠️ Prerequisiti / dimenticanze da chiudere (NON codice o cleanup):**
+- ~~**Env var Brevo su Railway**~~ ✅ **CHIUSO (31/5).** Le 3 var sono sul worker, test reset-request reale → email inviata con successo. Reset password + onboarding ora funzionano in produzione.
+- **Drift schema OpenAPI** — ✅ verificato il 30/5: nessun drift, 89 endpoint allineati. Ricontrollare con `python scripts/export_openapi.py --check-drift` dopo ogni futura modifica a `fastapi_worker.py`.
+- ~~**Route orfana `/cestino`**~~ ✅ **CHIUSO (31/5).** Rimossi `page.tsx` + `cestino-client.tsx`. Anche `/report` rimosso. Le API proxy `/api/cestino/*` mantenute (in uso dal widget Gestione Fatture).
 
 **Roadmap funzionale (ordine di priorità concordato):**
-1. ~~**Scadenziario** (Fase 4)~~ ✅ **Completato** (29/5)
-2. ~~**Cestino fatture** (Fase 4)~~ ✅ **Completato** (30/5)
+1. ~~**Scadenziario / Gestione Fatture** (Fase 4)~~ ✅ **Completato** (30/5)
+2. ~~**Cestino fatture** (Fase 4)~~ ✅ **Completato** (30/5, ora widget)
 3. ~~**Onboarding primo accesso** lato Next.js~~ ✅ **Completato** (30/5)
 4. ~~**Impostazioni/Account**~~ ✅ **Completato** (30/5)
-5. ~~**Admin Panel Core**~~ ✅ **Completato** (30/5) — clienti, onboarding, impersonazione, sedi, flags, mapping
-6. **Home AI** — briefing giornaliero, notifiche actionable inline (Fase 3)
-7. **Foodcost** — riscrittura completa da zero (Fase 6)
-8. ~~**Admin Panel blocco 2**~~ ✅ **Completato** (30/5) — Qualità AI + Sistema/Salute
-9. **Assistenza/Marketplace** (Fase 8)
-10. **Test, performance, switch dominio** (Fasi 9-11)
+5. ~~**Admin Panel** (Core + blocco 2 + routing confidenza + agent notturno + audit)~~ ✅ **Completato/over-delivered** (30/5)
+6. **➡️ Home AI** — briefing giornaliero + notifiche actionable inline (Fase 3). **È l'unico pezzo core MVP ancora aperto oltre a Foodcost.** Il backend `daily_briefing_service` esiste già, va esposto in Next.js. La dashboard oggi ha solo KPI + grafici, zero briefing.
+7. **Foodcost** — riscrittura completa da zero (Fase 6).
+8. **Assistenza/Marketplace** (Fase 8) — zero codice.
+9. **Notifiche v2** — raggruppamento + azioni inline + filtri con count (4 miglioramenti, Fase 3).
+10. **Test, performance, switch dominio** (Fasi 9-11).
 
-> Nota: i punti A (Scadenziario) e B (Cestino) della roadmap precedente erano stati saltati per prioritizzare Analisi e Tag + fix Prezzi + reset password. Sono i prossimi da implementare.
+> Stato sintetico rev. 14: l'admin (Fase 7) è andato **oltre** lo scope pianificato. Il blocco reale verso il "MVP cliente completo" è ora **Home AI (Fase 3)** + **Foodcost (Fase 6)**. Lato non-codice, il blocco produzione è la **mancata configurazione Brevo su Railway**.
 
 ---
 

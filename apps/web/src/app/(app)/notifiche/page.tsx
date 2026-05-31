@@ -1,13 +1,6 @@
-import { Bell, AlertTriangle, Info, CheckCircle, XCircle } from "lucide-react";
-import { fetchNotifiche, type Notifica } from "@/lib/notifiche";
+import { Bell } from "lucide-react";
+import { fetchNotifiche } from "@/lib/notifiche";
 import { NotificheList } from "./notifiche-list";
-
-function SeverityIcon({ severity }: { severity: Notifica["severity"] }) {
-  if (severity === "warning") return <AlertTriangle className="size-5 text-amber-500 shrink-0" />;
-  if (severity === "error") return <XCircle className="size-5 text-destructive shrink-0" />;
-  if (severity === "success") return <CheckCircle className="size-5 text-emerald-500 shrink-0" />;
-  return <Info className="size-5 text-sky-500 shrink-0" />;
-}
 
 export default async function NotifichePage() {
   const data = await fetchNotifiche(false);
@@ -30,7 +23,7 @@ export default async function NotifichePage() {
           <p className="text-sm">Nessuna notifica attiva</p>
         </div>
       ) : (
-        <NotificheList notifiche={notifiche} SeverityIcon={SeverityIcon} />
+        <NotificheList notifiche={notifiche} />
       )}
     </div>
   );

@@ -8,12 +8,10 @@ import {
   FileText,
   Home,
   LogOut,
-  Receipt,
   Search,
   Settings,
   ShieldCheck,
   Tags,
-  User,
   Utensils,
 } from "lucide-react";
 import Link from "next/link";
@@ -54,7 +52,6 @@ const navMain = [
 
 const navSecondary = [
   { title: "Notifiche", url: "/notifiche", icon: Bell },
-  { title: "Report", url: "/report", icon: Receipt },
   { title: "Impostazioni", url: "/impostazioni", icon: Settings },
 ];
 
@@ -184,8 +181,8 @@ export function AppSidebar({
               />
               <DropdownMenuContent
                 side="top"
-                align="end"
-                className="w-(--radix-dropdown-menu-trigger-width) min-w-56"
+                align="start"
+                className="w-56"
               >
                 <DropdownMenuLabel className="font-normal">
                   <div className="flex flex-col gap-0.5">
@@ -193,12 +190,6 @@ export function AppSidebar({
                     <span className="text-xs text-muted-foreground">{userEmail}</span>
                   </div>
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem render={<Link href="/impostazioni" />}>
-                  <User />
-                  Account
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
                 <DropdownMenuItem variant="destructive" onClick={handleLogout}>
                   <LogOut />
                   Esci
