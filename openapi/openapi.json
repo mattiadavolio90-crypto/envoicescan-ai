@@ -10220,7 +10220,7 @@
           "Workspace"
         ],
         "summary": "Ws Personale Crea",
-        "description": "Aggiunge un turno.",
+        "description": "Aggiunge un turno (supporta secondo slot per spezzato).",
         "operationId": "ws_personale_crea_api_workspace_personale_post",
         "parameters": [
           {
@@ -10288,13 +10288,87 @@
         }
       }
     },
+    "/api/workspace/personale/copia-settimana": {
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Personale Copia Settimana",
+        "description": "Copia i turni della settimana precedente sulla settimana [da, a].\nSalta i giorni della settimana destinazione che hanno già turni (no duplicati).",
+        "operationId": "ws_personale_copia_settimana_api_workspace_personale_copia_settimana_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopiaSettimanaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/personale/{turno_id}": {
       "patch": {
         "tags": [
           "Workspace"
         ],
         "summary": "Ws Personale Aggiorna",
-        "description": "Aggiorna un turno.",
+        "description": "Aggiorna un turno (i campi ora_inizio2/ora_fine2 possono essere azzerati passando null).",
         "operationId": "ws_personale_aggiorna_api_workspace_personale__turno_id__patch",
         "parameters": [
           {
@@ -10741,6 +10815,50 @@
               }
             ],
             "title": "Ora Fine"
+          },
+          "ora_inizio2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ora Inizio2"
+          },
+          "ora_fine2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ora Fine2"
+          },
+          "ore_extra": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ore Extra"
+          },
+          "costo_orario": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Orario"
           },
           "note": {
             "anyOf": [
@@ -11744,6 +11862,24 @@
           "colore"
         ],
         "title": "CommentoKpi"
+      },
+      "CopiaSettimanaBody": {
+        "properties": {
+          "da": {
+            "type": "string",
+            "title": "Da"
+          },
+          "a": {
+            "type": "string",
+            "title": "A"
+          }
+        },
+        "type": "object",
+        "required": [
+          "da",
+          "a"
+        ],
+        "title": "CopiaSettimanaBody"
       },
       "CopiaSnapshotInventarioBody": {
         "properties": {
@@ -13194,6 +13330,50 @@
           "ora_fine": {
             "type": "string",
             "title": "Ora Fine"
+          },
+          "ora_inizio2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ora Inizio2"
+          },
+          "ora_fine2": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ora Fine2"
+          },
+          "ore_extra": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ore Extra"
+          },
+          "costo_orario": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Orario"
           },
           "note": {
             "anyOf": [

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Download, CopyPlus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -18,13 +18,20 @@ interface Turno {
   ora_fine: string;
   ora_inizio2?: string | null;
   ora_fine2?: string | null;
+  ore_extra?: number | null;
+  costo_orario?: number | null;
   note?: string | null;
 }
 
 interface PersonaleResponse {
   turni: Turno[];
   monte_ore: Record<string, number>;
+  extra_per_persona: Record<string, number>;
+  costo_per_persona: Record<string, number>;
+  extra_totale: number;
+  costo_totale: number;
   nomi: string[];
+  costi_noti: Record<string, number>;
 }
 
 // ─── Utilità ──────────────────────────────────────────────────────────────────
@@ -82,6 +89,10 @@ function fmtOreDisplay(ore: number): string {
   return `${h}h ${m}m`;
 }
 
+function fmtEuro(v: number): string {
+  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
+}
+
 function orarioTurno(t: Turno): string {
   let s = `${fmtOra(t.ora_inizio)}–${fmtOra(t.ora_fine)}`;
   if (t.ora_inizio2 && t.ora_fine2) s += ` · ${fmtOra(t.ora_inizio2)}–${fmtOra(t.ora_fine2)}`;
@@ -95,11 +106,12 @@ interface TurnoDialogProps {
   turno: Turno | null;
   dataDefault: string;
   nomiSuggeriti: string[];
+  costiNoti: Record<string, number>;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved }: TurnoDialogProps) {
+function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClose, onSaved }: TurnoDialogProps) {
   const [nome, setNome] = useState("");
   const [data, setData] = useState(dataDefault);
   const [oraInizio, setOraInizio] = useState("09:00");
@@ -107,6 +119,8 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
   const [spezzato, setSpezzato] = useState(false);
   const [oraInizio2, setOraInizio2] = useState("19:00");
   const [oraFine2, setOraFine2] = useState("23:00");
+  const [oreExtra, setOreExtra] = useState("");
+  const [costoOrario, setCostoOrario] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [showSugg, setShowSugg] = useState(false);
@@ -121,6 +135,8 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
       setSpezzato(hasSpezzato);
       setOraInizio2(hasSpezzato ? fmtOra(turno!.ora_inizio2) : "19:00");
       setOraFine2(hasSpezzato ? fmtOra(turno!.ora_fine2) : "23:00");
+      setOreExtra(turno?.ore_extra ? String(turno.ore_extra).replace(".", ",") : "");
+      setCostoOrario(turno?.costo_orario != null ? String(turno.costo_orario).replace(".", ",") : "");
       setNote(turno?.note ?? "");
       setShowSugg(false);
     }
@@ -130,14 +146,27 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
     ? nomiSuggeriti.filter(n => n.toLowerCase().includes(nome.toLowerCase()) && n !== nome)
     : [];
 
+  function selezionaNome(n: string) {
+    setNome(n);
+    setShowSugg(false);
+    // Prefill costo orario dall'ultimo turno noto della persona (solo se non già impostato)
+    if (!costoOrario && costiNoti[n] != null) setCostoOrario(String(costiNoti[n]).replace(".", ","));
+  }
+
   const ore1 = oraInizio && oraFine ? calcolaSlotOre(oraInizio, oraFine) : 0;
   const ore2 = spezzato && oraInizio2 && oraFine2 ? calcolaSlotOre(oraInizio2, oraFine2) : 0;
   const oreTot = ore1 + ore2;
+  const extraNum = oreExtra ? parseFloat(oreExtra.replace(",", ".")) : 0;
+  const costoNum = costoOrario ? parseFloat(costoOrario.replace(",", ".")) : NaN;
+  const costoTurno = !isNaN(costoNum) && oreTot > 0 ? oreTot * costoNum : 0;
 
   async function salva() {
     if (!nome.trim()) { toast.error("Il nome è obbligatorio"); return; }
     if (!oraInizio || !oraFine) { toast.error("Orario obbligatorio"); return; }
     if (spezzato && (!oraInizio2 || !oraFine2)) { toast.error("Inserisci orario del secondo slot"); return; }
+    if (oreExtra && (isNaN(extraNum) || extraNum < 0)) { toast.error("Ore extra non valide"); return; }
+    if (extraNum > oreTot + 0.01) { toast.error("Le ore extra non possono superare le ore totali del turno"); return; }
+    if (costoOrario && (isNaN(costoNum) || costoNum < 0)) { toast.error("Costo orario non valido"); return; }
     setSaving(true);
     try {
       const payload: Record<string, unknown> = {
@@ -147,6 +176,8 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
         ora_fine: oraFine,
         ora_inizio2: spezzato ? oraInizio2 : null,
         ora_fine2: spezzato ? oraFine2 : null,
+        ore_extra: oreExtra ? extraNum : null,
+        costo_orario: costoOrario ? costoNum : null,
         note: note || null,
       };
       const url = turno ? `/api/workspace/personale/${turno.id}` : "/api/workspace/personale";
@@ -193,7 +224,7 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
                     key={n}
                     type="button"
                     className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors"
-                    onMouseDown={() => { setNome(n); setShowSugg(false); }}
+                    onMouseDown={() => selezionaNome(n)}
                   >
                     {n}
                   </button>
@@ -252,8 +283,35 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
                   ({fmtOreDisplay(ore1)} + {fmtOreDisplay(ore2)})
                 </span>
               )}
+              {costoTurno > 0 && (
+                <span className="ml-1 text-muted-foreground/60">· costo turno {fmtEuro(costoTurno)}</span>
+              )}
             </p>
           )}
+
+          {/* Extra + costo orario */}
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">di cui extra (h)</label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={oreExtra}
+                onChange={e => setOreExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
+                placeholder="es. 2"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Costo orario (€/h)</label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={costoOrario}
+                onChange={e => setCostoOrario(e.target.value.replace(/[^0-9,.]/g, ""))}
+                placeholder="es. 12,50"
+              />
+            </div>
+          </div>
 
           {/* Note */}
           <div>
@@ -287,6 +345,7 @@ export function PersonaleTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTurno, setEditTurno] = useState<Turno | null>(null);
   const [dataDefault, setDataDefault] = useState(oggi);
+  const [copiando, setCopiando] = useState(false);
 
   const [da, fine] = (() => {
     if (periodo === "settimana") {
@@ -343,22 +402,54 @@ export function PersonaleTab() {
     load(da, fine);
   }
 
+  async function copiaSettimana() {
+    if (!confirm("Copiare i turni della settimana precedente su questa settimana? I giorni che hanno già turni verranno saltati.")) return;
+    setCopiando(true);
+    try {
+      const res = await fetch("/api/workspace/personale/copia-settimana", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ da, a: fine }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.detail ?? "Errore");
+      if (j.n_copiati === 0) {
+        toast.info(j.messaggio ?? "Nessun turno da copiare");
+      } else {
+        toast.success(`${j.n_copiati} turni copiati${j.n_saltati ? ` · ${j.n_saltati} saltati (giorni già pieni)` : ""}`);
+      }
+      load(da, fine);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore copia settimana");
+    } finally {
+      setCopiando(false);
+    }
+  }
+
   function esportaCSV() {
     if (!risposta || risposta.turni.length === 0) return;
-    const headers = ["Nome", "Data", "Inizio 1", "Fine 1", "Inizio 2", "Fine 2", "Ore totali", "Note"];
-    const rows = risposta.turni.map(t => [
-      t.nome,
-      fmtData(t.data_turno),
-      fmtOra(t.ora_inizio),
-      fmtOra(t.ora_fine),
-      fmtOra(t.ora_inizio2),
-      fmtOra(t.ora_fine2),
-      String(calcolaOreTotali(t)).replace(".", ","),
-      t.note ?? "",
-    ]);
+    const num = (v: number) => String(Math.round(v * 100) / 100).replace(".", ",");
+    const headers = ["Nome", "Data", "Inizio 1", "Fine 1", "Inizio 2", "Fine 2", "Ore totali", "Di cui extra", "Costo orario", "Costo turno", "Note"];
+    const rows = risposta.turni.map(t => {
+      const ore = calcolaOreTotali(t);
+      const co = t.costo_orario ?? null;
+      return [
+        t.nome,
+        fmtData(t.data_turno),
+        fmtOra(t.ora_inizio),
+        fmtOra(t.ora_fine),
+        fmtOra(t.ora_inizio2),
+        fmtOra(t.ora_fine2),
+        num(ore),
+        t.ore_extra ? num(t.ore_extra) : "",
+        co != null ? num(co) : "",
+        co != null ? num(ore * co) : "",
+        t.note ?? "",
+      ];
+    });
     const totaleOre = Object.values(risposta.monte_ore).reduce((s, o) => s + o, 0);
     rows.push([]);
-    rows.push(["TOTALE", "", "", "", "", "", String(Math.round(totaleOre * 100) / 100).replace(".", ","), ""]);
+    rows.push(["TOTALE", "", "", "", "", "", num(totaleOre), num(extraTotale), "", costoTotale > 0 ? num(costoTotale) : "", ""]);
 
     const csv = [headers, ...rows]
       .map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
@@ -375,8 +466,13 @@ export function PersonaleTab() {
 
   const turni = risposta?.turni ?? [];
   const monteOre = risposta?.monte_ore ?? {};
+  const extraPerPersona = risposta?.extra_per_persona ?? {};
+  const costoPerPersona = risposta?.costo_per_persona ?? {};
   const nomi = risposta?.nomi ?? [];
+  const costiNoti = risposta?.costi_noti ?? {};
   const totaleOre = Object.values(monteOre).reduce((s, o) => s + o, 0);
+  const extraTotale = risposta?.extra_totale ?? 0;
+  const costoTotale = risposta?.costo_totale ?? 0;
 
   const perData: Record<string, Turno[]> = {};
   for (const t of turni) {
@@ -420,6 +516,12 @@ export function PersonaleTab() {
           <Plus className="size-4 mr-1.5" />Aggiungi turno
         </Button>
 
+        {periodo === "settimana" && (
+          <Button variant="outline" onClick={copiaSettimana} disabled={copiando}>
+            <CopyPlus className="size-4 mr-1.5" />{copiando ? "Copio…" : "Copia settimana prec."}
+          </Button>
+        )}
+
         {turni.length > 0 && (
           <Button variant="outline" onClick={esportaCSV}>
             <Download className="size-4 mr-1.5" />Esporta CSV
@@ -430,18 +532,38 @@ export function PersonaleTab() {
       {/* Monte ore per persona */}
       {Object.keys(monteOre).length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          {/* Totale fisso sempre prima */}
+          {/* Totale ore — sempre prima, verde */}
           <Card className="ring-1 ring-green-500/60 bg-green-950/20">
             <CardContent className="py-3 px-4">
               <p className="text-xs font-medium text-green-500">Totale ore</p>
               <p className="text-xl font-bold tabular-nums text-green-400">{fmtOreDisplay(totaleOre)}</p>
             </CardContent>
           </Card>
+          {/* Totale extra — seconda, ambra (mostrata sempre se c'è almeno una persona) */}
+          <Card className="ring-1 ring-amber-500/60 bg-amber-950/20">
+            <CardContent className="py-3 px-4">
+              <p className="text-xs font-medium text-amber-500">Totale extra</p>
+              <p className="text-xl font-bold tabular-nums text-amber-400">{fmtOreDisplay(extraTotale)}</p>
+            </CardContent>
+          </Card>
+          {/* Costo lavoro — solo se almeno un costo orario impostato */}
+          {costoTotale > 0 && (
+            <Card className="ring-1 ring-sky-500/60 bg-sky-950/20">
+              <CardContent className="py-3 px-4">
+                <p className="text-xs font-medium text-sky-400">Costo lavoro</p>
+                <p className="text-xl font-bold tabular-nums text-sky-300">{fmtEuro(costoTotale)}</p>
+              </CardContent>
+            </Card>
+          )}
           {Object.entries(monteOre).sort((a, b) => b[1] - a[1]).map(([n, ore]) => (
             <Card key={n} className="ring-sky-400/60">
               <CardContent className="py-3 px-4">
                 <p className="text-xs text-muted-foreground truncate">{n}</p>
                 <p className="text-xl font-bold tabular-nums">{fmtOreDisplay(ore)}</p>
+                <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] leading-tight text-muted-foreground">
+                  {extraPerPersona[n] > 0 && <span className="text-amber-500">di cui {fmtOreDisplay(extraPerPersona[n])} extra</span>}
+                  {costoPerPersona[n] > 0 && <span className="text-sky-400">{fmtEuro(costoPerPersona[n])}</span>}
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -482,6 +604,11 @@ export function PersonaleTab() {
                           {fmtOra(t.ora_inizio2)}–{fmtOra(t.ora_fine2)}
                         </div>
                       )}
+                      {!!t.ore_extra && t.ore_extra > 0 && (
+                        <div className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                          +{fmtOreDisplay(t.ore_extra)} extra
+                        </div>
+                      )}
                     </div>
                   ))}
                   <button
@@ -515,7 +642,13 @@ export function PersonaleTab() {
                           <span className="ml-1.5 text-muted-foreground/70">· {fmtOra(t.ora_inizio2)}–{fmtOra(t.ora_fine2)}</span>
                         )}
                       </span>
-                      <span className="text-xs text-muted-foreground">{fmtOreDisplay(calcolaOreTotali(t))}</span>
+                      <span className="text-xs text-muted-foreground tabular-nums">{fmtOreDisplay(calcolaOreTotali(t))}</span>
+                      {!!t.ore_extra && t.ore_extra > 0 && (
+                        <span className="text-[11px] text-amber-500 tabular-nums">+{fmtOreDisplay(t.ore_extra)} extra</span>
+                      )}
+                      {t.costo_orario != null && (
+                        <span className="text-[11px] text-sky-400 tabular-nums">{fmtEuro(calcolaOreTotali(t) * t.costo_orario)}</span>
+                      )}
                       {t.note && <span className="text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
                       <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button size="icon" variant="ghost" className="size-7" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
@@ -539,6 +672,7 @@ export function PersonaleTab() {
         turno={editTurno}
         dataDefault={dataDefault}
         nomiSuggeriti={nomi}
+        costiNoti={costiNoti}
         onClose={() => { setDialogOpen(false); setEditTurno(null); }}
         onSaved={() => load(da, fine)}
       />

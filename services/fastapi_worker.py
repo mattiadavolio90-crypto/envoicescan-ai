@@ -8210,6 +8210,8 @@ class NuovoTurnoBody(BaseModel):
     ora_fine: str    # HH:MM
     ora_inizio2: Optional[str] = None  # secondo slot (spezzato)
     ora_fine2: Optional[str] = None
+    ore_extra: Optional[float] = None     # quota straordinario (di cui)
+    costo_orario: Optional[float] = None  # EUR/h
     note: Optional[str] = None
 
 
@@ -8220,7 +8222,14 @@ class AggiornaTurnoBody(BaseModel):
     ora_fine: Optional[str] = None
     ora_inizio2: Optional[str] = None
     ora_fine2: Optional[str] = None
+    ore_extra: Optional[float] = None
+    costo_orario: Optional[float] = None
     note: Optional[str] = None
+
+
+class CopiaSettimanaBody(BaseModel):
+    da: str          # lunedì settimana destinazione YYYY-MM-DD
+    a: str           # domenica settimana destinazione YYYY-MM-DD
 
 
 def _ore_turno(t: dict) -> float:
@@ -8262,14 +8271,51 @@ async def ws_personale_list(
     turni = resp.data or []
 
     monte_ore: dict = {}
+    extra_per_persona: dict = {}
+    costo_per_persona: dict = {}
     for t in turni:
         nome = t["nome"]
-        monte_ore[nome] = round(monte_ore.get(nome, 0) + _ore_turno(t), 2)
+        ore = _ore_turno(t)
+        monte_ore[nome] = round(monte_ore.get(nome, 0) + ore, 2)
+        extra = float(t.get("ore_extra") or 0)
+        if extra:
+            extra_per_persona[nome] = round(extra_per_persona.get(nome, 0) + extra, 2)
+        co = t.get("costo_orario")
+        if co is not None:
+            costo_per_persona[nome] = round(costo_per_persona.get(nome, 0) + ore * float(co), 2)
 
-    q_nomi = sb.table("turni_personale").select("nome").eq("ristorante_id", ristorante_id).execute()
-    nomi_distinti = sorted({r["nome"] for r in (q_nomi.data or []) if r.get("nome")})
+    extra_totale = round(sum(extra_per_persona.values()), 2)
+    costo_totale = round(sum(costo_per_persona.values()), 2)
 
-    return {"turni": turni, "monte_ore": monte_ore, "nomi": nomi_distinti}
+    # Nomi distinti + ultimo costo orario noto per persona (per prefill nel dialog)
+    q_storico = (
+        sb.table("turni_personale")
+        .select("nome,costo_orario,data_turno")
+        .eq("ristorante_id", ristorante_id)
+        .order("data_turno", desc=True)
+        .execute()
+    )
+    nomi_set = set()
+    costi_noti: dict = {}
+    for r in (q_storico.data or []):
+        nome = r.get("nome")
+        if not nome:
+            continue
+        nomi_set.add(nome)
+        if nome not in costi_noti and r.get("costo_orario") is not None:
+            costi_noti[nome] = float(r["costo_orario"])
+    nomi_distinti = sorted(nomi_set)
+
+    return {
+        "turni": turni,
+        "monte_ore": monte_ore,
+        "extra_per_persona": extra_per_persona,
+        "costo_per_persona": costo_per_persona,
+        "extra_totale": extra_totale,
+        "costo_totale": costo_totale,
+        "nomi": nomi_distinti,
+        "costi_noti": costi_noti,
+    }
 
 
 @app.post("/api/workspace/personale", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
@@ -8293,10 +8339,77 @@ async def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] =
         payload["ora_inizio2"] = body.ora_inizio2
     if body.ora_fine2:
         payload["ora_fine2"] = body.ora_fine2
+    if body.ore_extra is not None:
+        payload["ore_extra"] = body.ore_extra
+    if body.costo_orario is not None:
+        payload["costo_orario"] = body.costo_orario
     if body.note:
         payload["note"] = body.note
     resp = sb.table("turni_personale").insert(payload).execute()
     return resp.data[0] if resp.data else {}
+
+
+@app.post("/api/workspace/personale/copia-settimana", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Optional[str] = Header(None)):
+    """Copia i turni della settimana precedente sulla settimana [da, a].
+    Salta i giorni della settimana destinazione che hanno già turni (no duplicati)."""
+    from datetime import datetime as _dt, timedelta as _td
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    try:
+        dest_da = _dt.strptime(body.da, "%Y-%m-%d").date()
+        dest_a = _dt.strptime(body.a, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Date non valide")
+
+    src_da = (dest_da - _td(days=7)).isoformat()
+    src_a = (dest_a - _td(days=7)).isoformat()
+
+    sorgente = (
+        sb.table("turni_personale").select("*")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data_turno", src_da).lte("data_turno", src_a)
+        .execute()
+    ).data or []
+    if not sorgente:
+        return {"ok": True, "n_copiati": 0, "n_saltati": 0, "messaggio": "Nessun turno nella settimana precedente"}
+
+    esistenti = (
+        sb.table("turni_personale").select("data_turno")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data_turno", body.da).lte("data_turno", body.a)
+        .execute()
+    ).data or []
+    giorni_pieni = {r["data_turno"] for r in esistenti}
+
+    nuovi = []
+    n_saltati = 0
+    for t in sorgente:
+        nuova_data = (_dt.strptime(t["data_turno"], "%Y-%m-%d").date() + _td(days=7)).isoformat()
+        if nuova_data in giorni_pieni:
+            n_saltati += 1
+            continue
+        riga = {
+            "ristorante_id": ristorante_id,
+            "user_id": user_id,
+            "nome": t["nome"],
+            "data_turno": nuova_data,
+            "ora_inizio": t["ora_inizio"],
+            "ora_fine": t["ora_fine"],
+        }
+        for campo in ("ora_inizio2", "ora_fine2", "ore_extra", "costo_orario", "note"):
+            if t.get(campo) is not None:
+                riga[campo] = t[campo]
+        nuovi.append(riga)
+
+    if nuovi:
+        sb.table("turni_personale").insert(nuovi).execute()
+    return {"ok": True, "n_copiati": len(nuovi), "n_saltati": n_saltati}
 
 
 @app.patch("/api/workspace/personale/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
@@ -8309,10 +8422,11 @@ async def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authoriz
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     raw = body.model_dump()
+    azzerabili = ("ora_inizio2", "ora_fine2", "ore_extra", "costo_orario")
     # Campi standard: includi solo se non None
-    updates = {k: v for k, v in raw.items() if k not in ("ora_inizio2", "ora_fine2") and v is not None}
-    # Slot2: includi sempre se esplicitamente nel body (anche None = reset)
-    for campo in ("ora_inizio2", "ora_fine2"):
+    updates = {k: v for k, v in raw.items() if k not in azzerabili and v is not None}
+    # Slot2 / extra / costo: includi sempre se esplicitamente nel body (anche None = reset)
+    for campo in azzerabili:
         if campo in raw:
             updates[campo] = raw[campo]
     if not updates:
