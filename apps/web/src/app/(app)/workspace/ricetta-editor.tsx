@@ -45,6 +45,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
   const [righe, setRighe] = useState<RigaUI[]>([]);
   const [fcTotale, setFcTotale] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [fcTarget, setFcTarget] = useState("30"); // % food cost obiettivo per prezzo suggerito
 
   // selettore ingredienti
   const [ingredienti, setIngredienti] = useState<IngredientiResponse | null>(null);
@@ -198,6 +199,10 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
   const margine = prezzoNetto !== null ? prezzoNetto - fcTotale : null;
   const incidenza = (prezzoNetto && prezzoNetto > 0) ? (fcTotale / prezzoNetto) * 100 : null;
   const colore = incidenza === null ? "grigio" : incidenza <= 30 ? "verde" : incidenza <= 40 ? "ambra" : "rosso";
+
+  // Prezzo suggerito: fc / (target/100) = prezzo netto; * (1+IVA) = prezzo IVA inclusa
+  const fcTargetNum = parseFloat(fcTarget);
+  const prezzoSuggerito = (fcTotale > 0 && fcTargetNum > 0) ? (fcTotale / (fcTargetNum / 100)) * (1 + IVA) : null;
 
   // chiudi dropdown cliccando fuori
   useEffect(() => {
@@ -388,6 +393,32 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
         {righe.length === 0 && (
           <div className="rounded-md border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
             Cerca e aggiungi ingredienti dalla barra sopra.
+          </div>
+        )}
+
+        {/* Prezzo suggerito */}
+        {prezzoSuggerito !== null && (
+          <div className="flex flex-wrap items-center gap-2 text-sm rounded-md bg-muted/40 border border-border px-3 py-2">
+            <span className="text-muted-foreground">Prezzo suggerito per food cost del</span>
+            <Input
+              type="number"
+              min="1"
+              max="100"
+              value={fcTarget}
+              onChange={e => setFcTarget(e.target.value)}
+              className="h-8 w-16 text-center focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+            />
+            <span className="text-muted-foreground">% →</span>
+            <strong className="text-base">{fmtEuro(prezzoSuggerito)}</strong>
+            <span className="text-xs text-muted-foreground">(IVA 10% incl.)</span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-auto h-8"
+              onClick={() => setPrezzoVendita(prezzoSuggerito.toFixed(2))}
+            >
+              Usa questo prezzo
+            </Button>
           </div>
         )}
 

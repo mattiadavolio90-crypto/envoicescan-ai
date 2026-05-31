@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, Info, BookOpen, BarChart3 } from "lucide-react";
+import { Plus, Pencil, Trash2, Info, BookOpen, BarChart3, Copy, ChevronUp, ChevronDown, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -66,6 +66,47 @@ export function FoodcostTab() {
     load();
   }
 
+  async function duplica(r: Ricetta) {
+    try {
+      const res = await fetch(`/api/workspace/foodcost/ricette/${r.id}`);
+      const d: RicettaDettaglio = await res.json();
+      const cr = await fetch("/api/workspace/foodcost/ricette", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nome: `${d.nome} (copia)`,
+          categoria: d.categoria,
+          prezzo_vendita_ivainc: d.prezzo_vendita_ivainc,
+          righe: d.righe,
+        }),
+      });
+      if (!cr.ok) throw new Error();
+      toast.success("Ricetta duplicata");
+      load();
+    } catch {
+      toast.error("Errore duplicazione");
+    }
+  }
+
+  async function sposta(id: string, dir: -1 | 1) {
+    const arr = [...ricette];
+    const i = arr.findIndex(x => x.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    setData(prev => prev ? { ...prev, ricette: arr } : prev); // ottimistico
+    try {
+      await fetch("/api/workspace/foodcost/ricette/riordina", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ordine: arr.map(x => x.id) }),
+      });
+    } catch {
+      toast.error("Errore riordino");
+      load();
+    }
+  }
+
   const ricette = data?.ricette ?? [];
   const kpi = data?.kpi;
   const categorie = data?.categorie ?? [];
@@ -124,6 +165,10 @@ export function FoodcostTab() {
             <div className="border-t pt-2 space-y-1 text-muted-foreground">
               <p className="font-medium text-foreground text-xs">Colori incidenza food cost:</p>
               <p>🟢 ≤30% ottimo · 🟡 30–40% accettabile · 🔴 &gt;40% da rivedere</p>
+            </div>
+            <div className="border-t pt-2 space-y-1 text-muted-foreground">
+              <p className="flex items-center gap-1.5"><AlertTriangle className="size-3.5 text-amber-500" /> = il prezzo di un ingrediente è aumentato nelle fatture rispetto a quando hai salvato la ricetta.</p>
+              <p>Usa le frecce ▲▼ per ordinare le ricette e l'icona copia per duplicarne una.</p>
             </div>
           </PopoverContent>
         </Popover>
@@ -201,11 +246,39 @@ export function FoodcostTab() {
         </div>
       ) : (
         <div className="space-y-2">
-          {ricetteFiltrate.map(r => (
+          {ricetteFiltrate.map((r, idx) => (
             <Card key={r.id} className="ring-sky-400/60 transition-colors hover:ring-sky-400">
-              <CardContent className="py-3 px-4 flex items-center gap-4">
+              <CardContent className="py-3 px-4 flex items-center gap-3">
+                {/* Frecce riordino — solo senza filtro categoria */}
+                {filtroCategoria === "TUTTI" && (
+                  <div className="flex flex-col -my-1 shrink-0">
+                    <button
+                      onClick={() => sposta(r.id, -1)}
+                      disabled={idx === 0}
+                      className="text-muted-foreground hover:text-foreground disabled:opacity-25 disabled:cursor-default p-0.5 leading-none"
+                      title="Sposta su"
+                    >
+                      <ChevronUp className="size-4" />
+                    </button>
+                    <button
+                      onClick={() => sposta(r.id, 1)}
+                      disabled={idx === ricetteFiltrate.length - 1}
+                      className="text-muted-foreground hover:text-foreground disabled:opacity-25 disabled:cursor-default p-0.5 leading-none"
+                      title="Sposta giù"
+                    >
+                      <ChevronDown className="size-4" />
+                    </button>
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{r.nome}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="font-medium truncate">{r.nome}</p>
+                    {r.alert_prezzo && (
+                      <span title={`Prezzo aumentato per: ${(r.ingredienti_aumentati ?? []).join(", ")}`} className="shrink-0">
+                        <AlertTriangle className="size-4 text-amber-500" />
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">{r.categoria}</p>
                 </div>
                 <div className="hidden sm:block text-right w-24 shrink-0">
@@ -225,6 +298,9 @@ export function FoodcostTab() {
                   <BadgeFC incidenza={r.incidenza_pct} />
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  <Button size="icon" variant="ghost" className="size-8" onClick={() => duplica(r)} title="Duplica">
+                    <Copy className="size-4" />
+                  </Button>
                   <Button size="icon" variant="ghost" className="size-8" onClick={() => apriModifica(r)} title="Modifica">
                     <Pencil className="size-4" />
                   </Button>

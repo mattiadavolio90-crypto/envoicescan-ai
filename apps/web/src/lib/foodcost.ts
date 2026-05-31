@@ -54,6 +54,8 @@ export interface Ricetta {
   incidenza_pct: number | null;
   colore_fc: ColoreFC;
   ordine_visualizzazione: number;
+  alert_prezzo?: boolean;
+  ingredienti_aumentati?: string[];
 }
 
 export interface RicettaDettaglio extends Ricetta {

@@ -7572,8 +7572,8 @@ async def ws_ingredienti(authorization: Optional[str] = Header(None)):
 
 @app.get("/api/workspace/foodcost/ricette", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 async def ws_ricette(authorization: Optional[str] = Header(None)):
-    """Lista ricette con KPI calcolati (margine, incidenza%)."""
-    from services.foodcost_service import arricchisci_ricetta
+    """Lista ricette con KPI calcolati (margine, incidenza%) + alert prezzo ingredienti."""
+    from services.foodcost_service import arricchisci_ricetta, get_articoli_da_fatture
 
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -7584,13 +7584,40 @@ async def ws_ricette(authorization: Optional[str] = Header(None)):
 
     resp = (
         sb.table("ricette")
-        .select("id,nome,categoria,foodcost_totale,prezzo_vendita_ivainc,ordine_visualizzazione")
+        .select("id,nome,categoria,foodcost_totale,prezzo_vendita_ivainc,ordine_visualizzazione,ingredienti")
         .eq("userid", user_id)
         .eq("ristorante_id", ristorante_id)
         .order("ordine_visualizzazione")
         .execute()
     )
-    ricette = [arricchisci_ricetta(r) for r in (resp.data or [])]
+
+    # Mappa prezzo corrente articoli (da fatture) per alert prezzo aumentato
+    try:
+        prezzo_corrente = {a["nome"]: a["prezzo_unitario"] for a in get_articoli_da_fatture(sb, user_id, ristorante_id)}
+    except Exception:
+        prezzo_corrente = {}
+
+    ricette = []
+    for r in (resp.data or []):
+        arr = arricchisci_ricetta(r)
+        # Alert prezzo: confronta prezzo articolo salvato vs prezzo corrente fattura (soglia +5%)
+        ings_raw = arr.pop("ingredienti", None) or "[]"
+        if isinstance(ings_raw, str):
+            try:
+                ings_raw = json.loads(ings_raw)
+            except Exception:
+                ings_raw = []
+        aumentati = []
+        for riga in ings_raw:
+            if riga.get("tipo") != "articolo" or riga.get("prezzo_override") is not None:
+                continue
+            stored = float(riga.get("prezzo_unitario") or 0)
+            cur = prezzo_corrente.get(riga.get("nome"))
+            if stored > 0 and cur and cur > stored * 1.05:
+                aumentati.append(riga.get("nome"))
+        arr["alert_prezzo"] = len(aumentati) > 0
+        arr["ingredienti_aumentati"] = aumentati
+        ricette.append(arr)
 
     # KPI globali
     con_prezzo = [r for r in ricette if r["margine"] is not None]
@@ -7758,6 +7785,21 @@ async def ws_elimina_ricetta(ricetta_id: str, authorization: Optional[str] = Hea
     user_id = str(user["id"])
     sb = _get_supabase_client()
     sb.table("ricette").delete().eq("id", ricetta_id).eq("userid", user_id).execute()
+    return {"ok": True}
+
+
+class RiordinaBody(BaseModel):
+    ordine: list[str]  # lista di id ricetta nel nuovo ordine
+
+
+@app.post("/api/workspace/foodcost/ricette/riordina", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_riordina_ricette(body: RiordinaBody, authorization: Optional[str] = Header(None)):
+    """Aggiorna ordine_visualizzazione delle ricette secondo la lista di id ricevuta."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    for idx, rid in enumerate(body.ordine):
+        sb.table("ricette").update({"ordine_visualizzazione": idx + 1}).eq("id", rid).eq("userid", user_id).execute()
     return {"ok": True}
 
 
