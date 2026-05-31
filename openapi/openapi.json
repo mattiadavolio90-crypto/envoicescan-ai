@@ -9226,6 +9226,514 @@
           }
         }
       }
+    },
+    "/api/workspace/inventario/articoli": {
+      "get": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Inventario Articoli",
+        "description": "Articoli dalle fatture con categoria, per ricerca nell'inventario.",
+        "operationId": "ws_inventario_articoli_api_workspace_inventario_articoli_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/inventario/snapshot-dates": {
+      "get": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Inventario Snapshot Dates",
+        "description": "Lista delle date con snapshot inventario salvati.",
+        "operationId": "ws_inventario_snapshot_dates_api_workspace_inventario_snapshot_dates_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/inventario/copia-snapshot": {
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Inventario Copia Snapshot",
+        "description": "Copia articoli da uno snapshot precedente alla data target (quantità = 0).",
+        "operationId": "ws_inventario_copia_snapshot_api_workspace_inventario_copia_snapshot_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopiaSnapshotInventarioBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/inventario": {
+      "get": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Inventario List",
+        "description": "Lista voci inventario per una data specifica, con KPI e stats per categoria.",
+        "operationId": "ws_inventario_list_api_workspace_inventario_get",
+        "parameters": [
+          {
+            "name": "data",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Inventario Crea",
+        "description": "Aggiunge una voce all'inventario.",
+        "operationId": "ws_inventario_crea_api_workspace_inventario_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NuovaVoceInventarioBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/inventario/{voce_id}": {
+      "patch": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Inventario Aggiorna",
+        "description": "Aggiorna una voce inventario.",
+        "operationId": "ws_inventario_aggiorna_api_workspace_inventario__voce_id__patch",
+        "parameters": [
+          {
+            "name": "voce_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Voce Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AggiornaVoceInventarioBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Inventario Elimina",
+        "description": "Elimina una voce inventario.",
+        "operationId": "ws_inventario_elimina_api_workspace_inventario__voce_id__delete",
+        "parameters": [
+          {
+            "name": "voce_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Voce Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -9408,6 +9916,78 @@
         },
         "type": "object",
         "title": "AggiornaIngredienteManualeBody"
+      },
+      "AggiornaVoceInventarioBody": {
+        "properties": {
+          "nome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome"
+          },
+          "categoria": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Categoria"
+          },
+          "quantita": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantita"
+          },
+          "um": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Um"
+          },
+          "prezzo_unitario": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prezzo Unitario"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "AggiornaVoceInventarioBody"
       },
       "AggiungiAssociazioniRequest": {
         "properties": {
@@ -10324,6 +10904,24 @@
           "colore"
         ],
         "title": "CommentoKpi"
+      },
+      "CopiaSnapshotInventarioBody": {
+        "properties": {
+          "data_source": {
+            "type": "string",
+            "title": "Data Source"
+          },
+          "data_target": {
+            "type": "string",
+            "title": "Data Target"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_source",
+          "data_target"
+        ],
+        "title": "CopiaSnapshotInventarioBody"
       },
       "DashboardKpi": {
         "properties": {
@@ -11566,6 +12164,55 @@
           "partita_iva"
         ],
         "title": "NuovaSedeBody"
+      },
+      "NuovaVoceInventarioBody": {
+        "properties": {
+          "data_inventario": {
+            "type": "string",
+            "title": "Data Inventario"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "categoria": {
+            "type": "string",
+            "title": "Categoria",
+            "default": ""
+          },
+          "quantita": {
+            "type": "number",
+            "title": "Quantita",
+            "default": 0
+          },
+          "um": {
+            "type": "string",
+            "title": "Um",
+            "default": "KG"
+          },
+          "prezzo_unitario": {
+            "type": "number",
+            "title": "Prezzo Unitario",
+            "default": 0
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_inventario",
+          "nome"
+        ],
+        "title": "NuovaVoceInventarioBody"
       },
       "NuovoClienteBody": {
         "properties": {

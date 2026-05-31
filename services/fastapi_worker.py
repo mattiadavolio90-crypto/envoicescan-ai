@@ -55,7 +55,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -7854,6 +7854,236 @@ async def ws_elimina_ingrediente_manuale(ing_id: str, authorization: Optional[st
     user_id = str(user["id"])
     sb = _get_supabase_client()
     sb.table("ingredienti_workspace").delete().eq("id", ing_id).eq("userid", user_id).execute()
+    return {"ok": True}
+
+
+# ─── Workspace: Inventario ──────────────────────────────────────────────────
+
+class NuovaVoceInventarioBody(BaseModel):
+    data_inventario: str
+    nome: str
+    categoria: str = ""
+    quantita: float = 0
+    um: str = "KG"
+    prezzo_unitario: float = 0
+    note: Optional[str] = None
+
+
+class AggiornaVoceInventarioBody(BaseModel):
+    nome: Optional[str] = None
+    categoria: Optional[str] = None
+    quantita: Optional[float] = None
+    um: Optional[str] = None
+    prezzo_unitario: Optional[float] = None
+    note: Optional[str] = None
+
+
+class CopiaSnapshotInventarioBody(BaseModel):
+    data_source: str
+    data_target: str
+
+
+@app.get("/api/workspace/inventario/articoli", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_inventario_articoli(authorization: Optional[str] = Header(None)):
+    """Articoli dalle fatture con categoria, per ricerca nell'inventario."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    from config.constants import CATEGORIE_SPESE_GENERALI
+    all_rows: list[dict] = []
+    page_size = 1000
+    offset = 0
+    while True:
+        resp = (
+            sb.table("fatture")
+            .select("descrizione,prezzo_unitario,unita_misura,categoria,data_documento")
+            .eq("user_id", user_id)
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .not_.in_("categoria", CATEGORIE_SPESE_GENERALI)
+            .order("data_documento", desc=True)
+            .range(offset, offset + page_size - 1)
+            .execute()
+        )
+        if not resp.data:
+            break
+        all_rows.extend(resp.data)
+        if len(resp.data) < page_size:
+            break
+        offset += page_size
+    articoli_map: dict[str, dict] = {}
+    for row in all_rows:
+        desc = (row.get("descrizione") or "").strip()
+        if not desc or desc in articoli_map:
+            continue
+        articoli_map[desc] = {
+            "nome": desc,
+            "categoria": row.get("categoria") or "",
+            "prezzo_unitario": float(row.get("prezzo_unitario") or 0),
+            "um": (row.get("unita_misura") or "PZ").upper(),
+        }
+    return {"articoli": list(articoli_map.values())}
+
+
+@app.get("/api/workspace/inventario/snapshot-dates", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_inventario_snapshot_dates(authorization: Optional[str] = Header(None)):
+    """Lista delle date con snapshot inventario salvati."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    resp = (
+        sb.table("inventario_voci")
+        .select("data_inventario,valore_totale")
+        .eq("ristorante_id", ristorante_id)
+        .order("data_inventario", desc=True)
+        .execute()
+    )
+    from collections import defaultdict as _dd2
+    snapshot_map: dict = _dd2(lambda: {"n_articoli": 0, "valore_totale": 0.0})
+    for r in (resp.data or []):
+        d = r["data_inventario"]
+        snapshot_map[d]["n_articoli"] += 1
+        snapshot_map[d]["valore_totale"] += float(r["valore_totale"] or 0)
+    snapshots = [
+        {
+            "data_inventario": d,
+            "n_articoli": s["n_articoli"],
+            "valore_totale": round(s["valore_totale"], 2),
+        }
+        for d, s in sorted(snapshot_map.items(), reverse=True)
+    ]
+    return {"snapshots": snapshots}
+
+
+@app.post("/api/workspace/inventario/copia-snapshot", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_inventario_copia_snapshot(body: CopiaSnapshotInventarioBody, authorization: Optional[str] = Header(None)):
+    """Copia articoli da uno snapshot precedente alla data target (quantità = 0)."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    resp = (
+        sb.table("inventario_voci")
+        .select("nome,categoria,um,prezzo_unitario")
+        .eq("ristorante_id", ristorante_id)
+        .eq("data_inventario", body.data_source)
+        .execute()
+    )
+    source = resp.data or []
+    if not source:
+        raise HTTPException(status_code=404, detail="Snapshot sorgente non trovato")
+    rows = [
+        {
+            "user_id": user_id,
+            "ristorante_id": ristorante_id,
+            "data_inventario": body.data_target,
+            "nome": r["nome"],
+            "categoria": r["categoria"],
+            "quantita": 0,
+            "um": r["um"],
+            "prezzo_unitario": r["prezzo_unitario"],
+        }
+        for r in source
+    ]
+    sb.table("inventario_voci").insert(rows).execute()
+    return {"ok": True, "n_articoli": len(rows)}
+
+
+@app.get("/api/workspace/inventario", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_inventario_list(
+    data: Optional[str] = Query(None),
+    authorization: Optional[str] = Header(None),
+):
+    """Lista voci inventario per una data specifica, con KPI e stats per categoria."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not data:
+        data = date.today().isoformat()
+    resp = (
+        sb.table("inventario_voci")
+        .select("id,data_inventario,nome,categoria,quantita,um,prezzo_unitario,valore_totale,note")
+        .eq("ristorante_id", ristorante_id)
+        .eq("data_inventario", data)
+        .order("categoria")
+        .order("nome")
+        .execute()
+    )
+    voci = resp.data or []
+    valore_totale = sum(float(v["valore_totale"] or 0) for v in voci)
+    categorie_set = set(v["categoria"] for v in voci if v["categoria"])
+    from collections import defaultdict as _dd3
+    cat_map: dict = _dd3(lambda: {"n_articoli": 0, "valore_totale": 0.0})
+    for v in voci:
+        cat = v["categoria"] or "—"
+        cat_map[cat]["n_articoli"] += 1
+        cat_map[cat]["valore_totale"] += float(v["valore_totale"] or 0)
+    categorie = [
+        {
+            "categoria": c,
+            "n_articoli": s["n_articoli"],
+            "valore_totale": round(s["valore_totale"], 2),
+            "pct_totale": round(s["valore_totale"] / valore_totale * 100, 1) if valore_totale else 0,
+        }
+        for c, s in sorted(cat_map.items())
+    ]
+    return {
+        "voci": voci,
+        "kpi": {
+            "n_articoli": len(voci),
+            "n_categorie": len(categorie_set),
+            "valore_totale": round(valore_totale, 2),
+        },
+        "categorie": categorie,
+    }
+
+
+@app.post("/api/workspace/inventario", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_inventario_crea(body: NuovaVoceInventarioBody, authorization: Optional[str] = Header(None)):
+    """Aggiunge una voce all'inventario."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    resp = sb.table("inventario_voci").insert({
+        "user_id": user_id,
+        "ristorante_id": ristorante_id,
+        "data_inventario": body.data_inventario,
+        "nome": body.nome.strip(),
+        "categoria": body.categoria.strip(),
+        "quantita": body.quantita,
+        "um": body.um.upper(),
+        "prezzo_unitario": body.prezzo_unitario,
+        "note": body.note,
+    }).execute()
+    return {"ok": True, "id": resp.data[0]["id"]}
+
+
+@app.patch("/api/workspace/inventario/{voce_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_inventario_aggiorna(voce_id: str, body: AggiornaVoceInventarioBody, authorization: Optional[str] = Header(None)):
+    """Aggiorna una voce inventario."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    payload = {k: v for k, v in body.model_dump().items() if v is not None}
+    if "um" in payload:
+        payload["um"] = payload["um"].upper()
+    sb.table("inventario_voci").update(payload).eq("id", voce_id).eq("user_id", user_id).execute()
+    return {"ok": True}
+
+
+@app.delete("/api/workspace/inventario/{voce_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_inventario_elimina(voce_id: str, authorization: Optional[str] = Header(None)):
+    """Elimina una voce inventario."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    sb.table("inventario_voci").delete().eq("id", voce_id).eq("user_id", user_id).execute()
     return {"ok": True}
 
 

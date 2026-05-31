@@ -1,8 +1,9 @@
 import { Suspense } from "react";
-import { CalendarDays, Users, Package, type LucideIcon } from "lucide-react";
+import { CalendarDays, Users, type LucideIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FoodcostTab } from "./foodcost-tab";
+import { InventarioTab } from "./inventario-tab";
 
 function Placeholder({
   icon: Icon,
@@ -53,11 +54,9 @@ export default async function WorkspacePage({
           </Suspense>
         )}
         {tab === "inventario" && (
-          <Placeholder
-            icon={Package}
-            titolo="Inventario"
-            descrizione="Conta le giacenze a fine mese e tieni traccia del valore di magazzino."
-          />
+          <Suspense>
+            <InventarioTab />
+          </Suspense>
         )}
         {tab === "personale" && (
           <Placeholder
