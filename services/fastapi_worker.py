@@ -1483,6 +1483,25 @@ class NotificheResponse(BaseModel):
     unread: int
 
 
+class BriefingAzione(BaseModel):
+    id: str
+    topic_key: str
+    severity: str = "info"
+    testo: str
+    cta_label: str
+    cta_page: str
+
+
+class BriefingResponse(BaseModel):
+    saluto: str
+    data: str
+    narrativa: str
+    severity_max: str = "info"
+    tutto_ok: bool
+    azioni: List[BriefingAzione]
+    generated_at: Optional[str] = None
+
+
 @app.get(
     "/api/notifiche",
     response_model=NotificheResponse,
@@ -1558,6 +1577,94 @@ async def dismiss_notifica(
     ).eq("id", notifica_id).eq("user_id", user_id).execute()
 
     return {"status": "ok"}
+
+
+def _saluto_per_ora(nome: Optional[str]) -> str:
+    """Saluto adattivo all'ora corrente (fuso Europe/Rome)."""
+    from datetime import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        ora = _dt.now(tz=ZoneInfo("Europe/Rome")).hour
+    except Exception:
+        ora = _dt.now().hour
+    if ora < 12:
+        base = "Buongiorno"
+    elif ora < 18:
+        base = "Buon pomeriggio"
+    else:
+        base = "Buonasera"
+    nome = (nome or "").strip()
+    return f"{base}, {nome}" if nome else base
+
+
+@app.get(
+    "/api/home/briefing",
+    response_model=BriefingResponse,
+    summary="Briefing giornaliero Home AI — saluto, narrativa, azioni",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingResponse:
+    from datetime import datetime as _dt, timezone as _tz
+    from services import get_supabase_client
+    from services.daily_briefing_service import (
+        get_today_briefing,
+        generate_and_save_briefing,
+        notifications_fingerprint,
+        _today_rome,
+    )
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    nome = user.get("nome") or user.get("nome_completo") or user.get("ragione_sociale")
+
+    supabase_client = get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+
+    # Notifiche attive (stesso filtro di /api/notifiche, senza dismissed)
+    notifications: List[Dict[str, Any]] = []
+    try:
+        resp = (
+            supabase_client.table("notification_inbox")
+            .select("id,topic_key,source_type,severity,title,body,action_page,payload,dismissed_at,expires_at,created_at,source_event_at,dedupe_key")
+            .eq("user_id", user_id)
+            .or_("expires_at.is.null,expires_at.gt." + _dt.now(_tz.utc).isoformat())
+            .order("created_at", desc=True)
+            .limit(100)
+            .execute()
+        )
+        notifications = [r for r in (resp.data or []) if not r.get("dismissed_at")]
+    except Exception as exc:
+        logger.warning("home_briefing: lettura notifiche fallita: %s", exc)
+
+    snapshot: Optional[Dict[str, Any]] = None
+    if ristorante_id:
+        cached = get_today_briefing(user_id, ristorante_id, supabase_client)
+        fingerprint = notifications_fingerprint(notifications)
+        # Rigenera solo se manca o le notifiche sono cambiate
+        if cached and cached.get("notif_fingerprint") == fingerprint:
+            snapshot = cached
+        else:
+            snapshot = generate_and_save_briefing(
+                user_id, ristorante_id, notifications, supabase_client
+            )
+
+    if snapshot is None:
+        # Fallback senza ristorante o errore DB: snapshot effimero non persistito
+        from services.daily_briefing_service import _build_snapshot
+        snapshot = _build_snapshot(notifications)
+
+    azioni = [BriefingAzione(**a) for a in (snapshot.get("azioni") or [])]
+
+    return BriefingResponse(
+        saluto=_saluto_per_ora(nome),
+        data=_today_rome().isoformat(),
+        narrativa=str(snapshot.get("narrative") or ""),
+        severity_max=str(snapshot.get("severity_max") or "info"),
+        tutto_ok=bool(snapshot.get("tutto_ok", len(azioni) == 0)),
+        azioni=azioni,
+        generated_at=snapshot.get("generated_at"),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════

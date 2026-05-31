@@ -680,6 +680,71 @@
         }
       }
     },
+    "/api/home/briefing": {
+      "get": {
+        "tags": [
+          "Home"
+        ],
+        "summary": "Briefing giornaliero Home AI — saluto, narrativa, azioni",
+        "operationId": "home_briefing_api_home_briefing_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BriefingResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/fatture/mesi-disponibili": {
       "get": {
         "summary": "Get Mesi Disponibili",
@@ -11487,6 +11552,96 @@
           "file"
         ],
         "title": "Body_upload_invoice_api_upload_invoice_post"
+      },
+      "BriefingAzione": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "topic_key": {
+            "type": "string",
+            "title": "Topic Key"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "info"
+          },
+          "testo": {
+            "type": "string",
+            "title": "Testo"
+          },
+          "cta_label": {
+            "type": "string",
+            "title": "Cta Label"
+          },
+          "cta_page": {
+            "type": "string",
+            "title": "Cta Page"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "topic_key",
+          "testo",
+          "cta_label",
+          "cta_page"
+        ],
+        "title": "BriefingAzione"
+      },
+      "BriefingResponse": {
+        "properties": {
+          "saluto": {
+            "type": "string",
+            "title": "Saluto"
+          },
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "narrativa": {
+            "type": "string",
+            "title": "Narrativa"
+          },
+          "severity_max": {
+            "type": "string",
+            "title": "Severity Max",
+            "default": "info"
+          },
+          "tutto_ok": {
+            "type": "boolean",
+            "title": "Tutto Ok"
+          },
+          "azioni": {
+            "items": {
+              "$ref": "#/components/schemas/BriefingAzione"
+            },
+            "type": "array",
+            "title": "Azioni"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "saluto",
+          "data",
+          "narrativa",
+          "tutto_ok",
+          "azioni"
+        ],
+        "title": "BriefingResponse"
       },
       "CalcolaRigheBody": {
         "properties": {
