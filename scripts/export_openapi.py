@@ -2,118 +2,73 @@
 """
 scripts/export_openapi.py — Esporta lo schema OpenAPI dal FastAPI worker.
 
-Avvia temporaneamente l'app FastAPI, recupera /openapi.json via HTTP e salva
-il file in openapi/openapi.json.
+Importa il modulo FastAPI direttamente (in-process) e chiama app.openapi()
+per generare lo schema senza avviare un server temporaneo.
 
 Uso:
     python scripts/export_openapi.py              # genera openapi/openapi.json
-    python scripts/export_openapi.py --check-drift  # verifica drift in CI
-
-Il file generato viene usato da openapi-typescript per generare i tipi TypeScript
-condivisi tra Next.js e il backend (packages/shared/types.ts nel monorepo).
-
-In CI: --check-drift fallisce con exit code 1 se lo schema committato non è aggiornato.
+    python scripts/export_openapi.py --check-drift  # verifica drift (CI)
 """
 
 import json
 import os
-import subprocess
 import sys
-import time
 from pathlib import Path
 
 _ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_ROOT))
 
 DEFAULT_OUTPUT = _ROOT / "openapi" / "openapi.json"
-WORKER_MODULE = "services.fastapi_worker:app"
-WORKER_HOST = "127.0.0.1"
-WORKER_PORT = 19873
-STARTUP_TIMEOUT = 15
 
 
-def _wait_for_server(url: str, timeout: int) -> bool:
-    import urllib.request
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            with urllib.request.urlopen(url, timeout=2) as resp:
-                if resp.status == 200:
-                    return True
-        except Exception:
-            pass
-        time.sleep(0.5)
-    return False
-
-
-def _fetch_schema(url: str) -> dict:
-    import urllib.request
-    with urllib.request.urlopen(url, timeout=10) as resp:
-        return json.loads(resp.read().decode())
-
-
-def export_schema(output: Path = DEFAULT_OUTPUT) -> int:
+def _load_app():
+    """Importa l'app FastAPI dopo aver impostato le variabili d'ambiente minime."""
     try:
         from dotenv import load_dotenv
         load_dotenv(_ROOT / ".env")
     except ImportError:
         pass
 
+    # Variabili minime per l'import senza crash (valori fake, non servono per lo schema)
+    defaults = {
+        "SUPABASE_URL": os.environ.get("SUPABASE_URL", "https://placeholder.supabase.co"),
+        "SUPABASE_KEY": os.environ.get("SUPABASE_KEY", "placeholder"),
+        "SUPABASE_SERVICE_ROLE_KEY": os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "placeholder"),
+        "WORKER_SECRET_KEY": os.environ.get("WORKER_SECRET_KEY", "placeholder"),
+        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", "placeholder"),
+    }
+    for k, v in defaults.items():
+        os.environ.setdefault(k, v)
+
+    from services.fastapi_worker import app  # type: ignore
+    return app
+
+
+def export_schema(output: Path = DEFAULT_OUTPUT) -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
-    worker_url = f"http://{WORKER_HOST}:{WORKER_PORT}/openapi.json"
 
-    print(f"[export_openapi] Avvio FastAPI worker su porta {WORKER_PORT}...")
-
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(_ROOT)
-
-    proc = subprocess.Popen(
-        [
-            sys.executable, "-m", "uvicorn",
-            WORKER_MODULE,
-            "--host", WORKER_HOST,
-            "--port", str(WORKER_PORT),
-            "--no-access-log",
-        ],
-        cwd=str(_ROOT),
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    )
-
+    print("[export_openapi] Importazione FastAPI worker in-process...")
     try:
-        print(f"[export_openapi] Attendo startup (max {STARTUP_TIMEOUT}s)...")
-        if not _wait_for_server(worker_url, STARTUP_TIMEOUT):
-            stderr = proc.stderr.read().decode(errors="replace") if proc.stderr else ""
-            print(f"[export_openapi] ERRORE: server non risponde dopo {STARTUP_TIMEOUT}s")
-            if stderr:
-                print(f"[export_openapi] stderr worker:\n{stderr[:2000]}")
-            return 1
+        app = _load_app()
+    except Exception as e:
+        print(f"[export_openapi] ERRORE import worker: {e}")
+        return 1
 
-        print("[export_openapi] Server pronto. Recupero schema...")
-        schema = _fetch_schema(worker_url)
+    print("[export_openapi] Generazione schema OpenAPI...")
+    schema = app.openapi()
 
-        with open(output, "w", encoding="utf-8") as f:
-            json.dump(schema, f, indent=2, ensure_ascii=False)
-            f.write("\n")
+    with open(output, "w", encoding="utf-8") as f:
+        json.dump(schema, f, indent=2, ensure_ascii=False)
+        f.write("\n")
 
-        print(f"[export_openapi] Schema salvato in {output.relative_to(_ROOT)}")
-        print(f"[export_openapi] Endpoint trovati: {len(schema.get('paths', {}))}")
-        return 0
-
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+    n_paths = len(schema.get("paths", {}))
+    print(f"[export_openapi] Schema salvato in {output.relative_to(_ROOT)}")
+    print(f"[export_openapi] Endpoint trovati: {n_paths}")
+    return 0
 
 
 def check_drift() -> int:
-    """
-    Modalita CI: verifica che openapi.json committato sia aggiornato.
-    Esce con codice 1 se c'e drift.
-    """
+    """Modalità CI: verifica che openapi/openapi.json committato sia aggiornato."""
     if not DEFAULT_OUTPUT.exists():
         print("[export_openapi] DRIFT: openapi/openapi.json non trovato nel repo.")
         print("[export_openapi] Esegui: python scripts/export_openapi.py")
@@ -131,11 +86,24 @@ def check_drift() -> int:
         tmp.unlink(missing_ok=True)
 
     if committed != generated:
-        print("[export_openapi] DRIFT: openapi/openapi.json non e aggiornato.")
+        committed_paths = set(committed.get("paths", {}).keys())
+        generated_paths = set(generated.get("paths", {}).keys())
+        added = generated_paths - committed_paths
+        removed = committed_paths - generated_paths
+        if added:
+            print(f"[export_openapi] DRIFT: {len(added)} endpoint nuovi non committati:")
+            for p in sorted(added):
+                print(f"  + {p}")
+        if removed:
+            print(f"[export_openapi] DRIFT: {len(removed)} endpoint rimossi non committati:")
+            for p in sorted(removed):
+                print(f"  - {p}")
+        if not added and not removed:
+            print("[export_openapi] DRIFT: schema modificato (body/parametri cambiati)")
         print("[export_openapi] Esegui: python scripts/export_openapi.py e committa il risultato.")
         return 1
 
-    print("[export_openapi] OK: nessun drift rilevato.")
+    print(f"[export_openapi] OK: nessun drift ({len(committed.get('paths', {}))} endpoint).")
     return 0
 
 
