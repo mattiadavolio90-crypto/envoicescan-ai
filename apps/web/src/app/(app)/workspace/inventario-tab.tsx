@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, BarChart3, Download, Copy } from "lucide-react";
+import { Plus, Pencil, Trash2, BarChart3, Download, Copy, Trash } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -94,6 +94,19 @@ export function InventarioTab() {
     }
   }
 
+  async function eliminaInventario() {
+    if (!confirm(`Eliminare tutte le ${voci.length} voci dell'inventario del ${fmtData(dataInventario)}?`)) return;
+    try {
+      const res = await fetch(`/api/workspace/inventario?data=${dataInventario}`, { method: "DELETE" });
+      const d = await res.json();
+      toast.success(`${d.n_eliminate ?? voci.length} voci eliminate`);
+      load();
+      loadSnapshots();
+    } catch {
+      toast.error("Errore eliminazione inventario");
+    }
+  }
+
   function esportaCSV() {
     if (!inventario || inventario.voci.length === 0) return;
     const headers = ["Prodotto", "Categoria", "Quantità", "UM", "€/UM", "Valore €", "Note"];
@@ -169,11 +182,16 @@ export function InventarioTab() {
           </PopoverContent>
         </Popover>
 
-        {/* Esporta CSV */}
+        {/* Esporta CSV + Elimina inventario */}
         {voci.length > 0 && (
-          <Button variant="outline" onClick={esportaCSV}>
-            <Download className="size-4 mr-1.5" />Esporta CSV
-          </Button>
+          <>
+            <Button variant="outline" onClick={esportaCSV}>
+              <Download className="size-4 mr-1.5" />Esporta CSV
+            </Button>
+            <Button variant="outline" className="text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/40" onClick={eliminaInventario}>
+              <Trash className="size-4 mr-1.5" />Elimina inventario
+            </Button>
+          </>
         )}
       </div>
 

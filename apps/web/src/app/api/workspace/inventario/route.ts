@@ -21,3 +21,14 @@ export async function POST(req: NextRequest) {
   });
   return NextResponse.json(await res.json(), { status: res.status });
 }
+
+export async function DELETE(req: NextRequest) {
+  const token = await getToken();
+  if (!token) return unauthorized();
+  const data = req.nextUrl.searchParams.get("data") ?? "";
+  const res = await fetch(`${WORKER_URL}/api/workspace/inventario?data=${data}`, {
+    method: "DELETE",
+    headers: workerHeaders(token),
+  });
+  return NextResponse.json(await res.json(), { status: res.status });
+}
