@@ -1,6 +1,6 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 31 maggio 2026 (rev. 16 — Strumenti: tab Inventario ✅ + Foodcost ✅ completati; prossimi: Diario + Personale)
+**Ultima revisione:** 31 maggio 2026 (rev. 17 — Strumenti: tutti e 4 i tab completati — Foodcost ✅ + Inventario ✅ + Diario ✅ + Personale ✅; Fase 6 chiusa)
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -266,10 +266,10 @@ Alert aumenti, storico prezzi per prodotto, sconti/omaggi, note credito, soglia 
 Pagina-contenitore "layer a parte" con strumenti operativi che il ristoratore farebbe altrimenti su Excel/altre app. Route `/workspace`, etichetta sidebar **"Strumenti"** (icona cassetta attrezzi), flag `workspace` (ri-allineato con Streamlit, che già usava `workspace`). **4 tab:**
 - **Foodcost** ✅ — riscrittura completa del foodcost Streamlit: ricette con ingredienti dalle **fatture reali** o da altre ricette (semilavorati), conversione UM, estrazione grammatura, foodcost/margine/incidenza per piatto. **Upgrade chiave implementato:** matrice **menu engineering** (Stelle/Cavalli/Enigmi/Cani — popolarità × marginalità). Riusa le tabelle esistenti (`ricette`, ecc.) senza perdere dati clienti.
 - **Inventario** ✅ — **conta-giacenze** semplice (articolo + quantità + valore), non movimentazione live (filosofia #4). Articoli pescabili dai prodotti delle fatture (autocomplete con UM bloccata da fattura). Date picker custom con pallini evidenziatori sui giorni con inventario esistente. KPI cards (valore magazzino, prodotti, categorie), analisi per categoria collassabile, Copia da snapshot (articoli con qty=0 da data precedente), export CSV per Excel. DB: tabella `inventario_voci` con colonna `valore_totale` calcolata (GENERATED ALWAYS AS).
-- **Diario** ⏳ — calendario **condiviso per ristorante** (stile Google Calendar): eventi/note con data. Migra il vecchio `note_diario` (post-it senza data) come note "senza orario".
-- **Personale** ⏳ — turni a **nomi liberi** (con autocomplete dai nomi già usati per aggregare) → **monte ore** settimanale/mensile → **export Excel** per ufficio paghe. NON gestionale HR: solo ore.
+- **Diario** ✅ — calendario condiviso per ristorante: vista mensile a griglia con pallini colorati sui giorni con eventi, pannello laterale lista eventi del giorno selezionato, dialog aggiungi/modifica (titolo, data, orario opzionale, note, 6 colori). Migrazione automatica `note_diario` → `diario_eventi` nella migration SQL.
+- **Personale** ✅ — turni a nomi liberi con autocomplete dai nomi già usati; vista settimana (griglia 7 colonne, click su cella per aggiungere) + vista mese (lista per data); KPI cards monte ore per persona; export CSV per ufficio paghe. Solo ore, NON gestionale HR.
 
-**Stato**: 🟡 **2/4 tab completati (31/5)** — Foodcost ✅ · Inventario ✅ · Diario e Personale ancora placeholder.
+**Stato**: ✅ **4/4 tab completati (31/5)** — Fase 6 chiusa.
 
 ### 💼 Assistenza
 Chat AI opzionale + marketplace servizi: consulenza F&B, studio menù, comparatori utenze/POS, lead gen verso partner. Pagamenti **esterni all'app** (no Stripe integrato). **Stato**: ⏳ zero codice.
@@ -417,7 +417,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Fase 3 | 2-3 sett. | 🟡 parziale | Dashboard ✅ · Notifiche ✅ · Upload ✅ — **manca**: Home con briefing AI + notifiche actionable |
 | Fase 4 | 1-2 sett. | ✅ **chiusa (30/5)** | Analisi Fatture ✅ · Analisi e Tag ✅ · Gestione Fatture (ex Scadenziario) ✅ · Cestino ✅ (ora widget integrato) · elimina da peek ✅ |
 | Fase 5 | 2-3 sett. | ✅ **chiusa (28/5) + hardening (29/5)** | Margini ✅ · Ricavi ✅ · Analisi Avanzate ✅ · Prezzi ✅ · DB migrated · contratto FE↔worker allineato |
-| Fase 6 | 2-3 sett. | 🟡 2/4 (31/5) | **Strumenti** (ex Foodcost): pagina `/workspace` a 4 tab. Foodcost ✅ · Inventario ✅ · Diario ⏳ · Personale ⏳ |
+| Fase 6 | 2-3 sett. | ✅ **chiusa (31/5)** | **Strumenti** (ex Foodcost): pagina `/workspace` a 4 tab. Foodcost ✅ · Inventario ✅ · Diario ✅ · Personale ✅ |
 | Fase 7 | 3-4 sett. | ✅ **chiusa + over-delivery (30/5)** | Admin Core ✅ · Qualità AI ✅ (coda review, auto-review, memoria globale, conflitti, **audit log + undo**) · Sistema/Salute ✅ (costi AI, retention, **agent notturno on/off**; tab Integrità DB rimosso) · **routing confidenza automatica sull'ingest ✅** |
 | Fase 8 | 2-3 sett. | 🟡 parziale | Assistenza marketplace ⏳ · Report ⏳ · Account ✅ (dati ristorante, piano, contatori, cambio password) |
 | Fase 9 | 1-2 sett. | ⏳ | Test, performance, sicurezza + comunicazione clienti |
@@ -447,7 +447,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Notifiche | ✅ | Lista, severity, dismiss, badge. **Manca** raggruppamento + azioni inline |
 | Analisi e Tag | ✅ | Chip tag, periodo, KPI bar, trend prezzi, analisi fornitori, prodotti inline, suggerimenti, export XLS |
 | Gestione Fatture (ex Scadenziario) | ✅ | Agenda + calendario + KPI bar + regole fornitore + elimina da peek + cestino widget integrato |
-| Strumenti (ex Foodcost) | 🟡 | Route `/workspace`, 4 tab. **Foodcost ✅ · Inventario ✅** · Diario ⏳ · Personale ⏳ |
+| Strumenti (ex Foodcost) | ✅ | Route `/workspace`, 4 tab. Foodcost ✅ · Inventario ✅ · Diario ✅ · Personale ✅ |
 | Report | ⏳ | Placeholder — **rimosso dalla sidebar (31/5)**; route `(app)/report/page.tsx` ancora presente ma scollegata. Valutare se eliminarla o ripensare la feature |
 | Impostazioni/Account | ✅ | Dati ristorante, piano + contatore, cambio password |
 | Admin Panel | ✅ | Core (clienti con piano inline + inizio piano, onboarding, impersonazione, sedi, flags, mapping) · Qualità AI (coda review con suggerimento categoria + 1-click, auto-review, memoria globale, conflitti, audit log + undo) · Sistema/Salute (costi AI, retention, **agent notturno on/off**) · routing confidenza sull'ingest |
@@ -641,6 +641,23 @@ Avvio Fase 6 ridefinita: il "Foodcost" diventa **"Strumenti"**, una pagina-conte
 
 *Implementato (shell, frontend reversibile):* `(app)/workspace/page.tsx` + `tabs-switcher.tsx` (pattern URL `?tab=` identico a Prezzi), 4 placeholder. Sidebar: voce "Strumenti"/`/workspace`. Rimossa vecchia route `(app)/foodcost/page.tsx`. `proxy.ts`: `/foodcost`→`/workspace`. Admin flag editor: `foodcost`→`workspace` label "Strumenti" (+ fix label "Scadenziario"→"Gestione Fatture"). `tsc --noEmit` pulito.
 
+**Strumenti — tab Diario + Personale (31 maggio 2026, rev. 17 — Fase 6 chiusa)**
+
+*Migration SQL (`20260531130000_create_diario_e_personale.sql`):*
+- Tabella `diario_eventi` (ristorante_id CASCADE, user_id, data_evento DATE, ora_inizio/fine TIME opzionali, titolo, descrizione, colore). Migrazione automatica `note_diario → diario_eventi` nella stessa migration (data = created_at::DATE, colore gray, testo come titolo).
+- Tabella `turni_personale` (ristorante_id CASCADE, user_id, nome, data_turno, ora_inizio, ora_fine, note). Entrambe con RLS service_role.
+
+*Backend — 8 nuovi endpoint su `fastapi_worker.py`:*
+- `GET /api/workspace/diario?mese=YYYY-MM` · `POST` · `PATCH /{id}` · `DELETE /{id}` — CRUD eventi
+- `GET /api/workspace/personale?da=&a=` — turni + monte ore calcolato server-side + nomi distinti per autocomplete · `POST` · `PATCH /{id}` · `DELETE /{id}`
+
+*Frontend:*
+- `diario-tab.tsx` — layout 2 colonne: mini-calendario mensile custom (griglia 7×N, pallini colorati per evento, nessuna dipendenza esterna) + pannello giorno selezionato con lista eventi (titolo, orario, descrizione, colori, hover-actions edit/delete). Dialog evento: titolo, data, ora inizio/fine, note, 6 colori (sky/green/amber/red/purple/gray). Navigazione mese con frecce.
+- `personale-tab.tsx` — toggle periodo Settimana/Mese; vista settimana = griglia 7 colonne cliccabili (+ click su cella per aggiungere turno sul giorno); vista mese = lista per data; KPI cards monte ore per persona; export CSV con BOM per Excel. Dialog turno: nome con autocomplete dropdown (dai nomi già usati), data, ora inizio/fine, durata calcolata live, note. Calcolo ore server-side (endpoint GET) + client-side (durata live nel dialog).
+- 4 route proxy Next.js: `api/workspace/diario/route.ts` · `api/workspace/diario/[id]/route.ts` · `api/workspace/personale/route.ts` · `api/workspace/personale/[id]/route.ts`
+- `page.tsx` aggiornato: rimossi i Placeholder, importati e usati i veri tab. `tsc --noEmit` pulito.
+- OpenAPI aggiornato: 107 → 111 endpoint.
+
 **Strumenti — tab Inventario (31 maggio 2026, rev. 16)**
 
 Tab conta-giacenze completo. Modello dati: tabella `inventario_voci` (migration `20260531120000_create_inventario_voci.sql`) con `valore_totale` come colonna calcolata `GENERATED ALWAYS AS (ROUND(quantita * prezzo_unitario, 2)) STORED`. `user_id UUID` senza FK (pattern `ricavi_giornalieri`), `ristorante_id` con CASCADE.
@@ -681,14 +698,14 @@ Nota routing: `articoli`, `snapshot-dates`, `copia-snapshot` definiti **prima** 
 4. ~~**Impostazioni/Account**~~ ✅ **Completato** (30/5)
 5. ~~**Admin Panel** (Core + blocco 2 + routing confidenza + agent notturno + audit)~~ ✅ **Completato/over-delivered** (30/5)
 6. ~~**Inventario** (Fase 6)~~ ✅ **Completato** (31/5)
-7. **➡️ Diario** (Fase 6) — tab Strumenti: calendario condiviso per ristorante, eventi/note con data. Modello dati nuovo da definire (tabella `diario_eventi`). Prossimo immediato.
-8. **➡️ Personale** (Fase 6) — tab Strumenti: turni a nomi liberi, monte ore settimanale/mensile, export Excel per ufficio paghe. Prossimo dopo Diario.
-9. **Home AI** — briefing giornaliero + notifiche actionable inline (Fase 3). Backend `daily_briefing_service` esiste già, va esposto in Next.js. La dashboard oggi ha solo KPI + grafici, zero briefing.
+7. ~~**Diario** (Fase 6)~~ ✅ **Completato** (31/5)
+8. ~~**Personale** (Fase 6)~~ ✅ **Completato** (31/5)
+9. **➡️ Home AI** — briefing giornaliero + notifiche actionable inline (Fase 3). Backend `daily_briefing_service` esiste già, va esposto in Next.js. La dashboard oggi ha solo KPI + grafici, zero briefing.
 10. **Assistenza/Marketplace** (Fase 8) — zero codice.
 11. **Notifiche v2** — raggruppamento + azioni inline + filtri con count (4 miglioramenti, Fase 3).
 12. **Test, performance, switch dominio** (Fasi 9-11).
 
-> Stato sintetico rev. 16: Fase 6 al 50% (Foodcost ✅ + Inventario ✅). I 2 tab rimanenti (Diario + Personale) sono i prossimi step immediati prima di riaprire Home AI.
+> Stato sintetico rev. 17: Fase 6 chiusa (Foodcost ✅ + Inventario ✅ + Diario ✅ + Personale ✅). OpenAPI aggiornato a 111 endpoint. Prossimo: Home AI (briefing giornaliero + notifiche actionable).
 
 ---
 

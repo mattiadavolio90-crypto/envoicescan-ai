@@ -1,30 +1,9 @@
 import { Suspense } from "react";
-import { CalendarDays, Users, type LucideIcon } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FoodcostTab } from "./foodcost-tab";
 import { InventarioTab } from "./inventario-tab";
-
-function Placeholder({
-  icon: Icon,
-  titolo,
-  descrizione,
-}: {
-  icon: LucideIcon;
-  titolo: string;
-  descrizione: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="py-16 text-center">
-        <Icon className="mx-auto size-12 text-muted-foreground/40" />
-        <p className="mt-4 text-base font-medium">{titolo}</p>
-        <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">{descrizione}</p>
-        <p className="mt-3 text-xs font-medium text-amber-600 dark:text-amber-500">In costruzione</p>
-      </CardContent>
-    </Card>
-  );
-}
+import { DiarioTab } from "./diario-tab";
+import { PersonaleTab } from "./personale-tab";
 
 export default async function WorkspacePage({
   searchParams,
@@ -58,19 +37,15 @@ export default async function WorkspacePage({
             <InventarioTab />
           </Suspense>
         )}
-        {tab === "personale" && (
-          <Placeholder
-            icon={Users}
-            titolo="Personale"
-            descrizione="Inserisci i turni del personale e ottieni il monte ore settimanale e mensile da esportare per l'ufficio paghe."
-          />
-        )}
         {tab === "diario" && (
-          <Placeholder
-            icon={CalendarDays}
-            titolo="Diario"
-            descrizione="Un calendario condiviso per annotare eventi, scadenze e note del locale."
-          />
+          <Suspense>
+            <DiarioTab />
+          </Suspense>
+        )}
+        {tab === "personale" && (
+          <Suspense>
+            <PersonaleTab />
+          </Suspense>
         )}
       </div>
     </div>

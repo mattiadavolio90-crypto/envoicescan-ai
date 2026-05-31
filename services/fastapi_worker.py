@@ -8098,6 +8098,216 @@ async def ws_inventario_elimina_data(data: str = Query(..., description="Data in
     return {"ok": True, "n_eliminate": n}
 
 
+# ─── Workspace: Diario ──────────────────────────────────────────────────────
+
+class NuovoEventoDiarioBody(BaseModel):
+    data_evento: str  # YYYY-MM-DD
+    titolo: str
+    descrizione: Optional[str] = None
+    ora_inizio: Optional[str] = None  # HH:MM
+    ora_fine: Optional[str] = None
+    colore: str = "sky"
+
+
+class AggiornaEventoDiarioBody(BaseModel):
+    data_evento: Optional[str] = None
+    titolo: Optional[str] = None
+    descrizione: Optional[str] = None
+    ora_inizio: Optional[str] = None
+    ora_fine: Optional[str] = None
+    colore: Optional[str] = None
+
+
+@app.get("/api/workspace/diario", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_diario_list(
+    mese: Optional[str] = Query(None, description="YYYY-MM — filtra per mese"),
+    authorization: Optional[str] = Header(None),
+):
+    """Lista eventi diario per il ristorante, opzionalmente filtrati per mese."""
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = str(user.get("ristorante_id") or "")
+    sb = _get_supabase_client()
+    q = sb.table("diario_eventi").select("*").eq("ristorante_id", ristorante_id)
+    if mese:
+        anno, mo = mese.split("-")
+        from datetime import date
+        import calendar
+        ultimo_giorno = calendar.monthrange(int(anno), int(mo))[1]
+        q = q.gte("data_evento", f"{mese}-01").lte("data_evento", f"{mese}-{ultimo_giorno:02d}")
+    q = q.order("data_evento").order("ora_inizio", nullsfirst=True)
+    resp = q.execute()
+    return {"eventi": resp.data or []}
+
+
+@app.post("/api/workspace/diario", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_diario_crea(body: NuovoEventoDiarioBody, authorization: Optional[str] = Header(None)):
+    """Crea un nuovo evento nel diario."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    ristorante_id = str(user.get("ristorante_id") or "")
+    sb = _get_supabase_client()
+    payload: dict = {
+        "ristorante_id": ristorante_id,
+        "user_id": user_id,
+        "data_evento": body.data_evento,
+        "titolo": body.titolo.strip(),
+        "colore": body.colore,
+    }
+    if body.descrizione is not None:
+        payload["descrizione"] = body.descrizione
+    if body.ora_inizio:
+        payload["ora_inizio"] = body.ora_inizio
+    if body.ora_fine:
+        payload["ora_fine"] = body.ora_fine
+    resp = sb.table("diario_eventi").insert(payload).execute()
+    return resp.data[0] if resp.data else {}
+
+
+@app.patch("/api/workspace/diario/{evento_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_diario_aggiorna(evento_id: str, body: AggiornaEventoDiarioBody, authorization: Optional[str] = Header(None)):
+    """Aggiorna un evento diario."""
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = str(user.get("ristorante_id") or "")
+    sb = _get_supabase_client()
+    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    resp = sb.table("diario_eventi").update(updates).eq("id", evento_id).eq("ristorante_id", ristorante_id).execute()
+    return resp.data[0] if resp.data else {}
+
+
+@app.delete("/api/workspace/diario/{evento_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_diario_elimina(evento_id: str, authorization: Optional[str] = Header(None)):
+    """Elimina un evento diario."""
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = str(user.get("ristorante_id") or "")
+    sb = _get_supabase_client()
+    sb.table("diario_eventi").delete().eq("id", evento_id).eq("ristorante_id", ristorante_id).execute()
+    return {"ok": True}
+
+
+# ─── Workspace: Personale ───────────────────────────────────────────────────
+
+class NuovoTurnoBody(BaseModel):
+    nome: str
+    data_turno: str  # YYYY-MM-DD
+    ora_inizio: str  # HH:MM
+    ora_fine: str    # HH:MM
+    ora_inizio2: Optional[str] = None  # secondo slot (spezzato)
+    ora_fine2: Optional[str] = None
+    note: Optional[str] = None
+
+
+class AggiornaTurnoBody(BaseModel):
+    nome: Optional[str] = None
+    data_turno: Optional[str] = None
+    ora_inizio: Optional[str] = None
+    ora_fine: Optional[str] = None
+    ora_inizio2: Optional[str] = None
+    ora_fine2: Optional[str] = None
+    note: Optional[str] = None
+
+
+def _ore_turno(t: dict) -> float:
+    """Calcola le ore totali di un turno (slot1 + eventuale slot2)."""
+    from datetime import datetime as _dt
+    def slot_ore(inizio: Optional[str], fine: Optional[str]) -> float:
+        if not inizio or not fine:
+            return 0.0
+        try:
+            i = _dt.strptime(inizio[:5], "%H:%M")
+            f = _dt.strptime(fine[:5], "%H:%M")
+            minuti = (f - i).seconds // 60
+            return round(minuti / 60, 2)
+        except Exception:
+            return 0.0
+    return slot_ore(t.get("ora_inizio"), t.get("ora_fine")) + slot_ore(t.get("ora_inizio2"), t.get("ora_fine2"))
+
+
+@app.get("/api/workspace/personale", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_personale_list(
+    da: Optional[str] = Query(None, description="Data inizio YYYY-MM-DD"),
+    a: Optional[str] = Query(None, description="Data fine YYYY-MM-DD"),
+    authorization: Optional[str] = Header(None),
+):
+    """Lista turni + nomi distinti + monte ore per persona nel periodo."""
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = str(user.get("ristorante_id") or "")
+    sb = _get_supabase_client()
+    q = sb.table("turni_personale").select("*").eq("ristorante_id", ristorante_id)
+    if da:
+        q = q.gte("data_turno", da)
+    if a:
+        q = q.lte("data_turno", a)
+    q = q.order("data_turno").order("ora_inizio")
+    resp = q.execute()
+    turni = resp.data or []
+
+    monte_ore: dict = {}
+    for t in turni:
+        nome = t["nome"]
+        monte_ore[nome] = round(monte_ore.get(nome, 0) + _ore_turno(t), 2)
+
+    q_nomi = sb.table("turni_personale").select("nome").eq("ristorante_id", ristorante_id).execute()
+    nomi_distinti = sorted({r["nome"] for r in (q_nomi.data or []) if r.get("nome")})
+
+    return {"turni": turni, "monte_ore": monte_ore, "nomi": nomi_distinti}
+
+
+@app.post("/api/workspace/personale", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] = Header(None)):
+    """Aggiunge un turno (supporta secondo slot per spezzato)."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    ristorante_id = str(user.get("ristorante_id") or "")
+    sb = _get_supabase_client()
+    payload: dict = {
+        "ristorante_id": ristorante_id,
+        "user_id": user_id,
+        "nome": body.nome.strip(),
+        "data_turno": body.data_turno,
+        "ora_inizio": body.ora_inizio,
+        "ora_fine": body.ora_fine,
+    }
+    if body.ora_inizio2:
+        payload["ora_inizio2"] = body.ora_inizio2
+    if body.ora_fine2:
+        payload["ora_fine2"] = body.ora_fine2
+    if body.note:
+        payload["note"] = body.note
+    resp = sb.table("turni_personale").insert(payload).execute()
+    return resp.data[0] if resp.data else {}
+
+
+@app.patch("/api/workspace/personale/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization: Optional[str] = Header(None)):
+    """Aggiorna un turno (i campi ora_inizio2/ora_fine2 possono essere azzerati passando null)."""
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = str(user.get("ristorante_id") or "")
+    sb = _get_supabase_client()
+    raw = body.model_dump()
+    # Campi standard: includi solo se non None
+    updates = {k: v for k, v in raw.items() if k not in ("ora_inizio2", "ora_fine2") and v is not None}
+    # Slot2: includi sempre se esplicitamente nel body (anche None = reset)
+    for campo in ("ora_inizio2", "ora_fine2"):
+        if campo in raw:
+            updates[campo] = raw[campo]
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    resp = sb.table("turni_personale").update(updates).eq("id", turno_id).eq("ristorante_id", ristorante_id).execute()
+    return resp.data[0] if resp.data else {}
+
+
+@app.delete("/api/workspace/personale/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+async def ws_personale_elimina(turno_id: str, authorization: Optional[str] = Header(None)):
+    """Elimina un turno."""
+    user = _resolve_user_from_token(authorization)
+    ristorante_id = str(user.get("ristorante_id") or "")
+    sb = _get_supabase_client()
+    sb.table("turni_personale").delete().eq("id", turno_id).eq("ristorante_id", ristorante_id).execute()
+    return {"ok": True}
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
