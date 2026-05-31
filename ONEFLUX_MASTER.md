@@ -1,6 +1,6 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 31 maggio 2026 (rev. 19 — Personale: costo lavoro + ore extra + copia settimana implementati; audit + bugfix rev.18)
+**Ultima revisione:** 31 maggio 2026 (rev. 20 — tie-in Personale↔Margini: widget costo personale con recupero dai turni; Personale potenziato rev.19)
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -365,7 +365,7 @@ Implementiamo tabella DB `system_announcements` gestita da Admin Panel.
 2. ~~**Copia settimana precedente**~~ ✅ **Implementato (rev.19):** endpoint `copia-settimana` + pulsante in vista Settimana.
 3. ~~**Ore extra ("di cui")**~~ ✅ **Implementato (rev.19):** colonna `ore_extra`, card "Totale extra" (ambra), badge per turno/persona, colonna CSV.
 
-**🔜 Da fare — interfaccia Personale ↔ Margini (incidenza % costo lavoro):** il dato "Costo lavoro del periodo" esiste già lato Personale; va portato nella pagina **Ricavi e Margini** incrociandolo con `ricavi_giornalieri` per mostrare il **costo personale %** accanto a foodcost e margine — la metrica che ogni ristoratore guarda. *Stima:* nel servizio margini, sommare `Σ(ore × costo_orario)` dei turni nel periodo selezionato e dividere per i ricavi del periodo; 1 KPI card "Costo personale %" + eventuale riga nel conto economico semplificato. Nessuna nuova tabella.
+4. ~~**Interfaccia Personale ↔ Margini**~~ ✅ **Implementato (rev.20):** widget "Costo del personale" nelle celle di Marginalità con recupero dai turni (split lordo/extra in euro) o inserimento manuale. Dato salvato per mese in `margini_mensili`, copia fissata. L'incidenza % personale era già calcolata (`personale_perc`).
 
 ---
 
@@ -649,6 +649,16 @@ Avvio Fase 6 ridefinita: il "Foodcost" diventa **"Strumenti"**, una pagina-conte
 
 *Implementato (shell, frontend reversibile):* `(app)/workspace/page.tsx` + `tabs-switcher.tsx` (pattern URL `?tab=` identico a Prezzi), 4 placeholder. Sidebar: voce "Strumenti"/`/workspace`. Rimossa vecchia route `(app)/foodcost/page.tsx`. `proxy.ts`: `/foodcost`→`/workspace`. Admin flag editor: `foodcost`→`workspace` label "Strumenti" (+ fix label "Scadenziario"→"Gestione Fatture"). `tsc --noEmit` pulito.
 
+**Margini — widget costo personale con recupero dai turni (31 maggio 2026, rev. 20)**
+
+Chiuso il tie-in Personale↔Margini lasciato aperto in rev.19 (commit `3a150a9`). Le due righe editabili "Costo Personale Lordo" (`costo_dipendenti`) e "Costo Personale Extra" (`costo_personale_extra`) di Marginalità — già persistite per mese in `margini_mensili` e già usate per `personale_perc` — ora si compilano anche **recuperando il dato dal tab Personale**.
+
+*Comportamento (deciso con Mattia):* dato **salvato per periodo** (riusa `margini_mensili`, nessuna nuova tabella), **copia fissata** al momento del recupero (modifiche successive ai turni non lo cambiano finché non ri-recuperi), **un solo widget con due campi**.
+
+*Backend:* nuovo `GET /api/margini/costo-personale-turni?anno=&mese=` — calcola dai `turni_personale` del mese lo split in EURO coerente col modello additivo di Margini: `costo_dipendenti = Σ((ore_turno − ore_extra) × costo_orario)`, `costo_personale_extra = Σ(ore_extra × costo_orario)`. I turni senza `costo_orario` non contribuiscono e vengono contati a parte (`n_senza_costo`). OpenAPI 112 → 113.
+
+*Frontend:* le celle personale (desktop tabella trasposta + vista mobile) ora sono **cliccabili** e aprono `costo-personale-dialog.tsx` scoped al mese: pulsante "Recupera dal tab Personale" (sovrascrive i due input col calcolo, poi modificabili) + inserimento manuale + sintesi turni (n turni, ore, ore extra, turni senza costo). Salvataggio via `/api/margini/cella` (due POST). Proxy `api/margini/costo-personale-turni/route.ts`. Il salvataggio inline diretto per le altre righe (`altri_costi_fb`, `altri_costi_spese`) resta invariato.
+
 **Personale — costo lavoro + ore extra + copia settimana (31 maggio 2026, rev. 19)**
 
 Implementate le 2 proposte di rev.18 + la richiesta "ore extra" di Mattia (commit `34982d0`).
@@ -742,13 +752,13 @@ Nota routing: `articoli`, `snapshot-dates`, `copia-snapshot` definiti **prima** 
 7. ~~**Diario** (Fase 6)~~ ✅ **Completato** (31/5)
 8. ~~**Personale** (Fase 6)~~ ✅ **Completato** (31/5)
 9. ~~**Personale: costo lavoro + ore extra + copia settimana**~~ ✅ **Completato** (31/5, rev.19)
-10. **Personale ↔ Margini (costo personale %)** — incrociare il costo lavoro del periodo con `ricavi_giornalieri` nella pagina Margini. Dato già calcolato lato Personale, manca solo l'esposizione in Margini. (richiesto da Mattia, rev.19)
+10. ~~**Personale ↔ Margini (costo personale)**~~ ✅ **Completato** (31/5, rev.20) — widget recupero dai turni / manuale nelle celle Margini.
 11. **➡️ Home AI** — briefing giornaliero + notifiche actionable inline (Fase 3). Backend `daily_briefing_service` esiste già, va esposto in Next.js. La dashboard oggi ha solo KPI + grafici, zero briefing.
 12. **Assistenza/Marketplace** (Fase 8) — zero codice.
 13. **Notifiche v2** — raggruppamento + azioni inline + filtri con count (4 miglioramenti, Fase 3).
 14. **Test, performance, switch dominio** (Fasi 9-11).
 
-> Stato sintetico rev. 19: Fase 6 chiusa e **hardened+potenziata** (Foodcost ✅ + Inventario ✅ + Diario ✅ + Personale ✅). Audit + bugfix fuso orario (rev.18). Personale ora con **costo lavoro + ore extra + copia settimana** (rev.19). OpenAPI 112 endpoint. **Aperto:** tie-in Personale↔Margini (costo personale %) — vedi §12. **Prossimo grande step: Home AI** (briefing giornaliero + notifiche actionable).
+> Stato sintetico rev. 20: Fase 6 chiusa e **hardened+potenziata**. Personale con costo lavoro + ore extra + copia settimana (rev.19); **tie-in Personale↔Margini chiuso** (rev.20: widget costo personale con recupero dai turni / manuale). OpenAPI 113 endpoint. **Prossimo grande step: Home AI** (briefing giornaliero + notifiche actionable).
 
 ---
 
