@@ -45,7 +45,10 @@ function addDays(d: Date, n: number): Date {
 }
 
 function toISO(d: Date): string {
-  return d.toISOString().split("T")[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const g = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${g}`;
 }
 
 function fmtData(iso: string) {
@@ -413,7 +416,7 @@ export function PersonaleTab() {
           </button>
         </div>
 
-        <Button onClick={() => { setEditTurno(null); setDataDefault(oggi); setDialogOpen(true); }}>
+        <Button onClick={() => { setEditTurno(null); setDataDefault(oggi >= da && oggi <= fine ? oggi : da); setDialogOpen(true); }}>
           <Plus className="size-4 mr-1.5" />Aggiungi turno
         </Button>
 

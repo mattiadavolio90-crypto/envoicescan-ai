@@ -8176,7 +8176,12 @@ async def ws_diario_aggiorna(evento_id: str, body: AggiornaEventoDiarioBody, aut
     ristorante_id = _get_ristorante_id_for_user(user_id, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
-    updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    raw = body.model_dump(exclude_unset=True)
+    # titolo/data_evento/colore: solo se valorizzati; orario/descrizione: azzerabili (null = reset)
+    updates = {k: v for k, v in raw.items() if k in ("titolo", "data_evento", "colore") and v is not None}
+    for campo in ("ora_inizio", "ora_fine", "descrizione"):
+        if campo in raw:
+            updates[campo] = raw[campo]
     if not updates:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
     resp = sb.table("diario_eventi").update(updates).eq("id", evento_id).eq("ristorante_id", ristorante_id).execute()
