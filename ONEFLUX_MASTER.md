@@ -1,6 +1,6 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 31 maggio 2026 (rev. 17 — Strumenti: tutti e 4 i tab completati — Foodcost ✅ + Inventario ✅ + Diario ✅ + Personale ✅; Fase 6 chiusa)
+**Ultima revisione:** 31 maggio 2026 (rev. 18 — Strumenti: audit completo dei 4 tab + bugfix fuso orario Personale/Diario; Fase 6 chiusa e hardened)
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -359,6 +359,14 @@ Implementiamo tabella DB `system_announcements` gestita da Admin Panel.
 9. Integrazioni delivery (Deliveroo, JustEat → ricalcolo margini)
 10. Integrazione CRM prenotazioni (TheFork, 7rooms → analisi coperti)
 
+### Proposte mirate sul tab Personale (da audit rev. 18)
+
+Due evoluzioni a basso costo di implementazione e alto valore, coerenti con la filosofia (semplici + tie-in con il valore core dell'app). **Da validare con Mattia prima di implementare.**
+
+1. **Costo del lavoro % (il tie-in strategico).** Oggi Personale calcola solo le *ore*. Aggiungendo un **costo orario per dipendente** (campo opzionale, default ereditato dall'ultimo turno della persona) si ottiene il **costo del lavoro del periodo** = Σ(ore × costo). Incrociandolo con i **ricavi già presenti in app** (`ricavi_giornalieri`) si mostra il **costo personale %** — la metrica che ogni ristoratore guarda accanto al foodcost. Questo trasforma Personale da "foglio turni" a strumento di controllo gestione, allineato a Margini/Foodcost. *Stima:* 1 colonna `costo_orario` su `turni_personale` (o tabellina `personale_costi` per nome) + 1 KPI card "Costo lavoro" e "Incidenza % sui ricavi" nella sezione monte ore.
+
+2. **Copia settimana precedente (il time-saver).** I ristoranti girano con turni quasi identici ogni settimana. Un pulsante "Copia settimana precedente" che duplica i turni di `[da−7, fine−7]` su `[da, fine]` (saltando i giorni già pieni) azzera il data-entry settimanale. *Stima:* 1 endpoint `POST /api/workspace/personale/copia-settimana` + 1 bottone nella toolbar vista Settimana.
+
 ---
 
 ## 13. CONTATTI E ACCESSI
@@ -641,6 +649,20 @@ Avvio Fase 6 ridefinita: il "Foodcost" diventa **"Strumenti"**, una pagina-conte
 
 *Implementato (shell, frontend reversibile):* `(app)/workspace/page.tsx` + `tabs-switcher.tsx` (pattern URL `?tab=` identico a Prezzi), 4 placeholder. Sidebar: voce "Strumenti"/`/workspace`. Rimossa vecchia route `(app)/foodcost/page.tsx`. `proxy.ts`: `/foodcost`→`/workspace`. Admin flag editor: `foodcost`→`workspace` label "Strumenti" (+ fix label "Scadenziario"→"Gestione Fatture"). `tsc --noEmit` pulito.
 
+**Strumenti — audit completo + bugfix fuso orario (31 maggio 2026, rev. 18)**
+
+Audit approfondito dei 4 tab di `/workspace` e delle relative inerenze (frontend, route proxy, endpoint worker, migration). Esito:
+
+*Bug trovati e fixati (commit `d99b702`):*
+- 🔴 **Fuso orario in `toISO` (personale-tab)** — usava `toISOString()` (UTC). In Italia (UTC+1/+2) la mezzanotte locale di un giorno diventava il giorno precedente in UTC. Effetti: nella **vista Settimana** i numeri dei giorni erano sfasati di −1 e i turni aggiunti dalle celle venivano **persistiti con data un giorno prima** dell'etichetta → dati errati visibili in CSV e vista Mese. Fix: `toISO` ora compone la data da `getFullYear/Month/Date` locali.
+- 🟠 **`todayISO` (diario-tab)** — stesso `toISOString()`: tra mezzanotte e le 02:00 evidenziava/selezionava il giorno sbagliato. Fix analogo.
+- 🟡 **Diario PATCH non azzerabile** — il worker filtrava i `None`, quindi rimuovere orario/descrizione da un evento esistente non salvava. Fix: `ora_inizio`/`ora_fine`/`descrizione` ora azzerabili (null = reset), mentre `titolo`/`data_evento`/`colore` restano aggiornati solo se valorizzati. Richiede deploy worker.
+- ✨ **UX "Aggiungi turno"** — il pulsante in toolbar defaultava sempre a *oggi* anche navigando settimane/mesi diversi; ora default alla data nel periodo visualizzato (oggi se dentro il range, altrimenti inizio periodo).
+
+*Verificato OK (nessun fix necessario):* calcolo ore overnight (sia frontend `calcolaSlotOre` con `+1440` sia worker `_ore_turno` via `.seconds` di timedelta normalizzato gestiscono correttamente turni a cavallo di mezzanotte); coerenza monte ore server/client; isolamento per `ristorante_id` su tutti gli 8 endpoint (pattern `_get_ristorante_id_for_user`); export CSV con BOM.
+
+*Proposta di evoluzione (NON implementata — da validare con Mattia, vedi §12):* **Costo del lavoro %** e **Copia settimana precedente** sul tab Personale.
+
 **Strumenti — tab Diario + Personale (31 maggio 2026, rev. 17 — Fase 6 chiusa)**
 
 *Migration SQL (`20260531130000_create_diario_e_personale.sql`):*
@@ -705,7 +727,7 @@ Nota routing: `articoli`, `snapshot-dates`, `copia-snapshot` definiti **prima** 
 11. **Notifiche v2** — raggruppamento + azioni inline + filtri con count (4 miglioramenti, Fase 3).
 12. **Test, performance, switch dominio** (Fasi 9-11).
 
-> Stato sintetico rev. 17: Fase 6 chiusa (Foodcost ✅ + Inventario ✅ + Diario ✅ + Personale ✅). OpenAPI aggiornato a 111 endpoint. Prossimo: Home AI (briefing giornaliero + notifiche actionable).
+> Stato sintetico rev. 18: Fase 6 chiusa e **hardened** (Foodcost ✅ + Inventario ✅ + Diario ✅ + Personale ✅). Audit completo dei 4 tab eseguito: fixato bug fuso orario (vista Settimana sfasata + turni salvati con data errata) e clear orario Diario. OpenAPI 111 endpoint (invariato). Proposte Personale (costo lavoro %, copia settimana) parcheggiate in §12. **Prossimo: Home AI** (briefing giornaliero + notifiche actionable).
 
 ---
 
