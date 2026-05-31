@@ -53,6 +53,19 @@ _TOPIC_PRIORITY: Dict[str, int] = {
     'uncategorized_rows':       70,
 }
 
+# Azione primaria suggerita per topic: (label_cta, pagina_destinazione).
+# La pagina e' un fallback usato quando la notifica non porta un action_page
+# proprio. La Home renderizza il bottone come link generico alla pagina.
+_TOPIC_ACTION: Dict[str, tuple] = {
+    'scadenza_superata':        ('Controlla scadenze',   '/scadenziario'),
+    'upload_failed':            ('Riprova upload',        '/upload'),
+    'scadenza_imminente':       ('Vedi scadenze',         '/scadenziario'),
+    'fatturato_mancante':       ('Inserisci fatturato',   '/ricavi'),
+    'costo_personale_mancante': ('Inserisci costo',       '/personale'),
+    'price_alert':              ('Controlla prezzi',      '/margini'),
+    'uncategorized_rows':       ('Classifica righe',      '/prodotti'),
+}
+
 
 # ============================================================
 # HELPERS INTERNI
@@ -164,6 +177,32 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
 
     # Fallback generico: restituisce il titolo della notifica
     return title
+
+
+def _action_for(notif: Dict[str, Any]) -> Dict[str, Any]:
+    """Genera l'azione strutturata che la Home offre per una notifica.
+
+    Il frontend usa questo dict per rendere la card azionabile:
+    - id            : id notifica (per il dismiss "Ignora")
+    - topic_key     : topic, per icona/colore lato UI
+    - severity      : error|warning|info|success
+    - testo         : bullet gia' composto (riusa _bullet_for)
+    - cta_label     : etichetta del bottone primario
+    - cta_page      : pagina di destinazione (action_page della notifica se
+                      presente, altrimenti fallback per topic)
+    """
+    topic = str(notif.get('topic_key') or '')
+    cta_label, fallback_page = _TOPIC_ACTION.get(topic, ('Apri', '/dashboard'))
+    cta_page = str(notif.get('action_page') or '') or fallback_page
+
+    return {
+        'id':        str(notif.get('id') or ''),
+        'topic_key': topic,
+        'severity':  str(notif.get('severity') or 'info'),
+        'testo':     _bullet_for(notif),
+        'cta_label': cta_label,
+        'cta_page':  cta_page,
+    }
 
 
 def _parse_count_from_title(title: str) -> Optional[int]:
@@ -363,10 +402,13 @@ def _build_snapshot(notifications: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     selected = l1[:_QUOTA_L1] + l2[:_QUOTA_L2]
     bullets = [_bullet_for(n) for n in selected]
+    azioni = [_action_for(n) for n in selected]
     sev_max = _severity_max(notifications)
 
     return {
         'bullets': bullets,
+        'azioni': azioni,
+        'tutto_ok': len(selected) == 0,
         'narrative': _compose_narrative(selected, sev_max),
         'generated_at': datetime.now(timezone.utc).isoformat(),
         'notif_count': len(notifications),

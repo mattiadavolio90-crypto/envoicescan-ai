@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from services.daily_briefing_service import (
+    _action_for,
     _build_snapshot,
     _bullet_for,
     _severity_max,
@@ -266,6 +267,72 @@ class TestBuildSnapshot:
         ]
         snap = _build_snapshot(notifs)
         assert "7 giorni" in snap["bullets"][0]
+
+
+# ────────────────────────────────────────────────
+# _action_for
+# ────────────────────────────────────────────────
+
+class TestActionFor:
+    def test_known_topic_uses_topic_fallback_page(self):
+        n = _notif("scadenza_superata", "error", {"count": 1, "totale": 100})
+        a = _action_for(n)
+        assert a["topic_key"] == "scadenza_superata"
+        assert a["severity"] == "error"
+        assert a["cta_label"] == "Controlla scadenze"
+        assert a["cta_page"] == "/scadenziario"
+        # testo riusa _bullet_for
+        assert a["testo"] == _bullet_for(n)
+
+    def test_notif_action_page_overrides_fallback(self):
+        n = _notif("fatturato_mancante", "warning", {"mese": "aprile", "anno": 2026})
+        n["action_page"] = "/ricavi/2026/04"
+        a = _action_for(n)
+        assert a["cta_page"] == "/ricavi/2026/04"
+
+    def test_empty_action_page_uses_fallback(self):
+        n = _notif("upload_failed", "error", {"count": 1})
+        n["action_page"] = ""
+        a = _action_for(n)
+        assert a["cta_page"] == "/upload"
+
+    def test_unknown_topic_generic_action(self):
+        n = _notif("food_cost_alto", "warning", {}, title="FC alto")
+        a = _action_for(n)
+        assert a["cta_label"] == "Apri"
+        assert a["cta_page"] == "/dashboard"
+
+    def test_id_propagated_for_dismiss(self):
+        n = _notif("price_alert", "warning", {"count": 2})
+        n["id"] = "notif-xyz"
+        a = _action_for(n)
+        assert a["id"] == "notif-xyz"
+
+
+# ────────────────────────────────────────────────
+# _build_snapshot — azioni e tutto_ok
+# ────────────────────────────────────────────────
+
+class TestSnapshotAzioni:
+    def test_azioni_align_with_bullets(self):
+        notifs = [
+            _notif("scadenza_superata",  "error", {"count": 2, "totale": 800}),
+            _notif("scadenza_imminente", "info",  {"count": 3, "totale": 600}),
+        ]
+        snap = _build_snapshot(notifs)
+        assert len(snap["azioni"]) == len(snap["bullets"]) == 2
+        assert snap["azioni"][0]["topic_key"] == "scadenza_superata"
+        assert snap["tutto_ok"] is False
+
+    def test_tutto_ok_true_when_no_known_topics(self):
+        snap = _build_snapshot([_notif("topic_sconosciuto", "info")])
+        assert snap["azioni"] == []
+        assert snap["tutto_ok"] is True
+
+    def test_tutto_ok_true_on_empty(self):
+        snap = _build_snapshot([])
+        assert snap["tutto_ok"] is True
+        assert snap["azioni"] == []
 
 
 # ────────────────────────────────────────────────
