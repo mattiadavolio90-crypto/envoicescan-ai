@@ -368,13 +368,115 @@ def _compose_narrative(selected: List[Dict[str, Any]], severity_max: str) -> str
     return f"Ciao! Vediamo il lavoro da fare oggi:\n{body}\nBuon lavoro"
 
 
+# ============================================================
+# NARRAZIONE AI (strato finale, anonimizzato, con fallback)
+# ============================================================
+
+# Regola d'oro: l'AI NON calcola numeri. Le riceve gia' calcolate nei bullet
+# deterministici e li riscrive solo in tono colloquiale. I nomi propri
+# (prodotti/fornitori) vengono anonimizzati prima della chiamata e ripristinati
+# nella risposta, per non inviarli mai a OpenAI.
+
+_NARRATION_SYSTEM_PROMPT = (
+    "Sei l'assistente di un gestionale per ristoratori. Ricevi un elenco di "
+    "cose da fare oggi, gia' scritte con numeri e dettagli corretti. "
+    "Riscrivile in un breve briefing colloquiale, caldo e diretto, in italiano, "
+    "dando del tu. REGOLE FERREE: "
+    "1) Non inventare, modificare o aggiungere NESSUN numero, importo, "
+    "percentuale, data o nome: usa solo quelli che ti vengono dati. "
+    "2) Non aggiungere voci non presenti nell'elenco. "
+    "3) Massimo 4 frasi. Inizia con un'apertura amichevole e chiudi con un "
+    "incoraggiamento breve. "
+    "4) Mantieni intatti i segnaposto tipo <<P1>> o <<F1>> se presenti. "
+    "Restituisci solo il testo del briefing, senza elenchi puntati."
+)
+
+
+def _anonymize_bullets(bullets: List[str]) -> tuple:
+    """Sostituisce nomi propri (prodotti/fornitori) con segnaposto.
+
+    Heuristica conservativa: anonimizza i nomi prodotto presenti nei bullet
+    di price_alert (gli unici che contengono nomi propri nel set attuale),
+    riconoscendoli dal pattern 'es. <Nome> +XX%'. Restituisce
+    (bullets_anonimi, mappa_ripristino).
+    """
+    mapping: Dict[str, str] = {}
+    out: List[str] = []
+    counter = 0
+    for b in bullets:
+        m = _re.search(r'es\.\s+(.+?)\s+\+\d', b)
+        if m:
+            nome = m.group(1).strip()
+            counter += 1
+            ph = f"<<P{counter}>>"
+            mapping[ph] = nome
+            b = b.replace(nome, ph)
+        out.append(b)
+    return out, mapping
+
+
+def _deanonymize(text: str, mapping: Dict[str, str]) -> str:
+    for ph, nome in mapping.items():
+        text = text.replace(ph, nome)
+    return text
+
+
+def _narrate_with_ai(bullets: List[str], fallback: str) -> str:
+    """Genera la narrativa con GPT a partire dai bullet deterministici.
+
+    Anonimizza, chiama gpt-4o-mini, ripristina i nomi, traccia i costi.
+    Qualsiasi errore -> ritorna il fallback (template _compose_narrative).
+    """
+    if not bullets:
+        return fallback
+    try:
+        from services.ai_service import _get_openai_client, _resolve_ristorante_id
+        anon, mapping = _anonymize_bullets(bullets)
+        user_msg = "Cose da fare oggi:\n" + "\n".join(f"- {b}" for b in anon)
+
+        client = _get_openai_client()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _NARRATION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
+            ],
+            max_tokens=220,
+            temperature=0.5,
+        )
+        text = (response.choices[0].message.content or "").strip()
+        if not text:
+            return fallback
+
+        try:
+            usage = response.usage
+            if usage:
+                from services.ai_cost_service import track_ai_usage
+                track_ai_usage(
+                    operation_type='daily_briefing',
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    ristorante_id=_resolve_ristorante_id(),
+                    item_count=len(bullets),
+                )
+        except Exception as exc:
+            logger.warning("tracking costo briefing AI fallito: %s", exc)
+
+        return _deanonymize(text, mapping)
+    except Exception as exc:
+        logger.warning("narrazione AI fallita, uso fallback template: %s", exc)
+        return fallback
+
 
 # ============================================================
 # LOGICA SNAPSHOT (pura, testabile)
 # ============================================================
 
-def _build_snapshot(notifications: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Costruisce lo snapshot giornaliero in modo deterministico (no AI).
+def _build_snapshot(
+    notifications: List[Dict[str, Any]],
+    use_ai: bool = False,
+) -> Dict[str, Any]:
+    """Costruisce lo snapshot giornaliero.
 
     - Deduplica per topic_key (tiene la prima occorrenza, le notifiche arrivano
       ordinate per source_event_at DESC da get_inbox_notifications)
@@ -382,6 +484,10 @@ def _build_snapshot(notifications: List[Dict[str, Any]]) -> Dict[str, Any]:
     - Ordina per priorita\u2019 interna
     - Applica quota: max _QUOTA_L1 L1 + max _QUOTA_L2 L2
     - Nessuna promozione di slot
+
+    La pipeline e' deterministica fino ai bullet/azioni. Se use_ai=True la
+    narrativa finale viene riscritta da GPT (anonimizzato, con fallback al
+    template); con use_ai=False resta il template _compose_narrative.
     """
     seen_topics: Dict[str, Dict[str, Any]] = {}
     for n in notifications:
@@ -405,11 +511,17 @@ def _build_snapshot(notifications: List[Dict[str, Any]]) -> Dict[str, Any]:
     azioni = [_action_for(n) for n in selected]
     sev_max = _severity_max(notifications)
 
+    template_narrative = _compose_narrative(selected, sev_max)
+    if use_ai and selected:
+        narrative = _narrate_with_ai(bullets, template_narrative)
+    else:
+        narrative = template_narrative
+
     return {
         'bullets': bullets,
         'azioni': azioni,
         'tutto_ok': len(selected) == 0,
-        'narrative': _compose_narrative(selected, sev_max),
+        'narrative': narrative,
         'generated_at': datetime.now(timezone.utc).isoformat(),
         'notif_count': len(notifications),
         'notif_fingerprint': notifications_fingerprint(notifications),
@@ -469,7 +581,7 @@ def generate_and_save_briefing(
         return None
     try:
         today = _today_rome()
-        snapshot = _build_snapshot(notifications)
+        snapshot = _build_snapshot(notifications, use_ai=True)
         snapshot['generated_for_date'] = today.isoformat()
 
         record = {

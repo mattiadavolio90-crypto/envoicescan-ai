@@ -17,8 +17,11 @@ import pytest
 
 from services.daily_briefing_service import (
     _action_for,
+    _anonymize_bullets,
     _build_snapshot,
     _bullet_for,
+    _deanonymize,
+    _narrate_with_ai,
     _severity_max,
     _today_rome,
     generate_and_save_briefing,
@@ -333,6 +336,61 @@ class TestSnapshotAzioni:
         snap = _build_snapshot([])
         assert snap["tutto_ok"] is True
         assert snap["azioni"] == []
+
+
+# ────────────────────────────────────────────────
+# Narrazione AI: anonimizzazione + fallback
+# ────────────────────────────────────────────────
+
+class TestNarrazioneAI:
+    def test_anonymize_replaces_product_name(self):
+        bullets = ["\U0001F4C8 Alert prezzi su 2 prodotti — es. Mozzarella +12.5%."]
+        anon, mapping = _anonymize_bullets(bullets)
+        assert "Mozzarella" not in anon[0]
+        assert "<<P1>>" in anon[0]
+        assert mapping["<<P1>>"] == "Mozzarella"
+
+    def test_anonymize_leaves_other_bullets_untouched(self):
+        bullets = ["⚠️ 3 fatture scadute per € 1.200,00 — controlla."]
+        anon, mapping = _anonymize_bullets(bullets)
+        assert anon == bullets
+        assert mapping == {}
+
+    def test_deanonymize_roundtrip(self):
+        text = "Occhio a <<P1>>, e' rincarato."
+        assert _deanonymize(text, {"<<P1>>": "Mozzarella"}) == "Occhio a Mozzarella, e' rincarato."
+
+    def test_narrate_empty_returns_fallback(self):
+        assert _narrate_with_ai([], "FALLBACK") == "FALLBACK"
+
+    def test_narrate_returns_fallback_on_ai_error(self):
+        # Nessuna API key in test -> _get_openai_client solleva -> fallback
+        with patch(
+            "services.ai_service._get_openai_client",
+            side_effect=RuntimeError("no key"),
+        ):
+            out = _narrate_with_ai(["⚠️ qualcosa"], "FALLBACK")
+        assert out == "FALLBACK"
+
+    def test_narrate_deanonymizes_ai_response(self):
+        fake_client = MagicMock()
+        fake_msg = MagicMock()
+        fake_msg.content = "Occhio: <<P1>> e' rincarato, controlla i margini!"
+        fake_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=fake_msg)],
+            usage=None,
+        )
+        bullets = ["\U0001F4C8 Alert prezzi su 1 prodotto — es. Pomodoro +9.0%."]
+        with patch("services.ai_service._get_openai_client", return_value=fake_client), \
+             patch("services.ai_service._resolve_ristorante_id", return_value=None):
+            out = _narrate_with_ai(bullets, "FALLBACK")
+        assert "Pomodoro" in out
+        assert "<<P1>>" not in out
+
+    def test_build_snapshot_use_ai_false_uses_template(self):
+        notifs = [_notif("scadenza_superata", "error", {"count": 1, "totale": 100})]
+        snap = _build_snapshot(notifs, use_ai=False)
+        assert snap["narrative"].startswith("Ciao!")
 
 
 # ────────────────────────────────────────────────
