@@ -211,31 +211,31 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
   }, []);
 
   // Classe comune per i <select> nativi — focus ring blu coerente con Input
-  const selectCls = "h-9 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500";
-  const selectSmCls = "h-7 w-full rounded-md border border-input bg-background px-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500";
+  const selectCls = "h-10 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500";
+  const selectSmCls = "h-8 w-full rounded-md border border-input bg-background px-2 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500";
 
   return (
     <Dialog open={open} onOpenChange={o => { if (!o) onClose(); }}>
-      <DialogContent className="w-[min(96vw,860px)] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-full sm:max-w-4xl gap-5 max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isNew ? "Nuova ricetta" : `Modifica — ${ricetta?.nome}`}</DialogTitle>
         </DialogHeader>
 
         {/* Riga 1: Nome ricetta — full width */}
-        <div>
-          <Label className="text-xs mb-1 block">Nome ricetta *</Label>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium">Nome ricetta *</Label>
           <Input
             placeholder="es. Pizza Margherita, Besciamella, Ragù bolognese…"
             value={nome}
             onChange={e => setNome(e.target.value)}
-            className="focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+            className="h-10 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
           />
         </div>
 
         {/* Riga 2: Categoria + Prezzo vendita — stessa altezza label */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label className="text-xs mb-1 block">Categoria</Label>
+        <div className="grid grid-cols-2 gap-5">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium whitespace-nowrap">Categoria</Label>
             <select
               value={categoria}
               onChange={e => setCategoria(e.target.value)}
@@ -244,8 +244,8 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
               {CATEGORIE_RICETTE.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
-          <div>
-            <Label className="text-xs mb-1 block">Prezzo vendita (IVA 10% inclusa)</Label>
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium whitespace-nowrap">Prezzo di vendita (IVA 10% inclusa)</Label>
             <Input
               type="number"
               placeholder="0.00"
@@ -253,7 +253,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
               step="0.50"
               value={prezzoVendita}
               onChange={e => setPrezzoVendita(e.target.value)}
-              className="focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+              className="h-10 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
             />
           </div>
         </div>
@@ -265,13 +265,13 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
         )}
 
         {/* Selettore ingrediente */}
-        <div>
-          <Label className="text-xs mb-1 block">Aggiungi ingrediente</Label>
+        <div className="space-y-1.5">
+          <Label className="text-sm font-medium">Aggiungi ingrediente</Label>
           <div className="relative" ref={dropdownRef}>
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
               <Input
-                className="pl-9 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                className="h-10 pl-9 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                 placeholder="Cerca tra le fatture, ingredienti manuali o semilavorati…"
                 value={searchIng}
                 onChange={e => { setSearchIng(e.target.value); setDropdownOpen(true); }}
@@ -315,18 +315,18 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
               </colgroup>
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="text-left px-3 py-2 font-medium text-muted-foreground">Ingrediente</th>
-                  <th className="text-right px-2 py-2 font-medium text-muted-foreground">Quantità</th>
-                  <th className="text-center px-2 py-2 font-medium text-muted-foreground">UM</th>
-                  <th className="text-right px-2 py-2 font-medium text-muted-foreground">Gram. conf.</th>
-                  <th className="text-right px-2 py-2 font-medium text-muted-foreground">Costo</th>
+                  <th className="text-left px-3 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Ingrediente</th>
+                  <th className="text-center px-2 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Quantità</th>
+                  <th className="text-center px-2 py-2.5 font-medium text-muted-foreground whitespace-nowrap">UM</th>
+                  <th className="text-center px-2 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Gram. conf.</th>
+                  <th className="text-right px-2 py-2.5 font-medium text-muted-foreground whitespace-nowrap">Costo</th>
                   <th />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {righe.map(r => (
                   <tr key={r._key}>
-                    <td className="px-3 py-1.5">
+                    <td className="px-3 py-2">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="text-xs shrink-0">
                           {r.tipo === "articolo" ? "🟢" : r.tipo === "manuale" ? "📝" : "🥘"}
@@ -334,17 +334,17 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
                         <span className="truncate" title={r.nome}>{r.nome}</span>
                       </div>
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-2">
                       <Input
                         type="number"
                         min="0"
                         step="1"
                         value={r.quantita || ""}
                         onChange={e => aggiornaRiga(r._key, { quantita: parseFloat(e.target.value) || 0 })}
-                        className="h-7 text-right text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                        className="h-8 text-right text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                       />
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-2">
                       <select
                         value={r.um}
                         onChange={e => aggiornaRiga(r._key, { um: e.target.value })}
@@ -354,7 +354,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
                         {UM_LIST.map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
                     </td>
-                    <td className="px-2 py-1.5">
+                    <td className="px-2 py-2">
                       {r.tipo === "articolo" ? (
                         <Input
                           type="number"
@@ -362,7 +362,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
                           placeholder={r.grammatura_confezione ? String(r.grammatura_confezione) : "—"}
                           value={r.grammatura_confezione ?? ""}
                           onChange={e => aggiornaRiga(r._key, { grammatura_confezione: parseFloat(e.target.value) || null })}
-                          className="h-7 text-right text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                          className="h-8 text-right text-sm w-full focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
                           title="Grammatura confezione in g/ml"
                         />
                       ) : (

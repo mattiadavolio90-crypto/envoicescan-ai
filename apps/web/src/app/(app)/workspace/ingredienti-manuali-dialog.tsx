@@ -112,7 +112,7 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="w-full sm:max-w-2xl gap-5">
         <DialogHeader>
           <DialogTitle>Ingredienti manuali</DialogTitle>
         </DialogHeader>
@@ -122,19 +122,20 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
         </p>
 
         {/* Form nuovo */}
-        <div className="space-y-2">
-          <div>
-            <Label className="text-xs">Nome ingrediente</Label>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Nome ingrediente</Label>
             <Input
               placeholder="es. Mozzarella fior di latte, Farina 00, Olio EVO…"
               value={nome}
               onChange={e => setNome(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter" && nome.trim() && prezzo) handleCrea(); }}
+              className="h-10 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
             />
           </div>
-          <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-end">
-            <div>
-              <Label className="text-xs">Prezzo €/unità di misura</Label>
+          <div className="grid grid-cols-[1fr_7rem_auto] gap-3 items-end">
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium whitespace-nowrap">Prezzo (€ per unità)</Label>
               <Input
                 type="number"
                 placeholder="0.00"
@@ -143,19 +144,20 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
                 value={prezzo}
                 onChange={e => setPrezzo(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter" && nome.trim() && prezzo) handleCrea(); }}
+                className="h-10 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               />
             </div>
-            <div>
-              <Label className="text-xs">UM</Label>
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium">Unità</Label>
               <select
                 value={um}
                 onChange={e => setUm(e.target.value)}
-                className="flex h-9 w-24 items-center rounded-md border border-input bg-background px-3 text-sm"
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm transition-colors focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
               >
                 {UM_LIST.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </div>
-            <Button onClick={handleCrea} disabled={saving || !nome.trim() || !prezzo}>
+            <Button onClick={handleCrea} disabled={saving || !nome.trim() || !prezzo} className="h-10">
               <Plus className="size-4 mr-1.5" />Aggiungi
             </Button>
           </div>
