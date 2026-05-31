@@ -52,11 +52,11 @@ export default async function WorkspacePage({
             <FoodcostTab />
           </Suspense>
         )}
-        {tab === "diario" && (
+        {tab === "inventario" && (
           <Placeholder
-            icon={CalendarDays}
-            titolo="Diario"
-            descrizione="Un calendario condiviso per annotare eventi, scadenze e note del locale."
+            icon={Package}
+            titolo="Inventario"
+            descrizione="Conta le giacenze a fine mese e tieni traccia del valore di magazzino."
           />
         )}
         {tab === "personale" && (
@@ -66,11 +66,11 @@ export default async function WorkspacePage({
             descrizione="Inserisci i turni del personale e ottieni il monte ore settimanale e mensile da esportare per l'ufficio paghe."
           />
         )}
-        {tab === "inventario" && (
+        {tab === "diario" && (
           <Placeholder
-            icon={Package}
-            titolo="Inventario"
-            descrizione="Conta le giacenze a fine mese e tieni traccia del valore di magazzino."
+            icon={CalendarDays}
+            titolo="Diario"
+            descrizione="Un calendario condiviso per annotare eventi, scadenze e note del locale."
           />
         )}
       </div>

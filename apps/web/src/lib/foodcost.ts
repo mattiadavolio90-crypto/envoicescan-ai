@@ -121,3 +121,11 @@ export function fmtPct(v: number | null | undefined): string {
   if (v == null) return "—";
   return `${v.toFixed(1)}%`;
 }
+
+// Stesse soglie del backend (foodcost_service.py): ≤30 verde, ≤40 ambra, >40 rosso
+export function coloreFC(incidenza: number | null | undefined): ColoreFC {
+  if (incidenza == null) return "grigio";
+  if (incidenza <= 30) return "verde";
+  if (incidenza <= 40) return "ambra";
+  return "rosso";
+}

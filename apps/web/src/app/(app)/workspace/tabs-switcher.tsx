@@ -5,9 +5,9 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 const TABS = [
   { key: "foodcost", label: "Foodcost" },
-  { key: "diario", label: "Diario" },
-  { key: "personale", label: "Personale" },
   { key: "inventario", label: "Inventario" },
+  { key: "personale", label: "Personale" },
+  { key: "diario", label: "Diario" },
 ];
 
 export function TabsSwitcher({ active }: { active: string }) {
