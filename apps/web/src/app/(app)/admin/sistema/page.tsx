@@ -11,7 +11,7 @@ export default async function SistemaPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" render={<Link href="/admin" />}>
+        <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/admin" />}>
           <ChevronLeft className="size-4 mr-1" /> Admin
         </Button>
         <h1 className="text-2xl font-bold tracking-tight">Sistema & Salute</h1>

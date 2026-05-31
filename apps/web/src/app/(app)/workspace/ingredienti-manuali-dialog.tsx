@@ -115,28 +115,43 @@ export function IngredientiManualiDialog({ open, onClose, onSaved }: Props) {
         </p>
 
         {/* Form nuovo */}
-        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 items-end">
+        <div className="space-y-2">
           <div>
-            <Label className="text-xs">Nome</Label>
-            <Input placeholder="es. Mozzarella fior di latte" value={nome} onChange={e => setNome(e.target.value)} />
+            <Label className="text-xs">Nome ingrediente</Label>
+            <Input
+              placeholder="es. Mozzarella fior di latte, Farina 00, Olio EVO…"
+              value={nome}
+              onChange={e => setNome(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && nome.trim() && prezzo) handleCrea(); }}
+            />
           </div>
-          <div>
-            <Label className="text-xs">Prezzo €/UM</Label>
-            <Input type="number" placeholder="0.00" min="0" step="0.01" value={prezzo} onChange={e => setPrezzo(e.target.value)} className="w-24" />
+          <div className="grid grid-cols-[1fr_auto_auto] gap-2 items-end">
+            <div>
+              <Label className="text-xs">Prezzo €/unità di misura</Label>
+              <Input
+                type="number"
+                placeholder="0.00"
+                min="0"
+                step="0.01"
+                value={prezzo}
+                onChange={e => setPrezzo(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter" && nome.trim() && prezzo) handleCrea(); }}
+              />
+            </div>
+            <div>
+              <Label className="text-xs">UM</Label>
+              <select
+                value={um}
+                onChange={e => setUm(e.target.value)}
+                className="flex h-9 w-24 items-center rounded-md border border-input bg-background px-3 text-sm"
+              >
+                {UM_LIST.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+            <Button onClick={handleCrea} disabled={saving || !nome.trim() || !prezzo}>
+              <Plus className="size-4 mr-1.5" />Aggiungi
+            </Button>
           </div>
-          <div>
-            <Label className="text-xs">UM</Label>
-            <select
-              value={um}
-              onChange={e => setUm(e.target.value)}
-              className="flex h-9 w-20 items-center rounded-md border border-input bg-background px-3 text-sm"
-            >
-              {UM_LIST.map(u => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </div>
-          <Button onClick={handleCrea} disabled={saving || !nome.trim() || !prezzo} size="sm" className="mb-0">
-            <Plus className="size-4 mr-1" />Aggiungi
-          </Button>
         </div>
 
         {/* Lista */}
