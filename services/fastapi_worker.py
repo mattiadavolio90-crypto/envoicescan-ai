@@ -1502,6 +1502,95 @@ class BriefingResponse(BaseModel):
     generated_at: Optional[str] = None
 
 
+class SaluteVoce(BaseModel):
+    """Una delle voci di completezza dati del mese."""
+    key: str
+    label: str
+    ok: bool
+    dettaglio: str
+    cta_page: Optional[str] = None
+
+
+class SaluteResponse(BaseModel):
+    """Indice di salute della gestione — completezza dati del mese corrente."""
+    indice: int
+    colore: str  # "verde" | "giallo" | "rosso"
+    mese_label: str
+    voci: List[SaluteVoce]
+
+
+class AlertPrezzo(BaseModel):
+    """Un aumento prezzo rilevante per impatto €/mese (prodotto o tag)."""
+    tipo: str  # "prodotto" | "tag"
+    nome: str
+    fornitore: str = ""
+    aumento_pct: float
+    impatto_mese: float
+
+
+class AlertPrezziResponse(BaseModel):
+    """Alert prezzi per impatto €/mese — solo food&beverage, top per impatto."""
+    count: int
+    alerts: List[AlertPrezzo]
+    top: Optional[AlertPrezzo] = None
+
+
+class ConfigTopic(BaseModel):
+    """Un avviso configurabile dal cliente."""
+    key: str
+    label: str
+    enabled: bool
+    bloccato: bool = False  # True = sempre attivo, non spegnibile
+
+
+class ConfigResponse(BaseModel):
+    """Configurazione assistente: nome + interruttori topic."""
+    nome_referente: str = ""
+    topics: List[ConfigTopic]
+
+
+class ConfigUpdateRequest(BaseModel):
+    nome_referente: Optional[str] = None
+    topics_disabled: List[str] = []
+
+
+class HomeKpiResponse(BaseModel):
+    """Fotografia LIVE dei conti del periodo per la Home AI.
+
+    Periodo = mese in corso; se ancora troppo vuoto, ultimo mese completo
+    (etichetta esplicita). I numeri arrivano dalle stesse fonti della pagina
+    Margini, cosi' Home e Margini non si contraddicono mai.
+    """
+    periodo_label: str          # es. "Giugno" oppure "Maggio"
+    is_mese_in_corso: bool      # False = stiamo mostrando l'ultimo mese completo
+    fatturato: float
+    food_cost_pct: Optional[float]   # None se fatturato 0 (non calcolabile)
+    costo_personale: float           # costo del personale (dipendenti + extra)
+    spese_generali: float
+    mol: float
+    has_data: bool
+    # Confronto col mese precedente (per le frecce ↑↓). None = non confrontabile.
+    confronto_label: Optional[str] = None        # es. "vs aprile"
+    fatturato_delta_pct: Optional[float] = None  # variazione % fatturato
+    food_cost_delta_pp: Optional[float] = None   # variazione in PUNTI di food cost %
+    personale_delta_pct: Optional[float] = None   # variazione % costo personale
+    spese_delta_pct: Optional[float] = None       # variazione % spese generali
+    mol_delta_pct: Optional[float] = None         # variazione % MOL
+
+
+# Avvisi mostrabili nel configuratore, in ordine di gerarchia. I due upload
+# falliti sono "bloccati": sempre attivi (guasti tecnici). Decisione Mattia.
+_CONFIG_TOPICS: List[tuple] = [
+    ("upload_failed",            "Upload fatture fallito",        True),
+    ("upload_ricavi_failed",     "Upload ricavi fallito",         True),
+    ("price_alert",              "Alert prezzi",                  False),
+    ("uncategorized_rows",       "Righe da classificare",         False),
+    ("fatturato_mancante",       "Fatturato mancante",            False),
+    ("costo_personale_mancante", "Costo personale mancante",      False),
+    ("scadenza_superata",        "Scadenze",                      False),
+]
+
+
 @app.get(
     "/api/notifiche",
     response_model=NotificheResponse,
@@ -1616,7 +1705,10 @@ async def home_briefing(authorization: Optional[str] = Header(None)) -> Briefing
 
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
-    nome = user.get("nome") or user.get("nome_completo") or user.get("ragione_sociale")
+    # Saluto Home AI: SOLO il nome_referente scelto nel configuratore. Se manca,
+    # saluto liscio ("Buongiorno") — mai la ragione sociale, che e' brutta da
+    # leggere ("LAND DEI SAPORI SRL") e poco umana.
+    nome = user.get("nome_referente")
 
     supabase_client = get_supabase_client()
     ristorante_id = _resolve_ristorante_id(user, supabase_client)
@@ -1637,16 +1729,129 @@ async def home_briefing(authorization: Optional[str] = Header(None)) -> Briefing
     except Exception as exc:
         logger.warning("home_briefing: lettura notifiche fallita: %s", exc)
 
+    # Alert prezzi: il motore LIVE per impatto €/mese (Step 4) sostituisce la
+    # vecchia notifica price_alert da upload. Solo food&beverage, soglia auto,
+    # prodotti + tag. Se non ci sono alert rilevanti, rimuovo il price_alert
+    # legacy (zero rumore). I numeri li calcola il backend, l'AI racconta.
+    if ristorante_id:
+        try:
+            from services.price_impact_service import calcola_alert_prezzi_impatto
+            ap = calcola_alert_prezzi_impatto(user_id, ristorante_id, supabase_client=supabase_client)
+            notifications = [n for n in notifications if n.get("topic_key") != "price_alert"]
+            if ap.get("count") and ap.get("top"):
+                top = ap["top"]
+                notifications.append({
+                    "id": "price-alert-live",
+                    "topic_key": "price_alert",
+                    "source_type": "live",
+                    "severity": "warning",
+                    "title": "Alert prezzi",
+                    "body": "",
+                    "action_page": "/prezzi",
+                    "payload": {
+                        "count": ap["count"],
+                        "top_product": top.get("nome"),
+                        "top_increase_pct": top.get("aumento_pct"),
+                        "impatto_mese": top.get("impatto_mese"),
+                    },
+                    "source_event_at": None,
+                    "dedupe_key": "price-alert-live",
+                })
+        except Exception as exc:
+            logger.warning("home_briefing: motore alert prezzi fallito: %s", exc)
+
+    # Upload ricavi fallito (Step 5): SOLO per clienti mappati ai ricavi
+    # automatici (riga in ricavi_ragione_sociale_map). "Fallito" = mappato ma
+    # nessun ricavo negli ultimi giorni (la finestra tollera weekend/chiusura).
+    if ristorante_id:
+        try:
+            mapres = (
+                supabase_client.table("ricavi_ragione_sociale_map")
+                .select("ristorante_id")
+                .eq("ristorante_id", ristorante_id)
+                .limit(1)
+                .execute()
+            )
+            mappato = bool(mapres.data)
+            if mappato:
+                from datetime import date as _date, timedelta as _tdelta
+                finestra_giorni = 3
+                soglia_data = (_date.today() - _tdelta(days=finestra_giorni)).isoformat()
+                recres = (
+                    supabase_client.table("ricavi_giornalieri")
+                    .select("data")
+                    .eq("ristorante_id", ristorante_id)
+                    .gte("data", soglia_data)
+                    .limit(1)
+                    .execute()
+                )
+                if not (recres.data or []):
+                    # da quanti giorni manca l'ultimo ricavo (per il testo)
+                    ultres = (
+                        supabase_client.table("ricavi_giornalieri")
+                        .select("data")
+                        .eq("ristorante_id", ristorante_id)
+                        .order("data", desc=True)
+                        .limit(1)
+                        .execute()
+                    )
+                    giorni_senza = None
+                    if ultres.data:
+                        try:
+                            ultima = _date.fromisoformat(str(ultres.data[0]["data"]))
+                            giorni_senza = (_date.today() - ultima).days
+                        except Exception:
+                            giorni_senza = None
+                    notifications.append({
+                        "id": "upload-ricavi-live",
+                        "topic_key": "upload_ricavi_failed",
+                        "source_type": "live",
+                        "severity": "warning",
+                        "title": "Ricavi automatici assenti",
+                        "body": "",
+                        "action_page": "/margini",
+                        "payload": {"giorni_senza": giorni_senza},
+                        "source_event_at": None,
+                        "dedupe_key": "upload-ricavi-live",
+                    })
+        except Exception as exc:
+            logger.warning("home_briefing: check ricavi automatici fallito: %s", exc)
+
+    # Preferenze configuratore (Step 6): nome override + topic spenti dal cliente.
+    topics_disabled: List[str] = []
+    if ristorante_id:
+        try:
+            prefres = (
+                supabase_client.table("assistant_preferences")
+                .select("nome_referente,topics_disabled")
+                .eq("ristorante_id", ristorante_id)
+                .limit(1)
+                .execute()
+            )
+            if prefres.data:
+                pref = prefres.data[0]
+                if pref.get("nome_referente"):
+                    nome = pref["nome_referente"]  # override vince sul saluto
+                td = pref.get("topics_disabled") or []
+                if isinstance(td, list):
+                    topics_disabled = [str(t) for t in td]
+        except Exception as exc:
+            logger.warning("home_briefing: lettura preferenze fallita: %s", exc)
+
     snapshot: Optional[Dict[str, Any]] = None
     if ristorante_id:
         cached = get_today_briefing(user_id, ristorante_id, supabase_client)
+        # Il fingerprint include i topic spenti (stessa formula di _build_snapshot):
+        # cambiando le preferenze il briefing si rigenera anche a notifiche identiche.
         fingerprint = notifications_fingerprint(notifications)
-        # Rigenera solo se manca o le notifiche sono cambiate
+        if topics_disabled:
+            fingerprint += "|" + ",".join(sorted(topics_disabled))
         if cached and cached.get("notif_fingerprint") == fingerprint:
             snapshot = cached
         else:
             snapshot = generate_and_save_briefing(
-                user_id, ristorante_id, notifications, supabase_client
+                user_id, ristorante_id, notifications, supabase_client,
+                topics_disabled=topics_disabled,
             )
 
     if snapshot is None:
@@ -1665,6 +1870,509 @@ async def home_briefing(authorization: Optional[str] = Header(None)) -> Briefing
         azioni=azioni,
         generated_at=snapshot.get("generated_at"),
     )
+
+
+_MESI_IT_FULL = [
+    "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+    "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+]
+
+
+@app.get(
+    "/api/home/salute",
+    response_model=SaluteResponse,
+    summary="Indice di salute della gestione — completezza dati del mese",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
+    """Misura quanto i dati recenti sono completi.
+
+    Quattro voci a peso uguale (25% ciascuna): fatture caricate, fatturato
+    inserito, costo personale inserito, righe classificate. Conta "a posto"
+    SOLO se i dati sono davvero arrivati (non basta l'automatismo attivo).
+
+    Finestra: ultimi 30 giorni mobili (non il mese di calendario), cosi' il
+    giorno 1 del mese l'indice non si azzera di colpo. Tutti i calcoli qui nel
+    backend; la Home si limita a mostrare.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+
+    try:
+        from zoneinfo import ZoneInfo
+        oggi = _dt.now(tz=ZoneInfo("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt.now().date()
+    inizio = oggi - _td(days=29)  # finestra mobile di 30 giorni inclusivi
+    data_da = inizio.isoformat()
+    data_a = oggi.isoformat()
+    mese_label = "ultimi 30 giorni"
+
+    # Fatturato e Personale si valutano sull'ULTIMO MESE COMPLETO (il mese
+    # precedente), lo stesso di cui parlano le card "manca fatturato/personale".
+    # Cosi' Salute e card non si contraddicono mai. Le altre due voci (fatture,
+    # classificate) restano sulla finestra mobile di 30 giorni.
+    _MESI_IT_SAL = [
+        "", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+        "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+    ]
+    if oggi.month == 1:
+        mc_anno, mc_mese = oggi.year - 1, 12
+    else:
+        mc_anno, mc_mese = oggi.year, oggi.month - 1
+    mese_completo_label = _MESI_IT_SAL[mc_mese]
+    mc_da = _dt(mc_anno, mc_mese, 1).date().isoformat()
+    # ultimo giorno del mese completo = giorno prima del primo del mese corrente
+    primo_mese_corrente = _dt(oggi.year, oggi.month, 1).date()
+    mc_a = (primo_mese_corrente - _td(days=1)).isoformat()
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+
+    # Senza ristorante non possiamo misurare: indice 0, tutto da fare.
+    if not ristorante_id:
+        voci = [
+            SaluteVoce(key="fatture", label="Fatture caricate", ok=False,
+                       dettaglio="Nessun ristorante associato", cta_page="/analisi-fatture"),
+        ]
+        return SaluteResponse(indice=0, colore="rosso", mese_label=mese_label, voci=voci)
+
+    # ── Voce 1: Fatture caricate di recente ──
+    # Conta il CARICAMENTO recente (created_at), non la data della fattura: le
+    # fatture elettroniche arrivano con ritardo SDI, quindi un cliente attivo
+    # puo' caricare oggi fatture datate settimane fa. Usare data_documento qui
+    # lasciava i clienti attivi "in arancione" ingiustamente.
+    inizio_dt = _dt.combine(inizio, _dt.min.time())
+    fatture_ok = False
+    righe_mese: List[Dict[str, Any]] = []
+    try:
+        resp = (
+            sb.table("fatture")
+            .select("needs_review,categoria", count="exact")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .gte("created_at", inizio_dt.isoformat())
+            .execute()
+        )
+        righe_mese = resp.data or []
+        fatture_ok = len(righe_mese) > 0
+    except Exception as exc:
+        logger.warning("home_salute: lettura fatture fallita: %s", exc)
+
+    # ── Voce 2: Fatturato inserito (margini_mensili dell'ultimo mese completo) ──
+    # Fonte = margini_mensili (la stessa delle card "manca fatturato" e del KPI):
+    # i ricavi giornalieri non sono usati dai clienti, sarebbe sempre "manca".
+    fatturato_ok = False
+    try:
+        resp = (
+            sb.table("margini_mensili")
+            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+            .eq("ristorante_id", ristorante_id)
+            .eq("anno", mc_anno)
+            .eq("mese", mc_mese)
+            .execute()
+        )
+        netto = 0.0
+        for r in (resp.data or []):
+            netto += (
+                float(r.get("fatturato_iva10") or 0)
+                + float(r.get("fatturato_iva22") or 0)
+                + float(r.get("altri_ricavi_noiva") or 0)
+            )
+        fatturato_ok = netto > 0
+    except Exception as exc:
+        logger.warning("home_salute: lettura fatturato margini fallita: %s", exc)
+
+    # ── Voce 3: Costo personale inserito (ultimo mese completo) ──
+    # Stesso mese della voce Fatturato e delle card "manca personale".
+    personale_ok = False
+    try:
+        resp = (
+            sb.table("margini_mensili")
+            .select("costo_dipendenti,costo_personale_extra")
+            .eq("ristorante_id", ristorante_id)
+            .eq("anno", mc_anno)
+            .eq("mese", mc_mese)
+            .execute()
+        )
+        for r in (resp.data or []):
+            if (float(r.get("costo_dipendenti") or 0)
+                    + float(r.get("costo_personale_extra") or 0)) > 0:
+                personale_ok = True
+                break
+    except Exception as exc:
+        logger.warning("home_salute: lettura personale fallita: %s", exc)
+
+    # ── Voce 4: Righe classificate (% righe del mese senza needs_review) ──
+    tot_righe = len(righe_mese)
+    da_controllare = sum(1 for r in righe_mese if r.get("needs_review"))
+    if tot_righe == 0:
+        pct_classificate = 0
+        classificate_ok = False
+    else:
+        pct_classificate = round((tot_righe - da_controllare) / tot_righe * 100)
+        classificate_ok = da_controllare == 0
+
+    # ── Indice: 4 voci a peso uguale. Le voci binarie valgono 0/100;
+    #    le righe usano la loro %. Senza fatture, le righe valgono 0. ──
+    score_fatture = 100 if fatture_ok else 0
+    score_fatturato = 100 if fatturato_ok else 0
+    score_personale = 100 if personale_ok else 0
+    score_classificate = pct_classificate if fatture_ok else 0
+    indice = round(
+        (score_fatture + score_fatturato + score_personale + score_classificate) / 4
+    )
+
+    if indice >= 80:
+        colore = "verde"
+    elif indice >= 50:
+        colore = "giallo"
+    else:
+        colore = "rosso"
+
+    voci = [
+        SaluteVoce(
+            key="fatture",
+            label="Fatture caricate",
+            ok=fatture_ok,
+            dettaglio="Fatture recenti registrate" if fatture_ok
+                      else "Nessuna fattura recente",
+            cta_page="/analisi-fatture",
+        ),
+        SaluteVoce(
+            key="fatturato",
+            label="Fatturato inserito",
+            ok=fatturato_ok,
+            dettaglio=f"{mese_completo_label.capitalize()} inserito" if fatturato_ok
+                      else f"Manca {mese_completo_label}",
+            cta_page="/margini",
+        ),
+        SaluteVoce(
+            key="personale",
+            label="Costo personale inserito",
+            ok=personale_ok,
+            dettaglio=f"{mese_completo_label.capitalize()} inserito" if personale_ok
+                      else f"Manca {mese_completo_label}",
+            cta_page="/margini",
+        ),
+        SaluteVoce(
+            key="classificate",
+            label="Righe classificate",
+            ok=classificate_ok,
+            dettaglio="Tutte le righe sono classificate" if classificate_ok
+                      else (f"{da_controllare} righe da controllare" if tot_righe
+                            else "Nessuna riga da classificare"),
+            cta_page="/analisi-fatture",
+        ),
+    ]
+
+    return SaluteResponse(
+        indice=indice, colore=colore, mese_label=mese_label, voci=voci
+    )
+
+
+@app.get(
+    "/api/home/alert-prezzi",
+    response_model=AlertPrezziResponse,
+    summary="Alert prezzi per impatto €/mese (prodotti + tag, food&beverage)",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def home_alert_prezzi(authorization: Optional[str] = Header(None)) -> AlertPrezziResponse:
+    """Motore live degli alert prezzi ordinati per impatto economico mensile.
+
+    Solo Food & Beverage, soglia di rilevanza automatica (frazione della spesa
+    food del periodo), monitora prodotti e custom tag. Tutto calcolato nel
+    backend (price_impact_service); la Home si limita a mostrare.
+    """
+    from services.price_impact_service import calcola_alert_prezzi_impatto
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        return AlertPrezziResponse(count=0, alerts=[], top=None)
+
+    try:
+        res = calcola_alert_prezzi_impatto(user_id, ristorante_id, supabase_client=sb)
+    except Exception as exc:
+        logger.warning("home_alert_prezzi: calcolo fallito: %s", exc)
+        return AlertPrezziResponse(count=0, alerts=[], top=None)
+
+    alerts = [AlertPrezzo(**a) for a in (res.get("alerts") or [])]
+    top = res.get("top")
+    return AlertPrezziResponse(
+        count=int(res.get("count") or 0),
+        alerts=alerts,
+        top=AlertPrezzo(**top) if top else None,
+    )
+
+
+# Cache in-memoria dei KPI Home: i conti cambiano lentamente, un TTL breve
+# abbatte il carico (query + aggregazioni) anche con centinaia di clienti che
+# riaprono la Home. Niente tabella DB: sopravvive senza migration, e al massimo
+# si perde al redeploy (ricalcolo trasparente). Chiave = (ristorante, giorno).
+_HOME_KPI_CACHE: Dict[str, tuple] = {}
+_HOME_KPI_TTL = 120.0  # secondi
+
+
+def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: int) -> dict:
+    """Compone i 4 KPI per un mese di calendario.
+
+    Fonte universale: margini_mensili (fatturato + MOL, gli stessi della pagina
+    Margini) e costi food/spese dalle fatture aggregate per mese. Nessun cliente
+    usa i ricavi giornalieri, quindi il mese e' l'unica fotografia affidabile.
+    """
+    row = margini_anno.get(mese, {}) or {}
+    fatturato = (
+        float(row.get("fatturato_iva10") or 0)
+        + float(row.get("fatturato_iva22") or 0)
+        + float(row.get("altri_ricavi_noiva") or 0)
+    )
+    fb = float(costi_fb.get(mese) or 0) + float(row.get("altri_costi_fb") or 0)
+    spese = float(costi_spese.get(mese) or 0) + float(row.get("altri_costi_spese") or 0)
+    # Costo personale: stessa fonte e formula della pagina Margini, cosi' il
+    # conto economico della Home torna esattamente (Fatturato - F&B - Personale
+    # - Spese = MOL). Senza questa voce il MOL non quadrava con le righe mostrate.
+    personale = (
+        float(row.get("costo_dipendenti") or 0)
+        + float(row.get("costo_personale_extra") or 0)
+    )
+    mol = float(row.get("mol") or 0)
+    food_cost_pct = round(fb / fatturato * 100, 1) if fatturato > 0 else None
+    return {
+        "fatturato": round(fatturato, 2),
+        "food_cost_pct": food_cost_pct,
+        "costo_personale": round(personale, 2),
+        "spese_generali": round(spese, 2),
+        "mol": round(mol, 2),
+        "has_data": fatturato > 0 or fb > 0 or spese > 0 or personale > 0,
+    }
+
+
+@app.get(
+    "/api/home/kpi",
+    response_model=HomeKpiResponse,
+    summary="KPI live Home — fatturato, food cost %, spese generali, MOL",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
+    """Fotografia dei conti dell'ULTIMO MESE COMPLETO, con confronto.
+
+    Fonte: margini_mensili (fatturato + MOL, come la pagina Margini) e costi
+    food/spese dalle fatture. E' l'unica fonte affidabile: nessun cliente usa i
+    ricavi giornalieri. Confronto vs il mese precedente (frecce ↑↓).
+    """
+    import time as _time
+    from datetime import date as _date
+
+    _MESI_IT = [
+        "", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+        "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
+    ]
+    _vuoto = HomeKpiResponse(
+        periodo_label="", is_mese_in_corso=False, fatturato=0.0,
+        food_cost_pct=None, costo_personale=0.0, spese_generali=0.0,
+        mol=0.0, has_data=False,
+    )
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        return _vuoto
+
+    oggi = _date.today()
+    cache_key = f"{ristorante_id}:{oggi.year}:{oggi.month}"
+    cached = _HOME_KPI_CACHE.get(cache_key)
+    if cached and (_time.monotonic() - cached[0]) < _HOME_KPI_TTL:
+        return cached[1]
+
+    from services.margine_service import (
+        carica_margini_anno,
+        calcola_costi_automatici_per_anno,
+    )
+
+    def _dati_anno(anno: int):
+        try:
+            m = carica_margini_anno(user_id, ristorante_id, anno)
+            fb, sp = calcola_costi_automatici_per_anno(user_id, ristorante_id, anno)
+            return m, fb, sp
+        except Exception as exc:
+            logger.warning("home_kpi: caricamento anno %s fallito: %s", anno, exc)
+            return {}, {}, {}
+
+    cache_anni: dict = {}
+
+    def _anno(anno: int):
+        if anno not in cache_anni:
+            cache_anni[anno] = _dati_anno(anno)
+        return cache_anni[anno]
+
+    # Parti dall'ultimo mese completo (mese precedente) e, se vuoto, vai indietro
+    # fino a 6 mesi: cosi' mostriamo sempre l'ultima fotografia reale disponibile.
+    mese_usato = anno_usato = None
+    kpi = None
+    mm, aa = oggi.month - 1, oggi.year
+    if mm == 0:
+        mm, aa = 12, oggi.year - 1
+    for _ in range(6):
+        margini, costi_fb, costi_spese = _anno(aa)
+        cand = _kpi_periodo(margini, costi_fb, costi_spese, mm)
+        if cand["has_data"]:
+            kpi, mese_usato, anno_usato = cand, mm, aa
+            break
+        mm -= 1
+        if mm == 0:
+            mm, aa = 12, aa - 1
+
+    if kpi is None:
+        return _vuoto
+
+    # ── Confronto col mese precedente a quello mostrato ──
+    def _delta_pct(curr: float, prev: float) -> Optional[float]:
+        if prev and prev != 0:
+            return round((curr - prev) / abs(prev) * 100, 1)
+        return None
+
+    cmp_mese, cmp_anno = mese_usato - 1, anno_usato
+    if cmp_mese == 0:
+        cmp_mese, cmp_anno = 12, anno_usato - 1
+    c_margini, c_fb, c_spese = _anno(cmp_anno)
+    kpi_cmp = _kpi_periodo(c_margini, c_fb, c_spese, cmp_mese)
+
+    confronto_label = None
+    fatturato_delta = food_cost_delta = personale_delta = spese_delta = mol_delta = None
+    if kpi_cmp["has_data"]:
+        confronto_label = f"vs {_MESI_IT[cmp_mese].lower()}"
+        fatturato_delta = _delta_pct(kpi["fatturato"], kpi_cmp["fatturato"])
+        personale_delta = _delta_pct(kpi["costo_personale"], kpi_cmp["costo_personale"])
+        spese_delta = _delta_pct(kpi["spese_generali"], kpi_cmp["spese_generali"])
+        mol_delta = _delta_pct(kpi["mol"], kpi_cmp["mol"])
+        if kpi["food_cost_pct"] is not None and kpi_cmp["food_cost_pct"] is not None:
+            food_cost_delta = round(kpi["food_cost_pct"] - kpi_cmp["food_cost_pct"], 1)
+
+    resp = HomeKpiResponse(
+        periodo_label=_MESI_IT[mese_usato],
+        is_mese_in_corso=False,
+        fatturato=kpi["fatturato"],
+        food_cost_pct=kpi["food_cost_pct"],
+        costo_personale=kpi["costo_personale"],
+        spese_generali=kpi["spese_generali"],
+        mol=kpi["mol"],
+        has_data=kpi["has_data"],
+        confronto_label=confronto_label,
+        fatturato_delta_pct=fatturato_delta,
+        food_cost_delta_pp=food_cost_delta,
+        personale_delta_pct=personale_delta,
+        spese_delta_pct=spese_delta,
+        mol_delta_pct=mol_delta,
+    )
+    _HOME_KPI_CACHE[cache_key] = (_time.monotonic(), resp)
+    return resp
+
+
+@app.get(
+    "/api/home/config",
+    response_model=ConfigResponse,
+    summary="Configurazione assistente Home — nome + interruttori avvisi",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigResponse:
+    """Legge la configurazione dell'assistente per il ristorante corrente.
+
+    Default AI-first: tutti gli avvisi attivi. nome_referente prende prima
+    l'override del configuratore, poi quello impostato lato admin su users.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+
+    nome = ""
+    disabled: set = set()
+    if ristorante_id:
+        try:
+            resp = (
+                sb.table("assistant_preferences")
+                .select("nome_referente,topics_disabled")
+                .eq("ristorante_id", ristorante_id)
+                .limit(1)
+                .execute()
+            )
+            if resp.data:
+                pref = resp.data[0]
+                nome = str(pref.get("nome_referente") or "")
+                td = pref.get("topics_disabled") or []
+                if isinstance(td, list):
+                    disabled = {str(t) for t in td}
+        except Exception as exc:
+            logger.warning("home_config_get: lettura fallita: %s", exc)
+
+    if not nome:
+        nome = str(user.get("nome_referente") or "")
+
+    topics = [
+        ConfigTopic(key=key, label=label, enabled=key not in disabled, bloccato=bloccato)
+        for (key, label, bloccato) in _CONFIG_TOPICS
+    ]
+    return ConfigResponse(nome_referente=nome, topics=topics)
+
+
+@app.post(
+    "/api/home/config",
+    response_model=ConfigResponse,
+    summary="Salva la configurazione assistente Home",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+async def home_config_post(
+    body: ConfigUpdateRequest,
+    authorization: Optional[str] = Header(None),
+) -> ConfigResponse:
+    """Salva nome + avvisi spenti. I topic bloccati non vengono mai salvati
+    come spenti (restano sempre attivi). Upsert per ristorante.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    bloccati = {k for (k, _l, b) in _CONFIG_TOPICS if b}
+    validi = {k for (k, _l, _b) in _CONFIG_TOPICS}
+    disabled = [
+        t for t in (body.topics_disabled or [])
+        if t in validi and t not in bloccati
+    ]
+    nome = (body.nome_referente or "").strip() or None
+
+    from datetime import datetime as _dt2, timezone as _tz2
+    record = {
+        "ristorante_id": ristorante_id,
+        "nome_referente": nome,
+        "topics_disabled": disabled,
+        "updated_at": _dt2.now(_tz2.utc).isoformat(),
+    }
+    try:
+        sb.table("assistant_preferences").upsert(
+            record, on_conflict="ristorante_id"
+        ).execute()
+    except Exception as exc:
+        logger.error("home_config_post: salvataggio fallito: %s", exc)
+        raise HTTPException(status_code=500, detail="Salvataggio fallito")
+
+    disabled_set = set(disabled)
+    topics = [
+        ConfigTopic(key=key, label=label, enabled=key not in disabled_set, bloccato=bloccato)
+        for (key, label, bloccato) in _CONFIG_TOPICS
+    ]
+    return ConfigResponse(nome_referente=str(nome or ""), topics=topics)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

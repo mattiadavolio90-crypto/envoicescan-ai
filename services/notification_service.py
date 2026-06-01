@@ -447,8 +447,13 @@ def build_scadenza_documents_notifications(
         sb = supabase_client or get_supabase_client()
         today = date.today()
         tomorrow_plus_7 = today + timedelta(days=7)
-        
-        # Carica documenti non pagati da fatture_documenti con scadenza <= oggi+7 (filtro SQL)
+        # Orizzonte scaduto: solo gli ultimi 90 giorni. Senza questo limite lo
+        # storico antico mai marcato "pagato" si accumula (es. 699k€), generando
+        # un falso allarme. Le scadenze davvero rilevanti sono quelle recenti.
+        scaduto_da = today - timedelta(days=90)
+
+        # Carica documenti non pagati da fatture_documenti con scadenza nella
+        # finestra [oggi-90gg, oggi+7gg] (filtro SQL)
         query = (
             filter_active(
                 sb.table("fatture_documenti")
@@ -457,6 +462,7 @@ def build_scadenza_documents_notifications(
                 .eq("ristorante_id", ristorante_id)
                 .eq("pagata", False)
             )
+            .gte("scadenza_effettiva", scaduto_da.isoformat())
             .lte("scadenza_effettiva", tomorrow_plus_7.isoformat())
             .execute()
         )

@@ -14,6 +14,7 @@ import {
 import { type Briefing, type BriefingAzione } from "@/lib/home";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { NotificheWidget } from "./notifiche-widget";
 
 // Effetto typewriter abilitato (spegnibile in 1 riga): solo al primo load del
 // giorno, max ~600ms. Dietro flag perche' deve restare sobrio e veloce.
@@ -99,7 +100,9 @@ export function HomeBriefing({ briefing }: Props) {
   return (
     <section className="space-y-6">
       {/* HERO — la voce dell'assistente */}
-      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-primary/5 via-background to-background p-6 sm:p-8">
+      <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.04] to-background p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-sky-400/15 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full bg-violet-400/10 blur-3xl" />
         <div className="flex items-center gap-2 text-xs font-medium text-primary/80">
           <Sparkles className="size-4" />
           <span>Il tuo assistente</span>
@@ -107,21 +110,23 @@ export function HomeBriefing({ briefing }: Props) {
         <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
           {briefing.saluto}
         </h1>
-        <p className="mt-3 max-w-2xl whitespace-pre-line text-base leading-relaxed text-muted-foreground">
+        <p className="mt-4 max-w-none whitespace-pre-line text-base leading-relaxed text-foreground/90 sm:text-lg">
           {narrativa}
           {animate && narrativa.length < briefing.narrativa.length && (
-            <span className="ml-0.5 inline-block h-4 w-0.5 animate-pulse bg-primary align-middle" />
+            <span className="ml-0.5 inline-block h-5 w-0.5 animate-pulse bg-primary align-middle" />
           )}
         </p>
       </div>
 
       {/* AZIONI — le card da svuotare */}
       {tuttoOk ? (
-        <div className="flex flex-col items-center gap-3 rounded-2xl border bg-emerald-50/50 py-12 text-center dark:bg-emerald-950/20">
-          <div className="rounded-full bg-emerald-100 p-3 dark:bg-emerald-900/40">
-            <Check className="size-7 text-emerald-600" />
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.07] via-transparent to-transparent py-10 text-center">
+          <div className="rounded-full bg-emerald-500/15 p-3 ring-1 ring-emerald-500/20">
+            <Check className="size-7 text-emerald-500" />
           </div>
-          <p className="text-base font-medium">Tutto in ordine per oggi</p>
+          <p className="text-base font-semibold text-emerald-600 dark:text-emerald-400">
+            Tutto in ordine per oggi
+          </p>
           <p className="text-sm text-muted-foreground">
             Nessuna azione da fare. Buon lavoro!
           </p>
@@ -159,6 +164,10 @@ export function HomeBriefing({ briefing }: Props) {
               </div>
             </div>
           ))}
+
+          {/* Le card sono la vetrina (max 5): l'archivio completo si apre nel
+              widget, senza lasciare la Home. Il contatore = azioni da fare. */}
+          <NotificheWidget count={visibili.length} />
         </div>
       )}
     </section>

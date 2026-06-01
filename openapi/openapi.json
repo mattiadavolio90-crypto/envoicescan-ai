@@ -745,6 +745,344 @@
         }
       }
     },
+    "/api/home/salute": {
+      "get": {
+        "tags": [
+          "Home"
+        ],
+        "summary": "Indice di salute della gestione — completezza dati del mese",
+        "description": "Misura quanto i dati recenti sono completi.\n\nQuattro voci a peso uguale (25% ciascuna): fatture caricate, fatturato\ninserito, costo personale inserito, righe classificate. Conta \"a posto\"\nSOLO se i dati sono davvero arrivati (non basta l'automatismo attivo).\n\nFinestra: ultimi 30 giorni mobili (non il mese di calendario), cosi' il\ngiorno 1 del mese l'indice non si azzera di colpo. Tutti i calcoli qui nel\nbackend; la Home si limita a mostrare.",
+        "operationId": "home_salute_api_home_salute_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaluteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/home/alert-prezzi": {
+      "get": {
+        "tags": [
+          "Home"
+        ],
+        "summary": "Alert prezzi per impatto €/mese (prodotti + tag, food&beverage)",
+        "description": "Motore live degli alert prezzi ordinati per impatto economico mensile.\n\nSolo Food & Beverage, soglia di rilevanza automatica (frazione della spesa\nfood del periodo), monitora prodotti e custom tag. Tutto calcolato nel\nbackend (price_impact_service); la Home si limita a mostrare.",
+        "operationId": "home_alert_prezzi_api_home_alert_prezzi_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertPrezziResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/home/kpi": {
+      "get": {
+        "tags": [
+          "Home"
+        ],
+        "summary": "KPI live Home — fatturato, food cost %, spese generali, MOL",
+        "description": "Fotografia dei conti dell'ULTIMO MESE COMPLETO, con confronto.\n\nFonte: margini_mensili (fatturato + MOL, come la pagina Margini) e costi\nfood/spese dalle fatture. E' l'unica fonte affidabile: nessun cliente usa i\nricavi giornalieri. Confronto vs il mese precedente (frecce ↑↓).",
+        "operationId": "home_kpi_api_home_kpi_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HomeKpiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/home/config": {
+      "get": {
+        "tags": [
+          "Home"
+        ],
+        "summary": "Configurazione assistente Home — nome + interruttori avvisi",
+        "description": "Legge la configurazione dell'assistente per il ristorante corrente.\n\nDefault AI-first: tutti gli avvisi attivi. nome_referente prende prima\nl'override del configuratore, poi quello impostato lato admin su users.",
+        "operationId": "home_config_get_api_home_config_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Home"
+        ],
+        "summary": "Salva la configurazione assistente Home",
+        "description": "Salva nome + avvisi spenti. I topic bloccati non vengono mai salvati\ncome spenti (restano sempre attivi). Upsert per ristorante.",
+        "operationId": "home_config_post_api_home_config_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/fatture/mesi-disponibili": {
       "get": {
         "summary": "Get Mesi Disponibili",
@@ -11114,6 +11452,72 @@
         ],
         "title": "AggiungiAssociazioniRequest"
       },
+      "AlertPrezziResponse": {
+        "properties": {
+          "count": {
+            "type": "integer",
+            "title": "Count"
+          },
+          "alerts": {
+            "items": {
+              "$ref": "#/components/schemas/AlertPrezzo"
+            },
+            "type": "array",
+            "title": "Alerts"
+          },
+          "top": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AlertPrezzo"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "count",
+          "alerts"
+        ],
+        "title": "AlertPrezziResponse",
+        "description": "Alert prezzi per impatto €/mese — solo food&beverage, top per impatto."
+      },
+      "AlertPrezzo": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "title": "Tipo"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore",
+            "default": ""
+          },
+          "aumento_pct": {
+            "type": "number",
+            "title": "Aumento Pct"
+          },
+          "impatto_mese": {
+            "type": "number",
+            "title": "Impatto Mese"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo",
+          "nome",
+          "aumento_pct",
+          "impatto_mese"
+        ],
+        "title": "AlertPrezzo",
+        "description": "Un aumento prezzo rilevante per impatto €/mese (prodotto o tag)."
+      },
       "AnalisiAvanzataResponse": {
         "properties": {
           "centri": {
@@ -12104,6 +12508,82 @@
         ],
         "title": "CommentoKpi"
       },
+      "ConfigResponse": {
+        "properties": {
+          "nome_referente": {
+            "type": "string",
+            "title": "Nome Referente",
+            "default": ""
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/ConfigTopic"
+            },
+            "type": "array",
+            "title": "Topics"
+          }
+        },
+        "type": "object",
+        "required": [
+          "topics"
+        ],
+        "title": "ConfigResponse",
+        "description": "Configurazione assistente: nome + interruttori topic."
+      },
+      "ConfigTopic": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "bloccato": {
+            "type": "boolean",
+            "title": "Bloccato",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "enabled"
+        ],
+        "title": "ConfigTopic",
+        "description": "Un avviso configurabile dal cliente."
+      },
+      "ConfigUpdateRequest": {
+        "properties": {
+          "nome_referente": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome Referente"
+          },
+          "topics_disabled": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Topics Disabled",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "ConfigUpdateRequest"
+      },
       "CopiaSettimanaBody": {
         "properties": {
           "da": {
@@ -12432,6 +12912,128 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "HomeKpiResponse": {
+        "properties": {
+          "periodo_label": {
+            "type": "string",
+            "title": "Periodo Label"
+          },
+          "is_mese_in_corso": {
+            "type": "boolean",
+            "title": "Is Mese In Corso"
+          },
+          "fatturato": {
+            "type": "number",
+            "title": "Fatturato"
+          },
+          "food_cost_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Food Cost Pct"
+          },
+          "costo_personale": {
+            "type": "number",
+            "title": "Costo Personale"
+          },
+          "spese_generali": {
+            "type": "number",
+            "title": "Spese Generali"
+          },
+          "mol": {
+            "type": "number",
+            "title": "Mol"
+          },
+          "has_data": {
+            "type": "boolean",
+            "title": "Has Data"
+          },
+          "confronto_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confronto Label"
+          },
+          "fatturato_delta_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fatturato Delta Pct"
+          },
+          "food_cost_delta_pp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Food Cost Delta Pp"
+          },
+          "personale_delta_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personale Delta Pct"
+          },
+          "spese_delta_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spese Delta Pct"
+          },
+          "mol_delta_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mol Delta Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "periodo_label",
+          "is_mese_in_corso",
+          "fatturato",
+          "food_cost_pct",
+          "costo_personale",
+          "spese_generali",
+          "mol",
+          "has_data"
+        ],
+        "title": "HomeKpiResponse",
+        "description": "Fotografia LIVE dei conti del periodo per la Home AI.\n\nPeriodo = mese in corso; se ancora troppo vuoto, ultimo mese completo\n(etichetta esplicita). I numeri arrivano dalle stesse fonti della pagina\nMargini, cosi' Home e Margini non si contraddicono mai."
       },
       "KpiResponse": {
         "properties": {
@@ -14305,6 +14907,78 @@
           "azione"
         ],
         "title": "RisolviConflittoBody"
+      },
+      "SaluteResponse": {
+        "properties": {
+          "indice": {
+            "type": "integer",
+            "title": "Indice"
+          },
+          "colore": {
+            "type": "string",
+            "title": "Colore"
+          },
+          "mese_label": {
+            "type": "string",
+            "title": "Mese Label"
+          },
+          "voci": {
+            "items": {
+              "$ref": "#/components/schemas/SaluteVoce"
+            },
+            "type": "array",
+            "title": "Voci"
+          }
+        },
+        "type": "object",
+        "required": [
+          "indice",
+          "colore",
+          "mese_label",
+          "voci"
+        ],
+        "title": "SaluteResponse",
+        "description": "Indice di salute della gestione — completezza dati del mese corrente."
+      },
+      "SaluteVoce": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "dettaglio": {
+            "type": "string",
+            "title": "Dettaglio"
+          },
+          "cta_page": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cta Page"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "ok",
+          "dettaglio"
+        ],
+        "title": "SaluteVoce",
+        "description": "Una delle voci di completezza dati del mese."
       },
       "SalvaMarginiRequest": {
         "properties": {
