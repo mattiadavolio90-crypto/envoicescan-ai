@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/nav/app-sidebar";
+import { Wordmark } from "@/components/brand/logo";
 import { Separator } from "@/components/ui/separator";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchBriefing } from "@/lib/home";
@@ -44,7 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <header className="flex h-14 items-center gap-2 px-4 border-b border-border">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
-          <span className="text-sm text-muted-foreground">ONEFLUX</span>
+          <Wordmark className="text-sm" />
           <div className="ml-auto flex items-center">
             <Link
               href="/dashboard"

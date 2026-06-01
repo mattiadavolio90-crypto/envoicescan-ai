@@ -110,3 +110,52 @@
     @apply font-sans;
   }
 }
+
+/* ONEFLUX brand spinner: box che pulsa col glow neon + X che ruota in rombo */
+@keyframes oneflux-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 1px currentColor);
+  }
+  50% {
+    opacity: 0.8;
+    filter: drop-shadow(0 0 5px currentColor);
+  }
+}
+
+@keyframes oneflux-rotate-x {
+  0% {
+    transform: rotate(0deg);
+  }
+  45%,
+  55% {
+    transform: rotate(45deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.oneflux-spinner {
+  display: inline-flex;
+  animation: oneflux-pulse 1.6s ease-in-out infinite;
+}
+
+.oneflux-spinner-glow {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+.oneflux-spinner-x {
+  transform-origin: 50% 50%;
+  animation: oneflux-rotate-x 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oneflux-spinner {
+    animation: oneflux-pulse 2.4s ease-in-out infinite;
+  }
+  .oneflux-spinner-x {
+    animation: none;
+  }
+}

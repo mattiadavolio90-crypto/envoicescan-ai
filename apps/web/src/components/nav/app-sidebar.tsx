@@ -30,12 +30,12 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Logo, Wordmark } from "@/components/brand/logo";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -86,11 +86,9 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/dashboard" />}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-                O
-              </div>
+              <Logo variant="icon" size={32} className="shrink-0" />
               <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-semibold text-sm">ONEFLUX</span>
+                <Wordmark className="text-sm tracking-[0.12em]" />
                 <span className="text-xs text-muted-foreground">Controllo gestione</span>
               </div>
             </SidebarMenuButton>

@@ -1,11 +1,10 @@
+import { Logo } from "@/components/brand/logo";
+
 export default function Home() {
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-8 p-8">
-      <div className="flex flex-col items-center gap-3 text-center">
-        <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center">
-          <span className="text-primary-foreground text-2xl font-bold">O</span>
-        </div>
-        <h1 className="text-3xl font-bold text-foreground">ONEFLUX</h1>
+      <div className="flex flex-col items-center gap-4 text-center">
+        <Logo variant="full" size={56} glow />
         <p className="text-muted-foreground text-sm max-w-sm">
           Nuova interfaccia — in costruzione.
           <br />
