@@ -1,5 +1,6 @@
 import { fetchDashboardStats } from "@/lib/dashboard";
 import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
+import { fetchNotifiche } from "@/lib/notifiche";
 import { HomeBriefing } from "./home-briefing";
 import { SaluteCard } from "./salute-card";
 import { KpiBlock } from "./kpi-block";
@@ -8,13 +9,16 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
 
 export default async function DashboardPage() {
-  const [stats, briefing, kpi, salute, config] = await Promise.all([
+  const [stats, briefing, kpi, salute, config, notifiche] = await Promise.all([
     fetchDashboardStats(),
     fetchBriefing(),
     fetchKpi(),
     fetchSalute(),
     fetchConfig(),
+    fetchNotifiche(),
   ]);
+
+  const notificheCount = notifiche?.unread ?? 0;
 
   const isEmpty = !stats || stats.kpi.righe_totali === 0;
 
@@ -27,7 +31,7 @@ export default async function DashboardPage() {
       )}
 
       {briefing ? (
-        <HomeBriefing briefing={briefing} />
+        <HomeBriefing briefing={briefing} notificheCount={notificheCount} />
       ) : (
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>

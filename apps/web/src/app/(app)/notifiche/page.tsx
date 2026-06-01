@@ -13,7 +13,9 @@ export default async function NotifichePage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Notifiche</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          {unread > 0 ? `${unread} non lette` : "Nessuna notifica da leggere"}
+          {unread > 0
+            ? `${unread} ${unread === 1 ? "avviso" : "avvisi"} da gestire`
+            : "Nessuna notifica da gestire"}
         </p>
       </div>
 

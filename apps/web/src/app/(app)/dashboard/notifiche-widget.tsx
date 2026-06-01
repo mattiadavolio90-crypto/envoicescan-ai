@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Bell,
   X,
@@ -18,8 +19,10 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { type Notifica } from "@/lib/notifiche";
+import { ctaDi, pulisci, raggruppa } from "../notifiche/notifiche-shared";
 
 function SeverityIcon({ severity }: { severity: Notifica["severity"] }) {
   if (severity === "warning") return <AlertTriangle className="size-5 text-amber-500 shrink-0" />;
@@ -28,16 +31,13 @@ function SeverityIcon({ severity }: { severity: Notifica["severity"] }) {
   return <Info className="size-5 text-sky-500 shrink-0" />;
 }
 
-// Le notifiche dal backend possono contenere markdown grezzo (**grassetto**,
-// <br/>): qui lo ripuliamo in testo semplice leggibile, niente HTML.
-function pulisci(testo: string): string {
-  return testo
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/\*\*(.+?)\*\*/g, "$1")
-    .replace(/\*(.+?)\*/g, "$1")
-    .replace(/`/g, "")
-    .trim();
-}
+// Bordo sinistro colorato = priorita' a colpo d'occhio (allineato alla pagina).
+const SEVERITY_ACCENT: Record<Notifica["severity"], string> = {
+  error: "border-l-destructive",
+  warning: "border-l-amber-500",
+  info: "border-l-sky-500",
+  success: "border-l-emerald-500",
+};
 
 type Props = { count: number };
 
@@ -87,6 +87,7 @@ export function NotificheWidget({ count }: Props) {
   }
 
   const visibili = notifiche.filter((n) => !dismissed.has(n.id));
+  const gruppi = raggruppa(visibili);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -128,40 +129,63 @@ export function NotificheWidget({ count }: Props) {
               <p className="text-sm">Nessuna notifica attiva</p>
             </div>
           ) : (
-            visibili.map((n) => (
-              <div
-                key={n.id}
-                className="flex items-start gap-3 rounded-xl border bg-card p-3.5"
-              >
-                <SeverityIcon severity={n.severity} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium">{pulisci(n.title)}</p>
-                  {n.body && (
-                    <p className="mt-0.5 whitespace-pre-line text-sm text-muted-foreground">
-                      {pulisci(n.body)}
-                    </p>
-                  )}
-                  {n.created_at && (
-                    <p className="mt-1.5 text-xs text-muted-foreground">
-                      {new Date(n.created_at).toLocaleDateString("it-IT", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </p>
-                  )}
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="shrink-0 gap-1.5 text-muted-foreground"
-                  disabled={dismissing.has(n.id)}
-                  onClick={() => archivia(n.id)}
-                  title="Archivia"
-                >
-                  <X className="size-4" />
-                  Archivia
-                </Button>
+            gruppi.map((g) => (
+              <div key={g.key} className="space-y-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {g.label}
+                  <span className="ml-1.5 text-muted-foreground/60">{g.notifiche.length}</span>
+                </p>
+                {g.notifiche.map((n) => {
+                  const cta = ctaDi(n);
+                  return (
+                    <div
+                      key={n.id}
+                      className={cn(
+                        "flex items-start gap-3 rounded-xl border border-l-4 bg-card p-3.5",
+                        SEVERITY_ACCENT[n.severity],
+                      )}
+                    >
+                      <SeverityIcon severity={n.severity} />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{pulisci(n.title)}</p>
+                        {n.body && (
+                          <p className="mt-0.5 whitespace-pre-line text-sm text-muted-foreground">
+                            {pulisci(n.body)}
+                          </p>
+                        )}
+                        <div className="mt-2 flex items-center gap-3">
+                          {cta && (
+                            <Link
+                              href={cta.href}
+                              onClick={() => setOpen(false)}
+                              className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs")}
+                            >
+                              {cta.label}
+                            </Link>
+                          )}
+                          {n.created_at && (
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(n.created_at).toLocaleDateString("it-IT", {
+                                day: "2-digit",
+                                month: "short",
+                              })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 shrink-0 text-muted-foreground"
+                        disabled={dismissing.has(n.id)}
+                        onClick={() => archivia(n.id)}
+                        title="Archivia"
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             ))
           )}

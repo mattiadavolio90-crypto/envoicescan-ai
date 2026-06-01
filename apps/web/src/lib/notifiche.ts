@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "./auth";
 
@@ -29,17 +30,22 @@ function workerHeaders(token: string): Record<string, string> {
   return h;
 }
 
-export async function fetchNotifiche(includeDismissed = false): Promise<NotificheResponse | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
+// cache(): nello stesso render il layout (badge header) e la dashboard
+// (count widget) chiamano entrambi fetchNotifiche() -> un solo round-trip al
+// worker, niente doppia lettura. Default (senza dismissed) condiviso.
+export const fetchNotifiche = cache(
+  async (includeDismissed = false): Promise<NotificheResponse | null> => {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(SESSION_COOKIE)?.value;
+    if (!token) return null;
 
-  try {
-    const url = `${WORKER_URL}/api/notifiche${includeDismissed ? "?include_dismissed=true" : ""}`;
-    const res = await fetch(url, { headers: workerHeaders(token), cache: "no-store" });
-    if (!res.ok) return null;
-    return (await res.json()) as NotificheResponse;
-  } catch {
-    return null;
-  }
-}
+    try {
+      const url = `${WORKER_URL}/api/notifiche${includeDismissed ? "?include_dismissed=true" : ""}`;
+      const res = await fetch(url, { headers: workerHeaders(token), cache: "no-store" });
+      if (!res.ok) return null;
+      return (await res.json()) as NotificheResponse;
+    } catch {
+      return null;
+    }
+  },
+);

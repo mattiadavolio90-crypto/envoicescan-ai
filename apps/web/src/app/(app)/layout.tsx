@@ -5,7 +5,7 @@ import { AppSidebar } from "@/components/nav/app-sidebar";
 import { Wordmark } from "@/components/brand/logo";
 import { Separator } from "@/components/ui/separator";
 import { getCurrentUser } from "@/lib/auth";
-import { fetchBriefing } from "@/lib/home";
+import { fetchNotifiche } from "@/lib/notifiche";
 import { ImpersonaBanner } from "@/components/admin/impersona-banner";
 import { Bell } from "lucide-react";
 
@@ -25,11 +25,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/login");
   }
 
-  // Fonte UNICA del contatore: le azioni "da fare" del briefing (le stesse
-  // card della Home e del widget). Niente piu' numeri discordanti tra header,
-  // sidebar e Home. Il briefing e' cache-ato su DB, quindi e' una lettura leggera.
-  const briefing = await fetchBriefing();
-  const unreadNotifiche = briefing?.tutto_ok ? 0 : briefing?.azioni.length ?? 0;
+  // Fonte UNICA del contatore: le notifiche reali non archiviate
+  // (notification_inbox), le stesse che vedi nel widget Home e nella pagina
+  // /notifiche. Prima il badge contava le "azioni" del briefing — una fonte
+  // diversa — e il numero non combaciava con cio' che si apriva davvero.
+  const notifiche = await fetchNotifiche();
+  const unreadNotifiche = notifiche?.unread ?? 0;
 
   return (
     <>

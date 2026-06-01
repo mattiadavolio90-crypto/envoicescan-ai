@@ -48,9 +48,9 @@ function useTypewriter(text: string, enabled: boolean) {
   return shown;
 }
 
-type Props = { briefing: Briefing };
+type Props = { briefing: Briefing; notificheCount: number };
 
-export function HomeBriefing({ briefing }: Props) {
+export function HomeBriefing({ briefing, notificheCount }: Props) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<Set<string>>(new Set());
 
@@ -164,10 +164,16 @@ export function HomeBriefing({ briefing }: Props) {
               </div>
             </div>
           ))}
+        </div>
+      )}
 
-          {/* Le card sono la vetrina (max 5): l'archivio completo si apre nel
-              widget, senza lasciare la Home. Il contatore = azioni da fare. */}
-          <NotificheWidget count={visibili.length} />
+      {/* Archivio completo notifiche: sempre raggiungibile dalla Home se ci
+          sono notifiche reali non archiviate, anche quando il briefing dice
+          "tutto ok" (le due fonti possono divergere). Il contatore = stessa
+          fonte del badge header e della pagina /notifiche. */}
+      {notificheCount > 0 && (
+        <div className="flex justify-center sm:justify-start">
+          <NotificheWidget count={notificheCount} />
         </div>
       )}
     </section>
