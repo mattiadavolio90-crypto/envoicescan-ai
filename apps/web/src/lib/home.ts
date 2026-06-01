@@ -1,9 +1,5 @@
 import { cache } from "react";
-import { cookies } from "next/headers";
-import { SESSION_COOKIE } from "./auth";
-
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+import { workerGet } from "./worker";
 
 export type BriefingAzione = {
   id: string;
@@ -69,115 +65,20 @@ export type HomeKpi = {
 };
 
 export async function fetchConfig(): Promise<AssistantConfig | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-  if (WORKER_SECRET_KEY) headers["X-Worker-Key"] = WORKER_SECRET_KEY;
-
-  try {
-    const res = await fetch(`${WORKER_URL}/api/home/config`, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      console.error("[home.config] worker error:", res.status, await res.text().catch(() => ""));
-      return null;
-    }
-    return (await res.json()) as AssistantConfig;
-  } catch (err) {
-    console.error("[home.config] fetch error:", err);
-    return null;
-  }
+  return workerGet<AssistantConfig>("/api/home/config", "home.config");
 }
 
 export async function fetchKpi(): Promise<HomeKpi | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-  if (WORKER_SECRET_KEY) headers["X-Worker-Key"] = WORKER_SECRET_KEY;
-
-  try {
-    const res = await fetch(`${WORKER_URL}/api/home/kpi`, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      console.error("[home.kpi] worker error:", res.status, await res.text().catch(() => ""));
-      return null;
-    }
-    return (await res.json()) as HomeKpi;
-  } catch (err) {
-    console.error("[home.kpi] fetch error:", err);
-    return null;
-  }
+  return workerGet<HomeKpi>("/api/home/kpi", "home.kpi");
 }
 
 export async function fetchSalute(): Promise<Salute | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-  if (WORKER_SECRET_KEY) headers["X-Worker-Key"] = WORKER_SECRET_KEY;
-
-  try {
-    const res = await fetch(`${WORKER_URL}/api/home/salute`, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      console.error("[home.salute] worker error:", res.status, await res.text().catch(() => ""));
-      return null;
-    }
-    return (await res.json()) as Salute;
-  } catch (err) {
-    console.error("[home.salute] fetch error:", err);
-    return null;
-  }
+  return workerGet<Salute>("/api/home/salute", "home.salute");
 }
 
 // Avvolto in cache() di React: layout e page chiedono entrambi il briefing nello
 // stesso render -> una sola chiamata al worker (era duplicata, rallentava la Home).
-export const fetchBriefing = cache(async (): Promise<Briefing | null> => {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-  if (WORKER_SECRET_KEY) headers["X-Worker-Key"] = WORKER_SECRET_KEY;
-
-  try {
-    const res = await fetch(`${WORKER_URL}/api/home/briefing`, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      console.error("[home.briefing] worker error:", res.status, await res.text().catch(() => ""));
-      return null;
-    }
-    return (await res.json()) as Briefing;
-  } catch (err) {
-    console.error("[home.briefing] fetch error:", err);
-    return null;
-  }
-});
+export const fetchBriefing = cache(
+  async (): Promise<Briefing | null> =>
+    workerGet<Briefing>("/api/home/briefing", "home.briefing"),
+);

@@ -28,8 +28,11 @@ export type KpiData = {
   spark_mol?: number[];
 };
 
-function Sparkline({ values, color }: { values: number[]; color: string }) {
-  if (!values || values.length < 2) return null;
+function Sparkline({ values: rawValues, color }: { values: number[]; color: string }) {
+  // Scarta NaN/Infinity: un solo valore non finito propagava NaN in min/max e
+  // rompeva i points dell'SVG (polyline "NaN,NaN").
+  const values = (rawValues ?? []).filter((v) => Number.isFinite(v));
+  if (values.length < 2) return null;
   const max = Math.max(...values, 1);
   const min = Math.min(...values, 0);
   const range = max - min || 1;

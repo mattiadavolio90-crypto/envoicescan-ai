@@ -1,6 +1,7 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 1 giugno 2026 (rev. 21 — **Home AI completata**: briefing giornaliero + Salute della gestione + conto economico del mese (con Costo personale) + configuratore assistente + notifiche actionable; + debug profondo e ottimizzazioni)
+**Ultima revisione:** 1 giugno 2026 (rev. 22 — **Performance + debug trasversale**: worker FastAPI 148 endpoint async→def + threadpool, proxy edge allineato, `getCurrentUser` cache-ato, helper `lib/worker.ts`, fix date UTC scadenziario + `res.ok` mancanti + sparkline NaN. Vedi changelog)
+**Revisione precedente:** rev. 21 (1/6) — **Home AI completata**: briefing giornaliero + Salute della gestione + conto economico del mese (con Costo personale) + configuratore assistente + notifiche actionable
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -468,6 +469,37 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 
 ### Changelog sessioni
 
+**Performance worker + debug trasversale app (1 giugno 2026, rev. 22)**
+
+Due interventi consecutivi: prima la causa della lentezza estrema in locale ("login di minuti, ogni cambio pagina lentissimo, più di Streamlit"), poi un debug a tappeto di tutta l'app Next.js (pagina per pagina, ~140 file) con subagenti paralleli + verifica manuale dei finding critici.
+
+*🔴 Causa radice della lentezza — anti-pattern async/sync nel worker (commit `744c5e7`/`41ff40f`):*
+- `services/fastapi_worker.py` aveva **148 endpoint dichiarati `async def`** che però chiamano codice **sincrono e bloccante** (Supabase `.execute()`). Su un singolo event loop questo serializza TUTTE le richieste: una query lenta congelava anche `/health`. Misurato: `/health` sotto carico concorrente **9,5 s → 0,21 s** dopo il fix.
+- **Fix:** 148 endpoint convertiti `async def → def` (FastAPI li instrada sul threadpool AnyIO); 6 mantenuti `async` perché contengono `await` reali (`_queue_loop`, `_agent_notturno_loop`, `lifespan`, `parse_invoice`, `upload_invoice`, `import_ricavi_xls`). `import_ricavi_xls` chiama `upsert_ricavi_batch` (ora `def`) via `asyncio.to_thread`.
+- Threadpool AnyIO alzato 40 → 100 thread nel `lifespan` (`WORKER_THREADPOOL_SIZE`). Uvicorn multi-worker condizionale per la produzione (`WORKER_WEB_CONCURRENCY`, resta 1 in locale Windows).
+- Verifica: **801/802 pytest passati** (1 fallimento pre-esistente `test_salva_margini_anno`, identico sul codice originale — non regressione).
+- Secondario locale: Turbopack attivato (`next dev --turbopack`), esclusione Windows Defender sulla cartella ONEFLUX (Defender scansionava ~41k file di `node_modules`).
+
+*🟠 Lentezza per-navigazione — round-trip auth e fetch duplicati (working tree, non ancora committato):*
+- **`proxy.ts` (il "middleware" Next 16) aveva una whitelist obsoleta** (`/dashboard`, `/fatture`, `/ricavi`) rimasta indietro: le rotte vere (`/analisi-fatture`, `/prezzi`, `/margini`, `/workspace`, `/analisi-e-tag`, `/scadenziario`, `/notifiche`, `/admin`) **non erano protette a edge** → ogni navigazione cadeva sul check del layout (round-trip al worker). Riscritto a blacklist invertita: protegge tutto tranne le 3 rotte pubbliche, redirect a edge senza colpire Railway.
+- **`getCurrentUser` avvolto in `cache()` di React** — il layout `(app)` e il layout `/admin` lo chiamavano entrambi nello stesso render = 2 round-trip `/api/auth/me`. Ora una sola chiamata per request.
+- **Nuovo `lib/worker.ts`** (`workerGet<T>`) — centralizza cookie + header (`X-Worker-Key`) + `res.ok` + error handling. `home.ts` 115 → ~30 righe, `dashboard.ts` 53 → 27. Chiude la miglioria già annotata nel changelog Prezzi (29/5).
+
+*🟠 Bug funzionali reali trovati e fixati (working tree):*
+- **Scadenziario filtri periodo** — `new Date("YYYY-MM-DD")` (UTC) confrontato con `today` locale → off-by-one in Italia sulle scadenze a mezzanotte. Ora usano `parseLocalDate` (era già importato e usato altrove, mancava solo nel `useMemo` dei filtri). Gestiti i `null` in modo type-safe.
+- **`res.ok` mancante prima dei toast di successo** in foodcost/inventario/diario: su errore 500 il `.json()` parsava il body d'errore e l'utente vedeva "eliminato/caricato" anche quando falliva. Aggiunto check a `load`/`apriModifica`/`elimina` nei 3 tab.
+- **Ricetta editor** — se il calcolo foodcost falliva mostrava **FC=0** (falso "ricetta a costo zero"); ora con `!res.ok` lascia i valori invariati.
+- **Sparkline Margini (`kpi-bar.tsx`)** — un solo `NaN`/`Infinity` propagava in `min`/`max` e rompeva l'SVG (`points="NaN,NaN"`); ora filtra i valori non finiti.
+
+*✅ Onestà metodologica:* i subagenti hanno prodotto **5 falsi positivi** verificati riga per riga e scartati (presunto crash su `personale-tab` per variabili in realtà dichiarate; "violazione dominio Da Classificare" intenzionale; "buco magic bytes" — validati nel worker; `useEffect` deps "rotte" in realtà intenzionali con `eslint-disable`). Non sono state toccate cose funzionanti.
+
+*Verifica frontend:* `next build` **passato** (type-check completo OK, `ƒ Proxy (Middleware)` attivo, tutte le rotte compilano). **Zero file Python toccati nella parte frontend** → Streamlit intatto.
+
+*⚠️ Aperto / da fare (vedi "Prossimi step" in chat):*
+- **Railway:** impostare `WORKER_WEB_CONCURRENCY=4` (e opzionale `WORKER_THREADPOOL_SIZE`) sul service worker per attivare il parallelismo multi-processo in produzione (in locale resta 1).
+- Le fix frontend di questa sessione (proxy/auth cache/worker.ts + bug) sono **nel working tree, non ancora committate/deployate**.
+- Hardening non applicato (rischio/beneficio sfavorevole ora): `AbortController` sui filtri che cambiano rapidamente (race-condition teorica), validazione revert impersonazione admin.
+
 **Fase 1b ✅ — Design system**
 Palette sky `#0ea5e9`, Inter, shadcn (Button, Input, Card, Dialog, Sheet, Table, Sidebar, DropdownMenu, Select, Tooltip, Badge, Avatar, Skeleton, Sonner, Popover), pagina `style-guide`, layout sidebar collapsible.
 
@@ -797,7 +829,9 @@ Nota routing: `articoli`, `snapshot-dates`, `copia-snapshot` definiti **prima** 
 13. **Assistenza/Marketplace** (Fase 8) — zero codice.
 14. **Test, performance, switch dominio** (Fasi 9-11).
 
-> Stato sintetico rev. 21: **Home AI completata** (1/6) — briefing giornaliero AI + Salute della gestione + conto economico del mese (con Costo personale, confronto mese precedente) + configuratore assistente + notifiche actionable. **Fase 3 chiusa** (resta solo Notifiche v2 come rifinitura). OpenAPI 118 endpoint. **Prossimi step: Notifiche v2** (raggruppamento + filtri count) e **Assistenza/Marketplace** (Fase 8, zero codice).
+> Stato sintetico rev. 22: **Performance + debug trasversale** (1/6). Worker FastAPI: 148 endpoint async→def + threadpool (causa della lentezza estrema, `/health` 9,5s→0,21s sotto carico) — **committato/deployato**. Debug app Next.js (~140 file): proxy edge allineato, `getCurrentUser` cache-ato, helper `lib/worker.ts`, fix date UTC scadenziario + `res.ok` mancanti + sparkline NaN — **nel working tree, da committare/deployare**. `next build` OK, Streamlit intatto. **Prossimi step:** (a) impostare `WORKER_WEB_CONCURRENCY=4` su Railway; (b) commit+deploy fix frontend; (c) **Notifiche v2** (raggruppamento + filtri count, Fase 3); (d) **Assistenza/Marketplace** (Fase 8, zero codice).
+>
+> Stato sintetico rev. 21: **Home AI completata** (1/6) — briefing giornaliero AI + Salute della gestione + conto economico del mese (con Costo personale, confronto mese precedente) + configuratore assistente + notifiche actionable. **Fase 3 chiusa** (resta solo Notifiche v2 come rifinitura). OpenAPI 118 endpoint.
 
 ---
 

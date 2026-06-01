@@ -1,8 +1,4 @@
-import { cookies } from "next/headers";
-import { SESSION_COOKIE } from "./auth";
-
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+import { workerGet } from "./worker";
 
 export type DashboardKpi = {
   fatture_uniche: number;
@@ -25,29 +21,5 @@ export type DashboardStats = {
 };
 
 export async function fetchDashboardStats(): Promise<DashboardStats | null> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE)?.value;
-  if (!token) return null;
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  };
-  if (WORKER_SECRET_KEY) headers["X-Worker-Key"] = WORKER_SECRET_KEY;
-
-  try {
-    const res = await fetch(`${WORKER_URL}/api/dashboard/stats`, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-    });
-    if (!res.ok) {
-      console.error("[dashboard.stats] worker error:", res.status, await res.text().catch(() => ""));
-      return null;
-    }
-    return (await res.json()) as DashboardStats;
-  } catch (err) {
-    console.error("[dashboard.stats] fetch error:", err);
-    return null;
-  }
+  return workerGet<DashboardStats>("/api/dashboard/stats", "dashboard.stats");
 }

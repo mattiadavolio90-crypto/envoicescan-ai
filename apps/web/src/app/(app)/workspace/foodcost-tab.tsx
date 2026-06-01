@@ -37,6 +37,7 @@ export function FoodcostTab() {
     setLoading(true);
     try {
       const res = await fetch("/api/workspace/foodcost/ricette");
+      if (!res.ok) throw new Error();
       const d: RicetteResponse = await res.json();
       setData(d);
     } catch {
@@ -51,6 +52,7 @@ export function FoodcostTab() {
   async function apriModifica(ricetta: Ricetta) {
     try {
       const res = await fetch(`/api/workspace/foodcost/ricette/${ricetta.id}`);
+      if (!res.ok) throw new Error();
       const d: RicettaDettaglio = await res.json();
       setEditorRicetta(d);
       setEditorOpen(true);
@@ -61,9 +63,14 @@ export function FoodcostTab() {
 
   async function elimina(r: Ricetta) {
     if (!confirm(`Eliminare "${r.nome}"?`)) return;
-    await fetch(`/api/workspace/foodcost/ricette/${r.id}`, { method: "DELETE" });
-    toast.success("Ricetta eliminata");
-    load();
+    try {
+      const res = await fetch(`/api/workspace/foodcost/ricette/${r.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Ricetta eliminata");
+      load();
+    } catch {
+      toast.error("Errore eliminazione ricetta");
+    }
   }
 
   async function duplica(r: Ricetta) {

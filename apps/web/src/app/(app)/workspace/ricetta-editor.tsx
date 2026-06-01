@@ -156,6 +156,10 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ righe: payload }),
       });
+      // Se il calcolo fallisce NON azzeriamo il foodcost: mostrare FC=0 farebbe
+      // credere all'utente che la ricetta non costa nulla. Lasciamo i valori
+      // precedenti e usciamo silenziosamente (e' un calcolo live).
+      if (!res.ok) return;
       const data = await res.json();
       setFcTotale(data.foodcost_totale ?? 0);
       setRighe(prev => prev.map((r, i) => ({ ...r, costo: data.costi_righe?.[i] ?? 0 })));

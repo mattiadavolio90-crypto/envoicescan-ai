@@ -155,6 +155,13 @@ dati_processati/*.xlsx
 FILE/*.pdf
 FILE/*.xml
 
+# Dati cliente reali e residui operativi (NON devono stare nel repo)
+FATTURE CASATI/
+"FATTURE CASATI/"
+data/
+data/backfill_fatture/
+data/audit_*.json
+
 # Memoria AI locale
 memoria_ai_correzioni.json
 

@@ -269,6 +269,7 @@ export function DiarioTab() {
     setLoading(true);
     try {
       const res = await fetch(`/api/workspace/diario?mese=${meseISO(a, m)}`);
+      if (!res.ok) throw new Error();
       const d = await res.json();
       setEventi(d.eventi ?? []);
     } catch {
@@ -291,9 +292,14 @@ export function DiarioTab() {
 
   async function elimina(e: EventoDiario) {
     if (!confirm(`Eliminare "${e.titolo}"?`)) return;
-    await fetch(`/api/workspace/diario/${e.id}`, { method: "DELETE" });
-    toast.success("Evento eliminato");
-    loadEventi(anno, mese);
+    try {
+      const res = await fetch(`/api/workspace/diario/${e.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Evento eliminato");
+      loadEventi(anno, mese);
+    } catch {
+      toast.error("Errore eliminazione evento");
+    }
   }
 
   const eventiGiorno = eventi.filter(e => e.data_evento === giornoSel)

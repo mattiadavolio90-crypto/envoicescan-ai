@@ -42,6 +42,7 @@ export function InventarioTab() {
     setLoading(true);
     try {
       const res = await fetch(`/api/workspace/inventario?data=${data}`);
+      if (!res.ok) throw new Error();
       const d: InventarioResponse = await res.json();
       setInventario(d);
     } catch {
@@ -68,9 +69,14 @@ export function InventarioTab() {
 
   async function elimina(v: VoceInventario) {
     if (!confirm(`Eliminare "${v.nome}"?`)) return;
-    await fetch(`/api/workspace/inventario/${v.id}`, { method: "DELETE" });
-    toast.success("Voce eliminata");
-    load();
+    try {
+      const res = await fetch(`/api/workspace/inventario/${v.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      toast.success("Voce eliminata");
+      load();
+    } catch {
+      toast.error("Errore eliminazione voce");
+    }
   }
 
   async function copiaSnapshot(dataSource: string) {

@@ -1058,28 +1058,31 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
       // Filtro fornitori (multi)
       if (filtroFornitori.size > 0 && !filtroFornitori.has(d.fornitore)) return false;
 
-      // Filtro periodo (solo su non pagate con scadenza, tranne "tutti")
+      // Filtro periodo (solo su non pagate con scadenza, tranne "tutti").
+      // parseLocalDate interpreta "YYYY-MM-DD" a mezzanotte LOCALE: con new Date()
+      // grezzo era mezzanotte UTC e in Italia il confronto con today (locale)
+      // sbagliava di un giorno sulle scadenze esattamente a mezzanotte.
       if (filtroPeriodo !== "tutti") {
         if (d.pagata) return false;
+        const s = parseLocalDate(d.scadenza_effettiva);
         if (filtroPeriodo === "scadute") {
-          if (!d.scadenza_effettiva) return false;
-          return new Date(d.scadenza_effettiva) < today;
+          if (!s) return false;
+          return s < today;
         }
         if (filtroPeriodo === "settimana") {
-          if (!d.scadenza_effettiva) return false;
-          const s = new Date(d.scadenza_effettiva);
+          if (!s) return false;
           return s >= today && s <= in7;
         }
         if (filtroPeriodo === "mese") {
-          if (!d.scadenza_effettiva) return false;
-          const s = new Date(d.scadenza_effettiva);
+          if (!s) return false;
           return s >= today && s <= in30;
         }
         if (filtroPeriodo === "personalizzato") {
-          if (!d.scadenza_effettiva) return filtroDateDa === "" && filtroDateA === "";
-          const s = new Date(d.scadenza_effettiva);
-          if (filtroDateDa && s < new Date(filtroDateDa)) return false;
-          if (filtroDateA && s > new Date(filtroDateA)) return false;
+          if (!s) return filtroDateDa === "" && filtroDateA === "";
+          const da = parseLocalDate(filtroDateDa);
+          const a = parseLocalDate(filtroDateA);
+          if (da && s < da) return false;
+          if (a && s > a) return false;
         }
       }
 
