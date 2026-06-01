@@ -8,7 +8,10 @@ import { Toaster } from "@/components/ui/sonner";
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "ONEFLUX",
+  title: {
+    default: "ONEFLUX",
+    template: "%s · ONEFLUX",
+  },
   description: "Gestione costi ristorante",
 };
 
