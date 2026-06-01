@@ -1111,7 +1111,7 @@ def verifica_sessione_da_cookie(
                         return None
                     # Carica dati custom da public.users
                     user_resp = supabase_client.table("users") \
-                        .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
+                        .select("id, email, nome_ristorante, nome_referente, attivo, pagine_abilitate, "
                                 "ultimo_ristorante_id, last_seen_at, session_token_created_at") \
                         .eq("id", auth_uid) \
                         .eq("attivo", True) \
@@ -1150,7 +1150,7 @@ def verifica_sessione_da_cookie(
         # PATH LEGACY: session_token opaco su public.users
         # ----------------------------------------------------------------
         response = supabase_client.table('users') \
-            .select("id, email, nome_ristorante, attivo, pagine_abilitate, "
+            .select("id, email, nome_ristorante, nome_referente, attivo, pagine_abilitate, "
                     "session_token, session_token_created_at, last_seen_at, "
                     "ultimo_ristorante_id") \
             .eq('session_token', token) \

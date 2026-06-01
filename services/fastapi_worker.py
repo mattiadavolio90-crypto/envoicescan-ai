@@ -22,6 +22,7 @@ ENV VARS richieste:
 """
 
 import asyncio
+import anyio
 import io
 import json
 import logging
@@ -129,7 +130,7 @@ def _check_rate_limit(ip: str) -> None:
 # APP FASTAPI
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
+def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     """Verifica API key condivisa tra Streamlit e worker.
     Se WORKER_SECRET_KEY non è configurata (dev mode), il check è saltato.
     """
@@ -202,7 +203,7 @@ def _agent_notturno_persist() -> None:
         logger.warning("agent_notturno: impossibile persistere config: %s", exc)
 
 
-async def _run_agent_notturno() -> dict:
+def _run_agent_notturno() -> dict:
     """Esegue l'agent notturno: auto-review + pre-classificazione media + digest."""
     if _agent_notturno_state["running"]:
         logger.info("agent_notturno: già in esecuzione, skip")
@@ -399,6 +400,17 @@ async def _agent_notturno_loop() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Gli endpoint sono `def` sincroni: FastAPI li esegue nel threadpool di AnyIO.
+    # Il default e' 40 thread; lo alziamo perche' la Home spara 6-7 chiamate in
+    # parallelo e ogni richiesta occupa un thread per tutta la durata della query
+    # Supabase (sincrona). Cosi' l'event loop resta sempre libero.
+    try:
+        _tp_size = int(os.getenv("WORKER_THREADPOOL_SIZE", "100"))
+        anyio.to_thread.current_default_thread_limiter().total_tokens = _tp_size
+        logger.info("Threadpool AnyIO impostato a %d thread", _tp_size)
+    except Exception as exc:
+        logger.warning("Impossibile impostare la dimensione del threadpool: %s", exc)
+
     _agent_notturno_load_from_db()
 
     tasks = []
@@ -535,7 +547,7 @@ class WebhookResponse(BaseModel):
     tags=["System"],
     response_description="Stato del worker",
 )
-async def health() -> Dict[str, str]:
+def health() -> Dict[str, str]:
     """Endpoint di health check — usato da Docker healthcheck e load balancer."""
     return {"status": "ok", "version": app.version}
 
@@ -556,7 +568,7 @@ async def health() -> Dict[str, str]:
     },
     dependencies=[Depends(_verify_worker_key)],
 )
-async def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
+def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
     """
     Classifica una lista di descrizioni prodotti usando GPT con memoria Supabase.
 
@@ -944,7 +956,7 @@ def _extract_event_id(payload: dict[str, Any]) -> str:
     "/webhook",
     include_in_schema=False,
 )
-async def invoicetronic_webhook_disabled() -> JSONResponse:
+def invoicetronic_webhook_disabled() -> JSONResponse:
     """Endpoint dismesso: il webhook pubblico vive nella Supabase Edge Function."""
     raise HTTPException(
         status_code=410,
@@ -1004,7 +1016,7 @@ def _normalize_pagine(raw) -> Optional[List[str]]:
     },
     dependencies=[Depends(_verify_worker_key)],
 )
-async def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
+def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
     _check_rate_limit(request.client.host if request.client else "unknown")
 
     from services.auth_service import verifica_credenziali, AuthServiceUnavailableError
@@ -1055,7 +1067,7 @@ async def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
     responses={401: {"description": "Sessione non valida"}},
     dependencies=[Depends(_verify_worker_key)],
 )
-async def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
+def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Token mancante")
 
@@ -1084,7 +1096,7 @@ async def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
     tags=["Auth"],
     dependencies=[Depends(_verify_worker_key)],
 )
-async def auth_logout(authorization: Optional[str] = Header(None)) -> Dict[str, str]:
+def auth_logout(authorization: Optional[str] = Header(None)) -> Dict[str, str]:
     if not authorization or not authorization.lower().startswith("bearer "):
         return {"status": "ok"}
 
@@ -1157,7 +1169,7 @@ def _resolve_user_from_token(authorization: Optional[str]) -> Dict[str, Any]:
     tags=["Dashboard"],
     dependencies=[Depends(_verify_worker_key)],
 )
-async def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardStats:
+def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardStats:
     from datetime import date, timedelta
     from collections import defaultdict
 
@@ -1297,7 +1309,7 @@ def _get_ristorante_id_for_user(user_id: str, supabase_client) -> Optional[str]:
 
 
 @app.post("/api/upload/start-session", tags=["Upload"])
-async def upload_start_session(authorization: Optional[str] = Header(None)):
+def upload_start_session(authorization: Optional[str] = Header(None)):
     """Marca l'inizio di una nuova sessione di caricamento: aggiorna nuovi_da = now().
     I prodotti caricati in questa sessione avranno created_at >= nuovi_da → badge 'Nuovo'.
     I prodotti delle sessioni precedenti avranno created_at < nuovi_da → badge rimosso."""
@@ -1483,6 +1495,114 @@ class NotificheResponse(BaseModel):
     unread: int
 
 
+class BriefingAzione(BaseModel):
+    id: str
+    topic_key: str
+    severity: str = "info"
+    testo: str
+    cta_label: str
+    cta_page: str
+
+
+class BriefingResponse(BaseModel):
+    saluto: str
+    data: str
+    narrativa: str
+    severity_max: str = "info"
+    tutto_ok: bool
+    azioni: List[BriefingAzione]
+    generated_at: Optional[str] = None
+
+
+class SaluteVoce(BaseModel):
+    """Una delle voci di completezza dati del mese."""
+    key: str
+    label: str
+    ok: bool
+    dettaglio: str
+    cta_page: Optional[str] = None
+
+
+class SaluteResponse(BaseModel):
+    """Indice di salute della gestione — completezza dati del mese corrente."""
+    indice: int
+    colore: str  # "verde" | "giallo" | "rosso"
+    mese_label: str
+    voci: List[SaluteVoce]
+
+
+class AlertPrezzo(BaseModel):
+    """Un aumento prezzo rilevante per impatto €/mese (prodotto o tag)."""
+    tipo: str  # "prodotto" | "tag"
+    nome: str
+    fornitore: str = ""
+    aumento_pct: float
+    impatto_mese: float
+
+
+class AlertPrezziResponse(BaseModel):
+    """Alert prezzi per impatto €/mese — solo food&beverage, top per impatto."""
+    count: int
+    alerts: List[AlertPrezzo]
+    top: Optional[AlertPrezzo] = None
+
+
+class ConfigTopic(BaseModel):
+    """Un avviso configurabile dal cliente."""
+    key: str
+    label: str
+    enabled: bool
+    bloccato: bool = False  # True = sempre attivo, non spegnibile
+
+
+class ConfigResponse(BaseModel):
+    """Configurazione assistente: nome + interruttori topic."""
+    nome_referente: str = ""
+    topics: List[ConfigTopic]
+
+
+class ConfigUpdateRequest(BaseModel):
+    nome_referente: Optional[str] = None
+    topics_disabled: List[str] = []
+
+
+class HomeKpiResponse(BaseModel):
+    """Fotografia LIVE dei conti del periodo per la Home AI.
+
+    Periodo = mese in corso; se ancora troppo vuoto, ultimo mese completo
+    (etichetta esplicita). I numeri arrivano dalle stesse fonti della pagina
+    Margini, cosi' Home e Margini non si contraddicono mai.
+    """
+    periodo_label: str          # es. "Giugno" oppure "Maggio"
+    is_mese_in_corso: bool      # False = stiamo mostrando l'ultimo mese completo
+    fatturato: float
+    food_cost_pct: Optional[float]   # None se fatturato 0 (non calcolabile)
+    costo_personale: float           # costo del personale (dipendenti + extra)
+    spese_generali: float
+    mol: float
+    has_data: bool
+    # Confronto col mese precedente (per le frecce ↑↓). None = non confrontabile.
+    confronto_label: Optional[str] = None        # es. "vs aprile"
+    fatturato_delta_pct: Optional[float] = None  # variazione % fatturato
+    food_cost_delta_pp: Optional[float] = None   # variazione in PUNTI di food cost %
+    personale_delta_pct: Optional[float] = None   # variazione % costo personale
+    spese_delta_pct: Optional[float] = None       # variazione % spese generali
+    mol_delta_pct: Optional[float] = None         # variazione % MOL
+
+
+# Avvisi mostrabili nel configuratore, in ordine di gerarchia. I due upload
+# falliti sono "bloccati": sempre attivi (guasti tecnici). Decisione Mattia.
+_CONFIG_TOPICS: List[tuple] = [
+    ("upload_failed",            "Upload fatture fallito",        True),
+    ("upload_ricavi_failed",     "Upload ricavi fallito",         True),
+    ("price_alert",              "Alert prezzi",                  False),
+    ("uncategorized_rows",       "Righe da classificare",         False),
+    ("fatturato_mancante",       "Fatturato mancante",            False),
+    ("costo_personale_mancante", "Costo personale mancante",      False),
+    ("scadenza_superata",        "Scadenze",                      False),
+]
+
+
 @app.get(
     "/api/notifiche",
     response_model=NotificheResponse,
@@ -1490,7 +1610,7 @@ class NotificheResponse(BaseModel):
     tags=["Notifiche"],
     dependencies=[Depends(_verify_worker_key)],
 )
-async def get_notifiche(
+def get_notifiche(
     authorization: Optional[str] = Header(None),
     include_dismissed: bool = False,
 ) -> NotificheResponse:
@@ -1542,7 +1662,7 @@ async def get_notifiche(
     tags=["Notifiche"],
     dependencies=[Depends(_verify_worker_key)],
 )
-async def dismiss_notifica(
+def dismiss_notifica(
     notifica_id: str,
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, str]:
@@ -1558,6 +1678,713 @@ async def dismiss_notifica(
     ).eq("id", notifica_id).eq("user_id", user_id).execute()
 
     return {"status": "ok"}
+
+
+def _saluto_per_ora(nome: Optional[str]) -> str:
+    """Saluto adattivo all'ora corrente (fuso Europe/Rome)."""
+    from datetime import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        ora = _dt.now(tz=ZoneInfo("Europe/Rome")).hour
+    except Exception:
+        ora = _dt.now().hour
+    if ora < 12:
+        base = "Buongiorno"
+    elif ora < 18:
+        base = "Buon pomeriggio"
+    else:
+        base = "Buonasera"
+    nome = (nome or "").strip()
+    return f"{base}, {nome}" if nome else base
+
+
+@app.get(
+    "/api/home/briefing",
+    response_model=BriefingResponse,
+    summary="Briefing giornaliero Home AI — saluto, narrativa, azioni",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingResponse:
+    from datetime import datetime as _dt, timezone as _tz
+    from services import get_supabase_client
+    from services.daily_briefing_service import (
+        get_today_briefing,
+        generate_and_save_briefing,
+        notifications_fingerprint,
+        _today_rome,
+    )
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    # Saluto Home AI: SOLO il nome_referente scelto nel configuratore. Se manca,
+    # saluto liscio ("Buongiorno") — mai la ragione sociale, che e' brutta da
+    # leggere ("LAND DEI SAPORI SRL") e poco umana.
+    nome = user.get("nome_referente")
+
+    supabase_client = get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+
+    # Notifiche attive (stesso filtro di /api/notifiche, senza dismissed)
+    notifications: List[Dict[str, Any]] = []
+    try:
+        resp = (
+            supabase_client.table("notification_inbox")
+            .select("id,topic_key,source_type,severity,title,body,action_page,payload,dismissed_at,expires_at,created_at,source_event_at,dedupe_key")
+            .eq("user_id", user_id)
+            .or_("expires_at.is.null,expires_at.gt." + _dt.now(_tz.utc).isoformat())
+            .order("created_at", desc=True)
+            .limit(100)
+            .execute()
+        )
+        notifications = [r for r in (resp.data or []) if not r.get("dismissed_at")]
+    except Exception as exc:
+        logger.warning("home_briefing: lettura notifiche fallita: %s", exc)
+
+    # Alert prezzi: il motore LIVE per impatto €/mese (Step 4) sostituisce la
+    # vecchia notifica price_alert da upload. Solo food&beverage, soglia auto,
+    # prodotti + tag. Se non ci sono alert rilevanti, rimuovo il price_alert
+    # legacy (zero rumore). I numeri li calcola il backend, l'AI racconta.
+    if ristorante_id:
+        try:
+            from services.price_impact_service import calcola_alert_prezzi_impatto
+            ap = calcola_alert_prezzi_impatto(user_id, ristorante_id, supabase_client=supabase_client)
+            notifications = [n for n in notifications if n.get("topic_key") != "price_alert"]
+            if ap.get("count") and ap.get("top"):
+                top = ap["top"]
+                notifications.append({
+                    "id": "price-alert-live",
+                    "topic_key": "price_alert",
+                    "source_type": "live",
+                    "severity": "warning",
+                    "title": "Alert prezzi",
+                    "body": "",
+                    "action_page": "/prezzi",
+                    "payload": {
+                        "count": ap["count"],
+                        "top_product": top.get("nome"),
+                        "top_increase_pct": top.get("aumento_pct"),
+                        "impatto_mese": top.get("impatto_mese"),
+                    },
+                    "source_event_at": None,
+                    "dedupe_key": "price-alert-live",
+                })
+        except Exception as exc:
+            logger.warning("home_briefing: motore alert prezzi fallito: %s", exc)
+
+    # Upload ricavi fallito (Step 5): SOLO per clienti mappati ai ricavi
+    # automatici (riga in ricavi_ragione_sociale_map). "Fallito" = mappato ma
+    # nessun ricavo negli ultimi giorni (la finestra tollera weekend/chiusura).
+    if ristorante_id:
+        try:
+            mapres = (
+                supabase_client.table("ricavi_ragione_sociale_map")
+                .select("ristorante_id")
+                .eq("ristorante_id", ristorante_id)
+                .limit(1)
+                .execute()
+            )
+            mappato = bool(mapres.data)
+            if mappato:
+                from datetime import date as _date, timedelta as _tdelta
+                finestra_giorni = 3
+                soglia_data = (_date.today() - _tdelta(days=finestra_giorni)).isoformat()
+                recres = (
+                    supabase_client.table("ricavi_giornalieri")
+                    .select("data")
+                    .eq("ristorante_id", ristorante_id)
+                    .gte("data", soglia_data)
+                    .limit(1)
+                    .execute()
+                )
+                if not (recres.data or []):
+                    # da quanti giorni manca l'ultimo ricavo (per il testo)
+                    ultres = (
+                        supabase_client.table("ricavi_giornalieri")
+                        .select("data")
+                        .eq("ristorante_id", ristorante_id)
+                        .order("data", desc=True)
+                        .limit(1)
+                        .execute()
+                    )
+                    giorni_senza = None
+                    if ultres.data:
+                        try:
+                            ultima = _date.fromisoformat(str(ultres.data[0]["data"]))
+                            giorni_senza = (_date.today() - ultima).days
+                        except Exception:
+                            giorni_senza = None
+                    notifications.append({
+                        "id": "upload-ricavi-live",
+                        "topic_key": "upload_ricavi_failed",
+                        "source_type": "live",
+                        "severity": "warning",
+                        "title": "Ricavi automatici assenti",
+                        "body": "",
+                        "action_page": "/margini",
+                        "payload": {"giorni_senza": giorni_senza},
+                        "source_event_at": None,
+                        "dedupe_key": "upload-ricavi-live",
+                    })
+        except Exception as exc:
+            logger.warning("home_briefing: check ricavi automatici fallito: %s", exc)
+
+    # Preferenze configuratore (Step 6): nome override + topic spenti dal cliente.
+    topics_disabled: List[str] = []
+    if ristorante_id:
+        try:
+            prefres = (
+                supabase_client.table("assistant_preferences")
+                .select("nome_referente,topics_disabled")
+                .eq("ristorante_id", ristorante_id)
+                .limit(1)
+                .execute()
+            )
+            if prefres.data:
+                pref = prefres.data[0]
+                if pref.get("nome_referente"):
+                    nome = pref["nome_referente"]  # override vince sul saluto
+                td = pref.get("topics_disabled") or []
+                if isinstance(td, list):
+                    topics_disabled = [str(t) for t in td]
+        except Exception as exc:
+            logger.warning("home_briefing: lettura preferenze fallita: %s", exc)
+
+    snapshot: Optional[Dict[str, Any]] = None
+    if ristorante_id:
+        cached = get_today_briefing(user_id, ristorante_id, supabase_client)
+        # Il fingerprint include i topic spenti (stessa formula di _build_snapshot):
+        # cambiando le preferenze il briefing si rigenera anche a notifiche identiche.
+        fingerprint = notifications_fingerprint(notifications)
+        if topics_disabled:
+            fingerprint += "|" + ",".join(sorted(topics_disabled))
+        if cached and cached.get("notif_fingerprint") == fingerprint:
+            snapshot = cached
+        else:
+            snapshot = generate_and_save_briefing(
+                user_id, ristorante_id, notifications, supabase_client,
+                topics_disabled=topics_disabled,
+            )
+
+    if snapshot is None:
+        # Fallback senza ristorante o errore DB: snapshot effimero non persistito
+        from services.daily_briefing_service import _build_snapshot
+        snapshot = _build_snapshot(notifications)
+
+    azioni = [BriefingAzione(**a) for a in (snapshot.get("azioni") or [])]
+
+    return BriefingResponse(
+        saluto=_saluto_per_ora(nome),
+        data=_today_rome().isoformat(),
+        narrativa=str(snapshot.get("narrative") or ""),
+        severity_max=str(snapshot.get("severity_max") or "info"),
+        tutto_ok=bool(snapshot.get("tutto_ok", len(azioni) == 0)),
+        azioni=azioni,
+        generated_at=snapshot.get("generated_at"),
+    )
+
+
+_MESI_IT_FULL = [
+    "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+    "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+]
+
+
+@app.get(
+    "/api/home/salute",
+    response_model=SaluteResponse,
+    summary="Indice di salute della gestione — completezza dati del mese",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
+    """Misura quanto i dati recenti sono completi.
+
+    Quattro voci a peso uguale (25% ciascuna): fatture caricate, fatturato
+    inserito, costo personale inserito, righe classificate. Conta "a posto"
+    SOLO se i dati sono davvero arrivati (non basta l'automatismo attivo).
+
+    Finestra: ultimi 30 giorni mobili (non il mese di calendario), cosi' il
+    giorno 1 del mese l'indice non si azzera di colpo. Tutti i calcoli qui nel
+    backend; la Home si limita a mostrare.
+    """
+    from datetime import datetime as _dt, timedelta as _td
+
+    try:
+        from zoneinfo import ZoneInfo
+        oggi = _dt.now(tz=ZoneInfo("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt.now().date()
+    inizio = oggi - _td(days=29)  # finestra mobile di 30 giorni inclusivi
+    data_da = inizio.isoformat()
+    data_a = oggi.isoformat()
+    mese_label = "ultimi 30 giorni"
+
+    # Fatturato e Personale si valutano sull'ULTIMO MESE COMPLETO (il mese
+    # precedente), lo stesso di cui parlano le card "manca fatturato/personale".
+    # Cosi' Salute e card non si contraddicono mai. Le altre due voci (fatture,
+    # classificate) restano sulla finestra mobile di 30 giorni.
+    _MESI_IT_SAL = [
+        "", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+        "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+    ]
+    if oggi.month == 1:
+        mc_anno, mc_mese = oggi.year - 1, 12
+    else:
+        mc_anno, mc_mese = oggi.year, oggi.month - 1
+    mese_completo_label = _MESI_IT_SAL[mc_mese]
+    mc_da = _dt(mc_anno, mc_mese, 1).date().isoformat()
+    # ultimo giorno del mese completo = giorno prima del primo del mese corrente
+    primo_mese_corrente = _dt(oggi.year, oggi.month, 1).date()
+    mc_a = (primo_mese_corrente - _td(days=1)).isoformat()
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+
+    # Senza ristorante non possiamo misurare: indice 0, tutto da fare.
+    if not ristorante_id:
+        voci = [
+            SaluteVoce(key="fatture", label="Fatture caricate", ok=False,
+                       dettaglio="Nessun ristorante associato", cta_page="/analisi-fatture"),
+        ]
+        return SaluteResponse(indice=0, colore="rosso", mese_label=mese_label, voci=voci)
+
+    # ── Voce 1: Fatture caricate di recente ──
+    # Conta il CARICAMENTO recente (created_at), non la data della fattura: le
+    # fatture elettroniche arrivano con ritardo SDI, quindi un cliente attivo
+    # puo' caricare oggi fatture datate settimane fa. Usare data_documento qui
+    # lasciava i clienti attivi "in arancione" ingiustamente.
+    inizio_dt = _dt.combine(inizio, _dt.min.time())
+    fatture_ok = False
+    righe_mese: List[Dict[str, Any]] = []
+    try:
+        resp = (
+            sb.table("fatture")
+            .select("needs_review,categoria", count="exact")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .gte("created_at", inizio_dt.isoformat())
+            .execute()
+        )
+        righe_mese = resp.data or []
+        fatture_ok = len(righe_mese) > 0
+    except Exception as exc:
+        logger.warning("home_salute: lettura fatture fallita: %s", exc)
+
+    # ── Voce 2: Fatturato inserito (margini_mensili dell'ultimo mese completo) ──
+    # Fonte = margini_mensili (la stessa delle card "manca fatturato" e del KPI):
+    # i ricavi giornalieri non sono usati dai clienti, sarebbe sempre "manca".
+    fatturato_ok = False
+    try:
+        resp = (
+            sb.table("margini_mensili")
+            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+            .eq("ristorante_id", ristorante_id)
+            .eq("anno", mc_anno)
+            .eq("mese", mc_mese)
+            .execute()
+        )
+        netto = 0.0
+        for r in (resp.data or []):
+            netto += (
+                float(r.get("fatturato_iva10") or 0)
+                + float(r.get("fatturato_iva22") or 0)
+                + float(r.get("altri_ricavi_noiva") or 0)
+            )
+        fatturato_ok = netto > 0
+    except Exception as exc:
+        logger.warning("home_salute: lettura fatturato margini fallita: %s", exc)
+
+    # ── Voce 3: Costo personale inserito (ultimo mese completo) ──
+    # Stesso mese della voce Fatturato e delle card "manca personale".
+    personale_ok = False
+    try:
+        resp = (
+            sb.table("margini_mensili")
+            .select("costo_dipendenti,costo_personale_extra")
+            .eq("ristorante_id", ristorante_id)
+            .eq("anno", mc_anno)
+            .eq("mese", mc_mese)
+            .execute()
+        )
+        for r in (resp.data or []):
+            if (float(r.get("costo_dipendenti") or 0)
+                    + float(r.get("costo_personale_extra") or 0)) > 0:
+                personale_ok = True
+                break
+    except Exception as exc:
+        logger.warning("home_salute: lettura personale fallita: %s", exc)
+
+    # ── Voce 4: Righe classificate (% righe del mese senza needs_review) ──
+    tot_righe = len(righe_mese)
+    da_controllare = sum(1 for r in righe_mese if r.get("needs_review"))
+    if tot_righe == 0:
+        pct_classificate = 0
+        classificate_ok = False
+    else:
+        pct_classificate = round((tot_righe - da_controllare) / tot_righe * 100)
+        classificate_ok = da_controllare == 0
+
+    # ── Indice: 4 voci a peso uguale. Le voci binarie valgono 0/100;
+    #    le righe usano la loro %. Senza fatture, le righe valgono 0. ──
+    score_fatture = 100 if fatture_ok else 0
+    score_fatturato = 100 if fatturato_ok else 0
+    score_personale = 100 if personale_ok else 0
+    score_classificate = pct_classificate if fatture_ok else 0
+    indice = round(
+        (score_fatture + score_fatturato + score_personale + score_classificate) / 4
+    )
+
+    if indice >= 80:
+        colore = "verde"
+    elif indice >= 50:
+        colore = "giallo"
+    else:
+        colore = "rosso"
+
+    voci = [
+        SaluteVoce(
+            key="fatture",
+            label="Fatture caricate",
+            ok=fatture_ok,
+            dettaglio="Fatture recenti registrate" if fatture_ok
+                      else "Nessuna fattura recente",
+            cta_page="/analisi-fatture",
+        ),
+        SaluteVoce(
+            key="fatturato",
+            label="Fatturato inserito",
+            ok=fatturato_ok,
+            dettaglio=f"{mese_completo_label.capitalize()} inserito" if fatturato_ok
+                      else f"Manca {mese_completo_label}",
+            cta_page="/margini",
+        ),
+        SaluteVoce(
+            key="personale",
+            label="Costo personale inserito",
+            ok=personale_ok,
+            dettaglio=f"{mese_completo_label.capitalize()} inserito" if personale_ok
+                      else f"Manca {mese_completo_label}",
+            cta_page="/margini",
+        ),
+        SaluteVoce(
+            key="classificate",
+            label="Righe classificate",
+            ok=classificate_ok,
+            dettaglio="Tutte le righe sono classificate" if classificate_ok
+                      else (f"{da_controllare} righe da controllare" if tot_righe
+                            else "Nessuna riga da classificare"),
+            cta_page="/analisi-fatture",
+        ),
+    ]
+
+    return SaluteResponse(
+        indice=indice, colore=colore, mese_label=mese_label, voci=voci
+    )
+
+
+@app.get(
+    "/api/home/alert-prezzi",
+    response_model=AlertPrezziResponse,
+    summary="Alert prezzi per impatto €/mese (prodotti + tag, food&beverage)",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+def home_alert_prezzi(authorization: Optional[str] = Header(None)) -> AlertPrezziResponse:
+    """Motore live degli alert prezzi ordinati per impatto economico mensile.
+
+    Solo Food & Beverage, soglia di rilevanza automatica (frazione della spesa
+    food del periodo), monitora prodotti e custom tag. Tutto calcolato nel
+    backend (price_impact_service); la Home si limita a mostrare.
+    """
+    from services.price_impact_service import calcola_alert_prezzi_impatto
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        return AlertPrezziResponse(count=0, alerts=[], top=None)
+
+    try:
+        res = calcola_alert_prezzi_impatto(user_id, ristorante_id, supabase_client=sb)
+    except Exception as exc:
+        logger.warning("home_alert_prezzi: calcolo fallito: %s", exc)
+        return AlertPrezziResponse(count=0, alerts=[], top=None)
+
+    alerts = [AlertPrezzo(**a) for a in (res.get("alerts") or [])]
+    top = res.get("top")
+    return AlertPrezziResponse(
+        count=int(res.get("count") or 0),
+        alerts=alerts,
+        top=AlertPrezzo(**top) if top else None,
+    )
+
+
+# Cache in-memoria dei KPI Home: i conti cambiano lentamente, un TTL breve
+# abbatte il carico (query + aggregazioni) anche con centinaia di clienti che
+# riaprono la Home. Niente tabella DB: sopravvive senza migration, e al massimo
+# si perde al redeploy (ricalcolo trasparente). Chiave = (ristorante, giorno).
+_HOME_KPI_CACHE: Dict[str, tuple] = {}
+_HOME_KPI_TTL = 120.0  # secondi
+
+
+def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: int) -> dict:
+    """Compone i 4 KPI per un mese di calendario.
+
+    Fonte universale: margini_mensili (fatturato + MOL, gli stessi della pagina
+    Margini) e costi food/spese dalle fatture aggregate per mese. Nessun cliente
+    usa i ricavi giornalieri, quindi il mese e' l'unica fotografia affidabile.
+    """
+    row = margini_anno.get(mese, {}) or {}
+    fatturato = (
+        float(row.get("fatturato_iva10") or 0)
+        + float(row.get("fatturato_iva22") or 0)
+        + float(row.get("altri_ricavi_noiva") or 0)
+    )
+    fb = float(costi_fb.get(mese) or 0) + float(row.get("altri_costi_fb") or 0)
+    spese = float(costi_spese.get(mese) or 0) + float(row.get("altri_costi_spese") or 0)
+    # Costo personale: stessa fonte e formula della pagina Margini, cosi' il
+    # conto economico della Home torna esattamente (Fatturato - F&B - Personale
+    # - Spese = MOL). Senza questa voce il MOL non quadrava con le righe mostrate.
+    personale = (
+        float(row.get("costo_dipendenti") or 0)
+        + float(row.get("costo_personale_extra") or 0)
+    )
+    mol = float(row.get("mol") or 0)
+    food_cost_pct = round(fb / fatturato * 100, 1) if fatturato > 0 else None
+    return {
+        "fatturato": round(fatturato, 2),
+        "food_cost_pct": food_cost_pct,
+        "costo_personale": round(personale, 2),
+        "spese_generali": round(spese, 2),
+        "mol": round(mol, 2),
+        "has_data": fatturato > 0 or fb > 0 or spese > 0 or personale > 0,
+    }
+
+
+@app.get(
+    "/api/home/kpi",
+    response_model=HomeKpiResponse,
+    summary="KPI live Home — fatturato, food cost %, spese generali, MOL",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
+    """Fotografia dei conti dell'ULTIMO MESE COMPLETO, con confronto.
+
+    Fonte: margini_mensili (fatturato + MOL, come la pagina Margini) e costi
+    food/spese dalle fatture. E' l'unica fonte affidabile: nessun cliente usa i
+    ricavi giornalieri. Confronto vs il mese precedente (frecce ↑↓).
+    """
+    import time as _time
+    from datetime import date as _date
+
+    _MESI_IT = [
+        "", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+        "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
+    ]
+    _vuoto = HomeKpiResponse(
+        periodo_label="", is_mese_in_corso=False, fatturato=0.0,
+        food_cost_pct=None, costo_personale=0.0, spese_generali=0.0,
+        mol=0.0, has_data=False,
+    )
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        return _vuoto
+
+    oggi = _date.today()
+    cache_key = f"{ristorante_id}:{oggi.year}:{oggi.month}"
+    cached = _HOME_KPI_CACHE.get(cache_key)
+    if cached and (_time.monotonic() - cached[0]) < _HOME_KPI_TTL:
+        return cached[1]
+
+    from services.margine_service import (
+        carica_margini_anno,
+        calcola_costi_automatici_per_anno,
+    )
+
+    def _dati_anno(anno: int):
+        try:
+            m = carica_margini_anno(user_id, ristorante_id, anno)
+            fb, sp = calcola_costi_automatici_per_anno(user_id, ristorante_id, anno)
+            return m, fb, sp
+        except Exception as exc:
+            logger.warning("home_kpi: caricamento anno %s fallito: %s", anno, exc)
+            return {}, {}, {}
+
+    cache_anni: dict = {}
+
+    def _anno(anno: int):
+        if anno not in cache_anni:
+            cache_anni[anno] = _dati_anno(anno)
+        return cache_anni[anno]
+
+    # Parti dall'ultimo mese completo (mese precedente) e, se vuoto, vai indietro
+    # fino a 6 mesi: cosi' mostriamo sempre l'ultima fotografia reale disponibile.
+    mese_usato = anno_usato = None
+    kpi = None
+    mm, aa = oggi.month - 1, oggi.year
+    if mm == 0:
+        mm, aa = 12, oggi.year - 1
+    for _ in range(6):
+        margini, costi_fb, costi_spese = _anno(aa)
+        cand = _kpi_periodo(margini, costi_fb, costi_spese, mm)
+        if cand["has_data"]:
+            kpi, mese_usato, anno_usato = cand, mm, aa
+            break
+        mm -= 1
+        if mm == 0:
+            mm, aa = 12, aa - 1
+
+    if kpi is None:
+        return _vuoto
+
+    # ── Confronto col mese precedente a quello mostrato ──
+    def _delta_pct(curr: float, prev: float) -> Optional[float]:
+        if prev and prev != 0:
+            return round((curr - prev) / abs(prev) * 100, 1)
+        return None
+
+    cmp_mese, cmp_anno = mese_usato - 1, anno_usato
+    if cmp_mese == 0:
+        cmp_mese, cmp_anno = 12, anno_usato - 1
+    c_margini, c_fb, c_spese = _anno(cmp_anno)
+    kpi_cmp = _kpi_periodo(c_margini, c_fb, c_spese, cmp_mese)
+
+    confronto_label = None
+    fatturato_delta = food_cost_delta = personale_delta = spese_delta = mol_delta = None
+    if kpi_cmp["has_data"]:
+        confronto_label = f"vs {_MESI_IT[cmp_mese].lower()}"
+        fatturato_delta = _delta_pct(kpi["fatturato"], kpi_cmp["fatturato"])
+        personale_delta = _delta_pct(kpi["costo_personale"], kpi_cmp["costo_personale"])
+        spese_delta = _delta_pct(kpi["spese_generali"], kpi_cmp["spese_generali"])
+        mol_delta = _delta_pct(kpi["mol"], kpi_cmp["mol"])
+        if kpi["food_cost_pct"] is not None and kpi_cmp["food_cost_pct"] is not None:
+            food_cost_delta = round(kpi["food_cost_pct"] - kpi_cmp["food_cost_pct"], 1)
+
+    resp = HomeKpiResponse(
+        periodo_label=_MESI_IT[mese_usato],
+        is_mese_in_corso=False,
+        fatturato=kpi["fatturato"],
+        food_cost_pct=kpi["food_cost_pct"],
+        costo_personale=kpi["costo_personale"],
+        spese_generali=kpi["spese_generali"],
+        mol=kpi["mol"],
+        has_data=kpi["has_data"],
+        confronto_label=confronto_label,
+        fatturato_delta_pct=fatturato_delta,
+        food_cost_delta_pp=food_cost_delta,
+        personale_delta_pct=personale_delta,
+        spese_delta_pct=spese_delta,
+        mol_delta_pct=mol_delta,
+    )
+    _HOME_KPI_CACHE[cache_key] = (_time.monotonic(), resp)
+    return resp
+
+
+@app.get(
+    "/api/home/config",
+    response_model=ConfigResponse,
+    summary="Configurazione assistente Home — nome + interruttori avvisi",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigResponse:
+    """Legge la configurazione dell'assistente per il ristorante corrente.
+
+    Default AI-first: tutti gli avvisi attivi. nome_referente prende prima
+    l'override del configuratore, poi quello impostato lato admin su users.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+
+    nome = ""
+    disabled: set = set()
+    if ristorante_id:
+        try:
+            resp = (
+                sb.table("assistant_preferences")
+                .select("nome_referente,topics_disabled")
+                .eq("ristorante_id", ristorante_id)
+                .limit(1)
+                .execute()
+            )
+            if resp.data:
+                pref = resp.data[0]
+                nome = str(pref.get("nome_referente") or "")
+                td = pref.get("topics_disabled") or []
+                if isinstance(td, list):
+                    disabled = {str(t) for t in td}
+        except Exception as exc:
+            logger.warning("home_config_get: lettura fallita: %s", exc)
+
+    if not nome:
+        nome = str(user.get("nome_referente") or "")
+
+    topics = [
+        ConfigTopic(key=key, label=label, enabled=key not in disabled, bloccato=bloccato)
+        for (key, label, bloccato) in _CONFIG_TOPICS
+    ]
+    return ConfigResponse(nome_referente=nome, topics=topics)
+
+
+@app.post(
+    "/api/home/config",
+    response_model=ConfigResponse,
+    summary="Salva la configurazione assistente Home",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+def home_config_post(
+    body: ConfigUpdateRequest,
+    authorization: Optional[str] = Header(None),
+) -> ConfigResponse:
+    """Salva nome + avvisi spenti. I topic bloccati non vengono mai salvati
+    come spenti (restano sempre attivi). Upsert per ristorante.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    bloccati = {k for (k, _l, b) in _CONFIG_TOPICS if b}
+    validi = {k for (k, _l, _b) in _CONFIG_TOPICS}
+    disabled = [
+        t for t in (body.topics_disabled or [])
+        if t in validi and t not in bloccati
+    ]
+    nome = (body.nome_referente or "").strip() or None
+
+    from datetime import datetime as _dt2, timezone as _tz2
+    record = {
+        "ristorante_id": ristorante_id,
+        "nome_referente": nome,
+        "topics_disabled": disabled,
+        "updated_at": _dt2.now(_tz2.utc).isoformat(),
+    }
+    try:
+        sb.table("assistant_preferences").upsert(
+            record, on_conflict="ristorante_id"
+        ).execute()
+    except Exception as exc:
+        logger.error("home_config_post: salvataggio fallito: %s", exc)
+        raise HTTPException(status_code=500, detail="Salvataggio fallito")
+
+    disabled_set = set(disabled)
+    topics = [
+        ConfigTopic(key=key, label=label, enabled=key not in disabled_set, bloccato=bloccato)
+        for (key, label, bloccato) in _CONFIG_TOPICS
+    ]
+    return ConfigResponse(nome_referente=str(nome or ""), topics=topics)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1835,7 +2662,7 @@ def _compute_periodo_precedente(data_da: Optional[str], data_a: Optional[str]) -
 # ─── Endpoint: lista mesi disponibili ──────────────────────────────────────
 
 @app.get("/api/fatture/mesi-disponibili", response_model=MesiDisponibiliResponse)
-async def get_mesi_disponibili(
+def get_mesi_disponibili(
     authorization: Optional[str] = Header(None),
 ) -> MesiDisponibiliResponse:
     user = _resolve_user_from_token(authorization)
@@ -1874,7 +2701,7 @@ async def get_mesi_disponibili(
 # ─── Endpoint: KPI con delta vs periodo precedente ─────────────────────────
 
 @app.get("/api/fatture/kpi", response_model=KpiResponse)
-async def get_fatture_kpi(
+def get_fatture_kpi(
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
     tipo_prodotti: Optional[str] = None,
@@ -1970,7 +2797,7 @@ async def get_fatture_kpi(
 # ─── Endpoint: articoli aggregati (vista default tab Articoli) ─────────────
 
 @app.get("/api/fatture/articoli-aggregati", response_model=ArticoliResponse)
-async def get_articoli_aggregati(
+def get_articoli_aggregati(
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
     tipo_prodotti: Optional[str] = None,
@@ -2108,7 +2935,7 @@ async def get_articoli_aggregati(
 # ─── Endpoint: righe singole (per espansione articolo) ─────────────────────
 
 @app.get("/api/fatture/righe-articolo", response_model=List[RigaFattura])
-async def get_righe_articolo(
+def get_righe_articolo(
     descrizione: str,
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
@@ -2133,7 +2960,7 @@ async def get_righe_articolo(
 # ─── Endpoint: pivot estesa (mese/trimestre/anno auto) ─────────────────────
 
 @app.get("/api/fatture/pivot", response_model=PivotResponse)
-async def get_fatture_pivot(
+def get_fatture_pivot(
     dimensione: str = "categoria",  # "categoria" | "fornitore"
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
@@ -2214,7 +3041,7 @@ async def get_fatture_pivot(
 # ─── Endpoint: trend temporale (grafico multi-select) ──────────────────────
 
 @app.get("/api/fatture/trend", response_model=TrendResponse)
-async def get_fatture_trend(
+def get_fatture_trend(
     dimensione: str = "categoria",
     valori: Optional[str] = None,  # CSV: "CARNE,PESCE,..." o "Marini,Demare"
     data_da: Optional[str] = None,
@@ -2274,7 +3101,7 @@ async def get_fatture_trend(
 # ─── Endpoint: fornitori distinti del ristorante ───────────────────────────
 
 @app.get("/api/fatture/fornitori")
-async def get_fornitori_disponibili(
+def get_fornitori_disponibili(
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
     user = _resolve_user_from_token(authorization)
@@ -2309,7 +3136,7 @@ async def get_fornitori_disponibili(
 # ─── Endpoint: categorie disponibili ───────────────────────────────────────
 
 @app.get("/api/fatture/categorie")
-async def get_categorie_disponibili(
+def get_categorie_disponibili(
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
     user = _resolve_user_from_token(authorization)
@@ -2347,7 +3174,7 @@ async def get_categorie_disponibili(
 # ─── Endpoint: batch update categoria (stessa descrizione) + memoria AI ────
 
 @app.post("/api/fatture/categoria-batch")
-async def categoria_batch(
+def categoria_batch(
     body: CategoriaBatchRequest,
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
@@ -2417,7 +3244,7 @@ class FattureListResponse(BaseModel):
 
 
 @app.get("/api/fatture", response_model=FattureListResponse)
-async def get_fatture(
+def get_fatture(
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
     fornitore: Optional[str] = None,
@@ -2458,7 +3285,7 @@ class AggiornaCategoriaRequest(BaseModel):
 
 
 @app.patch("/api/fatture/{riga_id}/categoria")
-async def aggiorna_categoria_riga(
+def aggiorna_categoria_riga(
     riga_id: int,
     body: AggiornaCategoriaRequest,
     authorization: Optional[str] = Header(None),
@@ -2645,7 +3472,7 @@ def _load_fatture_fb_for_period(
 
 
 @app.get("/api/margini", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def get_margini(
+def get_margini(
     anno: Optional[int] = None,
     authorization: Optional[str] = Header(None),
 ) -> MarginiAnnoResponse:
@@ -2727,7 +3554,7 @@ async def get_margini(
 
 
 @app.post("/api/margini", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def save_margini(
+def save_margini(
     body: SalvaMarginiRequest,
     authorization: Optional[str] = Header(None),
 ):
@@ -2798,7 +3625,7 @@ async def save_margini(
 
 
 @app.get("/api/margini/fatturato-centri", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def get_fatturato_centri(
+def get_fatturato_centri(
     anno: int,
     mese: int,
     authorization: Optional[str] = Header(None),
@@ -2832,7 +3659,7 @@ async def get_fatturato_centri(
 
 
 @app.post("/api/margini/fatturato-centri", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def save_fatturato_centri(
+def save_fatturato_centri(
     body: FatturatoCentriData,
     authorization: Optional[str] = Header(None),
 ):
@@ -2868,7 +3695,7 @@ class FatturatoCentriGiornoItem(BaseModel):
 
 
 @app.get("/api/margini/fatturato-centri-giorni", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def get_fatturato_centri_giorni(
+def get_fatturato_centri_giorni(
     anno: int,
     mese: int,
     authorization: Optional[str] = Header(None),
@@ -2944,7 +3771,7 @@ async def get_fatturato_centri_giorni(
 
 
 @app.get("/api/margini/analisi-centri", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def get_analisi_centri(
+def get_analisi_centri(
     data_da: str,
     data_a: str,
     authorization: Optional[str] = Header(None),
@@ -3114,7 +3941,7 @@ def _load_fatture_fb_per_categoria_e_mese(
 
 
 @app.get("/api/margini/analisi-avanzata", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def get_analisi_avanzata(
+def get_analisi_avanzata(
     data_da: str,
     data_a: str,
     authorization: Optional[str] = Header(None),
@@ -3551,7 +4378,7 @@ def _load_nc_file_origini(sb, ristorante_id: str, data_da: str, data_a: str) -> 
 
 
 @app.get("/api/prezzi/soglia-alert", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
-async def get_soglia_alert(
+def get_soglia_alert(
     authorization: Optional[str] = Header(None),
 ) -> SogliaAlertResponse:
     user = _resolve_user_from_token(authorization)
@@ -3569,7 +4396,7 @@ async def get_soglia_alert(
 
 
 @app.post("/api/prezzi/soglia-alert", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
-async def set_soglia_alert(
+def set_soglia_alert(
     body: SogliaAlertRequest,
     authorization: Optional[str] = Header(None),
 ) -> SogliaAlertResponse:
@@ -3581,7 +4408,7 @@ async def set_soglia_alert(
 
 
 @app.get("/api/prezzi/variazioni", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
-async def get_variazioni_prezzi(
+def get_variazioni_prezzi(
     data_da: str,
     data_a: str,
     soglia: float = _PRICE_ALERT_DEFAULT,
@@ -3615,7 +4442,7 @@ async def get_variazioni_prezzi(
 
 
 @app.get("/api/prezzi/sconti-omaggi", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
-async def get_sconti_omaggi(
+def get_sconti_omaggi(
     data_da: str,
     data_a: str,
     authorization: Optional[str] = Header(None),
@@ -3692,7 +4519,7 @@ async def get_sconti_omaggi(
 
 
 @app.get("/api/prezzi/note-credito", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
-async def get_note_credito(
+def get_note_credito(
     data_da: str,
     data_a: str,
     authorization: Optional[str] = Header(None),
@@ -3749,7 +4576,7 @@ async def get_note_credito(
 
 
 @app.get("/api/prezzi/storico-prodotto", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
-async def get_storico_prodotto(
+def get_storico_prodotto(
     prodotto: str,
     fornitore: str = "",
     data_da: Optional[str] = None,
@@ -3991,7 +4818,7 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
 
 
 @app.post("/api/margini/cella", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def update_margini_cella(
+def update_margini_cella(
     body: MarginiCellaRequest,
     authorization: Optional[str] = Header(None),
 ) -> MarginiCellaResponse:
@@ -4036,7 +4863,7 @@ async def update_margini_cella(
 
 
 @app.get("/api/margini/costo-personale-turni", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def get_costo_personale_da_turni(
+def get_costo_personale_da_turni(
     anno: int = Query(..., ge=2000, le=2100),
     mese: int = Query(..., ge=1, le=12),
     authorization: Optional[str] = Header(None),
@@ -4097,7 +4924,7 @@ async def get_costo_personale_da_turni(
 
 
 @app.get("/api/margini/analisi", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def get_margini_analisi(
+def get_margini_analisi(
     data_da: str,
     data_a: str,
     authorization: Optional[str] = Header(None),
@@ -4394,7 +5221,7 @@ def _aggrega_totali_margini(sb, ristorante_id: str, d_da, d_a) -> dict:
 
 
 @app.get("/api/margini/kpi", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
-async def get_margini_kpi(
+def get_margini_kpi(
     data_da: str,
     data_a: str,
     authorization: Optional[str] = Header(None),
@@ -4490,7 +5317,7 @@ def _calc_netto(iva10: float, iva22: float, altri: float) -> float:
 
 
 @app.get("/api/ricavi/giornalieri", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
-async def get_ricavi_giornalieri(
+def get_ricavi_giornalieri(
     data_da: str,
     data_a: str,
     authorization: Optional[str] = Header(None),
@@ -4539,7 +5366,7 @@ async def get_ricavi_giornalieri(
 
 
 @app.post("/api/ricavi/giornalieri", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
-async def upsert_ricavo_giornaliero(
+def upsert_ricavo_giornaliero(
     body: RicavoUpsertRequest,
     authorization: Optional[str] = Header(None),
 ) -> RicavoGiornalieroItem:
@@ -4579,7 +5406,7 @@ async def upsert_ricavo_giornaliero(
 
 
 @app.delete("/api/ricavi/giornalieri", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
-async def delete_ricavo_giornaliero(
+def delete_ricavo_giornaliero(
     data: str,
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
@@ -4596,7 +5423,7 @@ async def delete_ricavo_giornaliero(
 
 
 @app.post("/api/ricavi/batch", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
-async def upsert_ricavi_batch(
+def upsert_ricavi_batch(
     body: RicaviBatchUpsertRequest,
     authorization: Optional[str] = Header(None),
 ) -> RicaviBatchUpsertResponse:
@@ -4725,7 +5552,7 @@ async def import_ricavi_xls(
         source="xls",
         source_meta={"filename": file.filename or "", "gestionale": gestionale_version},
     )
-    batch_res = await upsert_ricavi_batch(batch_req, authorization=authorization)
+    batch_res = await asyncio.to_thread(upsert_ricavi_batch, batch_req, authorization=authorization)
 
     preview = [RicavoGiornalieroItem(
         data=it.data,
@@ -5022,7 +5849,7 @@ class RicaviModalitaUpsertRequest(BaseModel):
 
 
 @app.get("/api/ricavi/modalita", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
-async def get_ricavi_modalita(
+def get_ricavi_modalita(
     anno: int,
     mese: int,
     authorization: Optional[str] = Header(None),
@@ -5055,7 +5882,7 @@ async def get_ricavi_modalita(
 
 
 @app.post("/api/ricavi/modalita", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
-async def upsert_ricavi_modalita(
+def upsert_ricavi_modalita(
     body: RicaviModalitaUpsertRequest,
     authorization: Optional[str] = Header(None),
 ) -> RicaviModalitaResponse:
@@ -5113,7 +5940,7 @@ class ResetConfirmBody(BaseModel):
 
 
 @app.post("/api/auth/reset-request", tags=["Auth"])
-async def reset_password_request(body: ResetRequestBody):
+def reset_password_request(body: ResetRequestBody):
     """Invia email con link di reset. Non richiede auth — qualsiasi email può richiederlo.
     Risponde sempre con successo generico per non rivelare se l'email è registrata.
     """
@@ -5128,7 +5955,7 @@ async def reset_password_request(body: ResetRequestBody):
 
 
 @app.post("/api/auth/reset-confirm", tags=["Auth"])
-async def reset_password_confirm(body: ResetConfirmBody):
+def reset_password_confirm(body: ResetConfirmBody):
     """Verifica token e imposta nuova password."""
     from services.auth_service import imposta_password_da_token
     token = (body.token or "").strip()
@@ -5202,7 +6029,7 @@ def _parse_date_param(value: str, name: str):
 
 
 @app.get("/api/tag", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def list_tags(authorization: Optional[str] = Header(None)):
+def list_tags(authorization: Optional[str] = Header(None)):
     from services.db_service import get_custom_tags
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5213,7 +6040,7 @@ async def list_tags(authorization: Optional[str] = Header(None)):
 
 
 @app.post("/api/tag", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def create_tag(body: TagCreateRequest, authorization: Optional[str] = Header(None)):
+def create_tag(body: TagCreateRequest, authorization: Optional[str] = Header(None)):
     from services.db_service import crea_tag
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5228,7 +6055,7 @@ async def create_tag(body: TagCreateRequest, authorization: Optional[str] = Head
 
 
 @app.put("/api/tag/{tag_id}", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def update_tag(tag_id: int, body: TagUpdateRequest, authorization: Optional[str] = Header(None)):
+def update_tag(tag_id: int, body: TagUpdateRequest, authorization: Optional[str] = Header(None)):
     from services.db_service import aggiorna_tag
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5244,7 +6071,7 @@ async def update_tag(tag_id: int, body: TagUpdateRequest, authorization: Optiona
 
 
 @app.delete("/api/tag/{tag_id}", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def delete_tag(tag_id: int, authorization: Optional[str] = Header(None)):
+def delete_tag(tag_id: int, authorization: Optional[str] = Header(None)):
     from services.db_service import elimina_tag
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5257,7 +6084,7 @@ async def delete_tag(tag_id: int, authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/tag/descrizioni", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def list_descrizioni_distinte(authorization: Optional[str] = Header(None)):
+def list_descrizioni_distinte(authorization: Optional[str] = Header(None)):
     from services.db_service import get_descrizioni_distinte
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5268,7 +6095,7 @@ async def list_descrizioni_distinte(authorization: Optional[str] = Header(None))
 
 
 @app.get("/api/tag/{tag_id}/prodotti", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def list_tag_prodotti(tag_id: int, authorization: Optional[str] = Header(None)):
+def list_tag_prodotti(tag_id: int, authorization: Optional[str] = Header(None)):
     from services.db_service import get_custom_tag_prodotti
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5280,7 +6107,7 @@ async def list_tag_prodotti(tag_id: int, authorization: Optional[str] = Header(N
 
 
 @app.post("/api/tag/{tag_id}/prodotti", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def add_tag_prodotti(
+def add_tag_prodotti(
     tag_id: int, body: AggiungiAssociazioniRequest, authorization: Optional[str] = Header(None)
 ):
     from services.db_service import aggiungi_associazioni
@@ -5306,7 +6133,7 @@ async def add_tag_prodotti(
 
 
 @app.delete("/api/tag/prodotti/{assoc_id}", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def remove_tag_prodotto(assoc_id: int, authorization: Optional[str] = Header(None)):
+def remove_tag_prodotto(assoc_id: int, authorization: Optional[str] = Header(None)):
     from services.db_service import rimuovi_associazione
     user = _resolve_user_from_token(authorization)
     rimuovi_associazione(int(assoc_id), str(user["id"]))
@@ -5314,7 +6141,7 @@ async def remove_tag_prodotto(assoc_id: int, authorization: Optional[str] = Head
 
 
 @app.get("/api/tag/{tag_id}/analisi", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def analizza_tag_endpoint(
+def analizza_tag_endpoint(
     tag_id: int,
     data_da: str,
     data_a: str,
@@ -5333,7 +6160,7 @@ async def analizza_tag_endpoint(
 
 
 @app.get("/api/tag/{tag_id}/orfani", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def tag_orfani_endpoint(tag_id: int, authorization: Optional[str] = Header(None)):
+def tag_orfani_endpoint(tag_id: int, authorization: Optional[str] = Header(None)):
     from services.tag_analytics_service import compute_orfani
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5346,7 +6173,7 @@ async def tag_orfani_endpoint(tag_id: int, authorization: Optional[str] = Header
 
 
 @app.get("/api/tag/suggestions", tags=["Tag"], dependencies=[Depends(_verify_worker_key)])
-async def list_tag_suggestions(
+def list_tag_suggestions(
     refresh: bool = False, authorization: Optional[str] = Header(None)
 ):
     from services.tag_suggestion_service import (
@@ -5367,7 +6194,7 @@ async def list_tag_suggestions(
 @app.post(
     "/api/tag/suggestions/{sid}/accept", tags=["Tag"], dependencies=[Depends(_verify_worker_key)]
 )
-async def accept_tag_suggestion(
+def accept_tag_suggestion(
     sid: int,
     body: AcceptSuggestionRequest,
     authorization: Optional[str] = Header(None),
@@ -5422,7 +6249,7 @@ async def accept_tag_suggestion(
 @app.post(
     "/api/tag/suggestions/{sid}/snooze", tags=["Tag"], dependencies=[Depends(_verify_worker_key)]
 )
-async def snooze_tag_suggestion_endpoint(
+def snooze_tag_suggestion_endpoint(
     sid: int,
     body: SnoozeSuggestionRequest,
     authorization: Optional[str] = Header(None),
@@ -5442,7 +6269,7 @@ async def snooze_tag_suggestion_endpoint(
 @app.post(
     "/api/tag/suggestions/{sid}/dismiss", tags=["Tag"], dependencies=[Depends(_verify_worker_key)]
 )
-async def dismiss_tag_suggestion_endpoint(sid: int, authorization: Optional[str] = Header(None)):
+def dismiss_tag_suggestion_endpoint(sid: int, authorization: Optional[str] = Header(None)):
     from services.tag_suggestion_service import dismiss_tag_suggestion
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5474,7 +6301,7 @@ class FornitoreRegolaRequest(BaseModel):
 
 
 @app.get("/api/scadenziario", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
-async def get_scadenziario(authorization: Optional[str] = Header(None)):
+def get_scadenziario(authorization: Optional[str] = Header(None)):
     from services.documenti_service import get_documenti_scadenziario
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5486,7 +6313,7 @@ async def get_scadenziario(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/scadenziario/calendario", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
-async def get_scadenziario_calendario(
+def get_scadenziario_calendario(
     anno: int,
     mese: int,
     authorization: Optional[str] = Header(None),
@@ -5531,7 +6358,7 @@ async def get_scadenziario_calendario(
 
 
 @app.post("/api/scadenziario/pagata", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
-async def segna_pagata_endpoint(body: PagataRequest, authorization: Optional[str] = Header(None)):
+def segna_pagata_endpoint(body: PagataRequest, authorization: Optional[str] = Header(None)):
     from services.documenti_service import segna_fattura_pagata
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5554,7 +6381,7 @@ async def segna_pagata_endpoint(body: PagataRequest, authorization: Optional[str
 
 
 @app.post("/api/scadenziario/scadenza", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
-async def set_scadenza_override_endpoint(
+def set_scadenza_override_endpoint(
     body: ScadenzaOverrideRequest, authorization: Optional[str] = Header(None)
 ):
     from services.documenti_service import set_scadenza_override
@@ -5583,7 +6410,7 @@ async def set_scadenza_override_endpoint(
 
 
 @app.get("/api/scadenziario/anteprima", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
-async def get_anteprima_fattura(file_origine: str, authorization: Optional[str] = Header(None)):
+def get_anteprima_fattura(file_origine: str, authorization: Optional[str] = Header(None)):
     """Righe di una fattura specifica per anteprima nello scadenziario."""
     from services.db_service import filter_active as _fa
     user = _resolve_user_from_token(authorization)
@@ -5611,7 +6438,7 @@ async def get_anteprima_fattura(file_origine: str, authorization: Optional[str] 
 
 
 @app.get("/api/scadenziario/fornitori", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
-async def get_fornitori_scadenziario(authorization: Optional[str] = Header(None)):
+def get_fornitori_scadenziario(authorization: Optional[str] = Header(None)):
     """
     Restituisce lista fornitori unici per lo scadenziario.
 
@@ -5684,7 +6511,7 @@ async def get_fornitori_scadenziario(authorization: Optional[str] = Header(None)
 
 
 @app.get("/api/scadenziario/regole", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
-async def get_regole_pagamento(authorization: Optional[str] = Header(None)):
+def get_regole_pagamento(authorization: Optional[str] = Header(None)):
     from services.documenti_service import get_fornitori_pagamenti_config
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5696,7 +6523,7 @@ async def get_regole_pagamento(authorization: Optional[str] = Header(None)):
 
 
 @app.post("/api/scadenziario/regole", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
-async def upsert_regola_pagamento(
+def upsert_regola_pagamento(
     body: FornitoreRegolaRequest, authorization: Optional[str] = Header(None)
 ):
     from services.documenti_service import upsert_fornitori_pagamenti_config
@@ -5734,7 +6561,7 @@ async def upsert_regola_pagamento(
 @app.delete(
     "/api/scadenziario/regole/{regola_id}", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)]
 )
-async def delete_regola_pagamento(regola_id: str, authorization: Optional[str] = Header(None)):
+def delete_regola_pagamento(regola_id: str, authorization: Optional[str] = Header(None)):
     from services.documenti_service import delete_fornitori_pagamenti_config
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5758,7 +6585,7 @@ async def delete_regola_pagamento(regola_id: str, authorization: Optional[str] =
 
 
 @app.post("/api/scadenziario/notifica", tags=["Scadenziario"], dependencies=[Depends(_verify_worker_key)])
-async def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
+def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
     """Genera/aggiorna notifica aggregata scadenze nella inbox (upsert idempotente)."""
     from services.documenti_service import get_documenti_scadenziario
     from datetime import date as _d
@@ -5840,7 +6667,7 @@ class CestinoEliminaRequest(BaseModel):
 
 
 @app.get("/api/cestino", tags=["Cestino"], dependencies=[Depends(_verify_worker_key)])
-async def get_cestino(authorization: Optional[str] = Header(None)):
+def get_cestino(authorization: Optional[str] = Header(None)):
     from services.db_service import get_fatture_cestino
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5852,7 +6679,7 @@ async def get_cestino(authorization: Optional[str] = Header(None)):
 
 
 @app.post("/api/cestino/ripristina", tags=["Cestino"], dependencies=[Depends(_verify_worker_key)])
-async def ripristina_dal_cestino(
+def ripristina_dal_cestino(
     body: CestinoRipristinaRequest, authorization: Optional[str] = Header(None)
 ):
     from services.db_service import ripristina_fattura
@@ -5877,7 +6704,7 @@ async def ripristina_dal_cestino(
 
 
 @app.post("/api/cestino/elimina", tags=["Cestino"], dependencies=[Depends(_verify_worker_key)])
-async def elimina_definitivamente(
+def elimina_definitivamente(
     body: CestinoEliminaRequest, authorization: Optional[str] = Header(None)
 ):
     """Elimina definitivamente una fattura già nel cestino (hard delete)."""
@@ -5908,7 +6735,7 @@ async def elimina_definitivamente(
 
 
 @app.post("/api/cestino/svuota", tags=["Cestino"], dependencies=[Depends(_verify_worker_key)])
-async def svuota_cestino_endpoint(authorization: Optional[str] = Header(None)):
+def svuota_cestino_endpoint(authorization: Optional[str] = Header(None)):
     from services.db_service import svuota_cestino
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -5933,7 +6760,7 @@ class FatturaEliminaRequest(BaseModel):
 
 
 @app.post("/api/fatture/elimina", tags=["Fatture"], dependencies=[Depends(_verify_worker_key)])
-async def elimina_fattura_soft(
+def elimina_fattura_soft(
     body: FatturaEliminaRequest, authorization: Optional[str] = Header(None)
 ):
     """Soft-delete: sposta una fattura attiva nel cestino (deleted_at = now)."""
@@ -6008,7 +6835,7 @@ _PIANO_LIMITI: Dict[str, int] = {
 
 
 @app.get("/api/account/me", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
-async def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     """Dati account estesi: profilo, piano, contatori utilizzo."""
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
@@ -6069,7 +6896,7 @@ class CambioPasswordBody(BaseModel):
 
 
 @app.post("/api/account/cambia-password", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
-async def account_cambia_password(
+def account_cambia_password(
     body: CambioPasswordBody,
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
@@ -6110,7 +6937,7 @@ async def account_cambia_password(
 # Doppio guard: X-Worker-Key (server-to-server) + Bearer token admin
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def _verify_admin(
+def _verify_admin(
     authorization: Optional[str] = Header(None),
     x_worker_key: Optional[str] = Header(None),
 ) -> dict:
@@ -6135,7 +6962,7 @@ def _admin_emails_set() -> set:
 # ── Overview ────────────────────────────────────────────────────────────────
 
 @app.get("/api/admin/overview", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-async def admin_overview():
+def admin_overview():
     """KPI flotta: clienti, attivi, fatture mese corrente, costi AI mese.
 
     Difensivo: ogni sezione è isolata. Non solleva mai 500 — ritorna i dati
@@ -6210,7 +7037,7 @@ async def admin_overview():
 # ── Lista clienti ────────────────────────────────────────────────────────────
 
 @app.get("/api/admin/clienti", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-async def admin_lista_clienti():
+def admin_lista_clienti():
     """Lista tutti i clienti non-admin con stats aggregate (fatture, ultimo accesso, piano, trial)."""
     sb = get_supabase_client()
     admin_emails = _admin_emails_set()
@@ -6302,7 +7129,7 @@ async def admin_lista_clienti():
 # ── Dettaglio cliente ────────────────────────────────────────────────────────
 
 @app.get("/api/admin/clienti/{cliente_id}", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-async def admin_dettaglio_cliente(cliente_id: str):
+def admin_dettaglio_cliente(cliente_id: str):
     """Dettaglio completo di un cliente."""
     sb = get_supabase_client()
     admin_emails = _admin_emails_set()
@@ -6366,7 +7193,7 @@ class AggiornaClienteBody(BaseModel):
 
 
 @app.patch("/api/admin/clienti/{cliente_id}", tags=["Admin"])
-async def admin_aggiorna_cliente(cliente_id: str, body: AggiornaClienteBody, admin_user: dict = Depends(_verify_admin)):
+def admin_aggiorna_cliente(cliente_id: str, body: AggiornaClienteBody, admin_user: dict = Depends(_verify_admin)):
     """Aggiorna nome ristorante, P.IVA, ragione sociale, piano."""
     sb = get_supabase_client()
     admin_emails = _admin_emails_set()
@@ -6403,7 +7230,7 @@ class NuovoClienteBody(BaseModel):
 
 
 @app.post("/api/admin/clienti", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-async def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(_verify_admin)):
+def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(_verify_admin)):
     """Crea nuovo cliente + ristorante + invia email onboarding via Brevo."""
     from services.auth_service import crea_cliente_con_token
     import html as _html_mod
@@ -6476,7 +7303,7 @@ async def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(
 # ── Qualità AI — Coda review ──────────────────────────────────────────────────
 
 @app.get("/api/admin/qualita-ai/coda", tags=["Admin"])
-async def admin_qualita_coda(
+def admin_qualita_coda(
     cliente_id: Optional[str] = None,
     bucket: Optional[str] = None,
     admin_user: dict = Depends(_verify_admin),
@@ -6587,7 +7414,7 @@ class ClassificaBody(BaseModel):
 
 
 @app.post("/api/admin/qualita-ai/coda/classifica", tags=["Admin"])
-async def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_verify_admin)):
+def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_verify_admin)):
     """Classifica un gruppo di righe e opzionalmente salva in memoria globale."""
     from datetime import datetime, timezone
 
@@ -6641,7 +7468,7 @@ class AutoReviewBody(BaseModel):
 
 
 @app.post("/api/admin/qualita-ai/coda/auto-review", tags=["Admin"])
-async def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_verify_admin)):
+def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_verify_admin)):
     """Auto-classifica diciture sicure e sconti/omaggi in batch."""
     import pandas as pd
     from utils.validation import classify_special_row_vectorized, SPECIAL_ROW_NORMALE, SPECIAL_ROW_DICITURA, SPECIAL_ROW_SCONTO_OMAGGIO
@@ -6757,7 +7584,7 @@ async def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Dep
 # ── Qualità AI — Memoria globale ─────────────────────────────────────────────
 
 @app.get("/api/admin/qualita-ai/memoria", tags=["Admin"])
-async def admin_qualita_memoria(
+def admin_qualita_memoria(
     search: Optional[str] = None,
     stato: str = "tutti",
     page: int = 1,
@@ -6836,7 +7663,7 @@ class MemoriaUpdateBody(BaseModel):
 
 
 @app.patch("/api/admin/qualita-ai/memoria/{prod_id}", tags=["Admin"])
-async def admin_qualita_memoria_update(
+def admin_qualita_memoria_update(
     prod_id: str,
     body: MemoriaUpdateBody,
     admin_user: dict = Depends(_verify_admin),
@@ -6855,7 +7682,7 @@ async def admin_qualita_memoria_update(
 
 
 @app.delete("/api/admin/qualita-ai/memoria/{prod_id}", tags=["Admin"])
-async def admin_qualita_memoria_delete(prod_id: str, admin_user: dict = Depends(_verify_admin)):
+def admin_qualita_memoria_delete(prod_id: str, admin_user: dict = Depends(_verify_admin)):
     sb = get_supabase_client()
     sb.table("prodotti_master").delete().eq("id", prod_id).execute()
     logger.info("admin_memoria_delete: id=%s | admin=%s", prod_id, admin_user.get("email"))
@@ -6865,7 +7692,7 @@ async def admin_qualita_memoria_delete(prod_id: str, admin_user: dict = Depends(
 # ── Qualità AI — Conflitti memoria ───────────────────────────────────────────
 
 @app.get("/api/admin/qualita-ai/conflitti", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-async def admin_qualita_conflitti():
+def admin_qualita_conflitti():
     """Descrizioni dove prodotti_utente ha categoria diversa da prodotti_master."""
     from utils.text_utils import pulisci_caratteri_corrotti
 
@@ -6936,7 +7763,7 @@ class RisolviConflittoBody(BaseModel):
 
 
 @app.post("/api/admin/qualita-ai/conflitti/risolvi", tags=["Admin"])
-async def admin_qualita_risolvi_conflitto(body: RisolviConflittoBody, admin_user: dict = Depends(_verify_admin)):
+def admin_qualita_risolvi_conflitto(body: RisolviConflittoBody, admin_user: dict = Depends(_verify_admin)):
     from datetime import datetime, timezone
     sb = get_supabase_client()
     now = datetime.now(timezone.utc).isoformat()
@@ -7004,7 +7831,7 @@ def _log_review_action(
 
 
 @app.get("/api/admin/qualita-ai/audit", tags=["Admin"])
-async def admin_qualita_audit(
+def admin_qualita_audit(
     page: int = 1,
     per_page: int = 50,
     attore: Optional[str] = None,
@@ -7041,7 +7868,7 @@ class AnnullaBody(BaseModel):
 
 
 @app.post("/api/admin/qualita-ai/audit/annulla", tags=["Admin"])
-async def admin_qualita_audit_annulla(body: AnnullaBody, admin_user: dict = Depends(_verify_admin)):
+def admin_qualita_audit_annulla(body: AnnullaBody, admin_user: dict = Depends(_verify_admin)):
     """Annulla un'azione loggata: ripristina categoria_da sulle righe fattura."""
     from datetime import datetime, timezone
     sb = get_supabase_client()
@@ -7091,7 +7918,7 @@ async def admin_qualita_audit_annulla(body: AnnullaBody, admin_user: dict = Depe
 # ── Sistema/Salute — Costi AI ─────────────────────────────────────────────────
 
 @app.get("/api/admin/sistema/costi-ai", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-async def admin_sistema_costi_ai(days: int = 30):
+def admin_sistema_costi_ai(days: int = 30):
     from datetime import datetime, timezone
     sb = get_supabase_client()
 
@@ -7139,7 +7966,7 @@ async def admin_sistema_costi_ai(days: int = 30):
 # ── Sistema/Salute — Retention ───────────────────────────────────────────────
 
 @app.get("/api/admin/sistema/retention", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-async def admin_sistema_retention():
+def admin_sistema_retention():
     from services.db_service import get_retention_last_status
     status = get_retention_last_status(get_supabase_client())
     return status
@@ -7148,7 +7975,7 @@ async def admin_sistema_retention():
 # ── Sistema — Agent notturno ──────────────────────────────────────────────────
 
 @app.get("/api/admin/sistema/agent-notturno", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-async def admin_agent_notturno_status():
+def admin_agent_notturno_status():
     """Ritorna lo stato corrente dell'agent notturno."""
     return {
         "enabled": _agent_notturno_state["enabled"],
@@ -7165,7 +7992,7 @@ class AgentNotturnoToggleBody(BaseModel):
 
 
 @app.post("/api/admin/sistema/agent-notturno/toggle", tags=["Admin"])
-async def admin_agent_notturno_toggle(body: AgentNotturnoToggleBody, admin_user: dict = Depends(_verify_admin)):
+def admin_agent_notturno_toggle(body: AgentNotturnoToggleBody, admin_user: dict = Depends(_verify_admin)):
     """Abilita o disabilita l'agent notturno. Opzionalmente cambia l'ora di esecuzione (0-23 UTC)."""
     _agent_notturno_state["enabled"] = body.enabled
     if body.ora_utc is not None:
@@ -7181,7 +8008,7 @@ async def admin_agent_notturno_toggle(body: AgentNotturnoToggleBody, admin_user:
 
 
 @app.post("/api/admin/sistema/agent-notturno/esegui-ora", tags=["Admin"])
-async def admin_agent_notturno_esegui_ora(admin_user: dict = Depends(_verify_admin)):
+def admin_agent_notturno_esegui_ora(admin_user: dict = Depends(_verify_admin)):
     """Lancia subito l'agent notturno (indipendentemente dall'orario programmato)."""
     if _agent_notturno_state["running"]:
         raise HTTPException(status_code=409, detail="Agent già in esecuzione")
@@ -7197,7 +8024,7 @@ class AzioneAccountBody(BaseModel):
 
 
 @app.patch("/api/admin/clienti/{cliente_id}/account", tags=["Admin"])
-async def admin_aggiorna_account(
+def admin_aggiorna_account(
     cliente_id: str,
     body: AzioneAccountBody,
     admin_user: dict = Depends(_verify_admin),
@@ -7223,7 +8050,7 @@ async def admin_aggiorna_account(
 
 
 @app.post("/api/admin/clienti/{cliente_id}/reset-password", tags=["Admin"])
-async def admin_reset_password(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
+def admin_reset_password(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
     """Genera token reset password e invia email al cliente."""
     import html as _html_mod
     import requests as _requests
@@ -7290,7 +8117,7 @@ class CambioEmailBody(BaseModel):
 
 
 @app.patch("/api/admin/clienti/{cliente_id}/email", tags=["Admin"])
-async def admin_cambia_email(
+def admin_cambia_email(
     cliente_id: str,
     body: CambioEmailBody,
     admin_user: dict = Depends(_verify_admin),
@@ -7323,7 +8150,7 @@ async def admin_cambia_email(
 
 
 @app.delete("/api/admin/clienti/{cliente_id}", tags=["Admin"])
-async def admin_elimina_cliente(
+def admin_elimina_cliente(
     cliente_id: str,
     elimina_memoria: bool = False,
     admin_user: dict = Depends(_verify_admin),
@@ -7369,7 +8196,7 @@ async def admin_elimina_cliente(
 # ── Impersonazione ────────────────────────────────────────────────────────────
 
 @app.post("/api/admin/impersona/{cliente_id}", tags=["Admin"])
-async def admin_impersona(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
+def admin_impersona(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
     """Genera un session token per il cliente target, ritorna target_token + info."""
     import secrets as _secrets
     sb = get_supabase_client()
@@ -7405,14 +8232,14 @@ class NuovaSedeBody(BaseModel):
 
 
 @app.get("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-async def admin_lista_sedi(cliente_id: str):
+def admin_lista_sedi(cliente_id: str):
     sb = get_supabase_client()
     resp = sb.table("ristoranti").select("id,nome_ristorante,partita_iva,ragione_sociale,attivo").eq("user_id", cliente_id).execute()
     return resp.data or []
 
 
 @app.post("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"])
-async def admin_crea_sede(
+def admin_crea_sede(
     cliente_id: str,
     body: NuovaSedeBody,
     admin_user: dict = Depends(_verify_admin),
@@ -7438,7 +8265,7 @@ async def admin_crea_sede(
 
 
 @app.delete("/api/admin/clienti/{cliente_id}/sedi/{sede_id}", tags=["Admin"])
-async def admin_elimina_sede(
+def admin_elimina_sede(
     cliente_id: str,
     sede_id: str,
     admin_user: dict = Depends(_verify_admin),
@@ -7460,14 +8287,14 @@ class MappingBody(BaseModel):
 
 
 @app.get("/api/admin/ragione-sociale-map", tags=["Admin"], dependencies=[Depends(_verify_admin)])
-async def admin_lista_mapping():
+def admin_lista_mapping():
     sb = get_supabase_client()
     resp = sb.table("ricavi_ragione_sociale_map").select("id,ragione_sociale,ristorante_id,created_at").order("ragione_sociale").execute()
     return resp.data or []
 
 
 @app.post("/api/admin/ragione-sociale-map", tags=["Admin"])
-async def admin_crea_mapping(body: MappingBody, admin_user: dict = Depends(_verify_admin)):
+def admin_crea_mapping(body: MappingBody, admin_user: dict = Depends(_verify_admin)):
     sb = get_supabase_client()
     dup = sb.table("ricavi_ragione_sociale_map").select("id").eq("ragione_sociale", body.ragione_sociale.strip()).execute()
     if dup.data:
@@ -7481,7 +8308,7 @@ async def admin_crea_mapping(body: MappingBody, admin_user: dict = Depends(_veri
 
 
 @app.delete("/api/admin/ragione-sociale-map/{mapping_id}", tags=["Admin"])
-async def admin_elimina_mapping(mapping_id: str, admin_user: dict = Depends(_verify_admin)):
+def admin_elimina_mapping(mapping_id: str, admin_user: dict = Depends(_verify_admin)):
     sb = get_supabase_client()
     sb.table("ricavi_ragione_sociale_map").delete().eq("id", mapping_id).execute()
     logger.info("admin_elimina_mapping: %s | admin=%s", mapping_id, admin_user.get("email"))
@@ -7497,7 +8324,7 @@ class FlagsBody(BaseModel):
 
 
 @app.patch("/api/admin/clienti/{cliente_id}/flags", tags=["Admin"])
-async def admin_aggiorna_flags(
+def admin_aggiorna_flags(
     cliente_id: str,
     body: FlagsBody,
     admin_user: dict = Depends(_verify_admin),
@@ -7534,7 +8361,7 @@ async def admin_aggiorna_flags(
 
 
 @app.post("/api/admin/clienti/{cliente_id}/trial", tags=["Admin"])
-async def admin_attiva_trial(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
+def admin_attiva_trial(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
     """Attiva trial 7 giorni per il cliente."""
     from services.auth_service import attiva_trial
     ok, msg = attiva_trial(cliente_id, admin_user.get("email", ""), get_supabase_client())
@@ -7574,7 +8401,7 @@ class AggiornaIngredienteManualeBody(BaseModel):
 
 
 @app.get("/api/workspace/foodcost/ingredienti", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_ingredienti(authorization: Optional[str] = Header(None)):
+def ws_ingredienti(authorization: Optional[str] = Header(None)):
     """Lista unificata: articoli da fatture + ingredienti manuali + semilavorati."""
     from services.foodcost_service import get_articoli_da_fatture
 
@@ -7632,7 +8459,7 @@ async def ws_ingredienti(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/workspace/foodcost/ricette", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_ricette(authorization: Optional[str] = Header(None)):
+def ws_ricette(authorization: Optional[str] = Header(None)):
     """Lista ricette con KPI calcolati (margine, incidenza%) + alert prezzo ingredienti."""
     from services.foodcost_service import arricchisci_ricetta, get_articoli_da_fatture
 
@@ -7716,7 +8543,7 @@ async def ws_ricette(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/workspace/foodcost/ricette/{ricetta_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_ricetta_detail(ricetta_id: str, authorization: Optional[str] = Header(None)):
+def ws_ricetta_detail(ricetta_id: str, authorization: Optional[str] = Header(None)):
     """Ricetta completa con righe ingrediente."""
     from services.foodcost_service import arricchisci_ricetta
 
@@ -7747,7 +8574,7 @@ async def ws_ricetta_detail(ricetta_id: str, authorization: Optional[str] = Head
 
 
 @app.post("/api/workspace/foodcost/calcola", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_calcola(body: CalcolaRigheBody, authorization: Optional[str] = Header(None)):
+def ws_calcola(body: CalcolaRigheBody, authorization: Optional[str] = Header(None)):
     """Ricalcola foodcost righe senza salvare (usato dall'editor live)."""
     from services.foodcost_service import calcola_ricetta, calcola_costo_riga, IVA_RISTORAZIONE
 
@@ -7776,7 +8603,7 @@ async def ws_calcola(body: CalcolaRigheBody, authorization: Optional[str] = Head
 
 
 @app.post("/api/workspace/foodcost/ricette", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_crea_ricetta(body: NuovaRicettaBody, authorization: Optional[str] = Header(None)):
+def ws_crea_ricetta(body: NuovaRicettaBody, authorization: Optional[str] = Header(None)):
     """Crea nuova ricetta. Il foodcost_totale è calcolato dal server."""
     from services.foodcost_service import calcola_ricetta, CATEGORIE_RICETTE
 
@@ -7816,7 +8643,7 @@ async def ws_crea_ricetta(body: NuovaRicettaBody, authorization: Optional[str] =
 
 
 @app.patch("/api/workspace/foodcost/ricette/{ricetta_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_aggiorna_ricetta(ricetta_id: str, body: NuovaRicettaBody, authorization: Optional[str] = Header(None)):
+def ws_aggiorna_ricetta(ricetta_id: str, body: NuovaRicettaBody, authorization: Optional[str] = Header(None)):
     """Aggiorna ricetta esistente. Il foodcost_totale è ricalcolato dal server."""
     from services.foodcost_service import calcola_ricetta, CATEGORIE_RICETTE
 
@@ -7840,7 +8667,7 @@ async def ws_aggiorna_ricetta(ricetta_id: str, body: NuovaRicettaBody, authoriza
 
 
 @app.delete("/api/workspace/foodcost/ricette/{ricetta_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_elimina_ricetta(ricetta_id: str, authorization: Optional[str] = Header(None)):
+def ws_elimina_ricetta(ricetta_id: str, authorization: Optional[str] = Header(None)):
     """Elimina ricetta."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -7854,7 +8681,7 @@ class RiordinaBody(BaseModel):
 
 
 @app.post("/api/workspace/foodcost/ricette/riordina", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_riordina_ricette(body: RiordinaBody, authorization: Optional[str] = Header(None)):
+def ws_riordina_ricette(body: RiordinaBody, authorization: Optional[str] = Header(None)):
     """Aggiorna ordine_visualizzazione delle ricette secondo la lista di id ricevuta."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -7865,7 +8692,7 @@ async def ws_riordina_ricette(body: RiordinaBody, authorization: Optional[str] =
 
 
 @app.get("/api/workspace/foodcost/ingredienti-manuali", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_ingredienti_manuali(authorization: Optional[str] = Header(None)):
+def ws_ingredienti_manuali(authorization: Optional[str] = Header(None)):
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
@@ -7875,7 +8702,7 @@ async def ws_ingredienti_manuali(authorization: Optional[str] = Header(None)):
 
 
 @app.post("/api/workspace/foodcost/ingredienti-manuali", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_crea_ingrediente_manuale(body: NuovoIngredienteManualeBody, authorization: Optional[str] = Header(None)):
+def ws_crea_ingrediente_manuale(body: NuovoIngredienteManualeBody, authorization: Optional[str] = Header(None)):
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
@@ -7898,7 +8725,7 @@ async def ws_crea_ingrediente_manuale(body: NuovoIngredienteManualeBody, authori
 
 
 @app.patch("/api/workspace/foodcost/ingredienti-manuali/{ing_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_aggiorna_ingrediente_manuale(ing_id: str, body: AggiornaIngredienteManualeBody, authorization: Optional[str] = Header(None)):
+def ws_aggiorna_ingrediente_manuale(ing_id: str, body: AggiornaIngredienteManualeBody, authorization: Optional[str] = Header(None)):
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
@@ -7910,7 +8737,7 @@ async def ws_aggiorna_ingrediente_manuale(ing_id: str, body: AggiornaIngrediente
 
 
 @app.delete("/api/workspace/foodcost/ingredienti-manuali/{ing_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_elimina_ingrediente_manuale(ing_id: str, authorization: Optional[str] = Header(None)):
+def ws_elimina_ingrediente_manuale(ing_id: str, authorization: Optional[str] = Header(None)):
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
@@ -7945,7 +8772,7 @@ class CopiaSnapshotInventarioBody(BaseModel):
 
 
 @app.get("/api/workspace/inventario/articoli", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_inventario_articoli(authorization: Optional[str] = Header(None)):
+def ws_inventario_articoli(authorization: Optional[str] = Header(None)):
     """Articoli dalle fatture con categoria, per ricerca nell'inventario."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -7988,7 +8815,7 @@ async def ws_inventario_articoli(authorization: Optional[str] = Header(None)):
 
 
 @app.get("/api/workspace/inventario/snapshot-dates", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_inventario_snapshot_dates(authorization: Optional[str] = Header(None)):
+def ws_inventario_snapshot_dates(authorization: Optional[str] = Header(None)):
     """Lista delle date con snapshot inventario salvati."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8019,7 +8846,7 @@ async def ws_inventario_snapshot_dates(authorization: Optional[str] = Header(Non
 
 
 @app.post("/api/workspace/inventario/copia-snapshot", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_inventario_copia_snapshot(body: CopiaSnapshotInventarioBody, authorization: Optional[str] = Header(None)):
+def ws_inventario_copia_snapshot(body: CopiaSnapshotInventarioBody, authorization: Optional[str] = Header(None)):
     """Copia articoli da uno snapshot precedente alla data target (quantità = 0)."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8053,7 +8880,7 @@ async def ws_inventario_copia_snapshot(body: CopiaSnapshotInventarioBody, author
 
 
 @app.get("/api/workspace/inventario", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_inventario_list(
+def ws_inventario_list(
     data: Optional[str] = Query(None),
     authorization: Optional[str] = Header(None),
 ):
@@ -8103,7 +8930,7 @@ async def ws_inventario_list(
 
 
 @app.post("/api/workspace/inventario", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_inventario_crea(body: NuovaVoceInventarioBody, authorization: Optional[str] = Header(None)):
+def ws_inventario_crea(body: NuovaVoceInventarioBody, authorization: Optional[str] = Header(None)):
     """Aggiunge una voce all'inventario."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8126,7 +8953,7 @@ async def ws_inventario_crea(body: NuovaVoceInventarioBody, authorization: Optio
 
 
 @app.patch("/api/workspace/inventario/{voce_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_inventario_aggiorna(voce_id: str, body: AggiornaVoceInventarioBody, authorization: Optional[str] = Header(None)):
+def ws_inventario_aggiorna(voce_id: str, body: AggiornaVoceInventarioBody, authorization: Optional[str] = Header(None)):
     """Aggiorna una voce inventario."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8139,7 +8966,7 @@ async def ws_inventario_aggiorna(voce_id: str, body: AggiornaVoceInventarioBody,
 
 
 @app.delete("/api/workspace/inventario/{voce_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_inventario_elimina(voce_id: str, authorization: Optional[str] = Header(None)):
+def ws_inventario_elimina(voce_id: str, authorization: Optional[str] = Header(None)):
     """Elimina una voce inventario."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8149,7 +8976,7 @@ async def ws_inventario_elimina(voce_id: str, authorization: Optional[str] = Hea
 
 
 @app.delete("/api/workspace/inventario", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_inventario_elimina_data(data: str = Query(..., description="Data inventario YYYY-MM-DD"), authorization: Optional[str] = Header(None)):
+def ws_inventario_elimina_data(data: str = Query(..., description="Data inventario YYYY-MM-DD"), authorization: Optional[str] = Header(None)):
     """Elimina tutte le voci inventario per una data."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8180,7 +9007,7 @@ class AggiornaEventoDiarioBody(BaseModel):
 
 
 @app.get("/api/workspace/diario", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_diario_list(
+def ws_diario_list(
     mese: Optional[str] = Query(None, description="YYYY-MM — filtra per mese"),
     authorization: Optional[str] = Header(None),
 ):
@@ -8203,7 +9030,7 @@ async def ws_diario_list(
 
 
 @app.post("/api/workspace/diario", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_diario_crea(body: NuovoEventoDiarioBody, authorization: Optional[str] = Header(None)):
+def ws_diario_crea(body: NuovoEventoDiarioBody, authorization: Optional[str] = Header(None)):
     """Crea un nuovo evento nel diario."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8229,7 +9056,7 @@ async def ws_diario_crea(body: NuovoEventoDiarioBody, authorization: Optional[st
 
 
 @app.patch("/api/workspace/diario/{evento_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_diario_aggiorna(evento_id: str, body: AggiornaEventoDiarioBody, authorization: Optional[str] = Header(None)):
+def ws_diario_aggiorna(evento_id: str, body: AggiornaEventoDiarioBody, authorization: Optional[str] = Header(None)):
     """Aggiorna un evento diario."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8250,7 +9077,7 @@ async def ws_diario_aggiorna(evento_id: str, body: AggiornaEventoDiarioBody, aut
 
 
 @app.delete("/api/workspace/diario/{evento_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_diario_elimina(evento_id: str, authorization: Optional[str] = Header(None)):
+def ws_diario_elimina(evento_id: str, authorization: Optional[str] = Header(None)):
     """Elimina un evento diario."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8310,7 +9137,7 @@ def _ore_turno(t: dict) -> float:
 
 
 @app.get("/api/workspace/personale", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_personale_list(
+def ws_personale_list(
     da: Optional[str] = Query(None, description="Data inizio YYYY-MM-DD"),
     a: Optional[str] = Query(None, description="Data fine YYYY-MM-DD"),
     authorization: Optional[str] = Header(None),
@@ -8380,7 +9207,7 @@ async def ws_personale_list(
 
 
 @app.post("/api/workspace/personale", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] = Header(None)):
+def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] = Header(None)):
     """Aggiunge un turno (supporta secondo slot per spezzato)."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8411,7 +9238,7 @@ async def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] =
 
 
 @app.post("/api/workspace/personale/copia-settimana", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Optional[str] = Header(None)):
+def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Optional[str] = Header(None)):
     """Copia i turni della settimana precedente sulla settimana [da, a].
     Salta i giorni della settimana destinazione che hanno già turni (no duplicati)."""
     from datetime import datetime as _dt, timedelta as _td
@@ -8474,7 +9301,7 @@ async def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: 
 
 
 @app.patch("/api/workspace/personale/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization: Optional[str] = Header(None)):
+def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization: Optional[str] = Header(None)):
     """Aggiorna un turno (i campi ora_inizio2/ora_fine2 possono essere azzerati passando null)."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8497,7 +9324,7 @@ async def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authoriz
 
 
 @app.delete("/api/workspace/personale/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
-async def ws_personale_elimina(turno_id: str, authorization: Optional[str] = Header(None)):
+def ws_personale_elimina(turno_id: str, authorization: Optional[str] = Header(None)):
     """Elimina un turno."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -8514,10 +9341,17 @@ async def ws_personale_elimina(turno_id: str, authorization: Optional[str] = Hea
 if __name__ == "__main__":
     import uvicorn
 
+    _reload = os.getenv("WORKER_RELOAD", "false").lower() == "true"
+    # Multi-worker solo in produzione (Linux/Railway), impostando WORKER_WEB_CONCURRENCY.
+    # In locale Windows resta a 1 worker (il multi-worker su Windows e' problematico)
+    # e comunque non e' compatibile con reload.
+    _workers = int(os.getenv("WORKER_WEB_CONCURRENCY", "1"))
+
     uvicorn.run(
         "services.fastapi_worker:app",
         host="0.0.0.0",
         port=int(os.getenv("WORKER_PORT", "8000")),
-        reload=os.getenv("WORKER_RELOAD", "false").lower() == "true",
+        reload=_reload,
+        workers=_workers if (_workers > 1 and not _reload) else None,
         log_level="info",
     )

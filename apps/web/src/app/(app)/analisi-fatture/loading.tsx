@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { LogoSpinner } from "@/components/brand/logo-spinner";
 
 export default function Loading() {
   return (
@@ -19,8 +19,7 @@ export default function Loading() {
         ))}
       </div>
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
-        <span className="ml-2 text-sm text-muted-foreground">Caricamento dati...</span>
+        <LogoSpinner size={32} label="Caricamento dati..." />
       </div>
     </div>
   );

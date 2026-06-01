@@ -1,6 +1,6 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 31 maggio 2026 (rev. 20 — tie-in Personale↔Margini: widget costo personale con recupero dai turni; Personale potenziato rev.19)
+**Ultima revisione:** 1 giugno 2026 (rev. 21 — **Home AI completata**: briefing giornaliero + Salute della gestione + conto economico del mese (con Costo personale) + configuratore assistente + notifiche actionable; + debug profondo e ottimizzazioni)
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -241,7 +241,7 @@ Data;Categoria;Totale_Venduto
 ## 8. SEZIONI DETTAGLIATE
 
 ### 🏠 Home
-Briefing AI + KPI cards + notifiche actionable con filtri per categoria. Oggi: KPI cards e grafico spesa mensile funzionanti. **Manca**: briefing AI e notifiche actionable inline.
+Briefing AI + KPI cards + notifiche actionable con filtri per categoria. **Stato: ✅ completata (1/6)** — briefing giornaliero AI (saluto adattivo all'ora + narrativa con emoji, generata da `daily_briefing_service` con cache giornaliera su DB), card "Da fare oggi" actionable (Ignora / CTA alla pagina), widget "Vedi tutte le notifiche", indice **Salute della gestione** (4 voci a peso uguale: fatture caricate, fatturato, costo personale, righe classificate), **conto economico del mese** (Fatturato − Food cost − Costo personale − Spese = MOL, con confronto vs mese precedente), **configuratore assistente** (nome referente + interruttori avvisi). Sfondi sfumati adattivi (Salute verde/giallo/rosso, conto economico verde/rosso sul segno del MOL).
 
 ### 📄 Fatture
 Lista con filtri, ricerca, dettaglio peek a destra, azioni rapide (pagata, sposta, elimina). Categorizzazione automatica con review solo per bassa/media confidenza (routing a livelli sull'ingest — vedi §9). **Elimina fattura** disponibile direttamente nel peek anteprima (soft-delete → cestino). **Stato**: ✅ funzionale.
@@ -422,7 +422,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Fase 1b | — | ✅ | Design system: palette sky `#0ea5e9`, shadcn completo, sidebar collapsible, style-guide |
 | Fase 1.5 | — | ⏸️ rimandata | Studio competitor — non bloccante |
 | Fase 2 | 2-3 sett. | ✅ **chiusa (30/5)** | Auth login/logout/me ✅ · reset password ✅ · onboarding primo accesso ✅ |
-| Fase 3 | 2-3 sett. | 🟡 parziale | Dashboard ✅ · Notifiche ✅ · Upload ✅ — **manca**: Home con briefing AI + notifiche actionable |
+| Fase 3 | 2-3 sett. | ✅ **chiusa (1/6)** | Dashboard ✅ · Notifiche ✅ · Upload ✅ · **Home AI** ✅ (briefing + Salute + conto economico + configuratore + notifiche actionable). Resta solo **Notifiche v2** (raggruppamento/filtri count) come rifinitura |
 | Fase 4 | 1-2 sett. | ✅ **chiusa (30/5)** | Analisi Fatture ✅ · Analisi e Tag ✅ · Gestione Fatture (ex Scadenziario) ✅ · Cestino ✅ (ora widget integrato) · elimina da peek ✅ |
 | Fase 5 | 2-3 sett. | ✅ **chiusa (28/5) + hardening (29/5)** | Margini ✅ · Ricavi ✅ · Analisi Avanzate ✅ · Prezzi ✅ · DB migrated · contratto FE↔worker allineato |
 | Fase 6 | 2-3 sett. | ✅ **chiusa (31/5)** | **Strumenti** (ex Foodcost): pagina `/workspace` a 4 tab. Foodcost ✅ · Inventario ✅ · Diario ✅ · Personale ✅ |
@@ -448,7 +448,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Reset password | ✅ | Token pre-compilato da URL + nuova password + redirect login |
 | Onboarding primo accesso | ✅ | Stesso `/reset-password?token=XXX&onboarding=1` — testi personalizzati, admin Streamlit invia link Next.js |
 | Account / Impostazioni | ✅ | Dati ristorante, piano + contatore fatture/mese, cambio password |
-| Dashboard (Home) | 🟡 | KPI cards, grafico spesa, top fornitori/categorie. **Manca** briefing AI |
+| Dashboard (Home) | ✅ | Briefing AI giornaliero + card "Da fare oggi" actionable + widget "Vedi tutte le notifiche" + **Salute della gestione** + **conto economico del mese** (con Costo personale, confronto mese prec.) + configuratore assistente. KPI/grafici spesa restano disponibili |
 | Analisi Fatture | ✅ | KPI bar, filtri periodo, tab Articoli + Categorie + Fornitori, edit categoria batch, upload modal |
 | Ricavi e Margini | ✅ | Tab Marginalità + Analisi Avanzate (vedi changelog §14) |
 | Prezzi | ✅ | Variazioni, Sconti/Omaggi, Note Credito, soglia alert |
@@ -649,6 +649,45 @@ Avvio Fase 6 ridefinita: il "Foodcost" diventa **"Strumenti"**, una pagina-conte
 
 *Implementato (shell, frontend reversibile):* `(app)/workspace/page.tsx` + `tabs-switcher.tsx` (pattern URL `?tab=` identico a Prezzi), 4 placeholder. Sidebar: voce "Strumenti"/`/workspace`. Rimossa vecchia route `(app)/foodcost/page.tsx`. `proxy.ts`: `/foodcost`→`/workspace`. Admin flag editor: `foodcost`→`workspace` label "Strumenti" (+ fix label "Scadenziario"→"Gestione Fatture"). `tsc --noEmit` pulito.
 
+**Home AI — briefing + Salute + conto economico + configuratore (1 giugno 2026, rev. 21)**
+
+Costruzione completa della Home AI (Fase 3, ultimo grande pezzo) + sessione di debug profondo e ottimizzazioni. La dashboard non è più "solo KPI + grafici": è la voce quotidiana dell'assistente.
+
+*Backend — nuovi endpoint worker (`fastapi_worker.py`), OpenAPI 113 → 118:*
+- `GET /api/home/briefing` — saluto adattivo all'ora (fuso Europe/Rome, solo `nome_referente`, mai la ragione sociale) + narrativa AI + azioni "da fare oggi". Cache giornaliera su `daily_briefing_state` con `notif_fingerprint`: l'AI (gpt-4o-mini) viene chiamata ~1 volta al giorno per cliente, e si rigenera solo se cambiano le notifiche o le preferenze.
+- `GET /api/home/salute` — indice di completezza dati: 4 voci a peso uguale (fatture caricate negli ultimi 30gg per `created_at`, fatturato e costo personale dell'**ultimo mese completo** da `margini_mensili`, % righe classificate). Colore verde/giallo/rosso su soglie 80/50.
+- `GET /api/home/kpi` — **conto economico** dell'ultimo mese completo: Fatturato, Food cost %, **Costo personale**, Spese generali, **MOL**, con confronto vs mese precedente (delta %/pp). Fonte unica = `margini_mensili` + costi automatici dalle fatture (nessun cliente usa i ricavi giornalieri). Cache in-memoria 120s.
+- `GET /api/home/alert-prezzi` — motore live alert prezzi per impatto €/mese (`price_impact_service.py`, nuovo): solo Food & Beverage, soglia automatica, prodotti + custom tag.
+- `GET/POST /api/home/config` — configuratore assistente (nome referente + topic avvisi spenti), persistito in `assistant_preferences`. Topic "upload falliti" non disattivabili (guasti tecnici).
+- `GET /api/notifiche` + `POST /api/notifiche/{id}/dismiss` — inbox notifiche attive (non scadute, non archiviate) + archiviazione soft (`dismissed_at`).
+
+*Servizi:*
+- `daily_briefing_service.py` — pipeline deterministica (dedup per topic, filtro "azionabile E utile", gerarchia tematica, max 5 card) → bullet con numeri già calcolati → narrativa AI anonimizzata (nomi prodotti → segnaposto, mai inviati a OpenAI) con fallback template. Regola d'oro: **l'AI non calcola numeri**.
+- `price_impact_service.py` (nuovo) — alert prezzi ordinati per impatto economico.
+- `notification_service.py` — **finestra scaduto a 90 giorni** (le fatture scadute storiche non gonfiano più il totale "scaduto").
+
+*DB (nuove migration):*
+- `20260601100000_add_nome_referente_users.sql` — colonna `users.nome_referente` (saluto umano).
+- `20260601120000_assistant_preferences.sql` — tabella `assistant_preferences` (nome + `topics_disabled` per ristorante). Più `daily_briefing_state` (cache briefing) già esistente.
+
+*Frontend (`apps/web/src/app/(app)/dashboard/`):*
+- `home-briefing.tsx` — hero con saluto + narrativa (effetto typewriter al primo load del giorno) + card "Da fare oggi" (Ignora/CTA) + widget notifiche.
+- `salute-card.tsx` — anello % + 4 voci con CTA, sfondo sfumato adattivo al colore.
+- `kpi-block.tsx` — conto economico: **MOL gigante centrale** (verde se positivo, rosso se negativo) + breakdown a pill colorate, frecce di confronto vs mese precedente.
+- `notifiche-widget.tsx` — Dialog "Vedi tutte le notifiche" (lazy-load, pulizia markdown, archivia).
+- `config-assistente.tsx` — Dialog nome + interruttori avvisi.
+- `lib/home.ts` — tipi + fetcher (briefing/salute/kpi/config). Contatore notifiche unico = `briefing.azioni.length` (niente più numeri discordanti tra header/sidebar/Home).
+
+*Debug + ottimizzazioni di questa sessione:*
+- 🔴 **Conto economico che non quadrava** — la card mostrava Fatturato − Food − Spese = MOL ma **ometteva il Costo personale** (incluso nel MOL): i numeri non tornavano mai. Aggiunta la riga **Costo personale** (`costo_dipendenti` + `costo_personale_extra` da `margini_mensili`) in backend (`_kpi_periodo`, `HomeKpiResponse` + delta) e frontend → ora Fatturato − Food − **Personale** − Spese = MOL torna esatto.
+- 🟠 **Briefing chiamato 2 volte per load** (layout + page) → `fetchBriefing` avvolto in `cache()` di React: una sola chiamata al worker per render.
+- 🟡 **Campanella header "morta"** (mostrava il badge ma non cliccabile) → resa `<Link>` alla Home.
+- **Sfondi sfumati adattivi** su Salute (verde/giallo/rosso) e conto economico (verde/rosso sul segno del MOL) con orbs sfocati, coerenti con l'hero del briefing.
+- **Pulizia processi worker locali**: trovati 4 uvicorn duplicati (porte 8000/19873, residui di `--reload`) che causavano il bug "worker vecchio serve codice stale"; consolidato su **un worker singolo senza `--reload`** (porta 8003, `.env.local` allineato).
+- **Test mirati** (briefing/margini/notifiche): 184 passati, 1 fallito **pre-esistente** (`test_salva_margini_anno`, mock KeyError `'mese'`, non legato a queste modifiche). OpenAPI rigenerato.
+
+*Aperto (proposte, non bloccanti):* streaming/Suspense della Home (mostrare subito il saluto, caricare Salute/KPI dopo); coerenza etichetta "Ultimi 30 giorni" della Salute con le 2 voci che parlano dell'ultimo mese completo; allineare il conteggio del bottone notifiche (azioni "da fare") con la lista completa del popup.
+
 **Margini — widget costo personale con recupero dai turni (31 maggio 2026, rev. 20)**
 
 Chiuso il tie-in Personale↔Margini lasciato aperto in rev.19 (commit `3a150a9`). Le due righe editabili "Costo Personale Lordo" (`costo_dipendenti`) e "Costo Personale Extra" (`costo_personale_extra`) di Marginalità — già persistite per mese in `margini_mensili` e già usate per `personale_perc` — ora si compilano anche **recuperando il dato dal tab Personale**.
@@ -753,12 +792,12 @@ Nota routing: `articoli`, `snapshot-dates`, `copia-snapshot` definiti **prima** 
 8. ~~**Personale** (Fase 6)~~ ✅ **Completato** (31/5)
 9. ~~**Personale: costo lavoro + ore extra + copia settimana**~~ ✅ **Completato** (31/5, rev.19)
 10. ~~**Personale ↔ Margini (costo personale)**~~ ✅ **Completato** (31/5, rev.20) — widget recupero dai turni / manuale nelle celle Margini.
-11. **➡️ Home AI** — briefing giornaliero + notifiche actionable inline (Fase 3). Backend `daily_briefing_service` esiste già, va esposto in Next.js. La dashboard oggi ha solo KPI + grafici, zero briefing.
-12. **Assistenza/Marketplace** (Fase 8) — zero codice.
-13. **Notifiche v2** — raggruppamento + azioni inline + filtri con count (4 miglioramenti, Fase 3).
+11. ~~**Home AI** — briefing giornaliero + notifiche actionable inline (Fase 3)~~ ✅ **Completato** (1/6, rev.21) — briefing + Salute + conto economico (con Costo personale) + configuratore assistente + widget notifiche. Vedi changelog.
+12. **➡️ Notifiche v2** — raggruppamento + azioni inline + filtri con count (4 miglioramenti, Fase 3). Prossima rifinitura.
+13. **Assistenza/Marketplace** (Fase 8) — zero codice.
 14. **Test, performance, switch dominio** (Fasi 9-11).
 
-> Stato sintetico rev. 20: Fase 6 chiusa e **hardened+potenziata**. Personale con costo lavoro + ore extra + copia settimana (rev.19); **tie-in Personale↔Margini chiuso** (rev.20: widget costo personale con recupero dai turni / manuale). OpenAPI 113 endpoint. **Prossimo grande step: Home AI** (briefing giornaliero + notifiche actionable).
+> Stato sintetico rev. 21: **Home AI completata** (1/6) — briefing giornaliero AI + Salute della gestione + conto economico del mese (con Costo personale, confronto mese precedente) + configuratore assistente + notifiche actionable. **Fase 3 chiusa** (resta solo Notifiche v2 come rifinitura). OpenAPI 118 endpoint. **Prossimi step: Notifiche v2** (raggruppamento + filtri count) e **Assistenza/Marketplace** (Fase 8, zero codice).
 
 ---
 

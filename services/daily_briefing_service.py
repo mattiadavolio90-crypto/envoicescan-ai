@@ -28,29 +28,42 @@ logger = get_logger('daily_briefing')
 # COSTANTI
 # ============================================================
 
-_QUOTA_L1 = 3   # slot riservati a severity=error
-_QUOTA_L2 = 2   # slot riservati a severity=warning/info
+# Numero massimo di card mostrate in "Da fare oggi". Oltre questo numero,
+# il resto resta nella pagina Notifiche (link "Vedi tutte"). Decisione Mattia.
+_MAX_CARD = 5
 
-# Topic riconosciuti → livello slot
-_TOPIC_SLOT: Dict[str, str] = {
-    'scadenza_superata':        'L1',
-    'upload_failed':            'L1',
-    'scadenza_imminente':       'L2',
-    'fatturato_mancante':       'L2',
-    'costo_personale_mancante': 'L2',
-    'price_alert':              'L2',
-    'uncategorized_rows':       'L2',
+# Topic che il cliente NON puo' spegnere dal configuratore: sono guasti tecnici
+# (perdita dati) e vanno sempre mostrati. Decisione Mattia (Step 6).
+_TOPIC_NON_DISATTIVABILI = frozenset({'upload_failed', 'upload_ricavi_failed'})
+
+# Gerarchia TEMATICA delle card (decisa da Mattia, doc Punto 1/2).
+# Regola d'oro: prima il TEMA, poi la gravita' DENTRO lo stesso tema.
+# "Un upload mancato e' sempre piu' importante di un rincaro del 1000%."
+# (piu' basso = prima). I numeri lasciano spazio per i topic futuri:
+#   upload_ricavi_failed (Step 5) ~ 15, tra upload fatture e prezzi.
+_TOPIC_PRIORITY: Dict[str, int] = {
+    'upload_failed':            10,   # 1. Upload fatture fallito
+    'upload_ricavi_failed':     15,   # 2. Upload ricavi fallito (solo se mappato)
+    'price_alert':              20,   # 3. Alert prezzi
+    'uncategorized_rows':       30,   # 4. Righe da classificare
+    'fatturato_mancante':       40,   # 5. Fatturato mancante
+    'costo_personale_mancante': 50,   # 6. Costo personale mancante
+    'scadenza_superata':        60,   # 7. Scadenze (superate prima delle imminenti)
+    'scadenza_imminente':       61,   #    e imminenti subito dopo, stesso tema
 }
 
-# Ordine di priorità all'interno dello stesso slot (più basso = prima)
-_TOPIC_PRIORITY: Dict[str, int] = {
-    'scadenza_superata':        10,
-    'upload_failed':            20,
-    'scadenza_imminente':       30,
-    'fatturato_mancante':       40,
-    'costo_personale_mancante': 50,
-    'price_alert':              60,
-    'uncategorized_rows':       70,
+# Azione primaria suggerita per topic: (label_cta, pagina_destinazione).
+# La pagina e' un fallback usato quando la notifica non porta un action_page
+# proprio. La Home renderizza il bottone come link generico alla pagina.
+_TOPIC_ACTION: Dict[str, tuple] = {
+    'scadenza_superata':        ('Controlla scadenze',   '/scadenziario'),
+    'upload_failed':            ('Riprova upload',        '/analisi-fatture'),
+    'upload_ricavi_failed':     ('Controlla ricavi',      '/margini'),
+    'scadenza_imminente':       ('Vedi scadenze',         '/scadenziario'),
+    'fatturato_mancante':       ('Inserisci fatturato',   '/margini'),
+    'costo_personale_mancante': ('Inserisci costo',       '/margini'),
+    'price_alert':              ('Controlla prezzi',      '/prezzi'),
+    'uncategorized_rows':       ('Classifica righe',      '/analisi-e-tag'),
 }
 
 
@@ -100,6 +113,40 @@ def notifications_fingerprint(notifications: List[Dict[str, Any]]) -> str:
     return hashlib.sha1(raw.encode('utf-8')).hexdigest()
 
 
+def _is_actionable(notif: Dict[str, Any]) -> bool:
+    """Filtro 'azionabile E utile' (decisione Mattia, doc Punto 2 §3-bis).
+
+    Una notifica diventa card SOLO se il cliente puo' fare qualcosa di concreto
+    E il dato e' davvero rilevante. Il rumore (count 0, payload vuoto, upload
+    manuale) resta nella pagina Notifiche, fuori dalla Home. Zero rumore.
+    """
+    topic = str(notif.get('topic_key') or '')
+    payload = notif.get('payload') or {}
+
+    # Upload fatture: card SOLO se automatico (Invoicetronic). Il caricamento
+    # manuale lo vede il cliente mentre carica -> mai card.
+    if topic == 'upload_failed':
+        source = str(notif.get('source_type') or payload.get('source') or '').lower()
+        if source and source in ('manuale', 'manual', 'user'):
+            return False
+        return bool(payload.get('count') or _parse_count_from_title(str(notif.get('title') or '')))
+
+    # Topic basati su un conteggio: card solo se il conteggio e' > 0.
+    if topic in ('scadenza_superata', 'scadenza_imminente', 'price_alert', 'uncategorized_rows'):
+        count = (payload.get('count')
+                 or payload.get('uncategorized_rows')
+                 or _parse_count_from_title(str(notif.get('title') or '')))
+        return bool(count and int(count) > 0)
+
+    # Topic generati dal backend solo quando il problema esiste davvero:
+    # azionabili per definizione (fatturato/personale mancante, ricavi auto KO).
+    if topic in ('fatturato_mancante', 'costo_personale_mancante', 'upload_ricavi_failed'):
+        return True
+
+    # Topic sconosciuti/tecnici: fuori dalla Home (solo pagina Notifiche).
+    return False
+
+
 def _bullet_for(notif: Dict[str, Any]) -> str:
     """Genera il testo del bullet per una notifica usando payload quando disponibile."""
     topic = str(notif.get('topic_key') or '')
@@ -120,6 +167,15 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
             parola = 'fattura non \u00e8 stata caricata' if count == 1 else 'fatture non sono state caricate'
             return f"\u274c {count} {parola} \u2014 riprova o contatta il supporto."
         return f"\u274c {title}"
+
+    if topic == 'upload_ricavi_failed':
+        giorni = payload.get('giorni_senza')
+        if giorni:
+            return (
+                f"\U0001F4B6 I ricavi automatici non arrivano da {giorni} giorni "
+                f"\u2014 controlla l'invio dal gestionale."
+            )
+        return f"\U0001F4B6 I ricavi automatici non stanno arrivando \u2014 controlla l'invio dal gestionale."
 
     if topic == 'scadenza_imminente':
         count = payload.get('count')
@@ -147,11 +203,14 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
         count = payload.get('count')
         top_product = payload.get('top_product')
         top_pct = payload.get('top_increase_pct')
+        impatto = payload.get('impatto_mese')
         if count:
             prodotti = 'prodotto' if count == 1 else 'prodotti'
             base = f"\U0001F4C8 Alert prezzi su {count} {prodotti}"
             if top_product and top_pct is not None:
-                base += f" \u2014 es. {top_product} +{top_pct:.1f}%"
+                base += f" \u2014 {top_product} +{top_pct:.1f}%"
+                if impatto:
+                    base += f" (\u2248\u20ac{int(impatto)}/mese)"
             return base + "."
         return f"\U0001F4C8 {title}"
 
@@ -164,6 +223,36 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
 
     # Fallback generico: restituisce il titolo della notifica
     return title
+
+
+def _action_for(notif: Dict[str, Any]) -> Dict[str, Any]:
+    """Genera l'azione strutturata che la Home offre per una notifica.
+
+    Il frontend usa questo dict per rendere la card azionabile:
+    - id            : id notifica (per il dismiss "Ignora")
+    - topic_key     : topic, per icona/colore lato UI
+    - severity      : error|warning|info|success
+    - testo         : bullet gia' composto (riusa _bullet_for)
+    - cta_label     : etichetta del bottone primario
+    - cta_page      : pagina di destinazione (action_page della notifica se
+                      presente, altrimenti fallback per topic)
+    """
+    topic = str(notif.get('topic_key') or '')
+    cta_label, fallback_page = _TOPIC_ACTION.get(topic, ('Apri', '/dashboard'))
+    # action_page della notifica usato come override SOLO se gia' path Next
+    # (inizia con "/"): i path legacy Streamlit ("pages/...", "Dashboard")
+    # romperebbero la nav, quindi si ricade sul fallback per topic.
+    raw_page = str(notif.get('action_page') or '')
+    cta_page = raw_page if raw_page.startswith('/') else fallback_page
+
+    return {
+        'id':        str(notif.get('id') or ''),
+        'topic_key': topic,
+        'severity':  str(notif.get('severity') or 'info'),
+        'testo':     _bullet_for(notif),
+        'cta_label': cta_label,
+        'cta_page':  cta_page,
+    }
 
 
 def _parse_count_from_title(title: str) -> Optional[int]:
@@ -222,6 +311,18 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
             )
         return f"{title}."
 
+    if topic == 'upload_ricavi_failed':
+        giorni = payload.get('giorni_senza')
+        if giorni:
+            return (
+                f"I ricavi automatici dal gestionale non arrivano da {giorni} giorni: "
+                f"controlla l'invio, senza fatturato i margini non sono aggiornati."
+            )
+        return (
+            "I ricavi automatici dal gestionale non stanno arrivando: controlla l'invio, "
+            "senza fatturato i margini non sono aggiornati."
+        )
+
     if topic == 'scadenza_imminente':
         count = payload.get('count') or _parse_count_from_title(title)
         totale = payload.get('totale')
@@ -267,14 +368,18 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
             top_product = legacy_products[0]
             if not count:
                 count = len(legacy_products)
+        impatto = payload.get('impatto_mese')
         if count:
-            prodotti = 'prodotto ha avuto una variazione di prezzo' if count == 1 else 'prodotti hanno avuto variazioni di prezzo'
-            base = f"Ho rilevato che {count} {prodotti} significativa"
+            prodotti = 'prodotto è aumentato di prezzo' if count == 1 else 'prodotti sono aumentati di prezzo'
+            base = f"Ho notato che {count} {prodotti} in modo che pesa davvero"
             if top_product and top_pct is not None:
-                base += f" (es. {top_product} +{top_pct:.1f}%)"
+                base += f" (soprattutto {top_product}, +{top_pct:.1f}%"
+                if impatto:
+                    base += f", circa €{int(impatto)} in più al mese"
+                base += ")"
             elif top_product:
-                base += f" (ad esempio {top_product})"
-            return base + ": vale la pena controllare se impattano i tuoi margini."
+                base += f" (soprattutto {top_product})"
+            return base + ": vale la pena controllare se puoi rinegoziare o cambiare fornitore."
         return f"{title}."
 
     if topic == 'uncategorized_rows':
@@ -297,7 +402,7 @@ def _compose_narrative(selected: List[Dict[str, Any]], severity_max: str) -> str
     quando si riferiscono allo stesso mese/anno.
     """
     if not selected:
-        return "Ciao!\nTutto in ordine per oggi. Buon lavoro!"
+        return "Ciao! ✅\nTutto in ordine per oggi, niente da sistemare. Buon lavoro! 👍"
 
     sentences: List[str] = []
     skip_topics: set = set()
@@ -326,23 +431,133 @@ def _compose_narrative(selected: List[Dict[str, Any]], severity_max: str) -> str
         sentences.append(_narrative_phrase_for(n))
 
     body = "\n".join(sentences)
-    return f"Ciao! Vediamo il lavoro da fare oggi:\n{body}\nBuon lavoro"
+    return f"Ciao! 👋 Vediamo cosa c'è da sistemare oggi:\n{body}\nForza, ce la fai! 🔥"
 
+
+# ============================================================
+# NARRAZIONE AI (strato finale, anonimizzato, con fallback)
+# ============================================================
+
+# Regola d'oro: l'AI NON calcola numeri. Le riceve gia' calcolate nei bullet
+# deterministici e li riscrive solo in tono colloquiale. I nomi propri
+# (prodotti/fornitori) vengono anonimizzati prima della chiamata e ripristinati
+# nella risposta, per non inviarli mai a OpenAI.
+
+_NARRATION_SYSTEM_PROMPT = (
+    "Sei l'assistente AI di un gestionale per ristoratori: sveglio, positivo e "
+    "motivante, come un bravo consulente che ti da' una spinta. Ricevi un elenco "
+    "di cose da fare oggi, gia' scritte con numeri e dettagli corretti. "
+    "Riscrivile in un briefing colloquiale, caldo e diretto, in italiano, dando "
+    "del tu. REGOLE FERREE: "
+    "1) Non inventare, modificare o aggiungere NESSUN numero, importo, "
+    "percentuale, data o nome: usa solo quelli che ti vengono dati. "
+    "2) Non aggiungere voci non presenti nell'elenco. "
+    "3) Massimo 4 frasi, scorrevoli e con un po' di energia (non burocratiche). "
+    "Apri in modo amichevole e chiudi con un incoraggiamento breve. "
+    "4) Usa 2-4 emoji pertinenti per dare ritmo (es. 📊 💰 ⏰ ✅ 🔥 👍), "
+    "ma senza esagerare e mai dentro i numeri. "
+    "5) Mantieni intatti i segnaposto tipo <<P1>> o <<F1>> se presenti. "
+    "Restituisci solo il testo del briefing, senza elenchi puntati."
+)
+
+
+def _anonymize_bullets(bullets: List[str]) -> tuple:
+    """Sostituisce nomi propri (prodotti/fornitori) con segnaposto.
+
+    Heuristica conservativa: anonimizza i nomi prodotto presenti nei bullet
+    di price_alert (gli unici che contengono nomi propri nel set attuale),
+    riconoscendoli dal pattern 'es. <Nome> +XX%'. Restituisce
+    (bullets_anonimi, mappa_ripristino).
+    """
+    mapping: Dict[str, str] = {}
+    out: List[str] = []
+    counter = 0
+    for b in bullets:
+        m = _re.search(r'es\.\s+(.+?)\s+\+\d', b)
+        if m:
+            nome = m.group(1).strip()
+            counter += 1
+            ph = f"<<P{counter}>>"
+            mapping[ph] = nome
+            b = b.replace(nome, ph)
+        out.append(b)
+    return out, mapping
+
+
+def _deanonymize(text: str, mapping: Dict[str, str]) -> str:
+    for ph, nome in mapping.items():
+        text = text.replace(ph, nome)
+    return text
+
+
+def _narrate_with_ai(bullets: List[str], fallback: str) -> str:
+    """Genera la narrativa con GPT a partire dai bullet deterministici.
+
+    Anonimizza, chiama gpt-4o-mini, ripristina i nomi, traccia i costi.
+    Qualsiasi errore -> ritorna il fallback (template _compose_narrative).
+    """
+    if not bullets:
+        return fallback
+    try:
+        from services.ai_service import _get_openai_client, _resolve_ristorante_id
+        anon, mapping = _anonymize_bullets(bullets)
+        user_msg = "Cose da fare oggi:\n" + "\n".join(f"- {b}" for b in anon)
+
+        client = _get_openai_client()
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _NARRATION_SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
+            ],
+            max_tokens=220,
+            temperature=0.5,
+        )
+        text = (response.choices[0].message.content or "").strip()
+        if not text:
+            return fallback
+
+        try:
+            usage = response.usage
+            if usage:
+                from services.ai_cost_service import track_ai_usage
+                track_ai_usage(
+                    operation_type='daily_briefing',
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                    ristorante_id=_resolve_ristorante_id(),
+                    item_count=len(bullets),
+                )
+        except Exception as exc:
+            logger.warning("tracking costo briefing AI fallito: %s", exc)
+
+        return _deanonymize(text, mapping)
+    except Exception as exc:
+        logger.warning("narrazione AI fallita, uso fallback template: %s", exc)
+        return fallback
 
 
 # ============================================================
 # LOGICA SNAPSHOT (pura, testabile)
 # ============================================================
 
-def _build_snapshot(notifications: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Costruisce lo snapshot giornaliero in modo deterministico (no AI).
+def _build_snapshot(
+    notifications: List[Dict[str, Any]],
+    use_ai: bool = False,
+    topics_disabled: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Costruisce lo snapshot giornaliero.
 
     - Deduplica per topic_key (tiene la prima occorrenza, le notifiche arrivano
       ordinate per source_event_at DESC da get_inbox_notifications)
-    - Separa in L1 (error) e L2 (warning/info)
-    - Ordina per priorita\u2019 interna
-    - Applica quota: max _QUOTA_L1 L1 + max _QUOTA_L2 L2
-    - Nessuna promozione di slot
+    - Filtra: tiene solo le notifiche azionabili E utili (_is_actionable)
+    - Ordina per GERARCHIA TEMATICA (_TOPIC_PRIORITY): prima il tema, poi la
+      gravita' dentro lo stesso tema. Niente piu' split rossi/gialli.
+    - Taglia a _MAX_CARD card; il resto resta nella pagina Notifiche.
+
+    La pipeline e' deterministica fino ai bullet/azioni. Se use_ai=True la
+    narrativa finale viene riscritta da GPT (anonimizzato, con fallback al
+    template); con use_ai=False resta il template _compose_narrative.
     """
     seen_topics: Dict[str, Dict[str, Any]] = {}
     for n in notifications:
@@ -350,27 +565,56 @@ def _build_snapshot(notifications: List[Dict[str, Any]]) -> Dict[str, Any]:
         if t and t not in seen_topics:
             seen_topics[t] = n
 
-    known = [n for n in seen_topics.values() if n.get('topic_key') in _TOPIC_SLOT]
+    # Topic spenti dal configuratore (Step 6). I topic non disattivabili
+    # (upload falliti) restano sempre attivi anche se finiti in lista per errore.
+    spenti = {
+        t for t in (topics_disabled or [])
+        if t not in _TOPIC_NON_DISATTIVABILI
+    }
 
-    l1 = sorted(
-        [n for n in known if _TOPIC_SLOT[n['topic_key']] == 'L1'],
-        key=lambda n: _TOPIC_PRIORITY.get(str(n.get('topic_key', '')), 99),
-    )
-    l2 = sorted(
-        [n for n in known if _TOPIC_SLOT[n['topic_key']] == 'L2'],
-        key=lambda n: _TOPIC_PRIORITY.get(str(n.get('topic_key', '')), 99),
+    # Solo topic noti (presenti nella gerarchia), non spenti, E azionabili/utili.
+    candidati = [
+        n for n in seen_topics.values()
+        if str(n.get('topic_key') or '') in _TOPIC_PRIORITY
+        and str(n.get('topic_key') or '') not in spenti
+        and _is_actionable(n)
+    ]
+
+    # Ordinamento per gerarchia tematica pura, poi gravita' come tie-break.
+    _SEV_RANK = {'error': 0, 'warning': 1, 'info': 2, 'success': 3}
+    ordinati = sorted(
+        candidati,
+        key=lambda n: (
+            _TOPIC_PRIORITY.get(str(n.get('topic_key', '')), 99),
+            _SEV_RANK.get(str(n.get('severity') or 'info'), 2),
+        ),
     )
 
-    selected = l1[:_QUOTA_L1] + l2[:_QUOTA_L2]
+    selected = ordinati[:_MAX_CARD]
     bullets = [_bullet_for(n) for n in selected]
+    azioni = [_action_for(n) for n in selected]
     sev_max = _severity_max(notifications)
+
+    template_narrative = _compose_narrative(selected, sev_max)
+    if use_ai and selected:
+        narrative = _narrate_with_ai(bullets, template_narrative)
+    else:
+        narrative = template_narrative
+
+    # Il fingerprint include i topic spenti: cambiando le preferenze il briefing
+    # cached si invalida anche se le notifiche sono identiche.
+    fingerprint = notifications_fingerprint(notifications)
+    if topics_disabled:
+        fingerprint += "|" + ",".join(sorted(str(t) for t in topics_disabled))
 
     return {
         'bullets': bullets,
-        'narrative': _compose_narrative(selected, sev_max),
+        'azioni': azioni,
+        'tutto_ok': len(selected) == 0,
+        'narrative': narrative,
         'generated_at': datetime.now(timezone.utc).isoformat(),
         'notif_count': len(notifications),
-        'notif_fingerprint': notifications_fingerprint(notifications),
+        'notif_fingerprint': fingerprint,
         'severity_max': sev_max,
     }
 
@@ -417,6 +661,7 @@ def generate_and_save_briefing(
     ristorante_id: str,
     notifications: List[Dict[str, Any]],
     supabase_client=None,
+    topics_disabled: Optional[List[str]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Genera snapshot deterministico dalle notifiche e lo salva su DB.
 
@@ -427,7 +672,7 @@ def generate_and_save_briefing(
         return None
     try:
         today = _today_rome()
-        snapshot = _build_snapshot(notifications)
+        snapshot = _build_snapshot(notifications, use_ai=True, topics_disabled=topics_disabled)
         snapshot['generated_for_date'] = today.isoformat()
 
         record = {

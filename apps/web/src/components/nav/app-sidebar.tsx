@@ -2,7 +2,6 @@
 
 import {
   BarChart3,
-  Bell,
   CalendarDays,
   ChevronsUpDown,
   FileText,
@@ -31,12 +30,12 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Logo, Wordmark } from "@/components/brand/logo";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -51,7 +50,6 @@ const navMain = [
 ];
 
 const navSecondary = [
-  { title: "Notifiche", url: "/notifiche", icon: Bell },
   { title: "Impostazioni", url: "/impostazioni", icon: Settings },
 ];
 
@@ -59,7 +57,6 @@ type AppSidebarProps = {
   userEmail?: string;
   userInitials?: string;
   ristoranteNome?: string;
-  unreadNotifiche?: number;
   isAdmin?: boolean;
 };
 
@@ -67,7 +64,6 @@ export function AppSidebar({
   userEmail = "utente@oneflux.it",
   userInitials = "U",
   ristoranteNome = "Ristorante",
-  unreadNotifiche = 0,
   isAdmin = false,
 }: AppSidebarProps) {
   const pathname = usePathname();
@@ -90,11 +86,9 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" render={<Link href="/dashboard" />}>
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-sm">
-                O
-              </div>
+              <Logo variant="icon" size={32} className="shrink-0" />
               <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-semibold text-sm">ONEFLUX</span>
+                <Wordmark className="text-sm tracking-[0.12em]" />
                 <span className="text-xs text-muted-foreground">Controllo gestione</span>
               </div>
             </SidebarMenuButton>
@@ -147,11 +141,6 @@ export function AppSidebar({
                 >
                   <item.icon />
                   <span>{item.title}</span>
-                  {item.url === "/notifiche" && unreadNotifiche > 0 && (
-                    <span className="ml-auto flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px] font-semibold">
-                      {unreadNotifiche > 9 ? "9+" : unreadNotifiche}
-                    </span>
-                  )}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}

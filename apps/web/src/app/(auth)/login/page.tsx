@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Logo, Wordmark } from "@/components/brand/logo";
+import { LogoSpinner } from "@/components/brand/logo-spinner";
 import { toast } from "sonner";
 
 function LoginForm() {
@@ -53,11 +55,9 @@ function LoginForm() {
     <Card className="w-full max-w-md">
       <CardHeader className="space-y-3">
         <div className="flex items-center gap-3">
-          <div className="flex aspect-square size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold">
-            O
-          </div>
+          <Logo variant="icon" size={40} glow className="shrink-0" />
           <div>
-            <CardTitle>ONEFLUX</CardTitle>
+            <CardTitle><Wordmark glow /></CardTitle>
             <CardDescription>Accedi al tuo account</CardDescription>
           </div>
         </div>
@@ -99,7 +99,14 @@ function LoginForm() {
           )}
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Accesso in corso..." : "Accedi"}
+            {loading ? (
+              <span className="inline-flex items-center gap-2">
+                <LogoSpinner size={18} />
+                Accesso in corso...
+              </span>
+            ) : (
+              "Accedi"
+            )}
           </Button>
 
           <p className="text-xs text-center text-muted-foreground pt-2">

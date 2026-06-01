@@ -16,8 +16,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from services.daily_briefing_service import (
+    _action_for,
+    _anonymize_bullets,
     _build_snapshot,
     _bullet_for,
+    _deanonymize,
+    _narrate_with_ai,
     _severity_max,
     _today_rome,
     generate_and_save_briefing,
@@ -181,32 +185,29 @@ class TestBuildSnapshot:
         assert snap["severity_max"] == "info"
         assert "generated_at" in snap
 
-    def test_quota_l1_capped_at_3(self):
-        # 4 L1 topics: solo 3 devono finire nei bullet (quota L1=3)
+    def test_card_non_supera_il_massimo(self):
+        # Mai piu' di _MAX_CARD card, anche con tanti topic azionabili.
         notifs = [
             _notif("scadenza_superata", "error", {"count": 1, "totale": 100}),
             _notif("upload_failed",     "error", {"count": 1}),
-            # scadenza_superata e upload_failed esauriscono i topic L1 noti (solo 2)
-            # Aggiungiamo topic sconosciuti L1 simulando entita' future
         ]
         snap = _build_snapshot(notifs)
-        assert len(snap["bullets"]) <= 3 + 2  # max quota totale
+        assert len(snap["bullets"]) <= 5
 
-    def test_quota_l2_capped_at_2(self):
-        # 3 L2 topics: solo 2 devono apparire
+    def test_ordine_tematico_fatturato_prima_di_personale(self):
+        # fatturato_mancante (40) prima di costo_personale_mancante (50),
+        # e scadenza_imminente (61) in coda. Tutti azionabili, tutti mostrati.
         notifs = [
             _notif("scadenza_imminente",       "info",    {"count": 2, "totale": 200}),
-            _notif("fatturato_mancante",       "warning", {"mese": "aprile", "anno": 2026}),
             _notif("costo_personale_mancante", "warning", {"mese": "aprile", "anno": 2026}),
+            _notif("fatturato_mancante",       "warning", {"mese": "aprile", "anno": 2026}),
         ]
         snap = _build_snapshot(notifs)
-        # Solo i primi 2 L2 per priorita' (scadenza_imminente=30, fatturato_mancante=40)
-        assert len(snap["bullets"]) == 2
-        bullets_text = " ".join(snap["bullets"])
-        assert "7 giorni" in bullets_text      # scadenza_imminente
-        assert "aprile" in bullets_text        # fatturato_mancante
-        # costo_personale_mancante tagliato dalla quota
-        assert "personale" not in bullets_text
+        assert len(snap["bullets"]) == 3
+        # ordine: fatturato, personale, scadenza
+        assert "fatturato" in snap["bullets"][0].lower()
+        assert "personale" in snap["bullets"][1].lower()
+        assert "7 giorni" in snap["bullets"][2]
 
     def test_dedup_same_topic(self):
         # Due notifiche con stesso topic_key: conta come 1
@@ -234,38 +235,218 @@ class TestBuildSnapshot:
         snap = _build_snapshot(notifs)
         assert snap["notif_count"] == 10
 
-    def test_full_mixed_quota(self):
-        # 2 L1 + 3 L2 → 2 L1 + 2 L2 = 4 bullet
+    def test_max_5_card(self):
+        # Tutti azionabili: la gerarchia tiene al massimo 5 card.
         notifs = [
-            _notif("scadenza_superata",        "error",   {"count": 2, "totale": 800}),
             _notif("upload_failed",            "error",   {"count": 1}),
-            _notif("scadenza_imminente",       "info",    {"count": 3, "totale": 600}),
+            _notif("price_alert",              "warning", {"count": 2}),
+            _notif("uncategorized_rows",       "warning", {"count": 4}),
             _notif("fatturato_mancante",       "warning", {"mese": "marzo", "anno": 2026}),
             _notif("costo_personale_mancante", "warning", {"mese": "marzo", "anno": 2026}),
+            _notif("scadenza_superata",        "error",   {"count": 2, "totale": 800}),
         ]
         snap = _build_snapshot(notifs)
-        assert len(snap["bullets"]) == 4
-        assert snap["severity_max"] == "error"
+        assert len(snap["bullets"]) == 5
 
-    def test_priority_order_l1(self):
-        # scadenza_superata (priorita' 10) prima di upload_failed (priorita' 20)
+    def test_gerarchia_tematica_upload_prima_di_scadenza(self):
+        # Gerarchia tematica pura: upload_failed (10) prima di scadenza_superata
+        # (60), anche se la scadenza e' "piu' grave". Decisione Mattia.
         notifs = [
-            _notif("upload_failed",     "error", {"count": 1}),
             _notif("scadenza_superata", "error", {"count": 2, "totale": 500}),
+            _notif("upload_failed",     "error", {"count": 1}),
         ]
         snap = _build_snapshot(notifs)
         assert len(snap["bullets"]) == 2
-        # Il primo bullet deve essere scadenza_superata
-        assert "fatture scadute" in snap["bullets"][0] or "fattura scaduta" in snap["bullets"][0]
+        # Il primo bullet deve essere upload_failed
+        assert "non" in snap["bullets"][0] and "caricat" in snap["bullets"][0]
 
-    def test_priority_order_l2(self):
-        # scadenza_imminente (30) prima di price_alert (60)
+    def test_gerarchia_tematica_prezzi_prima_di_scadenze(self):
+        # price_alert (20) prima di scadenza_imminente (61)
         notifs = [
-            _notif("price_alert",       "warning", {"count": 2}),
-            _notif("scadenza_imminente", "info",   {"count": 1, "totale": 200}),
+            _notif("scadenza_imminente", "info",    {"count": 1, "totale": 200}),
+            _notif("price_alert",        "warning", {"count": 2}),
         ]
         snap = _build_snapshot(notifs)
-        assert "7 giorni" in snap["bullets"][0]
+        assert "Alert prezzi" in snap["bullets"][0]
+
+    def test_filtro_count_zero_escluso(self):
+        # Notifica con count 0 = rumore: non diventa card.
+        notifs = [
+            _notif("uncategorized_rows", "warning", {"count": 0}),
+            _notif("price_alert",        "warning", {"count": 3}),
+        ]
+        snap = _build_snapshot(notifs)
+        assert len(snap["bullets"]) == 1
+        assert "Alert prezzi" in snap["bullets"][0]
+
+    def test_filtro_upload_manuale_escluso(self):
+        # Upload manuale: il cliente lo vede mentre carica -> mai card.
+        notifs = [
+            _notif("upload_failed", "error", {"count": 1, "source": "manuale"}),
+        ]
+        snap = _build_snapshot(notifs)
+        assert snap["bullets"] == []
+
+    def test_topic_spento_dal_configuratore_escluso(self):
+        # price_alert spento dal cliente: non diventa card.
+        notifs = [
+            _notif("price_alert",        "warning", {"count": 2}),
+            _notif("uncategorized_rows", "warning", {"count": 3}),
+        ]
+        snap = _build_snapshot(notifs, topics_disabled=["price_alert"])
+        assert len(snap["bullets"]) == 1
+        assert "classificazione" in snap["bullets"][0]
+
+    def test_upload_failed_non_disattivabile(self):
+        # upload_failed e' bloccato: resta attivo anche se messo tra gli spenti.
+        notifs = [
+            _notif("upload_failed", "error", {"count": 1}),
+        ]
+        snap = _build_snapshot(notifs, topics_disabled=["upload_failed"])
+        assert len(snap["bullets"]) == 1
+
+    def test_upload_ricavi_failed_dopo_fatture_prima_di_prezzi(self):
+        # Gerarchia: upload fatture (10) > upload ricavi (15) > prezzi (20).
+        notifs = [
+            _notif("price_alert",          "warning", {"count": 2}),
+            _notif("upload_ricavi_failed", "warning", {"giorni_senza": 4}),
+            _notif("upload_failed",        "error",   {"count": 1}),
+        ]
+        snap = _build_snapshot(notifs)
+        assert len(snap["bullets"]) == 3
+        assert "caricat" in snap["bullets"][0]              # upload fatture
+        assert "ricavi automatici" in snap["bullets"][1].lower()  # upload ricavi
+        assert "Alert prezzi" in snap["bullets"][2]         # prezzi
+        # il testo ricavi riporta i giorni di assenza
+        assert "4 giorni" in snap["bullets"][1]
+
+
+# ────────────────────────────────────────────────
+# _action_for
+# ────────────────────────────────────────────────
+
+class TestActionFor:
+    def test_known_topic_uses_topic_fallback_page(self):
+        n = _notif("scadenza_superata", "error", {"count": 1, "totale": 100})
+        a = _action_for(n)
+        assert a["topic_key"] == "scadenza_superata"
+        assert a["severity"] == "error"
+        assert a["cta_label"] == "Controlla scadenze"
+        assert a["cta_page"] == "/scadenziario"
+        # testo riusa _bullet_for
+        assert a["testo"] == _bullet_for(n)
+
+    def test_notif_action_page_overrides_when_next_path(self):
+        n = _notif("fatturato_mancante", "warning", {"mese": "aprile", "anno": 2026})
+        n["action_page"] = "/margini/2026/04"
+        a = _action_for(n)
+        assert a["cta_page"] == "/margini/2026/04"
+
+    def test_legacy_streamlit_action_page_ignored(self):
+        # path Streamlit legacy -> ignorato, si usa il fallback per topic
+        n = _notif("price_alert", "warning", {"count": 2})
+        n["action_page"] = "pages/3_controllo_prezzi.py"
+        a = _action_for(n)
+        assert a["cta_page"] == "/prezzi"
+
+    def test_empty_action_page_uses_fallback(self):
+        n = _notif("upload_failed", "error", {"count": 1})
+        n["action_page"] = ""
+        a = _action_for(n)
+        assert a["cta_page"] == "/analisi-fatture"
+
+    def test_unknown_topic_generic_action(self):
+        n = _notif("food_cost_alto", "warning", {}, title="FC alto")
+        a = _action_for(n)
+        assert a["cta_label"] == "Apri"
+        assert a["cta_page"] == "/dashboard"
+
+    def test_id_propagated_for_dismiss(self):
+        n = _notif("price_alert", "warning", {"count": 2})
+        n["id"] = "notif-xyz"
+        a = _action_for(n)
+        assert a["id"] == "notif-xyz"
+
+
+# ────────────────────────────────────────────────
+# _build_snapshot — azioni e tutto_ok
+# ────────────────────────────────────────────────
+
+class TestSnapshotAzioni:
+    def test_azioni_align_with_bullets(self):
+        notifs = [
+            _notif("scadenza_superata",  "error", {"count": 2, "totale": 800}),
+            _notif("scadenza_imminente", "info",  {"count": 3, "totale": 600}),
+        ]
+        snap = _build_snapshot(notifs)
+        assert len(snap["azioni"]) == len(snap["bullets"]) == 2
+        assert snap["azioni"][0]["topic_key"] == "scadenza_superata"
+        assert snap["tutto_ok"] is False
+
+    def test_tutto_ok_true_when_no_known_topics(self):
+        snap = _build_snapshot([_notif("topic_sconosciuto", "info")])
+        assert snap["azioni"] == []
+        assert snap["tutto_ok"] is True
+
+    def test_tutto_ok_true_on_empty(self):
+        snap = _build_snapshot([])
+        assert snap["tutto_ok"] is True
+        assert snap["azioni"] == []
+
+
+# ────────────────────────────────────────────────
+# Narrazione AI: anonimizzazione + fallback
+# ────────────────────────────────────────────────
+
+class TestNarrazioneAI:
+    def test_anonymize_replaces_product_name(self):
+        bullets = ["\U0001F4C8 Alert prezzi su 2 prodotti — es. Mozzarella +12.5%."]
+        anon, mapping = _anonymize_bullets(bullets)
+        assert "Mozzarella" not in anon[0]
+        assert "<<P1>>" in anon[0]
+        assert mapping["<<P1>>"] == "Mozzarella"
+
+    def test_anonymize_leaves_other_bullets_untouched(self):
+        bullets = ["⚠️ 3 fatture scadute per € 1.200,00 — controlla."]
+        anon, mapping = _anonymize_bullets(bullets)
+        assert anon == bullets
+        assert mapping == {}
+
+    def test_deanonymize_roundtrip(self):
+        text = "Occhio a <<P1>>, e' rincarato."
+        assert _deanonymize(text, {"<<P1>>": "Mozzarella"}) == "Occhio a Mozzarella, e' rincarato."
+
+    def test_narrate_empty_returns_fallback(self):
+        assert _narrate_with_ai([], "FALLBACK") == "FALLBACK"
+
+    def test_narrate_returns_fallback_on_ai_error(self):
+        # Nessuna API key in test -> _get_openai_client solleva -> fallback
+        with patch(
+            "services.ai_service._get_openai_client",
+            side_effect=RuntimeError("no key"),
+        ):
+            out = _narrate_with_ai(["⚠️ qualcosa"], "FALLBACK")
+        assert out == "FALLBACK"
+
+    def test_narrate_deanonymizes_ai_response(self):
+        fake_client = MagicMock()
+        fake_msg = MagicMock()
+        fake_msg.content = "Occhio: <<P1>> e' rincarato, controlla i margini!"
+        fake_client.chat.completions.create.return_value = MagicMock(
+            choices=[MagicMock(message=fake_msg)],
+            usage=None,
+        )
+        bullets = ["\U0001F4C8 Alert prezzi su 1 prodotto — es. Pomodoro +9.0%."]
+        with patch("services.ai_service._get_openai_client", return_value=fake_client), \
+             patch("services.ai_service._resolve_ristorante_id", return_value=None):
+            out = _narrate_with_ai(bullets, "FALLBACK")
+        assert "Pomodoro" in out
+        assert "<<P1>>" not in out
+
+    def test_build_snapshot_use_ai_false_uses_template(self):
+        notifs = [_notif("scadenza_superata", "error", {"count": 1, "totale": 100})]
+        snap = _build_snapshot(notifs, use_ai=False)
+        assert snap["narrative"].startswith("Ciao!")
 
 
 # ────────────────────────────────────────────────
