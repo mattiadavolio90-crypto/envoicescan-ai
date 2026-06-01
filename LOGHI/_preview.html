@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>ONEFLUX — anteprima logo</title>
+<style>
+  body { margin:0; font-family:'Segoe UI',Arial,sans-serif; }
+  .row { display:flex; align-items:center; gap:48px; padding:48px; flex-wrap:wrap; }
+  .dark { background:#0a0a0a; }
+  .light { background:#ffffff; }
+  .lbl { font-size:12px; letter-spacing:1px; text-transform:uppercase; opacity:.5; }
+  .dark .lbl { color:#fff; }
+  .cell { display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .word { font-weight:600; letter-spacing:.16em; font-size:34px; }
+  /* glow neon due livelli */
+  .glow { filter: drop-shadow(0 0 3px currentColor); }
+  .spinwrap { animation: pulse 1.6s ease-in-out infinite; display:inline-flex; }
+  .spinx { transform-origin:50% 50%; animation: rot 1.6s ease-in-out infinite; }
+  @keyframes pulse {
+    0%,100% { opacity:1; filter:drop-shadow(0 0 1px currentColor); }
+    50% { opacity:.8; filter:drop-shadow(0 0 5px currentColor); }
+  }
+  @keyframes rot { 0%{transform:rotate(0)} 45%,55%{transform:rotate(45deg)} 100%{transform:rotate(0)} }
+</style>
+</head>
+<body>
+
+<div class="row dark">
+  <div class="cell" style="color:#22D3EE">
+    <span class="lbl">icona + glow</span>
+    <svg class="glow" width="120" height="120" viewBox="0 0 100 100" fill="none">
+      <circle cx="50" cy="50" r="42" stroke="currentColor" stroke-width="6"/>
+      <path d="M31 31 L69 69 M69 31 L31 69" stroke="currentColor" stroke-width="7.5" stroke-linecap="square"/>
+    </svg>
+  </div>
+  <div class="cell" style="color:#22D3EE">
+    <span class="lbl">orizzontale</span>
+    <div style="display:flex;align-items:center;gap:18px">
+      <svg class="glow" width="64" height="64" viewBox="0 0 100 100" fill="none">
+        <circle cx="50" cy="50" r="42" stroke="currentColor" stroke-width="6"/>
+        <path d="M31 31 L69 69 M69 31 L31 69" stroke="currentColor" stroke-width="7.5" stroke-linecap="square"/>
+      </svg>
+      <span class="word">ONEFLUX</span>
+    </div>
+  </div>
+  <div class="cell" style="color:#22D3EE">
+    <span class="lbl">spinner (animato)</span>
+    <span class="spinwrap">
+      <svg width="64" height="64" viewBox="0 0 100 100" fill="none">
+        <circle cx="50" cy="50" r="42" stroke="currentColor" stroke-width="8"/>
+        <path class="spinx" d="M31 31 L69 69 M69 31 L31 69" stroke="currentColor" stroke-width="10" stroke-linecap="square"/>
+      </svg>
+    </span>
+  </div>
+  <div class="cell" style="color:#22D3EE">
+    <span class="lbl">favicon 24px</span>
+    <svg width="24" height="24" viewBox="0 0 100 100" fill="none">
+      <circle cx="50" cy="50" r="42" stroke="currentColor" stroke-width="6"/>
+      <path d="M31 31 L69 69 M69 31 L31 69" stroke="currentColor" stroke-width="7.5" stroke-linecap="square"/>
+    </svg>
+  </div>
+</div>
+
+<div class="row light">
+  <div class="cell" style="color:#0891B2">
+    <span class="lbl">icona (chiaro)</span>
+    <svg width="120" height="120" viewBox="0 0 100 100" fill="none">
+      <circle cx="50" cy="50" r="42" stroke="currentColor" stroke-width="6"/>
+      <path d="M31 31 L69 69 M69 31 L31 69" stroke="currentColor" stroke-width="7.5" stroke-linecap="square"/>
+    </svg>
+  </div>
+  <div class="cell" style="color:#0891B2">
+    <span class="lbl">orizzontale (chiaro)</span>
+    <div style="display:flex;align-items:center;gap:18px">
+      <svg width="64" height="64" viewBox="0 0 100 100" fill="none">
+        <circle cx="50" cy="50" r="42" stroke="currentColor" stroke-width="6"/>
+        <path d="M31 31 L69 69 M69 31 L31 69" stroke="currentColor" stroke-width="7.5" stroke-linecap="square"/>
+      </svg>
+      <span class="word">ONEFLUX</span>
+    </div>
+  </div>
+  <div class="cell" style="color:#0A0A0A">
+    <span class="lbl">nero (stampa)</span>
+    <svg width="120" height="120" viewBox="0 0 100 100" fill="none">
+      <circle cx="50" cy="50" r="42" stroke="currentColor" stroke-width="6"/>
+      <path d="M31 31 L69 69 M69 31 L31 69" stroke="currentColor" stroke-width="7.5" stroke-linecap="square"/>
+    </svg>
+  </div>
+</div>
+
+</body>
+</html>
