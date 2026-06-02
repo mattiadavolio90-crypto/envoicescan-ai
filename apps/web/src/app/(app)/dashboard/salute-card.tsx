@@ -67,7 +67,10 @@ function Anello({ indice, colore }: { indice: number; colore: Salute["colore"] }
   );
 }
 
-export function SaluteCard({ salute }: { salute: Salute }) {
+// hideLinks: su mobile (PWA) non mostriamo le CTA "Vai alla pagina" che
+// porterebbero fuori dalla Home verso la vista desktop. Default false: il
+// desktop resta invariato.
+export function SaluteCard({ salute, hideLinks = false }: { salute: Salute; hideLinks?: boolean }) {
   const tint = COLORI[salute.colore];
 
   return (
@@ -105,7 +108,7 @@ export function SaluteCard({ salute }: { salute: Salute }) {
                     {/* Dettaglio come sottotitolo (niente piu' colonna duplicata
                         a destra), e CTA sotto solo se c'e' qualcosa da fare. */}
                     <span className="text-xs text-muted-foreground">{v.dettaglio}</span>
-                    {!v.ok && v.cta_page && (
+                    {!hideLinks && !v.ok && v.cta_page && (
                       <Link
                         href={v.cta_page}
                         title="Vai alla pagina"

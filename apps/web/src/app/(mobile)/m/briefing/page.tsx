@@ -28,7 +28,8 @@ async function ContiBlock() {
 async function SaluteBlock() {
   const salute = await fetchSalute();
   if (!salute) return null;
-  return <SaluteCard salute={salute} />;
+  // hideLinks: nessuna CTA "Vai alla pagina" che porti fuori dalla PWA.
+  return <SaluteCard salute={salute} hideLinks />;
 }
 
 function CardSkeleton() {
