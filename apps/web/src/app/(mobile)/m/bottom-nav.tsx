@@ -19,8 +19,10 @@ const TABS: Tab[] = [
   { href: "/m/chat", label: "Assistente", icon: MessageCircle },
 ];
 
-export function BottomNav({ unread }: { unread: number }) {
+export function BottomNav({ unread, chatEnabled }: { unread: number; chatEnabled: boolean }) {
   const pathname = usePathname();
+  // Tab Assistente nascosta se la chat non e' disponibile per il piano.
+  const tabs = chatEnabled ? TABS : TABS.filter((t) => t.href !== "/m/chat");
 
   return (
     <nav
@@ -28,7 +30,7 @@ export function BottomNav({ unread }: { unread: number }) {
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
       <div className="mx-auto flex max-w-md items-stretch justify-around">
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
           const Icon = t.icon;
           const showBadge = t.href === "/m/notifiche" && unread > 0;

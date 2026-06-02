@@ -270,6 +270,13 @@ export function MobileDiario() {
 
   useEffect(() => { load(anno, mese); }, [anno, mese, load]);
 
+  // Pull-to-refresh: ricarica gli eventi del mese visualizzato.
+  useEffect(() => {
+    const h = () => load(anno, mese);
+    window.addEventListener("oneflux:refresh", h);
+    return () => window.removeEventListener("oneflux:refresh", h);
+  }, [anno, mese, load]);
+
   function mesePrec() {
     if (mese === 0) { setAnno((a) => a - 1); setMese(11); } else setMese((m) => m - 1);
   }
@@ -318,7 +325,11 @@ export function MobileDiario() {
       <div className="space-y-2.5">
         <h2 className="text-sm font-semibold capitalize">{fmtGiorno(giornoSel)}</h2>
         {loading ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Caricamento…</p>
+          <div className="space-y-2.5">
+            {[0, 1].map((i) => (
+              <div key={i} className="h-16 animate-pulse rounded-xl border bg-muted/40" />
+            ))}
+          </div>
         ) : eventiGiorno.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Nessun evento per questo giorno.</p>
         ) : (

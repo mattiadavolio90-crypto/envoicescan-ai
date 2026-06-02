@@ -275,6 +275,13 @@ export function MobileTurni() {
 
   useEffect(() => { load(da, a); }, [da, a, load]);
 
+  // Pull-to-refresh: ricarica i turni della settimana visualizzata.
+  useEffect(() => {
+    const h = () => load(da, a);
+    window.addEventListener("oneflux:refresh", h);
+    return () => window.removeEventListener("oneflux:refresh", h);
+  }, [da, a, load]);
+
   function settPrec() { setLunedi((d) => addDays(d, -7)); }
   function settSucc() { setLunedi((d) => addDays(d, 7)); }
 
@@ -345,7 +352,11 @@ export function MobileTurni() {
       {/* Turni del giorno */}
       <div className="space-y-2.5">
         {loading ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">Caricamento…</p>
+          <div className="space-y-2.5">
+            {[0, 1].map((i) => (
+              <div key={i} className="h-[68px] animate-pulse rounded-xl border bg-muted/40" />
+            ))}
+          </div>
         ) : turniGiorno.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Nessun turno per questo giorno.</p>
         ) : (

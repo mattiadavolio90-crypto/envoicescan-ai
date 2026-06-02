@@ -1,17 +1,23 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchNotifiche } from "@/lib/notifiche";
+import { fetchConfig } from "@/lib/home";
 import { Logo } from "@/components/brand/logo";
 import { BottomNav } from "./bottom-nav";
 import { HeaderMenu } from "./header-menu";
 import { InstallPrompt } from "./install-prompt";
+import { PullToRefresh } from "./pull-to-refresh";
 
 export default async function MobileLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
 
-  const notifiche = await fetchNotifiche();
+  const [notifiche, config] = await Promise.all([fetchNotifiche(), fetchConfig()]);
   const unread = notifiche?.unread ?? 0;
+  // Stessa regola del widget chat desktop: la chat c'e' solo se abilitata e il
+  // piano ha un limite > 0 (i piani free hanno limite 0). Se non disponibile,
+  // la tab Assistente sparisce dalla bottom nav (niente 403 secco al tocco).
+  const chatEnabled = (config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0;
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
@@ -29,13 +35,15 @@ export default async function MobileLayout({ children }: { children: React.React
         </div>
       </header>
 
+      <PullToRefresh />
+
       {/* Contenuto: padding-bottom per la bottom nav (64px + safe area) */}
       <main className="flex-1 px-4 pt-4" style={{ paddingBottom: "calc(72px + env(safe-area-inset-bottom))" }}>
         {children}
       </main>
 
       <InstallPrompt />
-      <BottomNav unread={unread} />
+      <BottomNav unread={unread} chatEnabled={chatEnabled} />
     </div>
   );
 }
