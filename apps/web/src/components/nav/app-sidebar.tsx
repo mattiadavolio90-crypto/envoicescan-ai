@@ -38,7 +38,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -192,14 +191,8 @@ export function AppSidebar({
                 align="start"
                 className="w-56"
               >
-                <DropdownMenuLabel className="font-normal">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-sm font-medium">{ristoranteNome}</span>
-                    <span className="text-xs text-muted-foreground">{userEmail}</span>
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuItem variant="destructive" onClick={handleLogout}>
-                  <LogOut />
+                <DropdownMenuItem variant="destructive" onClick={handleLogout} className="text-base py-3">
+                  <LogOut className="size-5" />
                   Esci
                 </DropdownMenuItem>
               </DropdownMenuContent>
