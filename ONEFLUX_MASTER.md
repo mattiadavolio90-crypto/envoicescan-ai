@@ -1,7 +1,7 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 2 giugno 2026 (rev. 25 — **Conformità privacy/cookie/GDPR Next.js**: pagine legali `/privacy` (Privacy & Cookie Policy v4.0) e `/termini` (ToS) con layout pubblico, banner cookie tecnici, consenso esplicito all'onboarding con prova reale (fix G1), cookie impersonazione HttpOnly senza PII (G7), link legali persistenti. 7 gap dell'audit chiusi. Vedi changelog)
-**Revisione precedente:** rev. 24 (2/6) — **Chat AI + Fase 8 chiusa**: assistente conversazionale (function calling 4 tool, proattività, toggle, limiti domande/giorno per piano free0/base10/plus20/pro30, contatore in Impostazioni). Con Marketplace già fatto, **Fase 8 completa**.
+**Ultima revisione:** 2 giugno 2026 (rev. 26 — **PWA mobile**: prima versione mobile dedicata, route group `(mobile)` su `/m`, 5 sezioni (Oggi/Avvisi/Diario/Turni/Assistente), installabile (manifest + service worker manuale + banner installazione Android/iOS), redirect mobile→/m, zero nuovi endpoint backend. Vedi changelog)
+**Revisione precedente:** rev. 25 (2/6) — **Conformità privacy/cookie/GDPR Next.js**: pagine legali `/privacy` (Privacy & Cookie Policy v4.0) e `/termini` (ToS) con layout pubblico, banner cookie tecnici, consenso esplicito all'onboarding con prova reale (fix G1), cookie impersonazione HttpOnly senza PII (G7), link legali persistenti. 7 gap dell'audit chiusi.
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -168,10 +168,17 @@ Next.js è usato da Notion, TikTok, Nike, GitHub. Supabase è PostgreSQL. FastAP
 - Niente fluttuanti, niente multi-pannello, niente persistenza
 - Apri → guardi → chiudi.
 
-### Mobile (PWA)
-- Solo 3 sezioni: Assistenza + Notifiche + Chat AI
+### Mobile (PWA) — ✅ implementata (2/6, rev. 26)
+La spec originale era "3 sezioni: Assistenza + Notifiche + Chat AI". In fase di
+brainstorming con Mattia è diventata **5 sezioni** focalizzate sull'uso reale dal
+telefono (lettura rapida + input leggero, niente tabelle/grafici complessi):
+- **Oggi** (briefing AI) · **Avvisi** (notifiche) · **Diario** · **Turni** · **Assistente** (chat AI)
+- Layout dedicato (route group `(mobile)` servito su `/m`), bottom nav 5 tab, no sidebar
 - Niente popup, niente complessità, niente push notifications inizialmente
-- PWA installabile da browser
+- PWA installabile (manifest + service worker + banner di installazione Android/iOS)
+- Diario e Turni aggiunti perché utili da mobile (evento/turno aggiunto sul momento);
+  costo orario / ore extra dei turni restano gestiti da desktop (roba da ufficio paghe)
+- Vedi changelog §14 "PWA mobile"
 
 ---
 
@@ -483,13 +490,36 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Impostazioni/Account | ✅ | Dati ristorante, piano + contatore (fatture + chat), cambio password |
 | Admin Panel | ✅ | Core (clienti con piano inline + inizio piano, onboarding, impersonazione, sedi, flags, mapping) · Qualità AI (coda review con suggerimento categoria + 1-click, auto-review, memoria globale, conflitti, audit log + undo) · Sistema/Salute (costi AI, retention, **agent notturno on/off**) · Richieste servizi (coda lead marketplace) · routing confidenza sull'ingest |
 
-**Non ancora iniziato (zero codice):** Multi-ristorante (dropdown switch) · PWA/mobile · fattore_kg UI (Analisi e Tag v2) · Report (placeholder scollegato) · Chat AI "azioni" (creare promemoria/segnare pagato — evoluzione futura)
+**Non ancora iniziato (zero codice):** Multi-ristorante (dropdown switch) · fattore_kg UI (Analisi e Tag v2) · Report (placeholder scollegato) · Chat AI "azioni" (creare promemoria/segnare pagato — evoluzione futura)
+
+**PWA/mobile ✅ fatto (2/6, rev. 26):** route group `(mobile)` su `/m`, 5 sezioni, installabile (vedi changelog §14).
 
 **Rimosso/deprecato:** tab "Integrità DB" in `/admin/sistema` (troppi falsi positivi, 30/5) · sidebar voce "Cestino" (ora widget in Gestione Fatture) · route orfana `/cestino/page.tsx` ancora presente ma scollegata dalla sidebar — **da rimuovere** (raggiungibile solo via URL diretto) · sidebar voce "Report" (31/5, placeholder non necessario; route `(app)/report/page.tsx` ancora presente ma scollegata) · voce "Account" nel dropdown footer della sidebar (31/5, ridondante con Impostazioni — il footer ora apre solo "Esci").
 
 **Prerequisito Railway:** ~~aggiungere env var `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`~~ ✅ **chiuso (31/5)** — le 3 var sono sul worker, reset password + onboarding funzionanti in produzione. ~~`WORKER_WEB_CONCURRENCY=4`~~ ✅ **chiuso (2/6)** — impostata sul worker. Nessun prerequisito infra aperto.
 
 ### Changelog sessioni
+
+**PWA mobile — 5 sezioni installabili (2 giugno 2026, rev. 26)**
+
+Prima versione mobile dedicata, pensata per il ristoratore che usa il telefono:
+solo lettura rapida + input leggero, niente tabelle/grafici complessi. Committata
+e pushata su `main` (`e6ed97f` app + `36b6f20` banner installazione).
+
+*Decisioni di design (brainstorming con Mattia):*
+- La spec originale (3 sezioni: Assistenza/Notifiche/Chat) è diventata **5 sezioni**: **Oggi** (briefing) · **Avvisi** (notifiche) · **Diario** · **Turni** · **Assistente** (chat AI). Diario e Turni aggiunti perché utili sul momento dal telefono.
+- **Layout separato** (non responsive sull'app desktop): route group `(mobile)` servito su `/m`, con bottom nav a 5 tab, header compatto, safe-area iOS. Start screen = Briefing.
+- **Niente azioni "pesanti"** da mobile (segnare pagato, upload fatture, costo orario/ore extra dei turni): quelle restano su desktop. Su mobile si modifica un turno preservando costo/extra esistenti.
+
+*Tecnica:*
+- **PWA installabile** senza `next-pwa` (incompatibile con Turbopack/Next 16): `manifest.json` (`start_url /m`, standalone, theme brand, icone maskable 192/512 generate da `sharp`), **service worker manuale** minimale network-first (no offline aggressivo — app di analisi, dati sempre freschi) + `offline.html`, `PwaRegister` (solo produzione).
+- **Banner di installazione** (`install-prompt.tsx`): Android intercetta `beforeinstallprompt` (installa con un tap), iOS mostra foglio istruzioni (Condividi → Aggiungi a Home, perché Apple non espone prompt automatico). Dismissibile, non appare se già installata.
+- **Redirect** mobile→`/m` lato client (`MobileRedirect`, esclude `/admin`; voce menu "Vista completa" lo disattiva via flag di sessione). **HeaderMenu**: Impostazioni / Vista completa / Esci.
+- **Zero nuovi endpoint backend**: riusa i proxy esistenti (`/api/home/briefing`, `/api/notifiche`, `/api/workspace/diario`, `/api/workspace/personale`, `/api/chat`). La pagina Avvisi riusa direttamente la `NotificheList` desktop. Streamlit intatto (zero file Python toccati).
+
+*Verifiche:* `tsc` ✓, ESLint ✓, `next build` ✓ (Turbopack attivo). Asset PWA verificati in produzione (`manifest.json`/`sw.js`/icone → HTTP 200 su `nuovo.oneflux.it`).
+
+*Aperto (non bloccante):* voce "Installa app" anche nell'HeaderMenu (per chi ha chiuso il banner); eventuali ritocchi UI dopo test su dispositivo reale.
 
 **Conformità privacy/cookie/GDPR Next.js (2 giugno 2026, rev. 25)**
 
