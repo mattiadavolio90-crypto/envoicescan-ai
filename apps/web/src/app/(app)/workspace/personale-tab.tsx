@@ -500,6 +500,7 @@ export function PersonaleTab() {
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
+        {/* Sinistra: periodo + navigazione + vista */}
         <div className="flex rounded-md border border-border overflow-hidden">
           {(["settimana", "mese"] as Periodo[]).map(p => (
             <button
@@ -542,21 +543,24 @@ export function PersonaleTab() {
           </button>
         </div>
 
-        <Button onClick={() => { setEditTurno(null); setDataDefault(oggi >= da && oggi <= fine ? oggi : da); setDialogOpen(true); }}>
-          <Plus className="size-4 mr-1.5" />Aggiungi turno
-        </Button>
+        {/* Destra: azioni */}
+        <div className="ml-auto flex items-center gap-2">
+          {periodo === "settimana" && (
+            <Button variant="outline" onClick={copiaSettimana} disabled={copiando}>
+              <CopyPlus className="size-4 mr-1.5" />{copiando ? "Copio…" : "Copia settimana prec."}
+            </Button>
+          )}
 
-        {periodo === "settimana" && (
-          <Button variant="outline" onClick={copiaSettimana} disabled={copiando}>
-            <CopyPlus className="size-4 mr-1.5" />{copiando ? "Copio…" : "Copia settimana prec."}
-          </Button>
-        )}
+          {turni.length > 0 && (
+            <Button variant="outline" onClick={esportaCSV}>
+              <Download className="size-4 mr-1.5" />Esporta CSV
+            </Button>
+          )}
 
-        {turni.length > 0 && (
-          <Button variant="outline" onClick={esportaCSV}>
-            <Download className="size-4 mr-1.5" />Esporta CSV
+          <Button onClick={() => { setEditTurno(null); setDataDefault(oggi >= da && oggi <= fine ? oggi : da); setDialogOpen(true); }}>
+            <Plus className="size-4 mr-1.5" />Aggiungi turno
           </Button>
-        )}
+        </div>
       </div>
 
       {/* Monte ore per persona */}
