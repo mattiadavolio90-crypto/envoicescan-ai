@@ -940,11 +940,21 @@ class TestMargineServiceDB:
     def test_salva_margini_anno(self, mock_get_client):
         """
         Verifica upsert di 12 record mensili in margini_mensili.
+
+        salva_margini_anno esegue DUE interazioni col DB:
+          1. SELECT di rilettura centri di costo (per non azzerarli nel bulk-upsert)
+          2. UPSERT dei 12 record mensili
+        Il mock usa side_effect per distinguerle: la prima execute (SELECT centri)
+        ritorna [] (nessun centro pre-esistente), la seconda (UPSERT) ritorna ok.
         """
         mock_client = MagicMock()
         mock_get_client.return_value = mock_client
 
-        query = _build_query_mock(execute_data=[{"ok": True}])
+        query = _build_query_mock()
+        query.execute.side_effect = [
+            SimpleNamespace(data=[]),            # SELECT rilettura centri
+            SimpleNamespace(data=[{"ok": True}]),  # UPSERT 12 record
+        ]
         mock_client.table.return_value = query
 
         df_input = _make_input(
@@ -972,4 +982,62 @@ class TestMargineServiceDB:
         records_arg = query.upsert.call_args[0][0]
         assert isinstance(records_arg, list)
         assert len(records_arg) == 12
+        # Tutti i record includono SEMPRE le 4 colonne centri (default 0), così il
+        # bulk-upsert non le azzera per i mesi che non le avevano nel df_input.
+        for rec in records_arg:
+            assert rec["fatturato_food"] == 0
+            assert rec["fatturato_alcolici"] == 0
+            assert rec["fatturato_dolci"] == 0
+
+    @patch("services.margine_service.get_supabase_client")
+    def test_salva_margini_anno_preserva_centri_esistenti(self, mock_get_client):
+        """
+        REGRESSIONE anti-perdita-dati: se esistono già centri di costo salvati per
+        alcuni mesi, salva_margini_anno deve ri-includerli in TUTTI i 12 record
+        (non azzerarli col bulk-upsert). I mesi senza centri restano a 0.
+        """
+        mock_client = MagicMock()
+        mock_get_client.return_value = mock_client
+
+        # La SELECT rilettura centri restituisce valori solo per gennaio (mese=1) e marzo (mese=3).
+        query = _build_query_mock()
+        query.execute.side_effect = [
+            SimpleNamespace(data=[
+                {"mese": 1, "fatturato_food": 2200.0, "fatturato_beverage": 450.0,
+                 "fatturato_alcolici": 300.0, "fatturato_dolci": 120.0},
+                {"mese": 3, "fatturato_food": 1000.0, "fatturato_beverage": 0.0,
+                 "fatturato_alcolici": 0.0, "fatturato_dolci": 50.0},
+            ]),
+            SimpleNamespace(data=[{"ok": True}]),  # UPSERT
+        ]
+        mock_client.table.return_value = query
+
+        df_input = _make_input(fatt_iva10=1100.0, costo_dipendenti=400.0)
+        df_risultati = calcola_risultati(df_input)
+
+        ok = salva_margini_anno(
+            user_id="test-uuid",
+            ristorante_id="rist-test",
+            anno=2026,
+            df_input=df_input,
+            df_risultati=df_risultati,
+        )
+
+        assert ok is True
+        records_arg = query.upsert.call_args[0][0]
+        recs_by_mese = {r["mese"]: r for r in records_arg}
+
+        # Gennaio: centri preservati dai valori esistenti
+        assert recs_by_mese[1]["fatturato_food"] == 2200.0
+        assert recs_by_mese[1]["fatturato_beverage"] == 450.0
+        assert recs_by_mese[1]["fatturato_alcolici"] == 300.0
+        assert recs_by_mese[1]["fatturato_dolci"] == 120.0
+        # Marzo: valori parziali preservati
+        assert recs_by_mese[3]["fatturato_food"] == 1000.0
+        assert recs_by_mese[3]["fatturato_dolci"] == 50.0
+        # Febbraio (nessun centro esistente): tutto a 0, ma le colonne CI SONO
+        assert recs_by_mese[2]["fatturato_food"] == 0
+        assert recs_by_mese[2]["fatturato_beverage"] == 0
+        assert recs_by_mese[2]["fatturato_alcolici"] == 0
+        assert recs_by_mese[2]["fatturato_dolci"] == 0
 

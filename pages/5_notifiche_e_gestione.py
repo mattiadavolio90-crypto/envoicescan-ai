@@ -1018,8 +1018,7 @@ def _render_scadenziario_tab(user_id, current_ristorante):
                                 if _result.get("ok"):
                                     clear_fornitori_cache()
                                     clear_documenti_cache()
-                                    st.success("✅ Regola salvata")
-                                    time.sleep(0.3)
+                                    st.toast("✅ Regola salvata", icon="✅")
                                     st.rerun()
                                 else:
                                     st.error(f"❌ Errore salvataggio: {_result.get('error', 'errore sconosciuto')}")
@@ -1625,8 +1624,7 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                                 if _errori_el:
                                     st.error("❌ Errori: " + "; ".join(_errori_el))
                                 else:
-                                    st.success(f"✅ {n_sel} fattura/e spostate nel cestino")
-                                    time.sleep(0.3)
+                                    st.toast(f"✅ {n_sel} fattura/e spostate nel cestino", icon="🗑️")
                                     st.rerun()
 
                     with col_btn_date:
@@ -1662,8 +1660,7 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                                     st.error(f"❌ Errore su: {', '.join(_errori_pag)}")
                                 else:
                                     _msg_pag = f"✅ {len(_fatture_non_pagate_sel)} fattura/e pagate"
-                                    st.success(_msg_pag)
-                                    time.sleep(0.3)
+                                    st.toast(_msg_pag, icon="💳")
                                     st.rerun()
 
                         if _fatture_pagate_sel and st.button("↩️ Annulla Pagamento", type="secondary", use_container_width=True,
@@ -1684,8 +1681,7 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                                 if _errori_pag:
                                     st.error(f"❌ Errore su: {', '.join(_errori_pag)}")
                                 else:
-                                    st.success(f"✅ {len(_fatture_pagate_sel)} fattura/e impostate come non pagate")
-                                    time.sleep(0.3)
+                                    st.toast(f"✅ {len(_fatture_pagate_sel)} fattura/e impostate come non pagate", icon="↩️")
                                     st.rerun()
 
                     with col_btn_reset:
@@ -1703,9 +1699,8 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                                             st.error(f"❌ {_fat['File']}: {esito.get('error', '?')}")
                                     clear_fatture_cache()
                                     invalida_cache_memoria()
-                                    st.success("✅ Date ripristinate")
+                                    st.toast("✅ Date ripristinate", icon="↩️")
                                     st.session_state.pop('gfn_fattura_data_editor_file', None)
-                                    time.sleep(0.2)
                                     st.rerun()
 
                     # ---- Pannello anteprima fattura (inline, indipendente dall'editor competenza) ----
@@ -1790,9 +1785,8 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                                     if esito.get("success"):
                                         clear_fatture_cache()
                                         invalida_cache_memoria()
-                                        st.success(f"✅ Competenza impostata su {_mesi_it[mese_selezionato]} {_anno_corrente}")
+                                        st.toast(f"✅ Competenza impostata su {_mesi_it[mese_selezionato]} {_anno_corrente}", icon="📅")
                                         st.session_state.pop('gfn_fattura_data_editor_file', None)
-                                        time.sleep(0.2)
                                         st.rerun()
                                     else:
                                         st.error(f"❌ Errore: {esito.get('error', 'errore sconosciuto')}")
@@ -1839,10 +1833,10 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                             invalida_cache_memoria()
                             clear_fatture_cache()
                             if result_restore.get("success"):
-                                st.success(
-                                    f"✅ Fattura ripristinata ({result_restore.get('righe_ripristinate', 0)} prodotti)"
+                                st.toast(
+                                    f"✅ Fattura ripristinata ({result_restore.get('righe_ripristinate', 0)} prodotti)",
+                                    icon="♻️",
                                 )
-                                time.sleep(0.3)
                                 st.rerun()
                             else:
                                 st.error(f"❌ Errore ripristino: {result_restore.get('error')}")
@@ -1857,10 +1851,10 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                             invalida_cache_memoria()
                             clear_fatture_cache()
                             if result_empty.get("success"):
-                                st.success(
-                                    f"✅ Cestino svuotato: {result_empty.get('righe_eliminate', 0)} righe eliminate definitivamente"
+                                st.toast(
+                                    f"✅ Cestino svuotato: {result_empty.get('righe_eliminate', 0)} righe eliminate definitivamente",
+                                    icon="🗑️",
                                 )
-                                time.sleep(0.3)
                                 st.rerun()
                             else:
                                 st.error(f"❌ Errore svuotamento: {result_empty.get('error')}")
@@ -1955,10 +1949,9 @@ elif st.session_state.gfn_tab_attivo == "gestione":
                                 invalida_cache_memoria()
                                 st.session_state.pop('gfn_show_rivedi_competenze', None)
                                 if _err_preg:
-                                    st.warning(f"⚠️ Errore su: {', '.join(_err_preg)}")
+                                    st.toast(f"⚠️ Errore su: {', '.join(_err_preg)}", icon="⚠️")
                                 else:
-                                    st.success(f"✅ {len(_sel_items)} fattura/e aggiornata/e")
-                                time.sleep(0.2)
+                                    st.toast(f"✅ {len(_sel_items)} fattura/e aggiornata/e", icon="✅")
                                 st.rerun()
                             else:
                                 st.info("Nessuna fattura selezionata.")

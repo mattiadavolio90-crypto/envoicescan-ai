@@ -146,11 +146,9 @@ with tab1:
                                 st.error("❌ Errore aggiornamento database")
                                 logger.error(f"Update fallito per user_id={user['id']}")
                             else:
-                                st.success("✅ Password aggiornata con successo!")
+                                st.toast("✅ Password aggiornata! Reindirizzamento al login...", icon="✅")
                                 logger.info(f"Password modificata per user_id={user.get('id')}")
-                                st.info("🔄 Reindirizzamento al login...")
-                                time.sleep(0.5)
-                                
+
                                 # Logout automatico + invalida session_token
                                 try:
                                     supabase.table('users').update({'session_token': None}).eq('id', user['id']).execute()

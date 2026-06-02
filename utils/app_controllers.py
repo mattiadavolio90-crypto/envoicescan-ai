@@ -67,7 +67,7 @@ from services.db_service import (
     filter_active,
     get_fatture_stats,
 )
-from services.ai_service import invalida_cache_memoria, mostra_loading_ai
+from services.ai_service import invalida_cache_memoria
 
 
 # ============================================================
@@ -1710,18 +1710,9 @@ def handle_upload_and_ai(supabase, logger, user_id, uploaded_files, df_cache):
 
     # 🔥 CARICA E MOSTRA STATISTICHE SEMPRE (da Supabase)
     # ⚡ RIUSA df_cache caricato sopra (evita doppia query DB)
-
-    # Crea placeholder per loading
-    loading_placeholder = st.empty()
-
+    # ⚡ PERF: nessun loading animato finto — i dati sono già in df_cache (istantaneo a ogni rerun).
     try:
-        # Mostra animazione AI durante caricamento
-        mostra_loading_ai(loading_placeholder, "Caricamento Dashboard AI")
-
-        # Riusa dati già caricati (df_cache) - evita seconda chiamata a carica_e_prepara_dataframe
         df_completo = df_cache
-
-        loading_placeholder.empty()
 
         # Mostra dashboard direttamente senza messaggi
         if not df_completo.empty:
@@ -1730,7 +1721,6 @@ def handle_upload_and_ai(supabase, logger, user_id, uploaded_files, df_cache):
             st.info("📊 Nessun dato disponibile. Carica le tue prime fatture!")
 
     except Exception as e:
-        loading_placeholder.empty()
         logger.error(f"Errore durante il caricamento: {e}")
         st.error("❌ Errore durante il caricamento del file. Riprova.")
         logger.exception("Errore caricamento dashboard")

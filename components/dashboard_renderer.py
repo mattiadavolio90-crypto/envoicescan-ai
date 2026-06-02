@@ -13,12 +13,11 @@ from config.constants import (
     MESI_ITA,
     TRUNCATE_DESC_LOG,
     TRUNCATE_DESC_QUERY,
-    UI_DELAY_MEDIUM,
     MAX_AI_CALLS_PER_DAY,
 )
 
 from utils.text_utils import normalizza_stringa
-from utils.ui_helpers import load_css, render_pivot_mensile
+from utils.ui_helpers import render_pivot_mensile
 from utils.ristorante_helper import add_ristorante_filter
 from utils.validation import classify_special_row_vectorized
 
@@ -50,9 +49,8 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
         st.info("📭 Nessun dato disponibile. Carica le tue prime fatture!")
         return
 
-    # Stili componenti condivisi (ai-banner, kpi-card, ecc.)
-    # columnheader bold + altri stili globali ora in common.css
-    load_css('common.css')
+    # Stili componenti condivisi (ai-banner, kpi-card, ecc.): common.css è già
+    # iniettato dal chiamante (app.py / app_controllers) nello stesso run — niente doppia injection.
 
     # ===== 🔍 DEBUG CATEGORIZZAZIONE (SOLO ADMIN IMPERSONIFICATO) =====
     if st.session_state.get('impersonating', False):
@@ -914,10 +912,8 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         st.session_state.force_empty_until_upload = False  # Assicura che i dati vengano caricati
                         st.session_state.editor_refresh_counter = st.session_state.get('editor_refresh_counter', 0) + 1
                         logger.info("🔄 Flag force_reload impostato su True")
-                        
-                        # ⭐ FIX: Pausa minima per propagazione (Supabase è sincrono, la cache è già pulita)
-                        time.sleep(UI_DELAY_MEDIUM)
-                        
+
+                        # ⚡ PERF: nessuna pausa — Supabase è sincrono e la cache è già stata pulita sopra.
                         # Rerun per ricaricare dati freschi dal database
                         st.rerun()
                         

@@ -481,8 +481,7 @@ if st.session_state.margine_tab == "analisi":
                             "split": {c: float(_euro_da_salvare.get(c, 0.0) or 0.0) for c in _centri_con_fatturato}
                         }
                         clear_fatturato_centri_cache()
-                        st.success(f"✅ Fatturato centri salvato per {mese_label_sel}")
-                        time.sleep(0.5)
+                        st.toast(f"✅ Fatturato centri salvato per {mese_label_sel}", icon="✅")
                         st.rerun()
                     else:
                         st.error("❌ Errore nel salvataggio")
@@ -1250,8 +1249,7 @@ if st.session_state.margine_tab == "calcolo":
                     user_id, current_ristorante, anno, df_input_apply, df_risultati_apply
                 )
             if success:
-                st.success("✅ Valore applicato e salvato")
-                time.sleep(0.5)
+                st.toast("✅ Valore applicato e salvato", icon="✅")
                 st.rerun()
             else:
                 st.error("❌ Errore durante il salvataggio. Riprova.")

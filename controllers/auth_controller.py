@@ -22,7 +22,6 @@ Funzioni esposte (chiamate in sequenza da app.py):
 
 import logging
 import secrets as _secrets
-import time
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
@@ -288,7 +287,6 @@ def handle_reset_token_page(supabase) -> None:
     if not reset_token:
         return
 
-    from config.constants import UI_DELAY_LONG
     from services.auth_service import imposta_password_da_token, valida_password_compliance
     from utils.ui_helpers import hide_sidebar_css
 
@@ -402,12 +400,11 @@ def handle_reset_token_page(supabase) -> None:
                             reset_token, nuova_password, supabase
                         )
                         if successo:
-                            st.success(
-                                "🎉 **Password impostata con successo!**\n\n"
-                                "Ora puoi effettuare il login con la tua email e password."
-                            )
                             st.balloons()
-                            time.sleep(UI_DELAY_LONG)
+                            st.toast(
+                                "🎉 Password impostata! Ora puoi effettuare il login.",
+                                icon="🎉",
+                            )
                             st.query_params.clear()
                             st.rerun()
                         else:
@@ -427,12 +424,7 @@ def handle_reset_token_page(supabase) -> None:
 
 def show_login_page(cookie_manager, supabase) -> None:
     """Mostra la pagina di login/recupero password (non chiama st.stop())."""
-    from config.constants import (
-        ADMIN_EMAILS,
-        UI_DELAY_LONG,
-        UI_DELAY_MEDIUM,
-        UI_DELAY_SHORT,
-    )
+    from config.constants import ADMIN_EMAILS
     from services.auth_service import (
         imposta_password_da_token,
         invia_codice_reset,
@@ -707,8 +699,7 @@ def show_login_page(cookie_manager, supabase) -> None:
                                 logger.info(
                                     f"✅ Login ADMIN: user_id={user.get('id')}"
                                 )
-                                st.success("✅ Accesso effettuato come ADMIN!")
-                                time.sleep(UI_DELAY_SHORT)
+                                st.toast("✅ Accesso effettuato come ADMIN!", icon="✅")
                                 st.switch_page("pages/admin.py")
                                 st.stop()
                             else:
@@ -723,8 +714,7 @@ def show_login_page(cookie_manager, supabase) -> None:
                                     f"[LOGIN] Fatture cache cleared + force_reload "
                                     f"per user_id={user.get('id')}"
                                 )
-                                st.success("✅ Accesso effettuato!")
-                                time.sleep(UI_DELAY_MEDIUM)
+                                st.toast("✅ Accesso effettuato!", icon="✅")
                                 st.rerun()
                         else:
                             st.error(f"❌ {errore}")
@@ -836,8 +826,7 @@ def show_login_page(cookie_manager, supabase) -> None:
                                     "verifica che i cookie siano abilitati nel browser. "
                                     "Verrai disconnesso ad ogni aggiornamento pagina."
                                 )
-                            st.success("✅ Password aggiornata! Accesso automatico...")
-                            time.sleep(UI_DELAY_LONG)
+                            st.toast("✅ Password aggiornata! Accesso automatico...", icon="✅")
                             st.rerun()
                         else:
                             st.error(f"❌ {messaggio}")

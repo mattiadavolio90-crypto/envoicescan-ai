@@ -23,8 +23,6 @@ from utils.sidebar_helper import render_sidebar, render_oh_yeah_header
 from utils.ui_helpers import load_css, load_js
 
 # Import services
-from services.ai_service import mostra_loading_ai
-
 from services.db_service import (
     carica_e_prepara_dataframe,
     get_fatture_stats,
@@ -488,7 +486,12 @@ if force_refresh:
 # [DEBUG]
 _debug_session_snap("PRE_LOAD")
 
-with st.spinner("⏳ Caricamento dati..."):
+# ⚡ PERF: mostra lo spinner SOLO quando c'è una query DB reale (force_refresh).
+# Su cache hit (caso normale a ogni rerun) il caricamento è istantaneo: niente flicker.
+if force_refresh:
+    with st.spinner("⏳ Caricamento dati..."):
+        df_cache = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh, ristorante_id=st.session_state.get('ristorante_id'))
+else:
     df_cache = carica_e_prepara_dataframe(user_id, force_refresh=force_refresh, ristorante_id=st.session_state.get('ristorante_id'))
 
 # Inizializzazione safe: get_fatture_stats viene ridefinito dentro l'expander
@@ -661,21 +664,10 @@ render_competenza_review(user_id)
 
 # 🔥 CARICA E MOSTRA STATISTICHE SEMPRE (da Supabase)
 # ⚡ RIUSA df_cache caricato sopra (evita doppia query DB)
-
-
-# Crea placeholder per loading
-loading_placeholder = st.empty()
-
-
+# ⚡ PERF: nessun loading animato finto — i dati sono già in df_cache (istantaneo a ogni rerun).
 try:
-    # Mostra animazione AI durante caricamento
-    mostra_loading_ai(loading_placeholder, "Caricamento Dashboard AI")
-    
-    # Riusa dati già caricati (df_cache) - evita seconda chiamata a carica_e_prepara_dataframe
     df_completo = df_cache
-    
-    loading_placeholder.empty()
-    
+
     # Mostra dashboard direttamente senza messaggi
     if not df_completo.empty:
         mostra_statistiche(df_completo, supabase, uploaded_files)
@@ -684,7 +676,6 @@ try:
 
 
 except Exception as e:
-    loading_placeholder.empty()
     logger.error(f"Errore durante il caricamento: {e}")
     st.error("❌ Errore durante il caricamento del file. Riprova.")
     logger.exception("Errore caricamento dashboard")
