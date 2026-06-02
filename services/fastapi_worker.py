@@ -1860,9 +1860,80 @@ Rispondi SOLO a domande sui dati del ristorante: costi, fornitori, food cost, ma
 Per argomenti non pertinenti (ricette generiche, notizie, argomenti personali) rispondi educatamente che puoi aiutare solo sulla gestione del locale.
 
 Tono: diretto, concreto, da collega esperto in F&B — non da chatbot generico. Risposte brevi (2-5 righe al massimo).
-Importi sempre in euro con 2 decimali. Usa i dati qui sotto: sono gli stessi che il cliente vede nella sua schermata Home. Se un dato c'e' qui, NON dire che non hai dati.{kpi_testo}"""
+Importi sempre in euro con 2 decimali. Usa i dati qui sotto: sono gli stessi che il cliente vede nella sua schermata Home. Se un dato c'e' qui, NON dire che non hai dati.
+
+Per domande su un PERIODO SPECIFICO (es. "quanto ho speso in carne a maggio", "spesa di gennaio") usa lo strumento query_costi. Se il periodo non e' chiaro, chiedi all'utente quale mese/anno intende prima di rispondere. Per le domande generiche sull'andamento usa i dati qui sotto senza chiamare lo strumento.{kpi_testo}"""
 
     return sistema
+
+
+# Mesi italiani -> numero, per interpretare i periodi richiesti via chat.
+_MESI_MAP = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4, "maggio": 5,
+    "giugno": 6, "luglio": 7, "agosto": 8, "settembre": 9, "ottobre": 10,
+    "novembre": 11, "dicembre": 12,
+}
+
+
+def _chat_query_costi(
+    user_id: str,
+    supabase_client,
+    mese: Optional[int] = None,
+    anno: Optional[int] = None,
+    categoria: Optional[str] = None,
+    fornitore: Optional[str] = None,
+    prodotto: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Interroga i costi fatturati con filtri opzionali (per il tool della chat).
+
+    Restituisce totale + dettaglio aggregato. Match testuali case-insensitive
+    e parziali (ilike) su categoria/fornitore/prodotto.
+    """
+    from datetime import date as _date
+    from calendar import monthrange
+
+    q = (
+        supabase_client.table("fatture")
+        .select("totale_riga,categoria,fornitore,descrizione,data_documento")
+        .eq("user_id", user_id)
+        .is_("deleted_at", "null")
+    )
+
+    periodo_label = "tutto lo storico"
+    if mese and anno:
+        ultimo = monthrange(anno, mese)[1]
+        q = q.gte("data_documento", f"{anno}-{mese:02d}-01")
+        q = q.lte("data_documento", f"{anno}-{mese:02d}-{ultimo:02d}")
+        periodo_label = f"{[k for k, v in _MESI_MAP.items() if v == mese][0]} {anno}"
+    elif anno:
+        q = q.gte("data_documento", f"{anno}-01-01").lte("data_documento", f"{anno}-12-31")
+        periodo_label = str(anno)
+
+    if categoria:
+        q = q.ilike("categoria", f"%{categoria}%")
+    if fornitore:
+        q = q.ilike("fornitore", f"%{fornitore}%")
+    if prodotto:
+        q = q.ilike("descrizione", f"%{prodotto}%")
+
+    righe = (q.limit(5000).execute().data) or []
+    totale = sum(float(r.get("totale_riga") or 0) for r in righe)
+
+    # Dettaglio: se filtra per categoria/prodotto, raggruppa per prodotto;
+    # altrimenti per categoria.
+    dettaglio: Dict[str, float] = {}
+    chiave = "descrizione" if (categoria or prodotto or fornitore) else "categoria"
+    for r in righe:
+        k = (r.get(chiave) or "?").strip()
+        dettaglio[k] = dettaglio.get(k, 0) + float(r.get("totale_riga") or 0)
+    top = sorted(dettaglio.items(), key=lambda x: x[1], reverse=True)[:15]
+
+    return {
+        "periodo": periodo_label,
+        "totale": round(totale, 2),
+        "righe_trovate": len(righe),
+        "dettaglio": [{"voce": k, "spesa": round(v, 2)} for k, v in top],
+    }
 
 
 @app.post(
@@ -1885,29 +1956,86 @@ def chat_ai(
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY non configurata")
 
     system_prompt = _build_chat_system_prompt(user, supabase_client, authorization)
+    user_id = str(user["id"])
 
     from openai import OpenAI
+    import json as _json
     client = OpenAI(api_key=openai_api_key)
 
-    messages = [{"role": "system", "content": system_prompt}]
+    messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     messages += [{"role": m.role, "content": m.content} for m in body.messages]
 
-    try:
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,  # type: ignore[arg-type]
-            max_tokens=400,
-            temperature=0.3,
+    tools = [{
+        "type": "function",
+        "function": {
+            "name": "query_costi",
+            "description": (
+                "Interroga i costi fatturati del ristorante con filtri opzionali. "
+                "Usalo per domande su un periodo specifico (un mese o un anno) o "
+                "per cercare la spesa su una categoria, un fornitore o un prodotto."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "mese": {"type": "integer", "description": "Numero del mese 1-12 (opzionale)"},
+                    "anno": {"type": "integer", "description": "Anno es. 2026 (opzionale)"},
+                    "categoria": {"type": "string", "description": "Categoria di spesa, es. 'carne' (opzionale)"},
+                    "fornitore": {"type": "string", "description": "Nome o parte del fornitore (opzionale)"},
+                    "prodotto": {"type": "string", "description": "Nome o parte del prodotto, es. 'mozzarella' (opzionale)"},
+                },
+            },
+        },
+    }]
+
+    def _esegui_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+        return _chat_query_costi(
+            user_id=user_id,
+            supabase_client=supabase_client,
+            mese=args.get("mese"),
+            anno=args.get("anno"),
+            categoria=args.get("categoria"),
+            fornitore=args.get("fornitore"),
+            prodotto=args.get("prodotto"),
         )
-        reply = resp.choices[0].message.content or ""
+
+    try:
+        # Loop di tool calling: max 3 round per evitare cicli.
+        reply = ""
+        for _ in range(3):
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=messages,  # type: ignore[arg-type]
+                tools=tools,  # type: ignore[arg-type]
+                max_tokens=400,
+                temperature=0.3,
+            )
+            msg = resp.choices[0].message
+            if not msg.tool_calls:
+                reply = msg.content or ""
+                break
+            # Registra la richiesta tool + esegui ogni chiamata
+            messages.append({
+                "role": "assistant",
+                "content": msg.content,
+                "tool_calls": [tc.model_dump() for tc in msg.tool_calls],
+            })
+            for tc in msg.tool_calls:
+                try:
+                    args = _json.loads(tc.function.arguments or "{}")
+                except Exception:
+                    args = {}
+                risultato = _esegui_tool(args)
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": _json.dumps(risultato, ensure_ascii=False),
+                })
     except Exception as exc:
         logger.error("chat_ai: OpenAI error: %s", exc)
         raise HTTPException(status_code=502, detail="Errore OpenAI")
 
-    logger.info("chat_ai: user=%s messages=%d tokens=%s",
-                user.get("email"), len(body.messages),
-                getattr(resp.usage, "total_tokens", "?"))
-    return ChatResponse(reply=reply)
+    logger.info("chat_ai: user=%s messages=%d", user.get("email"), len(body.messages))
+    return ChatResponse(reply=reply or "Non sono riuscito a elaborare la risposta, riprova.")
 
 
 def _saluto_per_ora(nome: Optional[str]) -> str:
