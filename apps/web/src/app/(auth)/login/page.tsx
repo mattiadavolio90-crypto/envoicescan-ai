@@ -114,6 +114,18 @@ function LoginForm() {
               Hai dimenticato la password?
             </Link>
           </p>
+
+          <p className="text-[0.7rem] text-center text-muted-foreground pt-1">
+            Accedendo accetti la{" "}
+            <Link href="/privacy" className="hover:underline">
+              Privacy Policy
+            </Link>{" "}
+            e i{" "}
+            <Link href="/termini" className="hover:underline">
+              Termini di Servizio
+            </Link>
+            . Usiamo solo cookie tecnici.
+          </p>
         </form>
       </CardContent>
     </Card>

@@ -18,6 +18,7 @@ function ResetPasswordForm() {
   const [token, setToken] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,12 +39,20 @@ function ResetPasswordForm() {
       setError("La password deve essere di almeno 8 caratteri");
       return;
     }
+    if (isOnboarding && !privacyAccepted) {
+      setError("Devi accettare l'Informativa Privacy e i Termini di Servizio per continuare");
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch("/api/auth/reset-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: token.trim(), password }),
+        body: JSON.stringify({
+          token: token.trim(),
+          password,
+          privacy_accepted: isOnboarding ? privacyAccepted : false,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -136,6 +145,29 @@ function ResetPasswordForm() {
                 disabled={loading}
               />
             </div>
+            {isOnboarding && (
+              <label className="flex items-start gap-2.5 text-xs text-muted-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 shrink-0 accent-primary cursor-pointer"
+                  checked={privacyAccepted}
+                  onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                  disabled={loading}
+                />
+                <span>
+                  Ho letto e accetto l&apos;
+                  <Link href="/privacy" target="_blank" className="text-primary hover:underline">
+                    Informativa Privacy
+                  </Link>{" "}
+                  e i{" "}
+                  <Link href="/termini" target="_blank" className="text-primary hover:underline">
+                    Termini di Servizio
+                  </Link>
+                  . Acconsento al trattamento dei miei dati per l&apos;erogazione del servizio
+                  (GDPR UE 2016/679, art. 6.1.b).
+                </span>
+              </label>
+            )}
             {error && (
               <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-sm text-destructive">
                 {error}
@@ -144,7 +176,13 @@ function ResetPasswordForm() {
             <Button
               type="submit"
               className="w-full"
-              disabled={loading || !token.trim() || !password || !confirm}
+              disabled={
+                loading ||
+                !token.trim() ||
+                !password ||
+                !confirm ||
+                (isOnboarding && !privacyAccepted)
+              }
             >
               {loading
                 ? "Salvataggio..."

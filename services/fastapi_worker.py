@@ -6564,6 +6564,10 @@ class ResetRequestBody(BaseModel):
 class ResetConfirmBody(BaseModel):
     token: str
     password: str
+    # GDPR Art. 7(1): valorizzato dal flusso di onboarding (primo accesso), dove
+    # l'utente accetta esplicitamente l'informativa privacy. Resta False per il
+    # semplice reset password di un account già attivato (nessun nuovo consenso).
+    privacy_accepted: bool = False
 
 
 @app.post("/api/auth/reset-request", tags=["Auth"])
@@ -6589,7 +6593,9 @@ def reset_password_confirm(body: ResetConfirmBody):
     password = body.password or ""
     if not token or not password:
         raise HTTPException(status_code=400, detail="Token e password obbligatori")
-    ok, msg, _ = imposta_password_da_token(token, password)
+    ok, msg, _ = imposta_password_da_token(
+        token, password, privacy_accepted=body.privacy_accepted
+    )
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
     return {"ok": True, "message": msg}

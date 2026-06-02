@@ -8,9 +8,11 @@ import {
   Home,
   LifeBuoy,
   LogOut,
+  Scale,
   Search,
   Settings,
   ShieldCheck,
+  ShieldQuestion,
   Tags,
   Wrench,
 } from "lucide-react";
@@ -146,6 +148,18 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ))}
+            <SidebarMenuItem>
+              <SidebarMenuButton render={<Link href="/privacy" target="_blank" />}>
+                <ShieldQuestion />
+                <span>Privacy & Cookie</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton render={<Link href="/termini" target="_blank" />}>
+                <Scale />
+                <span>Termini di Servizio</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>

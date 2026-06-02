@@ -14919,6 +14919,11 @@
           "password": {
             "type": "string",
             "title": "Password"
+          },
+          "privacy_accepted": {
+            "type": "boolean",
+            "title": "Privacy Accepted",
+            "default": false
           }
         },
         "type": "object",

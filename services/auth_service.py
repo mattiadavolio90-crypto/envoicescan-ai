@@ -512,17 +512,23 @@ def crea_cliente_con_token(
 def imposta_password_da_token(
     token: str,
     nuova_password: str,
-    supabase_client = None
+    supabase_client = None,
+    privacy_accepted: bool = True,
 ) -> Tuple[bool, str, Dict]:
     """
     Imposta password per nuovo cliente da token email.
-    
+
     Verifica token valido, valida password compliance, salva hash.
-    
+
     Args:
         token: Token univoco da email
         nuova_password: Password scelta dal cliente
         supabase_client: Client Supabase
+        privacy_accepted: True se l'utente ha prestato consenso esplicito.
+            GDPR Art. 7(1): privacy_accepted_at viene valorizzato SOLO se True,
+            per non registrare una prova di consenso mai realmente prestato.
+            Default True per retro-compatibilità col flusso Streamlit, dove il
+            consenso è già validato a monte tramite checkbox nel form.
     
     Returns:
         Tuple[bool, str, Dict]:
@@ -576,15 +582,19 @@ def imposta_password_da_token(
         password_hash = ph.hash(nuova_password)
         user_id = user['id']
         
-        _now_consent = datetime.now(timezone.utc).isoformat()
-        supabase_client.table('users').update({
+        _now = datetime.now(timezone.utc).isoformat()
+        _update = {
             'reset_code': None,
             'reset_expires': None,
             'password_hash': password_hash,
             'attivo': True,
-            'password_changed_at': _now_consent,
-            'privacy_accepted_at': _now_consent,  # GDPR Art. 7(1) — prova del consenso
-        }).eq('id', user_id).execute()
+            'password_changed_at': _now,
+        }
+        # GDPR Art. 7(1) — registriamo la prova del consenso SOLO se realmente
+        # prestato. Mai valorizzare privacy_accepted_at senza un consenso vero.
+        if privacy_accepted:
+            _update['privacy_accepted_at'] = _now
+        supabase_client.table('users').update(_update).eq('id', user_id).execute()
         
         logger.info(f"✅ Password impostata per user_id={user_id}")
         

@@ -4,6 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+import { CookieNotice } from "@/components/legal/cookie-notice";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -25,6 +26,7 @@ export default function RootLayout({
       <body className="antialiased">
         <TooltipProvider>
           {children}
+          <CookieNotice />
           <Toaster />
         </TooltipProvider>
       </body>

@@ -202,3 +202,80 @@ class TestRiepilogoFattureAuto:
 
         file_a = next(f for f in summary['files_detail'] if f['file_name'] == 'fattura-a.xml')
         assert sorted(file_a['event_ids']) == [99, 101]
+
+
+def _make_reset_supabase_mock(captured_updates):
+    """Mock supabase per imposta_password_da_token: ritorna un utente valido con
+    token non scaduto e cattura il payload passato a .update()."""
+    from datetime import datetime, timezone, timedelta
+
+    user = {
+        'id': 'user-42',
+        'email': 'mario@trattoria.it',
+        'nome_ristorante': 'Trattoria',
+        'attivo': False,
+        'reset_code': 'tok-valid',
+        'reset_expires': (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
+        'password_hash': None,
+    }
+
+    table = MagicMock()
+    table.select.return_value = table
+    table.eq.return_value = table
+    table.execute.return_value = MagicMock(data=[user])
+
+    def _capture_update(payload):
+        captured_updates.append(payload)
+        upd = MagicMock()
+        upd.eq.return_value = upd
+        upd.execute.return_value = MagicMock(data=[user])
+        return upd
+
+    table.update.side_effect = _capture_update
+
+    client = MagicMock()
+    client.table.return_value = table
+    return client
+
+
+class TestImpostaPasswordConsentGDPR:
+    """GDPR Art. 7(1): privacy_accepted_at va scritto SOLO con consenso reale."""
+
+    def test_consenso_registrato_quando_accettato(self):
+        from services.auth_service import imposta_password_da_token
+
+        captured = []
+        client = _make_reset_supabase_mock(captured)
+        ok, _msg, _user = imposta_password_da_token(
+            'tok-valid', 'Str0ng!P@ss2026', client, privacy_accepted=True
+        )
+
+        assert ok is True
+        assert len(captured) == 1
+        assert captured[0].get('privacy_accepted_at') is not None
+
+    def test_consenso_non_registrato_quando_non_accettato(self):
+        from services.auth_service import imposta_password_da_token
+
+        captured = []
+        client = _make_reset_supabase_mock(captured)
+        ok, _msg, _user = imposta_password_da_token(
+            'tok-valid', 'Str0ng!P@ss2026', client, privacy_accepted=False
+        )
+
+        assert ok is True
+        assert len(captured) == 1
+        # Nessuna prova di consenso falsa quando non è stato prestato.
+        assert 'privacy_accepted_at' not in captured[0]
+
+    def test_default_retrocompat_streamlit_registra_consenso(self):
+        """Il flusso Streamlit chiama posizionalmente senza privacy_accepted:
+        il default True preserva il comportamento storico (checkbox già validato)."""
+        from services.auth_service import imposta_password_da_token
+
+        captured = []
+        client = _make_reset_supabase_mock(captured)
+        ok, _msg, _user = imposta_password_da_token('tok-valid', 'Str0ng!P@ss2026', client)
+
+        assert ok is True
+        assert captured[0].get('privacy_accepted_at') is not None
