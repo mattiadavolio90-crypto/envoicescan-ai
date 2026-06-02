@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { MoreVertical, Settings, Monitor, LogOut } from "lucide-react";
+import { MoreVertical, Settings, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -37,22 +37,9 @@ export function HeaderMenu() {
         }
       />
       <DropdownMenuContent side="bottom" align="end" className="w-52">
-        <DropdownMenuItem onClick={() => router.push("/impostazioni")}>
+        <DropdownMenuItem onClick={() => router.push("/m/impostazioni")}>
           <Settings className="size-4" />
           Impostazioni
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => {
-            try {
-              sessionStorage.setItem("oneflux:force-desktop", "1");
-            } catch {
-              /* ignore */
-            }
-            router.push("/dashboard");
-          }}
-        >
-          <Monitor className="size-4" />
-          Vista completa
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
