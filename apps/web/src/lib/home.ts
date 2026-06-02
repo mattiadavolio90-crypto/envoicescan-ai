@@ -30,6 +30,7 @@ export type ConfigTopic = {
 export type AssistantConfig = {
   nome_referente: string;
   topics: ConfigTopic[];
+  chat_ai_enabled: boolean;
 };
 
 export type SaluteVoce = {

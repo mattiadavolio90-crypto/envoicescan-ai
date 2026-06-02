@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Sparkles, Lock, Loader2 } from "lucide-react";
+import { Sparkles, Lock, Loader2, MessageCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,7 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
   const [open, setOpen] = useState(false);
   const [nome, setNome] = useState(config.nome_referente);
   const [topics, setTopics] = useState<ConfigTopic[]>(config.topics);
+  const [chatEnabled, setChatEnabled] = useState(config.chat_ai_enabled);
   const [saving, setSaving] = useState(false);
 
   function toggle(key: string, enabled: boolean) {
@@ -35,7 +36,11 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
       await fetch("/api/home/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome_referente: nome.trim() || null, topics_disabled }),
+        body: JSON.stringify({
+          nome_referente: nome.trim() || null,
+          topics_disabled,
+          chat_ai_enabled: chatEnabled,
+        }),
       });
       setOpen(false);
       // ricarica per riflettere saluto/avvisi aggiornati nella Home
@@ -67,6 +72,19 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
         </DialogHeader>
 
         <div className="space-y-5 py-2">
+          <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2.5">
+            <div className="flex items-center gap-2 text-sm">
+              <MessageCircle className="size-4 text-primary" />
+              <div>
+                <p className="font-medium">Chat AI in Home</p>
+                <p className="text-xs text-muted-foreground">
+                  Il pulsante per chiedere all&apos;assistente dei tuoi dati
+                </p>
+              </div>
+            </div>
+            <Switch checked={chatEnabled} onCheckedChange={(v: boolean) => setChatEnabled(v)} />
+          </div>
+
           <div className="space-y-1.5">
             <label className="text-sm font-medium">Il tuo nome</label>
             <Input

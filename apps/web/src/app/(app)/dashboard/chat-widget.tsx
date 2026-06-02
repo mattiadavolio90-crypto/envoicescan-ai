@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MessageCircle, X, Send, Loader2, Bot } from "lucide-react";
+import { X, Send, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/brand/logo";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
@@ -67,7 +68,7 @@ export function ChatWidget() {
         <div className="flex h-[420px] w-[340px] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl">
           {/* Header */}
           <div className="flex items-center gap-2.5 border-b bg-primary/5 px-4 py-3">
-            <Bot className="size-4 text-primary shrink-0" />
+            <Logo variant="icon" size={20} className="shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold leading-none">Assistente ONEFLUX</p>
               <p className="text-[11px] text-muted-foreground mt-0.5">Chiedimi dei tuoi dati</p>
@@ -86,7 +87,7 @@ export function ChatWidget() {
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
             {messages.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-8 text-center text-muted-foreground">
-                <Bot className="size-8 opacity-30" />
+                <Logo variant="icon" size={32} className="opacity-30" />
                 <p className="text-xs leading-relaxed max-w-[220px]">
                   Chiedimi dei tuoi costi, fornitori, food cost o scadenze.
                 </p>
@@ -139,18 +140,18 @@ export function ChatWidget() {
         </div>
       )}
 
-      {/* Bottone flottante */}
+      {/* Bottone flottante: solo contorno (no riempimento) col logo ONEFLUX
+          dentro, cosi' sembra che "ONEFLUX risponde". */}
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          "flex size-14 items-center justify-center rounded-full shadow-lg transition-all",
-          "bg-primary text-primary-foreground hover:scale-105 active:scale-95",
-          open && "rotate-90",
+          "flex size-14 items-center justify-center rounded-full border-2 border-primary bg-background text-primary shadow-lg transition-all",
+          "hover:scale-105 hover:bg-primary/5 active:scale-95",
         )}
         aria-label={open ? "Chiudi chat" : "Apri assistente AI"}
       >
-        {open ? <X className="size-6" /> : <MessageCircle className="size-6" />}
+        {open ? <X className="size-6" /> : <Logo variant="icon" size={28} />}
       </button>
     </div>
   );

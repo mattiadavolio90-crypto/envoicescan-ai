@@ -1556,14 +1556,16 @@ class ConfigTopic(BaseModel):
 
 
 class ConfigResponse(BaseModel):
-    """Configurazione assistente: nome + interruttori topic."""
+    """Configurazione assistente: nome + interruttori topic + Chat AI."""
     nome_referente: str = ""
     topics: List[ConfigTopic]
+    chat_ai_enabled: bool = True
 
 
 class ConfigUpdateRequest(BaseModel):
     nome_referente: Optional[str] = None
     topics_disabled: List[str] = []
+    chat_ai_enabled: Optional[bool] = None
 
 
 class HomeKpiResponse(BaseModel):
@@ -2540,11 +2542,12 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
 
     nome = ""
     disabled: set = set()
+    chat_ai_enabled = True
     if ristorante_id:
         try:
             resp = (
                 sb.table("assistant_preferences")
-                .select("nome_referente,topics_disabled")
+                .select("nome_referente,topics_disabled,chat_ai_enabled")
                 .eq("ristorante_id", ristorante_id)
                 .limit(1)
                 .execute()
@@ -2555,6 +2558,8 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
                 td = pref.get("topics_disabled") or []
                 if isinstance(td, list):
                     disabled = {str(t) for t in td}
+                if pref.get("chat_ai_enabled") is not None:
+                    chat_ai_enabled = bool(pref["chat_ai_enabled"])
         except Exception as exc:
             logger.warning("home_config_get: lettura fallita: %s", exc)
 
@@ -2565,7 +2570,7 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
         ConfigTopic(key=key, label=label, enabled=key not in disabled, bloccato=bloccato)
         for (key, label, bloccato) in _CONFIG_TOPICS
     ]
-    return ConfigResponse(nome_referente=nome, topics=topics)
+    return ConfigResponse(nome_referente=nome, topics=topics, chat_ai_enabled=chat_ai_enabled)
 
 
 @app.post(
@@ -2603,6 +2608,10 @@ def home_config_post(
         "topics_disabled": disabled,
         "updated_at": _dt2.now(_tz2.utc).isoformat(),
     }
+    # chat_ai_enabled: aggiornato solo se passato (None = non toccare).
+    if body.chat_ai_enabled is not None:
+        record["chat_ai_enabled"] = bool(body.chat_ai_enabled)
+
     try:
         sb.table("assistant_preferences").upsert(
             record, on_conflict="ristorante_id"
@@ -2616,7 +2625,8 @@ def home_config_post(
         ConfigTopic(key=key, label=label, enabled=key not in disabled_set, bloccato=bloccato)
         for (key, label, bloccato) in _CONFIG_TOPICS
     ]
-    return ConfigResponse(nome_referente=str(nome or ""), topics=topics)
+    chat_ai = True if body.chat_ai_enabled is None else bool(body.chat_ai_enabled)
+    return ConfigResponse(nome_referente=str(nome or ""), topics=topics, chat_ai_enabled=chat_ai)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

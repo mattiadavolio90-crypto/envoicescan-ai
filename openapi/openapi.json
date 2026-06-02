@@ -12891,6 +12891,11 @@
             },
             "type": "array",
             "title": "Topics"
+          },
+          "chat_ai_enabled": {
+            "type": "boolean",
+            "title": "Chat Ai Enabled",
+            "default": true
           }
         },
         "type": "object",
@@ -12898,7 +12903,7 @@
           "topics"
         ],
         "title": "ConfigResponse",
-        "description": "Configurazione assistente: nome + interruttori topic."
+        "description": "Configurazione assistente: nome + interruttori topic + Chat AI."
       },
       "ConfigTopic": {
         "properties": {
@@ -12949,6 +12954,17 @@
             "type": "array",
             "title": "Topics Disabled",
             "default": []
+          },
+          "chat_ai_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Ai Enabled"
           }
         },
         "type": "object",
