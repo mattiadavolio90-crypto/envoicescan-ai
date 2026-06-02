@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>ONEFLUX — VA / VB · X cava unica</title>
+<style>
+  body { margin:0; font-family:'Segoe UI',Arial,sans-serif; background:#0d0d0d; color:#eee; }
+  header { padding:22px 28px 8px; }
+  h1 { font-size:17px; margin:0 0 6px; font-weight:600; }
+  p { font-size:12.5px; opacity:.6; max-width:880px; line-height:1.5; margin:0; }
+  .toolbar { padding:12px 28px 18px; }
+  button { background:#1c1c1c; color:#ddd; border:1px solid #333; border-radius:8px; padding:7px 14px; font-size:12px; cursor:pointer; margin-right:8px; }
+  button.active { background:#22D3EE; border-color:#22D3EE; color:#04323a; font-weight:600; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:3px; padding:0 24px 60px; max-width:940px; margin:0 auto; }
+  .cell { display:flex; flex-direction:column; align-items:center; gap:16px; background:#141414; border:1px solid #222; padding:32px 20px 24px; position:relative; }
+  .cell .n { position:absolute; top:10px; left:14px; font-size:12px; font-weight:700; color:#22D3EE; opacity:.9; }
+  .cell .desc { font-size:12px; opacity:.6; text-align:center; line-height:1.5; max-width:320px; }
+  .sizes { display:flex; align-items:center; gap:22px; }
+  .sz { display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .sz span { font-size:9.5px; opacity:.4; }
+  .accent { color:#22D3EE; }
+  body.light { background:#fff; color:#222; }
+  body.light .cell { background:#fafafa; border-color:#eee; }
+  body.light .accent { color:#0891B2; }
+  body.light button { background:#f0f0f0; color:#333; border-color:#ddd; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ONEFLUX — VA · VB · X cava unica (nessuna linea di intersezione al centro)</h1>
+  <p>La X è UNA sola forma chiusa (perimetro esterno di una X piena), interno vuoto. Niente bordi interni dove le gambette si incrociano. Ingrandita fin quasi a toccare il primo cerchio interno della O. VA = punte che arrivano al cerchio. VB = punte che si fermano poco prima.</p>
+</header>
+<div class="toolbar">
+  <button id="dark" class="active" onclick="setA('dark')">Sfondo scuro</button>
+  <button id="light" onclick="setA('light')">Sfondo chiaro</button>
+</div>
+<div class="grid" id="grid"></div>
+
+<script>
+function setA(id){
+  document.getElementById('dark').classList.toggle('active',id==='dark');
+  document.getElementById('light').classList.toggle('active',id==='light');
+  document.body.classList.toggle('light',id==='light');
+}
+
+/*
+  X come UN SOLO poligono chiuso (12 vertici), centro vuoto (fill="none").
+  Disegno solo il contorno -> dentro è cavo, e NON ci sono lineette di intersezione
+  perché non sovrappongo due rami: è un unico perimetro.
+
+  Parametri:
+    reach = quanto lontano dal centro arrivano le punte (raggio punte)
+    w     = mezza-larghezza del braccio della X
+  Le 4 punte sono a 45° (diagonali). I 12 vertici alternano punta / incavo.
+*/
+function hollowX(cx, cy, reach, w){
+  // direzione diagonale normalizzata
+  const d = Math.SQRT1_2; // cos45 = sin45
+  // punto punta su una diagonale: (±reach*d, ±reach*d)
+  // ogni punta è "tagliata" piatta? no: punta a V. Costruiamo i 12 vertici.
+  // Vertici nell'ordine del perimetro (senso orario), partendo dalla punta in alto-sx.
+  // Per ogni braccio: due spalle (offset ±w perpendicolare) e la punta.
+  // Più semplice e pulito: X fatta da incavi sugli assi.
+  // notch = distanza dell'incavo (gola tra due braccia) dal centro
+  const tip = reach;          // distanza punta
+  const notch = w * Math.SQRT2; // gola: dove i bracci si incontrano sugli assi
+  const P = [
+    // punta alto-sinistra
+    [cx - tip + w, cy - tip - w], [cx - tip - w, cy - tip + w],
+    // incavo a sinistra (asse x negativo)
+    [cx - notch, cy],
+    // punta basso-sinistra
+    [cx - tip - w, cy + tip - w], [cx - tip + w, cy + tip + w],
+    // incavo in basso (asse y positivo)
+    [cx, cy + notch],
+    // punta basso-destra
+    [cx + tip - w, cy + tip + w], [cx + tip + w, cy + tip - w],
+    // incavo a destra
+    [cx + notch, cy],
+    // punta alto-destra
+    [cx + tip + w, cy - tip + w], [cx + tip - w, cy - tip - w],
+    // incavo in alto
+    [cx, cy - notch],
+  ];
+  let d2='M'+P[0][0].toFixed(2)+' '+P[0][1].toFixed(2);
+  for(let i=1;i<P.length;i++) d2+=' L'+P[i][0].toFixed(2)+' '+P[i][1].toFixed(2);
+  d2+=' Z';
+  return d2;
+}
+
+const RINGS = `<circle cx="50" cy="50" r="42" stroke="currentColor" fill="none" stroke-width="2"/>`+
+              `<circle cx="50" cy="50" r="34" stroke="currentColor" fill="none" stroke-width="2"/>`;
+const NODE  = `<circle cx="50" cy="50" r="3.5" fill="currentColor"/>`;
+const edge  = 2.5;  // spessore del contorno della X
+const w     = 6;    // mezza-larghezza braccio
+
+// cerchio interno r=34. punta a 45°: distanza dal centro = reach*sqrt2 sui bordi.
+// Per "quasi toccare" r=34: VA reach ~ 30 (punta a ~ sqrt2*30≈42 sulla diagonale? no)
+// La punta è a (reach, reach) circa -> distanza dal centro = reach*sqrt2.
+// Per arrivare a 34: reach ≈ 34/sqrt2 ≈ 24. VA usa 25 (quasi tocca), VB 22 (poco prima).
+function build(reach){
+  return RINGS
+    + `<path d="${hollowX(50,50,reach,w)}" stroke="currentColor" fill="none" stroke-width="${edge}" stroke-linejoin="round"/>`
+    + NODE;
+}
+
+const items=[
+  { id:'VA', desc:'X grande: le punte arrivano quasi a toccare il primo cerchio interno. Contorno unico, interno vuoto, nessuna lineetta al centro.', svg: build(25) },
+  { id:'VB', desc:'X leggermente più piccola: le punte si fermano poco prima del cerchio interno. Stesso contorno cavo pulito.', svg: build(22) },
+];
+
+const grid=document.getElementById('grid');
+items.forEach(it=>{
+  const c=document.createElement('div'); c.className='cell';
+  c.innerHTML=`<span class="n">${it.id}</span>`
+    +`<div class="sizes">`
+    +`<div class="sz"><span>grande</span><svg class="accent" width="110" height="110" viewBox="0 0 100 100">${it.svg}</svg></div>`
+    +`<div class="sz"><span>48px</span><svg class="accent" width="48" height="48" viewBox="0 0 100 100">${it.svg}</svg></div>`
+    +`<div class="sz"><span>favicon 22px</span><svg class="accent" width="22" height="22" viewBox="0 0 100 100">${it.svg}</svg></div>`
+    +`</div>`
+    +`<p class="desc">${it.desc}</p>`;
+  grid.appendChild(c);
+});
+</script>
+</body>
+</html>

@@ -13,8 +13,8 @@ type LogoProps = {
 };
 
 /**
- * Mark ONEFLUX: box quadrato = la "O" di One, X interna = la "X" di fluX.
- * La X mantiene un margine dagli angoli del box (non li tocca).
+ * Mark ONEFLUX (F3): doppio anello = la "O" di One (esterno spesso, interno fine),
+ * X a tratti curvi = la "X" di fluX che evoca il flusso.
  * Il colore eredita da currentColor: di default segue il testo / primary.
  */
 function LogoMark({ glow, mono }: { glow?: boolean; mono?: boolean }) {
@@ -28,15 +28,12 @@ function LogoMark({ glow, mono }: { glow?: boolean; mono?: boolean }) {
       className="size-full"
       style={glow ? { filter: "drop-shadow(0 0 3px var(--logo-glow, currentColor))" } : undefined}
     >
-      {/* Cerchio = O (bordo più sottile della X per gerarchia) */}
+      {/* O = doppio anello: esterno spesso, interno fine */}
       <circle cx="50" cy="50" r="42" stroke={stroke} strokeWidth="6" fill="none" />
-      {/* X interna = X, vicina al cerchio senza toccarlo, terminali netti */}
-      <path
-        d="M31 31 L69 69 M69 31 L31 69"
-        stroke={stroke}
-        strokeWidth="7.5"
-        strokeLinecap="square"
-      />
+      <circle cx="50" cy="50" r="31" stroke={stroke} strokeWidth="2.5" fill="none" />
+      {/* X = due tratti curvi a flusso */}
+      <path d="M36 36 C48 44 48 56 64 64" stroke={stroke} strokeWidth="7" strokeLinecap="round" />
+      <path d="M64 36 C52 44 52 56 36 64" stroke={stroke} strokeWidth="7" strokeLinecap="round" />
     </svg>
   );
 }

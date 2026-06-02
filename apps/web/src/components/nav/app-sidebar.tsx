@@ -76,7 +76,6 @@ export function AppSidebar({
   async function handleLogout() {
     try {
       await fetch("/api/auth/logout", { method: "POST" });
-      toast.success("Logout effettuato");
       router.push("/login");
       router.refresh();
     } catch {
@@ -89,10 +88,14 @@ export function AppSidebar({
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" render={<Link href="/dashboard" />}>
-              <Logo variant="icon" size={32} className="shrink-0" />
-              <div className="flex flex-col gap-0.5 leading-none">
-                <Wordmark className="text-sm tracking-[0.12em]" />
+            <SidebarMenuButton
+              size="lg"
+              render={<Link href="/dashboard" />}
+              className="group-data-[collapsible=icon]:!size-12 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center [&_svg]:!size-full"
+            >
+              <Logo variant="icon" size={40} glow className="shrink-0" />
+              <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
+                <Wordmark className="text-base tracking-[0.14em]" />
                 <span className="text-xs text-muted-foreground">Controllo gestione</span>
               </div>
             </SidebarMenuButton>

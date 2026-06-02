@@ -111,7 +111,7 @@
   }
 }
 
-/* ONEFLUX brand spinner: box che pulsa col glow neon + X che ruota in rombo */
+/* ONEFLUX brand spinner: anello che pulsa col glow + X curva che ruota */
 @keyframes oneflux-pulse {
   0%,
   100% {
@@ -125,15 +125,8 @@
 }
 
 @keyframes oneflux-rotate-x {
-  0% {
-    transform: rotate(0deg);
-  }
-  45%,
-  55% {
-    transform: rotate(45deg);
-  }
-  100% {
-    transform: rotate(0deg);
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -148,7 +141,7 @@
 
 .oneflux-spinner-x {
   transform-origin: 50% 50%;
-  animation: oneflux-rotate-x 1.6s ease-in-out infinite;
+  animation: oneflux-rotate-x 1.8s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -157,5 +150,113 @@
   }
   .oneflux-spinner-x {
     animation: none;
+  }
+}
+
+/* ONEFLUX login: overlay full-page con logo al centro durante l'accesso */
+@keyframes oneflux-overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes oneflux-overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes oneflux-launch {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+    filter: drop-shadow(0 0 0 currentColor);
+  }
+  60% {
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    filter: drop-shadow(0 0 16px currentColor);
+  }
+}
+
+@keyframes oneflux-ring-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+.oneflux-login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, color-mix(in oklab, var(--background) 92%, transparent), var(--background));
+  backdrop-filter: blur(6px);
+  animation: oneflux-overlay-in 0.35s ease-out both;
+}
+
+.oneflux-login-overlay-out {
+  animation: oneflux-overlay-out 0.3s ease-in both;
+}
+
+.oneflux-login-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.oneflux-login-mark {
+  position: relative;
+  z-index: 1;
+  animation: oneflux-launch 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.oneflux-login-mark .oneflux-spinner-x {
+  animation: oneflux-rotate-x 1.6s linear infinite;
+}
+
+.oneflux-login-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 2px solid var(--primary);
+  animation: oneflux-ring-pulse 1.8s ease-out infinite;
+}
+
+.oneflux-login-ring:nth-child(2) {
+  animation-delay: 0.6s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oneflux-login-mark {
+    animation: oneflux-pulse 2s ease-in-out infinite;
+  }
+  .oneflux-login-mark .oneflux-spinner-x {
+    animation: none;
+  }
+  .oneflux-login-ring {
+    animation: none;
+    opacity: 0.3;
   }
 }
