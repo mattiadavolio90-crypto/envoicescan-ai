@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Download, CopyPlus } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Download, CopyPlus, LayoutGrid, List } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -332,12 +332,14 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClo
 // ─── Selettore periodo ────────────────────────────────────────────────────────
 
 type Periodo = "settimana" | "mese";
+type Vista = "calendario" | "lista";
 
 // ─── Tab principale ───────────────────────────────────────────────────────────
 
 export function PersonaleTab() {
   const oggi = toISO(new Date());
   const [periodo, setPeriodo] = useState<Periodo>("settimana");
+  const [vista, setVista] = useState<Vista>("calendario");
   const [lunedi, setLunedi] = useState<Date>(() => lunediDi(oggi));
   const [meseBase, setMeseBase] = useState(() => oggi.slice(0, 7));
   const [risposta, setRisposta] = useState<PersonaleResponse | null>(null);
@@ -480,8 +482,18 @@ export function PersonaleTab() {
     perData[t.data_turno].push(t);
   }
 
-  const giorniVista = periodo === "settimana"
-    ? Array.from({ length: 7 }, (_, i) => toISO(addDays(lunedi, i)))
+  const giorniSettimana = Array.from({ length: 7 }, (_, i) => toISO(addDays(lunedi, i)));
+
+  const giorniMese = (() => {
+    const [ay, am] = meseBase.split("-").map(Number);
+    const ultGiorno = new Date(ay, am, 0).getDate();
+    return Array.from({ length: ultGiorno }, (_, i) =>
+      `${meseBase}-${String(i + 1).padStart(2, "0")}`
+    );
+  })();
+
+  const giorniVista = periodo === "settimana" ? giorniSettimana
+    : vista === "calendario" ? giorniMese
     : Object.keys(perData).sort();
 
   return (
@@ -509,6 +521,24 @@ export function PersonaleTab() {
           <span className="px-3 text-sm font-medium min-w-[160px] text-center capitalize">{labelPeriodo()}</span>
           <button onClick={navNext} className="p-1.5 hover:bg-muted rounded-r-md">
             <ChevronRight className="size-4" />
+          </button>
+        </div>
+
+        {/* Toggle vista calendario / lista */}
+        <div className="flex rounded-md border border-border overflow-hidden">
+          <button
+            onClick={() => setVista("calendario")}
+            title="Vista calendario"
+            className={`px-2.5 py-1.5 transition-colors ${vista === "calendario" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+          >
+            <LayoutGrid className="size-4" />
+          </button>
+          <button
+            onClick={() => setVista("lista")}
+            title="Vista lista"
+            className={`px-2.5 py-1.5 transition-colors ${vista === "lista" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+          >
+            <List className="size-4" />
           </button>
         </div>
 
@@ -570,101 +600,112 @@ export function PersonaleTab() {
         </div>
       )}
 
-      {/* Griglia */}
+      {/* Vista */}
       {loading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">Caricamento…</div>
-      ) : turni.length === 0 && periodo === "mese" ? (
-        <div className="py-12 text-center text-sm text-muted-foreground">
-          Nessun turno in questo periodo. Usa &ldquo;Aggiungi turno&rdquo; per iniziare.
-        </div>
-      ) : periodo === "settimana" ? (
-        <div className="grid grid-cols-7 gap-1.5">
-          {giorniVista.map((iso, idx) => {
-            const isOggi = iso === oggi;
-            const turniGiorno = (perData[iso] ?? []).sort((a, b) => a.ora_inizio.localeCompare(b.ora_inizio));
-            return (
-              <div key={iso} className={`rounded-lg border ${isOggi ? "border-primary/60" : "border-border"} p-1.5 min-h-[120px]`}>
-                <div className={`text-center mb-1.5 ${isOggi ? "text-primary font-semibold" : "text-muted-foreground"}`}>
-                  <div className="text-[11px] font-medium">{GIORNI[idx]}</div>
-                  <div className="text-sm font-bold leading-none">{iso.split("-")[2]}</div>
-                </div>
-                <div className="space-y-1">
-                  {turniGiorno.map(t => (
-                    <div
-                      key={t.id}
-                      className="rounded bg-sky-100 dark:bg-sky-900/40 px-1.5 py-1 cursor-pointer hover:bg-sky-200 dark:hover:bg-sky-900/60 transition-colors"
-                      onClick={() => { setEditTurno(t); setDialogOpen(true); }}
-                    >
-                      <div className="text-[11px] font-semibold text-sky-800 dark:text-sky-200 truncate">{t.nome}</div>
-                      <div className="text-[10px] text-sky-600 dark:text-sky-300">
-                        {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
-                      </div>
-                      {t.ora_inizio2 && t.ora_fine2 && (
-                        <div className="text-[10px] text-sky-500 dark:text-sky-400">
-                          {fmtOra(t.ora_inizio2)}–{fmtOra(t.ora_fine2)}
+      ) : vista === "calendario" ? (
+        // ── Vista calendario (settimana: 7 col fisse; mese: griglia con offset) ──
+        <>
+          {/* Intestazioni giorni */}
+          <div className="grid grid-cols-7 gap-1.5 mb-1">
+            {GIORNI.map(g => (
+              <div key={g} className="text-center text-[11px] font-medium text-muted-foreground">{g}</div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1.5">
+            {periodo === "mese" && (() => {
+              const primoGiorno = new Date(giorniMese[0] + "T00:00:00");
+              const dow = primoGiorno.getDay() === 0 ? 6 : primoGiorno.getDay() - 1;
+              return Array.from({ length: dow }, (_, i) => <div key={`pad-${i}`} />);
+            })()}
+            {giorniVista.map((iso) => {
+              const isOggi = iso === oggi;
+              const turniGiorno = (perData[iso] ?? []).sort((a, b) => a.ora_inizio.localeCompare(b.ora_inizio));
+              return (
+                <div key={iso} className={`rounded-lg border ${isOggi ? "border-primary/60" : "border-border"} p-1.5 min-h-[80px]`}>
+                  <div className={`text-center mb-1 ${isOggi ? "text-primary font-semibold" : "text-muted-foreground"}`}>
+                    <div className="text-sm font-bold leading-none">{iso.split("-")[2]}</div>
+                  </div>
+                  <div className="space-y-0.5">
+                    {turniGiorno.map(t => (
+                      <div
+                        key={t.id}
+                        className="rounded bg-sky-100 dark:bg-sky-900/40 px-1 py-0.5 cursor-pointer hover:bg-sky-200 dark:hover:bg-sky-900/60 transition-colors"
+                        onClick={() => { setEditTurno(t); setDialogOpen(true); }}
+                      >
+                        <div className="text-[10px] font-semibold text-sky-800 dark:text-sky-200 truncate">{t.nome}</div>
+                        <div className="text-[9px] text-sky-600 dark:text-sky-300">
+                          {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
                         </div>
-                      )}
-                      {!!t.ore_extra && t.ore_extra > 0 && (
-                        <div className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                          +{fmtOreDisplay(t.ore_extra)} extra
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  <button
-                    className="w-full text-[10px] text-muted-foreground/50 hover:text-muted-foreground text-center py-0.5"
-                    onClick={() => { setEditTurno(null); setDataDefault(iso); setDialogOpen(true); }}
-                  >
-                    + turno
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {giorniVista.map(iso => {
-            const turniGiorno = (perData[iso] ?? []).sort((a, b) => a.nome.localeCompare(b.nome));
-            if (turniGiorno.length === 0) return null;
-            return (
-              <div key={iso}>
-                <p className="text-xs font-semibold text-muted-foreground mb-1.5">
-                  {new Date(iso + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" })}
-                </p>
-                <div className="space-y-1">
-                  {turniGiorno.map(t => (
-                    <div key={t.id} className="flex items-center gap-3 rounded-md border border-border px-3 py-2 hover:bg-muted/40 group">
-                      <span className="font-medium text-sm min-w-[100px]">{t.nome}</span>
-                      <span className="text-sm text-muted-foreground tabular-nums">
-                        {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
-                        {t.ora_inizio2 && t.ora_fine2 && (
-                          <span className="ml-1.5 text-muted-foreground/70">· {fmtOra(t.ora_inizio2)}–{fmtOra(t.ora_fine2)}</span>
+                        {!!t.ore_extra && t.ore_extra > 0 && (
+                          <div className="text-[9px] font-medium text-amber-600 dark:text-amber-400">
+                            +{fmtOreDisplay(t.ore_extra)} extra
+                          </div>
                         )}
-                      </span>
-                      <span className="text-xs text-muted-foreground tabular-nums">{fmtOreDisplay(calcolaOreTotali(t))}</span>
-                      {!!t.ore_extra && t.ore_extra > 0 && (
-                        <span className="text-[11px] text-amber-500 tabular-nums">+{fmtOreDisplay(t.ore_extra)} extra</span>
-                      )}
-                      {t.costo_orario != null && (
-                        <span className="text-[11px] text-sky-400 tabular-nums">{fmtEuro(calcolaOreTotali(t) * t.costo_orario)}</span>
-                      )}
-                      {t.note && <span className="text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
-                      <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button size="icon" variant="ghost" className="size-7" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
-                          <Pencil className="size-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => elimina(t)}>
-                          <Trash2 className="size-3.5" />
-                        </Button>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                    <button
+                      className="w-full text-[9px] text-muted-foreground/40 hover:text-muted-foreground text-center py-0.5"
+                      onClick={() => { setEditTurno(null); setDataDefault(iso); setDialogOpen(true); }}
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        </>
+      ) : (
+        // ── Vista lista ────────────────────────────────────────────────────────
+        turni.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            Nessun turno in questo periodo. Usa &ldquo;Aggiungi turno&rdquo; per iniziare.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {giorniVista.map(iso => {
+              const turniGiorno = (perData[iso] ?? []).sort((a, b) => a.nome.localeCompare(b.nome));
+              if (turniGiorno.length === 0) return null;
+              return (
+                <div key={iso}>
+                  <p className="text-xs font-semibold text-muted-foreground mb-1.5">
+                    {new Date(iso + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" })}
+                  </p>
+                  <div className="space-y-1">
+                    {turniGiorno.map(t => (
+                      <div key={t.id} className="flex items-center gap-3 rounded-md border border-border px-3 py-2 hover:bg-muted/40 group">
+                        <span className="font-medium text-sm min-w-[100px]">{t.nome}</span>
+                        <span className="text-sm text-muted-foreground tabular-nums">
+                          {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
+                          {t.ora_inizio2 && t.ora_fine2 && (
+                            <span className="ml-1.5 text-muted-foreground/70">· {fmtOra(t.ora_inizio2)}–{fmtOra(t.ora_fine2)}</span>
+                          )}
+                        </span>
+                        <span className="text-xs text-muted-foreground tabular-nums">{fmtOreDisplay(calcolaOreTotali(t))}</span>
+                        {!!t.ore_extra && t.ore_extra > 0 && (
+                          <span className="text-[11px] text-amber-500 tabular-nums">+{fmtOreDisplay(t.ore_extra)} extra</span>
+                        )}
+                        {t.costo_orario != null && (
+                          <span className="text-[11px] text-sky-400 tabular-nums">{fmtEuro(calcolaOreTotali(t) * t.costo_orario)}</span>
+                        )}
+                        {t.note && <span className="text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
+                        <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button size="icon" variant="ghost" className="size-7" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
+                            <Pencil className="size-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => elimina(t)}>
+                            <Trash2 className="size-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
       )}
 
       <TurnoDialog
