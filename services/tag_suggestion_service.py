@@ -23,9 +23,19 @@ logger = get_logger('tag_suggestion_service')
 WINDOW_DAYS_DEFAULT = 30
 MIN_PRODUCTS_DEFAULT = 3   # new_tag: minimo prodotti distinti con stessa radice
 MIN_ROWS_DEFAULT = 5       # new_tag: minimo occorrenze totali
-MIN_OCCURRENZE_EXTEND = 2  # extend_tag: il prodotto deve essere stato acquistato ≥ N volte
+MIN_OCCORRENZE_EXTEND = 2  # extend_tag: il prodotto deve essere stato acquistato ≥ N volte
 MAX_POOL_ROWS = 12000
 MAX_SUGGESTIONS_PER_TYPE = 20
+
+# Categorie non-F&B: escluse dai suggerimenti tag (i tag sono solo per prodotti alimentari)
+_CATEGORIE_ESCLUSE = {
+    "SERVIZI E CONSULENZE",
+    "UTENZE E LOCALI",
+    "MANUTENZIONE E ATTREZZATURE",
+    "MATERIALE DI CONSUMO",
+    "📝 NOTE E DICITURE",
+    "NOTE E DICITURE",
+}
 
 _STOPWORDS = {
     'DI', 'DA', 'DE', 'DEL', 'DELLA', 'DELLO', 'DEI', 'E', 'IN', 'CON',
@@ -63,11 +73,12 @@ def _fetch_recent_rows(
 
     rows = (
         sb.table('fatture')
-        .select('descrizione,fornitore,data_documento')
+        .select('descrizione,fornitore,data_documento,categoria')
         .eq('user_id', user_id)
         .eq('ristorante_id', ristorante_id)
         .gte('data_documento', since_iso)
         .is_('deleted_at', 'null')
+        .not_.in_('categoria', list(_CATEGORIE_ESCLUSE))
         .limit(MAX_POOL_ROWS)
         .execute().data or []
     )

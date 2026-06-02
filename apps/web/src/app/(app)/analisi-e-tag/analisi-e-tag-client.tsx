@@ -88,7 +88,7 @@ function TrendChart({ punti, media }: { punti: { data: string; prezzo: number; v
             contentStyle={TOOLTIP_STYLE}
           />
           <ReferenceLine y={0} stroke="#f43f5e" strokeDasharray="4 4" strokeWidth={1.5}
-            label={{ value: `media ${fmtEuro(media)}`, position: "insideTopLeft", fontSize: 10, fill: "#f43f5e", dy: -4 }} />
+            label={{ value: `media ${fmtEuro(media)}`, position: "insideTopLeft", fontSize: 10, fill: "#f43f5e", dy: -10, dx: 4 }} />
           <Line type="monotone" dataKey="var_perc" stroke="#60a5fa" strokeWidth={2}
             dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5 }} />
         </LineChart>
