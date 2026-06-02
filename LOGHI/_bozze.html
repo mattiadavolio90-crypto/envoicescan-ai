@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>ONEFLUX — bozze logo (no "chiudi")</title>
+<style>
+  body { margin:0; font-family:'Segoe UI',Arial,sans-serif; background:#111; color:#eee; }
+  h1 { font-size:18px; padding:24px 32px 0; font-weight:600; letter-spacing:.5px; }
+  .intro { padding:4px 32px 16px; font-size:13px; opacity:.6; max-width:760px; line-height:1.5; }
+  .grid { display:grid; grid-template-columns:1fr; gap:0; }
+  .card { border-top:1px solid #2a2a2a; padding:28px 32px; }
+  .card h2 { font-size:15px; margin:0 0 4px; color:#22D3EE; }
+  .card p { font-size:12.5px; opacity:.6; margin:0 0 18px; max-width:680px; line-height:1.5; }
+  .sizes { display:flex; align-items:center; gap:40px; flex-wrap:wrap; }
+  .pair { display:flex; align-items:center; gap:16px; }
+  .chip { display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .chip .lbl { font-size:10px; opacity:.4; }
+  .onlight { background:#fff; border-radius:10px; padding:14px; display:inline-flex; }
+  .tab { display:inline-flex; align-items:center; gap:7px; background:#f1f1f1; color:#333;
+         border-radius:8px 8px 0 0; padding:7px 12px 9px; font-size:12px; }
+  .tabwrap { display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .neon { color:#22D3EE; }
+</style>
+</head>
+<body>
+
+<h1>ONEFLUX — bozze logo · obiettivo: mantenere O+X ma NON sembrare il pulsante "chiudi"</h1>
+<p class="intro">Test decisivo = la colonna <b>favicon 24px</b> e la <b>tab del browser</b>: se lì sembra ancora una "x da chiudere", la bozza è da scartare. Sfondo scuro + sfondo chiaro per ognuna.</p>
+
+<div class="grid">
+
+  <!-- BOZZA 1: X tipografica -->
+  <div class="card">
+    <h2>#1 · X tipografica (lettera, non simbolo)</h2>
+    <p>La X ha tratti di spessore diverso e terminali tagliati in diagonale, come la lettera X di un font. Una X "scritta" non si legge come x-da-chiudere. La O resta cerchio.</p>
+    <div class="sizes">
+      <span class="chip"><span class="lbl">grande</span>
+        <svg width="90" height="90" viewBox="0 0 100 100" fill="none" class="neon">
+          <circle cx="50" cy="50" r="40" stroke="currentColor" stroke-width="6"/>
+          <path d="M33 30 L67 70" stroke="currentColor" stroke-width="11" stroke-linecap="butt"/>
+          <path d="M67 30 L33 70" stroke="currentColor" stroke-width="6" stroke-linecap="butt"/>
+        </svg>
+      </span>
+      <span class="chip"><span class="lbl">48px</span>
+        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" class="neon">
+          <circle cx="50" cy="50" r="40" stroke="currentColor" stroke-width="6"/>
+          <path d="M33 30 L67 70" stroke="currentColor" stroke-width="11"/>
+          <path d="M67 30 L33 70" stroke="currentColor" stroke-width="6"/>
+        </svg>
+      </span>
+      <span class="chip"><span class="lbl">favicon 24px</span>
+        <svg width="24" height="24" viewBox="0 0 100 100" fill="none" class="neon">
+          <circle cx="50" cy="50" r="40" stroke="currentColor" stroke-width="6"/>
+          <path d="M33 30 L67 70" stroke="currentColor" stroke-width="11"/>
+          <path d="M67 30 L33 70" stroke="currentColor" stroke-width="6"/>
+        </svg>
+      </span>
+      <span class="onlight">
+        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" style="color:#0891B2">
+          <circle cx="50" cy="50" r="40" stroke="currentColor" stroke-width="6"/>
+          <path d="M33 30 L67 70" stroke="currentColor" stroke-width="11"/>
+          <path d="M67 30 L33 70" stroke="currentColor" stroke-width="6"/>
+        </svg>
+      </span>
+      <span class="tabwrap"><span class="lbl" style="opacity:.4">tab browser</span>
+        <span class="tab"><svg width="16" height="16" viewBox="0 0 100 100" fill="none" style="color:#0891B2"><circle cx="50" cy="50" r="40" stroke="currentColor" stroke-width="6"/><path d="M33 30 L67 70" stroke="currentColor" stroke-width="11"/><path d="M67 30 L33 70" stroke="currentColor" stroke-width="6"/></svg>ONEFLUX</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- BOZZA 2: X che sfonda il cerchio -->
+  <div class="card">
+    <h2>#2 · X che attraversa / flusso (la O si apre dove passa la X)</h2>
+    <p>Le diagonali escono dal cerchio e la O ha dei varchi dove la X la attraversa. Comunica "flusso che passa". I pulsanti chiudi sono sempre contenuti → questo non lo è.</p>
+    <div class="sizes">
+      <span class="chip"><span class="lbl">grande</span>
+        <svg width="90" height="90" viewBox="0 0 100 100" fill="none" class="neon">
+          <path d="M50 12 A38 38 0 0 1 88 50" stroke="currentColor" stroke-width="6" fill="none"/>
+          <path d="M88 50 A38 38 0 0 1 50 88" stroke="currentColor" stroke-width="6" fill="none" opacity="0"/>
+          <circle cx="50" cy="50" r="38" stroke="currentColor" stroke-width="6" fill="none" stroke-dasharray="34 24" stroke-dashoffset="17"/>
+          <path d="M22 22 L78 78 M78 22 L22 78" stroke="currentColor" stroke-width="8" stroke-linecap="butt"/>
+        </svg>
+      </span>
+      <span class="chip"><span class="lbl">48px</span>
+        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" class="neon">
+          <circle cx="50" cy="50" r="38" stroke="currentColor" stroke-width="6" fill="none" stroke-dasharray="34 24" stroke-dashoffset="17"/>
+          <path d="M22 22 L78 78 M78 22 L22 78" stroke="currentColor" stroke-width="8"/>
+        </svg>
+      </span>
+      <span class="chip"><span class="lbl">favicon 24px</span>
+        <svg width="24" height="24" viewBox="0 0 100 100" fill="none" class="neon">
+          <circle cx="50" cy="50" r="38" stroke="currentColor" stroke-width="6" fill="none" stroke-dasharray="34 24" stroke-dashoffset="17"/>
+          <path d="M22 22 L78 78 M78 22 L22 78" stroke="currentColor" stroke-width="8"/>
+        </svg>
+      </span>
+      <span class="onlight">
+        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" style="color:#0891B2">
+          <circle cx="50" cy="50" r="38" stroke="currentColor" stroke-width="6" fill="none" stroke-dasharray="34 24" stroke-dashoffset="17"/>
+          <path d="M22 22 L78 78 M78 22 L22 78" stroke="currentColor" stroke-width="8"/>
+        </svg>
+      </span>
+      <span class="tabwrap"><span class="lbl" style="opacity:.4">tab browser</span>
+        <span class="tab"><svg width="16" height="16" viewBox="0 0 100 100" fill="none" style="color:#0891B2"><circle cx="50" cy="50" r="38" stroke="currentColor" stroke-width="6" fill="none" stroke-dasharray="34 24" stroke-dashoffset="17"/><path d="M22 22 L78 78 M78 22 L22 78" stroke="currentColor" stroke-width="8"/></svg>ONEFLUX</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- BOZZA 3: ligatura O+X -->
+  <div class="card">
+    <h2>#3 · Ligatura O+X (una diagonale è parte del cerchio)</h2>
+    <p>La X e la O condividono materia: una sola diagonale marcata attraversa, l'altra è accennata, e il cerchio ha un taglio. Monogramma intrecciato, da brand. Niente a che vedere con un bottone.</p>
+    <div class="sizes">
+      <span class="chip"><span class="lbl">grande</span>
+        <svg width="90" height="90" viewBox="0 0 100 100" fill="none" class="neon">
+          <path d="M62 14 A38 38 0 1 0 86 50" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M30 30 L72 72" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+          <path d="M70 34 L52 52" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="chip"><span class="lbl">48px</span>
+        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" class="neon">
+          <path d="M62 14 A38 38 0 1 0 86 50" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M30 30 L72 72" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+          <path d="M70 34 L52 52" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="chip"><span class="lbl">favicon 24px</span>
+        <svg width="24" height="24" viewBox="0 0 100 100" fill="none" class="neon">
+          <path d="M62 14 A38 38 0 1 0 86 50" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M30 30 L72 72" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+          <path d="M70 34 L52 52" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="onlight">
+        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" style="color:#0891B2">
+          <path d="M62 14 A38 38 0 1 0 86 50" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M30 30 L72 72" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+          <path d="M70 34 L52 52" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="tabwrap"><span class="lbl" style="opacity:.4">tab browser</span>
+        <span class="tab"><svg width="16" height="16" viewBox="0 0 100 100" fill="none" style="color:#0891B2"><path d="M62 14 A38 38 0 1 0 86 50" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M30 30 L72 72" stroke="currentColor" stroke-width="9" stroke-linecap="round"/><path d="M70 34 L52 52" stroke="currentColor" stroke-width="9" stroke-linecap="round"/></svg>ONEFLUX</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- BOZZA 4: O aperta ad arco -->
+  <div class="card">
+    <h2>#4 · O aperta ad arco (anello con varco)</h2>
+    <p>La O non è chiusa: un arco con un'apertura. Già non è più un "contenitore", quindi la X dentro non legge come chiudi-finestra. Apertura = flusso che entra/esce.</p>
+    <div class="sizes">
+      <span class="chip"><span class="lbl">grande</span>
+        <svg width="90" height="90" viewBox="0 0 100 100" fill="none" class="neon">
+          <path d="M68 20 A38 38 0 1 1 50 12" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M34 34 L66 66 M66 34 L34 66" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="chip"><span class="lbl">48px</span>
+        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" class="neon">
+          <path d="M68 20 A38 38 0 1 1 50 12" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M34 34 L66 66 M66 34 L34 66" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="chip"><span class="lbl">favicon 24px</span>
+        <svg width="24" height="24" viewBox="0 0 100 100" fill="none" class="neon">
+          <path d="M68 20 A38 38 0 1 1 50 12" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M34 34 L66 66 M66 34 L34 66" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="onlight">
+        <svg width="48" height="48" viewBox="0 0 100 100" fill="none" style="color:#0891B2">
+          <path d="M68 20 A38 38 0 1 1 50 12" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/>
+          <path d="M34 34 L66 66 M66 34 L34 66" stroke="currentColor" stroke-width="8" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="tabwrap"><span class="lbl" style="opacity:.4">tab browser</span>
+        <span class="tab"><svg width="16" height="16" viewBox="0 0 100 100" fill="none" style="color:#0891B2"><path d="M68 20 A38 38 0 1 1 50 12" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round"/><path d="M34 34 L66 66 M66 34 L34 66" stroke="currentColor" stroke-width="8" stroke-linecap="round"/></svg>ONEFLUX</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- BOZZA 5: X solida in negativo -->
+  <div class="card">
+    <h2>#5 · Glifo pieno (O piena, X ritagliata in negativo)</h2>
+    <p>Cerchio pieno con la X "scavata" dentro. I pulsanti chiudi sono sempre a linee sottili: una forma piena legge "logo/badge", mai "icona di sistema". Massimo impatto a piccole dimensioni.</p>
+    <div class="sizes">
+      <span class="chip"><span class="lbl">grande</span>
+        <svg width="90" height="90" viewBox="0 0 100 100" class="neon">
+          <defs><mask id="xm"><rect width="100" height="100" fill="white"/>
+            <path d="M32 32 L68 68 M68 32 L32 68" stroke="black" stroke-width="11" stroke-linecap="round"/></mask></defs>
+          <circle cx="50" cy="50" r="40" fill="currentColor" mask="url(#xm)"/>
+        </svg>
+      </span>
+      <span class="chip"><span class="lbl">48px</span>
+        <svg width="48" height="48" viewBox="0 0 100 100" class="neon">
+          <defs><mask id="xm2"><rect width="100" height="100" fill="white"/>
+            <path d="M32 32 L68 68 M68 32 L32 68" stroke="black" stroke-width="11" stroke-linecap="round"/></mask></defs>
+          <circle cx="50" cy="50" r="40" fill="currentColor" mask="url(#xm2)"/>
+        </svg>
+      </span>
+      <span class="chip"><span class="lbl">favicon 24px</span>
+        <svg width="24" height="24" viewBox="0 0 100 100" class="neon">
+          <defs><mask id="xm3"><rect width="100" height="100" fill="white"/>
+            <path d="M32 32 L68 68 M68 32 L32 68" stroke="black" stroke-width="11" stroke-linecap="round"/></mask></defs>
+          <circle cx="50" cy="50" r="40" fill="currentColor" mask="url(#xm3)"/>
+        </svg>
+      </span>
+      <span class="onlight">
+        <svg width="48" height="48" viewBox="0 0 100 100" style="color:#0891B2">
+          <defs><mask id="xm4"><rect width="100" height="100" fill="white"/>
+            <path d="M32 32 L68 68 M68 32 L32 68" stroke="black" stroke-width="11" stroke-linecap="round"/></mask></defs>
+          <circle cx="50" cy="50" r="40" fill="currentColor" mask="url(#xm4)"/>
+        </svg>
+      </span>
+      <span class="tabwrap"><span class="lbl" style="opacity:.4">tab browser</span>
+        <span class="tab"><svg width="16" height="16" viewBox="0 0 100 100" style="color:#0891B2"><defs><mask id="xm5"><rect width="100" height="100" fill="white"/><path d="M32 32 L68 68 M68 32 L32 68" stroke="black" stroke-width="11" stroke-linecap="round"/></mask></defs><circle cx="50" cy="50" r="40" fill="currentColor" mask="url(#xm5)"/></svg>ONEFLUX</span>
+      </span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

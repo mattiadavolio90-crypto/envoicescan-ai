@@ -1813,25 +1813,30 @@ def _build_chat_system_prompt(
         da = (_date.today() - _td(days=90)).isoformat()
         q = (
             supabase_client.table("fatture")
-            .select("totale_riga,categoria,fornitore")
+            .select("totale_riga,categoria,fornitore,descrizione")
             .eq("user_id", user_id)
             .is_("deleted_at", "null")
             .gte("data_documento", da)
-            .limit(2000)
+            .limit(3000)
             .execute()
         )
         righe = q.data or []
         if righe:
             per_cat: Dict[str, float] = {}
             per_forn: Dict[str, float] = {}
+            per_prod: Dict[str, float] = {}
             for r in righe:
                 v = float(r.get("totale_riga") or 0)
                 cat = (r.get("categoria") or "Altro").strip()
                 forn = (r.get("fornitore") or "Sconosciuto").strip()
+                desc = (r.get("descrizione") or "").strip()
                 per_cat[cat] = per_cat.get(cat, 0) + v
                 per_forn[forn] = per_forn.get(forn, 0) + v
+                if desc:
+                    per_prod[desc] = per_prod.get(desc, 0) + v
             top_cat = sorted(per_cat.items(), key=lambda x: x[1], reverse=True)[:8]
             top_forn = sorted(per_forn.items(), key=lambda x: x[1], reverse=True)[:8]
+            top_prod = sorted(per_prod.items(), key=lambda x: x[1], reverse=True)[:20]
 
             kpi_testo += "\n## Costi per categoria (ultimi 90 giorni)\n"
             for cat, v in top_cat:
@@ -1839,6 +1844,9 @@ def _build_chat_system_prompt(
             kpi_testo += "\n## Costi per fornitore (ultimi 90 giorni)\n"
             for forn, v in top_forn:
                 kpi_testo += f"- {forn}: €{v:,.2f}\n"
+            kpi_testo += "\n## Prodotti più acquistati (ultimi 90 giorni, per spesa)\n"
+            for desc, v in top_prod:
+                kpi_testo += f"- {desc}: €{v:,.2f}\n"
     except Exception as exc:
         logger.warning("chat: dettaglio fatture non disponibile: %s", exc)
 
