@@ -4,6 +4,7 @@ import { fetchNotifiche } from "@/lib/notifiche";
 import { Logo } from "@/components/brand/logo";
 import { BottomNav } from "./bottom-nav";
 import { HeaderMenu } from "./header-menu";
+import { InstallPrompt } from "./install-prompt";
 
 export default async function MobileLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -33,6 +34,7 @@ export default async function MobileLayout({ children }: { children: React.React
         {children}
       </main>
 
+      <InstallPrompt />
       <BottomNav unread={unread} />
     </div>
   );
