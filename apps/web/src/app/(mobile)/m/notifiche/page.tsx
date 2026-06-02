@@ -24,7 +24,7 @@ export default async function MobileNotifichePage() {
           <p className="text-sm">Nessun avviso attivo</p>
         </div>
       ) : (
-        <NotificheList notifiche={notifiche} />
+        <NotificheList notifiche={notifiche} hideCta />
       )}
     </div>
   );

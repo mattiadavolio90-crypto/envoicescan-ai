@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { ConfirmDialog } from "../confirm-dialog";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -256,6 +257,7 @@ export function MobileTurni() {
   const [giornoSel, setGiornoSel] = useState(() => toISO(new Date()));
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editTurno, setEditTurno] = useState<Turno | null>(null);
+  const [daEliminare, setDaEliminare] = useState<Turno | null>(null);
 
   const da = toISO(lunedi);
   const a = toISO(addDays(lunedi, 6));
@@ -286,7 +288,6 @@ export function MobileTurni() {
   function settSucc() { setLunedi((d) => addDays(d, 7)); }
 
   async function elimina(t: Turno) {
-    if (!confirm(`Eliminare il turno di ${t.nome}?`)) return;
     try {
       const res = await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -376,7 +377,7 @@ export function MobileTurni() {
                 <button onClick={() => { setEditTurno(t); setDialogOpen(true); }} className="rounded-md p-1.5 text-muted-foreground active:bg-muted">
                   <Pencil className="size-4" />
                 </button>
-                <button onClick={() => elimina(t)} className="rounded-md p-1.5 text-muted-foreground active:bg-muted active:text-destructive">
+                <button onClick={() => setDaEliminare(t)} className="rounded-md p-1.5 text-muted-foreground active:bg-muted active:text-destructive">
                   <Trash2 className="size-4" />
                 </button>
               </div>
@@ -402,6 +403,14 @@ export function MobileTurni() {
         nomiSuggeriti={data?.nomi ?? []}
         onClose={() => { setDialogOpen(false); setEditTurno(null); }}
         onSaved={() => load(da, a)}
+      />
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo="Eliminare il turno?"
+        messaggio={daEliminare ? `Il turno di ${daEliminare.nome} verrà rimosso.` : undefined}
+        onConferma={() => { if (daEliminare) elimina(daEliminare); }}
+        onClose={() => setDaEliminare(null)}
       />
     </div>
   );

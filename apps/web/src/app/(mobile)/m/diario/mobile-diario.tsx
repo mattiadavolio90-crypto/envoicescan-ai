@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { ConfirmDialog } from "../confirm-dialog";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -253,6 +254,7 @@ export function MobileDiario() {
   const [giornoSel, setGiornoSel] = useState<string>(today);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editEvento, setEditEvento] = useState<EventoDiario | null>(null);
+  const [daEliminare, setDaEliminare] = useState<EventoDiario | null>(null);
 
   const load = useCallback(async (a: number, m: number) => {
     setLoading(true);
@@ -285,7 +287,6 @@ export function MobileDiario() {
   }
 
   async function elimina(e: EventoDiario) {
-    if (!confirm(`Eliminare "${e.titolo}"?`)) return;
     try {
       const res = await fetch(`/api/workspace/diario/${e.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
@@ -355,7 +356,7 @@ export function MobileDiario() {
                   <button onClick={() => { setEditEvento(e); setDialogOpen(true); }} className="rounded-md p-1.5 text-muted-foreground active:bg-muted">
                     <Pencil className="size-4" />
                   </button>
-                  <button onClick={() => elimina(e)} className="rounded-md p-1.5 text-muted-foreground active:bg-muted active:text-destructive">
+                  <button onClick={() => setDaEliminare(e)} className="rounded-md p-1.5 text-muted-foreground active:bg-muted active:text-destructive">
                     <Trash2 className="size-4" />
                   </button>
                 </div>
@@ -381,6 +382,14 @@ export function MobileDiario() {
         dataDefault={giornoSel}
         onClose={() => { setDialogOpen(false); setEditEvento(null); }}
         onSaved={() => load(anno, mese)}
+      />
+
+      <ConfirmDialog
+        open={daEliminare !== null}
+        titolo="Eliminare l'evento?"
+        messaggio={daEliminare ? `"${daEliminare.titolo}" verrà rimosso dal diario.` : undefined}
+        onConferma={() => { if (daEliminare) elimina(daEliminare); }}
+        onClose={() => setDaEliminare(null)}
       />
     </div>
   );

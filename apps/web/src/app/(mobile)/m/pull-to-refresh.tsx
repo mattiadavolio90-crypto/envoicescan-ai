@@ -1,26 +1,43 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Loader2, ArrowDown } from "lucide-react";
 
 // Pull-to-refresh nativo: trascini verso il basso dall'alto della pagina e
-// rilasci per ricaricare i dati (router.refresh() rigenera i server component).
-// Niente librerie: gestione touch manuale, attiva solo quando si e' gia' in cima.
+// rilasci per ricaricare i dati. router.refresh() rigenera i server component
+// (Home, Avvisi); l'evento "oneflux:refresh" fa ricaricare i client component
+// (Diario, Turni). Gestione touch manuale, attiva solo quando si e' in cima.
 const SOGLIA = 70; // px di trascinamento per far scattare il refresh
 const MAX = 100; // px massimi di "elastico"
 
 export function PullToRefresh() {
   const router = useRouter();
+  const pathname = usePathname();
   const [pull, setPull] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Stato letto dentro i listener tenuto in ref: cosi' l'effetto si monta UNA
+  // sola volta e i listener non vengono riattaccati a ogni pixel di trascinamento.
   const startY = useRef<number | null>(null);
   const attivo = useRef(false);
+  const pullRef = useRef(0);
+  const refreshingRef = useRef(false);
+
+  // Sulla Chat il pull-to-refresh non serve (azzererebbe la conversazione) e
+  // interferisce con lo scroll dei messaggi: disattivato lì.
+  const disabilitato = pathname.startsWith("/m/chat");
 
   useEffect(() => {
+    if (disabilitato) return;
+
+    function setPullBoth(v: number) {
+      pullRef.current = v;
+      setPull(v);
+    }
+
     function onTouchStart(e: TouchEvent) {
-      // Solo se la pagina e' gia' scrollata in cima.
-      if (window.scrollY > 0) {
+      if (window.scrollY > 0 || refreshingRef.current) {
         attivo.current = false;
         return;
       }
@@ -29,35 +46,32 @@ export function PullToRefresh() {
     }
 
     function onTouchMove(e: TouchEvent) {
-      if (!attivo.current || startY.current === null || refreshing) return;
+      if (!attivo.current || startY.current === null || refreshingRef.current) return;
       const delta = e.touches[0].clientY - startY.current;
       if (delta <= 0) {
-        setPull(0);
+        setPullBoth(0);
         return;
       }
-      // Resistenza elastica: piu' tiri, meno cede.
-      const eased = Math.min(MAX, delta * 0.5);
-      setPull(eased);
+      setPullBoth(Math.min(MAX, delta * 0.5)); // resistenza elastica
     }
 
-    async function onTouchEnd() {
+    function onTouchEnd() {
       if (!attivo.current) return;
       attivo.current = false;
       startY.current = null;
-      if (pull >= SOGLIA && !refreshing) {
+      if (pullRef.current >= SOGLIA && !refreshingRef.current) {
+        refreshingRef.current = true;
         setRefreshing(true);
-        setPull(SOGLIA);
-        // Rinfresca i server component (Home, Avvisi)...
+        setPullBoth(SOGLIA);
         router.refresh();
-        // ...e segnala ai client component (Diario, Turni) di ricaricare i dati.
         window.dispatchEvent(new CustomEvent("oneflux:refresh"));
-        // Diamo un attimo perche' il refresh server completi, poi rilasciamo.
         setTimeout(() => {
+          refreshingRef.current = false;
           setRefreshing(false);
-          setPull(0);
+          setPullBoth(0);
         }, 900);
       } else {
-        setPull(0);
+        setPullBoth(0);
       }
     }
 
@@ -69,9 +83,9 @@ export function PullToRefresh() {
       window.removeEventListener("touchmove", onTouchMove);
       window.removeEventListener("touchend", onTouchEnd);
     };
-  }, [pull, refreshing, router]);
+  }, [disabilitato, router]);
 
-  if (pull === 0 && !refreshing) return null;
+  if (disabilitato || (pull === 0 && !refreshing)) return null;
 
   const pronto = pull >= SOGLIA;
 

@@ -35,9 +35,12 @@ const FILTRI: { key: Filtro; label: string }[] = [
 
 type Props = {
   notifiche: Notifica[];
+  // hideCta: su mobile (PWA) nascondiamo i bottoni "vai a..." che porterebbero
+  // fuori dall'app verso la vista desktop. Default false: desktop invariato.
+  hideCta?: boolean;
 };
 
-export function NotificheList({ notifiche }: Props) {
+export function NotificheList({ notifiche, hideCta = false }: Props) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [filtro, setFiltro] = useState<Filtro>("tutte");
@@ -158,7 +161,7 @@ export function NotificheList({ notifiche }: Props) {
                         </p>
                       )}
                       <div className="mt-2 flex items-center gap-3">
-                        {cta && (
+                        {!hideCta && cta && (
                           <Link
                             href={cta.href}
                             className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs")}
