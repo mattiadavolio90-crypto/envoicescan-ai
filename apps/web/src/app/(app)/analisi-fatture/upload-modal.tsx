@@ -88,44 +88,15 @@ export function UploadModal() {
     if (!toUpload.length) return;
     setUploading(true);
 
-    // Recupera il session token dal server per chiamare direttamente il worker
-    // (bypass del limite 4.5MB delle Vercel API routes).
-    let workerUrl = "";
-    let token = "";
-    try {
-      const tokRes = await fetch("/api/upload/session-token");
-      if (!tokRes.ok) throw new Error("Sessione non valida");
-      const tokData = await tokRes.json();
-      workerUrl = tokData.worker_url;
-      token = tokData.token;
-    } catch {
-      setFiles((prev) =>
-        prev.map((f) =>
-          toUpload.find((t) => t.id === f.id)
-            ? { ...f, status: "error", error: "Sessione non valida — rifai login" }
-            : f,
-        ),
-      );
-      setUploading(false);
-      return;
-    }
-
-    // Segnala al worker l'inizio sessione: aggiorna nuovi_da = now().
-    // I prodotti di questa sessione avranno created_at >= nuovi_da → badge "Nuovo".
-    // I prodotti delle sessioni precedenti perderanno il badge.
-    await fetch(`${workerUrl}/api/upload/start-session`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-    }).catch(() => null); // non bloccare l'upload se fallisce
+    await fetch("/api/upload/start-session", { method: "POST" }).catch(() => null);
 
     for (const entry of toUpload) {
       setFiles((prev) => prev.map((f) => (f.id === entry.id ? { ...f, status: "uploading" } : f)));
       const form = new FormData();
       form.append("file", entry.file);
       try {
-        const res = await fetch(`${workerUrl}/api/upload/invoice`, {
+        const res = await fetch("/api/upload/invoice", {
           method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
           body: form,
         });
         const data = await res.json().catch(() => ({}));
