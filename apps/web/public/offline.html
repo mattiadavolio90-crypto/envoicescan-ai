@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ONEFLUX — Offline</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 1rem; padding: 2rem;
+      font-family: -apple-system, system-ui, sans-serif; text-align: center;
+      background: #0f172a; color: #e2e8f0;
+    }
+    .dot { width: 56px; height: 56px; border-radius: 9999px;
+      border: 3px solid #0ea5e9; display: flex; align-items: center; justify-content: center; }
+    h1 { font-size: 1.1rem; margin: 0; }
+    p { font-size: .9rem; color: #94a3b8; margin: 0; max-width: 18rem; line-height: 1.5; }
+    button { margin-top: .5rem; padding: .7rem 1.4rem; border: none; border-radius: .75rem;
+      background: #0ea5e9; color: white; font-size: .9rem; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="dot">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#0ea5e9" stroke-width="2"><path d="M2 12h20M12 2v20"/></svg>
+  </div>
+  <h1>Sei offline</h1>
+  <p>ONEFLUX ha bisogno della connessione per mostrarti i dati aggiornati. Riprova quando torni online.</p>
+  <button onclick="location.reload()">Riprova</button>
+</body>
+</html>

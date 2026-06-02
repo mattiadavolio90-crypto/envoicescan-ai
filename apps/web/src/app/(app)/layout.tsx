@@ -7,6 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { ImpersonaBanner } from "@/components/admin/impersona-banner";
+import { MobileRedirect } from "@/components/mobile-redirect";
 import { Bell, LifeBuoy } from "lucide-react";
 
 function getInitials(nome: string | null, email: string): string {
@@ -34,6 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <>
+    <MobileRedirect />
     <ImpersonaBanner />
     <SidebarProvider>
       <AppSidebar
