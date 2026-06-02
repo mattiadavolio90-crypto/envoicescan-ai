@@ -8,6 +8,14 @@ import { Logo } from "@/components/brand/logo";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+// Domande suggerite: guidano chi non sa cosa chiedere verso le cose utili.
+const SUGGERIMENTI = [
+  "Qual è il mio food cost?",
+  "Cosa devo pagare?",
+  "Com'è andato il MOL?",
+  "Chi è il mio fornitore più caro?",
+];
+
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -26,8 +34,8 @@ export function ChatWidget() {
     if (open) setTimeout(() => inputRef.current?.focus(), 50);
   }, [open]);
 
-  async function send() {
-    const testo = input.trim();
+  async function send(testoParam?: string) {
+    const testo = (testoParam ?? input).trim();
     if (!testo || loading) return;
 
     const nuovi: Msg[] = [...messages, { role: "user", content: testo }];
@@ -86,11 +94,25 @@ export function ChatWidget() {
           {/* Messaggi */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center gap-2 py-8 text-center text-muted-foreground">
-                <Logo variant="icon" size={32} className="opacity-30" />
-                <p className="text-xs leading-relaxed max-w-[220px]">
-                  Chiedimi dei tuoi costi, fornitori, food cost o scadenze.
+              <div className="flex flex-col items-center gap-3 py-6 text-center">
+                <Logo variant="icon" size={32} className="opacity-40" />
+                <p className="text-sm font-medium">Ciao! Sono il tuo assistente.</p>
+                <p className="text-xs leading-relaxed text-muted-foreground max-w-[240px]">
+                  Chiedimi dei tuoi costi, fornitori, food cost, margini o scadenze.
+                  Posso anche confrontare i prezzi tra fornitori.
                 </p>
+                <div className="mt-1 flex flex-wrap justify-center gap-1.5">
+                  {SUGGERIMENTI.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => send(s)}
+                      className="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-[11px] text-primary transition-colors hover:bg-primary/10"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {messages.map((m, i) => (
@@ -132,7 +154,7 @@ export function ChatWidget() {
               size="icon"
               className="size-9 shrink-0"
               disabled={!input.trim() || loading}
-              onClick={send}
+              onClick={() => send()}
             >
               <Send className="size-4" />
             </Button>

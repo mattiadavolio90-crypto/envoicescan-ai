@@ -1936,6 +1936,113 @@ def _chat_query_costi(
     }
 
 
+def _chat_query_scadenze(user: Dict[str, Any], supabase_client, solo_da_pagare: bool = True) -> Dict[str, Any]:
+    """Scadenze del ristorante (per il tool della chat). Riusa la stessa fonte
+    della pagina Gestione Fatture."""
+    from services.documenti_service import get_documenti_scadenziario
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+    if not ristorante_id:
+        return {"scadenze": [], "totale_da_pagare": 0.0}
+    docs = get_documenti_scadenziario(str(user["id"]), ristorante_id)
+
+    voci = []
+    totale = 0.0
+    for d in docs:
+        if solo_da_pagare and d.get("pagata"):
+            continue
+        imp = float(d.get("totale_documento") or 0)
+        if not d.get("pagata"):
+            totale += imp
+        voci.append({
+            "fornitore": d.get("fornitore") or "?",
+            "importo": round(imp, 2),
+            "scadenza": d.get("scadenza_effettiva"),
+            "pagata": bool(d.get("pagata")),
+        })
+    # Ordina per scadenza (le piu' vicine prima)
+    voci.sort(key=lambda x: x.get("scadenza") or "9999")
+    return {"scadenze": voci[:30], "totale_da_pagare": round(totale, 2)}
+
+
+def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Optional[str]) -> Dict[str, Any]:
+    """Andamento margini/MOL degli ultimi mesi (per il tool della chat).
+    Riusa margine_service, stessa fonte della pagina Margini e della Home."""
+    from datetime import date as _date
+    user_id = str(user["id"])
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+    if not ristorante_id:
+        return {"mesi": []}
+
+    from services.margine_service import carica_margini_anno, calcola_costi_automatici_per_anno
+    _MESI = ["", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+             "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
+    oggi = _date.today()
+    cache_anni: Dict[int, Any] = {}
+
+    def _anno(a: int):
+        if a not in cache_anni:
+            try:
+                m = carica_margini_anno(user_id, ristorante_id, a)
+                fb, sp = calcola_costi_automatici_per_anno(user_id, ristorante_id, a)
+                cache_anni[a] = (m, fb, sp)
+            except Exception:
+                cache_anni[a] = ({}, {}, {})
+        return cache_anni[a]
+
+    risultati = []
+    mm, aa = oggi.month, oggi.year
+    for _ in range(6):
+        margini, fb, sp = _anno(aa)
+        k = _kpi_periodo(margini, fb, sp, mm)
+        if k["has_data"]:
+            risultati.append({
+                "mese": f"{_MESI[mm]} {aa}",
+                "fatturato": k["fatturato"],
+                "food_cost_pct": k["food_cost_pct"],
+                "mol": k["mol"],
+            })
+        mm -= 1
+        if mm == 0:
+            mm, aa = 12, aa - 1
+    return {"mesi": risultati}
+
+
+def _chat_confronto_prezzi(user: Dict[str, Any], supabase_client, prodotto: str) -> Dict[str, Any]:
+    """Confronta il prezzo unitario di un prodotto tra i fornitori (ultimi 180gg).
+    Cuore di ONEFLUX: trova chi lo fa al prezzo migliore."""
+    from datetime import date as _date, timedelta as _td
+    user_id = str(user["id"])
+    da = (_date.today() - _td(days=180)).isoformat()
+    righe = (
+        supabase_client.table("fatture")
+        .select("descrizione,fornitore,prezzo_unitario,data_documento")
+        .eq("user_id", user_id)
+        .is_("deleted_at", "null")
+        .ilike("descrizione", f"%{prodotto}%")
+        .gte("data_documento", da)
+        .limit(2000)
+        .execute()
+    ).data or []
+
+    # Miglior (ultimo) prezzo per fornitore
+    per_forn: Dict[str, Dict[str, Any]] = {}
+    for r in righe:
+        forn = (r.get("fornitore") or "?").strip()
+        prezzo = float(r.get("prezzo_unitario") or 0)
+        if prezzo <= 0:
+            continue
+        data = r.get("data_documento") or ""
+        cur = per_forn.get(forn)
+        if cur is None or data > cur["data"]:
+            per_forn[forn] = {"prezzo": round(prezzo, 4), "data": data, "descrizione": r.get("descrizione")}
+
+    confronto = sorted(
+        [{"fornitore": f, **v} for f, v in per_forn.items()],
+        key=lambda x: x["prezzo"],
+    )
+    return {"prodotto": prodotto, "fornitori": confronto[:10], "trovati": len(confronto)}
+
+
 @app.post(
     "/api/chat",
     response_model=ChatResponse,
@@ -1965,38 +2072,95 @@ def chat_ai(
     messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     messages += [{"role": m.role, "content": m.content} for m in body.messages]
 
-    tools = [{
-        "type": "function",
-        "function": {
-            "name": "query_costi",
-            "description": (
-                "Interroga i costi fatturati del ristorante con filtri opzionali. "
-                "Usalo per domande su un periodo specifico (un mese o un anno) o "
-                "per cercare la spesa su una categoria, un fornitore o un prodotto."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "mese": {"type": "integer", "description": "Numero del mese 1-12 (opzionale)"},
-                    "anno": {"type": "integer", "description": "Anno es. 2026 (opzionale)"},
-                    "categoria": {"type": "string", "description": "Categoria di spesa, es. 'carne' (opzionale)"},
-                    "fornitore": {"type": "string", "description": "Nome o parte del fornitore (opzionale)"},
-                    "prodotto": {"type": "string", "description": "Nome o parte del prodotto, es. 'mozzarella' (opzionale)"},
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "query_costi",
+                "description": (
+                    "Interroga i costi fatturati del ristorante con filtri opzionali. "
+                    "Usalo per domande su un periodo specifico (un mese o un anno) o "
+                    "per cercare la spesa su una categoria, un fornitore o un prodotto."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "mese": {"type": "integer", "description": "Numero del mese 1-12 (opzionale)"},
+                        "anno": {"type": "integer", "description": "Anno es. 2026 (opzionale)"},
+                        "categoria": {"type": "string", "description": "Categoria di spesa, es. 'carne' (opzionale)"},
+                        "fornitore": {"type": "string", "description": "Nome o parte del fornitore (opzionale)"},
+                        "prodotto": {"type": "string", "description": "Nome o parte del prodotto, es. 'mozzarella' (opzionale)"},
+                    },
                 },
             },
         },
-    }]
+        {
+            "type": "function",
+            "function": {
+                "name": "query_scadenze",
+                "description": (
+                    "Elenco delle scadenze di pagamento (fatture fornitori) con importi "
+                    "e date. Usalo per 'cosa devo pagare', 'quanto devo a X', 'scadenze "
+                    "questa settimana'."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "solo_da_pagare": {"type": "boolean", "description": "true (default) = solo non pagate"},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "query_margini",
+                "description": (
+                    "Andamento di fatturato, food cost % e MOL negli ultimi mesi. "
+                    "Usalo per 'com'è andato il MOL', 'andamento margini', 'food cost "
+                    "nel tempo'."
+                ),
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "confronto_prezzi",
+                "description": (
+                    "Confronta il prezzo di un prodotto tra i fornitori per trovare il "
+                    "migliore. Usalo per 'chi mi fa X al prezzo migliore', 'confronta i "
+                    "prezzi di Y'."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prodotto": {"type": "string", "description": "Nome o parte del prodotto da confrontare"},
+                    },
+                    "required": ["prodotto"],
+                },
+            },
+        },
+    ]
 
-    def _esegui_tool(args: Dict[str, Any]) -> Dict[str, Any]:
-        return _chat_query_costi(
-            user_id=user_id,
-            supabase_client=supabase_client,
-            mese=args.get("mese"),
-            anno=args.get("anno"),
-            categoria=args.get("categoria"),
-            fornitore=args.get("fornitore"),
-            prodotto=args.get("prodotto"),
-        )
+    def _esegui_tool(nome: str, args: Dict[str, Any]) -> Dict[str, Any]:
+        if nome == "query_costi":
+            return _chat_query_costi(
+                user_id=user_id,
+                supabase_client=supabase_client,
+                mese=args.get("mese"),
+                anno=args.get("anno"),
+                categoria=args.get("categoria"),
+                fornitore=args.get("fornitore"),
+                prodotto=args.get("prodotto"),
+            )
+        if nome == "query_scadenze":
+            return _chat_query_scadenze(user, supabase_client, args.get("solo_da_pagare", True))
+        if nome == "query_margini":
+            return _chat_query_margini(user, supabase_client, authorization)
+        if nome == "confronto_prezzi":
+            return _chat_confronto_prezzi(user, supabase_client, args.get("prodotto", ""))
+        return {"errore": f"strumento sconosciuto: {nome}"}
 
     try:
         # Loop di tool calling: max 3 round per evitare cicli.
@@ -2024,7 +2188,7 @@ def chat_ai(
                     args = _json.loads(tc.function.arguments or "{}")
                 except Exception:
                     args = {}
-                risultato = _esegui_tool(args)
+                risultato = _esegui_tool(tc.function.name, args)
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tc.id,
