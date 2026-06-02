@@ -680,6 +680,83 @@
         }
       }
     },
+    "/api/assistenza/lead": {
+      "post": {
+        "tags": [
+          "Assistenza"
+        ],
+        "summary": "Invia una richiesta info su un servizio del marketplace",
+        "operationId": "crea_marketplace_lead_api_assistenza_lead_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceLeadBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Crea Marketplace Lead Api Assistenza Lead Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/home/briefing": {
       "get": {
         "tags": [
@@ -6333,6 +6410,173 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Account Cambia Password Api Account Cambia Password Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/marketplace/leads": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Coda richieste servizi (admin)",
+        "operationId": "admin_marketplace_leads_api_admin_marketplace_leads_get",
+        "parameters": [
+          {
+            "name": "stato",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stato"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarketplaceLeadList"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/marketplace/leads/{lead_id}": {
+      "patch": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Aggiorna stato di una richiesta servizio (admin)",
+        "operationId": "admin_marketplace_lead_stato_api_admin_marketplace_leads__lead_id__patch",
+        "parameters": [
+          {
+            "name": "lead_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lead Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceLeadStatoBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Admin Marketplace Lead Stato Api Admin Marketplace Leads  Lead Id  Patch"
                 }
               }
             }
@@ -13563,6 +13807,144 @@
           "mese"
         ],
         "title": "MarginiMeseData"
+      },
+      "MarketplaceLeadBody": {
+        "properties": {
+          "servizio_key": {
+            "type": "string",
+            "maxLength": 64,
+            "title": "Servizio Key"
+          },
+          "servizio_label": {
+            "type": "string",
+            "maxLength": 120,
+            "title": "Servizio Label"
+          },
+          "messaggio": {
+            "type": "string",
+            "maxLength": 2000,
+            "title": "Messaggio",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "servizio_key",
+          "servizio_label"
+        ],
+        "title": "MarketplaceLeadBody"
+      },
+      "MarketplaceLeadItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "servizio_key": {
+            "type": "string",
+            "title": "Servizio Key"
+          },
+          "servizio_label": {
+            "type": "string",
+            "title": "Servizio Label"
+          },
+          "messaggio": {
+            "type": "string",
+            "title": "Messaggio"
+          },
+          "contatto_email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contatto Email"
+          },
+          "contatto_nome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contatto Nome"
+          },
+          "ristorante_nome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ristorante Nome"
+          },
+          "stato": {
+            "type": "string",
+            "title": "Stato"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "servizio_key",
+          "servizio_label",
+          "messaggio",
+          "stato"
+        ],
+        "title": "MarketplaceLeadItem"
+      },
+      "MarketplaceLeadList": {
+        "properties": {
+          "leads": {
+            "items": {
+              "$ref": "#/components/schemas/MarketplaceLeadItem"
+            },
+            "type": "array",
+            "title": "Leads"
+          },
+          "nuovi": {
+            "type": "integer",
+            "title": "Nuovi"
+          }
+        },
+        "type": "object",
+        "required": [
+          "leads",
+          "nuovi"
+        ],
+        "title": "MarketplaceLeadList"
+      },
+      "MarketplaceLeadStatoBody": {
+        "properties": {
+          "stato": {
+            "type": "string",
+            "pattern": "^(nuovo|gestito|archiviato)$",
+            "title": "Stato"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stato"
+        ],
+        "title": "MarketplaceLeadStatoBody"
       },
       "MemoriaUpdateBody": {
         "properties": {

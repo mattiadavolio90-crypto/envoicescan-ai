@@ -6,6 +6,7 @@ import {
   ChevronsUpDown,
   FileText,
   Home,
+  LifeBuoy,
   LogOut,
   Search,
   Settings,
@@ -51,6 +52,7 @@ const navMain = [
 
 const navSecondary = [
   { title: "Impostazioni", url: "/impostazioni", icon: Settings },
+  { title: "Servizi", url: "/assistenza", icon: LifeBuoy },
 ];
 
 type AppSidebarProps = {

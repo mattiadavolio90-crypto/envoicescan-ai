@@ -1680,6 +1680,79 @@ def dismiss_notifica(
     return {"status": "ok"}
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# MARKETPLACE / ASSISTENZA — richieste info sui servizi (lead)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class MarketplaceLeadBody(BaseModel):
+    servizio_key: str = Field(..., max_length=64)
+    servizio_label: str = Field(..., max_length=120)
+    messaggio: str = Field("", max_length=2000)
+
+
+class MarketplaceLeadItem(BaseModel):
+    id: str
+    servizio_key: str
+    servizio_label: str
+    messaggio: str
+    contatto_email: Optional[str] = None
+    contatto_nome: Optional[str] = None
+    ristorante_nome: Optional[str] = None
+    stato: str
+    created_at: Optional[str] = None
+
+
+class MarketplaceLeadList(BaseModel):
+    leads: List[MarketplaceLeadItem]
+    nuovi: int
+
+
+@app.post(
+    "/api/assistenza/lead",
+    summary="Invia una richiesta info su un servizio del marketplace",
+    tags=["Assistenza"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+def crea_marketplace_lead(
+    body: MarketplaceLeadBody,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+
+    contatto_nome = (
+        user.get("nome_referente")
+        or user.get("nome_ristorante")
+        or user.get("email")
+    )
+
+    supabase_client.table("marketplace_leads").insert({
+        "user_id": user_id,
+        "ristorante_id": ristorante_id,
+        "servizio_key": body.servizio_key.strip(),
+        "servizio_label": body.servizio_label.strip(),
+        "messaggio": (body.messaggio or "").strip(),
+        "contatto_email": user.get("email"),
+        "contatto_nome": contatto_nome,
+        "stato": "nuovo",
+    }).execute()
+
+    logger.info("marketplace_lead: servizio=%s user=%s", body.servizio_key, user_id)
+    return {"ok": True}
+
+
+class MarketplaceLeadStatoBody(BaseModel):
+    stato: str = Field(..., pattern="^(nuovo|gestito|archiviato)$")
+
+
+# Nota: gli endpoint admin del marketplace sono definiti piu' in basso, dopo
+# _verify_admin (Depends risolve la dependency a import-time del decorator).
+
+
 def _saluto_per_ora(nome: Optional[str]) -> str:
     """Saluto adattivo all'ora corrente (fuso Europe/Rome)."""
     from datetime import datetime as _dt
@@ -6957,6 +7030,73 @@ def _verify_admin(
 def _admin_emails_set() -> set:
     raw = os.getenv("ADMIN_EMAILS", "md@oneflux.it")
     return {e.strip().lower() for e in raw.split(",") if e.strip()}
+
+
+# ── Marketplace / Assistenza: coda lead (admin) ──────────────────────────────
+# Definiti qui (e non nella sezione Notifiche dove sta crea_marketplace_lead)
+# perche' dipendono da _verify_admin, risolto a import-time del decorator.
+
+@app.get(
+    "/api/admin/marketplace/leads",
+    response_model=MarketplaceLeadList,
+    summary="Coda richieste servizi (admin)",
+    tags=["Admin"],
+)
+def admin_marketplace_leads(
+    stato: Optional[str] = None,
+    admin_user: dict = Depends(_verify_admin),
+) -> MarketplaceLeadList:
+    sb = get_supabase_client()
+
+    query = (
+        sb.table("marketplace_leads")
+        .select("id,servizio_key,servizio_label,messaggio,contatto_email,contatto_nome,stato,created_at,ristorante_id")
+        .order("created_at", desc=True)
+        .limit(200)
+    )
+    if stato in ("nuovo", "gestito", "archiviato"):
+        query = query.eq("stato", stato)
+
+    rows = query.execute().data or []
+
+    # Risolve il nome ristorante per le righe che hanno un ristorante_id.
+    rist_ids = list({r["ristorante_id"] for r in rows if r.get("ristorante_id")})
+    nomi: Dict[str, str] = {}
+    if rist_ids:
+        rr = sb.table("ristoranti").select("id,nome").in_("id", rist_ids).execute()
+        nomi = {str(x["id"]): x.get("nome") or "" for x in (rr.data or [])}
+
+    leads = [
+        MarketplaceLeadItem(
+            id=str(r["id"]),
+            servizio_key=r.get("servizio_key") or "",
+            servizio_label=r.get("servizio_label") or "",
+            messaggio=r.get("messaggio") or "",
+            contatto_email=r.get("contatto_email"),
+            contatto_nome=r.get("contatto_nome"),
+            ristorante_nome=nomi.get(str(r.get("ristorante_id"))) if r.get("ristorante_id") else None,
+            stato=r.get("stato") or "nuovo",
+            created_at=str(r["created_at"]) if r.get("created_at") else None,
+        )
+        for r in rows
+    ]
+    nuovi = sum(1 for l in leads if l.stato == "nuovo")
+    return MarketplaceLeadList(leads=leads, nuovi=nuovi)
+
+
+@app.patch(
+    "/api/admin/marketplace/leads/{lead_id}",
+    summary="Aggiorna stato di una richiesta servizio (admin)",
+    tags=["Admin"],
+)
+def admin_marketplace_lead_stato(
+    lead_id: str,
+    body: MarketplaceLeadStatoBody,
+    admin_user: dict = Depends(_verify_admin),
+) -> Dict[str, Any]:
+    sb = get_supabase_client()
+    sb.table("marketplace_leads").update({"stato": body.stato}).eq("id", lead_id).execute()
+    return {"ok": True}
 
 
 # ── Overview ────────────────────────────────────────────────────────────────

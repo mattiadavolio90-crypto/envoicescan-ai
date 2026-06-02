@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, CheckCircle, DollarSign, ChevronRight, Brain, Settings, Map } from "lucide-react";
+import { Users, CheckCircle, DollarSign, ChevronRight, Brain, Settings, Map, LifeBuoy } from "lucide-react";
 import Link from "next/link";
 import { FattureMensiliCard } from "./fatture-mensili-card";
 
@@ -62,6 +62,15 @@ const NAV_CARDS = [
     border: "border-orange-500",
     bg: "hover:bg-orange-500/8",
     iconColor: "text-orange-500",
+  },
+  {
+    href: "/admin/richieste",
+    title: "Richieste servizi",
+    desc: "Coda lead dal marketplace Assistenza",
+    icon: LifeBuoy,
+    border: "border-pink-500",
+    bg: "hover:bg-pink-500/8",
+    iconColor: "text-pink-500",
   },
 ];
 

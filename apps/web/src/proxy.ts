@@ -11,9 +11,14 @@ const PUBLIC_PATHS = ["/login", "/forgot-password", "/reset-password"];
 
 // Gira a edge e decide i redirect SOLO sulla presenza del cookie, senza chiamare
 // il worker. La validazione vera del token resta in (app)/layout.tsx (difesa in
-// profondita'): qui evitiamo il round-trip per i casi ovvi (utente senza cookie
-// su rotta protetta, utente loggato su /login), causa principale della lentezza
-// a ogni cambio pagina.
+// profondita'): qui evitiamo il round-trip per il caso ovvio (utente senza
+// cookie su rotta protetta).
+//
+// NB: NON facciamo il redirect inverso "rotta pubblica con cookie -> dashboard".
+// Il proxy vede solo la PRESENZA del cookie, non la sua validita': un cookie
+// scaduto/invalido faceva /login -> /dashboard (proxy) -> /login (layout, token
+// ko) -> loop ERR_TOO_MANY_REDIRECTS. Chi e' davvero loggato e apre /login viene
+// rediretto dal form lato client; il proxy non deve indovinare la sessione.
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const hasSession = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
@@ -22,11 +27,6 @@ export function proxy(req: NextRequest) {
   const isPublic =
     pathname === "/" ||
     PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-
-  // Rotta pubblica con sessione attiva -> manda in dashboard.
-  if (isPublic && hasSession) {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
-  }
 
   // Rotta protetta senza sessione -> manda al login conservando la destinazione.
   if (!isPublic && !hasSession) {

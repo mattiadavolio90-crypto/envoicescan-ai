@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { ImpersonaBanner } from "@/components/admin/impersona-banner";
-import { Bell } from "lucide-react";
+import { Bell, LifeBuoy } from "lucide-react";
 
 function getInitials(nome: string | null, email: string): string {
   if (nome) {
@@ -47,11 +47,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
           <Wordmark className="text-sm" />
-          <div className="ml-auto flex items-center">
+          <div className="ml-auto flex items-center gap-0.5">
+            <Link
+              href="/assistenza"
+              title="Servizi per il tuo locale"
+              className="inline-flex items-center justify-center size-9 rounded-md text-primary transition-colors hover:bg-accent"
+            >
+              <LifeBuoy className="size-5" />
+            </Link>
             <Link
               href="/dashboard"
               title="Vai alle notifiche in Home"
-              className="relative inline-flex items-center justify-center size-9 rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="relative inline-flex items-center justify-center size-9 rounded-md text-primary transition-colors hover:bg-accent"
             >
               <Bell className="size-5" />
               {unreadNotifiche > 0 && (
