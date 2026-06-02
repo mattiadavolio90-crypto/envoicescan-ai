@@ -1,7 +1,7 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 2 giugno 2026 (rev. 24 — **Chat AI + Fase 8 chiusa**: assistente conversazionale (function calling 4 tool, proattività, toggle, limiti domande/giorno per piano free0/base10/plus20/pro30, contatore in Impostazioni). Con Marketplace già fatto, **Fase 8 completa**. Vedi changelog)
-**Revisione precedente:** rev. 23 (2/6) — **Notifiche v2 + Servizi/Marketplace**: Fase 3 chiusa (notifiche raggruppate, filtri count, CTA inline, badge unificato); Fase 8 marketplace (6 servizi, lead in DB + coda Admin, WhatsApp); fix loop redirect proxy
+**Ultima revisione:** 2 giugno 2026 (rev. 25 — **Conformità privacy/cookie/GDPR Next.js**: pagine legali `/privacy` (Privacy & Cookie Policy v4.0) e `/termini` (ToS) con layout pubblico, banner cookie tecnici, consenso esplicito all'onboarding con prova reale (fix G1), cookie impersonazione HttpOnly senza PII (G7), link legali persistenti. 7 gap dell'audit chiusi. Vedi changelog)
+**Revisione precedente:** rev. 24 (2/6) — **Chat AI + Fase 8 chiusa**: assistente conversazionale (function calling 4 tool, proattività, toggle, limiti domande/giorno per piano free0/base10/plus20/pro30, contatore in Impostazioni). Con Marketplace già fatto, **Fase 8 completa**.
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -353,9 +353,17 @@ Implementiamo tabella DB `system_announcements` gestita da Admin Panel.
 - Header sicurezza standard (CSP, HSTS, X-Frame-Options)
 - Anonimizzazione dati prima di chiamate AI
 
+### Conformità privacy/cookie — ✅ implementata (2/6, rev. 25)
+Audit completo + implementazione dei 7 gap. Titolare: **Recoma System S.r.l.** (P.IVA IT09599210961), referente Mattia D'Avolio, contatto md@oneflux.it.
+- **Pagine legali pubbliche**: `/privacy` (Privacy & Cookie Policy v4.0, completa di base giuridica Art. 6.1.b, informativa Art. 13, diritti Art. 15-22, lista responsabili esterni, tabella cookie reale) e `/termini` (ToS). Route group `(legal)` con header/footer pubblici, raggiungibili senza login.
+- **Consenso esplicito all'onboarding** (Art. 7.1): checkbox obbligatorio nel `/reset-password?onboarding=1` che linka privacy e termini; `privacy_accepted_at` scritto **solo** con consenso reale (fix **G1** — prima veniva registrato sempre, prova di consenso falsa).
+- **Cookie tecnici**: banner informativo dismissibile (no cookie-wall, conforme Provvedimento Garante 10/06/2021 — i cookie tecnici non richiedono consenso preventivo). Tutti i cookie HttpOnly + Secure + SameSite=Lax, nessuna PII in chiaro. Cookie impersonazione `oneflux_impersonate` ora flag tecnico HttpOnly, email derivata server-side (fix **G7**, Art. 32).
+- **Link legali persistenti**: footer login + voci sidebar ("Privacy & Cookie", "Termini di Servizio").
+
 ### Post-MVP
 - Migrazione a Supabase Auth completo (RLS reale)
 - DPA con Anthropic se passiamo a Claude
+- Aggiornare data/versione dell'informativa al cut-over finale (Fase 10), allineando la lista responsabili allo stack di produzione effettivo (Streamlit → Next.js)
 
 ---
 
@@ -456,7 +464,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 **Pagine**
 | Sezione | Stato | Note |
 |---|---|---|
-| Login | ✅ | Link "Hai dimenticato la password?" → `/forgot-password` (Next.js nativo) |
+| Login | ✅ | Link "Hai dimenticato la password?" → `/forgot-password` (Next.js nativo) + footer legale (Privacy/Termini, "solo cookie tecnici") |
 | Forgot password | ✅ | Form email → link Brevo → `/reset-password?token=XXX` |
 | Reset password | ✅ | Token pre-compilato da URL + nuova password + redirect login |
 | Onboarding primo accesso | ✅ | Stesso `/reset-password?token=XXX&onboarding=1` — testi personalizzati, admin Streamlit invia link Next.js |
@@ -465,21 +473,44 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Analisi Fatture | ✅ | KPI bar, filtri periodo, tab Articoli + Categorie + Fornitori, edit categoria batch, upload modal |
 | Ricavi e Margini | ✅ | Tab Marginalità + Analisi Avanzate (vedi changelog §14) |
 | Prezzi | ✅ | Variazioni, Sconti/Omaggi, Note Credito, soglia alert |
-| Notifiche | ✅ | Lista, severity, dismiss, badge. **Manca** raggruppamento + azioni inline |
+| Notifiche | ✅ | Lista, severity, dismiss, badge. Raggruppamento per origine + filtri count + azioni inline + badge unificato (rev.23) |
 | Analisi e Tag | ✅ | Chip tag, periodo, KPI bar, trend prezzi, analisi fornitori, prodotti inline, suggerimenti, export XLS |
 | Gestione Fatture (ex Scadenziario) | ✅ | Agenda + calendario + KPI bar + regole fornitore + elimina da peek + cestino widget integrato |
 | Strumenti (ex Foodcost) | ✅ | Route `/workspace`, 4 tab. Foodcost ✅ · Inventario ✅ · Diario ✅ · Personale ✅ |
-| Report | ⏳ | Placeholder — **rimosso dalla sidebar (31/5)**; route `(app)/report/page.tsx` ancora presente ma scollegata. Valutare se eliminarla o ripensare la feature |
-| Impostazioni/Account | ✅ | Dati ristorante, piano + contatore, cambio password |
-| Admin Panel | ✅ | Core (clienti con piano inline + inizio piano, onboarding, impersonazione, sedi, flags, mapping) · Qualità AI (coda review con suggerimento categoria + 1-click, auto-review, memoria globale, conflitti, audit log + undo) · Sistema/Salute (costi AI, retention, **agent notturno on/off**) · routing confidenza sull'ingest |
+| Servizi (ex Assistenza) | ✅ | Route `/assistenza`, 6 servizi + lead in DB + WhatsApp. **Chat AI** widget sulla Home (function calling, limiti per piano) |
+| Privacy & Cookie | ✅ | Route group `(legal)/privacy` pubblica — Privacy & Cookie Policy v4.0, tabella cookie reale (rev.25) |
+| Termini di Servizio | ✅ | Route group `(legal)/termini` pubblica — ToS (rev.25) |
+| Impostazioni/Account | ✅ | Dati ristorante, piano + contatore (fatture + chat), cambio password |
+| Admin Panel | ✅ | Core (clienti con piano inline + inizio piano, onboarding, impersonazione, sedi, flags, mapping) · Qualità AI (coda review con suggerimento categoria + 1-click, auto-review, memoria globale, conflitti, audit log + undo) · Sistema/Salute (costi AI, retention, **agent notturno on/off**) · Richieste servizi (coda lead marketplace) · routing confidenza sull'ingest |
 
 **Non ancora iniziato (zero codice):** Multi-ristorante (dropdown switch) · PWA/mobile · fattore_kg UI (Analisi e Tag v2) · Report (placeholder scollegato) · Chat AI "azioni" (creare promemoria/segnare pagato — evoluzione futura)
 
 **Rimosso/deprecato:** tab "Integrità DB" in `/admin/sistema` (troppi falsi positivi, 30/5) · sidebar voce "Cestino" (ora widget in Gestione Fatture) · route orfana `/cestino/page.tsx` ancora presente ma scollegata dalla sidebar — **da rimuovere** (raggiungibile solo via URL diretto) · sidebar voce "Report" (31/5, placeholder non necessario; route `(app)/report/page.tsx` ancora presente ma scollegata) · voce "Account" nel dropdown footer della sidebar (31/5, ridondante con Impostazioni — il footer ora apre solo "Esci").
 
-**Prerequisito Railway:** aggiungere env var `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME` per attivare reset password in produzione.
+**Prerequisito Railway:** ~~aggiungere env var `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`, `BREVO_SENDER_NAME`~~ ✅ **chiuso (31/5)** — le 3 var sono sul worker, reset password + onboarding funzionanti in produzione. **Aperto:** `WORKER_WEB_CONCURRENCY=4` (parallelismo multi-processo, vedi rev.22).
 
 ### Changelog sessioni
+
+**Conformità privacy/cookie/GDPR Next.js (2 giugno 2026, rev. 25)**
+
+L'app Streamlit aveva pagine e banner privacy/cookie; il Next.js non aveva **nulla**. Audit completo + implementazione dei 7 gap individuati. Committato/pushato su `main` (`b8d1d27` feat + `ea09282` fix G7).
+
+*Gap chiusi:*
+- **G1 — consenso falso (il più grave):** `imposta_password_da_token` scriveva `privacy_accepted_at` **sempre**, anche senza accettazione → prova di consenso falsa (peggio dell'assenza, Art. 7.1). Fix: nuovo param `privacy_accepted: bool = True` (default preserva la retro-compat Streamlit, che valida il checkbox a monte), `privacy_accepted_at` scritto **solo** se `True`. `ResetConfirmBody` esteso con `privacy_accepted`; il reset-password Next.js invia il valore reale del checkbox (solo in onboarding).
+- **G2 — nessuna informativa raggiungibile:** creata `/privacy` (Privacy & Cookie Policy v4.0).
+- **G3 — nessun consenso esplicito:** checkbox obbligatorio in `/reset-password?onboarding=1` che linka `/privacy` e `/termini`; bottone disabilitato finché non spuntato.
+- **G4 — nessuna informativa cookie:** banner dismissibile (`cookie-notice.tsx`, localStorage `oneflux_cookie_notice_v1`, "Ho capito", **no Accept/Reject** perché solo cookie tecnici — Provvedimento Garante 10/06/2021) + sezione cookie nell'informativa con tabella reale.
+- **G5 — nessun link legale persistente:** footer login + 2 voci sidebar ("Privacy & Cookie" `ShieldQuestion`, "Termini di Servizio" `Scale`, `target="_blank"`).
+- **G6 — nessun ToS:** creata `/termini` (11 sezioni + contatti, lista provider incl. Vercel).
+- **G7 — email in chiaro nel cookie:** `oneflux_impersonate` conteneva l'email del cliente impersonato leggibile da JS. Ora è un **flag tecnico `"1"` HttpOnly**; l'email è derivata server-side dal nuovo `GET /api/admin/impersona/status` (dalla sessione corrente). Il banner admin la fetcha da lì. Mitiga esposizione PII via XSS (Art. 32).
+
+*Struttura:*
+- Route group `(legal)` con `layout.tsx` (header pubblico Logo/nav Privacy·Termini·Accedi + footer Recoma System S.r.l.) e componenti `legal-prose.tsx` (`LegalProse`/`LegalTable`/`LegalCallout`, niente dipendenza `@tailwindcss/typography`).
+- Titolare del trattamento: **Recoma System S.r.l.**, P.IVA IT09599210961, referente Mattia D'Avolio, md@oneflux.it. Hosting/responsabili: Supabase (DB, UE Frankfurt), OpenAI (AI), Brevo (SMTP), Invoicetronic (SDI), Vercel (Next.js), Railway (worker).
+
+*Test/verifica:* nuova classe `TestImpostaPasswordConsentGDPR` (3 test: consenso registrato se accettato, **non** registrato se rifiutato, default True retro-compat Streamlit). Backend **806 passati, 1 skip**. Next.js `tsc --noEmit` exit 0, ESLint exit 0. OpenAPI 122 endpoint (nessun drift — G7 non tocca il backend, solo route Next).
+
+*Aperto (future-only, NON ora):* al cut-over di produzione (Fase 10) aggiornare versione/data dell'informativa e allineare la lista responsabili allo stack effettivo (rimozione Streamlit/Railway-Streamlit quando si spegne).
 
 **Performance worker + debug trasversale app (1 giugno 2026, rev. 22)**
 
@@ -842,6 +873,8 @@ Nota routing: `articoli`, `snapshot-dates`, `copia-snapshot` definiti **prima** 
 14. ~~**Chat AI**~~ ✅ **Completato** (2/6, rev.24) — function calling 4 tool, proattività, toggle, limiti per piano + contatore. **Fase 8 chiusa.**
 15. **Test, performance, switch dominio** (Fasi 9-11). ⬅️ **Prossimo blocco.**
 
+> Stato sintetico rev. 25: **Conformità privacy/cookie/GDPR Next.js** (2/6) — committato/pushato su `main` (`b8d1d27` + `ea09282`). Il Next.js non aveva nulla mentre Streamlit aveva pagine/banner: chiusi 7 gap. **Pagine legali** `/privacy` (Policy v4.0, tabella cookie reale) e `/termini` (ToS) pubbliche via route group `(legal)`. **Consenso esplicito** all'onboarding con prova reale (fix **G1** — prima `privacy_accepted_at` veniva scritto sempre = consenso falso). **Banner cookie tecnici** (no cookie-wall, Garante 10/06/2021). **Cookie impersonazione HttpOnly senza PII** (fix **G7**, email derivata server-side da `/api/admin/impersona/status`). **Link legali** su login + sidebar. Titolare: Recoma System S.r.l. (P.IVA IT09599210961). Backend 806 test passati, `tsc`/ESLint puliti, OpenAPI 122 invariato. **Prossimi step invariati:** (a) `WORKER_WEB_CONCURRENCY=4` su Railway; (b) **Fase 9** — usare l'app come cliente reale + invito 2 clienti su `nuovo.oneflux.it`; poi Fasi 10-11 (switch dominio + spegnimento Streamlit). Future-only: aggiornare data informativa al cut-over.
+>
 > Stato sintetico rev. 24: **Chat AI — Fase 8 chiusa** (2/6) — committato/deployato (`036a616`). Assistente conversazionale sui dati del ristorante, widget flottante solo sulla Home (bottone a contorno col logo ONEFLUX). **Function calling** `gpt-4o-mini` con 4 strumenti (`query_costi`, `query_scadenze`, `query_margini`, `confronto_prezzi`) → risponde su qualsiasi periodo/prodotto interrogando il DB su misura, con gli stessi numeri della Home. **Proattività**: benvenuto + 4 domande suggerite. **Toggle** on/off per cliente. **Limiti domande/giorno per piano** (free 0 / base 10 / plus 20 / pro 30) — rete costi (~€0,0007/domanda) + leva upgrade; `chat_usage_log`, 429 al limite, 403 se free, contatore visibile in Impostazioni. OpenAPI 122 endpoint. Con Marketplace (rev.23) **Fase 8 completa**. **Prossimi step:** (a) `WORKER_WEB_CONCURRENCY=4` su Railway (fatto?); (b) **Fase 9** — usare l'app come cliente reale + invito 2 clienti su `nuovo.oneflux.it` + fix bug; poi Fasi 10-11 (switch dominio + spegnimento Streamlit).
 >
 > Stato sintetico rev. 23: **Notifiche v2 + Servizi/Marketplace** (2/6) — committato/deployato (`aa73eeb`). (1) **Notifiche v2**: raggruppamento per origine (Fatture/Anomalie/Da sistemare/Scadenze), filtri con count, CTA inline (action_page legacy → rotte Next), priorità colori, **badge unificato** (header/widget/pagina leggono la stessa fonte `notification_inbox.unread`, `fetchNotifiche` cache-ata) → **Fase 3 chiusa**. (2) **Servizi/Marketplace** (Fase 8): pagina `/assistenza` (voce sidebar "Servizi" + icona header colore brand), 6 servizi statici, lead → `marketplace_leads` → coda Admin "Richieste servizi"; WhatsApp diretto; 3 endpoint (OpenAPI 121). (3) **Fix proxy**: rimosso redirect ottimistico `/login→/dashboard` che con cookie invalido causava `ERR_TOO_MANY_REDIRECTS` (vale anche in produzione). **Prossimi step:** (a) `WORKER_WEB_CONCURRENCY=4` su Railway; (b) verifica redeploy worker Railway; (c) **Fase 9** — test come cliente reale + invito 2 clienti su `nuovo.oneflux.it`; poi Fasi 10-11 (switch dominio + spegnimento Streamlit).
@@ -898,7 +931,10 @@ feature/migration-*   → feature Next.js (es. feature/migration-login)
 
 **Checklist pre-switch (da completare prima di toccare i DNS):**
 - [ ] Tutte le sezioni funzionanti e testate
-- [ ] Reset password funzionante lato Next.js
+- [x] Reset password funzionante lato Next.js (Brevo in produzione, 31/5)
+- [x] Privacy & Cookie Policy + Termini di Servizio pubblicati e raggiungibili (rev.25)
+- [x] Consenso privacy esplicito raccolto all'onboarding con prova reale (rev.25)
+- [ ] Aggiornare data/versione informativa al cut-over + allineare lista responsabili allo stack di produzione
 - [ ] Backup DB confermato
 - [ ] Clienti avvisati con almeno 1 settimana di anticipo
 - [ ] Rollback plan documentato e testato
