@@ -198,7 +198,7 @@ export function UploadModal() {
       <DialogContent className="!max-w-2xl">
         <DialogTitle>Carica fatture</DialogTitle>
         <DialogDescription>
-          Formati accettati: XML, P7M · ricaricando lo stesso file le righe vengono sostituite, non duplicate.
+          Formati accettati: XML, P7M · ricaricando lo stesso file viene scartato e non duplicato.
         </DialogDescription>
 
         <div
