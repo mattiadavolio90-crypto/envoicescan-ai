@@ -2,6 +2,7 @@ import { fetchDashboardStats } from "@/lib/dashboard";
 import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { HomeBriefing } from "./home-briefing";
+import { ChatWidget } from "./chat-widget";
 import { SaluteCard } from "./salute-card";
 import { KpiBlock } from "./kpi-block";
 import { ConfigAssistente } from "./config-assistente";
@@ -23,6 +24,7 @@ export default async function DashboardPage() {
   const isEmpty = !stats || stats.kpi.righe_totali === 0;
 
   return (
+    <>
     <div className="space-y-8">
       {config && (
         <div className="flex justify-end">
@@ -60,5 +62,8 @@ export default async function DashboardPage() {
         </Card>
       )}
     </div>
+
+    <ChatWidget />
+    </>
   );
 }

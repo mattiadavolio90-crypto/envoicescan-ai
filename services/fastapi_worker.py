@@ -1753,6 +1753,165 @@ class MarketplaceLeadStatoBody(BaseModel):
 # _verify_admin (Depends risolve la dependency a import-time del decorator).
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# CHAT AI — assistente conversazionale sui dati del ristorante
+# ═══════════════════════════════════════════════════════════════════════════
+
+class ChatMessage(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str = Field(..., max_length=4000)
+
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage] = Field(..., min_length=1, max_length=20)
+
+
+class ChatResponse(BaseModel):
+    reply: str
+
+
+def _build_chat_system_prompt(user: Dict[str, Any], supabase_client) -> str:
+    """Costruisce il system prompt con i dati freschi del ristorante.
+
+    Recupera KPI e Salute dagli stessi calcoli della Home: niente query
+    aggiuntive, dati coerenti con quello che l'utente vede sullo schermo.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    nome = user.get("nome_ristorante") or user.get("email", "")
+    referente = user.get("nome_referente") or ""
+
+    # Recupera KPI Home (stesso endpoint /api/home/kpi ma in-process)
+    kpi_testo = ""
+    try:
+        ristorante_id = _resolve_ristorante_id(user, supabase_client)
+        user_id = str(user["id"])
+        # Legge KPI ultimi 2 mesi per avere confronto
+        oggi = _dt.now(_tz.utc)
+        mese_ini = oggi.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        mese_ini_str = mese_ini.isoformat()
+
+        # Fatture del mese corrente
+        q = (
+            supabase_client.table("fatture")
+            .select("totale_riga,categoria,fornitore,data_documento")
+            .eq("user_id", user_id)
+            .is_("deleted_at", "null")
+            .gte("data_documento", mese_ini_str[:10])
+            .limit(500)
+            .execute()
+        )
+        righe = q.data or []
+
+        totale_costi = sum(float(r.get("totale_riga") or 0) for r in righe)
+        # Raggruppa per categoria
+        per_cat: Dict[str, float] = {}
+        for r in righe:
+            cat = r.get("categoria") or "Altro"
+            per_cat[cat] = per_cat.get(cat, 0) + float(r.get("totale_riga") or 0)
+        top_cat = sorted(per_cat.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        # Raggruppa per fornitore
+        per_forn: Dict[str, float] = {}
+        for r in righe:
+            forn = (r.get("fornitore") or "Sconosciuto").strip()
+            per_forn[forn] = per_forn.get(forn, 0) + float(r.get("totale_riga") or 0)
+        top_forn = sorted(per_forn.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        mese_label = mese_ini.strftime("%B %Y")
+        kpi_testo = (
+            f"\n\n## Dati del ristorante — {mese_label}\n"
+            f"- Totale costi fatturati: €{totale_costi:,.2f}\n"
+            f"- Numero righe fattura: {len(righe)}\n"
+        )
+        if top_cat:
+            kpi_testo += "- Top categorie di spesa:\n"
+            for cat, v in top_cat:
+                kpi_testo += f"  • {cat}: €{v:,.2f}\n"
+        if top_forn:
+            kpi_testo += "- Top fornitori per spesa:\n"
+            for forn, v in top_forn:
+                kpi_testo += f"  • {forn}: €{v:,.2f}\n"
+
+        # Scadenze imminenti
+        try:
+            scad = (
+                supabase_client.table("fatture_scadenze")
+                .select("fornitore,importo_residuo,data_scadenza")
+                .eq("user_id", user_id)
+                .is_("pagata", "false")
+                .lte("data_scadenza", (oggi.replace(day=1) if oggi.day > 15
+                     else oggi).strftime("%Y-%m-%d"))
+                .limit(5)
+                .execute()
+            )
+            if scad.data:
+                kpi_testo += "- Scadenze non pagate imminenti:\n"
+                for s in scad.data:
+                    kpi_testo += f"  • {s.get('fornitore','?')}: €{s.get('importo_residuo',0):,.2f} scade {s.get('data_scadenza','?')}\n"
+        except Exception:
+            pass
+
+    except Exception as exc:
+        logger.warning("chat: errore raccolta dati contesto: %s", exc)
+        kpi_testo = "\n\n(Dati del ristorante non disponibili al momento.)"
+
+    sistema = f"""Sei l'assistente AI di ONEFLUX, integrato nel gestionale del ristorante "{nome}".
+{f"Stai parlando con {referente}." if referente else ""}
+
+Rispondo SOLO a domande sui dati del ristorante: costi, fornitori, food cost, margini, fatture, scadenze.
+Per argomenti non pertinenti (ricette generiche, notizie, argomenti personali) rispondo educatamente che posso aiutare solo sulla gestione del locale.
+
+Tono: diretto, concreto, da collega esperto in F&B — non da chatbot generico. Risposte brevi (2-5 righe al massimo).
+Importi sempre in euro con 2 decimali. Se non ho dati sufficienti lo dico chiaramente.{kpi_testo}"""
+
+    return sistema
+
+
+@app.post(
+    "/api/chat",
+    response_model=ChatResponse,
+    summary="Chat AI sui dati del ristorante",
+    tags=["Chat"],
+    dependencies=[Depends(_verify_worker_key)],
+)
+def chat_ai(
+    body: ChatRequest,
+    authorization: Optional[str] = Header(None),
+) -> ChatResponse:
+    user = _resolve_user_from_token(authorization)
+    from services import get_supabase_client
+    supabase_client = get_supabase_client()
+
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY non configurata")
+
+    system_prompt = _build_chat_system_prompt(user, supabase_client)
+
+    from openai import OpenAI
+    client = OpenAI(api_key=openai_api_key)
+
+    messages = [{"role": "system", "content": system_prompt}]
+    messages += [{"role": m.role, "content": m.content} for m in body.messages]
+
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=messages,  # type: ignore[arg-type]
+            max_tokens=400,
+            temperature=0.3,
+        )
+        reply = resp.choices[0].message.content or ""
+    except Exception as exc:
+        logger.error("chat_ai: OpenAI error: %s", exc)
+        raise HTTPException(status_code=502, detail="Errore OpenAI")
+
+    logger.info("chat_ai: user=%s messages=%d tokens=%s",
+                user.get("email"), len(body.messages),
+                getattr(resp.usage, "total_tokens", "?"))
+    return ChatResponse(reply=reply)
+
+
 def _saluto_per_ora(nome: Optional[str]) -> str:
     """Saluto adattivo all'ora corrente (fuso Europe/Rome)."""
     from datetime import datetime as _dt
