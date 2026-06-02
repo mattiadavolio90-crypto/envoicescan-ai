@@ -1,10 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
+import { Moon, Sun } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const PIANO_LABEL: Record<string, string> = {
   base: "Base",
@@ -29,6 +33,7 @@ type AccountData = {
   chat_usate_oggi?: number;
   chat_limite_giorno?: number;
   price_alert_threshold: number | null;
+  tema?: "dark" | "light";
   membro_dal: string | null;
   ultimo_accesso: string | null;
   is_admin: boolean;
@@ -185,6 +190,86 @@ function CambioPasswordForm() {
   );
 }
 
+function AspettoCard({ temaSalvato }: { temaSalvato: "dark" | "light" }) {
+  const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  // Prima del mount usiamo il valore dal DB per evitare un flash dell'opzione
+  // attiva sbagliata (next-themes legge il tema solo lato client).
+  const attivo = mounted ? theme : temaSalvato;
+
+  async function scegli(nuovo: "dark" | "light") {
+    if (nuovo === attivo || saving) return;
+    // Il tema si applica subito e resta: next-themes lo persiste in
+    // localStorage sul dispositivo. Il salvataggio sul DB e' "best effort"
+    // (serve solo a far seguire la preferenza su altri dispositivi): se fallisce
+    // NON ripristiniamo il tema, altrimenti la scelta dell'utente lampeggerebbe
+    // e tornerebbe indietro.
+    setTheme(nuovo);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/account/preferenze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tema: nuovo }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Tema aggiornato");
+    } catch {
+      toast.error("Tema applicato su questo dispositivo, ma non salvato sull'account. Riprova piu' tardi.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const opzioni = [
+    { val: "light" as const, label: "Chiaro", icon: Sun },
+    { val: "dark" as const, label: "Scuro", icon: Moon },
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Aspetto</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1.5">
+          <Label>Tema dell&apos;interfaccia</Label>
+          <div className="grid grid-cols-2 gap-3 max-w-sm">
+            {opzioni.map((o) => {
+              const selezionato = attivo === o.val;
+              return (
+                <button
+                  key={o.val}
+                  type="button"
+                  onClick={() => scegli(o.val)}
+                  disabled={saving}
+                  aria-pressed={selezionato}
+                  className={cn(
+                    "flex items-center justify-center gap-2 rounded-lg border px-4 py-3 text-sm font-medium transition-colors disabled:opacity-60",
+                    selezionato
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:bg-accent"
+                  )}
+                >
+                  <o.icon className="size-4" />
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            La preferenza viene salvata sul tuo account e applicata su ogni dispositivo.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function AccountClient({ data }: { data: AccountData }) {
   const pianoLabel = PIANO_LABEL[data.piano] ?? data.piano;
   const pianoPrezzo = PIANO_PREZZO[data.piano] ?? "";
@@ -279,6 +364,9 @@ export function AccountClient({ data }: { data: AccountData }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Aspetto (tema chiaro/scuro) */}
+      <AspettoCard temaSalvato={data.tema ?? "dark"} />
 
       {/* Cambio password */}
       <CambioPasswordForm />

@@ -979,6 +979,7 @@ class UserPublic(BaseModel):
     nome_ristorante: Optional[str] = None
     pagine_abilitate: Optional[List[str]] = None
     is_admin: bool = False
+    tema: str = "dark"
 
 
 class LoginResponse(BaseModel):
@@ -1087,6 +1088,7 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
         nome_ristorante=user.get("nome_ristorante"),
         pagine_abilitate=_normalize_pagine(user.get("pagine_abilitate")),
         is_admin=_is_admin_email(user.get("email")),
+        tema=(user.get("tema") or "dark"),
     )
 
 
@@ -7478,7 +7480,7 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     user_row = (
         sb.table("users")
         .select("id, email, nome_ristorante, ragione_sociale, partita_iva, piano, "
-                "price_alert_threshold, created_at, last_login")
+                "price_alert_threshold, tema, created_at, last_login")
         .eq("id", user_id)
         .single()
         .execute()
@@ -7522,6 +7524,7 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         "chat_usate_oggi": chat_oggi,
         "chat_limite_giorno": _chat_limite_per_piano(piano_raw),
         "price_alert_threshold": row.get("price_alert_threshold"),
+        "tema": (row.get("tema") or "dark"),
         "membro_dal": row.get("created_at"),
         "ultimo_accesso": row.get("last_login"),
         "is_admin": _is_admin_email(row.get("email")),
@@ -7568,6 +7571,25 @@ def account_cambia_password(
     }).eq("id", user_id).execute()
 
     return {"ok": True}
+
+
+class PreferenzeBody(BaseModel):
+    tema: str
+
+
+@app.post("/api/account/preferenze", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
+def account_preferenze(
+    body: PreferenzeBody,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Salva le preferenze di aspetto del cliente (tema). Segue l'account."""
+    user = _resolve_user_from_token(authorization)
+    tema = (body.tema or "").strip().lower()
+    if tema not in ("dark", "light"):
+        raise HTTPException(status_code=400, detail="Tema non valido")
+    sb = _get_supabase_client()
+    sb.table("users").update({"tema": tema}).eq("id", str(user["id"])).execute()
+    return {"ok": True, "tema": tema}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

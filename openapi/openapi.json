@@ -6502,6 +6502,84 @@
         }
       }
     },
+    "/api/account/preferenze": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Account Preferenze",
+        "description": "Salva le preferenze di aspetto del cliente (tema). Segue l'account.",
+        "operationId": "account_preferenze_api_account_preferenze_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferenzeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Account Preferenze Api Account Preferenze Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/marketplace/leads": {
       "get": {
         "tags": [
@@ -14910,6 +14988,19 @@
         ],
         "title": "PivotRow"
       },
+      "PreferenzeBody": {
+        "properties": {
+          "tema": {
+            "type": "string",
+            "title": "Tema"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tema"
+        ],
+        "title": "PreferenzeBody"
+      },
       "ResetConfirmBody": {
         "properties": {
           "token": {
@@ -16043,6 +16134,11 @@
             "type": "boolean",
             "title": "Is Admin",
             "default": false
+          },
+          "tema": {
+            "type": "string",
+            "title": "Tema",
+            "default": "dark"
           }
         },
         "type": "object",

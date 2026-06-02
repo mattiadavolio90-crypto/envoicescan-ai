@@ -1,6 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Tailwind v4: la variante dark: segue la classe .dark sull'<html> (gestita da
+   next-themes), non prefers-color-scheme. Senza questa riga le utility dark:*
+   seguirebbero il tema dell'OS e il tema "Chiaro" non avrebbe effetto. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --font-sans: var(--font-sans);
 

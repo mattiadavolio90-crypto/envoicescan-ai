@@ -12,6 +12,7 @@ export type SessionUser = {
   nome_ristorante: string | null;
   pagine_abilitate: string[] | null;
   is_admin: boolean;
+  tema?: "dark" | "light";
 };
 
 function workerHeaders(extra: HeadersInit = {}): HeadersInit {
