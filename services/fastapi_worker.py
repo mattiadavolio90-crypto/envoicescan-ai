@@ -1759,6 +1759,31 @@ class MarketplaceLeadStatoBody(BaseModel):
 # CHAT AI — assistente conversazionale sui dati del ristorante
 # ═══════════════════════════════════════════════════════════════════════════
 
+# Limite domande/giorno per ristorante: rete di sicurezza sui costi OpenAI.
+# Visibile al cliente nelle Impostazioni (contatore).
+CHAT_LIMITE_GIORNO = 50
+
+
+def _chat_domande_oggi(ristorante_id: Optional[str], user_id: str, supabase_client) -> int:
+    """Conta le domande alla chat fatte oggi (UTC) per il ristorante (o utente)."""
+    from datetime import datetime as _dt, timezone as _tz
+    inizio = _dt.now(_tz.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    try:
+        q = (
+            supabase_client.table("chat_usage_log")
+            .select("id", count="exact")
+            .gte("created_at", inizio)
+        )
+        if ristorante_id:
+            q = q.eq("ristorante_id", ristorante_id)
+        else:
+            q = q.eq("user_id", user_id)
+        return int(q.execute().count or 0)
+    except Exception as exc:
+        logger.warning("chat: conteggio domande oggi fallito: %s", exc)
+        return 0
+
+
 class ChatMessage(BaseModel):
     role: str = Field(..., pattern="^(user|assistant)$")
     content: str = Field(..., max_length=4000)
@@ -2062,8 +2087,18 @@ def chat_ai(
     if not openai_api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY non configurata")
 
-    system_prompt = _build_chat_system_prompt(user, supabase_client, authorization)
     user_id = str(user["id"])
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+
+    # Rate limit giornaliero: rete di sicurezza sui costi. 429 se superato.
+    domande_oggi = _chat_domande_oggi(ristorante_id, user_id, supabase_client)
+    if domande_oggi >= CHAT_LIMITE_GIORNO:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Hai raggiunto il limite di {CHAT_LIMITE_GIORNO} domande per oggi. Riprova domani.",
+        )
+
+    system_prompt = _build_chat_system_prompt(user, supabase_client, authorization)
 
     from openai import OpenAI
     import json as _json
@@ -2198,7 +2233,17 @@ def chat_ai(
         logger.error("chat_ai: OpenAI error: %s", exc)
         raise HTTPException(status_code=502, detail="Errore OpenAI")
 
-    logger.info("chat_ai: user=%s messages=%d", user.get("email"), len(body.messages))
+    # Log della domanda per il contatore giornaliero (fail-safe: non blocca).
+    try:
+        supabase_client.table("chat_usage_log").insert({
+            "user_id": user_id,
+            "ristorante_id": ristorante_id,
+        }).execute()
+    except Exception as exc:
+        logger.warning("chat: log usage fallito (non blocca): %s", exc)
+
+    logger.info("chat_ai: user=%s messages=%d domande_oggi=%d",
+                user.get("email"), len(body.messages), domande_oggi + 1)
     return ChatResponse(reply=reply or "Non sono riuscito a elaborare la risposta, riprova.")
 
 
@@ -7405,6 +7450,9 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         except Exception:
             pass
 
+    # Contatore domande Chat AI di oggi (per il rate limit visibile al cliente)
+    chat_oggi = _chat_domande_oggi(ristorante_id, user_id, sb)
+
     return {
         "email": row.get("email", user.get("email", "")),
         "nome_ristorante": row.get("nome_ristorante", user.get("nome_ristorante", "")),
@@ -7413,6 +7461,8 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         "piano": piano_raw,
         "limite_fatture_mese": limite_fatture,
         "fatture_usate_mese": fatture_mese,
+        "chat_usate_oggi": chat_oggi,
+        "chat_limite_giorno": CHAT_LIMITE_GIORNO,
         "price_alert_threshold": row.get("price_alert_threshold"),
         "membro_dal": row.get("created_at"),
         "ultimo_accesso": row.get("last_login"),

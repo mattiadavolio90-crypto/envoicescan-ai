@@ -26,6 +26,8 @@ type AccountData = {
   piano: string;
   limite_fatture_mese: number;
   fatture_usate_mese: number;
+  chat_usate_oggi?: number;
+  chat_limite_giorno?: number;
   price_alert_threshold: number | null;
   membro_dal: string | null;
   ultimo_accesso: string | null;
@@ -41,14 +43,24 @@ function fmtDate(iso: string | null): string {
   });
 }
 
-function PianoBar({ usate, limite }: { usate: number; limite: number }) {
-  const pct = Math.min(100, Math.round((usate / limite) * 100));
+function UsageBar({
+  label,
+  usate,
+  limite,
+  avviso,
+}: {
+  label: string;
+  usate: number;
+  limite: number;
+  avviso: string;
+}) {
+  const pct = limite > 0 ? Math.min(100, Math.round((usate / limite) * 100)) : 0;
   const color =
     pct >= 90 ? "bg-red-500" : pct >= 70 ? "bg-amber-500" : "bg-primary";
   return (
     <div className="space-y-1.5">
       <div className="flex justify-between text-sm">
-        <span className="text-muted-foreground">Fatture questo mese</span>
+        <span className="text-muted-foreground">{label}</span>
         <span className="font-medium tabular-nums">
           {usate} / {limite}
         </span>
@@ -57,9 +69,7 @@ function PianoBar({ usate, limite }: { usate: number; limite: number }) {
         <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${pct}%` }} />
       </div>
       {pct >= 90 && (
-        <p className="text-xs text-red-600 dark:text-red-400">
-          Hai quasi esaurito il tuo limite mensile.
-        </p>
+        <p className="text-xs text-red-600 dark:text-red-400">{avviso}</p>
       )}
     </div>
   );
@@ -232,10 +242,29 @@ export function AccountClient({ data }: { data: AccountData }) {
               <span className="text-sm text-muted-foreground">{pianoPrezzo}</span>
             )}
           </div>
-          <PianoBar usate={data.fatture_usate_mese} limite={data.limite_fatture_mese} />
+          <UsageBar
+            label="Fatture questo mese"
+            usate={data.fatture_usate_mese}
+            limite={data.limite_fatture_mese}
+            avviso="Hai quasi esaurito il tuo limite mensile."
+          />
           <p className="text-xs text-muted-foreground">
             Il contatore si azzera il 1° di ogni mese.
           </p>
+
+          {data.chat_limite_giorno != null && (
+            <div className="border-t pt-4">
+              <UsageBar
+                label="Domande all'assistente AI (oggi)"
+                usate={data.chat_usate_oggi ?? 0}
+                limite={data.chat_limite_giorno}
+                avviso="Hai quasi esaurito le domande di oggi."
+              />
+              <p className="mt-1.5 text-xs text-muted-foreground">
+                Il contatore si azzera ogni giorno a mezzanotte.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

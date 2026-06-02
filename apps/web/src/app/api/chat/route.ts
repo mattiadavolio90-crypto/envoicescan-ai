@@ -25,8 +25,15 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify(body),
     });
     if (!res.ok) {
-      const err = await res.text().catch(() => "");
-      return NextResponse.json({ error: err || "Errore worker" }, { status: res.status });
+      // Estrae il messaggio leggibile (es. detail del 429 rate limit).
+      let messaggio = "Errore worker";
+      try {
+        const j = await res.json();
+        messaggio = j.detail || j.error || messaggio;
+      } catch {
+        /* body non JSON */
+      }
+      return NextResponse.json({ error: messaggio }, { status: res.status });
     }
     return NextResponse.json(await res.json());
   } catch {
