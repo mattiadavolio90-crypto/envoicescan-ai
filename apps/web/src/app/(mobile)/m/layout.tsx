@@ -7,7 +7,6 @@ import { BottomNav } from "./bottom-nav";
 import { HeaderMenu } from "./header-menu";
 import { InstallPrompt } from "./install-prompt";
 import { PullToRefresh } from "./pull-to-refresh";
-import { SplashOverlay } from "./splash-overlay";
 
 export default async function MobileLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -22,7 +21,6 @@ export default async function MobileLayout({ children }: { children: React.React
 
   return (
     <div className="flex min-h-dvh flex-col bg-background">
-      <SplashOverlay />
       {/* Header compatto: solo logo + nome ristorante, niente sidebar */}
       <header
         className="sticky top-0 z-40 flex h-14 items-center gap-2.5 border-b border-border bg-background/95 px-4 backdrop-blur-sm"

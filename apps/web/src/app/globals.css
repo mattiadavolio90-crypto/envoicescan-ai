@@ -265,3 +265,23 @@
     opacity: 0.3;
   }
 }
+
+/* Boot overlay PWA: disegnato col primo paint dell'HTML (prima di React e dei
+   fetch), cosi' subito dopo lo splash nativo del sistema parte gia' l'animazione
+   di brand senza vedere il logo statico. Nascosto quando il body ha .app-ready
+   (impostata da React appena monta) con un fade-out. */
+#oneflux-boot {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, color-mix(in oklab, var(--background) 92%, transparent), var(--background));
+  transition: opacity 0.35s ease;
+}
+
+body.app-ready #oneflux-boot {
+  opacity: 0;
+  pointer-events: none;
+}
