@@ -254,15 +254,27 @@ export function AccountClient({ data }: { data: AccountData }) {
 
           {data.chat_limite_giorno != null && (
             <div className="border-t pt-4">
-              <UsageBar
-                label="Domande all'assistente AI (oggi)"
-                usate={data.chat_usate_oggi ?? 0}
-                limite={data.chat_limite_giorno}
-                avviso="Hai quasi esaurito le domande di oggi."
-              />
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                Il contatore si azzera ogni giorno a mezzanotte.
-              </p>
+              {data.chat_limite_giorno > 0 ? (
+                <>
+                  <UsageBar
+                    label="Domande all'assistente AI (oggi)"
+                    usate={data.chat_usate_oggi ?? 0}
+                    limite={data.chat_limite_giorno}
+                    avviso="Hai quasi esaurito le domande di oggi."
+                  />
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Il contatore si azzera ogni giorno a mezzanotte.
+                  </p>
+                </>
+              ) : (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Assistente AI</span>
+                  <span className="text-muted-foreground">
+                    Non incluso nel piano —{" "}
+                    <span className="font-medium text-foreground">passa a un piano superiore</span>
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

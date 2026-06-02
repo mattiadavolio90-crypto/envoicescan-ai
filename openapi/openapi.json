@@ -12896,6 +12896,11 @@
             "type": "boolean",
             "title": "Chat Ai Enabled",
             "default": true
+          },
+          "chat_limite_giorno": {
+            "type": "integer",
+            "title": "Chat Limite Giorno",
+            "default": 10
           }
         },
         "type": "object",

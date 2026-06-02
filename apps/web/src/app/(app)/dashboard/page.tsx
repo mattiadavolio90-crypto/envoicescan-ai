@@ -63,7 +63,7 @@ export default async function DashboardPage() {
       )}
     </div>
 
-    {(config?.chat_ai_enabled ?? true) && <ChatWidget />}
+    {(config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0 && <ChatWidget />}
     </>
   );
 }

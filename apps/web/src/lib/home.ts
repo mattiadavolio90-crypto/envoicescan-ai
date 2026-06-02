@@ -31,6 +31,7 @@ export type AssistantConfig = {
   nome_referente: string;
   topics: ConfigTopic[];
   chat_ai_enabled: boolean;
+  chat_limite_giorno: number; // 0 = piano free, chat non disponibile
 };
 
 export type SaluteVoce = {

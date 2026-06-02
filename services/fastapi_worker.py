@@ -1560,6 +1560,7 @@ class ConfigResponse(BaseModel):
     nome_referente: str = ""
     topics: List[ConfigTopic]
     chat_ai_enabled: bool = True
+    chat_limite_giorno: int = 10  # 0 = piano free, chat non disponibile
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -1759,9 +1760,20 @@ class MarketplaceLeadStatoBody(BaseModel):
 # CHAT AI — assistente conversazionale sui dati del ristorante
 # ═══════════════════════════════════════════════════════════════════════════
 
-# Limite domande/giorno per ristorante: rete di sicurezza sui costi OpenAI.
-# Visibile al cliente nelle Impostazioni (contatore).
-CHAT_LIMITE_GIORNO = 50
+# Limite domande/giorno per piano: rete di sicurezza sui costi OpenAI e leva
+# commerciale. Visibile al cliente nelle Impostazioni (contatore).
+# free = chat disattivata; base 10, plus 20, pro 30.
+CHAT_LIMITI_PIANO: Dict[str, int] = {
+    "free": 0,
+    "base": 10,
+    "plus": 20,
+    "pro": 30,
+}
+
+
+def _chat_limite_per_piano(piano: Optional[str]) -> int:
+    """Domande/giorno consentite per il piano del cliente."""
+    return CHAT_LIMITI_PIANO.get((piano or "base").lower().strip(), 10)
 
 
 def _chat_domande_oggi(ristorante_id: Optional[str], user_id: str, supabase_client) -> int:
@@ -2090,12 +2102,29 @@ def chat_ai(
     user_id = str(user["id"])
     ristorante_id = _resolve_ristorante_id(user, supabase_client)
 
+    # Limite domande/giorno in base al piano del cliente.
+    piano = user.get("piano")
+    if piano is None:
+        try:
+            r = supabase_client.table("users").select("piano").eq("id", user_id).single().execute()
+            piano = (r.data or {}).get("piano")
+        except Exception:
+            piano = "base"
+    limite = _chat_limite_per_piano(piano)
+
+    # Piano free: chat non disponibile.
+    if limite <= 0:
+        raise HTTPException(
+            status_code=403,
+            detail="La chat con l'assistente non è inclusa nel tuo piano. Passa a un piano superiore per attivarla.",
+        )
+
     # Rate limit giornaliero: rete di sicurezza sui costi. 429 se superato.
     domande_oggi = _chat_domande_oggi(ristorante_id, user_id, supabase_client)
-    if domande_oggi >= CHAT_LIMITE_GIORNO:
+    if domande_oggi >= limite:
         raise HTTPException(
             status_code=429,
-            detail=f"Hai raggiunto il limite di {CHAT_LIMITE_GIORNO} domande per oggi. Riprova domani.",
+            detail=f"Hai raggiunto il limite di {limite} domande per oggi. Riprova domani.",
         )
 
     system_prompt = _build_chat_system_prompt(user, supabase_client, authorization)
@@ -2899,11 +2928,24 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     if not nome:
         nome = str(user.get("nome_referente") or "")
 
+    # Limite chat dal piano (0 = free, chat non disponibile)
+    piano = user.get("piano")
+    if piano is None:
+        try:
+            r = sb.table("users").select("piano").eq("id", str(user["id"])).single().execute()
+            piano = (r.data or {}).get("piano")
+        except Exception:
+            piano = "base"
+    chat_limite = _chat_limite_per_piano(piano)
+
     topics = [
         ConfigTopic(key=key, label=label, enabled=key not in disabled, bloccato=bloccato)
         for (key, label, bloccato) in _CONFIG_TOPICS
     ]
-    return ConfigResponse(nome_referente=nome, topics=topics, chat_ai_enabled=chat_ai_enabled)
+    return ConfigResponse(
+        nome_referente=nome, topics=topics,
+        chat_ai_enabled=chat_ai_enabled, chat_limite_giorno=chat_limite,
+    )
 
 
 @app.post(
@@ -2959,7 +3001,17 @@ def home_config_post(
         for (key, label, bloccato) in _CONFIG_TOPICS
     ]
     chat_ai = True if body.chat_ai_enabled is None else bool(body.chat_ai_enabled)
-    return ConfigResponse(nome_referente=str(nome or ""), topics=topics, chat_ai_enabled=chat_ai)
+    piano = user.get("piano")
+    if piano is None:
+        try:
+            r = sb.table("users").select("piano").eq("id", str(user["id"])).single().execute()
+            piano = (r.data or {}).get("piano")
+        except Exception:
+            piano = "base"
+    return ConfigResponse(
+        nome_referente=str(nome or ""), topics=topics,
+        chat_ai_enabled=chat_ai, chat_limite_giorno=_chat_limite_per_piano(piano),
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -7462,7 +7514,7 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         "limite_fatture_mese": limite_fatture,
         "fatture_usate_mese": fatture_mese,
         "chat_usate_oggi": chat_oggi,
-        "chat_limite_giorno": CHAT_LIMITE_GIORNO,
+        "chat_limite_giorno": _chat_limite_per_piano(piano_raw),
         "price_alert_threshold": row.get("price_alert_threshold"),
         "membro_dal": row.get("created_at"),
         "ultimo_accesso": row.get("last_login"),
