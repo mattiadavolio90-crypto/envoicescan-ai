@@ -1772,99 +1772,87 @@ class ChatResponse(BaseModel):
     reply: str
 
 
-def _build_chat_system_prompt(user: Dict[str, Any], supabase_client) -> str:
+def _build_chat_system_prompt(
+    user: Dict[str, Any], supabase_client, authorization: Optional[str]
+) -> str:
     """Costruisce il system prompt con i dati freschi del ristorante.
 
-    Recupera KPI e Salute dagli stessi calcoli della Home: niente query
-    aggiuntive, dati coerenti con quello che l'utente vede sullo schermo.
+    Usa ESATTAMENTE gli stessi KPI della Home (`home_kpi`): MOL, fatturato,
+    food cost %, costo personale, spese — cosi' la chat dice gli stessi numeri
+    che il cliente vede a schermo. Aggiunge il dettaglio costi per categoria e
+    fornitore (per domande tipo "quanto ho speso in birra").
     """
-    from datetime import datetime as _dt, timezone as _tz
     nome = user.get("nome_ristorante") or user.get("email", "")
     referente = user.get("nome_referente") or ""
 
-    # Recupera KPI Home (stesso endpoint /api/home/kpi ma in-process)
     kpi_testo = ""
-    try:
-        ristorante_id = _resolve_ristorante_id(user, supabase_client)
-        user_id = str(user["id"])
-        # Legge KPI ultimi 2 mesi per avere confronto
-        oggi = _dt.now(_tz.utc)
-        mese_ini = oggi.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        mese_ini_str = mese_ini.isoformat()
 
-        # Fatture del mese corrente
+    # 1) KPI Home — stessa fonte, stessi numeri (margini_mensili + costi)
+    try:
+        kpi = home_kpi(authorization)
+        if kpi.has_data:
+            fc = f"{kpi.food_cost_pct:.1f}%" if kpi.food_cost_pct is not None else "n/d"
+            kpi_testo += (
+                f"\n\n## Conti del ristorante — {kpi.periodo_label} "
+                f"(ultimo mese completo)\n"
+                f"- Fatturato: €{kpi.fatturato:,.2f}\n"
+                f"- Food cost: {fc}\n"
+                f"- Costo personale: €{kpi.costo_personale:,.2f}\n"
+                f"- Spese generali: €{kpi.spese_generali:,.2f}\n"
+                f"- MOL (margine operativo lordo): €{kpi.mol:,.2f}\n"
+            )
+            if kpi.confronto_label:
+                kpi_testo += f"  (confronto {kpi.confronto_label})\n"
+    except Exception as exc:
+        logger.warning("chat: KPI Home non disponibili: %s", exc)
+
+    # 2) Dettaglio costi per categoria/fornitore dalle fatture (ultimi 90 gg)
+    try:
+        from datetime import date as _date, timedelta as _td
+        user_id = str(user["id"])
+        da = (_date.today() - _td(days=90)).isoformat()
         q = (
             supabase_client.table("fatture")
-            .select("totale_riga,categoria,fornitore,data_documento")
+            .select("totale_riga,categoria,fornitore")
             .eq("user_id", user_id)
             .is_("deleted_at", "null")
-            .gte("data_documento", mese_ini_str[:10])
-            .limit(500)
+            .gte("data_documento", da)
+            .limit(2000)
             .execute()
         )
         righe = q.data or []
+        if righe:
+            per_cat: Dict[str, float] = {}
+            per_forn: Dict[str, float] = {}
+            for r in righe:
+                v = float(r.get("totale_riga") or 0)
+                cat = (r.get("categoria") or "Altro").strip()
+                forn = (r.get("fornitore") or "Sconosciuto").strip()
+                per_cat[cat] = per_cat.get(cat, 0) + v
+                per_forn[forn] = per_forn.get(forn, 0) + v
+            top_cat = sorted(per_cat.items(), key=lambda x: x[1], reverse=True)[:8]
+            top_forn = sorted(per_forn.items(), key=lambda x: x[1], reverse=True)[:8]
 
-        totale_costi = sum(float(r.get("totale_riga") or 0) for r in righe)
-        # Raggruppa per categoria
-        per_cat: Dict[str, float] = {}
-        for r in righe:
-            cat = r.get("categoria") or "Altro"
-            per_cat[cat] = per_cat.get(cat, 0) + float(r.get("totale_riga") or 0)
-        top_cat = sorted(per_cat.items(), key=lambda x: x[1], reverse=True)[:5]
-
-        # Raggruppa per fornitore
-        per_forn: Dict[str, float] = {}
-        for r in righe:
-            forn = (r.get("fornitore") or "Sconosciuto").strip()
-            per_forn[forn] = per_forn.get(forn, 0) + float(r.get("totale_riga") or 0)
-        top_forn = sorted(per_forn.items(), key=lambda x: x[1], reverse=True)[:5]
-
-        mese_label = mese_ini.strftime("%B %Y")
-        kpi_testo = (
-            f"\n\n## Dati del ristorante — {mese_label}\n"
-            f"- Totale costi fatturati: €{totale_costi:,.2f}\n"
-            f"- Numero righe fattura: {len(righe)}\n"
-        )
-        if top_cat:
-            kpi_testo += "- Top categorie di spesa:\n"
+            kpi_testo += "\n## Costi per categoria (ultimi 90 giorni)\n"
             for cat, v in top_cat:
-                kpi_testo += f"  • {cat}: €{v:,.2f}\n"
-        if top_forn:
-            kpi_testo += "- Top fornitori per spesa:\n"
+                kpi_testo += f"- {cat}: €{v:,.2f}\n"
+            kpi_testo += "\n## Costi per fornitore (ultimi 90 giorni)\n"
             for forn, v in top_forn:
-                kpi_testo += f"  • {forn}: €{v:,.2f}\n"
-
-        # Scadenze imminenti
-        try:
-            scad = (
-                supabase_client.table("fatture_scadenze")
-                .select("fornitore,importo_residuo,data_scadenza")
-                .eq("user_id", user_id)
-                .is_("pagata", "false")
-                .lte("data_scadenza", (oggi.replace(day=1) if oggi.day > 15
-                     else oggi).strftime("%Y-%m-%d"))
-                .limit(5)
-                .execute()
-            )
-            if scad.data:
-                kpi_testo += "- Scadenze non pagate imminenti:\n"
-                for s in scad.data:
-                    kpi_testo += f"  • {s.get('fornitore','?')}: €{s.get('importo_residuo',0):,.2f} scade {s.get('data_scadenza','?')}\n"
-        except Exception:
-            pass
-
+                kpi_testo += f"- {forn}: €{v:,.2f}\n"
     except Exception as exc:
-        logger.warning("chat: errore raccolta dati contesto: %s", exc)
-        kpi_testo = "\n\n(Dati del ristorante non disponibili al momento.)"
+        logger.warning("chat: dettaglio fatture non disponibile: %s", exc)
+
+    if not kpi_testo:
+        kpi_testo = "\n\n(Nessun dato di costo o margine ancora registrato.)"
 
     sistema = f"""Sei l'assistente AI di ONEFLUX, integrato nel gestionale del ristorante "{nome}".
 {f"Stai parlando con {referente}." if referente else ""}
 
-Rispondo SOLO a domande sui dati del ristorante: costi, fornitori, food cost, margini, fatture, scadenze.
-Per argomenti non pertinenti (ricette generiche, notizie, argomenti personali) rispondo educatamente che posso aiutare solo sulla gestione del locale.
+Rispondi SOLO a domande sui dati del ristorante: costi, fornitori, food cost, margini, MOL, fatture, scadenze.
+Per argomenti non pertinenti (ricette generiche, notizie, argomenti personali) rispondi educatamente che puoi aiutare solo sulla gestione del locale.
 
 Tono: diretto, concreto, da collega esperto in F&B — non da chatbot generico. Risposte brevi (2-5 righe al massimo).
-Importi sempre in euro con 2 decimali. Se non ho dati sufficienti lo dico chiaramente.{kpi_testo}"""
+Importi sempre in euro con 2 decimali. Usa i dati qui sotto: sono gli stessi che il cliente vede nella sua schermata Home. Se un dato c'e' qui, NON dire che non hai dati.{kpi_testo}"""
 
     return sistema
 
@@ -1888,7 +1876,7 @@ def chat_ai(
     if not openai_api_key:
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY non configurata")
 
-    system_prompt = _build_chat_system_prompt(user, supabase_client)
+    system_prompt = _build_chat_system_prompt(user, supabase_client, authorization)
 
     from openai import OpenAI
     client = OpenAI(api_key=openai_api_key)
