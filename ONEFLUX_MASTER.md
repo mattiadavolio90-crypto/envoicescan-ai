@@ -1,7 +1,7 @@
 # ONEFLUX MASTER — Visione, Piano e Stato
 
-**Ultima revisione:** 2 giugno 2026 (rev. 23 — **Notifiche v2 + Servizi/Marketplace**: Fase 3 chiusa (notifiche raggruppate, filtri count, CTA inline, badge unificato); Fase 8 marketplace (6 servizi, lead in DB + coda Admin, WhatsApp); fix loop redirect proxy. Vedi changelog)
-**Revisione precedente:** rev. 22 (1/6) — **Performance + debug trasversale**: worker FastAPI 148 endpoint async→def + threadpool, proxy edge allineato, `getCurrentUser` cache-ato, helper `lib/worker.ts`, fix date UTC scadenziario + `res.ok` mancanti + sparkline NaN
+**Ultima revisione:** 2 giugno 2026 (rev. 24 — **Chat AI + Fase 8 chiusa**: assistente conversazionale (function calling 4 tool, proattività, toggle, limiti domande/giorno per piano free0/base10/plus20/pro30, contatore in Impostazioni). Con Marketplace già fatto, **Fase 8 completa**. Vedi changelog)
+**Revisione precedente:** rev. 23 (2/6) — **Notifiche v2 + Servizi/Marketplace**: Fase 3 chiusa (notifiche raggruppate, filtri count, CTA inline, badge unificato); Fase 8 marketplace (6 servizi, lead in DB + coda Admin, WhatsApp); fix loop redirect proxy
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
 **Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
 **Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
@@ -277,7 +277,15 @@ Marketplace servizi (pagina `/assistenza`, voce sidebar "Servizi" sotto Impostaz
 - **6 servizi** (catalogo statico in `lib/assistenza.ts`, editabile in 1 file): Consulenza F&B · Studio menù (ricerca di zona) · Comparatori utenze/POS · Rifacimento sito web · Gestione social e foto · Analisi listini fornitori.
 - **Contatto**: form "Richiedi info" → lead in DB (`marketplace_leads`) → coda Admin "Richieste servizi" (filtri nuovo/gestito/archiviato). In alternativa **WhatsApp diretto** (`wa.me`, numero noto). Pagamenti **esterni all'app** (no Stripe).
 - Endpoint: `POST /api/assistenza/lead` (cliente), `GET`/`PATCH /api/admin/marketplace/leads` (admin).
-- **Chat AI** opzionale: ⏳ non ancora iniziata (prossima aggiunta alla sezione Servizi).
+
+**Chat AI** (assistente conversazionale sui dati): ✅ **fatto (2/6)**.
+- Widget flottante in basso a destra **solo sulla Home** (`/dashboard`), bottone a contorno col logo ONEFLUX ("sembra che ONEFLUX risponde"). Cronologia nella sessione (no DB messaggi).
+- **Function calling** (`gpt-4o-mini`): l'AI interroga il DB su misura. 4 strumenti: `query_costi` (periodo/categoria/fornitore/prodotto), `query_scadenze`, `query_margini` (andamento MOL/food cost ultimi 6 mesi), `confronto_prezzi` (chi fa un prodotto al prezzo migliore). Stessi numeri della Home (riusa `home_kpi`/`margine_service`).
+- **Proattività**: messaggio di benvenuto + 4 domande suggerite (chip) all'apertura.
+- **Toggle on/off** per cliente nel configuratore assistente (`assistant_preferences.chat_ai_enabled`, default true).
+- **Limite domande/giorno per piano** (rete costi + leva commerciale): free 0 (chat non disponibile, widget nascosto, 403), base 10, plus 20, pro 30. Tabella `chat_usage_log`, contatore visibile in Impostazioni (X/limite, si azzera a mezzanotte). Costo ~€0,0007/domanda.
+- Endpoint: `POST /api/chat`. Limiti in `CHAT_LIMITI_PIANO`.
+- **Prossima evoluzione possibile**: azioni (creare promemoria/scadenze, segnare pagato) — lasciate fuori da v1 perché scrivono sul DB.
 
 ### ⚙️ Account
 Dati ristorante, contatori utilizzo (fatture/mese, query AI/giorno), preferenze, logout. **Stato**: ⏳ placeholder.
@@ -432,7 +440,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Fase 5 | 2-3 sett. | ✅ **chiusa (28/5) + hardening (29/5)** | Margini ✅ · Ricavi ✅ · Analisi Avanzate ✅ · Prezzi ✅ · DB migrated · contratto FE↔worker allineato |
 | Fase 6 | 2-3 sett. | ✅ **chiusa (31/5)** | **Strumenti** (ex Foodcost): pagina `/workspace` a 4 tab. Foodcost ✅ · Inventario ✅ · Diario ✅ · Personale ✅ |
 | Fase 7 | 3-4 sett. | ✅ **chiusa + over-delivery (30/5)** | Admin Core ✅ · Qualità AI ✅ (coda review, auto-review, memoria globale, conflitti, **audit log + undo**) · Sistema/Salute ✅ (costi AI, retention, **agent notturno on/off**; tab Integrità DB rimosso) · **routing confidenza automatica sull'ingest ✅** |
-| Fase 8 | 2-3 sett. | 🟡 parziale | **Servizi/Marketplace ✅** (2/6 — 6 servizi + lead in DB + coda Admin + WhatsApp; resta Chat AI ⏳) · Report ⏳ · Account ✅ (dati ristorante, piano, contatori, cambio password) |
+| Fase 8 | 2-3 sett. | ✅ **chiusa (2/6)** | **Servizi/Marketplace ✅** (6 servizi + lead in DB + coda Admin + WhatsApp) · **Chat AI ✅** (function calling 4 tool, proattività, toggle, limiti per piano) · Account ✅ (dati, piano, contatori fatture+chat, cambio password). Report resta placeholder scollegato (fuori scope) |
 | Fase 9 | 1-2 sett. | ⏳ | Test, performance, sicurezza + comunicazione clienti |
 | Fase 10 | 2-3 sett. | ⏳ | Switch dominio + 30gg coesistenza |
 | Fase 11 | 3-5 giorni | ⏳ | Pulizia Streamlit |
@@ -465,7 +473,7 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Impostazioni/Account | ✅ | Dati ristorante, piano + contatore, cambio password |
 | Admin Panel | ✅ | Core (clienti con piano inline + inizio piano, onboarding, impersonazione, sedi, flags, mapping) · Qualità AI (coda review con suggerimento categoria + 1-click, auto-review, memoria globale, conflitti, audit log + undo) · Sistema/Salute (costi AI, retention, **agent notturno on/off**) · routing confidenza sull'ingest |
 
-**Non ancora iniziato (zero codice):** Chat AI (sezione Servizi) · Multi-ristorante (dropdown switch) · PWA/mobile · fattore_kg UI (Analisi e Tag v2) · Report (placeholder scollegato)
+**Non ancora iniziato (zero codice):** Multi-ristorante (dropdown switch) · PWA/mobile · fattore_kg UI (Analisi e Tag v2) · Report (placeholder scollegato) · Chat AI "azioni" (creare promemoria/segnare pagato — evoluzione futura)
 
 **Rimosso/deprecato:** tab "Integrità DB" in `/admin/sistema` (troppi falsi positivi, 30/5) · sidebar voce "Cestino" (ora widget in Gestione Fatture) · route orfana `/cestino/page.tsx` ancora presente ma scollegata dalla sidebar — **da rimuovere** (raggiungibile solo via URL diretto) · sidebar voce "Report" (31/5, placeholder non necessario; route `(app)/report/page.tsx` ancora presente ma scollegata) · voce "Account" nel dropdown footer della sidebar (31/5, ridondante con Impostazioni — il footer ora apre solo "Esci").
 
@@ -830,9 +838,12 @@ Nota routing: `articoli`, `snapshot-dates`, `copia-snapshot` definiti **prima** 
 10. ~~**Personale ↔ Margini (costo personale)**~~ ✅ **Completato** (31/5, rev.20) — widget recupero dai turni / manuale nelle celle Margini.
 11. ~~**Home AI** — briefing giornaliero + notifiche actionable inline (Fase 3)~~ ✅ **Completato** (1/6, rev.21) — briefing + Salute + conto economico (con Costo personale) + configuratore assistente + widget notifiche. Vedi changelog.
 12. ~~**Notifiche v2**~~ ✅ **Completato** (2/6, rev.23) — raggruppamento per origine + filtri con count + azioni inline CTA + priorità colori + badge contatore unificato. **Fase 3 chiusa del tutto.**
-13. ~~**Servizi/Marketplace**~~ ✅ **Completato** (2/6, rev.23) — 6 servizi, lead in DB + coda Admin, WhatsApp diretto. Resta solo Chat AI (Fase 8 parziale).
-14. **Test, performance, switch dominio** (Fasi 9-11). ⬅️ **Prossimo blocco.**
+13. ~~**Servizi/Marketplace**~~ ✅ **Completato** (2/6, rev.23) — 6 servizi, lead in DB + coda Admin, WhatsApp diretto.
+14. ~~**Chat AI**~~ ✅ **Completato** (2/6, rev.24) — function calling 4 tool, proattività, toggle, limiti per piano + contatore. **Fase 8 chiusa.**
+15. **Test, performance, switch dominio** (Fasi 9-11). ⬅️ **Prossimo blocco.**
 
+> Stato sintetico rev. 24: **Chat AI — Fase 8 chiusa** (2/6) — committato/deployato (`036a616`). Assistente conversazionale sui dati del ristorante, widget flottante solo sulla Home (bottone a contorno col logo ONEFLUX). **Function calling** `gpt-4o-mini` con 4 strumenti (`query_costi`, `query_scadenze`, `query_margini`, `confronto_prezzi`) → risponde su qualsiasi periodo/prodotto interrogando il DB su misura, con gli stessi numeri della Home. **Proattività**: benvenuto + 4 domande suggerite. **Toggle** on/off per cliente. **Limiti domande/giorno per piano** (free 0 / base 10 / plus 20 / pro 30) — rete costi (~€0,0007/domanda) + leva upgrade; `chat_usage_log`, 429 al limite, 403 se free, contatore visibile in Impostazioni. OpenAPI 122 endpoint. Con Marketplace (rev.23) **Fase 8 completa**. **Prossimi step:** (a) `WORKER_WEB_CONCURRENCY=4` su Railway (fatto?); (b) **Fase 9** — usare l'app come cliente reale + invito 2 clienti su `nuovo.oneflux.it` + fix bug; poi Fasi 10-11 (switch dominio + spegnimento Streamlit).
+>
 > Stato sintetico rev. 23: **Notifiche v2 + Servizi/Marketplace** (2/6) — committato/deployato (`aa73eeb`). (1) **Notifiche v2**: raggruppamento per origine (Fatture/Anomalie/Da sistemare/Scadenze), filtri con count, CTA inline (action_page legacy → rotte Next), priorità colori, **badge unificato** (header/widget/pagina leggono la stessa fonte `notification_inbox.unread`, `fetchNotifiche` cache-ata) → **Fase 3 chiusa**. (2) **Servizi/Marketplace** (Fase 8): pagina `/assistenza` (voce sidebar "Servizi" + icona header colore brand), 6 servizi statici, lead → `marketplace_leads` → coda Admin "Richieste servizi"; WhatsApp diretto; 3 endpoint (OpenAPI 121). (3) **Fix proxy**: rimosso redirect ottimistico `/login→/dashboard` che con cookie invalido causava `ERR_TOO_MANY_REDIRECTS` (vale anche in produzione). **Prossimi step:** (a) `WORKER_WEB_CONCURRENCY=4` su Railway; (b) verifica redeploy worker Railway; (c) **Fase 9** — test come cliente reale + invito 2 clienti su `nuovo.oneflux.it`; poi Fasi 10-11 (switch dominio + spegnimento Streamlit).
 >
 > Stato sintetico rev. 22: **Performance + debug trasversale** (1/6). Worker FastAPI: 148 endpoint async→def + threadpool (causa della lentezza estrema, `/health` 9,5s→0,21s sotto carico) — **committato/deployato**. Debug app Next.js (~140 file): proxy edge allineato, `getCurrentUser` cache-ato, helper `lib/worker.ts`, fix date UTC scadenziario + `res.ok` mancanti + sparkline NaN — **nel working tree, da committare/deployare**. `next build` OK, Streamlit intatto. **Prossimi step:** (a) impostare `WORKER_WEB_CONCURRENCY=4` su Railway; (b) commit+deploy fix frontend; (c) **Notifiche v2** (raggruppamento + filtri count, Fase 3); (d) **Assistenza/Marketplace** (Fase 8, zero codice).
