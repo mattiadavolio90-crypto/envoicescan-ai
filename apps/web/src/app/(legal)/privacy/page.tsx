@@ -179,18 +179,18 @@ export default function PrivacyPage() {
             "oneflux_impersonate",
             "Tecnico / amministrativo",
             "8 ore",
-            "Email dell'utente impersonato",
-            "Solo per account amministratori; supporto tecnico temporaneo",
+            "Flag tecnico (nessun dato personale)",
+            "Solo per account amministratori; segnala una sessione di supporto attiva",
           ],
         ]}
       />
       <p>
-        Tutti i cookie sono impostati con <strong>SameSite=Lax</strong> e flag{" "}
-        <strong>Secure</strong> in produzione (trasmessi solo su HTTPS). I cookie di sessione sono{" "}
-        <strong>HttpOnly</strong> (non accessibili da JavaScript). Il cookie{" "}
-        <strong>oneflux_impersonate</strong>, leggibile lato client per mostrare il banner di
-        impersonazione agli amministratori, contiene unicamente l&apos;email dell&apos;utente
-        impersonato durante sessioni di supporto e ha durata massima di 8 ore.
+        Tutti i cookie sono impostati con <strong>SameSite=Lax</strong>, flag{" "}
+        <strong>Secure</strong> in produzione (trasmessi solo su HTTPS) e{" "}
+        <strong>HttpOnly</strong> (non accessibili da JavaScript). Nessun cookie contiene dati
+        personali in chiaro: l&apos;identità dell&apos;utente eventualmente impersonato da un
+        amministratore durante una sessione di supporto è derivata lato server e non è esposta nei
+        cookie del browser.
       </p>
       <p>
         <strong>NON utilizziamo:</strong>

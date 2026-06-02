@@ -9,11 +9,16 @@ export function ImpersonaBanner() {
   const [targetEmail, setTargetEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    const val = document.cookie
-      .split("; ")
-      .find((c) => c.startsWith("oneflux_impersonate="))
-      ?.split("=")[1];
-    setTargetEmail(val ? decodeURIComponent(val) : null);
+    let cancelled = false;
+    fetch("/api/admin/impersona/status")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.active) setTargetEmail(data.email ?? "cliente");
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (!targetEmail) return null;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { WORKER_URL, getToken, workerHeaders, unauthorized, workerUnreachable, IMPERSONATE_COOKIE, IMPERSONATE_BACKUP_COOKIE } from "../../../_worker";
+import { WORKER_URL, workerHeaders, unauthorized, workerUnreachable, IMPERSONATE_COOKIE, IMPERSONATE_BACKUP_COOKIE } from "../../../_worker";
 import { SESSION_COOKIE } from "@/lib/auth";
 
 export const runtime = "nodejs";
@@ -28,7 +28,10 @@ export async function POST(_req: NextRequest, { params }: Ctx) {
 
     store.set(IMPERSONATE_BACKUP_COOKIE, adminToken, cookieOpts);
     store.set(SESSION_COOKIE, target_token, cookieOpts);
-    store.set(IMPERSONATE_COOKIE, target_email, { ...cookieOpts, httpOnly: false });
+    // Flag HttpOnly senza PII: segnala solo che l'impersonazione è attiva.
+    // L'email impersonata è esposta al client via /api/admin/impersona/status,
+    // derivata dalla sessione lato server (GDPR Art. 32 — niente PII in cookie JS).
+    store.set(IMPERSONATE_COOKIE, "1", cookieOpts);
 
     return NextResponse.json({ ok: true, target_email, target_nome });
   } catch {
