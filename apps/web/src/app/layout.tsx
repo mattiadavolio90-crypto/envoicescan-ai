@@ -7,7 +7,6 @@ import { Toaster } from "@/components/ui/sonner";
 import { CookieNotice } from "@/components/legal/cookie-notice";
 import { ThemeProvider } from "@/components/theme-provider";
 import { PwaRegister } from "@/components/pwa-register";
-import { getCurrentUser } from "@/lib/auth";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -36,17 +35,17 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const user = await getCurrentUser();
-  const tema = user?.tema ?? "dark";
+  // NIENTE await sul worker qui: bloccava il primo paint di ogni pagina (~1s) e
+  // allungava lo splash statico della PWA. Il tema lo gestisce next-themes da
+  // localStorage prima del paint (anti-flash) e ThemeProvider lo riallinea
+  // all'account lato client. Default "dark" finche' next-themes non monta.
+  const tema = "dark";
 
-  // Classe del tema renderizzata server-side dal DB: il primo paint e' gia'
-  // corretto (niente flash). next-themes prende il controllo dopo il mount e,
-  // se localStorage diverge dal DB, lo riallinea (vedi ThemeProvider).
   return (
     <html lang="it" suppressHydrationWarning className={cn(tema, "font-sans", inter.variable)}>
       <body className="antialiased">
@@ -71,10 +70,10 @@ export default async function RootLayout({
         </div>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var s=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;var b=document.getElementById('oneflux-boot');if(!b)return;if(!s){b.parentNode.removeChild(b);return;}b.style.display='flex';setTimeout(function(){document.body.classList.add('app-ready');setTimeout(function(){if(b&&b.parentNode)b.parentNode.removeChild(b);},400);},1300);}catch(e){var b2=document.getElementById('oneflux-boot');if(b2&&b2.parentNode)b2.parentNode.removeChild(b2);}})();`,
+            __html: `(function(){try{var s=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;var b=document.getElementById('oneflux-boot');if(!b)return;if(!s){b.parentNode.removeChild(b);return;}b.style.display='flex';setTimeout(function(){document.body.classList.add('app-ready');setTimeout(function(){if(b&&b.parentNode)b.parentNode.removeChild(b);},400);},1000);}catch(e){var b2=document.getElementById('oneflux-boot');if(b2&&b2.parentNode)b2.parentNode.removeChild(b2);}})();`,
           }}
         />
-        <ThemeProvider defaultTheme={tema} temaAccount={tema}>
+        <ThemeProvider defaultTheme={tema}>
           <TooltipProvider>
             {children}
             <CookieNotice />
