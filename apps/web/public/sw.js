@@ -3,7 +3,7 @@
 // gentile. NON facciamo precaching/offline aggressivo: ONEFLUX e' un'app di
 // analisi, i dati devono essere sempre freschi (network-first), mai stale.
 
-const CACHE = "oneflux-shell-v1";
+const CACHE = "oneflux-shell-v2";
 const OFFLINE_URL = "/offline.html";
 
 self.addEventListener("install", (event) => {
@@ -22,8 +22,11 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Network-first per le navigazioni: sempre dati freschi; se offline, mostra la
-// pagina di cortesia. Le API (/api/*) non le tocchiamo: passano sempre in rete.
+// Solo per le navigazioni: lasciamo passare la richiesta in rete col redirect
+// gestito dal browser ("manual" romperebbe i redirect di auth/proxy mostrando
+// una pagina vuota o errore). Interveniamo SOLO se la rete e' davvero giu',
+// servendo la pagina di cortesia offline. Tutto il resto (asset, /api/*) non
+// viene intercettato.
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
