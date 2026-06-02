@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import { formatEuro } from "./periodi";
 
 export type KpiData = {
@@ -80,50 +83,86 @@ const TONE_COLOR: Record<Tone, string> = {
 
 type CardDef = {
   label: string;
-  value: string;
+  numeric: number;
   sub?: string;
   tone: Tone;
   spark?: number[];
 };
 
+// Count-up al primo render: anima la presentazione di un valore gia' calcolato
+// (nessun dato aggiunto). Rispetta prefers-reduced-motion.
+function useCountUp(target: number, enabled: boolean): number {
+  const [val, setVal] = useState(enabled ? 0 : target);
+  const rafRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!enabled) {
+      setVal(target);
+      return;
+    }
+    const start = performance.now();
+    const dur = 500;
+    function frame(now: number) {
+      const p = Math.min((now - start) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(target * eased);
+      if (p < 1) rafRef.current = requestAnimationFrame(frame);
+    }
+    rafRef.current = requestAnimationFrame(frame);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [target, enabled]);
+  return val;
+}
+
 export function KpiBar({ kpi }: { kpi: KpiData }) {
   const molTone: Tone = kpi.mol >= 0 ? "emerald" : "rose";
 
+  const [animate, setAnimate] = useState(false);
+  useEffect(() => {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    setAnimate(!reduce);
+  }, []);
+
   const cards: CardDef[] = [
-    { label: "Fatturato Netto",  value: formatEuro(kpi.fatturato_netto), sub: `lordo ${formatEuro(kpi.fatturato_lordo)}`, tone: "sky",    spark: kpi.spark_lordo },
-    { label: "Costi F&B",        value: formatEuro(kpi.costi_fb),                                                          tone: "orange", spark: kpi.spark_fb },
-    { label: "Margine Lordo",    value: formatEuro(kpi.primo_margine),                                                     tone: kpi.primo_margine >= 0 ? "emerald" : "rose", spark: kpi.spark_margine },
-    { label: "Costi Gestione",   value: formatEuro(kpi.spese_generali),                                                    tone: "violet", spark: kpi.spark_spese },
-    { label: "Costo Personale",  value: formatEuro(kpi.costo_personale),                                                   tone: "pink",   spark: kpi.spark_personale },
-    { label: "MOL",              value: formatEuro(kpi.mol),                                                                tone: molTone,  spark: kpi.spark_mol },
+    { label: "Fatturato Netto",  numeric: kpi.fatturato_netto, sub: `lordo ${formatEuro(kpi.fatturato_lordo)}`, tone: "sky",    spark: kpi.spark_lordo },
+    { label: "Costi F&B",        numeric: kpi.costi_fb,                                                          tone: "orange", spark: kpi.spark_fb },
+    { label: "Margine Lordo",    numeric: kpi.primo_margine,                                                     tone: kpi.primo_margine >= 0 ? "emerald" : "rose", spark: kpi.spark_margine },
+    { label: "Costi Gestione",   numeric: kpi.spese_generali,                                                    tone: "violet", spark: kpi.spark_spese },
+    { label: "Costo Personale",  numeric: kpi.costo_personale,                                                   tone: "pink",   spark: kpi.spark_personale },
+    { label: "MOL",              numeric: kpi.mol,                                                                tone: molTone,  spark: kpi.spark_mol },
   ];
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-      {cards.map((c) => {
-        const t = TONE[c.tone];
-        return (
-          <div
-            key={c.label}
-            className={`rounded-lg border ${t.border} ${t.hover} bg-card px-4 pt-3 pb-2 transition-colors flex flex-col gap-1`}
-          >
-            <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium leading-none">
-              {c.label}
-            </p>
-            <p className={`text-2xl font-bold tracking-tight leading-tight ${t.value} truncate`}>
-              {c.value}
-            </p>
-            {c.sub && (
-              <p className="text-[11px] text-muted-foreground leading-none">{c.sub}</p>
-            )}
-            {c.spark && c.spark.length >= 2 && (
-              <div className="mt-1">
-                <Sparkline values={c.spark} color={TONE_COLOR[c.tone]} />
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {cards.map((c) => (
+        <KpiCard key={c.label} card={c} animate={animate} />
+      ))}
+    </div>
+  );
+}
+
+function KpiCard({ card: c, animate }: { card: CardDef; animate: boolean }) {
+  const t = TONE[c.tone];
+  const shown = useCountUp(c.numeric, animate);
+  return (
+    <div
+      className={`rounded-xl border ${t.border} ${t.hover} bg-card px-4 pt-3 pb-2 transition-colors flex flex-col gap-1`}
+    >
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium leading-none">
+        {c.label}
+      </p>
+      <p className={`text-2xl font-bold tracking-tight leading-tight tabular-nums ${t.value} truncate`}>
+        {formatEuro(shown)}
+      </p>
+      {c.sub && (
+        <p className="text-[11px] text-muted-foreground leading-none">{c.sub}</p>
+      )}
+      {c.spark && c.spark.length >= 2 && (
+        <div className="mt-1">
+          <Sparkline values={c.spark} color={TONE_COLOR[c.tone]} />
+        </div>
+      )}
     </div>
   );
 }

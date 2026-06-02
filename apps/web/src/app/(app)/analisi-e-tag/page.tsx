@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "@/lib/auth";
+import { PageHeader } from "@/components/ui/page-header";
 import type { CustomTag, TagSuggestion } from "@/lib/tag";
 import { AnalisiETagClient } from "./analisi-e-tag-client";
 
@@ -41,7 +42,11 @@ export default async function AnalisiETagPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold tracking-tight">Analisi e Tag</h1>
+      <PageHeader
+        icon="tags"
+        title="Analisi e Tag"
+        hint="Raggruppa i prodotti come ragioni tu"
+      />
       <AnalisiETagClient initialTags={tags} initialSuggestions={suggestions} />
     </div>
   );

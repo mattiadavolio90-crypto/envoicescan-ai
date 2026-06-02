@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
+import { PageHeader } from "@/components/ui/page-header";
 import { SESSION_COOKIE } from "@/lib/auth";
 import { TabsSwitcher } from "./tabs-switcher";
 import { VariazioniTab } from "./variazioni-tab";
@@ -39,7 +40,11 @@ export default async function PrezziPage({
 
   return (
     <div className="space-y-4">
-      <h1 className="text-2xl font-bold tracking-tight">Controllo Prezzi</h1>
+      <PageHeader
+        icon="search"
+        title="Controllo Prezzi"
+        hint="Variazioni e anomalie sui tuoi fornitori"
+      />
       <Suspense>
         <TabsSwitcher active={tab} />
       </Suspense>

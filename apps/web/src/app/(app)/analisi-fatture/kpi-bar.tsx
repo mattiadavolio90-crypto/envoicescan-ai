@@ -1,4 +1,6 @@
-import { ArrowDown, ArrowUp } from "lucide-react";
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import type { KpiResponse } from "@/lib/fatture";
 import { formatEuro } from "./periodi";
 
@@ -6,46 +8,90 @@ type Props = {
   kpi: KpiResponse | null;
 };
 
-function Delta({ pct, label }: { pct: number | null; label: string }) {
-  if (pct === null || pct === undefined) {
-    return <span className="text-xs text-muted-foreground">vs {label}</span>;
-  }
-  // Per le spese: spendere meno (↓) è positivo → verde; spendere di più (↑) è negativo → rosso
-  const isGood = pct < 0;
-  const Icon = pct >= 0 ? ArrowUp : ArrowDown;
-  const cls = isGood ? "text-emerald-500" : "text-rose-500";
-  return (
-    <span className={`text-xs font-medium inline-flex items-center gap-0.5 ${cls}`}>
-      <Icon className="size-3" />
-      {Math.abs(pct).toFixed(0)}%{" "}
-      <span className="text-muted-foreground font-normal ml-0.5">vs {label}</span>
-    </span>
-  );
+type Tone = "sky" | "violet" | "emerald" | "orange";
+
+const TONE: Record<Tone, { border: string; hover: string; value: string }> = {
+  sky:     { border: "border-sky-500/40",     hover: "hover:border-sky-500/70",     value: "text-sky-600 dark:text-sky-400" },
+  violet:  { border: "border-violet-500/40",  hover: "hover:border-violet-500/70",  value: "text-violet-600 dark:text-violet-400" },
+  emerald: { border: "border-emerald-500/40", hover: "hover:border-emerald-500/70", value: "text-emerald-600 dark:text-emerald-400" },
+  orange:  { border: "border-orange-500/40",  hover: "hover:border-orange-500/70",  value: "text-orange-600 dark:text-orange-400" },
+};
+
+// Count-up al primo render: il valore sale da 0 al target in ~500ms. Il dato
+// esiste gia' (nessun calcolo aggiunto); animiamo solo la presentazione.
+// Rispetta prefers-reduced-motion: in quel caso mostra subito il valore finale.
+function useCountUp(target: number, enabled: boolean): number {
+  const [val, setVal] = useState(enabled ? 0 : target);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!enabled) {
+      setVal(target);
+      return;
+    }
+    const start = performance.now();
+    const dur = 500;
+    function frame(now: number) {
+      const p = Math.min((now - start) / dur, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setVal(target * eased);
+      if (p < 1) rafRef.current = requestAnimationFrame(frame);
+    }
+    rafRef.current = requestAnimationFrame(frame);
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [target, enabled]);
+
+  return val;
 }
 
 export function KpiBar({ kpi }: Props) {
+  const [animate, setAnimate] = useState(false);
+
+  // Decide una sola volta: anima solo se l'utente non ha chiesto meno movimento.
+  useEffect(() => {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    setAnimate(!reduce);
+  }, []);
+
   if (!kpi) return null;
-  const label = kpi.confronto_label ?? "periodo prec.";
+
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-      <KpiCard label="Spesa totale" value={formatEuro(kpi.totale)} delta={kpi.delta_totale_pct} confrontoLabel={label} />
-      <KpiCard label="Righe" value={kpi.num_righe.toLocaleString("it-IT")} delta={kpi.delta_righe_pct} confrontoLabel={label} />
-      <KpiCard label="Prodotti diversi" value={kpi.num_prodotti.toLocaleString("it-IT")} delta={kpi.delta_prodotti_pct} confrontoLabel={label} />
-      <KpiCard label="Media al mese" value={formatEuro(kpi.media_mensile)} delta={kpi.delta_media_pct} confrontoLabel={label} />
+      <KpiCard tone="sky"     label="Spesa totale"     numeric={kpi.totale}        format={formatEuro} animate={animate} />
+      <KpiCard tone="violet"  label="Righe"            numeric={kpi.num_righe}     format={fmtInt}     animate={animate} />
+      <KpiCard tone="emerald" label="Prodotti diversi" numeric={kpi.num_prodotti}  format={fmtInt}     animate={animate} />
+      <KpiCard tone="orange"  label="Media al mese"    numeric={kpi.media_mensile} format={formatEuro} animate={animate} />
     </div>
   );
 }
 
-function KpiCard({ label, value, delta, confrontoLabel }: { label: string; value: string; delta: number | null; confrontoLabel: string }) {
+function fmtInt(v: number): string {
+  return Math.round(v).toLocaleString("it-IT");
+}
+
+function KpiCard({
+  tone,
+  label,
+  numeric,
+  format,
+  animate,
+}: {
+  tone: Tone;
+  label: string;
+  numeric: number;
+  format: (v: number) => string;
+  animate: boolean;
+}) {
+  const t = TONE[tone];
+  const shown = useCountUp(numeric, animate);
   return (
-    <div className="rounded-lg border border-sky-500/40 bg-card p-3 hover:border-sky-500/70 transition-colors">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-xl font-bold tracking-tight mt-1 text-sky-600 dark:text-sky-400">
-        {value}
+    <div className={`rounded-xl border ${t.border} ${t.hover} bg-card p-3 transition-colors`}>
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{label}</p>
+      <p className={`text-xl font-bold tracking-tight mt-1 tabular-nums ${t.value}`}>
+        {format(shown)}
       </p>
-      <div className="mt-1">
-        <Delta pct={delta} label={confrontoLabel} />
-      </div>
     </div>
   );
 }

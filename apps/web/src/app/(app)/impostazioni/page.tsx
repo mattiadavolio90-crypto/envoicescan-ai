@@ -1,5 +1,6 @@
 import { getCurrentUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { PageHeader } from "@/components/ui/page-header";
 import { AccountClient } from "./account-client";
 
 const WORKER_URL =
@@ -34,7 +35,7 @@ export default async function ImpostazioniPage() {
   if (!data) {
     return (
       <div className="space-y-4">
-        <h1 className="text-2xl font-bold tracking-tight">Account</h1>
+        <PageHeader icon="settings" title="Account" hint="I tuoi dati e le preferenze" />
         <p className="text-muted-foreground text-sm">Impossibile caricare i dati. Riprova più tardi.</p>
       </div>
     );
@@ -42,7 +43,7 @@ export default async function ImpostazioniPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold tracking-tight">Account</h1>
+      <PageHeader icon="settings" title="Account" hint="I tuoi dati e le preferenze" />
       <AccountClient data={data} />
     </div>
   );

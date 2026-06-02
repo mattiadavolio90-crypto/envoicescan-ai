@@ -1,3 +1,4 @@
+import { PageHeader } from "@/components/ui/page-header";
 import {
   fetchArticoliAggregati,
   fetchCategorie,
@@ -97,10 +98,12 @@ export default async function AnalisiFatturePage({
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Analisi Fatture</h1>
-        <UploadModal />
-      </div>
+      <PageHeader
+        icon="file"
+        title="Analisi Fatture"
+        hint="Cosa hai comprato, da chi e quanto incide"
+        actions={<UploadModal />}
+      />
 
       {/* Filtri temporali */}
       <FiltriPeriodo

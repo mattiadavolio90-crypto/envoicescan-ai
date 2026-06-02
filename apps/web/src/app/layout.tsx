@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -68,11 +69,9 @@ export default function RootLayout({
             </span>
           </div>
         </div>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var s=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;var b=document.getElementById('oneflux-boot');if(!b)return;if(!s){b.parentNode.removeChild(b);return;}b.style.display='flex';setTimeout(function(){document.body.classList.add('app-ready');setTimeout(function(){if(b&&b.parentNode)b.parentNode.removeChild(b);},400);},1000);}catch(e){var b2=document.getElementById('oneflux-boot');if(b2&&b2.parentNode)b2.parentNode.removeChild(b2);}})();`,
-          }}
-        />
+        <Script id="oneflux-boot-overlay" strategy="beforeInteractive">
+          {`(function(){try{var s=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;var b=document.getElementById('oneflux-boot');if(!b)return;if(!s){b.parentNode.removeChild(b);return;}b.style.display='flex';setTimeout(function(){document.body.classList.add('app-ready');setTimeout(function(){if(b&&b.parentNode)b.parentNode.removeChild(b);},400);},1000);}catch(e){var b2=document.getElementById('oneflux-boot');if(b2&&b2.parentNode)b2.parentNode.removeChild(b2);}})();`}
+        </Script>
         <ThemeProvider defaultTheme={tema}>
           <TooltipProvider>
             {children}

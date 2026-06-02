@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "@/lib/auth";
+import { PageHeader } from "@/components/ui/page-header";
 import { ScadenziarioClient } from "./scadenziario-client";
 import type { Documento } from "@/lib/scadenziario";
 
@@ -49,9 +50,11 @@ export default async function ScadenziarioPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Gestione Fatture</h1>
-      </div>
+      <PageHeader
+        icon="calendar"
+        title="Gestione Fatture"
+        hint="Scadenze e pagamenti sotto controllo"
+      />
       <ScadenziarioClient initialDocumenti={documenti} />
     </div>
   );

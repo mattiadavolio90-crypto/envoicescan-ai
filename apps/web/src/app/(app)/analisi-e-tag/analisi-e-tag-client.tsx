@@ -292,7 +292,8 @@ function AggiungiProdottiDialog({
                   <button key={d.descrizione_key}
                     onClick={() => {
                       const s = new Set(selected);
-                      sel ? s.delete(d.descrizione_key) : s.add(d.descrizione_key);
+                      if (sel) s.delete(d.descrizione_key);
+                      else s.add(d.descrizione_key);
                       setSelected(s);
                     }}
                     className={`w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${sel ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
@@ -348,7 +349,8 @@ function SuggestionCard({
   function toggleItem(key: string) {
     setSelected(prev => {
       const next = new Set(prev);
-      next.has(key) ? next.delete(key) : next.add(key);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   }
@@ -904,9 +906,15 @@ export function AnalisiETagClient({
             <div className="space-y-3">
               {/* Trend */}
               <div className="rounded-lg border border-border bg-card overflow-hidden">
-                <button
+                {/* Header cliccabile: <div role=button> e non <button> perché
+                    contiene il bottone "Esporta XLS" (un button non può annidare
+                    un altro button → hydration error). */}
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setShowTrend(v => !v)}
-                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/40 transition-colors"
+                  onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setShowTrend(v => !v); } }}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/40 transition-colors cursor-pointer select-none"
                 >
                   <span>Trend prezzi nel periodo</span>
                   <div className="flex items-center gap-2">
@@ -919,7 +927,7 @@ export function AnalisiETagClient({
                     </button>
                     {showTrend ? <ChevronUp className="size-4 text-muted-foreground" /> : <ChevronDown className="size-4 text-muted-foreground" />}
                   </div>
-                </button>
+                </div>
                 {showTrend && (
                   <div className="px-4 pb-4 border-t border-border">
                     <TrendChart punti={trend.punti} media={trend.prezzo_medio_periodo} />

@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
+import { PageHeader } from "@/components/ui/page-header";
 import { SESSION_COOKIE } from "@/lib/auth";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FiltriPeriodo } from "./filtri-periodo";
@@ -78,18 +79,15 @@ export default async function MarginiPage({
   const tab = sp.tab ?? "calcolo";
   const { data_da, data_a, preset, mese } = resolvePeriodo(sp);
 
-  const anno = parseInt(
-    sp.anno ?? String(parseInt(data_da.slice(0, 4), 10)),
-    10,
-  );
-
   const kpi = await fetchKpiData(data_da, data_a);
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold tracking-tight">Ricavi e Margini</h1>
-      </div>
+      <PageHeader
+        icon="bar-chart"
+        title="Ricavi e Margini"
+        hint="La salute economica del tuo locale"
+      />
 
       <Suspense>
         <FiltriPeriodo presetCorrente={preset} dataDa={data_da} dataA={data_a} meseSelezionato={mese} />

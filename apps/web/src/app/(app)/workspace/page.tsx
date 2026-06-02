@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { PageHeader } from "@/components/ui/page-header";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FoodcostTab } from "./foodcost-tab";
 import { InventarioTab } from "./inventario-tab";
@@ -15,12 +16,11 @@ export default async function WorkspacePage({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Strumenti</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Gli strumenti operativi del tuo locale: ricette e foodcost, diario, turni, inventario.
-        </p>
-      </div>
+      <PageHeader
+        icon="wrench"
+        title="Strumenti"
+        hint="Gli strumenti operativi del tuo locale: ricette e foodcost, diario, turni, inventario."
+      />
 
       <Suspense>
         <TabsSwitcher active={tab} />

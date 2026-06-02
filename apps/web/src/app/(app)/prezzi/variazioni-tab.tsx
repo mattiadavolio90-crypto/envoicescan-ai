@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, Save, ChevronDown, Search, TriangleAlert, CheckCircle2 } from "lucide-react";
+import { RefreshCw, Save, ChevronDown, Search, TriangleAlert, CheckCircle2, Calendar, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   LineChart,
@@ -13,15 +13,26 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import type { VariazioniResponse, VariazionePrezzo, StoricoPrezzoResponse } from "@/lib/prezzi";
+import { Input } from "@/components/ui/input";
 
 const ANNO_CORRENTE = new Date().getFullYear();
-const MESI = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", "Lug", "Ago", "Set", "Ott", "Nov", "Dic"];
+const MESI_LUNGHI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
+
+type ModoPeriodo = "anno" | "mese" | "custom";
 
 function isoDateRange(anno: number, mese: number | null): { data_da: string; data_a: string } {
   if (mese === null) return { data_da: `${anno}-01-01`, data_a: `${anno}-12-31` };
   const lastDay = new Date(anno, mese, 0).getDate();
   const mm = String(mese).padStart(2, "0");
   return { data_da: `${anno}-${mm}-01`, data_a: `${anno}-${mm}-${lastDay}` };
+}
+
+function fmtRangeIt(da: string, a: string): string {
+  const f = (iso: string) => {
+    const [y, m, d] = iso.split("-");
+    return `${d}/${m}/${y.slice(2)}`;
+  };
+  return `${f(da)} → ${f(a)}`;
 }
 
 function fmtEuro(v: number, withSign = false): string {
@@ -276,9 +287,31 @@ function AlertCard({
   );
 }
 
+type KpiTone = "sky" | "emerald" | "rose";
+
+const KPI_TONE: Record<KpiTone, { border: string; hover: string; value: string }> = {
+  sky:     { border: "border-sky-500/40",     hover: "hover:border-sky-500/70",     value: "text-sky-600 dark:text-sky-400" },
+  emerald: { border: "border-emerald-500/40", hover: "hover:border-emerald-500/70", value: "text-emerald-600 dark:text-emerald-400" },
+  rose:    { border: "border-rose-500/40",    hover: "hover:border-rose-500/70",    value: "text-rose-600 dark:text-rose-400" },
+};
+
+function KpiCard({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone: KpiTone }) {
+  const t = KPI_TONE[tone];
+  return (
+    <div className={`rounded-xl border ${t.border} ${t.hover} bg-card px-4 py-3 flex flex-col gap-1 transition-colors`}>
+      <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium leading-none">{label}</span>
+      <span className={`text-2xl font-bold tracking-tight leading-tight ${t.value}`}>{value}</span>
+      {sub && <span className="text-[11px] text-muted-foreground leading-tight truncate">{sub}</span>}
+    </div>
+  );
+}
+
 export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   const [anno, setAnno] = useState(ANNO_CORRENTE);
   const [mese, setMese] = useState<number | null>(null); // null = tutto l'anno
+  const [modo, setModo] = useState<ModoPeriodo>("anno");
+  const [customDa, setCustomDa] = useState("");
+  const [customA, setCustomA] = useState("");
   const [soglia, setSoglia] = useState(initialSoglia);
   const [sogliaInput, setSogliaInput] = useState(String(initialSoglia));
   const [savingSoglia, setSavingSoglia] = useState(false);
@@ -295,13 +328,14 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     isoDateRange(ANNO_CORRENTE, null),
   );
 
-  const load = useCallback(async (annoArg: number, meseArg: number | null, sogliaArg: number) => {
+  // Carica per range esplicito: cosi' lo stesso fetch serve anno, mese e custom.
+  const loadRange = useCallback(async (range: { data_da: string; data_a: string }, sogliaArg: number) => {
+    if (!range.data_da || !range.data_a) return;
     setLoading(true);
     setExpandedKey(null);
     setStorico(null);
     setFiltroCategoria("");
     setFiltroFornitore("");
-    const range = isoDateRange(annoArg, meseArg);
     setCurrentRange(range);
     try {
       const qs = new URLSearchParams({ ...range, soglia: String(sogliaArg) });
@@ -316,8 +350,33 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   }, []);
 
   useEffect(() => {
-    load(ANNO_CORRENTE, null, initialSoglia);
-  }, [load, initialSoglia]);
+    loadRange(isoDateRange(ANNO_CORRENTE, null), initialSoglia);
+  }, [loadRange, initialSoglia]);
+
+  // Applica un preset di periodo aggiornando stato + ricaricando.
+  function applyAnno(y: number) {
+    setAnno(y);
+    setModo("anno");
+    setMese(null);
+    loadRange(isoDateRange(y, null), soglia);
+  }
+  function applyMese(m: number) {
+    setMese(m);
+    setModo("mese");
+    loadRange(isoDateRange(anno, m), soglia);
+  }
+  function applyCustom(da: string, a: string) {
+    setCustomDa(da);
+    setCustomA(a);
+    if (da && a) loadRange({ data_da: da, data_a: a }, soglia);
+  }
+
+  // Range attivo in base al modo (per ricaricare dopo il salvataggio soglia).
+  function rangeAttivo(): { data_da: string; data_a: string } {
+    if (modo === "custom" && customDa && customA) return { data_da: customDa, data_a: customA };
+    if (modo === "mese") return isoDateRange(anno, mese);
+    return isoDateRange(anno, null);
+  }
 
   async function saveSoglia() {
     const val = parseFloat(sogliaInput.replace(",", ".")) || 5;
@@ -331,7 +390,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
       if (!res.ok) throw new Error();
       setSoglia(val);
       toast.success(`Soglia salvata: ${val}% — ricarico gli alert`);
-      load(anno, mese, val);
+      loadRange(rangeAttivo(), val);
     } catch {
       toast.error("Errore nel salvataggio soglia");
     } finally {
@@ -389,93 +448,159 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     filtered.length > 0
       ? filtered.reduce((acc, r) => acc + r.aumento_perc, 0) / filtered.length
       : 0;
-  const fornitoriFiltrati = new Set(filtered.map((r) => r.fornitore)).size;
+
+  // KPI di sintesi mostrati in cima al tab (specifici di "Variazioni Prezzo")
+  const rincari = filtered.filter((r) => r.aumento_perc > 0);
+  const risparmi = filtered.filter((r) => r.aumento_perc < 0);
+  const rincaroMedio = rincari.length > 0 ? rincari.reduce((a, r) => a + r.aumento_perc, 0) / rincari.length : 0;
+  const risparmioMedio = risparmi.length > 0 ? risparmi.reduce((a, r) => a + r.aumento_perc, 0) / risparmi.length : 0;
+
+  const chipBase =
+    "px-3 py-1.5 text-xs font-medium rounded-full border transition-colors inline-flex items-center gap-1.5 disabled:opacity-60";
+  const chipActive = "bg-primary text-primary-foreground border-primary";
+  const chipIdle = "bg-background border-input hover:bg-muted";
 
   return (
     <div className="space-y-4">
-      {/* Riga controlli */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">Anno</label>
+      {/* ── Filtro periodo (stile Analisi Fatture) ── */}
+      <div className="space-y-2">
+        <div className={`flex flex-wrap items-center gap-1.5 ${loading ? "opacity-70" : ""}`}>
           <select
             value={anno}
-            onChange={(e) => {
-              const y = Number(e.target.value);
-              setAnno(y);
-              load(y, mese, soglia);
-            }}
-            className="rounded-md border border-border px-2 py-1.5 text-sm bg-background"
+            disabled={loading}
+            onChange={(e) => applyAnno(Number(e.target.value))}
+            className="h-8 rounded-full border border-input bg-background px-3 text-xs font-medium"
           >
             {Array.from({ length: 5 }, (_, i) => ANNO_CORRENTE - i).map((y) => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
+          <button
+            disabled={loading}
+            onClick={() => applyAnno(anno)}
+            className={`${chipBase} ${modo === "anno" ? chipActive : chipIdle}`}
+          >
+            Anno in corso
+          </button>
+          <button
+            disabled={loading}
+            onClick={() => { setModo("mese"); if (mese !== null) loadRange(isoDateRange(anno, mese), soglia); }}
+            className={`${chipBase} ${modo === "mese" ? chipActive : chipIdle}`}
+          >
+            <Calendar className="size-3" />
+            Seleziona mese
+          </button>
+          <button
+            disabled={loading}
+            onClick={() => setModo("custom")}
+            className={`${chipBase} ${modo === "custom" ? chipActive : chipIdle}`}
+          >
+            <Settings2 className="size-3" />
+            Personalizzato
+          </button>
+          {currentRange.data_da && currentRange.data_a && (
+            <span className="ml-2 text-xs font-medium text-sky-500 dark:text-sky-400">
+              {fmtRangeIt(currentRange.data_da, currentRange.data_a)}
+            </span>
+          )}
+          <button
+            onClick={() => loadRange(rangeAttivo(), soglia)}
+            disabled={loading}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
+          >
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+            Aggiorna
+          </button>
         </div>
 
-        {/* Filtro mese — pill buttons */}
-        <div className="flex items-center gap-1 flex-wrap">
-          <button
-            onClick={() => { setMese(null); load(anno, null, soglia); }}
-            className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-              mese === null
-                ? "bg-primary text-primary-foreground border-primary"
-                : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
-            }`}
-          >
-            Tutto
-          </button>
-          {MESI.map((label, i) => {
-            const m = i + 1;
-            return (
-              <button
-                key={m}
-                onClick={() => { setMese(m); load(anno, m, soglia); }}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-                  mese === m
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
+        {modo === "mese" && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Mese:</span>
+            <select
+              value={mese ?? ""}
+              onChange={(e) => applyMese(Number(e.target.value))}
+              className="h-7 rounded-md border border-input bg-background px-2 text-xs"
+            >
+              <option value="" disabled>Seleziona un mese</option>
+              {MESI_LUNGHI.map((label, i) => (
+                <option key={i + 1} value={i + 1}>{label} {anno}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {modo === "custom" && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Dal</span>
+            <Input
+              type="date"
+              value={customDa}
+              onChange={(e) => applyCustom(e.target.value, customA)}
+              className="h-7 w-36 text-xs"
+            />
+            <span className="text-xs text-muted-foreground">al</span>
+            <Input
+              type="date"
+              value={customA}
+              onChange={(e) => applyCustom(customDa, e.target.value)}
+              className="h-7 w-36 text-xs"
+            />
+          </div>
+        )}
       </div>
 
-      {/* Riga soglia + aggiorna */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">Soglia alert</label>
-          <input
-            type="number"
-            min="0"
-            max="50"
-            step="0.5"
-            value={sogliaInput}
-            onChange={(e) => setSogliaInput(e.target.value)}
-            className="w-16 rounded-md border border-border px-2 py-1.5 text-sm bg-background text-right"
-          />
-          <span className="text-sm text-muted-foreground">%</span>
-          <button
-            onClick={saveSoglia}
-            disabled={savingSoglia}
-            className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors"
-          >
-            <Save className="size-3" />
-            {savingSoglia ? "…" : "Salva"}
-          </button>
-        </div>
-
+      {/* ── Soglia alert ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="text-sm text-muted-foreground">Soglia alert</label>
+        <input
+          type="number"
+          min="0"
+          max="50"
+          step="0.5"
+          value={sogliaInput}
+          onChange={(e) => setSogliaInput(e.target.value)}
+          className="w-16 rounded-md border border-border px-2 py-1.5 text-sm bg-background text-right"
+        />
+        <span className="text-sm text-muted-foreground">%</span>
         <button
-          onClick={() => load(anno, mese, soglia)}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors ml-auto"
+          onClick={saveSoglia}
+          disabled={savingSoglia}
+          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors"
         >
-          <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-          Aggiorna
+          <Save className="size-3" />
+          {savingSoglia ? "…" : "Salva"}
         </button>
       </div>
+
+      {/* ── KPI di sintesi (specifici del tab Variazioni) ── */}
+      {data && variazioni.length > 0 && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard
+            label="Rincari medi"
+            value={rincari.length > 0 ? fmtPct(rincaroMedio) : "—"}
+            sub={`${rincari.length} prodott${rincari.length === 1 ? "o" : "i"} in aumento`}
+            tone="rose"
+          />
+          <KpiCard
+            label="Risparmi medi"
+            value={risparmi.length > 0 ? fmtPct(risparmioMedio) : "—"}
+            sub={`${risparmi.length} prodott${risparmi.length === 1 ? "o" : "i"} in calo`}
+            tone="emerald"
+          />
+          <KpiCard
+            label="Scostamento medio"
+            value={filtered.length > 0 ? fmtPct(scostamentoFiltrato) : "—"}
+            sub={`su ${filtered.length} variazion${filtered.length === 1 ? "e" : "i"}`}
+            tone={scostamentoFiltrato < 0 ? "emerald" : "rose"}
+          />
+          <KpiCard
+            label="Impatto stimato/mese"
+            value={impattoFiltrato !== 0 ? fmtEuro(impattoFiltrato, true) : "—"}
+            sub="effetto sui costi mensili"
+            tone={impattoFiltrato < 0 ? "emerald" : "rose"}
+          />
+        </div>
+      )}
 
       {/* Filtri di secondo livello — visibili solo quando ci sono dati */}
       {variazioni.length > 0 && (
@@ -517,46 +642,22 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
         </div>
       )}
 
-      {/* Banner riepilogo — riflette sempre i filtri attivi */}
+      {/* N. variazioni + legenda gravità — appena sopra la lista */}
       {data && variazioni.length > 0 && (
-        <div className="rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <TriangleAlert className="size-4 text-rose-500" />
-            <p className="text-sm font-semibold">
-              {filtered.length} variazioni
-              {filtered.length !== variazioni.length && (
-                <span className="text-muted-foreground font-normal"> (filtrate da {variazioni.length})</span>
-              )}
-              {nCritici > 0 && <span className="text-rose-600"> · {nCritici} critiche</span>}
-            </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <TriangleAlert className="size-4 text-rose-500 shrink-0" />
+          <p className="text-sm font-semibold">
+            {filtered.length} variazioni
+            {filtered.length !== variazioni.length && (
+              <span className="text-muted-foreground font-normal"> (filtrate da {variazioni.length})</span>
+            )}
+            {nCritici > 0 && <span className="text-rose-600"> · {nCritici} critiche</span>}
+          </p>
+          <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose-500 shrink-0" />Critico</span>
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-orange-500 shrink-0" />Alto</span>
+            <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-400 shrink-0" />Medio</span>
           </div>
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <p className="text-xs text-muted-foreground">Impatto stimato/mese</p>
-              <p className={`text-xl font-bold ${impattoFiltrato > 0 ? "text-rose-600" : impattoFiltrato < 0 ? "text-emerald-600" : ""}`}>
-                {impattoFiltrato !== 0 ? fmtEuro(impattoFiltrato, true) : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Scostamento medio</p>
-              <p className={`text-xl font-bold ${scostamentoFiltrato > 0 ? "text-rose-600" : scostamentoFiltrato < 0 ? "text-emerald-600" : ""}`}>
-                {filtered.length > 0 ? fmtPct(scostamentoFiltrato) : "—"}
-              </p>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Fornitori coinvolti</p>
-              <p className="text-xl font-bold">{fornitoriFiltrati}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Legenda gravità */}
-      {variazioni.length > 0 && (
-        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-rose-500 shrink-0" />Critico &gt;€100/mese</span>
-          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-orange-500 shrink-0" />Alto &gt;€30/mese</span>
-          <span className="flex items-center gap-1.5"><span className="size-2 rounded-full bg-amber-400 shrink-0" />Medio &lt;€30/mese</span>
         </div>
       )}
 
