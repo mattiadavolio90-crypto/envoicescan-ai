@@ -80,6 +80,15 @@ logger = logging.getLogger("fastapi_worker")
 _RATE_LIMIT = int(os.getenv("WORKER_RATE_LIMIT", "30"))
 _RATE_WINDOW = int(os.getenv("WORKER_RATE_WINDOW_SEC", "60"))
 WORKER_SECRET_KEY = os.getenv("WORKER_SECRET_KEY", "")
+# Fail-closed: senza WORKER_SECRET_KEY i guard server-to-server sarebbero saltati,
+# esponendo il worker a chiamate dirette da Internet. Lo skip è consentito solo se
+# lo sviluppatore lo dichiara esplicitamente con WORKER_DEV_MODE=1.
+WORKER_DEV_MODE = os.getenv("WORKER_DEV_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+if not WORKER_SECRET_KEY and not WORKER_DEV_MODE:
+    raise RuntimeError(
+        "WORKER_SECRET_KEY non impostata. Configurala in produzione, "
+        "oppure imposta WORKER_DEV_MODE=1 per saltare i guard worker-key in locale."
+    )
 _QUEUE_LOOP_INTERVAL_SEC = int(os.getenv("QUEUE_LOOP_INTERVAL_SEC", "30"))
 _ENABLE_INLINE_QUEUE_PROCESSOR = os.getenv("ENABLE_INLINE_QUEUE_PROCESSOR", "1").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -132,10 +141,11 @@ def _check_rate_limit(ip: str) -> None:
 
 def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     """Verifica API key condivisa tra Streamlit e worker.
-    Se WORKER_SECRET_KEY non è configurata (dev mode), il check è saltato.
+    Lo skip è consentito solo in dev mode esplicito (WORKER_DEV_MODE=1);
+    in assenza della chiave senza quel flag l'app non si avvia (fail-closed).
     """
-    if not WORKER_SECRET_KEY:
-        return  # dev mode: skip
+    if WORKER_DEV_MODE and not WORKER_SECRET_KEY:
+        return  # dev mode esplicito: skip
     if x_worker_key != WORKER_SECRET_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
@@ -439,8 +449,13 @@ app = FastAPI(
         "Usato da Streamlit come backend separato in Fase 3 (50+ utenti)."
     ),
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    # OpenAPI docs esposte solo in dev: in produzione rivelerebbero la mappa di
+    # tutti gli endpoint (inclusi /api/admin/*) a chiunque, facilitando il recon.
+    # Disabilitato anche openapi_url, altrimenti /openapi.json resterebbe pubblico
+    # (FastAPI lo serve indipendentemente da docs_url) esponendo lo stesso schema.
+    docs_url="/docs" if WORKER_DEV_MODE else None,
+    redoc_url="/redoc" if WORKER_DEV_MODE else None,
+    openapi_url="/openapi.json" if WORKER_DEV_MODE else None,
 )
 
 
@@ -464,7 +479,7 @@ def _build_allowed_origins() -> List[str]:
 
     return list(dict.fromkeys(origins))
 
-_MAX_BODY_BYTES = 50 * 1024 * 1024  # 50 MB
+from config.constants import MAX_UPLOAD_BYTES as _MAX_BODY_BYTES  # 50 MiB centralizzato
 
 
 class _ContentSizeLimitMiddleware(BaseHTTPMiddleware):
@@ -674,7 +689,7 @@ async def parse_invoice(
         contents = await file.read()
 
         # Limite dimensione upload: 50MB
-        if len(contents) > 50 * 1024 * 1024:
+        if len(contents) > _MAX_BODY_BYTES:
             raise HTTPException(
                 status_code=413,
                 detail="File troppo grande (max 50MB).",
@@ -750,21 +765,37 @@ async def parse_invoice(
 # POST /webhook
 # ═══════════════════════════════════════════════════════════════════════════
 
+_SUPABASE_CLIENT_CACHE: Dict[str, Any] = {}
+
+
 def _get_supabase_client():
-    """Client Supabase service-role per operazioni backend del worker."""
+    """Client Supabase service-role per operazioni backend del worker.
+
+    Memoizzato per (url, key): create_client istanzia client PostgREST/Auth/Storage
+    (setup connessione/TLS) e veniva chiamato piu' volte per request. Il client
+    service-role e' stateless -> sicuro riusarlo. Chiave su (url,key) per gestire
+    eventuali cambi di env senza riavvio.
+    """
     url = os.environ.get("SUPABASE_URL", "")
     key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY", "")
     if not url or not key:
         raise HTTPException(status_code=500, detail="Supabase non configurato (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY).")
 
-    if SyncClientOptions is None:
-        return create_client(url, key)
+    cache_key = f"{url}::{key[:8]}"
+    cached = _SUPABASE_CLIENT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
 
-    options = SyncClientOptions(
-        postgrest_client_timeout=30,
-        storage_client_timeout=30,
-    )
-    return create_client(url, key, options=options)
+    if SyncClientOptions is None:
+        client = create_client(url, key)
+    else:
+        options = SyncClientOptions(
+            postgrest_client_timeout=30,
+            storage_client_timeout=30,
+        )
+        client = create_client(url, key, options=options)
+    _SUPABASE_CLIENT_CACHE[cache_key] = client
+    return client
 
 
 # Alias modulo: gli endpoint admin chiamano get_supabase_client() senza import
@@ -1181,15 +1212,25 @@ def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardSta
     from services import get_supabase_client
     supabase_client = get_supabase_client()
 
+    # Scoping per ristorante: senza, la Home aggregava TUTTI i ristoranti dell'utente
+    # mentre Margini/Fatture/Prezzi mostrano un solo ristorante -> KPI Home incoerenti
+    # col resto dell'app appena attivo il multi-ristorante. Allineato a _build_fatture_base_query.
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+
     rows: List[Dict[str, Any]] = []
     page_size = 1000
     start = 0
     while True:
-        resp = (
+        _q = (
             supabase_client.table("fatture")
             .select("file_origine,data_documento,fornitore,categoria,totale_riga")
             .eq("user_id", user_id)
             .is_("deleted_at", "null")
+        )
+        if ristorante_id:
+            _q = _q.eq("ristorante_id", ristorante_id)
+        resp = (
+            _q
             .range(start, start + page_size - 1)
             .execute()
         )
@@ -1287,6 +1328,14 @@ class UploadInvoiceResponse(BaseModel):
 
 
 def _get_ristorante_id_for_user(user_id: str, supabase_client) -> Optional[str]:
+    """Wrapper per firma (user_id, client): delega a _resolve_ristorante_id.
+
+    Unificato per evitare divergenze: prima questa funzione NON filtrava
+    attivo=True ne' ordinava, potendo restituire un ristorante diverso da quello
+    usato da margini/fatture (che usano _resolve_ristorante_id) -> rischio di
+    salvare spese/dati sul ristorante sbagliato nel modello multi-ristorante.
+    """
+    ultimo = None
     try:
         resp = supabase_client.table("users") \
             .select("ultimo_ristorante_id") \
@@ -1294,20 +1343,13 @@ def _get_ristorante_id_for_user(user_id: str, supabase_client) -> Optional[str]:
             .single() \
             .execute()
         if resp.data:
-            return resp.data.get("ultimo_ristorante_id")
+            ultimo = resp.data.get("ultimo_ristorante_id")
     except Exception:
         pass
-    try:
-        resp2 = supabase_client.table("ristoranti") \
-            .select("id") \
-            .eq("user_id", user_id) \
-            .limit(1) \
-            .execute()
-        if resp2.data:
-            return resp2.data[0]["id"]
-    except Exception:
-        pass
-    return None
+    return _resolve_ristorante_id(
+        {"id": user_id, "ultimo_ristorante_id": ultimo},
+        supabase_client,
+    )
 
 
 @app.post("/api/upload/start-session", tags=["Upload"])
@@ -1457,6 +1499,10 @@ async def upload_invoice(
             error=result.get("error", "Errore salvataggio"),
             elapsed_ms=elapsed_ms,
         )
+
+    # Nuove righe salvate -> invalida la cache di lettura per questo ristorante,
+    # altrimenti i KPI/articoli resterebbero stale fino allo scadere del TTL.
+    _invalidate_fatture_rows_cache(ristorante_id)
 
     needs_review_count = sum(1 for r in righe if r.get("needs_review"))
     fornitore = righe[0].get("Fornitore") if righe else None
@@ -1922,11 +1968,14 @@ def _chat_query_costi(
     categoria: Optional[str] = None,
     fornitore: Optional[str] = None,
     prodotto: Optional[str] = None,
+    ristorante_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Interroga i costi fatturati con filtri opzionali (per il tool della chat).
 
     Restituisce totale + dettaglio aggregato. Match testuali case-insensitive
-    e parziali (ilike) su categoria/fornitore/prodotto.
+    e parziali (ilike) su categoria/fornitore/prodotto. Scoping per ristorante_id
+    coerente con le altre pagine (Margini/Prezzi): senza, la chat rispondeva
+    aggregando tutti i ristoranti dell'utente.
     """
     from datetime import date as _date
     from calendar import monthrange
@@ -1937,6 +1986,8 @@ def _chat_query_costi(
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
     )
+    if ristorante_id:
+        q = q.eq("ristorante_id", ristorante_id)
 
     periodo_label = "tutto lo storico"
     if mese and anno:
@@ -2209,6 +2260,8 @@ def chat_ai(
         },
     ]
 
+    _chat_ristorante_id = _resolve_ristorante_id(user, supabase_client)
+
     def _esegui_tool(nome: str, args: Dict[str, Any]) -> Dict[str, Any]:
         if nome == "query_costi":
             return _chat_query_costi(
@@ -2219,6 +2272,7 @@ def chat_ai(
                 categoria=args.get("categoria"),
                 fornitore=args.get("fornitore"),
                 prodotto=args.get("prodotto"),
+                ristorante_id=_chat_ristorante_id,
             )
         if nome == "query_scadenze":
             return _chat_query_scadenze(user, supabase_client, args.get("solo_da_pagare", True))
@@ -3090,6 +3144,23 @@ def _exclude_note_rows(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return [r for r in rows if (r.get("categoria") or "") not in CATEGORIE_NOTE_WORKER]
 
 
+_FATTURE_ROWS_CACHE: Dict[str, tuple] = {}  # key -> (expires_at, rows)
+# TTL corto: abbatte i 4 full-scan dello STESSO caricamento pagina (che avvengono
+# in pochi secondi) senza tenere dati stale a lungo dopo una modifica categoria/
+# cestino dell'utente. Invalidazione esplicita su upload + cambio categoria singolo;
+# per gli altri update (batch/cestino) ci si affida al TTL corto.
+_FATTURE_ROWS_TTL = 15.0  # secondi
+
+
+def _invalidate_fatture_rows_cache(ristorante_id: Optional[str] = None) -> None:
+    """Invalida la cache righe fatture (tutto, o solo un ristorante)."""
+    if ristorante_id is None:
+        _FATTURE_ROWS_CACHE.clear()
+        return
+    for k in [k for k in _FATTURE_ROWS_CACHE if k.startswith(f"{ristorante_id}::")]:
+        _FATTURE_ROWS_CACHE.pop(k, None)
+
+
 def _fetch_fatture_rows(
     supabase_client,
     ristorante_id: str,
@@ -3098,7 +3169,20 @@ def _fetch_fatture_rows(
     tipo_prodotti: Optional[str] = None,
     search: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Recupera righe fattura filtrate con paginazione interna per superare il limite Supabase di 1000."""
+    """Recupera righe fattura filtrate con paginazione interna per superare il limite Supabase di 1000.
+
+    Cache TTL in-process (90s) chiavata sui parametri: aprire un tab faceva 4
+    scansioni complete della tabella (KPI corrente+precedente, articoli+pivot)
+    senza riuso. App di analisi non-critica -> un ritardo di 90s e' accettabile.
+    Invalidata su upload via _invalidate_fatture_rows_cache.
+    """
+    import time as _time
+    cache_key = f"{ristorante_id}::{data_da}::{data_a}::{tipo_prodotti}::{search}"
+    _now = _time.time()
+    _cached = _FATTURE_ROWS_CACHE.get(cache_key)
+    if _cached is not None and _cached[0] > _now:
+        return _cached[1]
+
     all_rows: List[Dict[str, Any]] = []
     page_size = 1000
     offset = 0
@@ -3127,6 +3211,7 @@ def _fetch_fatture_rows(
 
     all_rows = _exclude_note_rows(all_rows)
     all_rows = _apply_tipo_prodotti_filter(all_rows, tipo_prodotti)
+    _FATTURE_ROWS_CACHE[cache_key] = (_now + _FATTURE_ROWS_TTL, all_rows)
     return all_rows
 
 
@@ -3832,6 +3917,8 @@ def categoria_batch(
     )
     res_update = update_q.execute()
     righe_aggiornate = len(res_update.data or [])
+    if righe_aggiornate:
+        _invalidate_fatture_rows_cache(ristorante_id)
 
     # Salva memoria AI locale (prodotti_utente)
     try:
@@ -7653,7 +7740,7 @@ def _verify_admin(
     x_worker_key: Optional[str] = Header(None),
 ) -> dict:
     """Worker key + bearer token → utente admin verificato. Ritorna il dict utente."""
-    if WORKER_SECRET_KEY and x_worker_key != WORKER_SECRET_KEY:
+    if not (WORKER_DEV_MODE and not WORKER_SECRET_KEY) and x_worker_key != WORKER_SECRET_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized")
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Token admin mancante")
@@ -8949,6 +9036,9 @@ def admin_elimina_cliente(
         ("prodotti_utente", "user_id"),
         ("upload_events", "user_id"),
         ("classificazioni_manuali", "user_id"),
+        # daily_briefing_state ha user_id TEXT (no FK CASCADE possibile): va ripulita
+        # esplicitamente qui, altrimenti restano dati del cliente cancellato (GDPR).
+        ("daily_briefing_state", "user_id"),
         ("ristoranti", "user_id"),
         ("ricette", "userid"),
         ("ingredienti_workspace", "userid"),

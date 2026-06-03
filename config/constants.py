@@ -149,8 +149,7 @@ CATEGORIE_FOOD_BEVERAGE = [
 # ============================================
 # IMPORTANTE: "MATERIALE DI CONSUMO" NON cambia come stringa nel DB,
 # ma dal punto di vista logico rientra ora nelle SPESE GENERALI.
-# Il gruppo separato "Materiali" viene rimosso.
-CATEGORIE_MATERIALI = []  # legacy compat: gruppo logico rimosso
+# Il gruppo separato "Materiali" e' stato rimosso.
 
 # Alias storici da normalizzare per clienti e dati legacy
 LEGACY_CATEGORY_ALIASES = {
@@ -1651,8 +1650,18 @@ TRUNCATE_DESC_LOG = 40
 TRUNCATE_DESC_QUERY = 30
 TRUNCATE_ERROR_DISPLAY = 150
 
+# Categoria di fallback quando la classificazione non produce un valore valido
+# (regola di dominio #1). Il constraint DB vieta 'DA CLASSIFICARE'; questo e' il
+# rimpiazzo canonico. Fonte unica: prima era un literal ripetuto in piu' moduli.
+CATEGORIA_FALLBACK = "SERVIZI E CONSULENZE"
+
 # Limiti upload e batch
-MAX_FILE_SIZE_P7M = 50_000_000  # 50 MB
+MAX_FILE_SIZE_P7M = 50_000_000  # 50 MB (decimali) — usato dai validatori storici
+# Limite body in BYTE realmente applicato dal worker FastAPI (50 MiB binari).
+# Centralizzato: prima era hardcoded come `50 * 1024 * 1024` in 3 punti del worker,
+# con valore (52.428.800) diverso da MAX_FILE_SIZE_P7M -> il messaggio "max 50MB"
+# era impreciso. Tutti i check len(contents) usano questa costante.
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 52.428.800
 MAX_FILES_PER_UPLOAD = 250       # Max file per singolo upload
 MAX_UPLOAD_TOTAL_MB = 200        # Max dimensione totale upload (MB)
 MAX_DESC_LENGTH_DB = 500

@@ -1168,6 +1168,34 @@ def verifica_sessione_da_cookie(
             .execute()
 
         if not response or not getattr(response, 'data', None) or len(response.data) == 0:
+            # Fallback simmetrico legacy->JWT: l'euristica iniziale (_is_jwt_refresh)
+            # scarta i token contenenti "-", ma i refresh-token Supabase possono
+            # contenerlo. Se la lookup legacy non trova nulla e NON abbiamo gia'
+            # tentato il JWT, proviamo il refresh prima di arrenderci, cosi' un JWT
+            # mal-classificato non causa un logout silenzioso al confine legacy/JWT.
+            if not _is_jwt_refresh and len(token) > 50 and "." not in token:
+                try:
+                    _anon = _get_supabase_anon_client()
+                    _refresh_client = _anon if _anon is not None else supabase_client
+                    refresh_resp = _refresh_client.auth.refresh_session(token)
+                    if refresh_resp and getattr(refresh_resp, "session", None):
+                        user_auth = getattr(refresh_resp, "user", None)
+                        auth_uid = getattr(user_auth, "id", None) if user_auth else None
+                        if auth_uid:
+                            ur = supabase_client.table("users") \
+                                .select("id, email, nome_ristorante, nome_referente, attivo, "
+                                        "pagine_abilitate, tema, ultimo_ristorante_id, last_seen_at, "
+                                        "session_token_created_at") \
+                                .eq("id", auth_uid).eq("attivo", True).execute()
+                            if ur.data:
+                                u2 = ur.data[0]
+                                u2["_jwt_access_token"] = getattr(refresh_resp.session, "access_token", None)
+                                u2["_jwt_refresh_token"] = getattr(refresh_resp.session, "refresh_token", None)
+                                for _k in ("password_hash", "reset_code", "reset_expires", "session_token"):
+                                    u2.pop(_k, None)
+                                return u2
+                except Exception as _fb_err:
+                    logger.debug("Fallback legacy->JWT non riuscito: %s", _fb_err)
             return None
 
         user = response.data[0]
