@@ -143,9 +143,9 @@ export function bucketizeDocumenti(documenti: Documento[]) {
   return { scadute, settimana, mese, oltre, senzaScadenza, pagate };
 }
 
-export function formatEuro(val: number): string {
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(val);
-}
+// formatEuro centralizzato in lib/format.ts (era equivalente). formatDate resta
+// qui: usa un formato diverso ("15 gen 2026") specifico dello scadenziario.
+export { formatEuro } from "@/lib/format";
 
 export function formatDate(iso: string | null): string {
   if (!iso) return "—";

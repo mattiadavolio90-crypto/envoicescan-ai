@@ -61,27 +61,9 @@ export function calcolaMese(anno: number, mese: number): PeriodoCalcolato {
   };
 }
 
-export function formatEuro(v: number, decimali = 0): string {
-  return v.toLocaleString("it-IT", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: decimali,
-    maximumFractionDigits: decimali,
-  });
-}
-
-export function formatEuroCompact(v: number): string {
-  if (Math.abs(v) >= 1000) {
-    return `€ ${(v / 1000).toFixed(1)}k`;
-  }
-  return formatEuro(v);
-}
-
-export function formatData(iso: string | null): string {
-  if (!iso) return "—";
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y.slice(2)}`;
-}
+// Formatter centralizzati in lib/format.ts (re-export per i consumer esistenti).
+// NB: formatEuroCompact ora gestisce anche i milioni (M), prima qui no.
+export { formatEuro, formatEuroCompact, formatData } from "@/lib/format";
 
 export const CATEGORIA_ICONS: Record<string, string> = {
   CARNE: "🥩",

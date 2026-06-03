@@ -14,7 +14,7 @@ import {
   Search,
   Sparkles,
 } from "lucide-react";
-import * as XLSX from "xlsx";
+// xlsx importato lazy in exportXls (libreria pesante, serve solo all'export)
 import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
 import { Input } from "@/components/ui/input";
 import { categoriaIcon, formatData, formatEuro } from "./periodi";
@@ -217,7 +217,8 @@ export function ArticoliTab({
     });
   }
 
-  function exportXls() {
+  async function exportXls() {
+    const XLSX = await import("xlsx");
     const data = sorted.map((a) => ({
       Descrizione: a.descrizione,
       Categoria: a.categoria ?? "",

@@ -99,32 +99,8 @@ export function scorporoNetto(iva10: number, iva22: number, altri: number): numb
   return iva10 / IVA_DIVISORE_10 + iva22 / IVA_DIVISORE_22 + altri;
 }
 
-export function formatEuro(v: number, decimali = 0): string {
-  return v.toLocaleString("it-IT", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: decimali,
-    maximumFractionDigits: decimali,
-  });
-}
-
-export function formatEuroCompact(v: number): string {
-  const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `€ ${(v / 1_000_000).toFixed(1)}M`;
-  if (abs >= 1000) return `€ ${(v / 1000).toFixed(1)}k`;
-  return formatEuro(v);
-}
-
-export function formatPct(v: number, decimali = 1): string {
-  if (!isFinite(v)) return "—";
-  return `${v.toFixed(decimali)}%`;
-}
-
-export function formatData(iso: string | null): string {
-  if (!iso) return "—";
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y.slice(2)}`;
-}
+// Formatter centralizzati in lib/format.ts (re-export per i consumer esistenti).
+export { formatEuro, formatEuroCompact, formatPct, formatData } from "@/lib/format";
 
 export const MESI_NOMI_LUNGHI = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",

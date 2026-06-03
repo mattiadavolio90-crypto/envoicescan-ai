@@ -70,30 +70,29 @@ export default async function AnalisiFatturePage({
   const soloNuovi = sp.nuovi === "1";
   const soloVerifica = sp.verifica === "1";
 
-  // Carico in parallelo i dati base sempre necessari
-  const [kpi, mesi, categorieRes] = await Promise.all([
-    fetchKpi(data_da, data_a, tipoProdotti),
-    fetchMesiDisponibili(),
-    fetchCategorie(),
-  ]);
-
-  // Tab Articoli: filtri categoria/fornitore/search/nuovi/verifica gestiti
-  // CLIENT-SIDE. Server fetcha solo per periodo + tipo prodotti.
-  const [articoliRes, pivotCategorie, pivotFornitori] = await Promise.all([
-    tab === "articoli"
-      ? fetchArticoliAggregati({
-          data_da,
-          data_a,
-          tipo_prodotti: tipoProdotti,
-        })
-      : Promise.resolve(null),
-    tab === "categorie"
-      ? fetchPivot("categoria", { data_da, data_a, tipo_prodotti: tipoProdotti })
-      : Promise.resolve(null),
-    tab === "fornitori"
-      ? fetchPivot("fornitore", { data_da, data_a, tipo_prodotti: tipoProdotti })
-      : Promise.resolve(null),
-  ]);
+  // Tutte le fetch indipendenti in un UNICO Promise.all: prima erano due batch
+  // sequenziali (waterfall) e il payload pesante (articoli/pivot) restava bloccato
+  // dietro kpi/mesi/categorie pur non dipendendone. Tab Articoli/Pivot: filtri
+  // gestiti CLIENT-SIDE, il server fetcha solo per periodo + tipo prodotti.
+  const [kpi, mesi, categorieRes, articoliRes, pivotCategorie, pivotFornitori] =
+    await Promise.all([
+      fetchKpi(data_da, data_a, tipoProdotti),
+      fetchMesiDisponibili(),
+      fetchCategorie(),
+      tab === "articoli"
+        ? fetchArticoliAggregati({
+            data_da,
+            data_a,
+            tipo_prodotti: tipoProdotti,
+          })
+        : Promise.resolve(null),
+      tab === "categorie"
+        ? fetchPivot("categoria", { data_da, data_a, tipo_prodotti: tipoProdotti })
+        : Promise.resolve(null),
+      tab === "fornitori"
+        ? fetchPivot("fornitore", { data_da, data_a, tipo_prodotti: tipoProdotti })
+        : Promise.resolve(null),
+    ]);
 
   return (
     <div className="space-y-5">

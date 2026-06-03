@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpDown, Loader2 } from "lucide-react";
-import * as XLSX from "xlsx";
+// xlsx importato lazy in exportXls (libreria pesante, serve solo all'export)
 import {
   type PivotResponse,
   type TrendResponse,
@@ -64,7 +64,8 @@ export function PivotTab({ pivot, dimensione, filtri }: Props) {
     });
   }
 
-  function exportXls() {
+  async function exportXls() {
+    const XLSX = await import("xlsx");
     const periodi = pivot.periodi;
     const labels = pivot.periodi_labels;
     const dimLabel = dimensione === "categoria" ? "Categoria" : "Fornitore";
