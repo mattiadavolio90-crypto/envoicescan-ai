@@ -53,7 +53,7 @@ export default function RootLayout({
         {/* Boot overlay PWA: parte col primo paint, copre lo splash statico del
             sistema con l'animazione di brand. Lo script inline lo mostra solo in
             modalita' standalone (PWA installata) e lo chiude dopo ~1.3s. */}
-        <div id="oneflux-boot" aria-hidden style={{ display: "none" }}>
+        <div id="oneflux-boot" aria-hidden suppressHydrationWarning style={{ display: "none" }}>
           <div className="oneflux-login-stage" style={{ width: 160, height: 160 }}>
             <span className="oneflux-login-ring" />
             <span className="oneflux-login-ring" />
@@ -69,9 +69,7 @@ export default function RootLayout({
             </span>
           </div>
         </div>
-        <Script id="oneflux-boot-overlay" strategy="beforeInteractive">
-          {`(function(){try{var s=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone===true;var b=document.getElementById('oneflux-boot');if(!b)return;if(!s){b.parentNode.removeChild(b);return;}b.style.display='flex';setTimeout(function(){document.body.classList.add('app-ready');setTimeout(function(){if(b&&b.parentNode)b.parentNode.removeChild(b);},400);},1000);}catch(e){var b2=document.getElementById('oneflux-boot');if(b2&&b2.parentNode)b2.parentNode.removeChild(b2);}})();`}
-        </Script>
+        <Script src="/boot-overlay.js" strategy="beforeInteractive" />
         <ThemeProvider defaultTheme={tema}>
           <TooltipProvider>
             {children}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } from "react";
 import { toast } from "sonner";
 import {
   AlertTriangle, ArchiveRestore, Calendar, CalendarDays, Check, ChevronDown,
@@ -23,6 +23,25 @@ import {
 
 // ── KPI Bar ──────────────────────────────────────────────────────────────────
 
+function useCountUp(target: number, duration = 600) {
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced || target === 0) { el.textContent = formatEuro(target); return; }
+    const start = performance.now();
+    const raf = (now: number) => {
+      const t = Math.min((now - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - t, 3);
+      el.textContent = formatEuro(ease * target);
+      if (t < 1) requestAnimationFrame(raf);
+    };
+    requestAnimationFrame(raf);
+  }, [target, duration]);
+  return ref;
+}
+
 type KpiCardProps = {
   label: string;
   count: number;
@@ -31,10 +50,10 @@ type KpiCardProps = {
 };
 
 const TONE_CLASSES = {
-  rose:    "border-rose-500/40 hover:border-rose-500/70 [--val:theme(colors.rose.600)]",
-  orange:  "border-orange-500/40 hover:border-orange-500/70 [--val:theme(colors.orange.600)]",
-  sky:     "border-sky-500/40 hover:border-sky-500/70 [--val:theme(colors.sky.600)]",
-  emerald: "border-emerald-500/40 hover:border-emerald-500/70 [--val:theme(colors.emerald.600)]",
+  rose:    "border-rose-500/40 hover:border-rose-500/70",
+  orange:  "border-orange-500/40 hover:border-orange-500/70",
+  sky:     "border-sky-500/40 hover:border-sky-500/70",
+  emerald: "border-emerald-500/40 hover:border-emerald-500/70",
 };
 const TONE_VALUE = {
   rose:    "text-rose-600 dark:text-rose-400",
@@ -44,10 +63,13 @@ const TONE_VALUE = {
 };
 
 function KpiCard({ label, count, totale, tone }: KpiCardProps) {
+  const valRef = useCountUp(totale);
   return (
-    <div className={`rounded-lg border bg-card px-4 pt-3 pb-3 transition-colors flex flex-col gap-1 ${TONE_CLASSES[tone]}`}>
+    <div className={`rounded-xl border bg-card px-4 pt-3 pb-3 transition-colors flex flex-col gap-1 ${TONE_CLASSES[tone]}`}>
       <p className="text-[11px] uppercase tracking-wider text-muted-foreground font-medium">{label}</p>
-      <p className={`text-2xl font-bold tracking-tight ${TONE_VALUE[tone]}`}>{formatEuro(totale)}</p>
+      <p className={`text-2xl font-bold tracking-tight tabular-nums ${TONE_VALUE[tone]}`}>
+        <span ref={valRef as RefObject<HTMLSpanElement>}>{formatEuro(totale)}</span>
+      </p>
       <p className="text-[11px] text-muted-foreground">{count} fattur{count === 1 ? "a" : "e"}</p>
     </div>
   );
