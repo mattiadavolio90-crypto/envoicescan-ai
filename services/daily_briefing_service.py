@@ -466,14 +466,16 @@ def _anonymize_bullets(bullets: List[str]) -> tuple:
 
     Heuristica conservativa: anonimizza i nomi prodotto presenti nei bullet
     di price_alert (gli unici che contengono nomi propri nel set attuale),
-    riconoscendoli dal pattern 'es. <Nome> +XX%'. Restituisce
-    (bullets_anonimi, mappa_ripristino).
+    riconoscendoli dal pattern reale prodotto da _bullet_for:
+    '… — <Nome> +XX%' (em-dash). Restituisce (bullets_anonimi, mappa_ripristino).
     """
     mapping: Dict[str, str] = {}
     out: List[str] = []
     counter = 0
     for b in bullets:
-        m = _re.search(r'es\.\s+(.+?)\s+\+\d', b)
+        # Cattura il nome tra l'em-dash e il '+NN%'. Il vecchio pattern 'es. '
+        # non matchava mai il formato attuale -> nomi inviati a OpenAI in chiaro.
+        m = _re.search(r'—\s+(.+?)\s+\+\d', b)
         if m:
             nome = m.group(1).strip()
             counter += 1

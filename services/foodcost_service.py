@@ -193,6 +193,10 @@ def get_articoli_da_fatture(supabase, user_id: str, ristorante_id: str) -> list[
             .eq("user_id", user_id)
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
+            # NB: `categoria NOT IN (...)` in SQL esclude anche categoria IS NULL.
+            # E' accettabile: il constraint fatture_categoria_not_unclassified_chk
+            # vieta categoria NULL/vuota sulle righe attive, quindi non esistono
+            # ingredienti validi con categoria NULL da recuperare.
             .not_.in_("categoria", CATEGORIE_SPESE_GENERALI)
             .order("data_documento", desc=True)
             .range(offset, offset + page_size - 1)

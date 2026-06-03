@@ -27,6 +27,7 @@ from services.ai_service import (
     mostra_loading_ai,
     carica_memoria_completa,
     ottieni_hint_per_ai,
+    _applica_guardrail_note_con_importo,
 )
 from services.invoice_service import (
     estrai_dati_da_scontrino_vision,
@@ -584,11 +585,27 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                         needs_review=bool(row.get('needs_review')),
                     )
                     categoria_target = str(special_row['force_categoria'] or categoria_finale)
+                    # Guardrail dominio #2: "📝 NOTE E DICITURE" solo se totale_riga == 0.
+                    # classify_special_row assegna il bucket DICITURA anche a righe con
+                    # importo negativo (storni/note di credito) -> qui le riportiamo a
+                    # SERVIZI E CONSULENZE, allineandoci al parser XML. Senza questo, una
+                    # riga con importo != 0 veniva scritta come NOTE E DICITURE (violazione).
+                    if categoria_target in ('📝 NOTE E DICITURE', 'NOTE E DICITURE'):
+                        _imp = totale_riga if totale_riga != 0 else prezzo
+                        categoria_target = _applica_guardrail_note_con_importo(desc, categoria_target, _imp)
+                        if categoria_target == 'SERVIZI E CONSULENZE':
+                            needs_review_target_force = True
+                        else:
+                            needs_review_target_force = False
+                    else:
+                        needs_review_target_force = False
                     # Confidence routing: media → pre-classificato ma in coda per review
                     if confidence in ('bassa', 'media') and not special_row['should_review']:
                         needs_review_target = True
                     else:
                         needs_review_target = bool(special_row['should_review'])
+                    # Una riga corretta dal guardrail NOTE va sempre rivista a mano
+                    needs_review_target = needs_review_target or needs_review_target_force
                     chunk_update_groups.setdefault((categoria_target, needs_review_target), []).append(row_id)
                     if special_row['include_in_dashboard']:
                         memory_candidate_ids.append(row_id)

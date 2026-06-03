@@ -400,7 +400,10 @@ class TestSnapshotAzioni:
 
 class TestNarrazioneAI:
     def test_anonymize_replaces_product_name(self):
-        bullets = ["\U0001F4C8 Alert prezzi su 2 prodotti — es. Mozzarella +12.5%."]
+        # Formato reale prodotto da _bullet_for (price_alert): "… — <prodotto> +NN%".
+        # Il vecchio test usava "es. <prodotto>" (formato obsoleto): la regex storica
+        # matchava il test ma NON il bullet reale -> nomi inviati a OpenAI in chiaro.
+        bullets = ["\U0001F4C8 Alert prezzi su 2 prodotti — Mozzarella +12.5% (≈€80/mese)."]
         anon, mapping = _anonymize_bullets(bullets)
         assert "Mozzarella" not in anon[0]
         assert "<<P1>>" in anon[0]

@@ -320,7 +320,7 @@ def suggest_new_tags(
 def suggest_extend_existing_tags(
     user_id: str,
     ristorante_id: str,
-    min_occurrenze: int = MIN_OCCURRENZE_EXTEND,
+    min_occurrenze: int = MIN_OCCORRENZE_EXTEND,
     supabase_client=None,
 ) -> List[Dict[str, Any]]:
     rows = _fetch_recent_rows(user_id, ristorante_id, window_days=WINDOW_DAYS_DEFAULT, supabase_client=supabase_client)
@@ -721,7 +721,7 @@ def run_tag_suggestion_pipeline(
     supabase_client=None,
     min_products: int = MIN_PRODUCTS_DEFAULT,
     min_rows: int = MIN_ROWS_DEFAULT,
-    min_occurrenze_extend: int = MIN_OCCURRENZE_EXTEND,
+    min_occurrenze_extend: int = MIN_OCCORRENZE_EXTEND,
 ) -> Dict[str, Any]:
     """Esegue detection + upsert suggerimenti + upsert notifiche (best effort)."""
     if not user_id or not ristorante_id:

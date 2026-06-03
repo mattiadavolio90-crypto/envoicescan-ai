@@ -83,6 +83,7 @@ from config.constants import (
     FORNITORI_UTENZE_SEMPRE,
     CATEGORIA_PER_FORNITORE,
     UNITA_MISURA_CATEGORIA,
+    CATEGORIA_FALLBACK,
 )
 # PROP-6: pre-normalizza chiavi fornitore una volta sola (evita .upper() per riga)
 _CATEGORIA_PER_FORNITORE_NORM: tuple[tuple[str, str], ...] = tuple(
@@ -446,7 +447,7 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
 ]
 
 _CATEGORIE_PLACEHOLDER = {"", "DA CLASSIFICARE"}
-_FALLBACK_CATEGORIA_NON_CLASSIFICATO = "SERVIZI E CONSULENZE"
+_FALLBACK_CATEGORIA_NON_CLASSIFICATO = CATEGORIA_FALLBACK  # centralizzato in config.constants
 
 
 def enforce_no_unclassified_category(
@@ -3651,7 +3652,11 @@ def _chiama_gpt_classificazione(
     except Exception as cost_err:
         logger.warning(f"⚠️ Errore calcolo costo categorizzazione: {cost_err}")
     
-    testo = response.choices[0].message.content.strip()
+    # content puo' essere None (finish_reason=length con troncamento, o content-filter):
+    # senza guardia partiva un AttributeError NON retriabile che scartava l'intero batch.
+    testo = (response.choices[0].message.content or "").strip()
+    if not testo:
+        raise ValueError("Risposta GPT vuota (content None/empty)")
     dati = json.loads(testo)
     categorie_gpt = dati.get("categorie", [])
     confidence_gpt = dati.get("confidence", [])
@@ -3758,8 +3763,15 @@ def classifica_con_ai(
     confidenze_risultati: Dict[str, str] = {}   # {descrizione: "alta"|"media"|"bassa"}
     da_chiedere_gpt = list(lista_descrizioni)  # Tutte da classificare via GPT
 
-    # Costruisci indici posizionali per fornitori e IVA (allineati con da_chiedere_gpt)
-    _idx_map = {desc: i for i, desc in enumerate(lista_descrizioni)}
+    # Costruisci indici posizionali per fornitori e IVA (allineati con da_chiedere_gpt).
+    # NB: con descrizioni DUPLICATE nello stesso batch teniamo la PRIMA occorrenza
+    # (setdefault), non l'ultima: il risultato della classificazione e' comunque
+    # per-descrizione (dict `risultati`), e fornitore/IVA della prima riga sono una
+    # scelta deterministica. Senza setdefault, i metadati di tutte le occorrenze
+    # ereditavano quelli dell'ultima riga (disallineamento su batch non deduplicati).
+    _idx_map: Dict[str, int] = {}
+    for _i, _desc in enumerate(lista_descrizioni):
+        _idx_map.setdefault(_desc, _i)
 
     def _get_fornitori_aligned(descs: List[str]) -> Optional[List[str]]:
         if not lista_fornitori or len(lista_fornitori) != len(lista_descrizioni):

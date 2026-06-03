@@ -53,7 +53,7 @@ if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
 from services.db_service import filter_active
-from services.invoice_service import estrai_dati_da_xml, salva_fattura_processata
+from services.invoice_service import estrai_dati_da_xml, salva_fattura_processata, _to_int_safe
 from services.worker_client import classifica_via_worker_con_confidenza
 
 try:
@@ -116,7 +116,7 @@ def _auto_classify_saved_rows(
     unresolved = (
         filter_active(
             supabase.table("fatture")
-            .select("descrizione, fornitore, iva_percentuale")
+            .select("id, descrizione, fornitore, iva_percentuale")
             .eq("user_id", user_id)
             .eq("ristorante_id", ristorante_id)
             .eq("file_origine", nome_file)
@@ -130,17 +130,25 @@ def _auto_classify_saved_rows(
     if not rows:
         return 0
 
-    # Dedupe per descrizione mantenendo allineati fornitore/IVA.
+    # Dedupe per descrizione mantenendo allineati fornitore/IVA, e raccogli gli id
+    # di TUTTE le righe per ciascuna descrizione: l'update finale avviene per id
+    # (non per .eq("descrizione")), eliminando la fragilita' del match testuale
+    # (spazi/troncamento) che poteva lasciare righe non classificate.
     desc_map: dict[str, tuple[str, int]] = {}
+    desc_to_ids: dict[str, list] = {}
     for row in rows:
         desc = str(row.get("descrizione") or "").strip()
-        if not desc or desc in desc_map:
+        if not desc:
+            continue
+        row_id = row.get("id")
+        if row_id is not None:
+            desc_to_ids.setdefault(desc, []).append(row_id)
+        if desc in desc_map:
             continue
         fornitore = str(row.get("fornitore") or "")
-        try:
-            iva = int(row.get("iva_percentuale") or 0)
-        except (TypeError, ValueError):
-            iva = 0
+        # _to_int_safe gestisce virgola decimale ("22,00") e float ("4.0"): un int()
+        # nudo li mandava in eccezione -> IVA forzata a 0 e guardrail IVA-bassa disattivato.
+        iva = _to_int_safe(row.get("iva_percentuale"), 0)
         desc_map[desc] = (fornitore, iva)
 
     descrizioni = list(desc_map.keys())
@@ -191,17 +199,17 @@ def _auto_classify_saved_rows(
             )
             # Confidence routing: media → pre-classificato ma in coda per review
             needs_review = bool(fallback_forzato) or conf in ('bassa', 'media')
+            target_ids = desc_to_ids.get(desc, [])
+            if not target_ids:
+                continue
+            # Update per id (non per .eq("descrizione")): robusto a spazi/troncamento.
             resp = (
                 supabase.table("fatture")
                 .update({
                     "categoria": categoria,
                     "needs_review": needs_review,
                 })
-                .eq("user_id", user_id)
-                .eq("ristorante_id", ristorante_id)
-                .eq("file_origine", nome_file)
-                .eq("descrizione", desc)
-                .or_("categoria.is.null,categoria.eq.Da Classificare,categoria.eq.")
+                .in_("id", target_ids)
                 .execute()
             )
             n = len(resp.data or [])
@@ -422,8 +430,16 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
         )
         logger.info("[item=%d] auto-classificazione completata: %d righe", queue_id, classified_rows)
     except Exception as exc:
-        # Non ritentare l'intero item dopo save OK: eviterebbe duplicazioni in fatture.
-        logger.warning("[item=%d] auto-classificazione fallita: %s", queue_id, exc)
+        # Ritenta l'intero item: ora salva_fattura_processata e' idempotente (upsert
+        # su uq_fatture_dedup_active), quindi un retry NON duplica le righe; al riavvio
+        # _auto_classify_saved_rows riprende solo le righe ancora non classificate.
+        # Cosi' una classificazione interrotta a meta' non lascia il file in stato
+        # incoerente "done" con righe Da Classificare orfane.
+        logger.warning("[item=%d] auto-classificazione fallita, item in retry: %s", queue_id, exc)
+        return ItemResult(
+            queue_id=queue_id, event_id=event_id, status="retry",
+            error=f"auto_classify error={exc}",
+        )
 
     return ItemResult(
         queue_id=queue_id,

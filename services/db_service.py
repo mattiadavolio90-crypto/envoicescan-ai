@@ -449,9 +449,11 @@ def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
         
         while page < max_pages:
             offset = page * page_size
-            query = supabase_client.table("fatture") \
-                .select("id, descrizione, quantita, prezzo_unitario, totale_riga") \
+            query = filter_active(
+                supabase_client.table("fatture")
+                .select("id, descrizione, quantita, prezzo_unitario, totale_riga")
                 .eq("user_id", user_id)
+            )
             if ristorante_id:
                 query = query.eq("ristorante_id", ristorante_id)
             response = query.range(offset, offset + page_size - 1).execute()
@@ -502,9 +504,11 @@ def ricalcola_prezzi_con_sconti(user_id: str, supabase_client=None) -> int:
             # Aggiorna batch di IDs con stesso prezzo in una sola query
             for batch_start in range(0, len(ids), 50):  # Batch da 50
                 batch_ids = ids[batch_start:batch_start + 50]
-                supabase_client.table("fatture").update({
-                    'prezzo_unitario': prezzo_effettivo
-                }).in_('id', batch_ids).execute()
+                filter_active(
+                    supabase_client.table("fatture").update({
+                        'prezzo_unitario': prezzo_effettivo
+                    }).in_('id', batch_ids)
+                ).execute()
                 righe_aggiornate += len(batch_ids)
         
         logger.info(f"🔄 Batch update prezzi: {righe_aggiornate} righe aggiornate in {len(prezzo_groups)} gruppi")
