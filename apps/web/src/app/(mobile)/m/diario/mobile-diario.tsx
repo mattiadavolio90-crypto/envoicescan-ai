@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, CalendarDays, Wallet } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, CalendarDays, Wallet, Banknote } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../confirm-dialog";
 import { MobileSpese } from "./mobile-spese";
+import { MobileIncassi } from "./mobile-incassi";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -252,18 +253,19 @@ function Calendario({ anno, mese, eventi, selezionato, onSelect }: {
 
 // ─── Wrapper: switch Agenda / Spese ─────────────────────────────────────────────
 
-type SottoTab = "agenda" | "spese";
+type SottoTab = "agenda" | "spese" | "incassi";
 
 export function MobileDiario() {
   const [sotto, setSotto] = useState<SottoTab>("agenda");
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold tracking-tight">Agenda e Spese</h1>
+      <h1 className="text-xl font-bold tracking-tight">Agenda e Cassa</h1>
 
-      <div className="grid grid-cols-2 gap-1 rounded-xl border bg-card p-1">
+      <div className="grid grid-cols-3 gap-1 rounded-xl border bg-card p-1">
         {([
           { k: "agenda" as SottoTab, l: "Agenda", icon: CalendarDays },
+          { k: "incassi" as SottoTab, l: "Incassi", icon: Banknote },
           { k: "spese" as SottoTab, l: "Spese", icon: Wallet },
         ]).map((s) => {
           const Icon = s.icon;
@@ -271,17 +273,17 @@ export function MobileDiario() {
             <button
               key={s.k}
               onClick={() => setSotto(s.k)}
-              className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${
+              className={`inline-flex items-center justify-center gap-1 rounded-lg py-2 text-sm font-medium transition-colors ${
                 sotto === s.k ? "bg-primary text-primary-foreground" : "text-muted-foreground active:bg-muted"
               }`}
             >
-              <Icon className="size-4" />{s.l}
+              <Icon className="size-4 shrink-0" />{s.l}
             </button>
           );
         })}
       </div>
 
-      {sotto === "agenda" ? <MobileAgenda /> : <MobileSpese />}
+      {sotto === "agenda" ? <MobileAgenda /> : sotto === "incassi" ? <MobileIncassi /> : <MobileSpese />}
     </div>
   );
 }

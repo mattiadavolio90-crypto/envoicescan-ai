@@ -6095,6 +6095,70 @@
         }
       }
     },
+    "/api/ricavi/notifica-mancante": {
+      "post": {
+        "tags": [
+          "Ricavi"
+        ],
+        "summary": "Genera Notifica Incasso Mancante",
+        "description": "Promemoria in-app: se manca l'incasso di IERI, mette/aggiorna un avviso\nnella inbox (badge campanella). Se l'incasso di ieri c'e', dismette l'avviso.\n\nUsa il servizio ufficiale notification_inbox_service (RPC idempotente,\ndedupe_key + refresh_on_conflict gestiti dalla factory) — NON l'upsert diretto.\nTopic 'incasso_mancante': source_type 'operativa', bucket giornaliero (ieri\ncambia ogni giorno), severity 'warning' (non critico, e' un'app di analisi).\n\nTrigger: chiamato all'apertura della sezione mobile (come scadenze sul tab\nScadenziario), non da cron. Raffinamento futuro possibile (\"non disturbare nei\ngiorni di chiusura\") ma richiederebbe una semantica di chiusura su diario_eventi\nche oggi non esiste: non la inventiamo qui.",
+        "operationId": "genera_notifica_incasso_mancante_api_ricavi_notifica_mancante_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/cestino": {
       "get": {
         "tags": [

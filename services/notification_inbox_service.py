@@ -43,6 +43,7 @@ _REFRESH_ON_CONFLICT_TOPICS = {
     'sconto_fornitore_scaduto',
     'tag_suggestion_new_tag',
     'tag_suggestion_extend_tag',
+    'incasso_mancante',
 }
 
 # Soglia "Nuova": notifiche con source_event_at più recente di 24h
@@ -124,7 +125,7 @@ def resolve_bucket(topic_key: str, file_ids: Optional[List[str]] = None,
         'piva_fornitore_mancante',
     ) and file_ids:
         return _bucket_file_ids(file_ids)
-    if topic_key == 'trial_scadenza_imminente':
+    if topic_key in ('trial_scadenza_imminente', 'incasso_mancante'):
         return _bucket_daily(ref_dt)
     # upload one-shot e tutto il resto
     if file_ids:

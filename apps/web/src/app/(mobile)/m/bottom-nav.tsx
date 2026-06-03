@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles, Bell, CalendarDays, Users, MessageCircle, Settings } from "lucide-react";
+import { Sparkles, CalendarDays, Users, MessageCircle, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Tab = {
@@ -11,9 +11,10 @@ type Tab = {
   icon: typeof Sparkles;
 };
 
+// 5 tab. Gli Avvisi NON sono qui: vivono come campanella con badge nell'header
+// (pattern universale: le notifiche stanno in alto, non nella nav in basso).
 const TABS: Tab[] = [
-  { href: "/m/briefing", label: "Oggi", icon: Sparkles },
-  { href: "/m/notifiche", label: "Avvisi", icon: Bell },
+  { href: "/m/briefing", label: "Home", icon: Sparkles },
   { href: "/m/diario", label: "Agenda", icon: CalendarDays },
   { href: "/m/turni", label: "Turni", icon: Users },
   { href: "/m/chat", label: "Assistente", icon: MessageCircle },
@@ -23,7 +24,7 @@ const TABS: Tab[] = [
   { href: "/m/impostazioni", label: "Profilo", icon: Settings },
 ];
 
-export function BottomNav({ unread, chatEnabled }: { unread: number; chatEnabled: boolean }) {
+export function BottomNav({ chatEnabled }: { chatEnabled: boolean }) {
   const pathname = usePathname();
   // Tab Assistente nascosta se la chat non e' disponibile per il piano.
   const tabs = chatEnabled ? TABS : TABS.filter((t) => t.href !== "/m/chat");
@@ -37,7 +38,6 @@ export function BottomNav({ unread, chatEnabled }: { unread: number; chatEnabled
         {tabs.map((t) => {
           const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
           const Icon = t.icon;
-          const showBadge = t.href === "/m/notifiche" && unread > 0;
           return (
             <Link
               key={t.href}
@@ -53,11 +53,6 @@ export function BottomNav({ unread, chatEnabled }: { unread: number; chatEnabled
             >
               <span className="relative">
                 <Icon className={cn("size-6 transition-transform", active && "scale-110")} />
-                {showBadge && (
-                  <span className="absolute -right-1.5 -top-1 flex min-w-4 items-center justify-center rounded-full bg-emerald-600 px-1 text-[9px] font-bold text-white">
-                    {unread > 9 ? "9+" : unread}
-                  </span>
-                )}
               </span>
               <span className="max-w-full truncate leading-none">{t.label}</span>
             </Link>

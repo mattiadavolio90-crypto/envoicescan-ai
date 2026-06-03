@@ -5,8 +5,10 @@ import { fetchConfig } from "@/lib/home";
 import { Logo } from "@/components/brand/logo";
 import { BottomNav } from "./bottom-nav";
 import { HeaderMenu } from "./header-menu";
+import { NotificheBell } from "./notifiche-bell";
 import { InstallPrompt } from "./install-prompt";
 import { PullToRefresh } from "./pull-to-refresh";
+import { IncassoReminder } from "./incasso-reminder";
 
 export default async function MobileLayout({ children }: { children: React.ReactNode }) {
   // Le tre chiamate al worker partono insieme (prima auth era awaitata da sola,
@@ -35,7 +37,8 @@ export default async function MobileLayout({ children }: { children: React.React
         <span className="truncate text-sm font-semibold">
           {user.nome_ristorante ?? "ONEFLUX"}
         </span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-0.5">
+          <NotificheBell unread={unread} />
           <HeaderMenu />
         </div>
       </header>
@@ -48,7 +51,8 @@ export default async function MobileLayout({ children }: { children: React.React
       </main>
 
       <InstallPrompt />
-      <BottomNav unread={unread} chatEnabled={chatEnabled} />
+      <IncassoReminder />
+      <BottomNav chatEnabled={chatEnabled} />
     </div>
   );
 }

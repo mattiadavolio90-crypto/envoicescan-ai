@@ -1649,9 +1649,31 @@ _CONFIG_TOPICS: List[tuple] = [
     ("price_alert",              "Alert prezzi",                  False),
     ("uncategorized_rows",       "Righe da classificare",         False),
     ("fatturato_mancante",       "Fatturato mancante",            False),
+    ("incasso_mancante",         "Incasso di ieri mancante",      False),
     ("costo_personale_mancante", "Costo personale mancante",      False),
     ("scadenza_superata",        "Scadenze",                      False),
 ]
+
+# Topic "bloccati": sempre visibili, mai disattivabili (flag True in _CONFIG_TOPICS).
+_CONFIG_TOPICS_BLOCCATI = frozenset(k for (k, _l, b) in _CONFIG_TOPICS if b)
+
+
+def _filtra_notifiche_topic_spenti(
+    rows: List[Dict[str, Any]],
+    topics_disabled: Optional[List[Any]],
+) -> List[Dict[str, Any]]:
+    """Rimuove dalle notifiche i topic spenti nel configuratore assistente.
+
+    Filtro unico per campanella + pagina Avvisi (get_notifiche), gemello di quello
+    del briefing. I topic bloccati (_CONFIG_TOPICS_BLOCCATI: upload falliti) NON
+    vengono mai filtrati, anche se finiti per errore in topics_disabled. Input
+    malformato (None / non-lista) = nessun filtro (fail-open)."""
+    if not isinstance(topics_disabled, list):
+        return rows
+    spenti = {str(t) for t in topics_disabled if str(t) not in _CONFIG_TOPICS_BLOCCATI}
+    if not spenti:
+        return rows
+    return [r for r in rows if str(r.get("topic_key") or "") not in spenti]
 
 
 @app.get(
@@ -1685,6 +1707,26 @@ def get_notifiche(
 
     if not include_dismissed:
         rows = [r for r in rows if not r.get("dismissed_at")]
+
+    # Toggle del configuratore assistente: gli avvisi spenti spariscono ANCHE da
+    # qui (campanella mobile + pagina Avvisi), non solo dal briefing Home. Filtro
+    # unico e centralizzato: vale per ogni topic e ogni sorgente (Streamlit,
+    # worker, radar). Fail-open: se la lettura preferenze va male, non nascondo
+    # nulla. La logica di filtro e' in _filtra_notifiche_topic_spenti (testata).
+    try:
+        ristorante_id = _resolve_ristorante_id(user, supabase_client)
+        if ristorante_id:
+            pref = (
+                supabase_client.table("assistant_preferences")
+                .select("topics_disabled")
+                .eq("ristorante_id", ristorante_id)
+                .limit(1)
+                .execute()
+            )
+            td = pref.data[0].get("topics_disabled") if pref.data else None
+            rows = _filtra_notifiche_topic_spenti(rows, td)
+    except Exception as exc:
+        logger.warning("get_notifiche: filtro topics_disabled fallito: %s", exc)
 
     notifiche = [
         NotificaItem(
@@ -7425,6 +7467,70 @@ def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
         return {"ok": False, "error": str(e)}
 
     return {"ok": True, "notifica": record}
+
+
+@app.post("/api/ricavi/notifica-mancante", tags=["Ricavi"], dependencies=[Depends(_verify_worker_key)])
+def genera_notifica_incasso_mancante(authorization: Optional[str] = Header(None)):
+    """Promemoria in-app: se manca l'incasso di IERI, mette/aggiorna un avviso
+    nella inbox (badge campanella). Se l'incasso di ieri c'e', dismette l'avviso.
+
+    Usa il servizio ufficiale notification_inbox_service (RPC idempotente,
+    dedupe_key + refresh_on_conflict gestiti dalla factory) — NON l'upsert diretto.
+    Topic 'incasso_mancante': source_type 'operativa', bucket giornaliero (ieri
+    cambia ogni giorno), severity 'warning' (non critico, e' un'app di analisi).
+
+    Trigger: chiamato all'apertura della sezione mobile (come scadenze sul tab
+    Scadenziario), non da cron. Raffinamento futuro possibile ("non disturbare nei
+    giorni di chiusura") ma richiederebbe una semantica di chiusura su diario_eventi
+    che oggi non esiste: non la inventiamo qui."""
+    from datetime import date as _date, timedelta as _td
+    from services.notification_inbox_service import (
+        build_notification_record,
+        upsert_inbox_notifications,
+        dismiss_inbox_topics,
+    )
+
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    ieri = (_date.today() - _td(days=1)).isoformat()
+
+    # Nota: il rispetto del toggle "Incasso di ieri mancante" e' centralizzato in
+    # get_notifiche (filtro unico per tutti i topic, su campanella + avvisi). Qui
+    # non serve ricontrollarlo: generare l'avviso anche se spento e' innocuo
+    # perche' viene filtrato in lettura, ed evitiamo due logiche sovrapposte.
+
+    # C'e' gia' una riga ricavi per ieri (manuale, xls o email)?
+    resp = (
+        sb.table("ricavi_giornalieri")
+        .select("data")
+        .eq("ristorante_id", ristorante_id)
+        .eq("data", ieri)
+        .limit(1)
+        .execute()
+    )
+    presente = bool(resp.data)
+
+    if presente:
+        # Incasso gia' inserito: spegni l'avviso (soft-delete del topic, se attivo).
+        dismiss_inbox_topics(str(user["id"]), ristorante_id, ["incasso_mancante"], sb)
+        return {"ok": True, "notifica": None}
+
+    record = build_notification_record(
+        user_id=str(user["id"]),
+        ristorante_id=ristorante_id,
+        topic_key="incasso_mancante",
+        source_type="operativa",
+        severity="warning",
+        title="Manca l'incasso di ieri",
+        body="Inseriscilo dalla sezione Agenda → Incassi per tenere i margini aggiornati.",
+        action_page="Agenda",
+    )
+    inserted = upsert_inbox_notifications([record], sb)
+    return {"ok": True, "inserted": inserted}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

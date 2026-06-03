@@ -46,7 +46,8 @@ _TOPIC_PRIORITY: Dict[str, int] = {
     'upload_ricavi_failed':     15,   # 2. Upload ricavi fallito (solo se mappato)
     'price_alert':              20,   # 3. Alert prezzi
     'uncategorized_rows':       30,   # 4. Righe da classificare
-    'fatturato_mancante':       40,   # 5. Fatturato mancante
+    'fatturato_mancante':       40,   # 5. Fatturato mancante (mese)
+    'incasso_mancante':         45,   #    Incasso di ieri mancante (giorno), stesso tema
     'costo_personale_mancante': 50,   # 6. Costo personale mancante
     'scadenza_superata':        60,   # 7. Scadenze (superate prima delle imminenti)
     'scadenza_imminente':       61,   #    e imminenti subito dopo, stesso tema
@@ -61,6 +62,7 @@ _TOPIC_ACTION: Dict[str, tuple] = {
     'upload_ricavi_failed':     ('Controlla ricavi',      '/margini'),
     'scadenza_imminente':       ('Vedi scadenze',         '/scadenziario'),
     'fatturato_mancante':       ('Inserisci fatturato',   '/margini'),
+    'incasso_mancante':         ('Inserisci incasso',     '/margini'),
     'costo_personale_mancante': ('Inserisci costo',       '/margini'),
     'price_alert':              ('Controlla prezzi',      '/prezzi'),
     'uncategorized_rows':       ('Classifica righe',      '/analisi-e-tag'),
@@ -139,8 +141,9 @@ def _is_actionable(notif: Dict[str, Any]) -> bool:
         return bool(count and int(count) > 0)
 
     # Topic generati dal backend solo quando il problema esiste davvero:
-    # azionabili per definizione (fatturato/personale mancante, ricavi auto KO).
-    if topic in ('fatturato_mancante', 'costo_personale_mancante', 'upload_ricavi_failed'):
+    # azionabili per definizione (fatturato/personale mancante, ricavi auto KO,
+    # incasso di ieri mancante).
+    if topic in ('fatturato_mancante', 'incasso_mancante', 'costo_personale_mancante', 'upload_ricavi_failed'):
         return True
 
     # Topic sconosciuti/tecnici: fuori dalla Home (solo pagina Notifiche).
@@ -191,6 +194,9 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
         if mese and anno:
             return f"\U0001F4CA Il fatturato di {mese} {anno} non \u00e8 ancora stato inserito."
         return f"\U0001F4CA {title}"
+
+    if topic == 'incasso_mancante':
+        return "\U0001F4B6 L'incasso di ieri non \u00e8 ancora stato inserito \u2014 mettilo per tenere i margini aggiornati."
 
     if topic == 'costo_personale_mancante':
         mese = payload.get('mese')
@@ -345,6 +351,12 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
                 f"aggiornarlo ti permette di vedere in tempo reale come stai andando."
             )
         return f"{title}."
+
+    if topic == 'incasso_mancante':
+        return (
+            "L'incasso di ieri non l'hai ancora inserito: bastano pochi secondi "
+            "dal telefono e i tuoi margini restano sempre aggiornati."
+        )
 
     if topic == 'costo_personale_mancante':
         mese = payload.get('mese')
