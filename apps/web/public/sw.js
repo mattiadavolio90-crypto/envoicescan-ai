@@ -12,8 +12,17 @@
 // NON chiamiamo respondWith(): la lascia gestire nativamente al browser, come
 // se il SW non ci fosse.
 
-const CACHE = "oneflux-static-v4";
+const CACHE = "oneflux-static-v5";
 
+// Teniamo skipWaiting ma NON usiamo clients.claim(). La distinzione e' la chiave
+// del bug "couldn't load al primo tocco dopo l'apertura":
+//  - clients.claim() faceva prendere al SW il controllo di una pagina GIA'
+//    aperta (caricata senza SW). In quel passaggio di consegne a meta' sessione
+//    la PRIMA richiesta intercettata falliva. RIMOSSO.
+//  - skipWaiting attiva il nuovo SW senza aspettare, ma SENZA claim() esso
+//    controlla solo le pagine aperte DOPO la sua attivazione: nessun aggancio a
+//    meta' sessione, quindi nessun glitch al primo tocco. MANTENUTO (cosi' i fix
+//    futuri al SW arrivano comunque alla riapertura, senza doppia chiusura).
 self.addEventListener("install", () => {
   self.skipWaiting();
 });
@@ -23,8 +32,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)))),
   );
 });
 
