@@ -343,6 +343,9 @@ class TestCaricaScontiEOmaggi:
                 self._is_history = True
                 return self
 
+            def is_(self, *args, **kwargs):
+                return self
+
             def in_(self, *args, **kwargs):
                 return self
 
@@ -424,6 +427,9 @@ class TestCaricaScontiEOmaggi:
 
             def gt(self, *args, **kwargs):
                 self._is_history = True
+                return self
+
+            def is_(self, *args, **kwargs):
                 return self
 
             def in_(self, *args, **kwargs):

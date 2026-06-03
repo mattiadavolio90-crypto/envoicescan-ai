@@ -1065,6 +1065,19 @@ def riepilogo_fatture_auto_da_ultimo_login(
         return riepilogo
 
 
+# Cache validazione sessione: {token: (expires_at, user_dict_or_None)}. TTL breve.
+_SESSIONE_CACHE: Dict[str, tuple] = {}
+_SESSIONE_CACHE_TTL = 30.0  # secondi
+
+
+def _clear_sessione_cache(token: Optional[str] = None) -> None:
+    """Invalida la cache sessione (un token, o tutta su logout)."""
+    if token is None:
+        _SESSIONE_CACHE.clear()
+    else:
+        _SESSIONE_CACHE.pop(token, None)
+
+
 def verifica_sessione_da_cookie(
     token: str,
     inactivity_hours: int = 8,
@@ -1091,6 +1104,16 @@ def verifica_sessione_da_cookie(
 
         if not token:
             return None
+
+        # Cache TTL breve: una pagina chiama 6 endpoint in parallelo, ognuno
+        # validava la sessione con una query DB. TTL 30s -> al massimo 30s di
+        # ritardo dopo un logout (che comunque svuota la cache via _clear_sessione_cache).
+        import time as _t
+        _ck = token
+        _now = _t.time()
+        _cached = _SESSIONE_CACHE.get(_ck)
+        if _cached is not None and _cached[0] > _now:
+            return dict(_cached[1]) if _cached[1] is not None else None
 
         if supabase_client is None:
             supabase_client = get_supabase_client()
@@ -1229,6 +1252,7 @@ def verifica_sessione_da_cookie(
         for _sensitive_key in ('password_hash', 'reset_code', 'reset_expires'):
             user.pop(_sensitive_key, None)
 
+        _SESSIONE_CACHE[_ck] = (_now + _SESSIONE_CACHE_TTL, dict(user))
         return user
 
     except Exception as e:
@@ -1436,7 +1460,10 @@ def registra_logout_utente(email: str) -> bool:
             'session_token': None,
             'session_token_created_at': None,
         }).eq('email', email).execute()
-        
+
+        # Invalida la cache sessione: il token e' stato revocato nel DB, la cache
+        # non deve servire la vecchia sessione. Svuotamento totale (logout e' raro).
+        _clear_sessione_cache()
         logger.info(f"✅ Logout registrato per {email}")
         return True
     except Exception as e:

@@ -920,13 +920,21 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
         
         totale_omaggi = 0.0
         if not df_omaggi.empty:
-            # Recupera tutto lo storico prezzi positivo del ristorante per stimare il valore degli omaggi
+            # Recupera lo storico prezzi positivo per stimare il valore degli omaggi.
+            # Finestra 24 mesi: per stimare un prezzo di riferimento non serve tutto
+            # lo storico pluriennale (cresce illimitato). + filter_active (escludeva
+            # le righe nel cestino prima mancava).
             all_historical = []
             try:
-                hist_query = supabase_client.table('fatture')\
-                    .select('descrizione, fornitore, prezzo_unitario, data_documento')\
-                    .eq('user_id', user_id)\
+                from datetime import date, timedelta
+                _hist_da = (date.today() - timedelta(days=730)).isoformat()
+                hist_query = _filter_active(
+                    supabase_client.table('fatture')
+                    .select('descrizione, fornitore, prezzo_unitario, data_documento')
+                    .eq('user_id', user_id)
                     .gt('prezzo_unitario', 0)
+                    .gte('data_documento', _hist_da)
+                )
 
                 if ristorante_id:
                     hist_query = hist_query.eq('ristorante_id', ristorante_id)
@@ -1268,6 +1276,22 @@ def elimina_tutte_fatture(user_id: str, supabase_client=None, ristoranteid: str 
         if soft_delete:
             # Esegui SOFT-DELETE: imposta deleted_at su tutte le righe attive
             logger.info(f"🗑️ Esecuzione SOFT-DELETE per user_id={user_id} ristorante_id={ristorante_id}...")
+
+            # Via preferita: RPC atomica (UPDATE in un solo statement transazionale).
+            # Fallback alla logica HTTP storica (sotto) se la RPC non e' disponibile.
+            try:
+                rpc_params = {"p_user_id": user_id}
+                if ristorante_id:
+                    rpc_params["p_ristorante_id"] = ristorante_id
+                rpc_res = supabase_client.rpc("soft_delete_fatture_massivo", rpc_params).execute()
+                spostate = rpc_res.data if isinstance(rpc_res.data, int) else (rpc_res.data or 0)
+                logger.warning(
+                    f"⚠️ SOFT-DELETE MASSIVO (RPC atomica): {num_fatture} fatture ({spostate} righe) "
+                    f"nel cestino per user {user_id}"
+                )
+                return {"success": True, "righe_eliminate": num_righe, "fatture_eliminate": num_fatture}
+            except Exception as rpc_err:
+                logger.warning(f"RPC soft_delete_fatture_massivo non disponibile, fallback HTTP: {rpc_err}")
 
             try:
                 query_update = _filter_active(
