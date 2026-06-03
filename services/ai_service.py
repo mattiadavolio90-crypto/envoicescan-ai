@@ -3669,9 +3669,16 @@ def _chiama_gpt_classificazione(
             cat = categorie_gpt[idx]
 
             # ⚠️ VALIDAZIONE: Blocca categorie non valide (incluso NOTE E DICITURE)
+            # Fix B1: recupero a 2 stadi (regole forti → dizionario) invece del solo
+            # dizionario. Le regole forti sono più precise, quindi una categoria GPT
+            # vietata (es. NOTE E DICITURE) viene rimappata a una categoria reale più
+            # spesso, evitando di degradare a "Da Classificare" e innescare retry inutili.
             if cat not in TUTTE_LE_CATEGORIE and cat != "Da Classificare":
-                logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → applicando dizionario")
-                cat = applica_correzioni_dizionario(desc, "Da Classificare")
+                logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → recupero regole forti/dizionario")
+                cat_recuperata, _motivo_rec = applica_regole_categoria_forti(desc, "Da Classificare")
+                if cat_recuperata == "Da Classificare":
+                    cat_recuperata = applica_correzioni_dizionario(desc, "Da Classificare")
+                cat = cat_recuperata
             risultati.append(cat)
 
             # Confidence: usa quella del GPT se presente e valida, altrimenti "media"
@@ -3866,6 +3873,30 @@ def classifica_con_ai(
                     logger.info(f"📖 DIZIONARIO FALLBACK: '{desc[:40]}' → {cat_dict}")
         if _fallback_count > 0:
             logger.info(f"🔧 SAFETY NET: {_fallback_count} descrizioni recuperate con regole forti/dizionario")
+
+        # 🛡️ VALIDAZIONE POST-AI (fix V0): le regole forti devono correggere anche
+        # gli errori grossolani che la GPT assegna "con sicurezza" (categoria valida ma
+        # sbagliata), non solo i "Da Classificare" residui. Senza questo, una risposta
+        # GPT errata (es. SALMONI...(BRAVO) → BEVANDE per il brand) passava intatta,
+        # bypassando le ~250 regole deterministiche pensate proprio per evitarlo.
+        # Coerente con la fase A (categorizza_con_memoria), dove applica_regole_categoria_forti
+        # è già applicata all'output del dizionario senza condizione "Da Classificare".
+        _override_count = 0
+        for desc in da_chiedere_gpt:
+            cat_corrente = risultati.get(desc)
+            if not cat_corrente or cat_corrente == "Da Classificare":
+                continue  # già gestito dal safety net sopra
+            cat_validata, motivo_override = applica_regole_categoria_forti(desc, cat_corrente)
+            if motivo_override and cat_validata != cat_corrente:
+                risultati[desc] = cat_validata
+                # La regola forte ha priorità deterministica → confidence alta
+                confidenze_risultati[desc] = "alta"
+                _override_count += 1
+                logger.info(
+                    f"🛡️ OVERRIDE POST-AI: '{desc[:40]}' {cat_corrente} → {cat_validata} [{motivo_override}]"
+                )
+        if _override_count > 0:
+            logger.info(f"🛡️ VALIDAZIONE POST-AI: {_override_count} categorie GPT corrette da regole forti")
         
         # Log finale
         ancora_da_class = sum(1 for d in da_chiedere_gpt if risultati.get(d) == "Da Classificare")

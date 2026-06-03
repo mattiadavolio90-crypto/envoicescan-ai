@@ -337,6 +337,7 @@ DIZIONARIO_CORREZIONI = {
     
     # ===== PESCE =====
     "SALMONE": "PESCE",
+    "SALMONI": "PESCE",
     "TONNO FRESCO": "PESCE",
     "TONNO P.GIALLE": "PESCE",
     "BRANZINO": "PESCE",
