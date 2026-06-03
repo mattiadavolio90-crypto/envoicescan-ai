@@ -145,6 +145,132 @@ FROM public.fatture_queue
 ORDER BY created_at DESC LIMIT 10;
 ```
 
+## Fase 2 — Test end-to-end con fattura reale (opzionale)
+
+Dopo aver mostrato il report di verifica, chiedi SEMPRE all'utente:
+
+> "Vuoi fare un test end-to-end completo? Genero una fattura XML di test intestata
+> alla P.IVA del cliente, la carichi su Invoicetronic → Upload, e seguiamo insieme
+> il percorso fino alla notifica nell'app. (Sì / No)"
+
+Se risponde **Sì**, esegui questi passi:
+
+### Passo A — Genera XML FatturaPA di test
+
+Genera un XML FatturaPA valido con questi dati:
+- **Destinatario** (`CessionarioCommittente`): P.IVA reale del cliente (quella trovata nel DB)
+- **Emittente** (`CedentePrestatore`): P.IVA fittizia `12345678903` (checksum valido),
+  ragione sociale `FORNITORE TEST SRL`
+- **Documento**: TD01 (fattura ordinaria), numero `TEST-001`, data di oggi
+- **Una sola riga**: descrizione `PRODOTTO TEST`, quantità `1`, prezzo `100.00`, IVA 22%
+- **Totale**: `122.00`
+
+Struttura XML minima valida (FatturaPA 1.2):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<FatturaElettronica versione="FPR12" xmlns="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+  <FatturaElettronicaHeader>
+    <DatiTrasmissione>
+      <IdTrasmittente><IdPaese>IT</IdPaese><IdCodice>12345678903</IdCodice></IdTrasmittente>
+      <ProgressivoInvio>TEST001</ProgressivoInvio>
+      <FormatoTrasmissione>FPR12</FormatoTrasmissione>
+      <CodiceDestinatario>0000000</CodiceDestinatario>
+    </DatiTrasmissione>
+    <CedentePrestatore>
+      <DatiAnagrafici>
+        <IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>12345678903</IdCodice></IdFiscaleIVA>
+        <Anagrafica><Denominazione>FORNITORE TEST SRL</Denominazione></Anagrafica>
+        <RegimeFiscale>RF01</RegimeFiscale>
+      </DatiAnagrafici>
+      <Sede><Indirizzo>VIA TEST 1</Indirizzo><CAP>00100</CAP><Comune>ROMA</Comune><Nazione>IT</Nazione></Sede>
+    </CedentePrestatore>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>PIVA_CLIENTE</IdCodice></IdFiscaleIVA>
+        <Anagrafica><Denominazione>NOME_CLIENTE</Denominazione></Anagrafica>
+      </DatiAnagrafici>
+      <Sede><Indirizzo>VIA CLIENTE 1</Indirizzo><CAP>00100</CAP><Comune>ROMA</Comune><Nazione>IT</Nazione></Sede>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody>
+    <DatiGenerali>
+      <DatiGeneraliDocumento>
+        <TipoDocumento>TD01</TipoDocumento>
+        <Divisa>EUR</Divisa>
+        <Data>DATA_OGGI</Data>
+        <Numero>TEST-001</Numero>
+        <ImportoTotaleDocumento>122.00</ImportoTotaleDocumento>
+      </DatiGeneraliDocumento>
+    </DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee>
+        <NumeroLinea>1</NumeroLinea>
+        <Descrizione>PRODOTTO TEST</Descrizione>
+        <Quantita>1.00</Quantita>
+        <PrezzoUnitario>100.00</PrezzoUnitario>
+        <PrezzoTotale>100.00</PrezzoTotale>
+        <AliquotaIVA>22.00</AliquotaIVA>
+      </DettaglioLinee>
+      <DatiRiepilogo>
+        <AliquotaIVA>22.00</AliquotaIVA>
+        <ImponibileImporto>100.00</ImponibileImporto>
+        <Imposta>22.00</Imposta>
+        <EsigibilitaIVA>I</EsigibilitaIVA>
+      </DatiRiepilogo>
+    </DatiBeniServizi>
+  </FatturaElettronicaBody>
+</FatturaElettronica>
+```
+
+Sostituisci `PIVA_CLIENTE` con la P.IVA reale trovata nel DB, `NOME_CLIENTE` con la
+ragione sociale, e `DATA_OGGI` con la data odierna (formato `YYYY-MM-DD`).
+Salva il file come `fattura_test_ONEFLUX.xml`.
+
+### Passo B — Istruzioni per l'utente
+
+Di' all'utente:
+1. Vai su **dashboard.invoicetronic.com → Upload**
+2. Carica il file `fattura_test_ONEFLUX.xml`
+3. Attendi la conferma di Invoicetronic (pochi secondi)
+4. Torna qui — monitoreremo insieme l'arrivo nella coda
+
+### Passo C — Monitoraggio in tempo reale
+
+Dopo che l'utente conferma l'upload, interroga la coda ogni ~30 secondi per 5 minuti:
+
+```sql
+SELECT event_id, status, piva_raw,
+       payload_meta->>'nome_file' AS nome_file,
+       payload_meta->>'importo_totale' AS importo,
+       created_at,
+       left(coalesce(last_error,''), 100) AS last_error
+FROM public.fatture_queue
+WHERE created_at > now() - interval '10 minutes'
+ORDER BY created_at DESC
+LIMIT 5;
+```
+
+Interpreta e comunica all'utente:
+- **Nessun record**: il webhook non è ancora arrivato (attendere, Invoicetronic può impiegare
+  fino a 2 minuti) — oppure il webhook non è configurato correttamente
+- **`status = pending`**: arrivato ✅, il worker lo elaborerà entro 15 minuti
+- **`status = done`**: elaborato con successo ✅ — la fattura è nell'app
+- **`status = unknown_tenant`**: la P.IVA nell'XML non corrisponde a quella nel DB —
+  verifica che il campo `<IdCodice>` nell'XML contenga esattamente `PIVA_CLIENTE`
+- **`status = failed`**: problema nel download XML — controlla `last_error`
+
+### Passo D — Verifica finale nell'app
+
+Quando `status = done`, di' all'utente di aprire ONEFLUX e verificare:
+- La fattura appare nella lista fatture del ristorante
+- Il prodotto "PRODOTTO TEST" è visibile con importo €100,00
+- La notifica di nuova fattura ricevuta è apparsa (se le notifiche sono attive)
+
+Se tutto ok: **test superato** — il flusso end-to-end funziona correttamente.
+
+---
+
 ## Note operative importanti
 
 - **Dati test nel DB**: se vedi record `dead` con `piva_raw = 'UNKNOWN'` e
