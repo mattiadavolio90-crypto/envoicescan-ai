@@ -42,6 +42,10 @@ export function BottomNav({ unread, chatEnabled }: { unread: number; chatEnabled
             <Link
               key={t.href}
               href={t.href}
+              // prefetch esplicito: i chunk di ogni tab si scaricano in anticipo,
+              // cosi' il cambio tab e' istantaneo e non dipende dalla rete nel
+              // momento del tocco (era una causa dei "couldn't load" navigando).
+              prefetch
               className={cn(
                 "relative flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors",
                 active ? "text-primary" : "text-muted-foreground",
