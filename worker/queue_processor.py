@@ -353,17 +353,24 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
 
     # ── Recupera XML ─────────────────────────────────────────────────────────
     if not xml_content:
-        # xml_content è NULL: potrebbe essere stato purgato o non salvato
+        # xml_content è NULL: purgato (GDPR), non salvato, o 404 transitorio in
+        # fase di webhook. Fallback a cascata:
+        #   1. xml_url (se la Edge Function l'aveva memorizzato)
+        #   2. API Invoicetronic via resource_id (copre il 404 transitorio:
+        #      il webhook arriva prima che /receive/{id} sia disponibile)
         if xml_url:
-            # Tentativo fallback: ri-scarica da Invoicetronic
-            # (solo se la API key è disponibile)
             xml_content = _fetch_xml_from_url(xml_url)
+        if not xml_content:
+            resource_id = payload_meta.get("resource_id")
+            if resource_id is not None:
+                xml_content = _fetch_xml_via_api(resource_id)
         if not xml_content:
             return ItemResult(
                 queue_id=queue_id,
                 event_id=event_id,
                 status="retry",
-                error=f"xml_content NULL e fallback url {'fallito' if xml_url else 'assente'} "
+                error=f"xml_content NULL, fallback url {'fallito' if xml_url else 'assente'} "
+                      f"e API {'fallita' if payload_meta.get('resource_id') is not None else 'non tentabile'} "
                       f"(attempt={attempt})",
             )
 
@@ -512,6 +519,98 @@ def _fetch_xml_from_url(url: str) -> str | None:
     except Exception as exc:
         logger.warning("Fallback fetch xml_url fallito (%s): %s", url[:80], exc)
         return None
+
+
+# Base URL API Invoicetronic — allineata alla Edge Function (supabase/functions/
+# invoicetronic-webhook/index.ts). Se Invoicetronic cambia versione, aggiornare
+# in entrambi i punti.
+_INVOICETRONIC_API_BASE = os.environ.get(
+    "INVOICETRONIC_API_BASE", "https://api.invoicetronic.com/v1"
+)
+
+
+def _fetch_xml_via_api(resource_id: Any) -> str | None:
+    """
+    Fallback di secondo livello: ricostruisce l'endpoint API Invoicetronic dal
+    resource_id e riscarica l'XML.
+
+    Serve quando la Edge Function non e' riuscita a salvare l'XML (es. 404
+    transitorio: il webhook arriva prima che /receive/{id} sia disponibile) e
+    xml_url e' assente. Senza questo, quelle fatture restano bloccate fino a
+    'dead' anche se l'API risponde correttamente pochi secondi dopo.
+
+    Replica la logica di estrazione payload della Edge Function (campo `payload`
+    plain o base64). Ritorna None se manca l'API key, il resource_id non e'
+    valido, o l'API non restituisce un XML.
+    """
+    import json as _json
+    from urllib.parse import urlparse
+    import urllib.request
+
+    if resource_id is None or str(resource_id).strip() == "":
+        return None
+    api_key = os.environ.get("INVOICETRONIC_API_KEY", "")
+    if not api_key:
+        logger.warning("Fallback API: INVOICETRONIC_API_KEY assente, impossibile riscaricare")
+        return None
+
+    url = f"{_INVOICETRONIC_API_BASE}/receive/{resource_id}?include_payload=true"
+
+    # Stesso SSRF check di _fetch_xml_from_url: l'URL e' costruito da noi, ma
+    # _INVOICETRONIC_API_BASE e' override-abile da env → validiamo comunque.
+    parsed = urlparse(url)
+    _hostname = (parsed.hostname or "").lower().strip()
+    _host_ok = (
+        _hostname in {"invoicetronic.com", "api.invoicetronic.com", "invoicetronic.it"}
+        or _hostname.endswith((".invoicetronic.com", ".invoicetronic.it"))
+    )
+    if not _host_ok or parsed.scheme != "https":
+        logger.warning("Fallback API: host/scheme non consentito (%s)", _hostname)
+        return None
+
+    try:
+        import base64
+        creds = base64.b64encode(f"{api_key}:".encode()).decode()
+        req = urllib.request.Request(url)
+        req.add_header("Authorization", f"Basic {creds}")
+        req.add_header("Accept", "application/json")
+        with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
+            raw = resp.read().decode("utf-8", errors="replace")
+        data = _json.loads(raw)
+    except Exception as exc:
+        logger.warning("Fallback API fetch fallito per resource_id=%s: %s", resource_id, exc)
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    payload = data.get("payload")
+    if isinstance(payload, str) and payload.strip():
+        encoding = data.get("encoding") if isinstance(data.get("encoding"), str) else "Xml"
+        if encoding == "Base64":
+            try:
+                import base64
+                return base64.b64decode(payload.strip()).decode("utf-8", errors="replace")
+            except Exception as exc:
+                logger.warning("Fallback API: decode base64 fallito: %s", exc)
+                return None
+        return payload.strip()
+
+    xml_file = data.get("xml_file")
+    if isinstance(xml_file, str) and xml_file.strip():
+        try:
+            import base64
+            return base64.b64decode(xml_file.strip()).decode("utf-8", errors="replace")
+        except Exception as exc:
+            logger.warning("Fallback API: decode xml_file fallito: %s", exc)
+            return None
+
+    nested_url = data.get("xml_url")
+    if isinstance(nested_url, str) and nested_url.strip():
+        return _fetch_xml_from_url(nested_url.strip())
+
+    logger.warning("Fallback API: response OK ma senza payload/xml_file/xml_url (resource_id=%s)", resource_id)
+    return None
 
 
 # ─── Entry point principale ───────────────────────────────────────────────────

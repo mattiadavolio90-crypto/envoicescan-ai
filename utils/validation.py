@@ -140,7 +140,15 @@ def classify_special_row(
     is_zero_amount = abs(prezzo_num) < 1e-9 or abs(totale_num) < 1e-9
     is_negative_amount = prezzo_num < -1e-9 or totale_num < -1e-9 or tipo_documento == 'TD04'
     note_category = is_note_e_diciture(categoria_clean)
-    meaningful_category = categoria_clean not in {'', 'Da Classificare', *list(_NOTE_EQUIVALENTS)}
+    # Confronto robusto a grafia: il DB vieta "DA CLASSIFICARE" ma in passato e in
+    # input grezzo possono comparire varianti ("Da Classificare", "da classificare").
+    # Una categoria "non classificata" non e' significativa per il routing speciale.
+    _cat_upper = categoria_clean.upper()
+    meaningful_category = (
+        categoria_clean != ''
+        and _cat_upper != 'DA CLASSIFICARE'
+        and categoria_clean not in _NOTE_EQUIVALENTS
+    )
 
     strong_dicitura = is_dicitura_sicura(descrizione, prezzo_num, quantita_num) or _is_pure_dicitura_extra(desc_upper)
     economic_service = _contains_any(desc_upper, _ECONOMIC_SERVICE_KEYWORDS)

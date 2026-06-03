@@ -8457,11 +8457,13 @@ def admin_qualita_memoria(
     admin_user: dict = Depends(_verify_admin),
 ):
     """Prodotti master con filtri. stato: tutti|verified|non_verified|sospette."""
-    from utils.text_utils import pulisci_caratteri_corrotti
+    from utils.text_utils import pulisci_caratteri_corrotti, escape_ilike
 
     sb = get_supabase_client()
     per_page = min(per_page, 500)
     offset = (page - 1) * per_page
+    # Escape % e _ nel testo di ricerca: l'utente si aspetta match letterale, non wildcard.
+    search_pattern = f"%{escape_ilike(search)}%" if search else None
 
     if stato == "sospette":
         # Carica tutto e filtra lato Python (servono i suggerimenti AI)
@@ -8498,15 +8500,15 @@ def admin_qualita_memoria(
             q = q.eq("verified", True)
         elif stato == "non_verified":
             q = q.eq("verified", False)
-        if search:
-            q = q.ilike("descrizione", f"%{search}%")
+        if search_pattern:
+            q = q.ilike("descrizione", search_pattern)
         count_resp = sb.table("prodotti_master").select("id", count="exact")
         if stato == "verified":
             count_resp = count_resp.eq("verified", True)
         elif stato == "non_verified":
             count_resp = count_resp.eq("verified", False)
-        if search:
-            count_resp = count_resp.ilike("descrizione", f"%{search}%")
+        if search_pattern:
+            count_resp = count_resp.ilike("descrizione", search_pattern)
         try:
             count_r = count_resp.execute()
             total = count_r.count or 0

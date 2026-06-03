@@ -1782,6 +1782,12 @@ if tab1:
                             except Exception as e:
                                 logger.warning(f"Errore eliminazione upload_events: {e}")
 
+                            # NOTA: dal 2026-06-03 quasi tutte le tabelle per-tenant hanno
+                            # FK ON DELETE CASCADE verso users (migration 20260603150000 +
+                            # 20260603200000), quindi il DELETE finale su `users` le pulisce
+                            # automaticamente. Questo loop resta come pulizia esplicita per le
+                            # tabelle SENZA FK CASCADE (es. classificazioni_manuali, e quelle
+                            # con FK su altre parent come ricette/ingredienti_workspace/note_diario).
                             tables_extra = [
                                 ('classificazioni_manuali', 'user_id'),
                                 ('ricette', 'userid'),
@@ -3596,7 +3602,9 @@ if tab4:
                     _filtro_data_limite = (datetime.now() - timedelta(days=180)).strftime('%Y-%m-%d')
                 
                 def _build_integrity_query():
-                    q = supabase.table('fatture').select('data_documento, prezzo_unitario, quantita, descrizione, totale_riga, fornitore')
+                    # Solo fatture attive: le righe nel cestino non devono falsare
+                    # l'analisi prezzi/integrita' (regola soft-delete di dominio).
+                    q = supabase.table('fatture').select('data_documento, prezzo_unitario, quantita, descrizione, totale_riga, fornitore').is_('deleted_at', 'null')
                     if _filtro_rist_ids:
                         if len(_filtro_rist_ids) == 1:
                             q = q.eq('ristorante_id', _filtro_rist_ids[0])

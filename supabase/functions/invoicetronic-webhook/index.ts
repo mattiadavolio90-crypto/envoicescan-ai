@@ -261,6 +261,17 @@ function normalizeWebhookEvent(ev: WebhookEvent): NormalizedWebhookEvent {
 //   1° tentativo: <IdCodice>  → P.IVA italiana (11 cifre) o estera
 //   2° tentativo: <CodiceFiscale> → CF persona fisica
 
+// Normalizza una P.IVA italiana per il match col DB (dove e' salvata come 11 cifre
+// pure). Allineata a utils/piva_validator.normalizza_piva: rimuove prefisso IT e
+// caratteri non numerici, MA solo se il risultato e' esattamente 11 cifre. Per
+// P.IVA estere o codici diversi ritorna il valore originale invariato (no-op sui
+// dati attuali, gia' 11 cifre pure).
+function normalizePivaForMatch(raw: string): string {
+  const stripped = raw.replace(/^IT/i, '').replace(/[^0-9A-Za-z]/g, '')
+  const digitsOnly = stripped.replace(/[^0-9]/g, '')
+  return digitsOnly.length === 11 ? digitsOnly : raw
+}
+
 function extractPivaDestinatario(xml: string): string | null {
   // Isola il blocco CessionarioCommittente per evitare falsi match
   const blockMatch = xml.match(
@@ -269,10 +280,11 @@ function extractPivaDestinatario(xml: string): string | null {
   if (!blockMatch) return null
   const block = blockMatch[1]
 
-  const idCodice = block.match(/<IdCodice>\s*([A-Z0-9]{1,28})\s*<\/IdCodice>/)?.[1]?.trim()
-  if (idCodice) return idCodice
+  // \s ammesso DENTRO la cattura: alcuni gestionali inseriscono spazi nella P.IVA.
+  const idCodice = block.match(/<IdCodice>\s*([A-Z0-9\s]{1,28})\s*<\/IdCodice>/i)?.[1]?.trim()
+  if (idCodice) return normalizePivaForMatch(idCodice)
 
-  const cf = block.match(/<CodiceFiscale>\s*([A-Z0-9]{11,16})\s*<\/CodiceFiscale>/)?.[1]?.trim()
+  const cf = block.match(/<CodiceFiscale>\s*([A-Z0-9]{11,16})\s*<\/CodiceFiscale>/i)?.[1]?.trim()
   if (cf) return cf
 
   return null
