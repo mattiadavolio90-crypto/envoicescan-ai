@@ -121,18 +121,23 @@ def test_active_existing_files_excludes_soft_deleted_rows():
     query.is_.assert_called_once_with("deleted_at", "null")
 
 
-def test_salvataggio_fattura_e_idempotente_delete_before_insert():
+def test_salvataggio_fattura_e_idempotente_via_upsert():
+    # Idempotenza ora via UPSERT atomico su uq_fatture_dedup_active (NON piu' delete+insert):
+    # l'upsert non tocca le righe nel cestino e non corrompe la fattura su insert parziale.
     from services.invoice_service import salva_fattura_processata
 
     table = MagicMock()
+    upsert_query = MagicMock()
+    upsert_query.execute.return_value = MagicMock(data=[{"id": 99}])
+    table.upsert.return_value = upsert_query
+
+    # Cleanup righe orfane attive (re-upload con meno righe): delete().eq()...is_()...not_.in_()
     delete_query = MagicMock()
     delete_query.eq.return_value = delete_query
-    delete_query.execute.return_value = MagicMock(data=[{"id": 1}])
-    insert_query = MagicMock()
-    insert_query.execute.return_value = MagicMock(data=[{"id": 99}])
-
+    delete_query.is_.return_value = delete_query
+    delete_query.not_.in_.return_value = delete_query
+    delete_query.execute.return_value = MagicMock(data=[])
     table.delete.return_value = delete_query
-    table.insert.return_value = insert_query
 
     supabase = MagicMock()
     supabase.table.return_value = table
@@ -167,11 +172,18 @@ def test_salvataggio_fattura_e_idempotente_delete_before_insert():
         )
 
     assert result["success"] is True
-    table.delete.assert_called_once()
-    delete_query.eq.assert_any_call("user_id", "user-1")
-    delete_query.eq.assert_any_call("file_origine", "dup.xml")
-    delete_query.eq.assert_any_call("ristorante_id", "rist-1")
-    table.insert.assert_called_once()
+    # Il salvataggio righe usa upsert con la chiave di conflitto a 4 colonne (numero_riga).
+    # NB: c'e' anche un upsert su fatture_documenti (header, on_conflict a 3 colonne) sullo
+    # stesso mock table -> verifichiamo che ESISTA la chiamata righe, non che sia l'unica.
+    righe_upsert_calls = [
+        c for c in table.upsert.call_args_list
+        if c.kwargs.get("on_conflict") == "user_id,ristorante_id,file_origine,numero_riga"
+    ]
+    assert len(righe_upsert_calls) == 1
+    # Il payload righe contiene numero_riga (e' la chiave di dedup)
+    assert righe_upsert_calls[0].args[0][0]["numero_riga"] == 1
+    # Il cleanup orfane opera SOLO sull'attivo (mai sul cestino).
+    delete_query.is_.assert_any_call("deleted_at", "null")
 
 
 def test_skip_post_upload_ai_for_generic_or_document_rows():
@@ -206,12 +218,14 @@ def test_td24_upload_event_persists_alert_data_consegna():
     fatture_table = MagicMock()
     delete_query = MagicMock()
     delete_query.eq.return_value = delete_query
+    delete_query.is_.return_value = delete_query
+    delete_query.not_.in_.return_value = delete_query
     delete_query.execute.return_value = MagicMock(data=[])
-    fatture_insert_query = MagicMock()
-    fatture_insert_query.execute.return_value = MagicMock(data=[{"id": 1}])
+    fatture_upsert_query = MagicMock()
+    fatture_upsert_query.execute.return_value = MagicMock(data=[{"id": 1}])
 
     fatture_table.delete.return_value = delete_query
-    fatture_table.insert.return_value = fatture_insert_query
+    fatture_table.upsert.return_value = fatture_upsert_query
 
     upload_events_table = MagicMock()
     upload_event_insert_query = MagicMock()
@@ -258,7 +272,7 @@ def test_td24_upload_event_persists_alert_data_consegna():
 
     assert result["success"] is True
     payload = upload_events_table.insert.call_args[0][0]
-    fatture_payload = fatture_table.insert.call_args[0][0]
+    fatture_payload = fatture_table.upsert.call_args[0][0]
     assert payload["status"] == "SAVED_OK"
     assert payload["alert_data_consegna"] == "ok"
     assert payload["details"]["alert_data_consegna"] == "ok"

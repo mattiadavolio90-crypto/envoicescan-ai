@@ -1342,6 +1342,7 @@ PER OGNI ARTICOLO:
 - Quantità (numero, se non specificato usa 1.0)
 - Prezzo unitario in € (numero decimale)
 - Totale riga in € (numero decimale)
+- Aliquota IVA in % (numero intero: 4, 5, 10, 22; se non visibile usa 0)
 
 REGOLE IMPORTANTI:
 - Estrai SOLO le righe articolo vere (ignora intestazioni, note, pubblicità)
@@ -1360,7 +1361,8 @@ FORMATO RISPOSTA (SOLO JSON):
       "descrizione": "DESCRIZIONE ARTICOLO",
       "quantita": 2.5,
       "prezzo_unitario": 12.50,
-      "totale": 31.25
+      "totale": 31.25,
+      "iva": 10
     }
   ]
 }
@@ -1380,7 +1382,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 temperature=0
             )
         
-        testo = response.choices[0].message.content.strip()
+        testo = (response.choices[0].message.content or "").strip()
 
         # Rimuovi markdown code fences
         try:
@@ -1445,7 +1447,11 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 totale_riga = float(riga.get('totale', 0))
             except (ValueError, TypeError):
                 totale_riga = 0
-            
+
+            # IVA estratta dal Vision (intero %): prima era hardcoded a 0, il che
+            # azzerava il guardrail IVA-bassa e lo scorporo a valle sui PDF.
+            iva_percentuale = _to_int_safe(riga.get('iva'), 0)
+
             # Calcola mancanti
             if totale_riga == 0 and prezzo_unitario > 0:
                 totale_riga = quantita * prezzo_unitario
@@ -1490,7 +1496,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 'Quantita': quantita,
                 'Unita_Misura': unita_misura,
                 'Prezzo_Unitario': round(prezzo_unitario, 2),
-                'IVA_Percentuale': 0,
+                'IVA_Percentuale': iva_percentuale,
                 'Totale_Riga': round(totale_riga, 2),
                 'Fornitore': fornitore,
                 'Categoria': categoria_iniziale,
@@ -1641,33 +1647,54 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 })
             
 
-            # Idempotenza: rimuovi eventuali righe già esistenti per lo stesso file/user/ristorante
-            cleanup_response = (
-                supabase_client.table("fatture")
-                .delete()
-                .eq("user_id", user_id)
-                .eq("file_origine", nome_file)
-                .eq("ristorante_id", ristorante_id)
-                .execute()
-            )
-            righe_preesistenti = len(cleanup_response.data) if cleanup_response.data else 0
-            if righe_preesistenti:
-                logger.warning(
-                    f"♻️ Idempotenza salvataggio: eliminate {righe_preesistenti} righe preesistenti "
-                    f"per {nome_file} (user={user_id}, ristorante={ristorante_id})"
-                )
-
-            # Inserimento
-            # [A1] Chunked insert: PostgREST ha limite payload (~10MB) e timeout su
-            # batch molto grandi. Su fatture XL spezziamo in chunk da 500 righe per
-            # garantire stabilità senza penalizzare le fatture piccole (1 chunk).
+            # Idempotenza ATOMICA via UPSERT su uq_fatture_dedup_active
+            # (user_id, ristorante_id, file_origine, numero_riga) WHERE deleted_at IS NULL.
+            # Sostituisce il vecchio delete+insert che (1) faceva hard-delete ignorando il
+            # cestino — cancellando definitivamente righe soft-deleted dello stesso file — e
+            # (2) non era transazionale (su insert parziale lasciava la fattura corrotta).
+            # L'upsert per-riga è atomico e non tocca mai le righe nel cestino.
             _INSERT_CHUNK_SIZE = 500
+            _ON_CONFLICT = "user_id,ristorante_id,file_origine,numero_riga"
             inserted_rows: list = []
             for _i in range(0, len(records), _INSERT_CHUNK_SIZE):
                 _chunk = records[_i:_i + _INSERT_CHUNK_SIZE]
-                _resp = supabase_client.table("fatture").insert(_chunk).execute()
+                _resp = (
+                    supabase_client.table("fatture")
+                    .upsert(_chunk, on_conflict=_ON_CONFLICT)
+                    .execute()
+                )
                 if _resp.data:
                     inserted_rows.extend(_resp.data)
+
+            # Re-upload con MENO righe della versione precedente (es. fattura corretta):
+            # le righe ATTIVE di questo file con numero_riga non più presente vanno rimosse,
+            # altrimenti resterebbero orfane. Hard-delete mirato SOLO sull'attivo (mai il
+            # cestino, grazie a filter_active): equivale al vecchio "rimpiazza file" ma
+            # senza distruggere le righe soft-deleted.
+            _numeri_riga_correnti = [r.get("numero_riga") for r in records if r.get("numero_riga") is not None]
+            if _numeri_riga_correnti:
+                try:
+                    from services.db_service import filter_active as _filter_active_fatture
+                    _stale = (
+                        _filter_active_fatture(
+                            supabase_client.table("fatture")
+                            .delete()
+                            .eq("user_id", user_id)
+                            .eq("ristorante_id", ristorante_id)
+                            .eq("file_origine", nome_file)
+                        )
+                        .not_.in_("numero_riga", _numeri_riga_correnti)
+                        .execute()
+                    )
+                    _n_stale = len(_stale.data) if _stale.data else 0
+                    if _n_stale:
+                        logger.warning(
+                            f"♻️ Re-upload con meno righe: rimosse {_n_stale} righe attive orfane "
+                            f"per {nome_file} (user={user_id}, ristorante={ristorante_id})"
+                        )
+                except Exception as _stale_err:
+                    logger.warning("Cleanup righe orfane post-upsert fallito (non bloccante): %s", _stale_err)
+
             # Mantieni la stessa "shape" di prima per il codice a valle
             class _RespShim:  # piccolo shim per compatibilità con `response.data`
                 __slots__ = ("data",)
