@@ -66,17 +66,22 @@ export type HomeKpi = {
   mol_delta_pct: number | null;
 };
 
-export async function fetchConfig(): Promise<AssistantConfig | null> {
-  return workerGet<AssistantConfig>("/api/home/config", "home.config");
-}
+// Tutte avvolte in cache() come fetchBriefing: nello stesso render piu' punti
+// chiedono lo stesso dato (es. layout /m + chat page chiamano entrambi
+// fetchConfig) -> un solo round-trip al worker invece di due. La cache vive solo
+// per la durata della singola request.
+export const fetchConfig = cache(
+  async (): Promise<AssistantConfig | null> =>
+    workerGet<AssistantConfig>("/api/home/config", "home.config"),
+);
 
-export async function fetchKpi(): Promise<HomeKpi | null> {
-  return workerGet<HomeKpi>("/api/home/kpi", "home.kpi");
-}
+export const fetchKpi = cache(
+  async (): Promise<HomeKpi | null> => workerGet<HomeKpi>("/api/home/kpi", "home.kpi"),
+);
 
-export async function fetchSalute(): Promise<Salute | null> {
-  return workerGet<Salute>("/api/home/salute", "home.salute");
-}
+export const fetchSalute = cache(
+  async (): Promise<Salute | null> => workerGet<Salute>("/api/home/salute", "home.salute"),
+);
 
 // Avvolto in cache() di React: layout e page chiedono entrambi il briefing nello
 // stesso render -> una sola chiamata al worker (era duplicata, rallentava la Home).

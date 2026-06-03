@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "./auth";
+import { WORKER_TIMEOUT_MS } from "./worker";
 
 const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
 const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
@@ -41,7 +42,11 @@ export const fetchNotifiche = cache(
 
     try {
       const url = `${WORKER_URL}/api/notifiche${includeDismissed ? "?include_dismissed=true" : ""}`;
-      const res = await fetch(url, { headers: workerHeaders(token), cache: "no-store" });
+      const res = await fetch(url, {
+        headers: workerHeaders(token),
+        cache: "no-store",
+        signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
+      });
       if (!res.ok) return null;
       return (await res.json()) as NotificheResponse;
     } catch {

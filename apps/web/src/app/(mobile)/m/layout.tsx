@@ -9,10 +9,15 @@ import { InstallPrompt } from "./install-prompt";
 import { PullToRefresh } from "./pull-to-refresh";
 
 export default async function MobileLayout({ children }: { children: React.ReactNode }) {
-  const user = await getCurrentUser();
+  // Le tre chiamate al worker partono insieme (prima auth era awaitata da sola,
+  // poi le altre due: due round-trip in serie a ogni navigazione tra tab).
+  const [user, notifiche, config] = await Promise.all([
+    getCurrentUser(),
+    fetchNotifiche(),
+    fetchConfig(),
+  ]);
   if (!user) redirect("/login");
 
-  const [notifiche, config] = await Promise.all([fetchNotifiche(), fetchConfig()]);
   const unread = notifiche?.unread ?? 0;
   // Stessa regola del widget chat desktop: la chat c'e' solo se abilitata e il
   // piano ha un limite > 0 (i piani free hanno limite 0). Se non disponibile,

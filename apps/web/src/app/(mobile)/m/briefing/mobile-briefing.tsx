@@ -9,6 +9,7 @@ import {
   Check,
   Sparkles,
 } from "lucide-react";
+import { toast } from "sonner";
 import { type Briefing, type BriefingAzione } from "@/lib/home";
 import { cn } from "@/lib/utils";
 
@@ -70,13 +71,18 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
   async function dismiss(id: string) {
     setLoading((prev) => new Set(prev).add(id));
     try {
-      await fetch("/api/notifiche/dismiss", {
+      const res = await fetch("/api/notifiche/dismiss", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-    } finally {
+      if (!res.ok) throw new Error();
+      // Nascondiamo l'azione solo se il dismiss e' andato a buon fine: altrimenti
+      // sparirebbe dalla UI ma ricomparirebbe al refresh (stato incoerente).
       setDismissed((prev) => new Set(prev).add(id));
+    } catch {
+      toast.error("Non sono riuscito a ignorare l'avviso. Riprova.");
+    } finally {
       setLoading((prev) => {
         const next = new Set(prev);
         next.delete(id);

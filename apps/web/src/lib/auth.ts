@@ -6,6 +6,11 @@ export const SESSION_COOKIE = "oneflux_session";
 const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
 const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
 
+// Stesso timeout delle altre chiamate worker (vedi worker.ts): evita che il
+// render appeso a un cold-start di Railway blocchi ogni pagina autenticata,
+// dato che getCurrentUser gira nel layout di ogni route group.
+const WORKER_TIMEOUT_MS = 8000;
+
 export type SessionUser = {
   id: string;
   email: string;
@@ -32,6 +37,7 @@ export async function loginWithCredentials(email: string, password: string): Pro
       headers: workerHeaders(),
       body: JSON.stringify({ email, password }),
       cache: "no-store",
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
 
     if (!res.ok) {
@@ -57,6 +63,7 @@ export async function fetchSessionUser(token: string): Promise<SessionUser | nul
       method: "GET",
       headers: workerHeaders({ Authorization: `Bearer ${token}` }),
       cache: "no-store",
+      signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
     if (!res.ok) return null;
     return (await res.json()) as SessionUser;

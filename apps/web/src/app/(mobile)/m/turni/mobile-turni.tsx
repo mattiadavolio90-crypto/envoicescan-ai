@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -277,12 +277,16 @@ export function MobileTurni() {
 
   useEffect(() => { load(da, a); }, [da, a, load]);
 
-  // Pull-to-refresh: ricarica i turni della settimana visualizzata.
+  // Pull-to-refresh: ricarica la settimana visualizzata. Listener registrato UNA
+  // sola volta; legge da/a correnti da un ref invece di riattaccarsi a ogni
+  // cambio settimana.
+  const vista = useRef({ da, a });
+  vista.current = { da, a };
   useEffect(() => {
-    const h = () => load(da, a);
+    const h = () => load(vista.current.da, vista.current.a);
     window.addEventListener("oneflux:refresh", h);
     return () => window.removeEventListener("oneflux:refresh", h);
-  }, [da, a, load]);
+  }, [load]);
 
   function settPrec() { setLunedi((d) => addDays(d, -7)); }
   function settSucc() { setLunedi((d) => addDays(d, 7)); }
@@ -298,19 +302,31 @@ export function MobileTurni() {
     }
   }
 
-  const giorni = Array.from({ length: 7 }, (_, i) => {
-    const d = addDays(lunedi, i);
-    return { iso: toISO(d), label: GIORNI[i], num: d.getDate() };
-  });
+  const giorni = useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, i) => {
+        const d = addDays(lunedi, i);
+        return { iso: toISO(d), label: GIORNI[i], num: d.getDate() };
+      }),
+    [lunedi],
+  );
 
-  const turni = data?.turni ?? [];
-  const turniGiorno = turni
-    .filter((t) => t.data_turno === giornoSel)
-    .sort((a, b) => a.ora_inizio.localeCompare(b.ora_inizio));
+  const turni = useMemo(() => data?.turni ?? [], [data]);
+
+  const turniGiorno = useMemo(
+    () =>
+      turni
+        .filter((t) => t.data_turno === giornoSel)
+        .sort((a, b) => a.ora_inizio.localeCompare(b.ora_inizio)),
+    [turni, giornoSel],
+  );
 
   const oggiISO = toISO(new Date());
-  const turniPerGiorno: Record<string, number> = {};
-  for (const t of turni) turniPerGiorno[t.data_turno] = (turniPerGiorno[t.data_turno] ?? 0) + 1;
+  const turniPerGiorno = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const t of turni) m[t.data_turno] = (m[t.data_turno] ?? 0) + 1;
+    return m;
+  }, [turni]);
 
   const fmtSett = `${lunedi.getDate()} ${["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"][lunedi.getMonth()]} – ${addDays(lunedi, 6).getDate()} ${["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"][addDays(lunedi, 6).getMonth()]}`;
 

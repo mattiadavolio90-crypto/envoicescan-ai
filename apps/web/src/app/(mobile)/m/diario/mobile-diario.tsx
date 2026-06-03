@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -197,13 +197,20 @@ function Calendario({ anno, mese, eventi, selezionato, onSelect }: {
   const oggi = todayISO();
   const n = giorniNelMese(anno, mese);
   const offset = primoGiornoMese(anno, mese);
-  const perGiorno: Record<string, EventoDiario[]> = {};
-  for (const e of eventi) (perGiorno[e.data_evento] ??= []).push(e);
 
-  const celle: (number | null)[] = [
-    ...Array(offset).fill(null),
-    ...Array.from({ length: n }, (_, i) => i + 1),
-  ];
+  // Raggruppamento eventi-per-giorno e griglia celle memoizzati: non si
+  // ricalcolano quando il genitore ri-renderizza per motivi estranei (es.
+  // apertura di un dialog), ma solo se cambiano eventi o il mese mostrato.
+  const perGiorno = useMemo(() => {
+    const m: Record<string, EventoDiario[]> = {};
+    for (const e of eventi) (m[e.data_evento] ??= []).push(e);
+    return m;
+  }, [eventi]);
+
+  const celle: (number | null)[] = useMemo(
+    () => [...Array(offset).fill(null), ...Array.from({ length: n }, (_, i) => i + 1)],
+    [offset, n],
+  );
 
   return (
     <div className="select-none">
@@ -272,12 +279,16 @@ export function MobileDiario() {
 
   useEffect(() => { load(anno, mese); }, [anno, mese, load]);
 
-  // Pull-to-refresh: ricarica gli eventi del mese visualizzato.
+  // Pull-to-refresh: ricarica il mese visualizzato. Il listener si registra UNA
+  // sola volta; legge anno/mese correnti da un ref, cosi' non viene staccato e
+  // riattaccato a ogni cambio mese (prima le deps includevano anno/mese).
+  const vista = useRef({ anno, mese });
+  vista.current = { anno, mese };
   useEffect(() => {
-    const h = () => load(anno, mese);
+    const h = () => load(vista.current.anno, vista.current.mese);
     window.addEventListener("oneflux:refresh", h);
     return () => window.removeEventListener("oneflux:refresh", h);
-  }, [anno, mese, load]);
+  }, [load]);
 
   function mesePrec() {
     if (mese === 0) { setAnno((a) => a - 1); setMese(11); } else setMese((m) => m - 1);
@@ -297,9 +308,13 @@ export function MobileDiario() {
     }
   }
 
-  const eventiGiorno = eventi
-    .filter((e) => e.data_evento === giornoSel)
-    .sort((a, b) => (a.ora_inizio ?? "99:99").localeCompare(b.ora_inizio ?? "99:99"));
+  const eventiGiorno = useMemo(
+    () =>
+      eventi
+        .filter((e) => e.data_evento === giornoSel)
+        .sort((a, b) => (a.ora_inizio ?? "99:99").localeCompare(b.ora_inizio ?? "99:99")),
+    [eventi, giornoSel],
+  );
 
   const fmtGiorno = (iso: string) =>
     new Date(iso + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
