@@ -1,16 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { MoreVertical, Settings, LogOut } from "lucide-react";
+import { MoreVertical, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+// Menu a 3 puntini: ora contiene SOLO "Esci". Impostazioni e' diventata una tab
+// della bottom nav (<Link> SPA): navigare con router.push da dentro questo
+// dropdown, in PWA standalone, si mangiava la navigazione ("page couldn't
+// load"). Il logout NON e' una navigazione di pagina ma una POST + redirect,
+// quindi qui router.push va bene.
 export function HeaderMenu() {
   const router = useRouter();
 
@@ -37,11 +41,6 @@ export function HeaderMenu() {
         }
       />
       <DropdownMenuContent side="bottom" align="end" className="w-52">
-        <DropdownMenuItem onClick={() => router.push("/m/impostazioni")}>
-          <Settings className="size-4" />
-          Impostazioni
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
           <LogOut className="size-4" />
           Esci

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles, Bell, CalendarDays, Users, MessageCircle } from "lucide-react";
+import { Sparkles, Bell, CalendarDays, Users, MessageCircle, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Tab = {
@@ -17,6 +17,10 @@ const TABS: Tab[] = [
   { href: "/m/diario", label: "Diario", icon: CalendarDays },
   { href: "/m/turni", label: "Turni", icon: Users },
   { href: "/m/chat", label: "Assistente", icon: MessageCircle },
+  // Profilo (Impostazioni) come tab: si naviga con <Link> SPA come le altre.
+  // Prima ci si arrivava con router.push da dentro il dropdown a 3 puntini,
+  // che in PWA standalone si mangiava la navigazione ("page couldn't load").
+  { href: "/m/impostazioni", label: "Profilo", icon: Settings },
 ];
 
 export function BottomNav({ unread, chatEnabled }: { unread: number; chatEnabled: boolean }) {
@@ -51,7 +55,7 @@ export function BottomNav({ unread, chatEnabled }: { unread: number; chatEnabled
                   </span>
                 )}
               </span>
-              <span>{t.label}</span>
+              <span className="max-w-full truncate leading-none">{t.label}</span>
             </Link>
           );
         })}
