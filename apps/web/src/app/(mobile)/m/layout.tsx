@@ -7,7 +7,6 @@ import { BottomNav } from "./bottom-nav";
 import { HeaderMenu } from "./header-menu";
 import { InstallPrompt } from "./install-prompt";
 import { PullToRefresh } from "./pull-to-refresh";
-import { NavErrorProbe } from "./nav-error-probe";
 
 export default async function MobileLayout({ children }: { children: React.ReactNode }) {
   // Le tre chiamate al worker partono insieme (prima auth era awaitata da sola,
@@ -42,7 +41,6 @@ export default async function MobileLayout({ children }: { children: React.React
       </header>
 
       <PullToRefresh />
-      <NavErrorProbe />
 
       {/* Contenuto: padding-bottom per la bottom nav (64px + safe area) */}
       <main className="flex-1 px-4 pt-4" style={{ paddingBottom: "calc(72px + env(safe-area-inset-bottom))" }}>
