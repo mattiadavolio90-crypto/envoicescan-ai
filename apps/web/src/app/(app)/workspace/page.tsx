@@ -19,7 +19,7 @@ export default async function WorkspacePage({
       <PageHeader
         icon="wrench"
         title="Strumenti"
-        hint="Gli strumenti operativi del tuo locale: ricette e foodcost, diario, turni, inventario."
+        hint="Gli strumenti operativi del tuo locale: ricette e foodcost, agenda e spese, turni, inventario."
       />
 
       <Suspense>

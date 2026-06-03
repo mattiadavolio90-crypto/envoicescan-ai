@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, CalendarDays, Wallet } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../confirm-dialog";
+import { MobileSpese } from "./mobile-spese";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -249,9 +250,45 @@ function Calendario({ anno, mese, eventi, selezionato, onSelect }: {
   );
 }
 
-// ─── Componente principale ──────────────────────────────────────────────────────
+// ─── Wrapper: switch Agenda / Spese ─────────────────────────────────────────────
+
+type SottoTab = "agenda" | "spese";
 
 export function MobileDiario() {
+  const [sotto, setSotto] = useState<SottoTab>("agenda");
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-bold tracking-tight">Agenda e Spese</h1>
+
+      <div className="grid grid-cols-2 gap-1 rounded-xl border bg-card p-1">
+        {([
+          { k: "agenda" as SottoTab, l: "Agenda", icon: CalendarDays },
+          { k: "spese" as SottoTab, l: "Spese", icon: Wallet },
+        ]).map((s) => {
+          const Icon = s.icon;
+          return (
+            <button
+              key={s.k}
+              onClick={() => setSotto(s.k)}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-medium transition-colors ${
+                sotto === s.k ? "bg-primary text-primary-foreground" : "text-muted-foreground active:bg-muted"
+              }`}
+            >
+              <Icon className="size-4" />{s.l}
+            </button>
+          );
+        })}
+      </div>
+
+      {sotto === "agenda" ? <MobileAgenda /> : <MobileSpese />}
+    </div>
+  );
+}
+
+// ─── Vista Agenda (calendario eventi) ───────────────────────────────────────────
+
+function MobileAgenda() {
   const today = todayISO();
   const now = new Date();
   const [anno, setAnno] = useState(now.getFullYear());
@@ -321,8 +358,6 @@ export function MobileDiario() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold tracking-tight">Diario</h1>
-
       {/* Calendario */}
       <div className="rounded-2xl border bg-card p-4">
         <div className="mb-2 flex items-center justify-between">

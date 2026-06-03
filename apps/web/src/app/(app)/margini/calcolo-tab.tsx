@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { formatEuro, formatEuroCompact, scorporoNetto } from "./periodi";
 import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
 import { CostoPersonaleDialog } from "./costo-personale-dialog";
+import { CostoSpeseDialog, type TipoSpesaCella } from "./costo-spese-dialog";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -171,6 +172,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
   const [dettaglioOpen, setDettaglioOpen] = useState(false);
   const [dettaglioMeseSel, setDettaglioMeseSel] = useState<{ anno: number; mese: number; label: string } | null>(null);
   const [costoPersMese, setCostoPersMese] = useState<MesePivot | null>(null);
+  const [speseCella, setSpeseCella] = useState<{ mese: MesePivot; tipo: TipoSpesaCella } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -386,6 +388,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                           isCurrent={isCurrent}
                           onSave={saveCell}
                           onOpenCosto={setCostoPersMese}
+                          onOpenSpese={(mese, tipo) => setSpeseCella({ mese, tipo })}
                         />
                       );
                     })}
@@ -401,7 +404,13 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
 
       {/* Vista mobile — card per mese */}
       <div className="md:hidden">
-        <MobileMeseView mesi={mesiVisibili} totali={data.totali} onSave={saveCell} onOpenCosto={setCostoPersMese} />
+        <MobileMeseView
+          mesi={mesiVisibili}
+          totali={data.totali}
+          onSave={saveCell}
+          onOpenCosto={setCostoPersMese}
+          onOpenSpese={(mese, tipo) => setSpeseCella({ mese, tipo })}
+        />
       </div>
 
       {/* Analisi visiva: cascata conto economico + gauge + commenti */}
@@ -419,6 +428,19 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
           onSaved={load}
         />
       )}
+
+      {speseCella && (
+        <CostoSpeseDialog
+          open
+          tipo={speseCella.tipo}
+          anno={speseCella.mese.anno}
+          mese={speseCella.mese.mese}
+          label={speseCella.mese.label}
+          valore={speseCella.tipo === "fb" ? speseCella.mese.altri_costi_fb : speseCella.mese.altri_costi_spese}
+          onClose={() => setSpeseCella(null)}
+          onSaved={load}
+        />
+      )}
     </div>
   );
 }
@@ -432,12 +454,14 @@ function Cell({
   isCurrent,
   onSave,
   onOpenCosto,
+  onOpenSpese,
 }: {
   row: RowDef;
   mese: MesePivot;
   isCurrent: boolean;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
   onOpenCosto: (m: MesePivot) => void;
+  onOpenSpese: (m: MesePivot, tipo: TipoSpesaCella) => void;
 }) {
   const raw = rowVal(row, mese);
   const isMetric = row.isMetric;
@@ -457,6 +481,27 @@ function Cell({
           type="button"
           onClick={() => onOpenCosto(mese)}
           title="Imposta costo (recupera da Personale o inserisci a mano)"
+          className="w-full px-3 py-2 text-right tabular-nums hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset outline-none transition-colors group/cella"
+        >
+          <span className="inline-flex items-center justify-end gap-1">
+            {display === "—" ? <span className="text-muted-foreground/60">—</span> : display}
+            <Pencil className="size-3 opacity-0 group-hover/cella:opacity-40 transition-opacity" />
+          </span>
+          {pct && <span className="block text-[11px] tabular-nums opacity-70">{pct}</span>}
+        </button>
+      </td>
+    );
+  }
+
+  // Righe spese extra (F&B / Generali): cella cliccabile che apre il widget (recupera dal tab Spese o manuale)
+  if (row.type === "input-editable" && (row.field === "altri_costi_fb" || row.field === "altri_costi_spese")) {
+    const tipo: TipoSpesaCella = row.field === "altri_costi_fb" ? "fb" : "generale";
+    return (
+      <td className={`text-right p-0 align-middle ${currentCls}`}>
+        <button
+          type="button"
+          onClick={() => onOpenSpese(mese, tipo)}
+          title="Imposta importo (recupera dal tab Spese o inserisci a mano)"
           className="w-full px-3 py-2 text-right tabular-nums hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset outline-none transition-colors group/cella"
         >
           <span className="inline-flex items-center justify-end gap-1">
@@ -601,11 +646,13 @@ function MobileMeseView({
   totali,
   onSave,
   onOpenCosto,
+  onOpenSpese,
 }: {
   mesi: MesePivot[];
   totali: MesePivot;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
   onOpenCosto: (m: MesePivot) => void;
+  onOpenSpese: (m: MesePivot, tipo: TipoSpesaCella) => void;
 }) {
   const [selIdx, setSelIdx] = useState(mesi.length - 1);
   const isTotal = selIdx >= mesi.length;
@@ -633,6 +680,8 @@ function MobileMeseView({
           const isMetric = row.isMetric;
           const editable = row.type === "input-editable" && !isTotal;
           const isPersonale = row.section === "personale" && row.type === "input-editable";
+          const isSpesa = row.type === "input-editable" && (row.field === "altri_costi_fb" || row.field === "altri_costi_spese");
+          const tipoSpesa: TipoSpesaCella | null = row.field === "altri_costi_fb" ? "fb" : row.field === "altri_costi_spese" ? "generale" : null;
           const colorCls = valueColorCls(row.valueColor, raw);
           const pct = pctIncidenza(raw, current.fatturato_netto);
 
@@ -645,6 +694,15 @@ function MobileMeseView({
                 <button
                   type="button"
                   onClick={() => onOpenCosto(current)}
+                  className="inline-flex items-center gap-1.5 text-sm tabular-nums px-2 py-1 rounded-md border border-input hover:bg-muted transition-colors"
+                >
+                  {raw === 0 ? "Imposta" : formatEuro(raw)}
+                  <Pencil className="size-3 opacity-40" />
+                </button>
+              ) : isSpesa && tipoSpesa && !isTotal ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenSpese(current, tipoSpesa)}
                   className="inline-flex items-center gap-1.5 text-sm tabular-nums px-2 py-1 rounded-md border border-input hover:bg-muted transition-colors"
                 >
                   {raw === 0 ? "Imposta" : formatEuro(raw)}

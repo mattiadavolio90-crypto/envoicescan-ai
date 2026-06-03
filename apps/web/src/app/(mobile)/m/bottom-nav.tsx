@@ -14,7 +14,7 @@ type Tab = {
 const TABS: Tab[] = [
   { href: "/m/briefing", label: "Oggi", icon: Sparkles },
   { href: "/m/notifiche", label: "Avvisi", icon: Bell },
-  { href: "/m/diario", label: "Diario", icon: CalendarDays },
+  { href: "/m/diario", label: "Agenda", icon: CalendarDays },
   { href: "/m/turni", label: "Turni", icon: Users },
   { href: "/m/chat", label: "Assistente", icon: MessageCircle },
   // Profilo (Impostazioni) come tab: si naviga con <Link> SPA come le altre.

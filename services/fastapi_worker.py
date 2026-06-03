@@ -5552,6 +5552,57 @@ def get_costo_personale_da_turni(
     }
 
 
+@app.get("/api/margini/costo-spese-extra", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
+def get_costo_spese_da_voci(
+    anno: int = Query(..., ge=2000, le=2100),
+    mese: int = Query(..., ge=1, le=12),
+    authorization: Optional[str] = Header(None),
+):
+    """Aggrega le voci di spesa extra (tab Spese) del mese, separate per tipo,
+    coerenti con le celle editabili di margini_mensili:
+      - totale_fb        -> altri_costi_fb
+      - totale_generale  -> altri_costi_spese"""
+    from calendar import monthrange
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    last_day = monthrange(anno, mese)[1]
+    data_da = f"{anno}-{mese:02d}-01"
+    data_a = f"{anno}-{mese:02d}-{last_day:02d}"
+
+    voci = (
+        sb.table("spese_extra").select("tipo,importo")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data_spesa", data_da).lte("data_spesa", data_a)
+        .execute()
+    ).data or []
+
+    totale_fb = 0.0
+    totale_generale = 0.0
+    n_fb = 0
+    n_generale = 0
+    for v in voci:
+        importo = float(v.get("importo") or 0)
+        if v.get("tipo") == "fb":
+            totale_fb += importo
+            n_fb += 1
+        elif v.get("tipo") == "generale":
+            totale_generale += importo
+            n_generale += 1
+
+    return {
+        "anno": anno,
+        "mese": mese,
+        "totale_fb": round(totale_fb, 2),
+        "totale_generale": round(totale_generale, 2),
+        "n_voci_fb": n_fb,
+        "n_voci_generale": n_generale,
+    }
+
+
 @app.get("/api/margini/analisi", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
 def get_margini_analisi(
     data_da: str,
@@ -10060,6 +10111,128 @@ def ws_personale_elimina(turno_id: str, authorization: Optional[str] = Header(No
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     sb.table("turni_personale").delete().eq("id", turno_id).eq("ristorante_id", ristorante_id).execute()
+    return {"ok": True}
+
+
+# ─── Workspace: Spese extra (F&B / Generali) ────────────────────────────────
+
+_TIPI_SPESA = {"fb", "generale"}
+
+
+class NuovaSpesaBody(BaseModel):
+    data_spesa: str   # YYYY-MM-DD
+    tipo: str         # 'fb' | 'generale'
+    importo: float
+    descrizione: str
+    note: Optional[str] = None
+
+
+class AggiornaSpesaBody(BaseModel):
+    data_spesa: Optional[str] = None
+    tipo: Optional[str] = None
+    importo: Optional[float] = None
+    descrizione: Optional[str] = None
+    note: Optional[str] = None
+
+
+@app.get("/api/workspace/spese", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_spese_list(
+    da: Optional[str] = Query(None, description="Data inizio YYYY-MM-DD"),
+    a: Optional[str] = Query(None, description="Data fine YYYY-MM-DD"),
+    authorization: Optional[str] = Header(None),
+):
+    """Lista voci di spesa extra nel periodo + totali per tipo."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    q = sb.table("spese_extra").select("*").eq("ristorante_id", ristorante_id)
+    if da:
+        q = q.gte("data_spesa", da)
+    if a:
+        q = q.lte("data_spesa", a)
+    q = q.order("data_spesa", desc=True).order("created_at", desc=True)
+    voci = q.execute().data or []
+    tot_fb = round(sum(float(v.get("importo") or 0) for v in voci if v.get("tipo") == "fb"), 2)
+    tot_generale = round(sum(float(v.get("importo") or 0) for v in voci if v.get("tipo") == "generale"), 2)
+    return {
+        "voci": voci,
+        "totale_fb": tot_fb,
+        "totale_generale": tot_generale,
+        "totale": round(tot_fb + tot_generale, 2),
+    }
+
+
+@app.post("/api/workspace/spese", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_spese_crea(body: NuovaSpesaBody, authorization: Optional[str] = Header(None)):
+    """Crea una nuova voce di spesa extra."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    if body.tipo not in _TIPI_SPESA:
+        raise HTTPException(status_code=400, detail="Tipo spesa non valido (fb | generale)")
+    if not body.descrizione.strip():
+        raise HTTPException(status_code=400, detail="La descrizione è obbligatoria")
+    if body.importo < 0:
+        raise HTTPException(status_code=400, detail="L'importo non può essere negativo")
+    payload: dict = {
+        "ristorante_id": ristorante_id,
+        "user_id": user_id,
+        "data_spesa": body.data_spesa,
+        "tipo": body.tipo,
+        "importo": round(float(body.importo), 2),
+        "descrizione": body.descrizione.strip(),
+    }
+    if body.note is not None:
+        payload["note"] = body.note
+    resp = sb.table("spese_extra").insert(payload).execute()
+    return resp.data[0] if resp.data else {}
+
+
+@app.patch("/api/workspace/spese/{spesa_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_spese_aggiorna(spesa_id: str, body: AggiornaSpesaBody, authorization: Optional[str] = Header(None)):
+    """Aggiorna una voce di spesa extra (note azzerabile passando null)."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    raw = body.model_dump(exclude_unset=True)
+    if "tipo" in raw and raw["tipo"] not in _TIPI_SPESA:
+        raise HTTPException(status_code=400, detail="Tipo spesa non valido (fb | generale)")
+    updates: dict = {}
+    for campo in ("data_spesa", "tipo", "descrizione"):
+        if campo in raw and raw[campo] is not None:
+            v = raw[campo]
+            updates[campo] = v.strip() if campo == "descrizione" else v
+    if "importo" in raw and raw["importo"] is not None:
+        if float(raw["importo"]) < 0:
+            raise HTTPException(status_code=400, detail="L'importo non può essere negativo")
+        updates["importo"] = round(float(raw["importo"]), 2)
+    if "note" in raw:  # azzerabile
+        updates["note"] = raw["note"]
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    resp = sb.table("spese_extra").update(updates).eq("id", spesa_id).eq("ristorante_id", ristorante_id).execute()
+    return resp.data[0] if resp.data else {}
+
+
+@app.delete("/api/workspace/spese/{spesa_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_spese_elimina(spesa_id: str, authorization: Optional[str] = Header(None)):
+    """Elimina una voce di spesa extra."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    sb.table("spese_extra").delete().eq("id", spesa_id).eq("ristorante_id", ristorante_id).execute()
     return {"ok": True}
 
 

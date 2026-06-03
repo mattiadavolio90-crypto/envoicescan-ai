@@ -7,7 +7,7 @@ const TABS = [
   { key: "foodcost", label: "Foodcost" },
   { key: "inventario", label: "Inventario" },
   { key: "personale", label: "Personale" },
-  { key: "diario", label: "Diario" },
+  { key: "diario", label: "Agenda e Spese" },
 ];
 
 export function TabsSwitcher({ active }: { active: string }) {

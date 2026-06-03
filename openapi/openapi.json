@@ -3485,6 +3485,92 @@
         }
       }
     },
+    "/api/margini/costo-spese-extra": {
+      "get": {
+        "tags": [
+          "Marginalità"
+        ],
+        "summary": "Get Costo Spese Da Voci",
+        "description": "Aggrega le voci di spesa extra (tab Spese) del mese, separate per tipo,\ncoerenti con le celle editabili di margini_mensili:\n  - totale_fb        -> altri_costi_fb\n  - totale_generale  -> altri_costi_spese",
+        "operationId": "get_costo_spese_da_voci_api_margini_costo_spese_extra_get",
+        "parameters": [
+          {
+            "name": "anno",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 2100,
+              "minimum": 2000,
+              "title": "Anno"
+            }
+          },
+          {
+            "name": "mese",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "maximum": 12,
+              "minimum": 1,
+              "title": "Mese"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/margini/analisi": {
       "get": {
         "tags": [
@@ -11401,6 +11487,332 @@
           }
         }
       }
+    },
+    "/api/workspace/spese": {
+      "get": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Spese List",
+        "description": "Lista voci di spesa extra nel periodo + totali per tipo.",
+        "operationId": "ws_spese_list_api_workspace_spese_get",
+        "parameters": [
+          {
+            "name": "da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data inizio YYYY-MM-DD",
+              "title": "Da"
+            },
+            "description": "Data inizio YYYY-MM-DD"
+          },
+          {
+            "name": "a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Data fine YYYY-MM-DD",
+              "title": "A"
+            },
+            "description": "Data fine YYYY-MM-DD"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Spese Crea",
+        "description": "Crea una nuova voce di spesa extra.",
+        "operationId": "ws_spese_crea_api_workspace_spese_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NuovaSpesaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/spese/{spesa_id}": {
+      "patch": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Spese Aggiorna",
+        "description": "Aggiorna una voce di spesa extra (note azzerabile passando null).",
+        "operationId": "ws_spese_aggiorna_api_workspace_spese__spesa_id__patch",
+        "parameters": [
+          {
+            "name": "spesa_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Spesa Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AggiornaSpesaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Spese Elimina",
+        "description": "Elimina una voce di spesa extra.",
+        "operationId": "ws_spese_elimina_api_workspace_spese__spesa_id__delete",
+        "parameters": [
+          {
+            "name": "spesa_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Spesa Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11655,6 +12067,67 @@
         },
         "type": "object",
         "title": "AggiornaIngredienteManualeBody"
+      },
+      "AggiornaSpesaBody": {
+        "properties": {
+          "data_spesa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Spesa"
+          },
+          "tipo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo"
+          },
+          "importo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo"
+          },
+          "descrizione": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descrizione"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "AggiornaSpesaBody"
       },
       "AggiornaTurnoBody": {
         "properties": {
@@ -14590,6 +15063,45 @@
           "partita_iva"
         ],
         "title": "NuovaSedeBody"
+      },
+      "NuovaSpesaBody": {
+        "properties": {
+          "data_spesa": {
+            "type": "string",
+            "title": "Data Spesa"
+          },
+          "tipo": {
+            "type": "string",
+            "title": "Tipo"
+          },
+          "importo": {
+            "type": "number",
+            "title": "Importo"
+          },
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_spesa",
+          "tipo",
+          "importo",
+          "descrizione"
+        ],
+        "title": "NuovaSpesaBody"
       },
       "NuovaVoceInventarioBody": {
         "properties": {
