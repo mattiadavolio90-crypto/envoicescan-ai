@@ -11,7 +11,8 @@
       "WebFetch(*)",
       "WebSearch(*)",
       "TodoWrite(*)",
-      "Agent(*)"
+      "Agent(*)",
+      "mcp__claude_ai_Supabase__get_advisors"
     ]
   }
 }
