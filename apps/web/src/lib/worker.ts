@@ -38,7 +38,11 @@ export async function workerGet<T>(path: string, context: string): Promise<T | n
     }
     return (await res.json()) as T;
   } catch (err) {
-    console.error(`[${context}] fetch error:`, err);
+    if (err instanceof Error && err.name === "TimeoutError") {
+      console.warn(`[${context}] worker timeout (${WORKER_TIMEOUT_MS}ms) — cold start?`);
+    } else {
+      console.error(`[${context}] fetch error:`, err);
+    }
     return null;
   }
 }
