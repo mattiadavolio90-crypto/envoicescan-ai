@@ -1864,6 +1864,17 @@ CHAT_LIMITI_PIANO: Dict[str, int] = {
 # Modello chat configurabile via env — default gpt-4.1-mini (migliore tool calling, ~2.7x gpt-4o-mini).
 CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4.1-mini")
 
+# Budget di tempo per il motore alert prezzi dentro il briefing Home. Oltre questa
+# soglia l'alert viene saltato per non far scadere il timeout frontend (8s).
+import concurrent.futures as _concurrent_futures
+from concurrent.futures import TimeoutError as _cf_TimeoutError
+_ALERT_PREZZI_TIMEOUT_SEC = float(os.getenv("ALERT_PREZZI_TIMEOUT_SEC", "4.0"))
+# Executor condiviso: i thread "fuggiti" (alert lento) finiscono in background
+# senza bloccare la risposta. max_workers limita l'accumulo sotto carico.
+_ALERT_PREZZI_EXECUTOR = _concurrent_futures.ThreadPoolExecutor(
+    max_workers=4, thread_name_prefix="alert-prezzi",
+)
+
 
 def _chat_limite_per_piano(piano: Optional[str]) -> int:
     """Domande/giorno consentite per il piano del cliente."""
@@ -2493,7 +2504,19 @@ def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingRespon
     if ristorante_id:
         try:
             from services.price_impact_service import calcola_alert_prezzi_impatto
-            ap = calcola_alert_prezzi_impatto(user_id, ristorante_id, supabase_client=supabase_client)
+            # Budget di tempo: l'alert prezzi e' un "di piu'" del briefing, non deve
+            # poterlo affossare. Su clienti con molte fatture puo' essere lento: se
+            # sfora, lo saltiamo e il briefing esce comunque (la Home non si blocca).
+            # NB: non usare ThreadPoolExecutor come context manager — il suo
+            # shutdown(wait=True) all'uscita del 'with' aspetterebbe comunque il
+            # thread lento, vanificando il timeout. Recuperiamo il risultato con
+            # result(timeout=...) e lasciamo che il thread fuggito muoia da solo.
+            _ex = _ALERT_PREZZI_EXECUTOR
+            _fut = _ex.submit(
+                calcola_alert_prezzi_impatto, user_id, ristorante_id,
+                supabase_client=supabase_client,
+            )
+            ap = _fut.result(timeout=_ALERT_PREZZI_TIMEOUT_SEC)
             notifications = [n for n in notifications if n.get("topic_key") != "price_alert"]
             if ap.get("count") and ap.get("top"):
                 top = ap["top"]
@@ -2514,6 +2537,11 @@ def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingRespon
                     "source_event_at": None,
                     "dedupe_key": "price-alert-live",
                 })
+        except _cf_TimeoutError:
+            logger.warning(
+                "home_briefing: alert prezzi oltre %ss per ristorante=%s — saltato (briefing comunque generato)",
+                _ALERT_PREZZI_TIMEOUT_SEC, ristorante_id,
+            )
         except Exception as exc:
             logger.warning("home_briefing: motore alert prezzi fallito: %s", exc)
 

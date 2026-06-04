@@ -174,9 +174,13 @@ def calcola_alert_prezzi_impatto(
     vuoto = {"count": 0, "alerts": [], "top": None}
 
     try:
+        # force_refresh=False: la Home apre questo motore ad ogni caricamento; con
+        # force_refresh=True si ricaricavano e rielaboravano TUTTE le righe ogni
+        # volta (25s su clienti con migliaia di fatture -> timeout briefing). La
+        # cache 120s e' adeguata: gli alert prezzi non richiedono freschezza al secondo.
         df = carica_e_prepara_dataframe(
             user_id, ristorante_id=ristorante_id,
-            supabase_client=supabase_client, force_refresh=True,
+            supabase_client=supabase_client, force_refresh=False,
         )
     except Exception as exc:
         logger.warning("price_impact: caricamento fatture fallito: %s", exc)
