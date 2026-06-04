@@ -43,6 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         userInitials={getInitials(user.nome_ristorante, user.email)}
         ristoranteNome={user.nome_ristorante ?? "Ristorante"}
         isAdmin={user.is_admin}
+        pagineAbilitate={user.pagine_abilitate}
       />
       <SidebarInset>
         <header className="flex h-14 items-center gap-2 px-4 border-b border-border">

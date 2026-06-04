@@ -207,6 +207,16 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
     }
   }
 
+  async function handleToggleChatAi(enabled: boolean) {
+    try {
+      await patch(`/api/admin/clienti/${c.id}/flags`, "PATCH", { chat_ai_enabled: enabled });
+      setC((prev) => ({ ...prev, chat_ai_enabled: enabled }));
+      toast.success(`Assistente AI ${enabled ? "attivato" : "disattivato"}`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    }
+  }
+
   async function handleEliminaAccount() {
     setEliminaSaving(true);
     try {
@@ -363,6 +373,16 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 </div>
               );
             })}
+            <div className="flex items-center justify-between gap-4 py-1">
+              <div>
+                <p className="text-sm font-medium">Assistente AI (Chat)</p>
+                <p className="text-xs text-muted-foreground">Chat AI nella Home del cliente</p>
+              </div>
+              <Switch
+                checked={c.chat_ai_enabled}
+                onCheckedChange={handleToggleChatAi}
+              />
+            </div>
           </CardContent>
         </Card>
 

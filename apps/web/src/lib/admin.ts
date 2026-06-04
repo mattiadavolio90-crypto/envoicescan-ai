@@ -33,6 +33,7 @@ export type Cliente = {
 
 export type ClienteDettaglio = Cliente & {
   price_alert_threshold: number | null;
+  chat_ai_enabled: boolean;
 };
 
 export const PIANO_LABEL: Record<string, string> = {

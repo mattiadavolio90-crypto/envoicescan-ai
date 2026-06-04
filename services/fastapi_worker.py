@@ -8221,6 +8221,16 @@ def admin_dettaglio_cliente(cliente_id: str):
         except Exception:
             trial_info = {"active": True}
 
+    ristorante_id = _get_ristorante_id_for_user(cliente_id, sb)
+    chat_ai_enabled = True
+    if ristorante_id:
+        try:
+            pref_resp = sb.table("assistant_preferences").select("chat_ai_enabled").eq("ristorante_id", ristorante_id).limit(1).execute()
+            if pref_resp.data and pref_resp.data[0].get("chat_ai_enabled") is not None:
+                chat_ai_enabled = bool(pref_resp.data[0]["chat_ai_enabled"])
+        except Exception:
+            pass
+
     return {
         "id": u["id"],
         "email": u["email"],
@@ -8235,6 +8245,7 @@ def admin_dettaglio_cliente(cliente_id: str):
         "price_alert_threshold": u.get("price_alert_threshold"),
         "trial": trial_info,
         "pagine_abilitate": u.get("pagine_abilitate") or {},
+        "chat_ai_enabled": chat_ai_enabled,
         "sedi": sedi,
     }
 
@@ -9381,6 +9392,7 @@ def admin_elimina_mapping(mapping_id: str, admin_user: dict = Depends(_verify_ad
 
 class FlagsBody(BaseModel):
     pagine_abilitate: Optional[dict] = None
+    chat_ai_enabled: Optional[bool] = None
     attivo: Optional[bool] = None
     trial_reset: Optional[bool] = None
 
@@ -9414,10 +9426,20 @@ def admin_aggiorna_flags(
         update["trial_active"] = False
         update["trial_activated_at"] = None
 
-    if not update:
+    if not update and body.chat_ai_enabled is None:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
 
-    sb.table("users").update(update).eq("id", cliente_id).execute()
+    if update:
+        sb.table("users").update(update).eq("id", cliente_id).execute()
+
+    if body.chat_ai_enabled is not None:
+        ristorante_id = _get_ristorante_id_for_user(cliente_id, sb)
+        if ristorante_id:
+            sb.table("assistant_preferences").upsert(
+                {"ristorante_id": ristorante_id, "chat_ai_enabled": body.chat_ai_enabled},
+                on_conflict="ristorante_id",
+            ).execute()
+
     logger.info("admin_aggiorna_flags: cliente=%s update=%s | admin=%s", cliente_id, list(update.keys()), admin_user.get("email"))
     return {"ok": True}
 

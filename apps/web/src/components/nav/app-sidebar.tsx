@@ -42,13 +42,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const navMain = [
-  { title: "Home", url: "/dashboard", icon: Home },
-  { title: "Analisi Fatture", url: "/analisi-fatture", icon: FileText },
-  { title: "Ricavi e Margini", url: "/margini", icon: BarChart3 },
-  { title: "Prezzi", url: "/prezzi", icon: Search },
-  { title: "Analisi e Tag", url: "/analisi-e-tag", icon: Tags },
-  { title: "Strumenti", url: "/workspace", icon: Wrench },
-  { title: "Gestione Fatture", url: "/scadenziario", icon: CalendarDays },
+  { title: "Home", url: "/dashboard", icon: Home, flag: null },
+  { title: "Analisi Fatture", url: "/analisi-fatture", icon: FileText, flag: "analisi_fatture" },
+  { title: "Ricavi e Margini", url: "/margini", icon: BarChart3, flag: "margini" },
+  { title: "Prezzi", url: "/prezzi", icon: Search, flag: "prezzi" },
+  { title: "Analisi e Tag", url: "/analisi-e-tag", icon: Tags, flag: "analisi_e_tag" },
+  { title: "Strumenti", url: "/workspace", icon: Wrench, flag: "workspace" },
+  { title: "Gestione Fatture", url: "/scadenziario", icon: CalendarDays, flag: "scadenziario" },
 ];
 
 const navSecondary = [
@@ -61,6 +61,7 @@ type AppSidebarProps = {
   userInitials?: string;
   ristoranteNome?: string;
   isAdmin?: boolean;
+  pagineAbilitate?: string[] | null;
 };
 
 export function AppSidebar({
@@ -68,9 +69,14 @@ export function AppSidebar({
   userInitials = "U",
   ristoranteNome = "Ristorante",
   isAdmin = false,
+  pagineAbilitate,
 }: AppSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+
+  const visibleNav = pagineAbilitate == null
+    ? navMain
+    : navMain.filter((item) => item.flag === null || pagineAbilitate.includes(item.flag));
 
   async function handleLogout() {
     try {
@@ -106,7 +112,7 @@ export function AppSidebar({
         <SidebarGroup>
           <SidebarGroupLabel>Menu principale</SidebarGroupLabel>
           <SidebarMenu>
-            {navMain.map((item) => (
+            {visibleNav.map((item) => (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton
                   render={<Link href={item.url} />}
