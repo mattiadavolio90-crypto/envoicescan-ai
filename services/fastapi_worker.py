@@ -1997,8 +1997,48 @@ def _build_chat_system_prompt(
     if not kpi_testo:
         kpi_testo = "\n\n(Nessun dato di costo o margine ancora registrato.)"
 
+    # Data di oggi + intervallo dati: SENZA questo il modello usa il suo knowledge
+    # cutoff (2024) come anno di default e cerca sistematicamente nell'anno
+    # sbagliato -> "non risulta nulla" anche quando il dato c'e'.
+    from datetime import date as _date_today
+    oggi = _date_today.today()
+    _MESI_NOMI = ["", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+                  "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
+    oggi_str = f"{oggi.day} {_MESI_NOMI[oggi.month]} {oggi.year}"
+
+    range_dati = ""
+    try:
+        user_id = str(user["id"])
+        q_min = (
+            supabase_client.table("fatture").select("data_documento")
+            .eq("user_id", user_id).is_("deleted_at", "null")
+            .order("data_documento", desc=False).limit(1)
+        )
+        q_max = (
+            supabase_client.table("fatture").select("data_documento")
+            .eq("user_id", user_id).is_("deleted_at", "null")
+            .order("data_documento", desc=True).limit(1)
+        )
+        if ristorante_id:
+            q_min = q_min.eq("ristorante_id", ristorante_id)
+            q_max = q_max.eq("ristorante_id", ristorante_id)
+        dmin = (q_min.execute().data or [{}])
+        dmax = (q_max.execute().data or [{}])
+        d0 = dmin[0].get("data_documento") if dmin else None
+        d1 = dmax[0].get("data_documento") if dmax else None
+        if d0 and d1:
+            range_dati = f"Le fatture nel sistema vanno dal {d0} al {d1}."
+    except Exception as exc:
+        logger.warning("chat: range date non disponibile: %s", exc)
+
     sistema = f"""Sei l'assistente AI di ONEFLUX, integrato nel gestionale del ristorante "{nome}".
 {f"Stai parlando con {referente}." if referente else ""}
+
+## Data e periodo (IMPORTANTE)
+Oggi e' {oggi_str}. L'anno corrente e' {oggi.year}. {range_dati}
+Quando l'utente non specifica l'anno, usa SEMPRE l'anno corrente ({oggi.year}) — MAI un anno passato.
+"Ultimo acquisto", "ultima fattura", "recente" NON sono un periodo: non filtrare per mese/anno, cerca il piu' recente in assoluto.
+Non inventare anni: se dopo aver usato l'anno corrente non trovi nulla, dillo e proponi di cercare in tutto lo storico.
 
 Rispondi SOLO a domande sui dati del ristorante: costi, fornitori, food cost, margini, MOL, fatture, scadenze.
 Per argomenti non pertinenti (ricette generiche, notizie, argomenti personali) rispondi educatamente che puoi aiutare solo sulla gestione del locale.
@@ -2009,7 +2049,7 @@ Importi sempre in euro con 2 decimali. Usa i dati qui sotto: sono gli stessi che
 Regole per gli strumenti:
 - Per qualsiasi numero specifico (categoria, fornitore, prodotto, periodo preciso) usa SEMPRE lo strumento giusto — non rispondere a memoria.
 - Per domande generiche sull'andamento ("com'è il mio food cost?", "sto guadagnando?") usa i dati qui sotto.
-- Se il periodo non e' chiaro, chiedi prima quale mese/anno intende l'utente.
+- Lo strumento query_costi cerca in automatico tra categorie, fornitori e prodotti: se cerchi "birra" e una voce non c'e' come categoria, lo strumento prova anche come prodotto. Fidati del risultato dello strumento.
 - I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
 
     return sistema
@@ -2035,47 +2075,97 @@ def _chat_query_costi(
 ) -> Dict[str, Any]:
     """Interroga i costi fatturati con filtri opzionali (per il tool della chat).
 
-    Restituisce totale + dettaglio aggregato. Match testuali case-insensitive
-    e parziali (ilike) su categoria/fornitore/prodotto. Scoping per ristorante_id
-    coerente con le altre pagine (Margini/Prezzi): senza, la chat rispondeva
-    aggregando tutti i ristoranti dell'utente.
+    Ricerca TOLLERANTE: un termine generico (categoria/prodotto) viene cercato
+    sia tra le categorie sia tra i nomi prodotto, e con fallback singolare/
+    plurale. Cosi' "birra" trova la categoria "BIRRE" anche se l'utente non usa
+    la parola esatta del DB (era il difetto che faceva dire "non risulta").
+    Scoping per ristorante_id coerente con Margini/Prezzi.
     """
-    from datetime import date as _date
     from calendar import monthrange
 
-    q = (
-        supabase_client.table("fatture")
-        .select("totale_riga,categoria,fornitore,descrizione,data_documento")
-        .eq("user_id", user_id)
-        .is_("deleted_at", "null")
-    )
-    if ristorante_id:
-        q = q.eq("ristorante_id", ristorante_id)
+    def _base_query():
+        q = (
+            supabase_client.table("fatture")
+            .select("totale_riga,categoria,fornitore,descrizione,data_documento")
+            .eq("user_id", user_id)
+            .is_("deleted_at", "null")
+        )
+        if ristorante_id:
+            q = q.eq("ristorante_id", ristorante_id)
+        if mese and anno:
+            ultimo = monthrange(anno, mese)[1]
+            q = q.gte("data_documento", f"{anno}-{mese:02d}-01")
+            q = q.lte("data_documento", f"{anno}-{mese:02d}-{ultimo:02d}")
+        elif anno:
+            q = q.gte("data_documento", f"{anno}-01-01").lte("data_documento", f"{anno}-12-31")
+        return q
 
-    periodo_label = "tutto lo storico"
     if mese and anno:
-        ultimo = monthrange(anno, mese)[1]
-        q = q.gte("data_documento", f"{anno}-{mese:02d}-01")
-        q = q.lte("data_documento", f"{anno}-{mese:02d}-{ultimo:02d}")
         periodo_label = f"{[k for k, v in _MESI_MAP.items() if v == mese][0]} {anno}"
     elif anno:
-        q = q.gte("data_documento", f"{anno}-01-01").lte("data_documento", f"{anno}-12-31")
         periodo_label = str(anno)
+    else:
+        periodo_label = "tutto lo storico"
 
-    if categoria:
-        q = q.ilike("categoria", f"%{categoria}%")
-    if fornitore:
-        q = q.ilike("fornitore", f"%{fornitore}%")
-    if prodotto:
-        q = q.ilike("descrizione", f"%{prodotto}%")
+    # Varianti del termine per tollerare singolare/plurale (birra<->birre,
+    # pomodoro<->pomodori). Niente librerie: bastano poche desinenze italiane.
+    def _varianti(term: str) -> List[str]:
+        t = (term or "").strip()
+        if not t:
+            return []
+        out = [t]
+        base = t
+        for suf in ("e", "i", "o", "a"):
+            if t.lower().endswith(suf) and len(t) > 3:
+                base = t[:-1]
+                break
+        if base != t:
+            out.append(base)  # radice senza desinenza: ilike %radic% prende tutte le forme
+        return out
 
-    righe = (q.limit(5000).execute().data) or []
+    # Il termine "generico" che l'utente associa a categoria o prodotto.
+    termine = categoria or prodotto
+
+    def _esegui(filtro_fornitore: Optional[str], termine_su: Optional[str], termine_val: Optional[str]):
+        q = _base_query()
+        if filtro_fornitore:
+            q = q.ilike("fornitore", f"%{filtro_fornitore}%")
+        if termine_su and termine_val:
+            if termine_su == "categoria":
+                q = q.ilike("categoria", f"%{termine_val}%")
+            elif termine_su == "prodotto":
+                q = q.ilike("descrizione", f"%{termine_val}%")
+            elif termine_su == "ovunque":
+                # categoria OR descrizione: cattura sia "birra" categoria che prodotto
+                q = q.or_(f"categoria.ilike.%{termine_val}%,descrizione.ilike.%{termine_val}%")
+        return (q.limit(5000).execute().data) or []
+
+    righe: List[Dict[str, Any]] = []
+    trovato_come = None  # "categoria" | "prodotto" | None
+
+    if termine:
+        # 1) prova esatta sul campo indicato; 2) ovunque; 3) varianti ovunque.
+        campo_pref = "categoria" if categoria else "prodotto"
+        for term_val in _varianti(termine):
+            righe = _esegui(fornitore, campo_pref, term_val)
+            if righe:
+                trovato_come = campo_pref
+                break
+            righe = _esegui(fornitore, "ovunque", term_val)
+            if righe:
+                # capisce se ha matchato la categoria o il prodotto
+                cat_match = any(term_val.lower() in str(r.get("categoria") or "").lower() for r in righe)
+                trovato_come = "categoria" if cat_match else "prodotto"
+                break
+    else:
+        righe = _esegui(fornitore, None, None)
+
     totale = sum(float(r.get("totale_riga") or 0) for r in righe)
 
-    # Dettaglio: se filtra per categoria/prodotto, raggruppa per prodotto;
+    # Dettaglio: se cerca un termine specifico, raggruppa per prodotto;
     # altrimenti per categoria.
     dettaglio: Dict[str, float] = {}
-    chiave = "descrizione" if (categoria or prodotto or fornitore) else "categoria"
+    chiave = "descrizione" if (termine or fornitore) else "categoria"
     for r in righe:
         k = (r.get(chiave) or "?").strip()
         dettaglio[k] = dettaglio.get(k, 0) + float(r.get("totale_riga") or 0)
@@ -2085,6 +2175,7 @@ def _chat_query_costi(
         "periodo": periodo_label,
         "totale": round(totale, 2),
         "righe_trovate": len(righe),
+        "trovato_come": trovato_come,
         "dettaglio": [{"voce": k, "spesa": round(v, 2)} for k, v in top],
     }
 
@@ -2115,6 +2206,51 @@ def _chat_query_scadenze(user: Dict[str, Any], supabase_client, solo_da_pagare: 
     # Ordina per scadenza (le piu' vicine prima)
     voci.sort(key=lambda x: x.get("scadenza") or "9999")
     return {"scadenze": voci[:30], "totale_da_pagare": round(totale, 2)}
+
+
+def _chat_ultimi_acquisti(
+    user_id: str,
+    supabase_client,
+    prodotto: Optional[str] = None,
+    fornitore: Optional[str] = None,
+    limite: int = 5,
+    ristorante_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Ultime righe d'acquisto in ordine cronologico (per il tool della chat).
+
+    Risponde a "qual e' l'ultimo acquisto / l'ultima fattura / l'ultima volta
+    che ho comprato X". Senza questo tool l'AI ripiegava su query_costi
+    (aggregati) e non riusciva a dire data+prodotto+fornitore dell'ultima riga.
+    """
+    q = (
+        supabase_client.table("fatture")
+        .select("data_documento,descrizione,fornitore,categoria,totale_riga,quantita,unita_misura")
+        .eq("user_id", user_id)
+        .is_("deleted_at", "null")
+    )
+    if ristorante_id:
+        q = q.eq("ristorante_id", ristorante_id)
+    if prodotto:
+        q = q.or_(f"descrizione.ilike.%{prodotto}%,categoria.ilike.%{prodotto}%")
+    if fornitore:
+        q = q.ilike("fornitore", f"%{fornitore}%")
+
+    lim = max(1, min(int(limite or 5), 15))
+    righe = (
+        q.order("data_documento", desc=True).limit(lim).execute().data
+    ) or []
+
+    acquisti = [{
+        "data": r.get("data_documento"),
+        "prodotto": (r.get("descrizione") or "").strip(),
+        "fornitore": (r.get("fornitore") or "").strip(),
+        "categoria": (r.get("categoria") or "").strip(),
+        "importo": round(float(r.get("totale_riga") or 0), 2),
+        "quantita": r.get("quantita"),
+        "unita": (r.get("unita_misura") or "").strip(),
+    } for r in righe]
+
+    return {"acquisti": acquisti, "trovati": len(acquisti)}
 
 
 def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Optional[str]) -> Dict[str, Any]:
@@ -2328,6 +2464,27 @@ def chat_ai(
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "ultimi_acquisti",
+                "description": (
+                    "Le ultime righe d'acquisto in ordine di data (piu' recente prima), "
+                    "con data, prodotto, fornitore e importo. Usalo per 'qual e' l'ultimo "
+                    "acquisto', 'ultima fattura', 'l'ultima volta che ho comprato X', "
+                    "'cosa ho comprato di recente da Y'. NON usarlo per totali di spesa "
+                    "(quello e' query_costi)."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prodotto": {"type": "string", "description": "Nome o parte del prodotto (opzionale)"},
+                        "fornitore": {"type": "string", "description": "Nome o parte del fornitore (opzionale)"},
+                        "limite": {"type": "integer", "description": "Quante righe restituire, 1-15 (default 5)"},
+                    },
+                },
+            },
+        },
     ]
 
     def _esegui_tool(nome: str, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -2348,6 +2505,15 @@ def chat_ai(
             return _chat_query_margini(user, supabase_client, authorization)
         if nome == "confronto_prezzi":
             return _chat_confronto_prezzi(user, supabase_client, args.get("prodotto", ""), ristorante_id)
+        if nome == "ultimi_acquisti":
+            return _chat_ultimi_acquisti(
+                user_id=user_id,
+                supabase_client=supabase_client,
+                prodotto=args.get("prodotto"),
+                fornitore=args.get("fornitore"),
+                limite=args.get("limite", 5),
+                ristorante_id=ristorante_id,
+            )
         return {"errore": f"strumento sconosciuto: {nome}"}
 
     # Accumulatori token per il tracking costi (somma di tutti i round del loop).
