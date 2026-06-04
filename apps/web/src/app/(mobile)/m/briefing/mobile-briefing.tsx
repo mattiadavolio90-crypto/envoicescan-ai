@@ -17,6 +17,14 @@ import { cn } from "@/lib/utils";
 // del giorno, durata ~costante.
 const TYPEWRITER_ENABLED = true;
 
+// Topic "incombenza reale" calcolati live: la card sparisce inserendo il dato e
+// si rigenera finche' manca. "Ignora" sarebbe ingannevole -> non lo mostriamo.
+const NON_IGNORABILI = new Set<string>([
+  "fatturato_mancante",
+  "costo_personale_mancante",
+  "incasso_mancante",
+]);
+
 function SeverityIcon({ severity }: { severity: BriefingAzione["severity"] }) {
   if (severity === "error") return <XCircle className="size-5 shrink-0 text-destructive" />;
   if (severity === "warning") return <AlertTriangle className="size-5 shrink-0 text-amber-500" />;
@@ -140,14 +148,16 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
             >
               <SeverityIcon severity={a.severity} />
               <p className="flex-1 text-sm leading-snug">{a.testo}</p>
-              <button
-                type="button"
-                disabled={loading.has(a.id)}
-                onClick={() => dismiss(a.id)}
-                className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground active:scale-[0.98]"
-              >
-                Ignora
-              </button>
+              {!NON_IGNORABILI.has(a.topic_key) && (
+                <button
+                  type="button"
+                  disabled={loading.has(a.id)}
+                  onClick={() => dismiss(a.id)}
+                  className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground active:scale-[0.98]"
+                >
+                  Ignora
+                </button>
+              )}
             </div>
           ))}
         </div>

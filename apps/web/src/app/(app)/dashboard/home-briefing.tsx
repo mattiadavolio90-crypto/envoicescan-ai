@@ -19,6 +19,15 @@ import { cn } from "@/lib/utils";
 // giorno, max ~600ms. Dietro flag perche' deve restare sobrio e veloce.
 const TYPEWRITER_ENABLED = true;
 
+// Topic "incombenza reale" calcolati live dal backend: la card sparisce da sola
+// quando inserisci il dato, e si rigenera ogni giorno finche' manca. "Ignora"
+// qui sarebbe ingannevole (ricomparirebbe al refresh): non lo mostriamo.
+const NON_IGNORABILI = new Set<string>([
+  "fatturato_mancante",
+  "costo_personale_mancante",
+  "incasso_mancante",
+]);
+
 function SeverityIcon({ severity }: { severity: BriefingAzione["severity"] }) {
   if (severity === "error") return <XCircle className="size-5 text-destructive shrink-0" />;
   if (severity === "warning") return <AlertTriangle className="size-5 text-amber-500 shrink-0" />;
@@ -147,15 +156,17 @@ export function HomeBriefing({ briefing }: Props) {
               <SeverityIcon severity={a.severity} />
               <p className="flex-1 text-sm leading-snug">{a.testo}</p>
               <div className="flex shrink-0 items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground"
-                  disabled={loading.has(a.id)}
-                  onClick={() => dismiss(a.id)}
-                >
-                  Ignora
-                </Button>
+                {!NON_IGNORABILI.has(a.topic_key) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground"
+                    disabled={loading.has(a.id)}
+                    onClick={() => dismiss(a.id)}
+                  >
+                    Ignora
+                  </Button>
+                )}
                 <Link href={a.cta_page} className={cn(buttonVariants({ size: "sm" }))}>
                   {a.cta_label}
                   <ArrowRight className="size-4" />
