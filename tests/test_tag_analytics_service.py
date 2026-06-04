@@ -122,6 +122,31 @@ def test_analizza_tag_end_to_end(monkeypatch):
     assert len(result["fornitori"]["fornitori"]) == 2
 
 
+def test_analizza_tag_df_precaricato_non_ricarica(monkeypatch):
+    """Con df_precaricato, analizza_tag NON deve chiamare carica_e_prepara_dataframe.
+
+    Blinda il fix performance del briefing Home: l'alert prezzi carica il df UNA
+    volta e lo passa a tutte le 2×N analisi tag, invece di ricaricare ogni volta.
+    """
+    monkeypatch.setattr(tas, "get_custom_tag_prodotti", lambda tag_id, user_id: _associazioni())
+
+    chiamate = {"n": 0}
+
+    def _spy(*args, **kwargs):
+        chiamate["n"] += 1
+        return _df_fatture()
+
+    monkeypatch.setattr(tas, "carica_e_prepara_dataframe", _spy)
+
+    result = analizza_tag(
+        "u1", "r1", 1, date(2026, 1, 1), date(2026, 12, 31),
+        df_precaricato=_df_fatture(),
+    )
+
+    assert result["vuoto"] is False
+    assert chiamate["n"] == 0
+
+
 def test_analizza_tag_empty_when_no_assoc(monkeypatch):
     monkeypatch.setattr(tas, "get_custom_tag_prodotti", lambda tag_id, user_id: [])
     result = analizza_tag("u1", "r1", 99, date(2026, 1, 1), date(2026, 12, 31))

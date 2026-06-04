@@ -91,7 +91,7 @@ def _alert_prodotti(df: pd.DataFrame, soglia_impatto: float) -> List[Dict[str, A
 def _alert_tag(
     user_id: str,
     ristorante_id: str,
-    df_periodo: pd.DataFrame,
+    df_completo: pd.DataFrame,
     soglia_impatto: float,
 ) -> List[Dict[str, Any]]:
     """Aumenti sui custom TAG del cliente, stessa logica impatto €/mese.
@@ -99,6 +99,11 @@ def _alert_tag(
     Usa il prezzo medio ponderato del tag (tag_analytics) e confronta la prima
     meta' del periodo con la seconda per stimare la variazione; l'impatto e'
     delta_prezzo × quantita' del tag nel periodo, riportato al mese.
+
+    ``df_completo`` (NON filtrato per periodo) viene passato a ``analizza_tag``
+    che filtra lui per le sue finestre: cosi' il DataFrame si carica UNA volta
+    sola per tutti i tag, invece di una ricarica completa da Supabase per ognuna
+    delle 2×N chiamate (era il collo di bottiglia ~17s del briefing Home).
     """
     try:
         tags = get_custom_tags(user_id, ristorante_id) or []
@@ -121,8 +126,8 @@ def _alert_tag(
         if tag_id is None or not nome:
             continue
         try:
-            recente = analizza_tag(user_id, ristorante_id, int(tag_id), meta, oggi)
-            precedente = analizza_tag(user_id, ristorante_id, int(tag_id), inizio, meta)
+            recente = analizza_tag(user_id, ristorante_id, int(tag_id), meta, oggi, df_precaricato=df_completo)
+            precedente = analizza_tag(user_id, ristorante_id, int(tag_id), inizio, meta, df_precaricato=df_completo)
         except Exception as exc:
             logger.warning("price_impact: analisi tag %s fallita: %s", tag_id, exc)
             continue
@@ -196,7 +201,7 @@ def calcola_alert_prezzi_impatto(
     soglia_impatto = max(0.0, spesa_food * _FRAZIONE_SPESA_FOOD)
 
     prodotti = _alert_prodotti(df_periodo, soglia_impatto)
-    tag = _alert_tag(user_id, ristorante_id, df_periodo, soglia_impatto)
+    tag = _alert_tag(user_id, ristorante_id, df, soglia_impatto)
 
     # Unisci e ordina per impatto €/mese decrescente; tieni i top.
     tutti = sorted(prodotti + tag, key=lambda a: a["impatto_mese"], reverse=True)

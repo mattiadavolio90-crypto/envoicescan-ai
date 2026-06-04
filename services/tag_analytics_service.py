@@ -318,6 +318,7 @@ def analizza_tag(
     tag_id: int,
     data_da,
     data_a,
+    df_precaricato: Optional[pd.DataFrame] = None,
 ) -> Dict[str, Any]:
     """Analisi completa di un tag nel periodo richiesto.
 
@@ -325,6 +326,10 @@ def analizza_tag(
         user_id, ristorante_id: scope multi-tenant.
         tag_id: id del custom tag.
         data_da, data_a: ``datetime.date`` (estremi inclusi).
+        df_precaricato: DataFrame fatture gia' caricato dal chiamante. Quando
+            piu' chiamate condividono lo stesso scope (es. alert prezzi che
+            analizza tutti i tag), il chiamante carica UNA volta e lo passa qui,
+            evitando una ricarica completa da Supabase per ogni invocazione.
 
     Returns:
         dict con chiavi ``kpi``, ``trend``, ``fornitori``, ``vuoto``.
@@ -338,7 +343,13 @@ def analizza_tag(
         return empty_result
 
     associazioni_map = _build_associazioni_map(associazioni)
-    df_all = carica_e_prepara_dataframe(user_id, ristorante_id=ristorante_id, force_refresh=True)
+    # force_refresh=False: la cache 120s e' adeguata (l'analisi tag non richiede
+    # freschezza al secondo) ed evita di ricaricare TUTTE le righe ad ogni chiamata.
+    df_all = (
+        df_precaricato
+        if df_precaricato is not None
+        else carica_e_prepara_dataframe(user_id, ristorante_id=ristorante_id, force_refresh=False)
+    )
     if df_all is None or df_all.empty:
         return empty_result
 
@@ -364,7 +375,7 @@ def compute_orfani(user_id: str, ristorante_id: str, tag_id: int) -> List[Dict[s
     if not associazioni:
         return []
 
-    df_all = carica_e_prepara_dataframe(user_id, ristorante_id=ristorante_id, force_refresh=True)
+    df_all = carica_e_prepara_dataframe(user_id, ristorante_id=ristorante_id, force_refresh=False)
     if df_all is None or df_all.empty:
         return []
 
