@@ -50,12 +50,23 @@ export function ChatWidget() {
         body: JSON.stringify({ messages: nuovi }),
       });
       const data = (await res.json()) as { reply?: string; error?: string };
-      const reply = data.reply || data.error || "Non ho capito, riprova.";
+      let reply: string;
+      if (data.reply) {
+        reply = data.reply;
+      } else if (res.status === 429) {
+        reply = data.error || "Hai raggiunto il limite di domande per oggi. Riprova domani.";
+      } else if (res.status === 403) {
+        reply = data.error || "La chat non è disponibile nel tuo piano attuale.";
+      } else if (res.status === 504) {
+        reply = "L'assistente ha impiegato troppo tempo. Riprova.";
+      } else {
+        reply = data.error || "Si è verificato un errore. Riprova.";
+      }
       setMessages((prev) => [...prev, { role: "assistant", content: reply }]);
     } catch {
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: "Errore di connessione. Riprova." },
+        { role: "assistant", content: "Errore di connessione. Controlla la rete e riprova." },
       ]);
     } finally {
       setLoading(false);

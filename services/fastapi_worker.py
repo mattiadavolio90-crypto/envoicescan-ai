@@ -1852,13 +1852,17 @@ class MarketplaceLeadStatoBody(BaseModel):
 
 # Limite domande/giorno per piano: rete di sicurezza sui costi OpenAI e leva
 # commerciale. Visibile al cliente nelle Impostazioni (contatore).
-# free = chat disattivata; base 10, plus 20, pro 30.
+# free = chat disattivata; base 8, plus 15, pro 30.
+# Tetto costi massimo assoluto con gpt-4.1-mini: base ~$0.58, plus ~$1.08, pro ~$2.16/mese.
 CHAT_LIMITI_PIANO: Dict[str, int] = {
     "free": 0,
-    "base": 10,
-    "plus": 20,
+    "base": 8,
+    "plus": 15,
     "pro": 30,
 }
+
+# Modello chat configurabile via env — default gpt-4.1-mini (migliore tool calling, ~2.7x gpt-4o-mini).
+CHAT_MODEL = os.getenv("CHAT_MODEL", "gpt-4.1-mini")
 
 
 def _chat_limite_per_piano(piano: Optional[str]) -> int:
@@ -1900,7 +1904,8 @@ class ChatResponse(BaseModel):
 
 
 def _build_chat_system_prompt(
-    user: Dict[str, Any], supabase_client, authorization: Optional[str]
+    user: Dict[str, Any], supabase_client, authorization: Optional[str],
+    ristorante_id: Optional[str] = None,
 ) -> str:
     """Costruisce il system prompt con i dati freschi del ristorante.
 
@@ -1944,6 +1949,11 @@ def _build_chat_system_prompt(
             .eq("user_id", user_id)
             .is_("deleted_at", "null")
             .gte("data_documento", da)
+        )
+        if ristorante_id:
+            q = q.eq("ristorante_id", ristorante_id)
+        q = (
+            q
             .limit(3000)
             .execute()
         )
@@ -1962,18 +1972,14 @@ def _build_chat_system_prompt(
                 if desc:
                     per_prod[desc] = per_prod.get(desc, 0) + v
             top_cat = sorted(per_cat.items(), key=lambda x: x[1], reverse=True)[:8]
-            top_forn = sorted(per_forn.items(), key=lambda x: x[1], reverse=True)[:8]
-            top_prod = sorted(per_prod.items(), key=lambda x: x[1], reverse=True)[:20]
+            top_forn = sorted(per_forn.items(), key=lambda x: x[1], reverse=True)[:6]
 
             kpi_testo += "\n## Costi per categoria (ultimi 90 giorni)\n"
             for cat, v in top_cat:
                 kpi_testo += f"- {cat}: €{v:,.2f}\n"
-            kpi_testo += "\n## Costi per fornitore (ultimi 90 giorni)\n"
+            kpi_testo += "\n## Fornitori principali per spesa (ultimi 90 giorni)\n"
             for forn, v in top_forn:
                 kpi_testo += f"- {forn}: €{v:,.2f}\n"
-            kpi_testo += "\n## Prodotti più acquistati (ultimi 90 giorni, per spesa)\n"
-            for desc, v in top_prod:
-                kpi_testo += f"- {desc}: €{v:,.2f}\n"
     except Exception as exc:
         logger.warning("chat: dettaglio fatture non disponibile: %s", exc)
 
@@ -1989,7 +1995,11 @@ Per argomenti non pertinenti (ricette generiche, notizie, argomenti personali) r
 Tono: diretto, concreto, da collega esperto in F&B — non da chatbot generico. Risposte brevi (2-5 righe al massimo).
 Importi sempre in euro con 2 decimali. Usa i dati qui sotto: sono gli stessi che il cliente vede nella sua schermata Home. Se un dato c'e' qui, NON dire che non hai dati.
 
-Per domande su un PERIODO SPECIFICO (es. "quanto ho speso in carne a maggio", "spesa di gennaio") usa lo strumento query_costi. Se il periodo non e' chiaro, chiedi all'utente quale mese/anno intende prima di rispondere. Per le domande generiche sull'andamento usa i dati qui sotto senza chiamare lo strumento.{kpi_testo}"""
+Regole per gli strumenti:
+- Per qualsiasi numero specifico (categoria, fornitore, prodotto, periodo preciso) usa SEMPRE lo strumento giusto — non rispondere a memoria.
+- Per domande generiche sull'andamento ("com'è il mio food cost?", "sto guadagnando?") usa i dati qui sotto.
+- Se il periodo non e' chiaro, chiedi prima quale mese/anno intende l'utente.
+- I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
 
     return sistema
 
@@ -2139,22 +2149,26 @@ def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Op
     return {"mesi": risultati}
 
 
-def _chat_confronto_prezzi(user: Dict[str, Any], supabase_client, prodotto: str) -> Dict[str, Any]:
+def _chat_confronto_prezzi(
+    user: Dict[str, Any], supabase_client, prodotto: str,
+    ristorante_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """Confronta il prezzo unitario di un prodotto tra i fornitori (ultimi 180gg).
     Cuore di ONEFLUX: trova chi lo fa al prezzo migliore."""
     from datetime import date as _date, timedelta as _td
     user_id = str(user["id"])
     da = (_date.today() - _td(days=180)).isoformat()
-    righe = (
+    q = (
         supabase_client.table("fatture")
         .select("descrizione,fornitore,prezzo_unitario,data_documento")
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
         .ilike("descrizione", f"%{prodotto}%")
         .gte("data_documento", da)
-        .limit(2000)
-        .execute()
-    ).data or []
+    )
+    if ristorante_id:
+        q = q.eq("ristorante_id", ristorante_id)
+    righe = q.limit(2000).execute().data or []
 
     # Miglior (ultimo) prezzo per fornitore
     per_forn: Dict[str, Dict[str, Any]] = {}
@@ -2195,6 +2209,7 @@ def chat_ai(
         raise HTTPException(status_code=500, detail="OPENAI_API_KEY non configurata")
 
     user_id = str(user["id"])
+    # Risolto una sola volta e riusato ovunque (tool dispatcher incluso).
     ristorante_id = _resolve_ristorante_id(user, supabase_client)
 
     # Limite domande/giorno in base al piano del cliente.
@@ -2222,11 +2237,13 @@ def chat_ai(
             detail=f"Hai raggiunto il limite di {limite} domande per oggi. Riprova domani.",
         )
 
-    system_prompt = _build_chat_system_prompt(user, supabase_client, authorization)
+    system_prompt = _build_chat_system_prompt(user, supabase_client, authorization, ristorante_id)
 
     from openai import OpenAI
     import json as _json
-    client = OpenAI(api_key=openai_api_key)
+    # timeout esplicito: senza, il default OpenAI è 600s e il nostro handler 504
+    # non scatterebbe mai in tempo utile.
+    client = OpenAI(api_key=openai_api_key, timeout=30.0)
 
     messages: List[Dict[str, Any]] = [{"role": "system", "content": system_prompt}]
     messages += [{"role": m.role, "content": m.content} for m in body.messages]
@@ -2302,8 +2319,6 @@ def chat_ai(
         },
     ]
 
-    _chat_ristorante_id = _resolve_ristorante_id(user, supabase_client)
-
     def _esegui_tool(nome: str, args: Dict[str, Any]) -> Dict[str, Any]:
         if nome == "query_costi":
             return _chat_query_costi(
@@ -2314,32 +2329,51 @@ def chat_ai(
                 categoria=args.get("categoria"),
                 fornitore=args.get("fornitore"),
                 prodotto=args.get("prodotto"),
-                ristorante_id=_chat_ristorante_id,
+                ristorante_id=ristorante_id,
             )
         if nome == "query_scadenze":
             return _chat_query_scadenze(user, supabase_client, args.get("solo_da_pagare", True))
         if nome == "query_margini":
             return _chat_query_margini(user, supabase_client, authorization)
         if nome == "confronto_prezzi":
-            return _chat_confronto_prezzi(user, supabase_client, args.get("prodotto", ""))
+            return _chat_confronto_prezzi(user, supabase_client, args.get("prodotto", ""), ristorante_id)
         return {"errore": f"strumento sconosciuto: {nome}"}
 
+    # Accumulatori token per il tracking costi (somma di tutti i round del loop).
+    _prompt_tok = 0
+    _completion_tok = 0
     try:
-        # Loop di tool calling: max 3 round per evitare cicli.
+        from openai import APITimeoutError as _OAITimeout, RateLimitError as _OAIRateLimit, APIError as _OAIError
         reply = ""
+        # Loop tool calling: max 3 round. 1 retry su errori transienti (timeout/5xx).
         for _ in range(3):
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=messages,  # type: ignore[arg-type]
-                tools=tools,  # type: ignore[arg-type]
-                max_tokens=400,
-                temperature=0.3,
-            )
+            for tentativo in range(2):
+                try:
+                    resp = client.chat.completions.create(
+                        model=CHAT_MODEL,
+                        messages=messages,  # type: ignore[arg-type]
+                        tools=tools,  # type: ignore[arg-type]
+                        max_tokens=900,
+                        temperature=0.3,
+                    )
+                    break
+                except _OAITimeout:
+                    if tentativo == 0:
+                        continue
+                    raise HTTPException(status_code=504, detail="L'assistente ha impiegato troppo tempo. Riprova.")
+                except _OAIRateLimit:
+                    raise HTTPException(status_code=429, detail="Servizio temporaneamente sovraccarico. Riprova tra qualche secondo.")
+                except _OAIError as exc:
+                    if tentativo == 0 and getattr(exc, "status_code", 0) >= 500:
+                        continue
+                    raise
+            if resp.usage:
+                _prompt_tok += resp.usage.prompt_tokens or 0
+                _completion_tok += resp.usage.completion_tokens or 0
             msg = resp.choices[0].message
             if not msg.tool_calls:
                 reply = msg.content or ""
                 break
-            # Registra la richiesta tool + esegui ogni chiamata
             messages.append({
                 "role": "assistant",
                 "content": msg.content,
@@ -2356,9 +2390,26 @@ def chat_ai(
                     "tool_call_id": tc.id,
                     "content": _json.dumps(risultato, ensure_ascii=False),
                 })
+    except HTTPException:
+        raise
     except Exception as exc:
-        logger.error("chat_ai: OpenAI error: %s", exc)
-        raise HTTPException(status_code=502, detail="Errore OpenAI")
+        logger.error("chat_ai: errore inatteso: %s", exc)
+        raise HTTPException(status_code=502, detail="Errore nella comunicazione con l'assistente. Riprova.")
+
+    # Tracking costi monetari nel ledger AI (fail-safe: non blocca la risposta).
+    # Alimenta l'alert soglia costi mensile, come la categorizzazione.
+    try:
+        from services.ai_cost_service import track_ai_usage
+        track_ai_usage(
+            operation_type="chat",
+            prompt_tokens=_prompt_tok,
+            completion_tokens=_completion_tok,
+            ristorante_id=ristorante_id,
+            user_id=user_id,
+            model=CHAT_MODEL,
+        )
+    except Exception as exc:
+        logger.warning("chat: tracking costi fallito (non blocca): %s", exc)
 
     # Log della domanda per il contatore giornaliero (fail-safe: non blocca).
     try:
@@ -2369,8 +2420,8 @@ def chat_ai(
     except Exception as exc:
         logger.warning("chat: log usage fallito (non blocca): %s", exc)
 
-    logger.info("chat_ai: user=%s messages=%d domande_oggi=%d",
-                user.get("email"), len(body.messages), domande_oggi + 1)
+    logger.info("chat_ai: user=%s model=%s messages=%d domande_oggi=%d",
+                user.get("email"), CHAT_MODEL, len(body.messages), domande_oggi + 1)
     return ChatResponse(reply=reply or "Non sono riuscito a elaborare la risposta, riprova.")
 
 

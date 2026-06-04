@@ -11,12 +11,22 @@ logger = get_logger('ai_cost')
 GPT4O_MINI_INPUT_PER_M_TOKEN = 0.15
 GPT4O_MINI_OUTPUT_PER_M_TOKEN = 0.60
 
+# Tariffe per modello ($/M token). Aggiornare se OpenAI modifica i listini.
+_MODEL_TARIFFE: dict[str, tuple[float, float]] = {
+    "gpt-4o-mini":  (0.15,  0.60),
+    "gpt-4.1-mini": (0.40,  1.60),
+    "gpt-4.1":      (2.00,  8.00),
+    "gpt-4o":       (2.50, 10.00),
+}
+_DEFAULT_TARIFFA = (0.15, 0.60)  # fallback su gpt-4o-mini se modello sconosciuto
 
-def calcola_costi_gpt4o_mini(prompt_tokens: int, completion_tokens: int) -> dict[str, float | int]:
+
+def calcola_costi_modello(prompt_tokens: int, completion_tokens: int, model: str = "gpt-4o-mini") -> dict[str, float | int]:
     prompt_tokens = int(prompt_tokens or 0)
     completion_tokens = int(completion_tokens or 0)
-    input_cost = (prompt_tokens / 1_000_000) * GPT4O_MINI_INPUT_PER_M_TOKEN
-    output_cost = (completion_tokens / 1_000_000) * GPT4O_MINI_OUTPUT_PER_M_TOKEN
+    in_per_m, out_per_m = _MODEL_TARIFFE.get(model, _DEFAULT_TARIFFA)
+    input_cost = (prompt_tokens / 1_000_000) * in_per_m
+    output_cost = (completion_tokens / 1_000_000) * out_per_m
     total_cost = input_cost + output_cost
     return {
         'prompt_tokens': prompt_tokens,
@@ -26,6 +36,10 @@ def calcola_costi_gpt4o_mini(prompt_tokens: int, completion_tokens: int) -> dict
         'output_cost': output_cost,
         'total_cost': total_cost,
     }
+
+
+def calcola_costi_gpt4o_mini(prompt_tokens: int, completion_tokens: int) -> dict[str, float | int]:
+    return calcola_costi_modello(prompt_tokens, completion_tokens, model="gpt-4o-mini")
 
 
 def _get_session_user_id() -> str | None:
@@ -108,7 +122,7 @@ def track_ai_usage(
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, float | int] | None:
     """Traccia un evento AI in ledger e, in fallback, sui contatori legacy."""
-    cost_data = calcola_costi_gpt4o_mini(prompt_tokens, completion_tokens)
+    cost_data = calcola_costi_modello(prompt_tokens, completion_tokens, model=model)
 
     if not ristorante_id:
         logger.warning(
