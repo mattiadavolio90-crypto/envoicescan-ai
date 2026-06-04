@@ -39,8 +39,11 @@ function LogoMark({ glow, mono }: { glow?: boolean; mono?: boolean }) {
 }
 
 /**
- * Wordmark "ONEFLUX": testo in primary con tracking e glow opzionale.
- * Da usare ovunque appaia il nome del brand come titolo/marchio.
+ * Wordmark "ONEFLUX": SVG unico dove la "O" e' il doppio anello del logo e la
+ * "X" finale e' il flusso a tratti curvi; le lettere centrali NEFLU sono testo
+ * nel font wordmark (Quicksand 700, var --font-wordmark da layout). currentColor
+ * eredita da text-primary; altezza in em -> scala col font-size del contenitore.
+ * Geometria definita nell'editor (wordmark_editor.html), allineamento ottico.
  */
 export function Wordmark({
   glow = false,
@@ -52,12 +55,41 @@ export function Wordmark({
   style?: React.CSSProperties;
 }) {
   return (
-    <span
-      className={cn("font-semibold tracking-[0.14em] text-primary", className)}
-      style={{ ...(glow ? { filter: "drop-shadow(0 0 2px currentColor)" } : {}), ...style }}
+    <svg
+      viewBox="0 0 398 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-label="ONEFLUX"
+      className={cn("inline-block w-auto align-middle text-primary", className)}
+      style={{
+        height: "1em",
+        ...(glow ? { filter: "drop-shadow(0 0 2px currentColor)" } : {}),
+        ...style,
+      }}
     >
-      ONEFLUX
-    </span>
+      {/* O = doppio anello del logo, valori identici (r 42/31, stroke 6/2.5) */}
+      <g transform="translate(8 7) scale(0.87)">
+        <circle cx="50" cy="50" r="42" stroke="currentColor" strokeWidth="6" fill="none" />
+        <circle cx="50" cy="50" r="31" stroke="currentColor" strokeWidth="2.5" fill="none" />
+      </g>
+      <text
+        x="100"
+        y="74"
+        fontFamily="var(--font-wordmark), 'Quicksand', sans-serif"
+        fontWeight="700"
+        fontSize="68"
+        letterSpacing="3.5"
+        fill="currentColor"
+      >
+        NEFLU
+      </text>
+      {/* X = path LETTERALI del logo (stessa curvatura), scalati: stroke 3.59*1.95 = 7 visivi */}
+      <g transform="translate(265.19 -48.5) scale(1.95)">
+        <path d="M36 36 C48 44 48 56 64 64" stroke="currentColor" strokeWidth="3.59" strokeLinecap="round" fill="none" />
+        <path d="M64 36 C52 44 52 56 36 64" stroke="currentColor" strokeWidth="3.59" strokeLinecap="round" fill="none" />
+      </g>
+    </svg>
   );
 }
 

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Quicksand } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { PwaRegister } from "@/components/pwa-register";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+const quicksand = Quicksand({ subsets: ["latin"], weight: ["700"], variable: "--font-wordmark" });
 
 export const metadata: Metadata = {
   title: {
@@ -48,7 +49,7 @@ export default function RootLayout({
   const tema = "dark";
 
   return (
-    <html lang="it" suppressHydrationWarning className={cn(tema, "font-sans", inter.variable)}>
+    <html lang="it" suppressHydrationWarning className={cn(tema, "font-sans", inter.variable, quicksand.variable)}>
       <body className="antialiased">
         {/* Boot overlay PWA: NON e' nel JSX. Lo crea e lo rimuove interamente
             boot-overlay.js (gira beforeInteractive, prima di React). Motivo: un
