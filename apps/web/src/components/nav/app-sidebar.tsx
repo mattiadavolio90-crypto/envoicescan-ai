@@ -44,10 +44,10 @@ import {
 const navMain = [
   { title: "Home", url: "/dashboard", icon: Home },
   { title: "Analisi Fatture", url: "/analisi-fatture", icon: FileText },
-  { title: "Prezzi", url: "/prezzi", icon: Search },
   { title: "Ricavi e Margini", url: "/margini", icon: BarChart3 },
-  { title: "Strumenti", url: "/workspace", icon: Wrench },
+  { title: "Prezzi", url: "/prezzi", icon: Search },
   { title: "Analisi e Tag", url: "/analisi-e-tag", icon: Tags },
+  { title: "Strumenti", url: "/workspace", icon: Wrench },
   { title: "Gestione Fatture", url: "/scadenziario", icon: CalendarDays },
 ];
 
