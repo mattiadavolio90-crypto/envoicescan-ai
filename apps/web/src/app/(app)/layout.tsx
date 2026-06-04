@@ -4,11 +4,11 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { AppSidebar } from "@/components/nav/app-sidebar";
 import { Wordmark } from "@/components/brand/logo";
 import { Separator } from "@/components/ui/separator";
-import { getCurrentUser } from "@/lib/auth";
+import { getCurrentSession } from "@/lib/auth";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { ImpersonaBanner } from "@/components/admin/impersona-banner";
 import { MobileRedirect } from "@/components/mobile-redirect";
-import { Bell, LifeBuoy } from "lucide-react";
+import { Bell, LifeBuoy, WifiOff } from "lucide-react";
 
 function getInitials(nome: string | null, email: string): string {
   if (nome) {
@@ -20,11 +20,38 @@ function getInitials(nome: string | null, email: string): string {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await getCurrentUser();
+  const session = await getCurrentSession();
 
-  if (!user) {
+  // Token scaduto / assente -> al login. Il login rigenera il cookie.
+  if (session.status === "invalid") {
     redirect("/login");
   }
+
+  // Worker non raggiungibile (cold-start Railway, rete): NON sloggare l'utente.
+  // Mostra un messaggio con possibilita' di riprovare. Prima un timeout qui
+  // mandava al login un utente con sessione valida, oppure faceva renderizzare
+  // la home a vuoto (tutti i blocchi in 401/timeout).
+  if (session.status === "unavailable") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+        <WifiOff className="size-10 text-muted-foreground/50" />
+        <div>
+          <p className="text-base font-medium">Servizio momentaneamente non raggiungibile</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Il server sta riavviando. Riprova tra qualche secondo.
+          </p>
+        </div>
+        <Link
+          href="/dashboard"
+          className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          Riprova
+        </Link>
+      </div>
+    );
+  }
+
+  const user = session.user;
 
   // Fonte UNICA del contatore: le notifiche reali non archiviate
   // (notification_inbox), le stesse che vedi nel widget Home e nella pagina

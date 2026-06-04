@@ -57,7 +57,16 @@ export async function loginWithCredentials(email: string, password: string): Pro
   }
 }
 
-export async function fetchSessionUser(token: string): Promise<SessionUser | null> {
+// Esito discriminato della verifica sessione, cosi' il chiamante distingue
+// "token scaduto" (-> logout + login) da "worker lento/giu'" (-> riprova, NON
+// sloggare). Prima entrambi tornavano null e il layout buttava fuori l'utente
+// anche per un semplice cold-start di Railway.
+export type SessionResult =
+  | { status: "ok"; user: SessionUser }
+  | { status: "invalid" } // 401/403: sessione non valida -> vai al login
+  | { status: "unavailable" }; // timeout / 5xx / rete: worker non raggiungibile
+
+export async function verifySession(token: string): Promise<SessionResult> {
   try {
     const res = await fetch(`${WORKER_URL}/api/auth/me`, {
       method: "GET",
@@ -65,12 +74,23 @@ export async function fetchSessionUser(token: string): Promise<SessionUser | nul
       cache: "no-store",
       signal: AbortSignal.timeout(WORKER_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
-    return (await res.json()) as SessionUser;
+    if (res.ok) return { status: "ok", user: (await res.json()) as SessionUser };
+    if (res.status === 401 || res.status === 403) return { status: "invalid" };
+    // 5xx o altri: il worker c'e' ma e' in difficolta' -> non invalidare la sessione
+    console.error("[auth.me] worker error:", res.status);
+    return { status: "unavailable" };
   } catch (err) {
+    // Timeout o errore di rete: worker non raggiungibile, sessione NON compromessa
     console.error("[auth.me] worker fetch error:", err);
-    return null;
+    return { status: "unavailable" };
   }
+}
+
+// Compat: alcune callsite vogliono solo l'utente (o null). Mantiene il vecchio
+// comportamento per chi non deve distinguere gli esiti.
+export async function fetchSessionUser(token: string): Promise<SessionUser | null> {
+  const r = await verifySession(token);
+  return r.status === "ok" ? r.user : null;
 }
 
 export async function logoutSession(token: string): Promise<void> {
@@ -94,4 +114,15 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const token = cookieStore.get(SESSION_COOKIE)?.value;
   if (!token) return null;
   return fetchSessionUser(token);
+});
+
+// Variante con esito discriminato per il layout: deve distinguere "nessun
+// cookie / token scaduto" (redirect al login) da "worker non raggiungibile"
+// (mostra fallback, NON sloggare). Stessa cache() di getCurrentUser: una sola
+// chiamata /api/auth/me per render.
+export const getCurrentSession = cache(async (): Promise<SessionResult> => {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE)?.value;
+  if (!token) return { status: "invalid" };
+  return verifySession(token);
 });
