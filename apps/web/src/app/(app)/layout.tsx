@@ -73,10 +73,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         pagineAbilitate={user.pagine_abilitate}
       />
       <SidebarInset>
-        <header className="flex h-14 items-center gap-2 px-4 border-b border-border">
+        <header className="relative flex h-14 items-center gap-2 px-4 border-b border-border">
           <SidebarTrigger className="-ml-1" />
           <Separator orientation="vertical" className="h-4" />
-          <Wordmark className="text-sm" />
+          <Wordmark className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-2xl" />
           <div className="ml-auto flex items-center gap-0.5">
             <Link
               href="/assistenza"

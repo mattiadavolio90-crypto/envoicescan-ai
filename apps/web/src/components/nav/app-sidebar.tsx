@@ -33,7 +33,7 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Logo, Wordmark } from "@/components/brand/logo";
+import { Logo } from "@/components/brand/logo";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -96,13 +96,16 @@ export function AppSidebar({
             <SidebarMenuButton
               size="lg"
               render={<Link href="/dashboard" />}
-              className="group-data-[collapsible=icon]:!size-12 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center [&_svg]:!size-full"
+              className="h-auto items-center gap-3 py-3 group-data-[collapsible=icon]:!size-12 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center [&_svg]:!size-full"
             >
               <Logo variant="icon" size={40} glow className="shrink-0" />
-              <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
-                <Wordmark className="text-base tracking-[0.14em]" />
-                <span className="text-xs text-muted-foreground">Controllo gestione</span>
-              </div>
+              <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+                <span className="block whitespace-normal text-xs font-medium leading-snug text-primary">
+                  Un unico flusso
+                  <br />
+                  per tutta la gestione
+                </span>
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
