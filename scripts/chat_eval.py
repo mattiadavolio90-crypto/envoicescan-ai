@@ -52,26 +52,18 @@ def main() -> None:
     # rivelato i difetti (anno 2024 inventato, "birra" non trovata, ecc.) +
     # qualche regressione da tenere d'occhio.
     conversazioni = [
-        # === Le 4 domande della conversazione mobile reale ===
-        # 1. "birra" deve trovare la categoria BIRRE (prima: "non risulta")
-        ["Quanto ho speso in birra?"],
-        # 2. "ultimo acquisto e fornitore" SENZA anno (prima: cercava giugno 2024)
+        # === I 2 NUOVI tool ===
+        # 1. trend prezzo prodotto (nuovo tool trend_prezzo)
+        ["La mozzarella e' aumentata di prezzo negli ultimi mesi?"],
+        # 2. confronto tra periodi (2x query_costi + confronto)
+        ["Ho speso piu' in carne a marzo o ad aprile?"],
+        # 3. trend su prodotto carne
+        ["Il prezzo della carne e' salito?"],
+        # === Regressioni dalle fix precedenti (devono restare ok) ===
+        # 4. ultimo acquisto
         ["Qual e' l'ultimo acquisto che ho fatto e da quale fornitore?"],
-        # 3. "carne a marzo" SENZA anno (prima: cercava marzo 2024 -> vuoto)
+        # 5. carne a marzo senza anno
         ["Quanto ho speso in carne a marzo?"],
-        # === Controlli aggiuntivi ===
-        # 4. food cost generico
-        ["Com'e' il mio food cost? Sto guadagnando?"],
-        # 5. contesto follow-up
-        ["Quanto ho speso in carne a marzo?", "E ad aprile?"],
-        # 6. fornitore piu' caro + pronome
-        ["Chi e' il mio fornitore piu' caro?", "Quanto gli ho pagato in totale?"],
-        # 7. plurale/singolare: "mozzarelle"
-        ["Quanto ho speso in mozzarelle?"],
-        # 8. scadenze
-        ["Cosa devo pagare?"],
-        # 9. fuori scope
-        ["Mi dai una ricetta per la carbonara?"],
     ]
 
     for idx, turni in enumerate(conversazioni, 1):

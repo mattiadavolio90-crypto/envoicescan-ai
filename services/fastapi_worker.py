@@ -2049,7 +2049,10 @@ Importi sempre in euro con 2 decimali. Usa i dati qui sotto: sono gli stessi che
 Regole per gli strumenti:
 - Per qualsiasi numero specifico (categoria, fornitore, prodotto, periodo preciso) usa SEMPRE lo strumento giusto — non rispondere a memoria.
 - Per domande generiche sull'andamento ("com'è il mio food cost?", "sto guadagnando?") usa i dati qui sotto.
-- Lo strumento query_costi cerca in automatico tra categorie, fornitori e prodotti: se cerchi "birra" e una voce non c'e' come categoria, lo strumento prova anche come prodotto. Fidati del risultato dello strumento.
+- query_costi cerca in automatico tra categorie, fornitori e prodotti: se cerchi "birra" e non c'e' come categoria, prova anche come prodotto. Fidati del risultato dello strumento.
+- Per CONFRONTARE due periodi ("ho speso più a marzo o ad aprile?", "quest'anno vs l'anno scorso") chiama query_costi DUE volte (una per periodo) e confronta tu i totali nella risposta.
+- Per l'andamento del PREZZO di un prodotto nel tempo ("la mozzarella è aumentata?", "il prezzo di X è salito?") usa trend_prezzo, NON query_costi.
+- Per "l'ultimo acquisto / l'ultima fattura / cosa ho comprato di recente" usa ultimi_acquisti.
 - I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
 
     return sistema
@@ -2251,6 +2254,89 @@ def _chat_ultimi_acquisti(
     } for r in righe]
 
     return {"acquisti": acquisti, "trovati": len(acquisti)}
+
+
+def _chat_trend_prezzo(
+    user_id: str,
+    supabase_client,
+    prodotto: str,
+    ristorante_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Andamento del prezzo unitario di un prodotto, mese per mese.
+
+    Risponde a "la mozzarella e' aumentata?", "il prezzo del X e' salito?".
+    Prezzo medio ponderato per mese (somma totale_riga / somma quantita') sugli
+    ultimi 6 mesi con acquisti; confronta il primo mese utile con l'ultimo.
+    """
+    from datetime import date as _date, timedelta as _td
+
+    if not prodotto or not prodotto.strip():
+        return {"prodotto": prodotto, "punti": [], "variazione_pct": None}
+
+    da = (_date.today() - _td(days=210)).isoformat()  # ~7 mesi di finestra
+    q = (
+        supabase_client.table("fatture")
+        .select("descrizione,fornitore,prezzo_unitario,quantita,totale_riga,data_documento")
+        .eq("user_id", user_id)
+        .is_("deleted_at", "null")
+        .gt("prezzo_unitario", 0)
+        .gte("data_documento", da)
+    )
+    if ristorante_id:
+        q = q.eq("ristorante_id", ristorante_id)
+    # Cerca su descrizione OR categoria (tollerante come query_costi)
+    q = q.or_(f"descrizione.ilike.%{prodotto}%,categoria.ilike.%{prodotto}%")
+    righe = (q.limit(5000).execute().data) or []
+    if not righe:
+        return {"prodotto": prodotto, "punti": [], "variazione_pct": None}
+
+    # Aggrega per mese: prezzo medio ponderato sulla quantita'.
+    per_mese: Dict[str, Dict[str, float]] = {}
+    nomi_prod: set = set()
+    for r in righe:
+        data = str(r.get("data_documento") or "")
+        if len(data) < 7:
+            continue
+        mese = data[:7]  # YYYY-MM
+        prezzo = float(r.get("prezzo_unitario") or 0)
+        qta = float(r.get("quantita") or 0)
+        tot = float(r.get("totale_riga") or 0)
+        if prezzo <= 0:
+            continue
+        agg = per_mese.setdefault(mese, {"somma_tot": 0.0, "somma_qta": 0.0, "somma_prezzi": 0.0, "n": 0.0})
+        nomi_prod.add((r.get("descrizione") or "").strip())
+        if qta > 0 and tot > 0:
+            agg["somma_tot"] += tot
+            agg["somma_qta"] += qta
+        # fallback semplice se manca quantita': media aritmetica dei prezzi
+        agg["somma_prezzi"] += prezzo
+        agg["n"] += 1
+
+    punti = []
+    for mese in sorted(per_mese.keys()):
+        a = per_mese[mese]
+        if a["somma_qta"] > 0:
+            prezzo_medio = a["somma_tot"] / a["somma_qta"]
+        elif a["n"] > 0:
+            prezzo_medio = a["somma_prezzi"] / a["n"]
+        else:
+            continue
+        punti.append({"mese": mese, "prezzo_medio": round(prezzo_medio, 4)})
+
+    variazione_pct = None
+    if len(punti) >= 2:
+        p0 = punti[0]["prezzo_medio"]
+        p1 = punti[-1]["prezzo_medio"]
+        if p0 > 0:
+            variazione_pct = round((p1 - p0) / p0 * 100.0, 1)
+
+    return {
+        "prodotto": prodotto,
+        "prodotti_trovati": sorted(nomi_prod)[:5],
+        "punti": punti,
+        "variazione_pct": variazione_pct,
+        "nota": "prezzo unitario medio ponderato per mese" if punti else "nessun acquisto nel periodo",
+    }
 
 
 def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Optional[str]) -> Dict[str, Any]:
@@ -2485,6 +2571,25 @@ def chat_ai(
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "trend_prezzo",
+                "description": (
+                    "Andamento del PREZZO UNITARIO di un prodotto mese per mese, con la "
+                    "variazione % dal primo all'ultimo mese. Usalo per 'la mozzarella e' "
+                    "aumentata?', 'il prezzo di X e' salito/sceso?', 'come e' cambiato il "
+                    "prezzo di Y'. Diverso da query_costi (che da' la spesa totale)."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "prodotto": {"type": "string", "description": "Nome o parte del prodotto, es. 'mozzarella'"},
+                    },
+                    "required": ["prodotto"],
+                },
+            },
+        },
     ]
 
     def _esegui_tool(nome: str, args: Dict[str, Any]) -> Dict[str, Any]:
@@ -2512,6 +2617,13 @@ def chat_ai(
                 prodotto=args.get("prodotto"),
                 fornitore=args.get("fornitore"),
                 limite=args.get("limite", 5),
+                ristorante_id=ristorante_id,
+            )
+        if nome == "trend_prezzo":
+            return _chat_trend_prezzo(
+                user_id=user_id,
+                supabase_client=supabase_client,
+                prodotto=args.get("prodotto", ""),
                 ristorante_id=ristorante_id,
             )
         return {"errore": f"strumento sconosciuto: {nome}"}
