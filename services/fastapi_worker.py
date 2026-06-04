@@ -2741,20 +2741,23 @@ _MESI_IT_BRIEFING = [
 def _briefing_dati_mensili_mancanti(
     ristorante_id: str, supabase_client,
 ) -> List[Dict[str, Any]]:
-    """Notifiche LIVE 'fatturato/costo personale mancante' per il briefing Home.
+    """Notifiche LIVE dati mancanti per il briefing Home: fatturato e costo
+    personale del mese precedente (fonte: /api/home/salute) + incasso di ieri
+    (fonte: /api/ricavi/notifica-mancante).
 
-    Replica ESATTAMENTE la logica di /api/home/salute (stesso mese precedente,
-    stessa tabella margini_mensili, stesso criterio: personale = dipendenti +
-    extra). Cosi' briefing e Salute non si contraddicono mai: prima il briefing
-    leggeva solo notification_inbox, popolata pero' soltanto dalla vecchia pagina
-    Streamlit -> sull'app nuova quelle notifiche non comparivano e il briefing
-    diceva 'tutto ok' mentre la Salute segnalava il mese mancante.
+    Replica ESATTAMENTE la logica di quelle fonti (mese precedente, tabella
+    margini_mensili, personale = dipendenti + extra; incasso = riga
+    ricavi_giornalieri per ieri). Cosi' briefing e Salute non si contraddicono
+    mai: prima il briefing leggeva solo notification_inbox, popolata pero'
+    soltanto dalla vecchia pagina Streamlit / dall'endpoint dedicato -> sull'app
+    nuova quelle notifiche non comparivano e il briefing diceva 'tutto ok'
+    mentre la Salute segnalava il mese mancante.
 
     Niente persistenza: notifiche effimere come price-alert-live, ricalcolate a
     ogni briefing dalla fonte autorevole. Stesso formato dei record inbox cosi'
     _build_snapshot le tratta come tutte le altre.
     """
-    from datetime import datetime as _dt2
+    from datetime import datetime as _dt2, timedelta as _td2
     try:
         from zoneinfo import ZoneInfo as _ZI
         oggi = _dt2.now(tz=_ZI("Europe/Rome")).date()
@@ -2820,6 +2823,38 @@ def _briefing_dati_mensili_mancanti(
             "source_event_at": None,
             "dedupe_key": f"costo-personale-mancante-live-{mc_anno}-{mc_mese:02d}",
         })
+
+    # Incasso di IERI mancante: stessa logica dell'endpoint dedicato
+    # (/api/ricavi/notifica-mancante) ma calcolata live qui, cosi' compare nel
+    # briefing anche sull'app nuova senza dipendere da quella chiamata. Niente
+    # tolleranza weekend/chiusura: identico all'endpoint (non inventiamo qui una
+    # semantica di chiusura che non esiste in DB).
+    try:
+        ieri = (oggi - _td2(days=1)).isoformat()
+        ric = (
+            supabase_client.table("ricavi_giornalieri")
+            .select("data")
+            .eq("ristorante_id", ristorante_id)
+            .eq("data", ieri)
+            .limit(1)
+            .execute()
+        )
+        if not (ric.data or []):
+            out.append({
+                "id": f"incasso-mancante-live-{ieri}",
+                "topic_key": "incasso_mancante",
+                "source_type": "live",
+                "severity": "warning",
+                "title": "Manca l'incasso di ieri",
+                "body": "",
+                "action_page": "/margini",
+                "payload": {},
+                "source_event_at": None,
+                "dedupe_key": f"incasso-mancante-live-{ieri}",
+            })
+    except Exception as exc:
+        logger.warning("briefing dati mensili: check incasso ieri fallito: %s", exc)
+
     return out
 
 
@@ -2980,8 +3015,21 @@ def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingRespon
     # calcolati LIVE dalla stessa fonte della Salute (margini_mensili), cosi' le
     # due sezioni Home non si contraddicono mai. Niente dipendenza dalla vecchia
     # pagina Streamlit, che era l'unico posto a popolare queste notifiche.
+    #
+    # PRIMA rimuovo le eventuali versioni LEGACY in inbox per questi due topic:
+    # le ha scritte la vecchia pagina Streamlit e NESSUNO le aggiorna quando il
+    # dato viene inserito (restano fino a expires_at). _build_snapshot tiene la
+    # prima occorrenza per topic_key, quindi una legacy stantia vincerebbe sulla
+    # versione live autorevole -> il briefing continuerebbe a dire "manca" anche
+    # dopo l'inserimento. Stesso pattern del price_alert legacy qui sopra.
     if ristorante_id:
         try:
+            notifications = [
+                n for n in notifications
+                if n.get("topic_key") not in (
+                    "fatturato_mancante", "costo_personale_mancante", "incasso_mancante",
+                )
+            ]
             notifications.extend(
                 _briefing_dati_mensili_mancanti(ristorante_id, supabase_client)
             )
