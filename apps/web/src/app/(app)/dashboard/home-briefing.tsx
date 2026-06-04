@@ -14,7 +14,6 @@ import {
 import { type Briefing, type BriefingAzione } from "@/lib/home";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { NotificheWidget } from "./notifiche-widget";
 
 // Effetto typewriter abilitato (spegnibile in 1 riga): solo al primo load del
 // giorno, max ~600ms. Dietro flag perche' deve restare sobrio e veloce.
@@ -48,9 +47,9 @@ function useTypewriter(text: string, enabled: boolean) {
   return shown;
 }
 
-type Props = { briefing: Briefing; notificheCount: number };
+type Props = { briefing: Briefing };
 
-export function HomeBriefing({ briefing, notificheCount }: Props) {
+export function HomeBriefing({ briefing }: Props) {
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState<Set<string>>(new Set());
 
@@ -167,15 +166,6 @@ export function HomeBriefing({ briefing, notificheCount }: Props) {
         </div>
       )}
 
-      {/* Archivio completo notifiche: sempre raggiungibile dalla Home se ci
-          sono notifiche reali non archiviate, anche quando il briefing dice
-          "tutto ok" (le due fonti possono divergere). Il contatore = stessa
-          fonte del badge header e della pagina /notifiche. */}
-      {notificheCount > 0 && (
-        <div className="flex justify-center sm:justify-start">
-          <NotificheWidget count={notificheCount} />
-        </div>
-      )}
     </section>
   );
 }

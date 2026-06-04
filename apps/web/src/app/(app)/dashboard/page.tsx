@@ -3,6 +3,7 @@ import { fetchDashboardStats } from "@/lib/dashboard";
 import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { HomeBriefing } from "./home-briefing";
+import { NotificheWidget } from "./notifiche-widget";
 import { ChatWidget } from "./chat-widget";
 import { SaluteCard } from "./salute-card";
 import { KpiBlock } from "./kpi-block";
@@ -32,7 +33,7 @@ async function ConfigBlock() {
 }
 
 async function BriefingBlock() {
-  const [briefing, notifiche] = await Promise.all([fetchBriefing(), fetchNotifiche()]);
+  const briefing = await fetchBriefing();
   if (!briefing) {
     return (
       <div>
@@ -43,7 +44,18 @@ async function BriefingBlock() {
       </div>
     );
   }
-  return <HomeBriefing briefing={briefing} notificheCount={notifiche?.unread ?? 0} />;
+  return <HomeBriefing briefing={briefing} />;
+}
+
+async function NotificheBlock() {
+  const notifiche = await fetchNotifiche();
+  const count = notifiche?.unread ?? 0;
+  if (count === 0) return null;
+  return (
+    <div className="flex justify-center sm:justify-start">
+      <NotificheWidget count={count} />
+    </div>
+  );
 }
 
 async function KpiSaluteBlock() {
@@ -98,6 +110,10 @@ export default function DashboardPage() {
 
         <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl border bg-muted/40" />}>
           <BriefingBlock />
+        </Suspense>
+
+        <Suspense fallback={null}>
+          <NotificheBlock />
         </Suspense>
 
         <Suspense fallback={<div className="grid gap-4 lg:grid-cols-2"><CardSkeleton /><CardSkeleton /></div>}>
