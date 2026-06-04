@@ -29,6 +29,7 @@ export type RigaFattura = {
   data_competenza: string | null;
   piva_cedente: string | null;
   created_at: string | null;
+  numero_documento: string | null;
 };
 
 export type ArticoloAggregato = {

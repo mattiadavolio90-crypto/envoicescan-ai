@@ -198,7 +198,7 @@ function PrezzoChart({
               position: "insideTopLeft",
               fontSize: 10,
               fill: "#f43f5e",
-              dy: -4,
+              dy: -12,
             }}
           />
           <Line type="monotone" dataKey="var_pct" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5 }} />

@@ -3355,6 +3355,7 @@ class RigaFattura(BaseModel):
     data_competenza: Optional[str]
     piva_cedente: Optional[str]
     created_at: Optional[str] = None
+    numero_documento: Optional[str] = None
 
 
 class ArticoloAggregato(BaseModel):
@@ -3777,11 +3778,11 @@ def get_righe_articolo(
     authorization: Optional[str] = Header(None),
 ) -> List[RigaFattura]:
     user = _resolve_user_from_token(authorization)
-    ristorante_id = _resolve_ristorante_id(user, _get_supabase_client())
+    supabase_client = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
-    supabase_client = _get_supabase_client()
     q = _build_fatture_base_query(supabase_client, ristorante_id).eq("descrizione", descrizione)
     if data_da:
         q = q.gte("data_documento", data_da)
@@ -3789,7 +3790,13 @@ def get_righe_articolo(
         q = q.lte("data_documento", data_a)
     q = q.order("data_documento", desc=True)
     res = q.execute()
-    return [RigaFattura(**{k: v for k, v in r.items() if k in RigaFattura.model_fields}) for r in (res.data or [])]
+    num_map = _load_num_documento_map(supabase_client, ristorante_id)
+    result = []
+    for r in (res.data or []):
+        fields = {k: v for k, v in r.items() if k in RigaFattura.model_fields}
+        fields["numero_documento"] = num_map.get(r.get("file_origine", ""), "") or None
+        result.append(RigaFattura(**fields))
+    return result
 
 
 # ─── Endpoint: pivot estesa (mese/trimestre/anno auto) ─────────────────────

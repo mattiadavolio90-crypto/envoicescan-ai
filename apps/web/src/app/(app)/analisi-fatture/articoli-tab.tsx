@@ -606,7 +606,7 @@ const ArticoloRiga = memo(function ArticoloRiga({
       {expanded && (
         <tr className="bg-muted/20 border-b">
           <td></td>
-          <td colSpan={8} className="px-3 py-2">
+          <td colSpan={9} className="px-3 py-2">
             <RigheArticolo descrizione={articolo.descrizione} dataDa={dataDa} dataA={dataA} />
           </td>
         </tr>
@@ -666,10 +666,11 @@ function RigheArticolo({
         <tr className="text-muted-foreground border-b">
           <th className="text-left py-1 font-medium">Data</th>
           <th className="text-left py-1 font-medium">Fornitore</th>
-          <th className="text-left py-1 font-medium">Fattura</th>
           <th className="text-right py-1 font-medium">Q.tà</th>
           <th className="text-right py-1 font-medium">€ unit.</th>
           <th className="text-right py-1 font-medium">Totale</th>
+          <th className="text-left py-1 font-medium whitespace-nowrap">N° fattura</th>
+          <th className="text-left py-1 font-medium">File</th>
         </tr>
       </thead>
       <tbody>
@@ -690,9 +691,6 @@ function RigheArticolo({
                   </span>
                 )}
               </td>
-              <td className="py-1 text-muted-foreground truncate max-w-40" title={r.file_origine}>
-                {r.file_origine}
-              </td>
               <td className="py-1 text-right tabular-nums">
                 {r.quantita ?? "—"} {r.unita_misura ?? ""}
               </td>
@@ -701,6 +699,12 @@ function RigheArticolo({
               </td>
               <td className="py-1 text-right tabular-nums font-medium">
                 {r.totale_riga != null ? formatEuro(r.totale_riga, 2) : "—"}
+              </td>
+              <td className="py-1 text-muted-foreground whitespace-nowrap">
+                {r.numero_documento || <em className="opacity-50">—</em>}
+              </td>
+              <td className="py-1 text-muted-foreground truncate max-w-40" title={r.file_origine}>
+                {r.file_origine}
               </td>
             </tr>
           );

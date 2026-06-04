@@ -91,6 +91,8 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
   const [spezzato, setSpezzato] = useState(false);
   const [oraInizio2, setOraInizio2] = useState("19:00");
   const [oraFine2, setOraFine2] = useState("23:00");
+  const [oreExtra, setOreExtra] = useState("");
+  const [costoOrario, setCostoOrario] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [showSugg, setShowSugg] = useState(false);
@@ -105,6 +107,8 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
       setSpezzato(hasSpezzato);
       setOraInizio2(hasSpezzato ? fmtOra(turno!.ora_inizio2) : "19:00");
       setOraFine2(hasSpezzato ? fmtOra(turno!.ora_fine2) : "23:00");
+      setOreExtra(turno?.ore_extra ? String(turno.ore_extra).replace(".", ",") : "");
+      setCostoOrario(turno?.costo_orario != null ? String(turno.costo_orario).replace(".", ",") : "");
       setNote(turno?.note ?? "");
       setShowSugg(false);
     }
@@ -117,14 +121,19 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
   const ore1 = oraInizio && oraFine ? calcolaSlotOre(oraInizio, oraFine) : 0;
   const ore2 = spezzato && oraInizio2 && oraFine2 ? calcolaSlotOre(oraInizio2, oraFine2) : 0;
   const oreTot = ore1 + ore2;
+  const extraNum = oreExtra ? parseFloat(oreExtra.replace(",", ".")) : 0;
+  const costoNum = costoOrario ? parseFloat(costoOrario.replace(",", ".")) : NaN;
+  const costoTurno = !isNaN(costoNum) && oreTot > 0 ? oreTot * costoNum : 0;
 
   async function salva() {
     if (!nome.trim()) { toast.error("Il nome è obbligatorio"); return; }
     if (!oraInizio || !oraFine) { toast.error("Orario obbligatorio"); return; }
     if (spezzato && (!oraInizio2 || !oraFine2)) { toast.error("Inserisci il secondo slot"); return; }
+    if (oreExtra && (isNaN(extraNum) || extraNum < 0)) { toast.error("Ore extra non valide"); return; }
+    if (extraNum > oreTot + 0.01) { toast.error("Le ore extra non possono superare le ore totali"); return; }
+    if (costoOrario && (isNaN(costoNum) || costoNum < 0)) { toast.error("Costo orario non valido"); return; }
     setSaving(true);
     try {
-      // costo_orario/ore_extra restano gestiti da desktop: qui null per non toccarli
       const payload: Record<string, unknown> = {
         nome: nome.trim(),
         data_turno: data,
@@ -132,13 +141,10 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
         ora_fine: oraFine,
         ora_inizio2: spezzato ? oraInizio2 : null,
         ora_fine2: spezzato ? oraFine2 : null,
+        ore_extra: oreExtra ? extraNum : null,
+        costo_orario: costoOrario ? costoNum : null,
         note: note || null,
       };
-      // Su modifica preserviamo costo/extra esistenti del turno
-      if (turno) {
-        payload.ore_extra = turno.ore_extra ?? null;
-        payload.costo_orario = turno.costo_orario ?? null;
-      }
       const url = turno ? `/api/workspace/personale/${turno.id}` : "/api/workspace/personale";
       const res = await fetch(url, {
         method: turno ? "PATCH" : "POST",
@@ -226,8 +232,38 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
           )}
 
           {oreTot > 0 && (
-            <p className="text-xs text-muted-foreground">Durata: <span className="font-medium text-foreground">{fmtOre(oreTot)}</span></p>
+            <p className="text-xs text-muted-foreground">
+              Durata: <span className="font-medium text-foreground">{fmtOre(oreTot)}</span>
+              {costoTurno > 0 && (
+                <span className="ml-2 text-muted-foreground/60">
+                  · costo turno €{costoTurno.toFixed(2).replace(".", ",")}
+                </span>
+              )}
+            </p>
           )}
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">di cui extra (h)</label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={oreExtra}
+                onChange={(e) => setOreExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
+                placeholder="es. 2"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-muted-foreground">Costo orario (€/h)</label>
+              <Input
+                type="text"
+                inputMode="decimal"
+                value={costoOrario}
+                onChange={(e) => setCostoOrario(e.target.value.replace(/[^0-9,.]/g, ""))}
+                placeholder="es. 12,50"
+              />
+            </div>
+          </div>
 
           <div>
             <label className="mb-1 block text-xs font-medium text-muted-foreground">Note</label>
