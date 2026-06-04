@@ -2732,6 +2732,97 @@ def _saluto_per_ora(nome: Optional[str]) -> str:
     return f"{base}, {nome}" if nome else base
 
 
+_MESI_IT_BRIEFING = [
+    "", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+    "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+]
+
+
+def _briefing_dati_mensili_mancanti(
+    ristorante_id: str, supabase_client,
+) -> List[Dict[str, Any]]:
+    """Notifiche LIVE 'fatturato/costo personale mancante' per il briefing Home.
+
+    Replica ESATTAMENTE la logica di /api/home/salute (stesso mese precedente,
+    stessa tabella margini_mensili, stesso criterio: personale = dipendenti +
+    extra). Cosi' briefing e Salute non si contraddicono mai: prima il briefing
+    leggeva solo notification_inbox, popolata pero' soltanto dalla vecchia pagina
+    Streamlit -> sull'app nuova quelle notifiche non comparivano e il briefing
+    diceva 'tutto ok' mentre la Salute segnalava il mese mancante.
+
+    Niente persistenza: notifiche effimere come price-alert-live, ricalcolate a
+    ogni briefing dalla fonte autorevole. Stesso formato dei record inbox cosi'
+    _build_snapshot le tratta come tutte le altre.
+    """
+    from datetime import datetime as _dt2
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        oggi = _dt2.now(tz=_ZI("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt2.now().date()
+    if oggi.month == 1:
+        mc_anno, mc_mese = oggi.year - 1, 12
+    else:
+        mc_anno, mc_mese = oggi.year, oggi.month - 1
+    mese_label = _MESI_IT_BRIEFING[mc_mese]
+
+    fatturato_ok = False
+    personale_ok = False
+    try:
+        resp = (
+            supabase_client.table("margini_mensili")
+            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,"
+                    "costo_dipendenti,costo_personale_extra")
+            .eq("ristorante_id", ristorante_id)
+            .eq("anno", mc_anno)
+            .eq("mese", mc_mese)
+            .execute()
+        )
+        for r in (resp.data or []):
+            netto = (
+                float(r.get("fatturato_iva10") or 0)
+                + float(r.get("fatturato_iva22") or 0)
+                + float(r.get("altri_ricavi_noiva") or 0)
+            )
+            if netto > 0:
+                fatturato_ok = True
+            if (float(r.get("costo_dipendenti") or 0)
+                    + float(r.get("costo_personale_extra") or 0)) > 0:
+                personale_ok = True
+    except Exception as exc:
+        logger.warning("briefing dati mensili: lettura margini fallita: %s", exc)
+        return []
+
+    out: List[Dict[str, Any]] = []
+    if not fatturato_ok:
+        out.append({
+            "id": f"fatturato-mancante-live-{mc_anno}-{mc_mese:02d}",
+            "topic_key": "fatturato_mancante",
+            "source_type": "live",
+            "severity": "warning",
+            "title": f"Fatturato di {mese_label} {mc_anno} non ancora inserito",
+            "body": "",
+            "action_page": "/margini",
+            "payload": {"mese": mese_label, "anno": mc_anno},
+            "source_event_at": None,
+            "dedupe_key": f"fatturato-mancante-live-{mc_anno}-{mc_mese:02d}",
+        })
+    if not personale_ok:
+        out.append({
+            "id": f"costo-personale-mancante-live-{mc_anno}-{mc_mese:02d}",
+            "topic_key": "costo_personale_mancante",
+            "source_type": "live",
+            "severity": "warning",
+            "title": f"Costo del personale di {mese_label} {mc_anno} non ancora inserito",
+            "body": "",
+            "action_page": "/margini",
+            "payload": {"mese": mese_label, "anno": mc_anno},
+            "source_event_at": None,
+            "dedupe_key": f"costo-personale-mancante-live-{mc_anno}-{mc_mese:02d}",
+        })
+    return out
+
+
 @app.get(
     "/api/home/briefing",
     response_model=BriefingResponse,
@@ -2811,6 +2902,11 @@ def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingRespon
                         "top_product": top.get("nome"),
                         "top_increase_pct": top.get("aumento_pct"),
                         "impatto_mese": top.get("impatto_mese"),
+                        # 'prodotto' | 'tag': il template distingue il linguaggio.
+                        # Senza questo l'alert su un TAG (es. "BAR, CAFFE'") veniva
+                        # raccontato come se fosse un prodotto -> "1 prodotto
+                        # (soprattutto BAR, CAFFE')", incoerente e confuso.
+                        "top_tipo": top.get("tipo"),
                     },
                     "source_event_at": None,
                     "dedupe_key": "price-alert-live",
@@ -2879,6 +2975,18 @@ def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingRespon
                     })
         except Exception as exc:
             logger.warning("home_briefing: check ricavi automatici fallito: %s", exc)
+
+    # Dati mensili mancanti (fatturato / costo personale del mese precedente):
+    # calcolati LIVE dalla stessa fonte della Salute (margini_mensili), cosi' le
+    # due sezioni Home non si contraddicono mai. Niente dipendenza dalla vecchia
+    # pagina Streamlit, che era l'unico posto a popolare queste notifiche.
+    if ristorante_id:
+        try:
+            notifications.extend(
+                _briefing_dati_mensili_mancanti(ristorante_id, supabase_client)
+            )
+        except Exception as exc:
+            logger.warning("home_briefing: dati mensili mancanti falliti: %s", exc)
 
     # Preferenze configuratore (Step 6): nome override + topic spenti dal cliente.
     topics_disabled: List[str] = []

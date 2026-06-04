@@ -22,6 +22,7 @@ from services.daily_briefing_service import (
     _bullet_for,
     _deanonymize,
     _narrate_with_ai,
+    _narrative_phrase_for,
     _severity_max,
     _today_rome,
     generate_and_save_briefing,
@@ -157,6 +158,35 @@ class TestBulletFor:
         n = _notif("price_alert", "warning", {}, title="Alert prezzi")
         assert "Alert prezzi" in _bullet_for(n)
 
+    def test_price_alert_bullet_singolo_prodotto(self):
+        n = _notif("price_alert", "warning", {
+            "count": 1, "top_product": "Mozzarella",
+            "top_increase_pct": 23.8, "top_tipo": "prodotto",
+        })
+        b = _bullet_for(n)
+        assert "Prezzo in aumento" in b
+        assert "— Mozzarella +23.8%" in b
+        assert "prodotti" not in b  # singolare: niente plurale
+
+    def test_price_alert_bullet_singolo_tag(self):
+        n = _notif("price_alert", "warning", {
+            "count": 1, "top_product": "BAR, CAFFE'",
+            "top_increase_pct": 119.6, "impatto_mese": 80, "top_tipo": "tag",
+        })
+        b = _bullet_for(n)
+        assert "Categoria in aumento" in b
+        assert "— BAR, CAFFE' +119.6%" in b
+        assert "prodotto" not in b.lower()
+
+    def test_price_alert_bullet_piu_tag(self):
+        n = _notif("price_alert", "warning", {
+            "count": 4, "top_product": "BIRRE",
+            "top_increase_pct": 15.0, "top_tipo": "tag",
+        })
+        b = _bullet_for(n)
+        assert "su 4 categorie" in b
+        assert "— BIRRE +15.0%" in b
+
     def test_uncategorized_rows_payload_key(self):
         n = _notif("uncategorized_rows", "warning", {"uncategorized_rows": 7})
         b = _bullet_for(n)
@@ -171,6 +201,66 @@ class TestBulletFor:
     def test_unknown_topic_returns_title(self):
         n = _notif("food_cost_soglia_superata", "warning", {}, title="FC alto")
         assert _bullet_for(n) == "FC alto"
+
+
+# ────────────────────────────────────────────────
+# _narrative_phrase_for — price_alert (Difetto 1: prodotto vs categoria)
+# ────────────────────────────────────────────────
+
+class TestNarrativePriceAlert:
+    def test_singolo_prodotto_nominato_senza_soprattutto(self):
+        # count==1 deve nominare il prodotto direttamente, mai "soprattutto"
+        # (che implicherebbe un elenco di piu' voci).
+        n = _notif("price_alert", "warning", {
+            "count": 1, "top_product": "Mozzarella",
+            "top_increase_pct": 23.8, "top_tipo": "prodotto",
+        })
+        frase = _narrative_phrase_for(n)
+        assert "Mozzarella" in frase
+        assert "soprattutto" not in frase
+        assert "23.8" in frase
+        assert "prezzo di Mozzarella" in frase
+
+    def test_singolo_tag_chiamato_categoria(self):
+        # Un alert su un TAG non e' un "prodotto": va detto "categoria".
+        n = _notif("price_alert", "warning", {
+            "count": 1, "top_product": "BAR, CAFFE', PASTICCERIE",
+            "top_increase_pct": 119.6, "impatto_mese": 80, "top_tipo": "tag",
+        })
+        frase = _narrative_phrase_for(n)
+        assert "categoria BAR, CAFFE', PASTICCERIE" in frase
+        assert "prodotto" not in frase.lower()
+        assert "soprattutto" not in frase
+        assert "119.6" in frase
+        assert "80" in frase
+
+    def test_piu_voci_usa_piu_pesante(self):
+        # count>1: niente piu' "soprattutto", ma "il prodotto piu' pesante e' …".
+        n = _notif("price_alert", "warning", {
+            "count": 3, "top_product": "Mozzarella",
+            "top_increase_pct": 12.5, "top_tipo": "prodotto",
+        })
+        frase = _narrative_phrase_for(n)
+        assert "3 voci" in frase
+        assert "più pesante" in frase
+        assert "Mozzarella" in frase
+        assert "soprattutto" not in frase
+
+    def test_piu_voci_tag_qualifica_categoria(self):
+        n = _notif("price_alert", "warning", {
+            "count": 2, "top_product": "BIRRE",
+            "top_increase_pct": 30.0, "top_tipo": "tag",
+        })
+        frase = _narrative_phrase_for(n)
+        assert "categoria più pesante è BIRRE" in frase
+
+    def test_tipo_assente_resta_prodotto(self):
+        # Retrocompat: senza top_tipo si assume prodotto (vecchi snapshot).
+        n = _notif("price_alert", "warning", {
+            "count": 1, "top_product": "Pomodori", "top_increase_pct": 10.0,
+        })
+        frase = _narrative_phrase_for(n)
+        assert "prezzo di Pomodori" in frase
 
 
 # ────────────────────────────────────────────────
@@ -414,6 +504,26 @@ class TestNarrazioneAI:
         anon, mapping = _anonymize_bullets(bullets)
         assert anon == bullets
         assert mapping == {}
+
+    def test_anonymize_singolo_prodotto_nuovo_formato(self):
+        # Bullet count==1: "📈 Prezzo in aumento — <Nome> +NN%". Anche qui il
+        # nome non deve mai finire a OpenAI in chiaro.
+        b = _bullet_for(_notif("price_alert", "warning", {
+            "count": 1, "top_product": "Mozzarella di bufala",
+            "top_increase_pct": 23.8, "top_tipo": "prodotto",
+        }))
+        anon, mapping = _anonymize_bullets([b])
+        assert "Mozzarella di bufala" not in anon[0]
+        assert mapping.get("<<P1>>") == "Mozzarella di bufala"
+
+    def test_anonymize_singolo_tag_nuovo_formato(self):
+        b = _bullet_for(_notif("price_alert", "warning", {
+            "count": 1, "top_product": "BAR, CAFFE', PASTICCERIE",
+            "top_increase_pct": 119.6, "impatto_mese": 80, "top_tipo": "tag",
+        }))
+        anon, mapping = _anonymize_bullets([b])
+        assert "BAR, CAFFE', PASTICCERIE" not in anon[0]
+        assert mapping.get("<<P1>>") == "BAR, CAFFE', PASTICCERIE"
 
     def test_deanonymize_roundtrip(self):
         text = "Occhio a <<P1>>, e' rincarato."

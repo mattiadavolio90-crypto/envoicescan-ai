@@ -210,13 +210,25 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
         top_product = payload.get('top_product')
         top_pct = payload.get('top_increase_pct')
         impatto = payload.get('impatto_mese')
+        # 'tag' = categoria/raggruppamento (es. "BAR, CAFFE'"), non un prodotto.
+        is_tag = str(payload.get('top_tipo') or '') == 'tag'
         if count:
-            prodotti = 'prodotto' if count == 1 else 'prodotti'
-            base = f"\U0001F4C8 Alert prezzi su {count} {prodotti}"
+            # Intestazione: una sola voce -> "Prezzo/Categoria in aumento";
+            # piu' voci -> "Alert prezzi su N prodotti/categorie".
+            if count == 1:
+                intro = "Categoria in aumento" if is_tag else "Prezzo in aumento"
+            else:
+                plurale = 'categorie' if is_tag else 'prodotti'
+                intro = f"Alert prezzi su {count} {plurale}"
+            base = f"\U0001F4C8 {intro}"
+            # Formato uniforme '\u2014 <Nome> +NN%': consente all'anonimizzazione di
+            # catturare SEMPRE il nome (prodotto o tag) prima dell'invio a OpenAI.
             if top_product and top_pct is not None:
                 base += f" \u2014 {top_product} +{top_pct:.1f}%"
                 if impatto:
                     base += f" (\u2248\u20ac{int(impatto)}/mese)"
+            elif top_product:
+                base += f" \u2014 {top_product}"
             return base + "."
         return f"\U0001F4C8 {title}"
 
@@ -374,6 +386,10 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
         count = payload.get('count') or _parse_count_from_title(title)
         top_product = payload.get('top_product')
         top_pct = payload.get('top_increase_pct')
+        # 'tag' = categoria/raggruppamento (es. "BAR, CAFFE'"), non un prodotto:
+        # va chiamato "categoria", altrimenti il testo dice "prodotto" e tra
+        # parentesi cita una categoria -> incomprensibile.
+        is_tag = str(payload.get('top_tipo') or '') == 'tag'
         body = str(notif.get('body') or '')
         legacy_products = _parse_products_from_price_alert_text(body)
         if not top_product and legacy_products:
@@ -382,15 +398,29 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
                 count = len(legacy_products)
         impatto = payload.get('impatto_mese')
         if count:
-            prodotti = 'prodotto è aumentato di prezzo' if count == 1 else 'prodotti sono aumentati di prezzo'
-            base = f"Ho notato che {count} {prodotti} in modo che pesa davvero"
-            if top_product and top_pct is not None:
-                base += f" (soprattutto {top_product}, +{top_pct:.1f}%"
-                if impatto:
-                    base += f", circa €{int(impatto)} in più al mese"
+            if count == 1 and top_product:
+                # Una sola voce: la nomino direttamente, niente "soprattutto"
+                # (che implicherebbe un elenco con count > 1).
+                if is_tag:
+                    soggetto = f"La categoria {top_product} è aumentata"
+                else:
+                    soggetto = f"Il prezzo di {top_product} è aumentato"
+                if top_pct is not None:
+                    soggetto += f" del +{top_pct:.1f}%"
+                    if impatto:
+                        soggetto += f", circa €{int(impatto)} in più al mese"
+                return soggetto + ": vale la pena controllare se puoi rinegoziare o cambiare fornitore."
+
+            # Piu' voci: numero + la piu' pesante come esempio.
+            base = f"Ho notato che {count} voci sono aumentate di prezzo in modo che pesa davvero"
+            if top_product:
+                qualifica = "categoria" if is_tag else "prodotto"
+                base += f" (il {qualifica} più pesante è {top_product}"
+                if top_pct is not None:
+                    base += f", +{top_pct:.1f}%"
+                    if impatto:
+                        base += f", circa €{int(impatto)} in più al mese"
                 base += ")"
-            elif top_product:
-                base += f" (soprattutto {top_product})"
             return base + ": vale la pena controllare se puoi rinegoziare o cambiare fornitore."
         return f"{title}."
 
@@ -485,15 +515,21 @@ def _anonymize_bullets(bullets: List[str]) -> tuple:
     out: List[str] = []
     counter = 0
     for b in bullets:
-        # Cattura il nome tra l'em-dash e il '+NN%'. Il vecchio pattern 'es. '
-        # non matchava mai il formato attuale -> nomi inviati a OpenAI in chiaro.
-        m = _re.search(r'—\s+(.+?)\s+\+\d', b)
-        if m:
-            nome = m.group(1).strip()
-            counter += 1
-            ph = f"<<P{counter}>>"
-            mapping[ph] = nome
-            b = b.replace(nome, ph)
+        # SOLO i bullet price_alert contengono nomi propri (prodotti/categorie):
+        # li riconosco dall'emoji 📈 iniziale. Limitare a questi evita di
+        # anonimizzare per sbaglio parole comuni dopo un em-dash in altri bullet
+        # (es. "… — controlla.").
+        if b.lstrip().startswith("\U0001F4C8"):
+            # Cattura il nome dopo l'em-dash: '— <Nome> +NN%' oppure '— <Nome>.'
+            # (a fine stringa). Vale per prodotti e categorie: stesso delimitatore.
+            m = _re.search(r'—\s+(.+?)(?:\s+\+\d|\s*\.?\s*$)', b)
+            if m:
+                nome = m.group(1).strip().rstrip('.').strip()
+                if nome:
+                    counter += 1
+                    ph = f"<<P{counter}>>"
+                    mapping[ph] = nome
+                    b = b.replace(nome, ph)
         out.append(b)
     return out, mapping
 
