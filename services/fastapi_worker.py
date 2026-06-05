@@ -1912,8 +1912,12 @@ _ALERT_PREZZI_EXECUTOR = _concurrent_futures.ThreadPoolExecutor(
 
 
 def _chat_limite_per_piano(piano: Optional[str]) -> int:
-    """Domande/giorno consentite per il piano del cliente."""
-    return CHAT_LIMITI_PIANO.get((piano or "base").lower().strip(), 10)
+    """Domande/giorno consentite per il piano del cliente.
+
+    Default = limite "base" (8) per piani non riconosciuti: prima era 10, un
+    valore fantasma non presente in CHAT_LIMITI_PIANO e superiore a base.
+    """
+    return CHAT_LIMITI_PIANO.get((piano or "base").lower().strip(), CHAT_LIMITI_PIANO["base"])
 
 
 def _chat_domande_oggi(ristorante_id: Optional[str], user_id: str, supabase_client) -> int:
@@ -2497,9 +2501,21 @@ def chat_ai(
             detail="La chat con l'assistente non è inclusa nel tuo piano. Passa a un piano superiore per attivarla.",
         )
 
-    # Rate limit giornaliero: rete di sicurezza sui costi. 429 se superato.
-    domande_oggi = _chat_domande_oggi(ristorante_id, user_id, supabase_client)
-    if domande_oggi >= limite:
+    # Rate limit giornaliero atomico (RPC): conta+inserisce in un solo statement
+    # PRIMA della chiamata OpenAI. Elimina la race (N richieste concorrenti che
+    # leggono lo stesso conteggio) e il fail-open del vecchio INSERT post-chiamata.
+    # Se la RPC fallisce -> fail-closed (rifiuta la domanda).
+    try:
+        _rpc = supabase_client.rpc("chat_usage_check_and_log", {
+            "p_user_id": user_id,
+            "p_ristorante_id": ristorante_id,
+            "p_limite": limite,
+        }).execute()
+        domande_oggi = int(_rpc.data) if _rpc.data is not None else -1
+    except Exception as exc:
+        logger.warning("chat: rate-limit RPC fallita (fail-closed): %s", exc)
+        raise HTTPException(status_code=503, detail="Servizio temporaneamente non disponibile. Riprova.")
+    if domande_oggi < 0:
         raise HTTPException(
             status_code=429,
             detail=f"Hai raggiunto il limite di {limite} domande per oggi. Riprova domani.",
@@ -2735,17 +2751,10 @@ def chat_ai(
     except Exception as exc:
         logger.warning("chat: tracking costi fallito (non blocca): %s", exc)
 
-    # Log della domanda per il contatore giornaliero (fail-safe: non blocca).
-    try:
-        supabase_client.table("chat_usage_log").insert({
-            "user_id": user_id,
-            "ristorante_id": ristorante_id,
-        }).execute()
-    except Exception as exc:
-        logger.warning("chat: log usage fallito (non blocca): %s", exc)
-
+    # Il log della domanda e' gia' stato scritto atomicamente dalla RPC di
+    # rate-limit prima della chiamata OpenAI: niente INSERT qui.
     logger.info("chat_ai: user=%s model=%s messages=%d domande_oggi=%d",
-                user.get("email"), CHAT_MODEL, len(body.messages), domande_oggi + 1)
+                user.get("email"), CHAT_MODEL, len(body.messages), domande_oggi)
     return ChatResponse(reply=reply or "Non sono riuscito a elaborare la risposta, riprova.")
 
 
@@ -8970,9 +8979,28 @@ class ClassificaBody(BaseModel):
 def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_verify_admin)):
     """Classifica un gruppo di righe e opzionalmente salva in memoria globale."""
     from datetime import datetime, timezone
+    from config.constants import TUTTE_LE_CATEGORIE
+
+    # Validazione categoria: deve essere reale (o NOTE E DICITURE). Prima si scriveva
+    # qualsiasi stringa <=100 char direttamente su fatture.
+    _categorie_valide = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE"}
+    if body.categoria not in _categorie_valide:
+        raise HTTPException(status_code=422, detail=f"Categoria non valida: {body.categoria}")
 
     sb = get_supabase_client()
     now = datetime.now(timezone.utc).isoformat()
+
+    target_ids = list(body.ids)
+    # Guardrail dominio #2: NOTE E DICITURE solo su righe a importo 0. Se l'admin
+    # assegna NOTE, scriviamola solo sulle righe a importo zero (le altre restano).
+    if body.categoria == "📝 NOTE E DICITURE":
+        _rows = sb.table("fatture").select("id,totale_riga,prezzo_unitario").in_("id", body.ids).execute()
+        def _imp(r):
+            t = float(r.get("totale_riga") or 0)
+            return t if t != 0 else float(r.get("prezzo_unitario") or 0)
+        target_ids = [r["id"] for r in (_rows.data or []) if _imp(r) == 0]
+        if not target_ids:
+            raise HTTPException(status_code=422, detail="NOTE E DICITURE non applicabile: tutte le righe hanno importo diverso da zero.")
 
     update_payload = {
         "categoria": body.categoria,
@@ -8980,7 +9008,7 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
         "reviewed_at": now,
         "reviewed_by": f"admin:{admin_user.get('email', 'admin')}",
     }
-    sb.table("fatture").update(update_payload).in_("id", body.ids).is_("deleted_at", "null").execute()
+    sb.table("fatture").update(update_payload).in_("id", target_ids).is_("deleted_at", "null").execute()
 
     # Recupera info per audit log e memoria
     row_resp = sb.table("fatture").select("descrizione,prezzo_unitario,categoria").in_("id", body.ids).limit(1).execute()
@@ -9012,8 +9040,8 @@ def admin_qualita_classifica(body: ClassificaBody, admin_user: dict = Depends(_v
         nota=f"salva_memoria={body.salva_memoria}",
     )
 
-    logger.info("admin_qualita_classifica: %d righe → %s | admin=%s", len(body.ids), body.categoria, admin_user.get("email"))
-    return {"ok": True, "righe_aggiornate": len(body.ids)}
+    logger.info("admin_qualita_classifica: %d righe → %s | admin=%s", len(target_ids), body.categoria, admin_user.get("email"))
+    return {"ok": True, "righe_aggiornate": len(target_ids)}
 
 
 class AutoReviewBody(BaseModel):
