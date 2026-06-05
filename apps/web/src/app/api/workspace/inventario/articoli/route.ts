@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { WORKER_URL, getToken, workerHeaders, unauthorized } from "../../_worker";
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const token = await getToken();
   if (!token) return unauthorized();
   const res = await fetch(`${WORKER_URL}/api/workspace/inventario/articoli`, {

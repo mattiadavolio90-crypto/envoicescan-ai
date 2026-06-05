@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { type SnapshotDate, fmtData } from "@/lib/inventario";
 
 interface Props {

@@ -6,12 +6,11 @@ import { useRouter } from "next/navigation"; // usato in handleCreaCliente + han
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
 import { Search, Plus, ChevronRight, CheckCircle, XCircle, Clock } from "lucide-react";
-import { Cliente, PIANO_LABEL, PIANO_COLOR, PIANO_OPTIONS, fmtDateTime } from "@/lib/admin";
+import { Cliente, PIANO_COLOR, PIANO_OPTIONS } from "@/lib/admin";
 
 function StatusBadge({ attivo }: { attivo: boolean }) {
   return attivo ? (
@@ -142,21 +141,8 @@ export function ClientiClient({ clientiIniziali }: Props) {
     }
   }
 
-  async function handleImpersona(c: Cliente) {
-    try {
-      const res = await fetch(`/api/admin/clienti/${c.id}/impersona`, { method: "POST" });
-      if (!res.ok) {
-        const d = await res.json();
-        toast.error(d.detail || "Errore impersonazione");
-        return;
-      }
-      toast.success(`Accesso come ${c.email}`);
-      router.push("/dashboard");
-      router.refresh();
-    } catch {
-      toast.error("Errore di connessione");
-    }
-  }
+  // L'impersonazione si avvia dalla pagina di dettaglio cliente
+  // (cliente-dettaglio-client.tsx, "Entra come cliente"), non dalla lista.
 
   return (
     <div className="space-y-4">

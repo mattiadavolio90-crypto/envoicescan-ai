@@ -126,7 +126,7 @@ function buildParams(obj: Record<string, string | number | boolean | undefined |
 
 async function workerGet<T>(
   path: string,
-  params: Record<string, any> = {},
+  params: Record<string, string | number | boolean | undefined | null> = {},
   revalidateSec?: number,
 ): Promise<T | null> {
   const token = await getToken();

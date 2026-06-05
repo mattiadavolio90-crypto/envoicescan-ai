@@ -4,12 +4,11 @@ import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } fro
 import { toast } from "sonner";
 import {
   AlertTriangle, ArchiveRestore, Calendar, CalendarDays, Check, ChevronDown,
-  ChevronRight, Filter, List, Loader2, Pencil, Plus, Search, Settings2, Trash2, X,
+  ChevronRight, Filter, List, Loader2, Pencil, Search, Settings2, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {

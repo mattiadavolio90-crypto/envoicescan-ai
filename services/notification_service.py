@@ -511,7 +511,10 @@ def build_scadenza_documents_notifications(
                     scadute.append(doc)
                 elif delta <= 7:
                     imminenti.append(doc)
-            except:
+            except (ValueError, TypeError) as _e:
+                # Data scadenza malformata: logga e salta il singolo documento
+                # invece di inghiottire qualunque eccezione in silenzio.
+                logger.warning("notifiche scadenze: data non valida '%s': %s", scad_str, _e)
                 continue
         
         notifications: List[Dict[str, Any]] = []

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { RefreshCw, Tag, Gift, Building2, Euro } from "lucide-react";
 import { toast } from "sonner";
-import type { ScontiOmaggiResponse, ScontoOmaggioItem } from "@/lib/prezzi";
+import type { ScontiOmaggiResponse } from "@/lib/prezzi";
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const ANNI = Array.from({ length: 5 }, (_, i) => ANNO_CORRENTE - i);

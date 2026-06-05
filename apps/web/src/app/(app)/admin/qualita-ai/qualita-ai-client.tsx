@@ -2,18 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import {
-  RefreshCw, Bot, CheckCircle, AlertTriangle, Zap, Trash2, ArrowRightLeft, Search, Undo2, Activity
+  RefreshCw, Bot, CheckCircle, Trash2, ArrowRightLeft, Search, Undo2, Activity
 } from "lucide-react";
 import { CATEGORIE_TUTTE } from "@/lib/admin";
-
-const CATEGORIE_SPECIALI = ["📝 NOTE E DICITURE", "SERVIZI E CONSULENZE", "BEVANDE FREDDE", "FOOD GENERICO", "ALTRI COSTI"];
 
 const BUCKET_LABEL: Record<string, string> = {
   dicitura: "Dicitura",

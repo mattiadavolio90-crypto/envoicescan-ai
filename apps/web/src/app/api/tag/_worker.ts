@@ -23,5 +23,5 @@ export function unauthorized() {
 }
 
 export function workerUnreachable() {
-  return NextResponse.json({ error: "Worker unreachable" }, { status: 502 });
+  return NextResponse.json({ error: "Worker non raggiungibile" }, { status: 502 });
 }

@@ -28,7 +28,6 @@ function CostiAiTab() {
   useEffect(() => { load(); }, [load]);
 
   const summary: Record<string, unknown>[] = (data?.summary as Record<string, unknown>[]) || [];
-  const timeseries: Record<string, unknown>[] = (data?.timeseries as Record<string, unknown>[]) || [];
   const visionOggi = data?.vision_oggi_by_ristorante as Record<string, number> || {};
 
   const totCosti = summary.reduce((s, r) => s + Number(r.ai_cost_total || 0), 0);

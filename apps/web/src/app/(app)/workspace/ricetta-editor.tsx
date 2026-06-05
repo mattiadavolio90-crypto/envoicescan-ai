@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Plus, Trash2, Search } from "lucide-react";
+import { Trash2, Search } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -176,6 +176,7 @@ export function RicettaEditor({ open, ricetta, onClose, onSaved }: Props) {
         nome: nome.trim(),
         categoria,
         prezzo_vendita_ivainc: prezzoVendita ? parseFloat(prezzoVendita) : null,
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         righe: righe.map(({ _key, costo, ...r }) => r),
       };
       const url = isNew

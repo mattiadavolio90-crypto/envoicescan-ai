@@ -175,7 +175,7 @@ export function FoodcostTab() {
             </div>
             <div className="border-t pt-2 space-y-1 text-muted-foreground">
               <p className="flex items-center gap-1.5"><AlertTriangle className="size-3.5 text-amber-500" /> = il prezzo di un ingrediente è aumentato nelle fatture rispetto a quando hai salvato la ricetta.</p>
-              <p>Usa le frecce ▲▼ per ordinare le ricette e l'icona copia per duplicarne una.</p>
+              <p>Usa le frecce ▲▼ per ordinare le ricette e l&apos;icona copia per duplicarne una.</p>
             </div>
           </PopoverContent>
         </Popover>

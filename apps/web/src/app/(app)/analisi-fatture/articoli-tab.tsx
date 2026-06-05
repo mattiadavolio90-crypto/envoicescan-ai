@@ -58,7 +58,7 @@ const SPESE_GENERALI_SET = new Set([
 
 const PAGE_SIZE = 100;
 
-function compareValues(a: any, b: any, dir: SortDir): number {
+function compareValues(a: unknown, b: unknown, dir: SortDir): number {
   if (dir === null) return 0;
   if (a == null && b == null) return 0;
   if (a == null) return 1;
@@ -198,8 +198,8 @@ export function ArticoliTab({
     const k = sort.key;
     const d = sort.dir;
     return [...filtered].sort((a, b) => {
-      const va = k === "fornitore" ? a.fornitore_principale : (a as any)[k];
-      const vb = k === "fornitore" ? b.fornitore_principale : (b as any)[k];
+      const va = k === "fornitore" ? a.fornitore_principale : (a as Record<string, unknown>)[k];
+      const vb = k === "fornitore" ? b.fornitore_principale : (b as Record<string, unknown>)[k];
       return compareValues(va, vb, d);
     });
   }, [filtered, sort]);

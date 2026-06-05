@@ -69,8 +69,12 @@ type SelectContentProps = {
   className?: string;
 };
 
-function SelectContent({ children, className }: SelectContentProps) {
-  return null; // handled inside NativeSelect wrapper
+// Shim no-op: l'API shadcn (SelectContent/SelectItem) e' mantenuta per
+// compatibilita', ma il rendering reale avviene nel NativeSelect wrapper sotto.
+// I componenti accettano le stesse props (SelectContentProps/SelectItemProps)
+// ma non le usano qui.
+function SelectContent(_props: SelectContentProps) {  // eslint-disable-line @typescript-eslint/no-unused-vars
+  return null;
 }
 
 type SelectItemProps = {
@@ -79,8 +83,8 @@ type SelectItemProps = {
   className?: string;
 };
 
-function SelectItem({ value, children, className }: SelectItemProps) {
-  return null; // handled inside NativeSelect wrapper
+function SelectItem(_props: SelectItemProps) {  // eslint-disable-line @typescript-eslint/no-unused-vars
+  return null;
 }
 
 // ─── Native implementation ───────────────────────────────────────────────────
