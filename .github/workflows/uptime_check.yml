@@ -6,6 +6,9 @@ on:
     - cron: '*/15 * * * *'
   workflow_dispatch: # Permette di avviarlo manuale per testarlo
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -68,5 +71,5 @@ jobs:
               \"sender\": {\"name\": \"ONEFLUX Monitor\", \"email\": \"agent@oneflux.it\"},
               \"to\": [{\"email\": \"md@oneflux.it\", \"name\": \"Mattia\"}],
               \"subject\": \"🚨 ONEFLUX è offline\",
-              "htmlContent": "<h2>⚠️ Attenzione</h2><p>L'app <strong>ONEFLUX</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://frontend-production-aa79.up.railway.app/'>https://frontend-production-aa79.up.railway.app/</a></p><p>Controlla su <a href='https://railway.com'>Railway Dashboard</a> per lo stato del deploy.</p>"
+              \"htmlContent\": \"<h2>⚠️ Attenzione</h2><p>L'app <strong>ONEFLUX</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://frontend-production-aa79.up.railway.app/'>https://frontend-production-aa79.up.railway.app/</a></p><p>Controlla su <a href='https://railway.com'>Railway Dashboard</a> per lo stato del deploy.</p>\"
             }"

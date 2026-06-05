@@ -9,6 +9,10 @@ set -e
 # Validazione variabili d'ambiente obbligatorie
 if [ -z "$SUPABASE_URL" ]; then echo "FATAL: SUPABASE_URL not set"; exit 1; fi
 if [ -z "$SUPABASE_KEY" ]; then echo "FATAL: SUPABASE_KEY not set"; exit 1; fi
+# service_role_key e' obbligatoria: l'app la usa per bypassare RLS (auth.uid()
+# e' sempre NULL in custom-auth). Senza, il container bootava ma ogni query DB
+# falliva a runtime -> fail-close esplicito invece di un deploy "verde" rotto.
+if [ -z "$SUPABASE_SERVICE_ROLE_KEY" ]; then echo "FATAL: SUPABASE_SERVICE_ROLE_KEY not set"; exit 1; fi
 if [ -z "$OPENAI_API_KEY" ]; then echo "FATAL: OPENAI_API_KEY not set"; exit 1; fi
 
 SECRETS_FILE="/app/.streamlit/secrets.toml"

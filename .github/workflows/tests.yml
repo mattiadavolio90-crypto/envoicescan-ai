@@ -1,4 +1,4 @@
-name: Requirements Consistency
+name: Tests
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  verify-requirements:
+  pytest:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,6 +22,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: 'pip'
 
-      - name: Check critical dependency consistency
-        run: python scripts/verify_requirements_consistency.py
+      - name: Install dependencies (lock)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-lock.txt
+
+      - name: Run pytest
+        run: python -m pytest tests/ -q

@@ -11,6 +11,9 @@ on:
       - "services/fastapi_worker.py"
       - "openapi/openapi.json"
 
+permissions:
+  contents: read
+
 jobs:
   check-drift:
     runs-on: ubuntu-latest
