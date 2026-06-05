@@ -27,6 +27,7 @@ import io
 import json
 import logging
 import os
+import secrets
 import sys
 import threading
 import time
@@ -158,7 +159,9 @@ def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     """
     if WORKER_DEV_MODE and not WORKER_SECRET_KEY:
         return  # dev mode esplicito: skip
-    if x_worker_key != WORKER_SECRET_KEY:
+    # Confronto a tempo costante: evita timing attack sulla chiave condivisa
+    # (coerente con l'HMAC del webhook, gia' time-safe).
+    if not secrets.compare_digest(x_worker_key or "", WORKER_SECRET_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
@@ -653,7 +656,7 @@ def classify(request: Request, body: ClassifyRequest) -> ClassifyResponse:
         raise
     except Exception as exc:
         logger.exception(f"❌ /api/classify errore: {exc}")
-        raise HTTPException(status_code=500, detail=f"Errore classificazione: {str(exc)}")
+        raise HTTPException(status_code=500, detail="Errore durante la classificazione.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -770,7 +773,7 @@ async def parse_invoice(
         raise
     except Exception as exc:
         logger.exception(f"❌ /api/parse errore: {exc}")
-        raise HTTPException(status_code=500, detail=f"Errore parsing: {str(exc)}")
+        raise HTTPException(status_code=500, detail="Errore durante l'elaborazione del file.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1409,6 +1412,26 @@ async def upload_invoice(
     contents = await file.read()
     if len(contents) > 50 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File troppo grande (max 50MB).")
+    if not contents:
+        raise HTTPException(status_code=422, detail="File vuoto.")
+
+    # Validazione magic bytes: il contenuto deve corrispondere all'estensione
+    # (stessa logica del percorso Streamlit upload_handler). Difende il path di
+    # upload diretto browser->worker da file con estensione mascherata.
+    _magic_ok = False
+    if ext == "xml":
+        _head = contents[:200].lstrip(b"\xef\xbb\xbf").lstrip()
+        _magic_ok = _head.startswith(b"<?xml") or (b"<" in _head[:10] and b"FatturaElettronica" in contents[:500])
+    elif ext == "p7m":
+        _raw_start = contents[:20].decode("ascii", errors="ignore").strip()
+        _magic_ok = (contents[0:1] == b"\x30") or any(
+            _raw_start.startswith(p) for p in ("MIIF", "MIIE", "MIIG", "MIIB", "MIIA", "-----")
+        )
+    if not _magic_ok:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Il contenuto del file non corrisponde all'estensione .{ext}.",
+        )
 
     from services import get_supabase_client
     supabase_client = get_supabase_client()
@@ -3943,7 +3966,7 @@ def _compute_periodo_precedente(data_da: Optional[str], data_a: Optional[str]) -
 
 # ─── Endpoint: lista mesi disponibili ──────────────────────────────────────
 
-@app.get("/api/fatture/mesi-disponibili", response_model=MesiDisponibiliResponse)
+@app.get("/api/fatture/mesi-disponibili", response_model=MesiDisponibiliResponse, dependencies=[Depends(_verify_worker_key)])
 def get_mesi_disponibili(
     authorization: Optional[str] = Header(None),
 ) -> MesiDisponibiliResponse:
@@ -3982,7 +4005,7 @@ def get_mesi_disponibili(
 
 # ─── Endpoint: KPI con delta vs periodo precedente ─────────────────────────
 
-@app.get("/api/fatture/kpi", response_model=KpiResponse)
+@app.get("/api/fatture/kpi", response_model=KpiResponse, dependencies=[Depends(_verify_worker_key)])
 def get_fatture_kpi(
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
@@ -4078,7 +4101,7 @@ def get_fatture_kpi(
 
 # ─── Endpoint: articoli aggregati (vista default tab Articoli) ─────────────
 
-@app.get("/api/fatture/articoli-aggregati", response_model=ArticoliResponse)
+@app.get("/api/fatture/articoli-aggregati", response_model=ArticoliResponse, dependencies=[Depends(_verify_worker_key)])
 def get_articoli_aggregati(
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
@@ -4216,7 +4239,7 @@ def get_articoli_aggregati(
 
 # ─── Endpoint: righe singole (per espansione articolo) ─────────────────────
 
-@app.get("/api/fatture/righe-articolo", response_model=List[RigaFattura])
+@app.get("/api/fatture/righe-articolo", response_model=List[RigaFattura], dependencies=[Depends(_verify_worker_key)])
 def get_righe_articolo(
     descrizione: str,
     data_da: Optional[str] = None,
@@ -4247,7 +4270,7 @@ def get_righe_articolo(
 
 # ─── Endpoint: pivot estesa (mese/trimestre/anno auto) ─────────────────────
 
-@app.get("/api/fatture/pivot", response_model=PivotResponse)
+@app.get("/api/fatture/pivot", response_model=PivotResponse, dependencies=[Depends(_verify_worker_key)])
 def get_fatture_pivot(
     dimensione: str = "categoria",  # "categoria" | "fornitore"
     data_da: Optional[str] = None,
@@ -4328,7 +4351,7 @@ def get_fatture_pivot(
 
 # ─── Endpoint: trend temporale (grafico multi-select) ──────────────────────
 
-@app.get("/api/fatture/trend", response_model=TrendResponse)
+@app.get("/api/fatture/trend", response_model=TrendResponse, dependencies=[Depends(_verify_worker_key)])
 def get_fatture_trend(
     dimensione: str = "categoria",
     valori: Optional[str] = None,  # CSV: "CARNE,PESCE,..." o "Marini,Demare"
@@ -4388,7 +4411,7 @@ def get_fatture_trend(
 
 # ─── Endpoint: fornitori distinti del ristorante ───────────────────────────
 
-@app.get("/api/fatture/fornitori")
+@app.get("/api/fatture/fornitori", dependencies=[Depends(_verify_worker_key)])
 def get_fornitori_disponibili(
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
@@ -4423,7 +4446,7 @@ def get_fornitori_disponibili(
 
 # ─── Endpoint: categorie disponibili ───────────────────────────────────────
 
-@app.get("/api/fatture/categorie")
+@app.get("/api/fatture/categorie", dependencies=[Depends(_verify_worker_key)])
 def get_categorie_disponibili(
     authorization: Optional[str] = Header(None),
 ) -> Dict[str, Any]:
@@ -4461,7 +4484,7 @@ def get_categorie_disponibili(
 
 # ─── Endpoint: batch update categoria (stessa descrizione) + memoria AI ────
 
-@app.post("/api/fatture/categoria-batch")
+@app.post("/api/fatture/categoria-batch", dependencies=[Depends(_verify_worker_key)])
 def categoria_batch(
     body: CategoriaBatchRequest,
     authorization: Optional[str] = Header(None),
@@ -4533,7 +4556,7 @@ class FattureListResponse(BaseModel):
     page_size: int
 
 
-@app.get("/api/fatture", response_model=FattureListResponse)
+@app.get("/api/fatture", response_model=FattureListResponse, dependencies=[Depends(_verify_worker_key)])
 def get_fatture(
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
@@ -4574,7 +4597,7 @@ class AggiornaCategoriaRequest(BaseModel):
     categoria: str
 
 
-@app.patch("/api/fatture/{riga_id}/categoria")
+@app.patch("/api/fatture/{riga_id}/categoria", dependencies=[Depends(_verify_worker_key)])
 def aggiorna_categoria_riga(
     riga_id: int,
     body: AggiornaCategoriaRequest,
@@ -7297,11 +7320,13 @@ class ResetConfirmBody(BaseModel):
 
 
 @app.post("/api/auth/reset-request", tags=["Auth"])
-def reset_password_request(body: ResetRequestBody):
+def reset_password_request(body: ResetRequestBody, request: Request):
     """Invia email con link di reset. Non richiede auth — qualsiasi email può richiederlo.
     Risponde sempre con successo generico per non rivelare se l'email è registrata.
     """
     from services.auth_service import invia_codice_reset
+    # Rate limit per IP: impedisce di spammare il servizio email variando l'email.
+    _check_rate_limit(request.client.host if request.client else request.headers.get("X-Forwarded-For", "unknown").split(",")[0].strip())
     email = (body.email or "").strip().lower()
     if not email or "@" not in email:
         raise HTTPException(status_code=400, detail="Email non valida")
@@ -7312,9 +7337,11 @@ def reset_password_request(body: ResetRequestBody):
 
 
 @app.post("/api/auth/reset-confirm", tags=["Auth"])
-def reset_password_confirm(body: ResetConfirmBody):
+def reset_password_confirm(body: ResetConfirmBody, request: Request):
     """Verifica token e imposta nuova password."""
     from services.auth_service import imposta_password_da_token
+    # Rate limit per IP: throttla i tentativi di conferma (anti-abuso sul token).
+    _check_rate_limit(request.client.host if request.client else request.headers.get("X-Forwarded-For", "unknown").split(",")[0].strip())
     token = (body.token or "").strip()
     password = body.password or ""
     if not token or not password:
@@ -8242,7 +8269,7 @@ def elimina_fattura_soft(
         raise
     except Exception as e:
         logger.exception(f"Errore soft-delete fattura {file_origine}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Errore durante l'eliminazione della fattura.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -8390,7 +8417,7 @@ def _verify_admin(
     x_worker_key: Optional[str] = Header(None),
 ) -> dict:
     """Worker key + bearer token → utente admin verificato. Ritorna il dict utente."""
-    if not (WORKER_DEV_MODE and not WORKER_SECRET_KEY) and x_worker_key != WORKER_SECRET_KEY:
+    if not (WORKER_DEV_MODE and not WORKER_SECRET_KEY) and not secrets.compare_digest(x_worker_key or "", WORKER_SECRET_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized")
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Token admin mancante")
@@ -9752,6 +9779,32 @@ def admin_impersona(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
         "target_email": u["email"],
         "target_nome": u.get("nome_ristorante") or u["email"],
     }
+
+
+class ImpersonaExitBody(BaseModel):
+    target_token: Optional[str] = Field(None, max_length=200)
+
+
+@app.post("/api/admin/impersona/exit", tags=["Admin"])
+def admin_impersona_exit(body: ImpersonaExitBody, admin_user: dict = Depends(_verify_admin)):
+    """Chiude l'impersonazione invalidando nel DB il session_token del target.
+
+    Senza questo, il token di impersonazione restava valido fino alla scadenza
+    per inattivita' (8h) e l'admin ne conservava una copia funzionante. Qui lo
+    azzeriamo: il cliente dovra' riloggarsi (e una eventuale copia del token non
+    e' piu' utilizzabile).
+    """
+    target_token = (body.target_token or "").strip()
+    if not target_token:
+        return {"ok": True, "invalidated": False}
+    sb = get_supabase_client()
+    res = sb.table("users").update({"session_token": None}).eq("session_token", target_token).execute()
+    invalidated = bool(res.data)
+    logger.warning(
+        "IMPERSONATION_END: admin=%s invalidato_token_target=%s",
+        admin_user.get("email"), invalidated,
+    )
+    return {"ok": True, "invalidated": invalidated}
 
 
 # ── Sedi (multi-ristorante) ───────────────────────────────────────────────────
