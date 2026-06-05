@@ -12,11 +12,15 @@ ricavi_email_sender_map) e il service_role_key che bypassa RLS.
 
 Riusa senza duplicare:
   - services.fastapi_worker._detect_gestionale_version
-  - services.fastapi_worker._parse_passbi_v1
-  - services.fastapi_worker._parse_generico
+  - services.fastapi_worker._parse_generico (file senza colonna ragione sociale)
+
+Per Passbi v1 usa un parser dedicato (_parse_passbi_email) che — a differenza
+della UI — smista ogni riga sul ristorante giusto via ragione sociale, così un
+singolo file di una catena alimenta tutti i locali. Ownership garantita dal
+join su ristoranti.user_id.
 
 Flusso per ogni ciclo:
-  1. claim batch (status pending/failed pronti)
+  1. claim batch atomico via RPC claim_ricavi_email_batch (FOR UPDATE SKIP LOCKED)
   2. per ogni record:
        a. scarica XLS da Storage (bucket ricavi-xls)
        b. detect versione + parse → items
@@ -81,7 +85,6 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
         import pandas as pd
         from services.fastapi_worker import (
             _detect_gestionale_version,
-            _parse_passbi_v1,
             _parse_generico,
         )
     except Exception as exc:
@@ -89,35 +92,25 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
         stats.errors.append(f"import parser: {exc}")
         return stats
 
-    # ── 1. Claim batch ────────────────────────────────────────────────────────
+    # ── 1. Claim batch (atomico: FOR UPDATE SKIP LOCKED via RPC) ────────────────
+    # Prima era SELECT + UPDATE separati: due worker concorrenti potevano claimare
+    # lo stesso record -> doppio import dello stesso XLS ricavi. La RPC
+    # claim_ricavi_email_batch (allineata a claim_batch_for_processing delle fatture)
+    # fa il claim in un solo statement atomico e recupera i lock stantii.
     try:
-        result = (
-            supabase.table("ricavi_email_queue")
-            .select("id, email_sender, attachment_name, storage_path, ristorante_id, user_id, attempt_count, max_attempts")
-            .in_("status", ["pending", "failed"])
-            .lte("next_retry_at", "now()")
-            .is_("locked_at", "null")
-            .order("created_at")
-            .limit(EMAIL_BATCH_SIZE)
-            .execute()
-        )
+        result = supabase.rpc(
+            "claim_ricavi_email_batch",
+            {"p_worker_id": worker_id, "p_batch_size": EMAIL_BATCH_SIZE},
+        ).execute()
         items = result.data or []
     except Exception as exc:
-        logger.error("email-cycle: errore claim batch: %s", exc)
+        logger.error("email-cycle: errore claim batch (RPC): %s", exc)
         return stats
 
     if not items:
         return stats
 
-    ids = [r["id"] for r in items]
-    try:
-        supabase.table("ricavi_email_queue").update({
-            "status": "processing", "locked_at": "now()", "locked_by": worker_id,
-        }).in_("id", ids).execute()
-    except Exception as exc:
-        logger.error("email-cycle: errore lock batch: %s", exc)
-        return stats
-
+    # attempt_count e' gia' stato incrementato dalla RPC al claim.
     stats.claimed = len(items)
 
     # ── 2. Elabora ogni record ────────────────────────────────────────────────
@@ -127,7 +120,9 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
         path        = item["storage_path"]
         ristorante  = item["ristorante_id"]
         user_id_val = item["user_id"]
-        attempts    = item["attempt_count"] + 1
+        # attempt_count gia' incrementato dalla RPC di claim: e' il numero del
+        # tentativo corrente (non sommare di nuovo +1).
+        attempts    = item["attempt_count"]
         max_att     = item["max_attempts"]
 
         if not path:
@@ -166,9 +161,16 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
 
             version = _detect_gestionale_version(raw_df)
             if version == "passbi_v1":
-                parsed_items, errors, parsed_rows = _parse_passbi_v1(raw_df, ristorante, supabase)
+                # Parser email-aware: smista ogni riga sul ristorante giusto via
+                # ragione sociale (catena multi-locale). `ristorante` (dal mittente)
+                # è solo il fallback per righe senza ragione sociale mappata.
+                per_ristorante, errors, parsed_rows = _parse_passbi_email(
+                    raw_df, ristorante, user_id_val, supabase
+                )
             else:
-                parsed_items, errors, parsed_rows = _parse_generico(raw_df)
+                # Formato generico: niente colonna ragione sociale → tutto sul mittente.
+                generic_items, errors, parsed_rows = _parse_generico(raw_df)
+                per_ristorante = {ristorante: generic_items} if generic_items else {}
 
         except Exception as exc:
             err = f"parsing fallito: {exc}"
@@ -178,15 +180,17 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
             stats.errors.append(f"{filename}: {err}")
             continue
 
-        if not parsed_items:
+        if not per_ristorante:
             _mark_dead(supabase, record_id, "Nessuna riga valida: " + "; ".join(errors[:3]))
             stats.dead += 1
             stats.errors.append(f"{filename}: nessuna riga valida")
             continue
 
-        # ── 2c. Upsert in ricavi_giornalieri ───────────────────────────────
+        # ── 2c. Upsert in ricavi_giornalieri (uno o più ristoranti) ────────
         try:
-            imported = _upsert_ricavi(supabase, ristorante, user_id_val, parsed_items, filename, version)
+            imported = 0
+            for rid, parsed_items in per_ristorante.items():
+                imported += _upsert_ricavi(supabase, rid, user_id_val, parsed_items, filename, version)
         except Exception as exc:
             err = f"upsert DB fallito: {exc}"
             logger.warning("email-cycle [%s]: %s", record_id, err)
@@ -208,6 +212,181 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
             stats.errors.append(f"{filename}: mark-done fallito: {exc}")
 
     return stats
+
+
+# ─── Parser Passbi email-aware (multi-ristorante) ─────────────────────────────
+
+class _RicavoRow:
+    """Riga aggregata per giorno. Stesso shape di RicavoUpsertRequest ma standalone."""
+    __slots__ = ("data", "fatturato_iva10", "fatturato_iva22", "altri_ricavi_noiva")
+
+    def __init__(self, data, iva10, iva22, altri):
+        self.data = data
+        self.fatturato_iva10 = iva10
+        self.fatturato_iva22 = iva22
+        self.altri_ricavi_noiva = altri
+
+
+def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
+    """Parser Passbi v1 per il flusso email, multi-ristorante.
+
+    Differenza dal _parse_passbi_v1 della UI: quello collassa tutto su un solo
+    ristorante (l'import manuale ha il token di un ristorante). Qui il worker ha
+    service_role + user_id, quindi può smistare ogni riga sul ristorante corretto
+    via ragione sociale — così un singolo file di una catena alimenta tutti i locali.
+
+    Sicurezza: ogni ristorante_id di destinazione deve appartenere allo stesso
+    user_id della coda. Righe che mappano a ristoranti di altri utenti vengono
+    scartate (difesa contro un mapping errato che scriverebbe su dati altrui).
+
+    Ritorna (per_ristorante: dict[rid -> list[_RicavoRow]], errors, parsed_rows).
+    """
+    import pandas as pd
+    from datetime import date as _date, datetime as _dt
+    from collections import defaultdict
+
+    headers = None
+    header_idx = None
+    for i, row in raw_df.iterrows():
+        vals = [str(v).strip().lower() for v in row.tolist()]
+        if any("data" in v for v in vals):
+            header_idx = i
+            headers = [str(v).strip() for v in raw_df.iloc[i].tolist()]
+            break
+    if header_idx is None:
+        return {}, ["Header colonne non trovato nel file Passbi"], len(raw_df)
+
+    data_rows = raw_df.iloc[header_idx + 1:].reset_index(drop=True)
+    parsed_rows = len(data_rows)
+
+    def _find_col(names):
+        for idx, h in enumerate(headers):
+            norm = h.lower().replace("\n", " ").replace("  ", " ").strip()
+            for n in names:
+                if n in norm:
+                    return idx
+        return None
+
+    idx_data = _find_col(["data"])
+    idx_ragione = _find_col(["ragione sociale", "azienda"])
+    idx_tipo = _find_col(["tipo documento", "testata", "tipo_documento"])
+    idx_iva = _find_col(["codice", "iva"])
+    idx_importo = _find_col(["importo", "totale"])
+
+    if idx_data is None or idx_importo is None:
+        return {}, ["Colonne Data o Importo non trovate nel file Passbi"], parsed_rows
+
+    # Mapping ragione_sociale → ristorante_id, filtrato sui ristoranti di QUESTO utente.
+    # Il join su ristoranti.user_id è la barriera di sicurezza: una ragione sociale
+    # che punta a un ristorante di un altro utente non entra nemmeno nel dizionario.
+    ragione_map = {}
+    try:
+        owned = supabase.table("ristoranti").select("id").eq("user_id", user_id).execute()
+        owned_ids = {str(r["id"]) for r in (owned.data or [])}
+    except Exception as exc:
+        return {}, [f"Lookup ristoranti utente fallito: {exc}"], parsed_rows
+
+    try:
+        mp = supabase.table("ricavi_ragione_sociale_map").select("ragione_sociale_norm,ristorante_id").execute()
+        for r in (mp.data or []):
+            rid = str(r["ristorante_id"])
+            if rid in owned_ids:
+                ragione_map[str(r["ragione_sociale_norm"]).strip().lower()] = rid
+    except Exception as exc:
+        return {}, [f"Lookup mapping ragione sociale fallito: {exc}"], parsed_rows
+
+    def _parse_date(v):
+        if isinstance(v, (_date, _dt)):
+            d = v.date() if isinstance(v, _dt) else v
+            return d.isoformat()
+        s = str(v).strip()
+        if not s or s.lower() in ("nan", "none", ""):
+            return None
+        for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                return _dt.strptime(s, fmt).date().isoformat()
+            except ValueError:
+                continue
+        return None
+
+    def _to_float(v):
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return 0.0
+        try:
+            return max(0.0, float(str(v).replace(",", ".")))
+        except Exception:
+            return 0.0
+
+    aggregato = defaultdict(lambda: {"iva10": 0.0, "iva22": 0.0, "altri": 0.0})
+    unmapped = set()
+    foreign = set()
+    errors = []
+
+    for _, row in data_rows.iterrows():
+        vals = row.tolist()
+
+        data_iso = _parse_date(vals[idx_data] if idx_data < len(vals) else None)
+        if data_iso is None:
+            continue
+        importo = _to_float(vals[idx_importo] if idx_importo < len(vals) else None)
+        if importo <= 0:
+            continue
+
+        raw_ragione = ""
+        if idx_ragione is not None and idx_ragione < len(vals):
+            raw_ragione = str(vals[idx_ragione]).strip()
+
+        if not raw_ragione or raw_ragione.lower() in ("nan", "none"):
+            target = fallback_ristorante_id  # riga senza ragione sociale → mittente
+        else:
+            target = ragione_map.get(raw_ragione.lower().strip())
+            if target is None:
+                # Non mappata o mappata a ristorante di un altro utente.
+                # Fallback al mittente solo se appartiene a questo utente (sempre vero).
+                unmapped.add(raw_ragione)
+                target = fallback_ristorante_id
+
+        # Difesa: il fallback stesso deve appartenere all'utente.
+        if owned_ids and target not in owned_ids:
+            foreign.add(str(target))
+            continue
+
+        tipo_doc = ""
+        if idx_tipo is not None and idx_tipo < len(vals):
+            tipo_doc = str(vals[idx_tipo]).strip().lower()
+        raw_iva = vals[idx_iva] if (idx_iva is not None and idx_iva < len(vals)) else None
+        iva_str = "" if raw_iva is None or (isinstance(raw_iva, float) and pd.isna(raw_iva)) else str(raw_iva).strip()
+
+        key = (target, data_iso)
+        if tipo_doc in ("proforma", "") or iva_str == "":
+            aggregato[key]["altri"] += importo
+        else:
+            try:
+                iva_val = int(float(iva_str))
+            except (ValueError, TypeError):
+                aggregato[key]["altri"] += importo
+                continue
+            if iva_val == 10:
+                aggregato[key]["iva10"] += importo
+            elif iva_val == 22:
+                aggregato[key]["iva22"] += importo
+            else:
+                aggregato[key]["altri"] += importo
+
+    if unmapped:
+        errors.append(f"Ragioni sociali non mappate (usato ristorante del mittente): {', '.join(sorted(unmapped))}")
+    if foreign:
+        errors.append(f"{len(foreign)} ristoranti di altri utenti ignorati (sicurezza ownership)")
+
+    per_ristorante = defaultdict(list)
+    for (rid, data_iso), b in aggregato.items():
+        if b["iva10"] + b["iva22"] + b["altri"] <= 0:
+            continue
+        per_ristorante[rid].append(_RicavoRow(
+            data_iso, round(b["iva10"], 4), round(b["iva22"], 4), round(b["altri"], 4)
+        ))
+
+    return dict(per_ristorante), errors, parsed_rows
 
 
 # ─── Upsert diretto in ricavi_giornalieri ─────────────────────────────────────

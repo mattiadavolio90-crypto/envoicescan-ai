@@ -389,14 +389,19 @@ def get_fornitori_pagamenti_config(
 
 
 # Mapping modalita → (giorni_pagamento legacy, data_riferimento legacy)
+# Le varianti _fm ("fine mese") devono produrre la fine del mese successivo, NON
+# base + N giorni: prima mappavano a (30/60/90, "data_documento") -> se il path
+# legacy si fosse attivato avrebbe calcolato +30gg invece di fine mese successivo
+# (incoerente con la logica modalita a riga ~317-320). Allineate a
+# "fine_mese_successivo" con offset 0/30/60 giorni oltre la fine mese.
 _MODALITA_LEGACY_MAP: Dict[str, tuple] = {
     "rid":     (0,  "data_documento"),
     "30gg":    (30, "data_documento"),
     "60gg":    (60, "data_documento"),
     "90gg":    (90, "data_documento"),
-    "30gg_fm": (30, "data_documento"),
-    "60gg_fm": (60, "data_documento"),
-    "90gg_fm": (90, "data_documento"),
+    "30gg_fm": (0,  "fine_mese_successivo"),
+    "60gg_fm": (30, "fine_mese_successivo"),
+    "90gg_fm": (60, "fine_mese_successivo"),
 }
 
 

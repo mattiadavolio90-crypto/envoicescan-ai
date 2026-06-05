@@ -36,6 +36,18 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+
+def _oggi_rome() -> date:
+    """Data di oggi nel fuso Europe/Rome.
+
+    Su Railway il server gira in UTC: date.today() nella finestra notturna
+    (mezzanotte-02:00 ora italiana) restituisce il giorno precedente, sfasando
+    di 1 giorno/1 mese i confronti "oggi/ieri/questo mese". Usare questo helper
+    per ogni semantica di calendario rivolta al ristoratore italiano.
+    """
+    from zoneinfo import ZoneInfo
+    return datetime.now(tz=ZoneInfo("Europe/Rome")).date()
+
 from dotenv import load_dotenv
 
 # Carica .env dalla root progetto indipendentemente dalla working directory.
@@ -1240,7 +1252,7 @@ def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardSta
             break
         start += page_size
 
-    today = date.today()
+    today = _oggi_rome()
     mese_corrente_key = today.strftime("%Y-%m")
     primo_giorno_mese = today.replace(day=1)
     ultimo_giorno_prec = primo_giorno_mese - timedelta(days=1)
@@ -2351,7 +2363,7 @@ def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Op
     from services.margine_service import carica_margini_anno, calcola_costi_automatici_per_anno
     _MESI = ["", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
              "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
-    oggi = _date.today()
+    oggi = _oggi_rome()
     cache_anni: Dict[int, Any] = {}
 
     def _anno(a: int):
@@ -2993,7 +3005,7 @@ def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingRespon
                     if ultres.data:
                         try:
                             ultima = _date.fromisoformat(str(ultres.data[0]["data"]))
-                            giorni_senza = (_date.today() - ultima).days
+                            giorni_senza = (_oggi_rome() - ultima).days
                         except Exception:
                             giorni_senza = None
                     notifications.append({
@@ -3406,7 +3418,7 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
     if not ristorante_id:
         return _vuoto
 
-    oggi = _date.today()
+    oggi = _oggi_rome()
     cache_key = f"{ristorante_id}:{oggi.year}:{oggi.month}"
     cached = _HOME_KPI_CACHE.get(cache_key)
     if cached and (_time.monotonic() - cached[0]) < _HOME_KPI_TTL:
@@ -6933,15 +6945,27 @@ def _parse_passbi_v1(raw_df, ristorante_id: str, sb) -> tuple:
     from datetime import date, datetime as _dt
     from collections import defaultdict
 
-    # Trova riga header cercando colonna "data" (tollerante)
+    # Trova la riga header: non basta "data" in una cella (le righe di metadati
+    # tipo "Data generazione" / "Dati export" la contengono). Cerchiamo la riga
+    # che contiene PIU' intestazioni attese contemporaneamente, con almeno 2 match.
+    _HEADER_TOKENS = ("data", "importo", "totale", "tipo documento", "ragione sociale", "azienda", "codice")
     header_idx = None
+    best_score = 0
     for i, row in raw_df.iterrows():
         vals = [str(v).strip().lower() for v in row.tolist()]
-        if any("data" in v for v in vals):
+        joined = " | ".join(vals)
+        # "data" deve comparire come intestazione di colonna, non come parte di frase
+        has_data_col = any(v == "data" or v.startswith("data ") or v.endswith(" data") for v in vals)
+        score = sum(1 for tok in _HEADER_TOKENS if tok in joined)
+        if has_data_col and score >= 2 and score > best_score:
+            best_score = score
             header_idx = i
-            break
     if header_idx is None:
-        return [], ["Header colonne non trovato nel file Passbi"], len(raw_df)
+        # Fallback prudente: riga 3 e' la posizione standard dell'header Passbi v1
+        if len(raw_df) > 3:
+            header_idx = 3
+        else:
+            return [], ["Header colonne non trovato nel file Passbi"], len(raw_df)
 
     headers = [str(v).strip() for v in raw_df.iloc[header_idx].tolist()]
     data_rows = raw_df.iloc[header_idx + 1:].reset_index(drop=True)
@@ -8016,7 +8040,7 @@ def genera_notifica_incasso_mancante(authorization: Optional[str] = Header(None)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
-    ieri = (_date.today() - _td(days=1)).isoformat()
+    ieri = (_oggi_rome() - _td(days=1)).isoformat()
 
     # Nota: il rispetto del toggle "Incasso di ieri mancante" e' centralizzato in
     # get_notifiche (filtro unico per tutti i topic, su campanella + avvisi). Qui
@@ -10408,7 +10432,7 @@ def ws_inventario_list(
     sb = _get_supabase_client()
     ristorante_id = _get_ristorante_id_for_user(user_id, sb)
     if not data:
-        data = date.today().isoformat()
+        data = _oggi_rome().isoformat()
     resp = (
         sb.table("inventario_voci")
         .select("id,data_inventario,nome,categoria,quantita,um,prezzo_unitario,valore_totale,note")

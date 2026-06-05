@@ -26,6 +26,9 @@ export function formatPct(v: number, decimali = 1): string {
 
 export function formatData(iso: string | null): string {
   if (!iso) return "—";
-  const [y, m, d] = iso.split("-");
+  // Tronca a YYYY-MM-DD: con un timestamp ISO ("2026-06-05T10:30:00Z") il giorno
+  // diventava "05T10:30:00Z"; con input parziale y poteva essere undefined -> crash.
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  if (!y || !m || !d) return iso;
   return `${d}/${m}/${y.slice(2)}`;
 }

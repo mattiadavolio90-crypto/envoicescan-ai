@@ -920,8 +920,11 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                 
                 quantita_raw = riga.get('Quantita')
                 prezzo_totale_raw = riga.get('PrezzoTotale')
-                prezzo_base = float(riga.get('PrezzoUnitario', 0) or 0)
-                totale_riga = float(prezzo_totale_raw or 0)
+                # _to_float_safe gestisce la virgola decimale e i None: con float()
+                # diretto un "1,50" (XML non conforme / p7m ricostruito a byte) sollevava
+                # ValueError -> l'except piu' in basso scartava silenziosamente la riga.
+                prezzo_base = _to_float_safe(riga.get('PrezzoUnitario'), 0.0)
+                totale_riga = _to_float_safe(prezzo_totale_raw, 0.0)
                 xml_has_explicit_zero_total = prezzo_totale_raw not in (None, '') and abs(totale_riga) < 1e-9
                 
                 # ============================================================
@@ -1012,7 +1015,12 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                 codice_articolo = ""
                 codice_articolo_raw = riga.get('CodiceArticolo', [])
                 if isinstance(codice_articolo_raw, list) and len(codice_articolo_raw) > 0:
-                    codice_articolo = codice_articolo_raw[0].get('CodiceValore', '')
+                    _first_codice = codice_articolo_raw[0]
+                    # XML malformato (p7m ricostruito) puo' dare una lista di stringhe
+                    # invece che di dict: .get() su una stringa solleverebbe AttributeError
+                    # e l'except a valle scarterebbe l'intera riga.
+                    if isinstance(_first_codice, dict):
+                        codice_articolo = _first_codice.get('CodiceValore', '')
                 elif isinstance(codice_articolo_raw, dict):
                     codice_articolo = codice_articolo_raw.get('CodiceValore', '')
                 
@@ -1020,7 +1028,7 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                 unita_misura_raw = riga.get('UnitaMisura', '')
                 unita_misura = normalizza_unita_misura(unita_misura_raw)
                 
-                aliquota_iva = float(riga.get('AliquotaIVA', 0))
+                aliquota_iva = _to_float_safe(riga.get('AliquotaIVA'), 0.0)
                 
                 # Calcola prezzo effettivo (include sconti)
                 # Usa abs() per gestire correttamente quantità negative (resi)

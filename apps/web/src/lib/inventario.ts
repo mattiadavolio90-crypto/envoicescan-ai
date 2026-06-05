@@ -44,7 +44,9 @@ export interface SnapshotDate {
 
 export const UM_INVENTARIO = ["G", "KG", "ML", "CL", "LT", "PZ", "BOTT", "CF"] as const;
 
-export function fmtData(iso: string): string {
-  const [y, m, d] = iso.split("-");
+export function fmtData(iso: string | null | undefined): string {
+  if (!iso || !iso.includes("-")) return iso ?? "—";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  if (!y || !m || !d) return iso;
   return `${d}/${m}/${y}`;
 }
