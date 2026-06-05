@@ -1335,7 +1335,10 @@ INFORMAZIONI DA ESTRARRE:
    - Formato: numero (es. "12345678901" o "IT12345678901")
    - Se non trovi la P.IVA destinatario, restituisci stringa vuota ""
 3. **Data**: Data del documento in formato YYYY-MM-DD
-4. **Righe articoli**: Lista completa di TUTTI i prodotti acquistati
+4. **Tipo documento**: "nota_credito" se il documento è una NOTA DI CREDITO / NOTA DI ACCREDITO
+   / reso / storno (parole chiave: "NOTA DI CREDITO", "NOTA DI ACCREDITO", "TD04", "RESO",
+   "STORNO"); altrimenti "fattura".
+5. **Righe articoli**: Lista completa di TUTTI i prodotti acquistati
 
 PER OGNI ARTICOLO:
 - Descrizione (normalizzata in MAIUSCOLO)
@@ -1356,6 +1359,7 @@ FORMATO RISPOSTA (SOLO JSON):
   "fornitore": "NOME FORNITORE",
   "piva_cessionario": "12345678901",
   "data": "YYYY-MM-DD",
+  "tipo_documento": "fattura",
   "righe": [
     {
       "descrizione": "DESCRIZIONE ARTICOLO",
@@ -1412,6 +1416,15 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         fornitore = normalizza_stringa(dati.get('fornitore', 'Fornitore Sconosciuto'))
         data_documento = dati.get('data', 'N/A')
         piva_cessionario = dati.get('piva_cessionario', '')  # Estrai P.IVA cessionario
+
+        # Tipo documento: il Vision può rilevare le note di credito (PDF/scontrini).
+        # Senza questo, una nota di credito caricata come PDF entrava con importi
+        # POSITIVI e tipo_documento default TD01, AUMENTANDO i costi invece di ridurli.
+        _tipo_doc_raw = str(dati.get('tipo_documento', 'fattura') or 'fattura').lower()
+        is_nota_credito = 'credito' in _tipo_doc_raw or 'td04' in _tipo_doc_raw or 'reso' in _tipo_doc_raw or 'storno' in _tipo_doc_raw
+        tipo_documento = 'TD04' if is_nota_credito else 'TD01'
+        if is_nota_credito:
+            logger.info("📋 NOTA DI CREDITO rilevata da Vision (PDF) -> inverto segni importi")
         
         try:
             pd.to_datetime(data_documento)
@@ -1457,7 +1470,14 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 totale_riga = quantita * prezzo_unitario
             if prezzo_unitario == 0 and totale_riga > 0 and quantita > 0:
                 prezzo_unitario = totale_riga / quantita
-            
+
+            # Nota di credito: inverti il segno se positivo (stessa logica del path XML).
+            if is_nota_credito:
+                if totale_riga > 0:
+                    totale_riga = -totale_riga
+                if prezzo_unitario > 0:
+                    prezzo_unitario = -prezzo_unitario
+
             # Categorizzazione (usa stesso sistema moderno del path XML)
             categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id) if current_user_id else "Da Classificare"
             categoria_iniziale, fallback_forzato = enforce_no_unclassified_category(
@@ -1501,6 +1521,7 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
                 'Fornitore': fornitore,
                 'Categoria': categoria_iniziale,
                 'Data_Documento': data_documento,
+                'Tipo_Documento': tipo_documento,
                 'File_Origine': file_caricato.name.replace('..', '').replace('/', '').replace('\\', '').replace('%2F', '').replace('%2f', '').replace('\x00', ''),
                 'Prezzo_Standard': prezzo_std,
                 'needs_review': needs_review,
@@ -1637,7 +1658,7 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     "codice_articolo": prod.get("CodiceArticolo", prod.get("Codice_Articolo", "")),
                     "prezzo_standard": float(prezzo_std) if prezzo_std and pd.notna(prezzo_std) else None,
                     "needs_review": bool(prod.get("needs_review", False) or fallback_forzato),
-                    "tipo_documento": prod.get("tipo_documento", "TD01"),
+                    "tipo_documento": prod.get("tipo_documento", prod.get("Tipo_Documento", "TD01")),
                     "sconto_percentuale": prod.get("sconto_percentuale", 0.0),
                     "data_consegna": prod.get("data_consegna"),
                     "totale_documento": prod.get("TotaleDocumento", prod.get("Totale_Documento")),

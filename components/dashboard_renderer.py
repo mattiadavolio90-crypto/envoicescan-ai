@@ -361,6 +361,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             supabase.table("fatture")
                             .select("id, descrizione, fornitore, prezzo_unitario, iva_percentuale")
                             .eq("user_id", user_id)
+                            .is_("deleted_at", "null")
                             .or_("categoria.is.null,categoria.eq.,categoria.eq.Da Classificare")
                         )
                         if _ristorante_id:
@@ -609,7 +610,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             if needs_review_row_ids:
                                 try:
                                     _nr_ids = list(set(needs_review_row_ids))
-                                    supabase.table('fatture').update({'needs_review': True}).in_('id', _nr_ids).execute()
+                                    supabase.table('fatture').update({'needs_review': True}).in_('id', _nr_ids).is_("deleted_at", "null").execute()
                                     logger.info(f"⚠️ NEEDS_REVIEW: {len(_nr_ids)} righe marcate per review manuale")
                                 except Exception as e:
                                     logger.error(f"Errore batch update needs_review: {e}")
@@ -676,7 +677,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                             try:
                                 query_batch = supabase.table("fatture").update(
                                     {"categoria": cat}
-                                ).eq("user_id", user_id).in_("id", row_ids)
+                                ).eq("user_id", user_id).is_("deleted_at", "null").in_("id", row_ids)
                                 query_batch = add_ristorante_filter(query_batch)
                                 result_batch = query_batch.execute()
                                 
@@ -714,7 +715,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 try:
                                     query_update_ids = supabase.table("fatture").update(
                                         {"categoria": cat}
-                                    ).eq("user_id", user_id).in_("id", row_ids)
+                                    ).eq("user_id", user_id).is_("deleted_at", "null").in_("id", row_ids)
                                     query_update_ids = add_ristorante_filter(query_update_ids)
                                     result_ids = query_update_ids.execute()
                                     num_aggiornate = len(result_ids.data) if result_ids.data else 0
@@ -728,7 +729,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 try:
                                     query_update2 = supabase.table("fatture").update(
                                         {"categoria": cat}
-                                    ).eq("user_id", user_id).eq("descrizione", desc)
+                                    ).eq("user_id", user_id).is_("deleted_at", "null").eq("descrizione", desc)
                                     query_update2 = add_ristorante_filter(query_update2)
                                     result2 = query_update2.execute()
                                     num_aggiornate = len(result2.data) if result2.data else 0
@@ -744,7 +745,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                     try:
                                         query_update3 = supabase.table("fatture").update(
                                             {"categoria": cat}
-                                        ).eq("user_id", user_id).eq("descrizione", desc_trimmed)
+                                        ).eq("user_id", user_id).is_("deleted_at", "null").eq("descrizione", desc_trimmed)
                                         query_update3 = add_ristorante_filter(query_update3)
                                         result3 = query_update3.execute()
                                         num_aggiornate = len(result3.data) if result3.data else 0
@@ -758,7 +759,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 try:
                                     query_update4 = supabase.table("fatture").update(
                                         {"categoria": cat}
-                                    ).eq("user_id", user_id).ilike("descrizione", desc.strip())
+                                    ).eq("user_id", user_id).is_("deleted_at", "null").ilike("descrizione", desc.strip())
                                     query_update4 = add_ristorante_filter(query_update4)
                                     result4 = query_update4.execute()
                                     num_aggiornate = len(result4.data) if result4.data else 0
@@ -786,6 +787,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                     supabase.table("fatture")
                                     .select("descrizione, categoria")
                                     .eq("user_id", user_id)
+                                    .is_("deleted_at", "null")
                                     .or_("categoria.is.null,categoria.eq.,categoria.eq.Da Classificare")
                                 )
                                 _q_chk = add_ristorante_filter(_q_chk)
@@ -827,7 +829,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                             # Batch update: tutte le descrizioni con stessa categoria
                                             query_fallback = supabase.table('fatture').update(
                                                 {'categoria': _fb_cat}
-                                            ).eq('user_id', user_id).in_('descrizione', [d.strip() for d in _fb_descs])
+                                            ).eq('user_id', user_id).is_("deleted_at", "null").in_('descrizione', [d.strip() for d in _fb_descs])
                                             if ristorante_id:
                                                 query_fallback = query_fallback.eq('ristorante_id', ristorante_id)
                                             righe_updated = query_fallback.execute()
@@ -844,7 +846,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                         if da_classificare_row_ids:
                             try:
                                 _dc_ids_unique = list(set(da_classificare_row_ids))
-                                supabase.table('fatture').update({'needs_review': True}).in_('id', _dc_ids_unique).execute()
+                                supabase.table('fatture').update({'needs_review': True}).in_('id', _dc_ids_unique).is_("deleted_at", "null").execute()
                                 logger.info(f"⚠️ NEEDS_REVIEW (update-loop): {len(_dc_ids_unique)} righe Da Classificare marcate")
                             except Exception as _nr_err:
                                 logger.error(f"Errore batch update needs_review (Da Classificare): {_nr_err}")
@@ -889,6 +891,7 @@ def mostra_statistiche(df_completo, supabase, uploaded_files=None):
                                 supabase.table('fatture')
                                 .select('id', count='exact')
                                 .eq('user_id', user_id)
+                                .is_("deleted_at", "null")
                                 .or_('categoria.is.null,categoria.eq.Da Classificare,categoria.eq.')
                             )
                             if _ristorante_id_v:

@@ -7923,7 +7923,7 @@ def delete_regola_pagamento(regola_id: str, authorization: Optional[str] = Heade
 def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
     """Genera/aggiorna notifica aggregata scadenze nella inbox (upsert idempotente)."""
     from services.documenti_service import get_documenti_scadenziario
-    from datetime import date as _d
+    from services.daily_briefing_service import _today_rome
     import pandas as _pd
 
     user = _resolve_user_from_token(authorization)
@@ -7933,7 +7933,7 @@ def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     docs = get_documenti_scadenziario(str(user["id"]), ristorante_id)
-    today = _d.today()
+    today = _today_rome()
 
     scadute, settimana = [], []
     for doc in docs:
@@ -7971,7 +7971,7 @@ def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
         "ristorante_id": ristorante_id,
         "topic_key": "scadenze_aggregate",
         "source_type": "scadenziario",
-        "severity": "red" if scadute else "yellow",
+        "severity": "error" if scadute else "warning",
         "title": "Fatture in scadenza",
         "body": " • ".join(parts),
         "action_page": "/scadenziario",

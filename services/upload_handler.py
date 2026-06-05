@@ -513,17 +513,44 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
 
                 # Le righe puramente tecniche/documentali non devono restare Da Classificare:
                 # le salviamo come NOTE E DICITURE così spariscono dalle notifiche cliente.
+                # Guardrail dominio #2: NOTE E DICITURE solo se totale_riga == 0. La stessa
+                # descrizione (es. "RIF. ORDINE", "SPESE TRASPORTO") può comparire su righe
+                # con importo > 0: quelle NON vanno in NOTE E DICITURE (sottostimerebbero i
+                # costi). Le righe a importo != 0 restano da classificare (vanno all'AI).
                 if reason == 'riferimento_documento':
-                    row_ids = [row.get('id') for row in meta['rows'] if row.get('id') is not None]
-                    if row_ids:
+                    def _row_importo(_r):
+                        try:
+                            _t = float(_r.get('totale_riga') or 0)
+                        except (TypeError, ValueError):
+                            _t = 0.0
+                        if _t != 0:
+                            return _t
+                        try:
+                            return float(_r.get('prezzo_unitario') or 0)
+                        except (TypeError, ValueError):
+                            return 0.0
+
+                    note_ids = [
+                        row.get('id') for row in meta['rows']
+                        if row.get('id') is not None and _row_importo(row) == 0
+                    ]
+                    has_importo = any(
+                        row.get('id') is not None and _row_importo(row) != 0
+                        for row in meta['rows']
+                    )
+                    if note_ids:
                         q_note = supabase_client.table('fatture').update({
                             'categoria': '📝 NOTE E DICITURE',
                             'needs_review': False,
-                        }).eq('user_id', user_id).in_('id', row_ids)
+                        }).eq('user_id', user_id).is_("deleted_at", "null").in_('id', note_ids)
                         q_note = add_ristorante_filter(q_note, ristorante_id)
                         q_note.execute()
-                        summary['resolved_rows'] += len(row_ids)
+                        summary['resolved_rows'] += len(note_ids)
                         summary['resolved_descriptions'] += 1
+                    if has_importo:
+                        # righe omonime ma con importo: lasciale all'AI invece di scartarle
+                        remaining_reasons[reason] += 1
+                        remaining_descs.append(desc)
                     continue
 
                 remaining_reasons[reason] += 1

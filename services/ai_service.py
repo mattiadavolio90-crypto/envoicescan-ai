@@ -2790,8 +2790,15 @@ def _applica_guardrail_iva_bassa_spese_generali(
     descrizione: str,
     categoria: str,
     iva_percentuale: Optional[float] = None,
+    prezzo: Optional[float] = None,
 ) -> str:
-    """Ultimo recupero soft: prova a correggere le spese generali sospette con IVA 4/5/10."""
+    """Ultimo recupero soft: prova a correggere le spese generali sospette con IVA 4/5/10.
+
+    Se `prezzo` e' noto, l'eventuale ricaduta in NOTE E DICITURE passa per il
+    guardrail importo (NOTE solo se importo == 0). Quando il prezzo non e'
+    disponibile (classificazione per sola descrizione), la protezione importo va
+    applicata a valle dal chiamante che scrive a DB, per riga.
+    """
     categoria_norm = _normalize_category_name(categoria) or categoria
     if categoria_norm not in CATEGORIE_SPESE_GENERALI:
         return categoria_norm
@@ -2808,6 +2815,8 @@ def _applica_guardrail_iva_bassa_spese_generali(
     desc_upper = desc.upper()
 
     if is_dicitura_sicura(desc, 0, 1) or any(hint in desc_upper for hint in _LOW_IVA_NOTE_HINTS):
+        if prezzo is not None:
+            return _applica_guardrail_note_con_importo(desc, '📝 NOTE E DICITURE', prezzo)
         return '📝 NOTE E DICITURE'
 
     categoria_forzata, _ = applica_regole_categoria_forti(desc, 'Da Classificare')

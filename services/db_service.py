@@ -821,11 +821,15 @@ def carica_sconti_e_omaggi(user_id: str, data_inizio, data_fine, ristorante_id: 
         while page < max_pages:
             offset = page * page_size
             # Usa .lte (<=) per includere le fatture del giorno finale del periodo.
-            query = supabase_client.table('fatture')\
-                .select('id, descrizione, categoria, fornitore, prezzo_unitario, quantita, totale_riga, data_documento, file_origine, tipo_documento, needs_review')\
-                .eq('user_id', user_id)\
-                .gte('data_documento', data_inizio)\
+            # filter_active: esclude le righe nel cestino, che altrimenti gonfiavano
+            # totale_risparmiato/sconti/omaggi mostrati al cliente.
+            query = _filter_active(
+                supabase_client.table('fatture')
+                .select('id, descrizione, categoria, fornitore, prezzo_unitario, quantita, totale_riga, data_documento, file_origine, tipo_documento, needs_review')
+                .eq('user_id', user_id)
+                .gte('data_documento', data_inizio)
                 .lte('data_documento', data_fine)
+            )
             
             # 🔒 FILTRO MULTI-RISTORANTE: Include solo fatture del ristorante attivo
             if ristorante_id:
