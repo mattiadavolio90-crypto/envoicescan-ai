@@ -27,6 +27,10 @@ __test_archive__/test_brevo.py
 
 # Altri file sensibili
 memoria_ai_correzioni.json
+
+# Google Apps Script: contengono token/webhook in chiaro (si incollano su script.google.com,
+# non vanno versionati). Es. scripts/gmail_ricavi_poller.gs con WEBHOOK_TOKEN.
+*.gs
 *.log
 debug.log*
 
