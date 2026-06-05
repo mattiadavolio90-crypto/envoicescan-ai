@@ -104,6 +104,13 @@ esempio export gestionale/
 esempio export.xlsx
 esempio export*.xlsx
 
+# File ricavi reali di clienti scaricati per test (MAI versionare — dati sensibili)
+prova ricavi*.xlsx
+prova_ricavi*.xlsx
+ricavi_*.xlsx
+*ricavi*.xls
+*ricavi*.xlsx
+
 # Backup
 *.backup
 *.bak
