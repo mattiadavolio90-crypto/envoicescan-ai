@@ -1255,6 +1255,22 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
           }
         ],
         "responses": {
@@ -1348,6 +1364,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
             }
           }
         ],
@@ -1511,6 +1543,22 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
           }
         ],
         "responses": {
@@ -1597,6 +1645,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
             }
           }
         ],
@@ -1705,6 +1769,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
             }
           }
         ],
@@ -1826,6 +1906,22 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
           }
         ],
         "responses": {
@@ -1871,6 +1967,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
             }
           }
         ],
@@ -1920,6 +2032,22 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
           }
         ],
         "responses": {
@@ -1967,6 +2095,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
             }
           }
         ],
@@ -2158,6 +2302,22 @@
               ],
               "title": "Authorization"
             }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
           }
         ],
         "responses": {
@@ -2212,6 +2372,22 @@
                 }
               ],
               "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
             }
           }
         ],
@@ -8809,6 +8985,80 @@
         }
       }
     },
+    "/api/admin/impersona/exit": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Impersona Exit",
+        "description": "Chiude l'impersonazione invalidando nel DB il session_token del target.\n\nSenza questo, il token di impersonazione restava valido fino alla scadenza\nper inattivita' (8h) e l'admin ne conservava una copia funzionante. Qui lo\nazzeriamo: il cliente dovra' riloggarsi (e una eventuale copia del token non\ne' piu' utilizzabile).",
+        "operationId": "admin_impersona_exit_api_admin_impersona_exit_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImpersonaExitBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/clienti/{cliente_id}/sedi": {
       "get": {
         "tags": [
@@ -13851,6 +14101,17 @@
             ],
             "title": "Pagine Abilitate"
           },
+          "chat_ai_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Ai Enabled"
+          },
           "attivo": {
             "anyOf": [
               {
@@ -14040,6 +14301,24 @@
         ],
         "title": "HomeKpiResponse",
         "description": "Fotografia LIVE dei conti del periodo per la Home AI.\n\nPeriodo = mese in corso; se ancora troppo vuoto, ultimo mese completo\n(etichetta esplicita). I numeri arrivano dalle stesse fonti della pagina\nMargini, cosi' Home e Margini non si contraddicono mai."
+      },
+      "ImpersonaExitBody": {
+        "properties": {
+          "target_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Token"
+          }
+        },
+        "type": "object",
+        "title": "ImpersonaExitBody"
       },
       "KpiResponse": {
         "properties": {
@@ -16052,6 +16331,17 @@
               }
             ],
             "title": "Created At"
+          },
+          "numero_documento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Numero Documento"
           }
         },
         "type": "object",

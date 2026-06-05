@@ -30,4 +30,10 @@ jobs:
           pip install -r requirements-lock.txt
 
       - name: Run pytest
+        # WORKER_DEV_MODE=1: salta il guard fail-closed su WORKER_SECRET_KEY
+        # (i test importano services.fastapi_worker, che senza la chiave si
+        # rifiuterebbe di caricare). I moduli pesanti sono comunque mockati dal
+        # conftest, quindi non servono credenziali reali in CI.
+        env:
+          WORKER_DEV_MODE: '1'
         run: python -m pytest tests/ -q
