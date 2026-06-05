@@ -25,6 +25,10 @@ FILE/KEYS*
 FILE/VERSIONI CODICE/
 __test_archive__/test_brevo.py
 
+# File temporanei di audit/debug (possono contenere dati cliente reali)
+tmp_*.json
+tmp_audit_*.json
+
 # Altri file sensibili
 memoria_ai_correzioni.json
 
