@@ -1091,6 +1091,8 @@ function DettaglioGiornalieroDialog({
                     formatter={(v: unknown) => [formatEuro(typeof v === "number" ? v : 0), "Fatturato netto"]}
                     labelFormatter={(l) => `Giorno ${l}`}
                     contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+                    labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }}
+                    itemStyle={{ color: "hsl(var(--foreground))" }}
                   />
                   <Bar dataKey="netto" radius={[3, 3, 0, 0]} maxBarSize={28}>
                     {chartData.map((entry, i) => (

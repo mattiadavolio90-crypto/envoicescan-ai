@@ -605,7 +605,7 @@ function CentriDonutChart({ centri }: { centri: CentroDetailItem[] }) {
         <Pie data={chartData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" stroke="hsl(var(--card))" strokeWidth={2}>
           {chartData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
         </Pie>
-        <Tooltip formatter={(v: unknown) => formatEuro(typeof v === "number" ? v : 0)} contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }} />
+        <Tooltip formatter={(v: unknown) => formatEuro(typeof v === "number" ? v : 0)} contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }} labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }} itemStyle={{ color: "hsl(var(--foreground))" }} />
         <Legend wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} iconType="circle" />
       </PieChart>
     </ResponsiveContainer>
@@ -733,6 +733,8 @@ function DettaglioCentroDialog({
                     formatter={(v: unknown) => [formatEuro(typeof v === "number" ? v : 0), `Fatturato ${centro}`]}
                     labelFormatter={(l) => `Giorno ${l}`}
                     contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
+                    labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }}
+                    itemStyle={{ color: "hsl(var(--foreground))" }}
                   />
                   <Bar dataKey="valore" radius={[3, 3, 0, 0]} maxBarSize={28}>
                     {chartData.map((entry, i) => (
