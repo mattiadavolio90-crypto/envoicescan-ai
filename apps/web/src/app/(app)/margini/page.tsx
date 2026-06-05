@@ -9,9 +9,7 @@ import { CalcoloTab } from "./calcolo-tab";
 import { AnalisiTab } from "./analisi-tab";
 import { calcolaPeriodo, type PeriodoPreset } from "./periodi";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
-
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 type SearchParams = {
   tab?: string;

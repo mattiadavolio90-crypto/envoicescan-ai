@@ -204,6 +204,15 @@ export function ArticoliTab({
     });
   }, [filtered, sort]);
 
+  const totaleFiltrato = useMemo(
+    () => sorted.reduce((acc, a) => acc + (a.totale_speso ?? 0), 0),
+    [sorted],
+  );
+  const quantitaFiltrata = useMemo(
+    () => sorted.reduce((acc, a) => acc + (a.num_acquisti ?? 0), 0),
+    [sorted],
+  );
+
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const visible = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
@@ -327,11 +336,24 @@ export function ArticoliTab({
         </label>
       </div>
 
-      {/* Counter */}
-      <div className="text-xs text-muted-foreground pt-2 border-t border-border/50">
-        {sorted.length === articoli.length
-          ? `${sorted.length} prodotti`
-          : `${sorted.length} di ${articoli.length} prodotti`}
+      {/* Counter + totale filtrato */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-border/50">
+        <span className="text-xs text-muted-foreground">
+          {sorted.length === articoli.length
+            ? `${sorted.length} prodotti`
+            : `${sorted.length} di ${articoli.length} prodotti`}
+        </span>
+        {sorted.length > 0 && (
+          <span className="text-xs inline-flex items-center gap-1.5 text-sky-500">
+            Totale filtrato:
+            <span className="font-semibold tabular-nums">
+              {formatEuro(totaleFiltrato)}
+            </span>
+            <span className="text-sky-500/70">
+              · {quantitaFiltrata.toLocaleString("it-IT")} acquisti
+            </span>
+          </span>
+        )}
       </div>
 
       {sorted.length === 0 ? (

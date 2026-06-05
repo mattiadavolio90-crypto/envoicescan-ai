@@ -1,10 +1,5 @@
 import { cache } from "react";
-import { cookies } from "next/headers";
-import { SESSION_COOKIE } from "./auth";
-import { WORKER_TIMEOUT_MS } from "./worker";
-
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+import { WORKER_URL, WORKER_TIMEOUT_MS, getToken, workerHeaders } from "./worker-config";
 
 export type Notifica = {
   id: string;
@@ -25,19 +20,12 @@ export type NotificheResponse = {
   unread: number;
 };
 
-function workerHeaders(token: string): Record<string, string> {
-  const h: Record<string, string> = { Authorization: `Bearer ${token}` };
-  if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
-  return h;
-}
-
 // cache(): nello stesso render il layout (badge header) e la dashboard
 // (count widget) chiamano entrambi fetchNotifiche() -> un solo round-trip al
 // worker, niente doppia lettura. Default (senza dismissed) condiviso.
 export const fetchNotifiche = cache(
   async (includeDismissed = false): Promise<NotificheResponse | null> => {
-    const cookieStore = await cookies();
-    const token = cookieStore.get(SESSION_COOKIE)?.value;
+    const token = await getToken();
     if (!token) return null;
 
     try {

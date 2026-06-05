@@ -6,9 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft } from "lucide-react";
 import { ClienteDettaglioClient } from "./cliente-dettaglio-client";
 import type { ClienteDettaglio } from "@/lib/admin";
-
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 async function fetchCliente(token: string, id: string): Promise<ClienteDettaglio | null> {
   try {

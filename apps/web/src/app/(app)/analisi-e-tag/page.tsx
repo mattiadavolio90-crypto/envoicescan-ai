@@ -3,10 +3,7 @@ import { SESSION_COOKIE } from "@/lib/auth";
 import { PageHeader } from "@/components/ui/page-header";
 import type { CustomTag, TagSuggestion } from "@/lib/tag";
 import { AnalisiETagClient } from "./analisi-e-tag-client";
-
-const WORKER_URL =
-  process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 async function fetchInitial<T>(path: string, token: string): Promise<T | null> {
   try {

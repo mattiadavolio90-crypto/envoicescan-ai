@@ -3,10 +3,6 @@ import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { AccountClient } from "./account-client";
 
-const WORKER_URL =
-  process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
-
 async function fetchAccountData(token: string) {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
@@ -23,6 +19,7 @@ async function fetchAccountData(token: string) {
 
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "@/lib/auth";
+import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 export default async function ImpostazioniPage() {
   const user = await getCurrentUser();

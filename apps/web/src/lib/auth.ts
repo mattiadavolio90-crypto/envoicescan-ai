@@ -3,13 +3,14 @@ import { cookies } from "next/headers";
 
 export const SESSION_COOKIE = "oneflux_session";
 
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+// Fonte unica per URL/secret/timeout del worker (auth.ts e' il modulo base che
+// non dipende da altri lib; worker-config.ts re-importa da qui per evitare cicli).
+export const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
+export const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
 
-// Stesso timeout delle altre chiamate worker (vedi worker.ts): evita che il
-// render appeso a un cold-start di Railway blocchi ogni pagina autenticata,
-// dato che getCurrentUser gira nel layout di ogni route group.
-const WORKER_TIMEOUT_MS = 8000;
+// Timeout su tutte le chiamate worker: evita che il render appeso a un cold-start
+// di Railway blocchi ogni pagina autenticata (getCurrentUser gira nel layout).
+export const WORKER_TIMEOUT_MS = 8000;
 
 export type SessionUser = {
   id: string;

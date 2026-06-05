@@ -1,9 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth";
-
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 // Proxy lato client per il widget Notifiche in Home: lista completa attiva.
 export async function GET() {

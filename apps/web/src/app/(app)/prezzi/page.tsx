@@ -6,9 +6,7 @@ import { TabsSwitcher } from "./tabs-switcher";
 import { VariazioniTab } from "./variazioni-tab";
 import { ScontiTab } from "./sconti-tab";
 import { NcTab } from "./nc-tab";
-
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 async function fetchSogliaAlert(): Promise<number> {
   const cookieStore = await cookies();

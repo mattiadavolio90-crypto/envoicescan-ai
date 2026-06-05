@@ -5,9 +5,7 @@ import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft } from "lucide-react";
 import { RagioneSocialeClient } from "./ragione-sociale-client";
-
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 async function fetchData(token: string) {
   const h: Record<string, string> = { Authorization: `Bearer ${token}` };

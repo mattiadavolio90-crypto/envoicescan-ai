@@ -1,14 +1,4 @@
-import { cookies } from "next/headers";
-import { SESSION_COOKIE } from "./auth";
-
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
-
-function workerHeaders(token: string): Record<string, string> {
-  const h: Record<string, string> = { Authorization: `Bearer ${token}` };
-  if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
-  return h;
-}
+import { WORKER_URL, getToken, workerHeaders } from "./worker-config";
 
 export type TipoProdotti = "food_beverage" | "spese_generali" | "tutti";
 
@@ -110,11 +100,6 @@ export type TrendResponse = {
   periodi_labels: string[];
 };
 
-async function getToken(): Promise<string | null> {
-  const cookieStore = await cookies();
-  return cookieStore.get(SESSION_COOKIE)?.value ?? null;
-}
-
 function buildParams(obj: Record<string, string | number | boolean | undefined | null>): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(obj)) {
@@ -139,9 +124,13 @@ async function workerGet<T>(
       : { headers: workerHeaders(token), cache: "no-store" };
   try {
     const res = await fetch(url, init);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[fatture] worker error:`, res.status);
+      return null;
+    }
     return (await res.json()) as T;
-  } catch {
+  } catch (err) {
+    console.error(`[fatture] fetch error:`, err);
     return null;
   }
 }

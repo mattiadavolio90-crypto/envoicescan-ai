@@ -6,9 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft } from "lucide-react";
 import { type MarketplaceLeadList } from "@/lib/assistenza";
 import { RichiesteClient } from "./richieste-client";
-
-const WORKER_URL = process.env.WORKER_URL ?? "https://worker-production-a552.up.railway.app";
-const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
+import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 async function fetchLeads(token: string): Promise<MarketplaceLeadList | null> {
   try {
