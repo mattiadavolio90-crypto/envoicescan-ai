@@ -23,9 +23,13 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4'
 
 const MAX_ATTACHMENT_BYTES  = 10 * 1024 * 1024
+const MAX_BODY_BYTES        = 25 * 1024 * 1024   // cap globale sul payload inbound
+const MAX_ITEMS             = 20                  // max email per richiesta
+const MAX_ATTACHMENTS       = 20                  // max allegati per email
 const STORAGE_BUCKET        = 'ricavi-xls'
 const ALLOWED_EXTENSIONS    = ['.xls', '.xlsx']
 const BREVO_ATTACHMENT_BASE = 'https://api.brevo.com/v3/inbound/attachments'
+const BREVO_FETCH_TIMEOUT_MS = 15_000
 
 interface BrevoAddress   { Address?: string; Name?: string }
 interface BrevoAttachment {
@@ -56,19 +60,21 @@ async function sha256Hex(s: string): Promise<string> {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
 
-function hourSlot(): string {
-  const d = new Date(); d.setMinutes(0,0,0); return d.toISOString()
+async function sha256HexBytes(bytes: Uint8Array): Promise<string> {
+  const view = new Uint8Array(bytes)  // copia con ArrayBuffer concreto (no SharedArrayBuffer)
+  const buf = await crypto.subtle.digest('SHA-256', view.buffer as ArrayBuffer)
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('')
 }
 
 function isXls(att: BrevoAttachment): boolean {
   return ALLOWED_EXTENSIONS.some(ext => (att.Name ?? '').toLowerCase().endsWith(ext))
 }
 
-function buildPath(ristoranteId: string | null, filename: string): string {
+function buildPath(ristoranteId: string | null, filename: string, idempotencyKey: string): string {
   const yyyyMm   = new Date().toISOString().slice(0,7)
   const prefix   = ristoranteId ?? 'unknown'
   const safeName = filename.replace(/[^a-zA-Z0-9._\-]/g,'_').slice(0,128)
-  return `${prefix}/${yyyyMm}/${safeName}`
+  return `${prefix}/${yyyyMm}/${idempotencyKey.slice(0,16)}_${safeName}`
 }
 
 async function getAttachmentBytes(
@@ -94,10 +100,12 @@ async function getAttachmentBytes(
 
   // Caso B: DownloadToken Brevo
   if (att.DownloadToken) {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), BREVO_FETCH_TIMEOUT_MS)
     try {
       const resp = await fetch(
         `${BREVO_ATTACHMENT_BASE}/${encodeURIComponent(att.DownloadToken)}`,
-        { headers: { 'api-key': brevoApiKey }, redirect: 'error' }
+        { headers: { 'api-key': brevoApiKey }, redirect: 'error', signal: ctrl.signal }
       )
       if (!resp.ok) {
         console.error(`[email-wh] Download Brevo HTTP ${resp.status}`)
@@ -112,6 +120,8 @@ async function getAttachmentBytes(
     } catch (e) {
       console.error(`[email-wh] Download Brevo:`, (e as Error).message)
       return null
+    } finally {
+      clearTimeout(timer)
     }
   }
 
@@ -133,12 +143,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response('Internal Server Error', { status: 500 })
   }
 
-  // Verifica token
+  // Verifica token. Preferire l'header X-Oneflux-Webhook-Token: gli URL (e quindi
+  // la querystring) finiscono nei log di rete/proxy molto piu' dei body/header.
+  // La querystring resta accettata per retrocompatibilita' col producer attuale.
   const url           = new URL(req.url)
-  const providedToken = url.searchParams.get('token') ?? req.headers.get('X-Oneflux-Webhook-Token') ?? ''
-  if (!timingSafeEqual(providedToken, webhookToken)) {
+  const providedToken = req.headers.get('X-Oneflux-Webhook-Token') ?? url.searchParams.get('token') ?? ''
+  if (webhookToken.length < 16 || !timingSafeEqual(providedToken, webhookToken)) {
     console.warn('[email-wh] Token non valido')
     return new Response('Unauthorized', { status: 401 })
+  }
+
+  // Body cap: rifiuta payload enormi PRIMA di leggerli in memoria (anti-DoS).
+  const contentLength = Number(req.headers.get('content-length') ?? '0')
+  if (contentLength > MAX_BODY_BYTES) {
+    console.warn(`[email-wh] Body troppo grande: ${contentLength}`)
+    return new Response('Payload Too Large', { status: 413 })
   }
 
   let payload: InboundPayload
@@ -149,7 +168,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response('Bad Request', { status: 400 })
   }
 
-  const items = payload.items ?? []
+  const items = (payload.items ?? []).slice(0, MAX_ITEMS)
   if (items.length === 0) return new Response('OK', { status: 200 })
 
   const db = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
@@ -157,7 +176,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   for (const item of items) {
     const senderEmail = (item.From?.Address ?? '').trim().toLowerCase()
     const subject     = item.Subject ?? ''
-    const xlsAtts     = (item.Attachments ?? []).filter(isXls)
+    const xlsAtts     = (item.Attachments ?? []).filter(isXls).slice(0, MAX_ATTACHMENTS)
 
     if (xlsAtts.length === 0) {
       console.info(`[email-wh] Nessun XLS da: ${senderEmail}`)
@@ -167,27 +186,44 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // Lookup mittente → ristorante
     const { data: senderMap } = await db
       .from('ricavi_email_sender_map')
-      .select('ristorante_id, user_id:ristoranti(user_id)')
+      .select('ristorante_id')
       .eq('email_sender', senderEmail)
       .eq('attivo', true)
       .limit(1)
       .maybeSingle()
 
     const ristoranteId = (senderMap?.ristorante_id as string | null) ?? null
-    const userId       = (senderMap?.user_id as { user_id: string } | null)?.user_id ?? null
-    const status       = ristoranteId ? 'pending' : 'unknown_sender'
+
+    // user_id derivato con lookup esplicito su ristoranti (il join PostgREST era
+    // fragile: poteva tornare null silenziosamente e i tipi non combaciavano).
+    let userId: string | null = null
+    if (ristoranteId) {
+      const { data: rist } = await db
+        .from('ristoranti')
+        .select('user_id')
+        .eq('id', ristoranteId)
+        .limit(1)
+        .maybeSingle()
+      userId = (rist?.user_id as string | null) ?? null
+    }
+    const status = ristoranteId ? 'pending' : 'unknown_sender'
 
     if (!ristoranteId) console.info(`[email-wh] Mittente sconosciuto: ${senderEmail}`)
 
     for (const att of xlsAtts) {
       const filename = att.Name ?? 'ricavi.xlsx'
-      const idempotencyKey = await sha256Hex(`${senderEmail}|${subject}|${filename}|${hourSlot()}`)
 
       const attachmentBytes = await getAttachmentBytes(att, brevoApiKey)
       if (!attachmentBytes) continue
 
-      // Upload Storage
-      const path = buildPath(ristoranteId, filename)
+      // Idempotenza sul CONTENUTO dell'allegato (non sull'ora): lo stesso file
+      // ri-consegnato a cavallo dell'ora non genera piu' un doppio import.
+      const contentHash = await sha256HexBytes(attachmentBytes)
+      const idempotencyKey = await sha256Hex(`${senderEmail}|${filename}|${contentHash}`)
+
+      // Upload Storage: path univoco per idempotency key, cosi' due email diverse
+      // con allegato omonimo nello stesso mese non si sovrascrivono.
+      const path = buildPath(ristoranteId, filename, idempotencyKey)
       let savedPath: string | null = null
       try {
         const { error: uploadErr } = await db.storage
