@@ -286,6 +286,11 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
     except Exception as exc:
         return {}, [f"Lookup ristoranti utente fallito: {exc}"], parsed_rows
 
+    # Nessun ristorante per questo utente → niente destinazione valida.
+    # Senza questo, righe non mappate ricadrebbero sul mittente senza controllo.
+    if not owned_ids:
+        return {}, [f"Utente {user_id} non ha ristoranti: import scartato"], parsed_rows
+
     try:
         mp = supabase.table("ricavi_ragione_sociale_map").select("ragione_sociale_norm,ristorante_id").execute()
         for r in (mp.data or []):
@@ -346,8 +351,9 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
                 unmapped.add(raw_ragione)
                 target = fallback_ristorante_id
 
-        # Difesa: il fallback stesso deve appartenere all'utente.
-        if owned_ids and target not in owned_ids:
+        # Difesa: la destinazione (anche il fallback) deve appartenere all'utente.
+        # owned_ids è garantito non vuoto qui sopra.
+        if target not in owned_ids:
             foreign.add(str(target))
             continue
 
