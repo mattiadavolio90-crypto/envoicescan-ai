@@ -51,9 +51,9 @@ La nuova app Next.js è **funzionalmente completa** (Fasi 0–8 chiuse).
 
 ### Fase 9 — Test (prima di toccare qualsiasi DNS)
 
-- [ ] Usare `nuovo.oneflux.it` come cliente reale per almeno 5 giorni
-- [ ] Invitare i 2 clienti di test a usare `nuovo.oneflux.it` in parallelo a Streamlit
-- [ ] Raccogliere e fixare i bug che emergono
+- [x] Usare `nuovo.oneflux.it` come cliente reale per almeno 5 giorni
+- [x] Invitare i 2 clienti di test a usare `nuovo.oneflux.it` in parallelo a Streamlit
+- [x] Raccogliere e fixare i bug che emergono
 - [ ] Completare la checklist pre-switch qui sotto
 
 ### Fase 10 — Switch DNS
@@ -77,13 +77,13 @@ La nuova app Next.js è **funzionalmente completa** (Fasi 0–8 chiuse).
 
 ## Checklist pre-switch (dal MASTER §16)
 
-- [ ] Tutte le sezioni funzionanti e testate su `nuovo.oneflux.it`
+- [x] Tutte le sezioni funzionanti e testate su `nuovo.oneflux.it`
 - [x] Reset password funzionante lato Next.js (Brevo in produzione)
 - [x] Privacy & Cookie Policy + Termini di Servizio pubblicati (`/privacy`, `/termini`)
 - [x] Consenso privacy esplicito raccolto all'onboarding con prova reale
-- [ ] Aggiornare data/versione informativa al cut-over + allineare lista responsabili
+- [x] Aggiornare data/versione informativa al cut-over + allineare lista responsabili
 - [ ] Backup DB confermato
-- [ ] Clienti avvisati con almeno 1 settimana di anticipo
+- [~] Clienti avvisati con almeno 1 settimana di anticipo — **N/A** (non serve, deciso 05/06)
 - [ ] Rollback plan: `old.oneflux.it` → Streamlit pronto
 
 ---
