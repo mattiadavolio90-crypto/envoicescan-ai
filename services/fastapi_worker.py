@@ -1210,6 +1210,11 @@ def _resolve_user_from_token(authorization: Optional[str]) -> Dict[str, Any]:
     return user
 
 
+# Cache in-process per /api/dashboard/stats (full-load + aggregazione Python).
+_DASHBOARD_STATS_CACHE: Dict[str, tuple] = {}
+_DASHBOARD_STATS_TTL = 60.0  # secondi
+
+
 @app.get(
     "/api/dashboard/stats",
     response_model=DashboardStats,
@@ -1220,6 +1225,7 @@ def _resolve_user_from_token(authorization: Optional[str]) -> Dict[str, Any]:
 def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardStats:
     from datetime import date, timedelta
     from collections import defaultdict
+    import time as _time
 
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
@@ -1231,6 +1237,14 @@ def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardSta
     # mentre Margini/Fatture/Prezzi mostrano un solo ristorante -> KPI Home incoerenti
     # col resto dell'app appena attivo il multi-ristorante. Allineato a _build_fatture_base_query.
     ristorante_id = _resolve_ristorante_id(user, supabase_client)
+
+    # Cache in-process: l'endpoint fa un full-load di tutte le righe del ristorante
+    # e aggrega in Python. Su clienti grandi e' costoso; un TTL breve evita di
+    # rieseguirlo a ogni richiesta ravvicinata (coerente con _HOME_KPI_CACHE).
+    _cache_key = f"dashstats:{user_id}:{ristorante_id}"
+    _cached = _DASHBOARD_STATS_CACHE.get(_cache_key)
+    if _cached and (_time.monotonic() - _cached[0]) < _DASHBOARD_STATS_TTL:
+        return _cached[1]
 
     rows: List[Dict[str, Any]] = []
     page_size = 1000
@@ -1318,12 +1332,14 @@ def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardSta
         ultima_fattura=ultima_data,
     )
 
-    return DashboardStats(
+    _result = DashboardStats(
         kpi=kpi,
         spesa_mensile=spesa_mensile,
         top_fornitori=top_fornitori,
         top_categorie=top_categorie,
     )
+    _DASHBOARD_STATS_CACHE[_cache_key] = (_time.monotonic(), _result)
+    return _result
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -6139,6 +6155,74 @@ def _calcola_costi_auto_per_mese(sb, ristorante_id: str, anno: int, mese: int) -
     return round(fb_tot, 2), round(spese_tot, 2)
 
 
+def _calcola_costi_auto_per_periodo(sb, ristorante_id: str, mesi_target: list) -> dict:
+    """Aggrega costi auto F&B/Spese per TUTTI i mesi del periodo in UNA passata.
+
+    Prima get_margini_analisi chiamava _calcola_costi_auto_per_mese mese-per-mese:
+    12 scansioni della tabella fatture per un anno. Qui carichiamo le righe
+    dell'intero range una volta sola e raggruppiamo per (anno, mese) in Python.
+    Ritorna {(anno, mese): (fb_tot, spese_tot)}.
+    """
+    from calendar import monthrange
+    if not mesi_target:
+        return {}
+
+    y0, m0 = min(mesi_target)
+    y1, m1 = max(mesi_target)
+    data_da = f"{y0}-{m0:02d}-01"
+    last_day = monthrange(y1, m1)[1]
+    data_a = f"{y1}-{m1:02d}-{last_day:02d}"
+
+    spese_gen_categorie = {
+        "SERVIZI E CONSULENZE", "UTENZE E LOCALI",
+        "MANUTENZIONE E ATTREZZATURE", "MATERIALE DI CONSUMO",
+    }
+
+    acc: dict = {(y, m): [0.0, 0.0] for (y, m) in mesi_target}
+    page = 0
+    page_size = 1000
+    while True:
+        resp = (
+            sb.table("fatture")
+            .select("categoria,totale_riga,data_documento,data_competenza")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .or_(
+                f"and(data_competenza.gte.{data_da},data_competenza.lte.{data_a}),"
+                f"and(data_competenza.is.null,data_documento.gte.{data_da},data_documento.lte.{data_a})"
+            )
+            .range(page * page_size, (page + 1) * page_size - 1)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            break
+        for r in rows:
+            # data di competenza (fallback documento) -> (anno, mese)
+            _dt = str(r.get("data_competenza") or r.get("data_documento") or "")[:7]
+            try:
+                yy, mm = int(_dt[:4]), int(_dt[5:7])
+            except (ValueError, IndexError):
+                continue
+            bucket = acc.get((yy, mm))
+            if bucket is None:
+                continue
+            cat = str(r.get("categoria") or "")
+            try:
+                tot = float(r.get("totale_riga") or 0)
+            except (TypeError, ValueError):
+                tot = 0.0
+            if cat in spese_gen_categorie:
+                bucket[1] += tot
+            elif cat and cat != "📝 NOTE E DICITURE":
+                bucket[0] += tot
+        if len(rows) < page_size:
+            break
+        page += 1
+
+    return {k: (round(v[0], 2), round(v[1], 2)) for k, v in acc.items()}
+
+
 @app.post("/api/margini/cella", tags=["Marginalità"], dependencies=[Depends(_verify_worker_key)])
 def update_margini_cella(
     body: MarginiCellaRequest,
@@ -6334,10 +6418,14 @@ def get_margini_analisi(
     margini_map = {(int(r["anno"]), int(r["mese"])): r for r in (margini_resp.data or [])}
     mensile_overrides = _load_mensile_overrides(sb, ristorante_id, annos)
 
+    # Costi auto F&B/Spese di tutti i mesi in UNA passata (era N+1: 1 scansione
+    # fatture per mese -> 12 round-trip per un anno).
+    costi_auto_map = _calcola_costi_auto_per_periodo(sb, ristorante_id, mesi_target)
+
     mesi_pivot: List[MesiPivot] = []
     for (y, m) in mesi_target:
         r = margini_map.get((y, m), {})
-        fb_auto, spese_auto = _calcola_costi_auto_per_mese(sb, ristorante_id, y, m)
+        fb_auto, spese_auto = costi_auto_map.get((y, m), (0.0, 0.0))
 
         ov = mensile_overrides.get((y, m))
         iva10 = ov["iva10"] if ov else float(r.get("fatturato_iva10") or 0)

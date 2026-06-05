@@ -101,10 +101,20 @@ def notifications_fingerprint(notifications: List[Dict[str, Any]]) -> str:
         return ''
     parts: List[str] = []
     for n in notifications:
+        topic = str(n.get('topic_key') or '')
+        # price_alert e' calcolato live con un budget di 4s: su clienti grandi a
+        # volte rientra e a volte va in timeout, quindi id/title/source_event_at
+        # cambiano tra una richiesta e l'altra. Se li includessimo, il fingerprint
+        # cambierebbe di continuo -> rigenerazione briefing + chiamata OpenAI a
+        # ogni load instabile. Per questo topic teniamo solo la presenza (stabile
+        # entro la giornata).
+        if topic == 'price_alert':
+            parts.append("price_alert|present")
+            continue
         parts.append(
             "|".join([
                 str(n.get('id') or ''),
-                str(n.get('topic_key') or ''),
+                topic,
                 str(n.get('source_type') or ''),
                 str(n.get('dedupe_key') or ''),
                 str(n.get('title') or ''),
