@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Sparkles, Lock, Loader2, MessageCircle } from "lucide-react";
 import {
   Dialog,
@@ -17,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { type AssistantConfig, type ConfigTopic } from "@/lib/home";
 
 export function ConfigAssistente({ config }: { config: AssistantConfig }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [nome, setNome] = useState(config.nome_referente);
   const [topics, setTopics] = useState<ConfigTopic[]>(config.topics);
@@ -33,7 +36,7 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
     setSaving(true);
     const topics_disabled = topics.filter((t) => !t.enabled && !t.bloccato).map((t) => t.key);
     try {
-      await fetch("/api/home/config", {
+      const res = await fetch("/api/home/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -42,9 +45,14 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
           chat_ai_enabled: chatEnabled,
         }),
       });
+      if (!res.ok) throw new Error();
       setOpen(false);
-      // ricarica per riflettere saluto/avvisi aggiornati nella Home
-      window.location.reload();
+      // router.refresh() rigenera i Server Component della Home (saluto/avvisi
+      // aggiornati) senza il reload completo della pagina, che era lento e
+      // perdeva lo stato della SPA.
+      router.refresh();
+    } catch {
+      toast.error("Non sono riuscito a salvare le impostazioni. Riprova.");
     } finally {
       setSaving(false);
     }

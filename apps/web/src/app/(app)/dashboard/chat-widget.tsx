@@ -8,6 +8,12 @@ import { Logo } from "@/components/brand/logo";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+// Il backend accetta al massimo 20 messaggi (ChatRequest.max_length). Inviamo
+// solo la coda piu' recente: senza questo, dopo ~20 scambi ogni invio falliva
+// con 422 e l'utente vedeva un errore generico, senza piu' poter chattare.
+// La UI conserva comunque l'intera conversazione a schermo.
+const MAX_STORICO_INVIATO = 16;
+
 // Domande suggerite: guidano chi non sa cosa chiedere verso le cose utili.
 const SUGGERIMENTI = [
   "Qual è il mio food cost?",
@@ -47,7 +53,7 @@ export function ChatWidget() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nuovi }),
+        body: JSON.stringify({ messages: nuovi.slice(-MAX_STORICO_INVIATO) }),
       });
       const data = (await res.json()) as { reply?: string; error?: string };
       let reply: string;

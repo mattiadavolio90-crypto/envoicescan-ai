@@ -11,6 +11,7 @@ import {
   Sparkles,
   ArrowRight,
 } from "lucide-react";
+import { toast } from "sonner";
 import { type Briefing, type BriefingAzione } from "@/lib/home";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -85,15 +86,19 @@ export function HomeBriefing({ briefing }: Props) {
   async function dismiss(id: string) {
     setLoading((prev) => new Set(prev).add(id));
     try {
-      await fetch("/api/notifiche/dismiss", {
+      const res = await fetch("/api/notifiche/dismiss", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-    } finally {
-      // segna come archiviata anche in caso di errore di rete: la card sparisce,
-      // verra' ricalcolata al prossimo refresh server
+      if (!res.ok) throw new Error();
+      // Nascondiamo la card solo se il dismiss e' andato a buon fine: altrimenti
+      // sparirebbe dalla UI ma ricomparirebbe al refresh (stato incoerente).
+      // Stesso comportamento della Home mobile.
       setDismissed((prev) => new Set(prev).add(id));
+    } catch {
+      toast.error("Non sono riuscito a ignorare l'avviso. Riprova.");
+    } finally {
       setLoading((prev) => {
         const next = new Set(prev);
         next.delete(id);

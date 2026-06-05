@@ -194,11 +194,12 @@ function PrezzoChart({
             strokeDasharray="4 4"
             strokeWidth={1.5}
             label={{
-              value: `media €${mediaLabel.toFixed(2)}`,
+              value: "media",
               position: "insideTopLeft",
               fontSize: 10,
               fill: "#f43f5e",
-              dy: -12,
+              dy: -6,
+              dx: 4,
             }}
           />
           <Line type="monotone" dataKey="var_pct" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5 }} />

@@ -7,6 +7,10 @@ import { Logo } from "@/components/brand/logo";
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+// Il backend accetta al massimo 20 messaggi: inviamo solo la coda piu' recente
+// per non sforare dopo ~20 scambi (la conversazione resta intera a schermo).
+const MAX_STORICO_INVIATO = 16;
+
 const SUGGERIMENTI = [
   "Qual è il mio food cost?",
   "Cosa devo pagare?",
@@ -38,7 +42,7 @@ export function MobileChat() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nuovi }),
+        body: JSON.stringify({ messages: nuovi.slice(-MAX_STORICO_INVIATO) }),
       });
       const data = (await res.json()) as { reply?: string; error?: string };
       let reply: string;

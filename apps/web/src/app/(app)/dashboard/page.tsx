@@ -1,5 +1,4 @@
 import { Suspense } from "react";
-import { fetchDashboardStats } from "@/lib/dashboard";
 import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { HomeBriefing } from "./home-briefing";
@@ -59,13 +58,13 @@ async function NotificheBlock() {
 }
 
 async function KpiSaluteBlock() {
-  const [kpi, salute, stats] = await Promise.all([
-    fetchKpi(),
-    fetchSalute(),
-    fetchDashboardStats(),
-  ]);
+  // Solo kpi + salute: prima si chiamava anche fetchDashboardStats() (endpoint
+  // pesante su clienti con migliaia di righe) solo per ricavare isEmpty, ma lo
+  // stato vuoto e' gia' deducibile da kpi/salute assenti — niente round-trip in
+  // piu' che rallentava il blocco dentro un Promise.all.
+  const [kpi, salute] = await Promise.all([fetchKpi(), fetchSalute()]);
 
-  const isEmpty = !stats || stats.kpi.righe_totali === 0;
+  const isEmpty = !salute && !kpi;
 
   return (
     <>
@@ -76,7 +75,7 @@ async function KpiSaluteBlock() {
         </div>
       )}
 
-      {isEmpty && !salute && (
+      {isEmpty && (
         <Card>
           <CardContent className="py-16 text-center">
             <Receipt className="mx-auto size-12 text-muted-foreground/40" />
