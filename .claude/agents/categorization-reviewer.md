@@ -113,10 +113,72 @@ ultime N"), applica il filtro corrispondente. Di default controlla tutto, ma pro
 blocchi (vedi STEP 4) per non sommergere.
 
 ═══════════════════════════════════════════════════════════════════════
-## STEP 3 — Giudica ogni descrizione con 3 segnali indipendenti
+## STEP 3 — Giudica ogni descrizione con 4 segnali indipendenti
 ═══════════════════════════════════════════════════════════════════════
 
 Per ciascuna descrizione raccogli questi segnali, poi assegna un verdetto.
+
+### Segnale 0 — Fornitore utility/telecom (override deterministico forte)
+Le righe di fornitori utility/telecom (ENEL, A2A, FASTWEB, TIM, Vodafone, Iliad, ENI,
+Hera, Sorgenia, …) vanno SEMPRE in `UTENZE E LOCALI` — incluse le voci accessorie tipiche
+di bolletta (ARROTONDAMENTO, BONUS LINEA/INTERNET, PROMO, SERVIZIO INVIO FATTURA, ALTRI
+IMPORTI/RIACCREDITI/CORRISPETTIVI). È una regola business già attiva in fase A
+(`_is_fornitore_utenze_sempre` → LIVELLO 0 di `categorizza_con_memoria`), ma le righe
+STORICHE caricate prima che la regola esistesse possono essere rimaste in SERVIZI E
+CONSULENZE. Questo segnale le recupera.
+
+Usa la stessa funzione del runtime per riconoscere il fornitore (così sei coerente):
+
+```bash
+python -c "
+import os, sys
+from pathlib import Path
+envp = Path('.env')
+if envp.exists():
+    for ln in envp.read_text(encoding='utf-8').splitlines():
+        if '=' in ln and not ln.strip().startswith('#'):
+            k,_,v = ln.partition('='); os.environ.setdefault(k.strip(), v.strip())
+from services.ai_service import _is_fornitore_utenze_sempre
+forn = sys.argv[1]
+is_util, match = _is_fornitore_utenze_sempre(forn)
+print(f'utility={is_util}\tmatch={match or \"\"}')
+" "NOME FORNITORE"
+```
+
+Regole d'uso:
+- Se il fornitore è utility (`utility=True`) E la categoria attuale ≠ `UTENZE E LOCALI`
+  → **SBAGLIATA**, proposta = `UTENZE E LOCALI`. Vale anche per le righe accessorie.
+- ⚠️ ECCEZIONE: NON è utility se la riga è un'accisa/imposta da un fornitore non-utility
+  (es. `IMPOSTA DI CONSUMO` da una tabaccheria → resta SERVIZI E CONSULENZE). Applica il
+  segnale solo quando `_is_fornitore_utenze_sempre` ritorna True sul fornitore reale.
+- Questo è un errore di SISTEMA (non preferenza cliente): è buon candidato anche per la
+  promozione globale, ma vale solo per le righe di QUEL fornitore.
+
+Per trovarle in blocco, incrocia le righe in SERVIZI/altro con fornitori utility:
+```sql
+SELECT descrizione, fornitore, categoria, count(*) AS righe
+FROM public.fatture
+WHERE user_id = '<USER_ID>' AND deleted_at IS NULL
+  AND categoria <> 'UTENZE E LOCALI'
+  AND (fornitore ILIKE '%TIM %' OR fornitore ILIKE '%FASTWEB%' OR fornitore ILIKE '%A2A%'
+    OR fornitore ILIKE '%ENEL%' OR fornitore ILIKE '%VODAFONE%' OR fornitore ILIKE '%ILIAD%'
+    OR fornitore ILIKE '%ENI %' OR fornitore ILIKE '%HERA%' OR fornitore ILIKE '%SORGENIA%'
+    OR fornitore ILIKE '%WINDTRE%' OR fornitore ILIKE '%PLENITUDE%')
+GROUP BY descrizione, fornitore, categoria
+ORDER BY righe DESC;
+```
+Verifica ogni fornitore-candidato con `_is_fornitore_utenze_sempre` prima di proporre.
+
+🚨 **PRIORITÀ ASSOLUTA DEL SEGNALE 0 (impara da un errore reale):** se il fornitore è
+utility, la categoria corretta è `UTENZE E LOCALI` ANCHE quando una regola forte (es.
+`canone_o_servizio`, `servizio_accessorio`) suggerirebbe SERVIZI E CONSULENZE. Nel
+runtime il fornitore utility è LIVELLO 0 e batte tutto. Esempio reale: `BONUS LINEA
+MOBILE` / `BONUS INTERNET` / `ARROTONDAMENTO` / `PROMO VALORE` da TIM/A2A → il cliente li
+ha corretti a mano in UTENZE E LOCALI; la regola forte direbbe SERVIZI, ma sbaglia. NON
+proporre MAI di spostare a SERVIZI una riga di fornitore utility. Se trovi righe di
+fornitore utility ancora in SERVIZI (storiche), la proposta è SERVIZI → UTENZE, mai il
+contrario. Quando il Segnale 0 dice utility, IGNORA i Segnali 3 (regole forti) che
+direbbero SERVIZI per quella riga.
 
 ### Segnale 1 — Coerenza interna (errore certo se fallisce)
 La stessa descrizione ha categorie diverse DENTRO lo stesso cliente?
@@ -187,9 +249,13 @@ Interpreta:
 (prodotto finale = pasta). Qui il Segnale 3 da solo sbaglia: incrocia SEMPRE con il
 cross-cliente (Segnale 2) e, nei casi ambigui, con la GPT, prima di concludere.
 
-Per casi davvero ambigui dove i 3 segnali non bastano, puoi usare la GPT come quarto
-parere (gpt-4o-mini, costo irrisorio ~0,02€/cliente). Chiedi prima all'utente se vuole
-che la usi. Importa `classifica_con_ai` dal progetto in modo analogo allo snippet sopra.
+Per casi davvero ambigui dove i segnali 0-2 non bastano, usa la GPT come parere
+aggiuntivo (gpt-4o-mini, costo irrisorio: ~0,001€ ogni 12 descrizioni). Importa
+`classifica_con_ai` dal progetto in modo analogo allo snippet sopra. NB dalla prova reale
+su TIME CAFE: la GPT spesso dà una risposta corretta IN ASSOLUTO che però diverge dalla
+PREFERENZA del cliente (es. STRUDEL → la GPT dice PASTICCERIA, il cliente vuole GELATI E
+DESSERT). Quando GPT e cliente divergono su un caso soggettivo, NON è un errore: è
+preferenza → proponi all'utente ma trattala come locale, mai globale.
 
 ### Verdetto
 | Verdetto | Quando | Azione |
