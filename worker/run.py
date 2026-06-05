@@ -156,6 +156,18 @@ def main() -> int:
         purge_cestino_scaduto = None
         purge_fatture_retention = None
 
+    # Import ciclo email ricavi (parsing + upsert in-process, usa solo Supabase).
+    # Killswitch: EMAIL_CYCLE_ENABLED=0 lo disattiva.
+    try:
+        from worker.email_queue_processor import run_email_cycle
+        _email_cycle_enabled = os.environ.get("EMAIL_CYCLE_ENABLED", "1").strip() not in ("0", "false", "False", "no")
+        if not _email_cycle_enabled:
+            logger.info("email-cycle disabilitato via EMAIL_CYCLE_ENABLED=0")
+    except Exception as exc:
+        logger.warning("email-cycle non disponibile: %s", exc)
+        run_email_cycle = None
+        _email_cycle_enabled = False
+
     consecutive_failures = 0
     last_purge_time = 0.0
     last_retention_time = 0.0
@@ -166,6 +178,16 @@ def main() -> int:
             stats = run_cycle()
             stats.log_summary()
             consecutive_failures = 0
+
+            # Ciclo email ricavi (ogni giro del worker, dopo le fatture)
+            if _email_cycle_enabled and run_email_cycle:
+                try:
+                    from worker.queue_processor import get_supabase_client
+                    _sb = get_supabase_client()
+                    email_stats = run_email_cycle(_sb)
+                    email_stats.log_summary()
+                except Exception as email_exc:
+                    logger.warning("email-cycle errore: %s", email_exc)
 
             # Purge periodico cestino fatture (ogni WORKER_PURGE_INTERVAL_SECONDS)
             now = time.monotonic()

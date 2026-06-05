@@ -1,0 +1,94 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# File HTTP per VS Code REST Client (estensione "REST Client" di Huachao Mao)
+#
+# Testa la Edge Function ricavi-email-webhook.
+# Il token è passato come query param (?token=...) oppure header.
+#
+# Per uso locale:
+#   supabase functions serve ricavi-email-webhook \
+#     --env-file ./supabase/functions/.env.local
+#
+# Poi imposta @token con il valore di BREVO_WEBHOOK_TOKEN dal tuo .env.local
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@localUrl  = http://localhost:54321/functions/v1/ricavi-email-webhook
+@remoteUrl = https://vthikmfpywilukizputn.supabase.co/functions/v1/ricavi-email-webhook
+
+@baseUrl = {{localUrl}}
+@token   = INSERISCI_QUI_BREVO_WEBHOOK_TOKEN
+
+###
+# ─── T0: Health check GET ─────────────────────────────────────────────────────
+# Atteso: 200 OK
+GET {{baseUrl}}
+
+###
+# ─── T1: Token assente → 401 ──────────────────────────────────────────────────
+# Atteso: 401 Unauthorized
+POST {{baseUrl}}
+Content-Type: application/json
+
+{"from":"export@passbi.it","subject":"Ricavi Settimana 22"}
+
+###
+# ─── T2: Token errato → 401 ───────────────────────────────────────────────────
+# Atteso: 401 Unauthorized
+POST {{baseUrl}}?token=token_sbagliato
+Content-Type: application/json
+
+{"from":"export@passbi.it","subject":"Ricavi Settimana 22"}
+
+###
+# ─── T3: Nessun allegato XLS → 200 skip silenzioso ───────────────────────────
+# Atteso: 200 OK, nessun record in ricavi_email_queue
+POST {{baseUrl}}?token={{token}}
+Content-Type: application/json
+
+{
+  "from": "export@passbi.it",
+  "subject": "Newsletter mensile",
+  "attachments": [
+    { "name": "logo.png", "contentType": "image/png", "base64Content": "iVBORw0KGgo=" }
+  ]
+}
+
+###
+# ─── T4: Payload JSON con allegato XLS base64 (mittente non mappato) ──────────
+# Atteso: 200 OK, record in ricavi_email_queue con status='unknown_sender'
+# Nota: base64Content qui è un placeholder — sostituisci con XLS reale in base64
+POST {{baseUrl}}?token={{token}}
+Content-Type: application/json
+
+{
+  "from": "test-gestionale@esempio.com",
+  "subject": "Export ricavi settimana 23",
+  "attachments": [
+    {
+      "name": "ricavi_w23.xlsx",
+      "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "base64Content": "UEsDBBQABgAIAAAAIQA="
+    }
+  ]
+}
+
+###
+# ─── T5: Payload multipart/form-data simulato (Brevo reale) ───────────────────
+# Brevo Inbound invia multipart — per simularlo in locale usa curl:
+#
+# curl -X POST "http://localhost:54321/functions/v1/ricavi-email-webhook?token=TOKEN" \
+#   -F "from=Export Passbi <export@passbi.it>" \
+#   -F "subject=Ricavi Maggio 2026" \
+#   -F "attachment-count=1" \
+#   -F "attachment[0][name]=ricavi_maggio.xlsx" \
+#   -F "attachment[0][content-type]=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" \
+#   -F "attachment[0][base64Content]=<BASE64_DEL_FILE_XLS>"
+#
+# Atteso: 200 OK, record in ricavi_email_queue con status='pending' (se mittente mappato)
+#         oppure status='unknown_sender' (se mittente non ancora in ricavi_email_sender_map)
+
+###
+# ─── Metodo non consentito → 405 ─────────────────────────────────────────────
+PUT {{baseUrl}}?token={{token}}
+Content-Type: application/json
+
+{}
