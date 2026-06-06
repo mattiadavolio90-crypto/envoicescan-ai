@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import services.fastapi_worker as worker
+import services.routers.margini as margini
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +47,18 @@ def _patch_common(voci):
     )
 
 
+def _patch_margini(voci):
+    """Come _patch_common ma sul modulo router margini (dove vive get_costo_spese_da_voci)."""
+    client = MagicMock()
+    client.table.return_value = _query_mock(voci)
+    return patch.multiple(
+        margini,
+        _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
+        _get_supabase_client=MagicMock(return_value=client),
+        _resolve_ristorante_id=MagicMock(return_value="rist-1"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # get_costo_spese_da_voci — aggregatore per margini
 # ---------------------------------------------------------------------------
@@ -58,16 +71,16 @@ class TestCostoSpeseDaVoci:
             {"tipo": "fb", "importo": 50.5},
             {"tipo": "generale", "importo": 30.0},
         ]
-        with _patch_common(voci):
-            res = worker.get_costo_spese_da_voci(anno=2026, mese=6, authorization="Bearer x")
+        with _patch_margini(voci):
+            res = margini.get_costo_spese_da_voci(anno=2026, mese=6, authorization="Bearer x")
         assert res["totale_fb"] == 150.5
         assert res["totale_generale"] == 30.0
         assert res["n_voci_fb"] == 2
         assert res["n_voci_generale"] == 1
 
     def test_nessuna_voce(self):
-        with _patch_common([]):
-            res = worker.get_costo_spese_da_voci(anno=2026, mese=6, authorization="Bearer x")
+        with _patch_margini([]):
+            res = margini.get_costo_spese_da_voci(anno=2026, mese=6, authorization="Bearer x")
         assert res["totale_fb"] == 0.0
         assert res["totale_generale"] == 0.0
         assert res["n_voci_fb"] == 0
@@ -78,8 +91,8 @@ class TestCostoSpeseDaVoci:
             {"tipo": "fb", "importo": None},
             {"tipo": "generale", "importo": 20.0},
         ]
-        with _patch_common(voci):
-            res = worker.get_costo_spese_da_voci(anno=2026, mese=6, authorization="Bearer x")
+        with _patch_margini(voci):
+            res = margini.get_costo_spese_da_voci(anno=2026, mese=6, authorization="Bearer x")
         assert res["totale_fb"] == 0.0
         assert res["totale_generale"] == 20.0
 
@@ -88,8 +101,8 @@ class TestCostoSpeseDaVoci:
             {"tipo": "fb", "importo": 10.0},
             {"tipo": "altro", "importo": 999.0},  # non deve confluire da nessuna parte
         ]
-        with _patch_common(voci):
-            res = worker.get_costo_spese_da_voci(anno=2026, mese=6, authorization="Bearer x")
+        with _patch_margini(voci):
+            res = margini.get_costo_spese_da_voci(anno=2026, mese=6, authorization="Bearer x")
         assert res["totale_fb"] == 10.0
         assert res["totale_generale"] == 0.0
 
