@@ -11,8 +11,8 @@ abbiamo ristorante_id + user_id dal record in coda (popolati dal mapping
 ricavi_email_sender_map) e il service_role_key che bypassa RLS.
 
 Riusa senza duplicare:
-  - services.fastapi_worker._detect_gestionale_version
-  - services.fastapi_worker._parse_generico (file senza colonna ragione sociale)
+  - services.routers.ricavi._detect_gestionale_version
+  - services.routers.ricavi._parse_generico (file senza colonna ragione sociale)
 
 Per Passbi v1 usa un parser dedicato (_parse_passbi_email) che — a differenza
 della UI — smista ogni riga sul ristorante giusto via ragione sociale, così un
@@ -83,7 +83,7 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
     # Import lazy dei parser (evita di caricare fastapi_worker se la coda è vuota)
     try:
         import pandas as pd
-        from services.fastapi_worker import (
+        from services.routers.ricavi import (
             _detect_gestionale_version,
             _parse_generico,
         )
