@@ -1673,15 +1673,20 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                     "totale_imponibile": prod.get("TotaleImponibile", prod.get("Totale_Imponibile")),
                     "totale_iva": prod.get("TotaleIVA", prod.get("Totale_IVA")),
                     "piva_cedente": prod.get("piva_cedente"),
+                    # Re-upload di un file cestinato: l'upsert fa DO UPDATE sulla riga esistente;
+                    # forziamo deleted_at=NULL così la riga torna ATTIVA (ricaricare = ripristinare).
+                    "deleted_at": None,
                 })
             
 
-            # Idempotenza ATOMICA via UPSERT su uq_fatture_dedup_active
-            # (user_id, ristorante_id, file_origine, numero_riga) WHERE deleted_at IS NULL.
+            # Idempotenza ATOMICA via UPSERT su uq_fatture_dedup
+            # (user_id, ristorante_id, file_origine, numero_riga) — indice UNIQUE PIENO.
+            # NB: dev'essere non-parziale, altrimenti PostgREST non lo usa come arbitro di
+            # ON CONFLICT (errore 42P10). Vedi migration 20260606120000.
             # Sostituisce il vecchio delete+insert che (1) faceva hard-delete ignorando il
             # cestino — cancellando definitivamente righe soft-deleted dello stesso file — e
             # (2) non era transazionale (su insert parziale lasciava la fattura corrotta).
-            # L'upsert per-riga è atomico e non tocca mai le righe nel cestino.
+            # Una riga cestinata con la stessa quaterna viene riattivata (deleted_at=NULL nel record).
             _INSERT_CHUNK_SIZE = 500
             _ON_CONFLICT = "user_id,ristorante_id,file_origine,numero_riga"
             inserted_rows: list = []
