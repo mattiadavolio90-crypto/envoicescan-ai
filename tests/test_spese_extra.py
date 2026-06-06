@@ -15,6 +15,7 @@ from unittest.mock import MagicMock, patch
 
 import services.fastapi_worker as worker
 import services.routers.margini as margini
+import services.routers.workspace as workspace
 
 
 # ---------------------------------------------------------------------------
@@ -35,14 +36,14 @@ def _query_mock(execute_data=None):
 
 
 def _patch_common(voci):
-    """Patcha auth + supabase + risoluzione ristorante; il client restituisce `voci`."""
+    """Patcha auth + supabase + risoluzione ristorante sul router workspace
+    (dove ora vivono ws_spese_*); il client restituisce `voci`."""
     client = MagicMock()
     client.table.return_value = _query_mock(voci)
     return patch.multiple(
-        worker,
+        workspace,
         _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
         _get_supabase_client=MagicMock(return_value=client),
-        _resolve_ristorante_id=MagicMock(return_value="rist-1"),
         _get_ristorante_id_for_user=MagicMock(return_value="rist-1"),
     )
 
@@ -120,7 +121,7 @@ class TestSpeseList:
             {"id": "3", "tipo": "generale", "importo": 15.0},
         ]
         with _patch_common(voci):
-            res = worker.ws_spese_list(da="2026-06-01", a="2026-06-30", authorization="Bearer x")
+            res = workspace.ws_spese_list(da="2026-06-01", a="2026-06-30", authorization="Bearer x")
         assert res["totale_fb"] == 40.0
         assert res["totale_generale"] == 75.0
         assert res["totale"] == 115.0
@@ -134,28 +135,28 @@ class TestSpeseList:
 class TestSpeseCrea:
 
     def test_tipo_non_valido(self):
-        body = worker.NuovaSpesaBody(data_spesa="2026-06-10", tipo="xxx", importo=10.0, descrizione="Test")
+        body = workspace.NuovaSpesaBody(data_spesa="2026-06-10", tipo="xxx", importo=10.0, descrizione="Test")
         with _patch_common([]):
             with pytest.raises(worker.HTTPException) as exc:
-                worker.ws_spese_crea(body=body, authorization="Bearer x")
+                workspace.ws_spese_crea(body=body, authorization="Bearer x")
         assert exc.value.status_code == 400
 
     def test_descrizione_vuota(self):
-        body = worker.NuovaSpesaBody(data_spesa="2026-06-10", tipo="fb", importo=10.0, descrizione="   ")
+        body = workspace.NuovaSpesaBody(data_spesa="2026-06-10", tipo="fb", importo=10.0, descrizione="   ")
         with _patch_common([]):
             with pytest.raises(worker.HTTPException) as exc:
-                worker.ws_spese_crea(body=body, authorization="Bearer x")
+                workspace.ws_spese_crea(body=body, authorization="Bearer x")
         assert exc.value.status_code == 400
 
     def test_importo_negativo(self):
-        body = worker.NuovaSpesaBody(data_spesa="2026-06-10", tipo="fb", importo=-5.0, descrizione="Test")
+        body = workspace.NuovaSpesaBody(data_spesa="2026-06-10", tipo="fb", importo=-5.0, descrizione="Test")
         with _patch_common([]):
             with pytest.raises(worker.HTTPException) as exc:
-                worker.ws_spese_crea(body=body, authorization="Bearer x")
+                workspace.ws_spese_crea(body=body, authorization="Bearer x")
         assert exc.value.status_code == 400
 
     def test_creazione_valida(self):
-        body = worker.NuovaSpesaBody(
+        body = workspace.NuovaSpesaBody(
             data_spesa="2026-06-10", tipo="fb", importo=12.345, descrizione="  Pesce  ", note=None
         )
         client = MagicMock()
@@ -163,12 +164,12 @@ class TestSpeseCrea:
         q = _query_mock([inserted])
         client.table.return_value = q
         with patch.multiple(
-            worker,
+            workspace,
             _resolve_user_from_token=MagicMock(return_value={"id": "user-1"}),
             _get_supabase_client=MagicMock(return_value=client),
             _get_ristorante_id_for_user=MagicMock(return_value="rist-1"),
         ):
-            res = worker.ws_spese_crea(body=body, authorization="Bearer x")
+            res = workspace.ws_spese_crea(body=body, authorization="Bearer x")
         # Verifica che l'importo sia stato arrotondato a 2 decimali e descrizione strippata nel payload
         args, kwargs = q.insert.call_args
         payload = args[0]
