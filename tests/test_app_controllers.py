@@ -128,7 +128,7 @@ class TestAppControllersDB:
 
     def test_mostra_pagina_login_login_ok_salva_session_token(self):
         """
-        Verifica percorso login OK: update su users + set cookie session_token.
+        Verifica percorso login OK: crea sessione multi-token + set cookie.
         """
         mock_supabase = MagicMock()
         query = _build_query_mock(execute_data=[{"id": "u1"}])
@@ -150,6 +150,7 @@ class TestAppControllersDB:
              patch("utils.app_controllers.st.text_input", side_effect=["user@test.com", "pwd123456"]), \
              patch("utils.app_controllers.st.spinner", return_value=_FakeContext()), \
              patch("utils.app_controllers.verifica_credenziali", return_value=({"id": "u1", "email": "user@test.com"}, None)), \
+             patch("services.session_service.crea_sessione", return_value="tok-multi") as mock_crea, \
              patch("utils.app_controllers.time.sleep", return_value=None), \
              patch("utils.app_controllers.st.rerun", side_effect=RuntimeError("rerun")), \
              patch("utils.app_controllers.st.markdown"), \
@@ -162,8 +163,8 @@ class TestAppControllersDB:
             except RuntimeError as e:
                 assert str(e) == "rerun"
 
-        mock_supabase.table.assert_called_with("users")
-        query.update.assert_called_once()
+        mock_crea.assert_called_once()
+        assert mock_crea.call_args.args[0] == "u1"
         mock_cookie_manager.set.assert_called_once()
         assert session_state.get("logged_in") is True
 

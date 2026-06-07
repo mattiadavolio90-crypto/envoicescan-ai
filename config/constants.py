@@ -15,6 +15,7 @@ import re
 # Costanti sessione (timeout e throttling) — fonte unica di verità
 SESSION_INACTIVITY_HOURS = 8        # Ore: sessione scade dopo inattività prolungata
 LAST_SEEN_WRITE_THROTTLE_SECONDS = 300  # Secondi minimi tra due scritture di last_seen_at
+MAX_SESSIONI_ATTIVE = 5             # Sessioni (dispositivi) attive per utente: al superamento si revoca la più vecchia
 
 # Automazione data competenza — suggerimento per fatture di inizio mese
 COMPETENZA_AUTO_SOGLIA_GIORNI = 7   # Fatture emesse entro il giorno X → sospette del mese precedente

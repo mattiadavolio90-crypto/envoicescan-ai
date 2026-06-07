@@ -133,7 +133,12 @@ def handle_force_logout(supabase) -> None:
         return
     logger.warning("🚨 LOGOUT FORZATO via query params - pulizia sessione")
     try:
-        _email_for_logout = st.session_state.get("user_data", {}).get("email")
+        _ud = st.session_state.get("user_data", {}) or {}
+        _email_for_logout = _ud.get("email")
+        _uid_for_logout = _ud.get("id")
+        if _uid_for_logout:
+            from services.session_service import revoca_tutte_sessioni
+            revoca_tutte_sessioni(_uid_for_logout, supabase_client=supabase)
         if _email_for_logout:
             supabase.table("users").update(
                 {
@@ -659,15 +664,9 @@ def show_login_page(cookie_manager, supabase) -> None:
                                         )
                                         logger.debug(f"🔑 Cookie JWT impostato per user_id={user.get('id')}")
                                     else:
-                                        # PATH LEGACY: genera UUID opaco, salvalo su public.users.
-                                        _s_token = _secrets.token_urlsafe(32)
-                                        supabase.table("users").update(
-                                            {
-                                                "session_token": _s_token,
-                                                "session_token_created_at": _now_utc.isoformat(),
-                                                "last_seen_at": _now_utc.isoformat(),
-                                            }
-                                        ).eq("id", user.get("id")).execute()
+                                        # PATH MULTI-TOKEN: crea una sessione (tabella sessioni).
+                                        from services.session_service import crea_sessione
+                                        _s_token = crea_sessione(user.get("id"), source="login")
                                         cookie_manager.set(
                                             "session_token",
                                             _s_token,
@@ -676,7 +675,7 @@ def show_login_page(cookie_manager, supabase) -> None:
                                             secure=True,
                                             same_site="strict",
                                         )
-                                        logger.debug(f"🔑 Cookie legacy impostato per user_id={user.get('id')}")
+                                        logger.debug(f"🔑 Cookie sessione impostato per user_id={user.get('id')}")
 
                                     # Rimuovi token JWT da session_state (non devono essere esposti)
                                     user.pop("_jwt_access_token", None)
@@ -799,14 +798,8 @@ def show_login_page(cookie_manager, supabase) -> None:
                             if cookie_manager is not None:
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
-                                    _s_token = _secrets.token_urlsafe(32)
-                                    supabase.table("users").update(
-                                        {
-                                            "session_token": _s_token,
-                                            "session_token_created_at": _now_utc.isoformat(),
-                                            "last_seen_at": _now_utc.isoformat(),
-                                        }
-                                    ).eq("id", user.get("id")).execute()
+                                    from services.session_service import crea_sessione
+                                    _s_token = crea_sessione(user.get("id"), source="login")
                                     cookie_manager.set(
                                         "session_token",
                                         _s_token,
@@ -858,11 +851,12 @@ def check_login_gate(supabase, cookie_manager) -> None:
         logger.critical("❌ user_data è None o mancante email - FORZA LOGOUT")
         if cookie_manager is not None:
             try:
-                _email_emergency = (
-                    st.session_state.get("user_data", {}).get("email")
-                    if st.session_state.get("user_data")
-                    else None
-                )
+                _ud_emergency = st.session_state.get("user_data") or {}
+                _email_emergency = _ud_emergency.get("email")
+                _uid_emergency = _ud_emergency.get("id")
+                if _uid_emergency:
+                    from services.session_service import revoca_tutte_sessioni
+                    revoca_tutte_sessioni(_uid_emergency, supabase_client=supabase)
                 if _email_emergency:
                     supabase.table("users").update(
                         {
@@ -1031,6 +1025,8 @@ def check_trial_or_expire(supabase) -> None:
             f"— logout forzato comunque"
         )
     try:
+        from services.session_service import revoca_tutte_sessioni
+        revoca_tutte_sessioni(_t_uid, supabase_client=supabase)
         supabase.table("users").update(
             {
                 "session_token": None,

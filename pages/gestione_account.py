@@ -149,11 +149,13 @@ with tab1:
                                 st.toast("✅ Password aggiornata! Reindirizzamento al login...", icon="✅")
                                 logger.info(f"Password modificata per user_id={user.get('id')}")
 
-                                # Logout automatico + invalida session_token
+                                # Logout automatico da TUTTI i dispositivi (sicurezza: nuova password)
                                 try:
+                                    from services.session_service import revoca_tutte_sessioni
+                                    revoca_tutte_sessioni(user['id'], supabase_client=supabase)
                                     supabase.table('users').update({'session_token': None}).eq('id', user['id']).execute()
                                 except Exception as e:
-                                    logger.warning(f"Errore invalidazione session token: {e}")
+                                    logger.warning(f"Errore invalidazione sessioni: {e}")
                                 st.session_state.logged_in = False
                                 st.session_state.user_data = None
                                 st.switch_page("app.py")

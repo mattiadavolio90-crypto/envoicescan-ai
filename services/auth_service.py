@@ -1180,6 +1180,31 @@ def verifica_sessione_da_cookie(
                 # essere un vecchio session_token opaco — prova il path legacy sotto.
 
         # ----------------------------------------------------------------
+        # PATH MULTI-TOKEN: tabella public.sessioni (N sessioni per utente).
+        # Cerca qui per primo; l'inattività è applicata da risolvi_sessione su
+        # sessioni.last_seen_at. Se il token non è qui, prosegue il path legacy
+        # (sessioni create prima del deploy multi-token su users.session_token).
+        # ----------------------------------------------------------------
+        from services.session_service import risolvi_sessione, tocca_sessione
+        _sess_user_id = risolvi_sessione(token, supabase_client=supabase_client)
+        if _sess_user_id:
+            _ur = supabase_client.table('users') \
+                .select("id, email, nome_ristorante, nome_referente, attivo, "
+                        "pagine_abilitate, tema, last_seen_at, ultimo_ristorante_id") \
+                .eq('id', _sess_user_id) \
+                .eq('attivo', True) \
+                .execute()
+            if _ur.data:
+                _u = _ur.data[0]
+                for _sk in ('password_hash', 'reset_code', 'reset_expires', 'session_token'):
+                    _u.pop(_sk, None)
+                tocca_sessione(token, supabase_client=supabase_client)
+                _SESSIONE_CACHE[_ck] = (_now + _SESSIONE_CACHE_TTL, dict(_u))
+                return _u
+            # utente disattivato/eliminato: la sessione non vale più
+            return None
+
+        # ----------------------------------------------------------------
         # PATH LEGACY: session_token opaco su public.users
         # ----------------------------------------------------------------
         response = supabase_client.table('users') \

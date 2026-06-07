@@ -200,17 +200,22 @@ def render_sidebar(user_data: dict):
             except Exception as e:
                 logger.warning(f"Errore registrazione logout: {e}")
             
-            # 2. INVALIDA session_token nel DB (CRITICO: deve avvenire QUI,
+            # 2. INVALIDA le sessioni nel DB (CRITICO: deve avvenire QUI,
             #    perché in un'app multipage ?logout=1 potrebbe non raggiungere app.py)
             try:
                 from services import get_supabase_client
+                from services.session_service import revoca_tutte_sessioni
                 _sb = get_supabase_client()
-                _email_logout = st.session_state.get('user_data', {}).get('email')
+                _ud_logout = st.session_state.get('user_data', {}) or {}
+                _uid_logout = _ud_logout.get('id')
+                _email_logout = _ud_logout.get('email')
+                if _uid_logout:
+                    revoca_tutte_sessioni(_uid_logout, supabase_client=_sb)
                 if _email_logout:
                     _sb.table('users').update({'session_token': None}).eq('email', _email_logout).execute()
-                    logger.info(f"🔒 Session token invalidato per: {_email_logout}")
+                    logger.info(f"🔒 Sessioni invalidate per: {_email_logout}")
             except Exception as _te:
-                logger.warning(f"Errore invalidazione session_token: {_te}")
+                logger.warning(f"Errore invalidazione sessioni: {_te}")
             
             # 3. Pulisci session_state e forza redirect
             st.session_state.clear()

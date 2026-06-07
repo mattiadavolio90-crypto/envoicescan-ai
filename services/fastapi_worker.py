@@ -1067,8 +1067,6 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
     _check_rate_limit(request.client.host if request.client else "unknown")
 
     from services.auth_service import verifica_credenziali, AuthServiceUnavailableError
-    from datetime import datetime, timezone
-    import secrets as _secrets
 
     try:
         user, error = verifica_credenziali(body.email, body.password)
@@ -1078,20 +1076,15 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
     if error or not user:
         raise HTTPException(status_code=401, detail=error or "Credenziali non valide")
 
-    # Genera sempre session_token legacy (43 char base64url) e salvalo in DB.
-    # Questo garantisce che verifica_sessione_da_cookie() funzioni via path legacy,
-    # indipendentemente dal formato del refresh token Supabase Auth.
-    token = _secrets.token_urlsafe(32)
+    # Crea una sessione multi-token (tabella sessioni): più dispositivi possono
+    # restare loggati insieme. Sostituisce la scrittura su users.session_token.
     try:
-        from services import get_supabase_client
-        supabase_client = get_supabase_client()
-        supabase_client.table("users").update({
-            "session_token": token,
-            "session_token_created_at": datetime.now(timezone.utc).isoformat(),
-            "last_seen_at": datetime.now(timezone.utc).isoformat(),
-        }).eq("id", user["id"]).execute()
+        from services.session_service import crea_sessione
+        _ua = request.headers.get("user-agent") if request else None
+        _ip = request.client.host if (request and request.client) else None
+        token = crea_sessione(user["id"], source="login", user_agent=_ua, ip=_ip)
     except Exception:
-        logger.exception("Errore creazione session_token")
+        logger.exception("Errore creazione sessione")
         raise HTTPException(status_code=500, detail="Errore creazione sessione")
 
     return LoginResponse(
@@ -1153,14 +1146,18 @@ def auth_logout(authorization: Optional[str] = Header(None)) -> Dict[str, str]:
         return {"status": "ok"}
 
     try:
-        from services import get_supabase_client
-        supabase_client = get_supabase_client()
-        supabase_client.table("users").update({
-            "session_token": None,
-            "session_token_created_at": None,
-        }).eq("session_token", token).execute()
+        from services.session_service import revoca_sessione
+        revocata = revoca_sessione(token)
+        if not revocata:
+            # Fallback: sessione legacy ancora su users.session_token (pre multi-token).
+            from services import get_supabase_client
+            supabase_client = get_supabase_client()
+            supabase_client.table("users").update({
+                "session_token": None,
+                "session_token_created_at": None,
+            }).eq("session_token", token).execute()
     except Exception as exc:
-        logger.warning(f"Logout: errore invalidazione session_token: {exc}")
+        logger.warning(f"Logout: errore invalidazione sessione: {exc}")
 
     return {"status": "ok"}
 

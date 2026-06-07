@@ -1384,7 +1384,7 @@ def admin_elimina_cliente(
 @router.post("/api/admin/impersona/{cliente_id}", tags=["Admin"])
 def admin_impersona(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
     """Genera un session token per il cliente target, ritorna target_token + info."""
-    import secrets as _secrets
+    from services.session_service import crea_sessione
     sb = get_supabase_client()
     admin_emails = _admin_emails_set()
 
@@ -1395,11 +1395,9 @@ def admin_impersona(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
     if u["email"].lower() in admin_emails:
         raise HTTPException(status_code=403, detail="Non puoi impersonare un altro admin")
 
-    target_token = _secrets.token_urlsafe(32)
-    sb.table("users").update({
-        "session_token": target_token,
-        "session_token_created_at": datetime.now(timezone.utc).isoformat(),
-    }).eq("id", cliente_id).execute()
+    # Sessione dedicata all'impersonazione: NON tocca le sessioni reali del cliente
+    # (che oggi venivano sovrascritte). L'exit revoca solo questa.
+    target_token = crea_sessione(cliente_id, source="impersonation")
 
     logger.warning("IMPERSONATION_START: admin=%s → target=%s (id=%s)", admin_user.get("email"), u["email"], cliente_id)
     return {
@@ -1425,9 +1423,13 @@ def admin_impersona_exit(body: ImpersonaExitBody, admin_user: dict = Depends(_ve
     target_token = (body.target_token or "").strip()
     if not target_token:
         return {"ok": True, "invalidated": False}
-    sb = get_supabase_client()
-    res = sb.table("users").update({"session_token": None}).eq("session_token", target_token).execute()
-    invalidated = bool(res.data)
+    from services.session_service import revoca_sessione
+    invalidated = revoca_sessione(target_token)
+    if not invalidated:
+        # Fallback: token di impersonazione legacy su users.session_token (pre multi-token).
+        sb = get_supabase_client()
+        res = sb.table("users").update({"session_token": None}).eq("session_token", target_token).execute()
+        invalidated = bool(res.data)
     logger.warning(
         "IMPERSONATION_END: admin=%s invalidato_token_target=%s",
         admin_user.get("email"), invalidated,

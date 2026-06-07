@@ -219,19 +219,15 @@ def mostra_pagina_login(supabase, cookie_manager):
                                 st.session_state['_session_token_set_this_run'] = True
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
-                                    _s_token = _secrets.token_urlsafe(32)
-                                    supabase.table('users').update({
-                                        'session_token': _s_token,
-                                        'session_token_created_at': _now_utc.isoformat(),
-                                        'last_seen_at': _now_utc.isoformat(),
-                                    }).eq('id', user.get('id')).execute()
+                                    from services.session_service import crea_sessione
+                                    _s_token = crea_sessione(user.get('id'), source="login")
                                     cookie_manager.set("session_token", _s_token,
                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
                                                        secure=True, same_site="strict")
                                     st.session_state._last_seen_write_at = _now_utc.isoformat()
                                 except Exception as _ce:
                                     import logging as _lg
-                                    _lg.getLogger('fci_app').warning(f"Errore salvataggio session token: {_ce}")
+                                    _lg.getLogger('fci_app').warning(f"Errore salvataggio sessione: {_ce}")
                             else:
                                 st.warning(
                                     "⚠️ Sessione non persistente: "
@@ -305,12 +301,8 @@ def mostra_pagina_login(supabase, cookie_manager):
                             if cookie_manager is not None:
                                 try:
                                     _now_utc = datetime.now(timezone.utc)
-                                    _s_token = _secrets.token_urlsafe(32)
-                                    supabase.table('users').update({
-                                        'session_token': _s_token,
-                                        'session_token_created_at': _now_utc.isoformat(),
-                                        'last_seen_at': _now_utc.isoformat(),
-                                    }).eq('id', user.get('id')).execute()
+                                    from services.session_service import crea_sessione
+                                    _s_token = crea_sessione(user.get('id'), source="login")
                                     cookie_manager.set("session_token", _s_token,
                                                        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
                                                        secure=True, same_site="strict")
