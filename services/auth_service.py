@@ -1398,7 +1398,7 @@ def invia_codice_reset(email: str, supabase_client=None) -> Tuple[bool, str]:
             logger.error('Brevo API key non configurata (né BREVO_API_KEY né secrets.toml)')
             return False, "Errore nell'invio email"
         
-        reset_url = f"https://nuovo.oneflux.it/reset-password?token={code}"
+        reset_url = f"https://app.oneflux.it/reset-password?token={code}"
         payload = {
             "sender": {"name": sender_name, "email": sender_email},
             "to": [{"email": email}],

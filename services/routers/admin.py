@@ -443,7 +443,7 @@ def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(_verif
         except Exception:
             pass
 
-    link = f"https://nuovo.oneflux.it/reset-password?token={token}&onboarding=1"
+    link = f"https://app.oneflux.it/reset-password?token={token}&onboarding=1"
     email_inviata = False
     brevo_key = os.getenv("BREVO_API_KEY", "")
     sender_email = os.getenv("BREVO_SENDER_EMAIL", "noreply@oneflux.it")
@@ -1252,7 +1252,7 @@ def admin_reset_password(cliente_id: str, admin_user: dict = Depends(_verify_adm
     expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     sb.table("users").update({"reset_code": token, "reset_expires": expires}).eq("id", cliente_id).execute()
 
-    link = f"https://nuovo.oneflux.it/reset-password?token={token}"
+    link = f"https://app.oneflux.it/reset-password?token={token}"
     email_inviata = False
     brevo_key = os.getenv("BREVO_API_KEY", "")
     sender_email = os.getenv("BREVO_SENDER_EMAIL", "noreply@oneflux.it")

@@ -485,8 +485,8 @@ def _build_allowed_origins() -> List[str]:
             "https://envoicescan-ai-production.up.railway.app",
             "https://oneflux.it",
             "https://www.oneflux.it",
+            "https://app.oneflux.it",
             "https://nuovo.oneflux.it",
-            "https://frontend-production-aa79.up.railway.app",
         ]
 
     if "*" in origins:
