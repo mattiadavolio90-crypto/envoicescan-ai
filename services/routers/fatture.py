@@ -12,18 +12,56 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
-# (fastapi_worker importa questo router in coda al file). __getattr__ risolve i
-# simboli condivisi al primo accesso a runtime (incluse costanti come
-# CATEGORIE_NOTE_WORKER, usate solo dentro le funzioni); _verify_worker_key resta
-# esplicito perche' usato in Depends() a import-time (firma identica per FastAPI).
-def __getattr__(name: str):
-    import services.fastapi_worker as _fw
-    return getattr(_fw, name)
+# (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
+# WRAPPER espliciti risolti al primo uso (pattern di ricavi.py): un module-level
+# __getattr__ NON basta, perche' PEP 562 risolve solo gli accessi-attributo
+# ESTERNI e mai i lookup di nome globale bare dentro le funzioni -> NameError ->
+# HTTP 500 su ogni endpoint. La costante CATEGORIE_NOTE_WORKER si legge via
+# accessor lazy (_categorie_note_worker). _verify_worker_key resta esplicito
+# perche' usato in Depends() a import-time (firma identica per FastAPI).
+import logging
+logger = logging.getLogger("fastapi_worker")
+
+
+def _fw():
+    import services.fastapi_worker as fw
+    return fw
+
+
+def _resolve_user_from_token(*args, **kwargs):
+    return _fw()._resolve_user_from_token(*args, **kwargs)
+
+
+def _get_supabase_client(*args, **kwargs):
+    return _fw()._get_supabase_client(*args, **kwargs)
+
+
+def _resolve_ristorante_id(*args, **kwargs):
+    return _fw()._resolve_ristorante_id(*args, **kwargs)
+
+
+def _load_num_documento_map(*args, **kwargs):
+    return _fw()._load_num_documento_map(*args, **kwargs)
+
+
+def _build_fatture_base_query(*args, **kwargs):
+    return _fw()._build_fatture_base_query(*args, **kwargs)
+
+
+def _fetch_fatture_rows(*args, **kwargs):
+    return _fw()._fetch_fatture_rows(*args, **kwargs)
+
+
+def _invalidate_fatture_rows_cache(*args, **kwargs):
+    return _fw()._invalidate_fatture_rows_cache(*args, **kwargs)
+
+
+def _categorie_note_worker():
+    return _fw().CATEGORIE_NOTE_WORKER
 
 
 def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
-    import services.fastapi_worker as _fw
-    return _fw._verify_worker_key(x_worker_key)
+    return _fw()._verify_worker_key(x_worker_key)
 
 router = APIRouter()
 
@@ -690,7 +728,7 @@ def get_categorie_disponibili(
     rows = res.data or []
     categorie_usate = sorted({
         r["categoria"] for r in rows
-        if r.get("categoria") and r["categoria"] not in CATEGORIE_NOTE_WORKER
+        if r.get("categoria") and r["categoria"] not in _categorie_note_worker()
     })
 
     # Categorie canoniche (lista master) — facciamo query semplice

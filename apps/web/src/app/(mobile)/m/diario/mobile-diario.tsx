@@ -260,7 +260,7 @@ export function MobileDiario() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold tracking-tight">Agenda e Cassa</h1>
+      <h1 className="text-xl font-bold tracking-tight">Agenda e Movimenti</h1>
 
       <div className="grid grid-cols-3 gap-1 rounded-xl border bg-card p-1">
         {([

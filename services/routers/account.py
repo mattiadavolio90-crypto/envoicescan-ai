@@ -9,17 +9,43 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
-# (fastapi_worker importa questo router in coda al file). __getattr__ risolve i
-# simboli condivisi al primo accesso a runtime; _verify_worker_key resta esplicito
-# perche' usato in Depends() a import-time (firma identica per l'iniezione FastAPI).
-def __getattr__(name: str):
-    import services.fastapi_worker as _fw
-    return getattr(_fw, name)
+# (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
+# WRAPPER espliciti risolti al primo uso (pattern di ricavi.py): un module-level
+# __getattr__ NON basta, perche' PEP 562 risolve solo gli accessi-attributo
+# ESTERNI e mai i lookup di nome globale bare dentro le funzioni -> NameError ->
+# HTTP 500 su ogni endpoint. _verify_worker_key resta esplicito perche' usato in
+# Depends() a import-time (firma identica per l'iniezione FastAPI).
+def _fw():
+    import services.fastapi_worker as fw
+    return fw
+
+
+def _resolve_user_from_token(*args, **kwargs):
+    return _fw()._resolve_user_from_token(*args, **kwargs)
+
+
+def _get_supabase_client(*args, **kwargs):
+    return _fw()._get_supabase_client(*args, **kwargs)
+
+
+def _resolve_ristorante_id(*args, **kwargs):
+    return _fw()._resolve_ristorante_id(*args, **kwargs)
+
+
+def _chat_domande_oggi(*args, **kwargs):
+    return _fw()._chat_domande_oggi(*args, **kwargs)
+
+
+def _chat_limite_per_piano(*args, **kwargs):
+    return _fw()._chat_limite_per_piano(*args, **kwargs)
+
+
+def _is_admin_email(*args, **kwargs):
+    return _fw()._is_admin_email(*args, **kwargs)
 
 
 def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
-    import services.fastapi_worker as _fw
-    return _fw._verify_worker_key(x_worker_key)
+    return _fw()._verify_worker_key(x_worker_key)
 
 router = APIRouter()
 

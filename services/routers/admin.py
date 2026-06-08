@@ -30,12 +30,61 @@ from pydantic import BaseModel, Field
 import asyncio
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
-# (fastapi_worker importa questo router in coda al file). __getattr__ risolve i
-# simboli condivisi (costanti WORKER_*, helper _xxx, get_supabase_client, logger,
-# stato agent notturno) al primo accesso a runtime, quando fastapi_worker e' caricato.
-def __getattr__(name: str):
-    import services.fastapi_worker as _fw
-    return getattr(_fw, name)
+# (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
+# WRAPPER espliciti risolti al primo uso (pattern di ricavi.py): un module-level
+# __getattr__ NON basta, perche' PEP 562 risolve solo gli accessi-attributo
+# ESTERNI e mai i lookup di nome globale bare dentro le funzioni -> NameError ->
+# HTTP 500 su ogni endpoint admin. Costanti (WORKER_*) e stato mutabile
+# (_agent_notturno_state, dict mutato in-place) si leggono via accessor: lo stato
+# DEVE essere lo stesso oggetto del worker, che _run_agent_notturno modifica.
+import logging
+logger = logging.getLogger("fastapi_worker")
+
+
+def _fw():
+    import services.fastapi_worker as fw
+    return fw
+
+
+def get_supabase_client(*args, **kwargs):
+    return _fw().get_supabase_client(*args, **kwargs)
+
+
+def _is_admin_email(*args, **kwargs):
+    return _fw()._is_admin_email(*args, **kwargs)
+
+
+def _admin_emails_set(*args, **kwargs):
+    return _fw()._admin_emails_set(*args, **kwargs)
+
+
+def _get_ristorante_id_for_user(*args, **kwargs):
+    return _fw()._get_ristorante_id_for_user(*args, **kwargs)
+
+
+def _log_review_action(*args, **kwargs):
+    return _fw()._log_review_action(*args, **kwargs)
+
+
+def _agent_notturno_persist(*args, **kwargs):
+    return _fw()._agent_notturno_persist(*args, **kwargs)
+
+
+def _run_agent_notturno(*args, **kwargs):
+    return _fw()._run_agent_notturno(*args, **kwargs)
+
+
+def _agent_state():
+    """Stato (dict) dell'agent notturno dal worker: stesso oggetto, mutato in-place."""
+    return _fw()._agent_notturno_state
+
+
+def _worker_dev_mode():
+    return _fw().WORKER_DEV_MODE
+
+
+def _worker_secret_key():
+    return _fw().WORKER_SECRET_KEY
 
 
 # I modelli Marketplace sono del dominio admin e usati a IMPORT-TIME nei decorator
@@ -75,7 +124,9 @@ def _verify_admin(
     x_worker_key: Optional[str] = Header(None),
 ) -> dict:
     """Worker key + bearer token → utente admin verificato. Ritorna il dict utente."""
-    if not (WORKER_DEV_MODE and not WORKER_SECRET_KEY) and not secrets.compare_digest(x_worker_key or "", WORKER_SECRET_KEY):
+    _dev_mode = _worker_dev_mode()
+    _secret = _worker_secret_key()
+    if not (_dev_mode and not _secret) and not secrets.compare_digest(x_worker_key or "", _secret):
         raise HTTPException(status_code=401, detail="Unauthorized")
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Token admin mancante")
@@ -1214,6 +1265,7 @@ def admin_sistema_ricavi_import():
 @router.get("/api/admin/sistema/agent-notturno", tags=["Admin"], dependencies=[Depends(_verify_admin)])
 def admin_agent_notturno_status():
     """Ritorna lo stato corrente dell'agent notturno."""
+    _agent_notturno_state = _agent_state()
     return {
         "enabled": _agent_notturno_state["enabled"],
         "ora_utc": _agent_notturno_state["ora_utc"],
@@ -1231,6 +1283,7 @@ class AgentNotturnoToggleBody(BaseModel):
 @router.post("/api/admin/sistema/agent-notturno/toggle", tags=["Admin"])
 def admin_agent_notturno_toggle(body: AgentNotturnoToggleBody, admin_user: dict = Depends(_verify_admin)):
     """Abilita o disabilita l'agent notturno. Opzionalmente cambia l'ora di esecuzione (0-23 UTC)."""
+    _agent_notturno_state = _agent_state()
     _agent_notturno_state["enabled"] = body.enabled
     if body.ora_utc is not None:
         _agent_notturno_state["ora_utc"] = max(0, min(23, body.ora_utc))
@@ -1247,6 +1300,7 @@ def admin_agent_notturno_toggle(body: AgentNotturnoToggleBody, admin_user: dict 
 @router.post("/api/admin/sistema/agent-notturno/esegui-ora", tags=["Admin"])
 def admin_agent_notturno_esegui_ora(admin_user: dict = Depends(_verify_admin)):
     """Lancia subito l'agent notturno (indipendentemente dall'orario programmato)."""
+    _agent_notturno_state = _agent_state()
     if _agent_notturno_state["running"]:
         raise HTTPException(status_code=409, detail="Agent già in esecuzione")
     asyncio.create_task(_run_agent_notturno(), name="agent-notturno-manual")

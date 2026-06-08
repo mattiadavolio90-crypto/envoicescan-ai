@@ -13,18 +13,69 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
-# (fastapi_worker importa questo router in coda al file). __getattr__ risolve i
-# simboli condivisi al primo accesso a runtime (incluse le costanti _CENTRI_*/
-# _CATEGORIE_*, usate solo dentro le funzioni); _verify_worker_key resta esplicito
-# perche' usato in Depends() a import-time (firma identica per l'iniezione FastAPI).
-def __getattr__(name: str):
-    import services.fastapi_worker as _fw
-    return getattr(_fw, name)
+# (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
+# WRAPPER espliciti risolti al primo uso (pattern di ricavi.py): un module-level
+# __getattr__ NON basta, perche' PEP 562 risolve solo gli accessi-attributo
+# ESTERNI e mai i lookup di nome globale bare dentro le funzioni -> NameError ->
+# HTTP 500 su ogni endpoint. Le costanti _CENTRI_*/_CATEGORIE_* (dict/set, usate
+# come valori) vengono ribindate localmente all'inizio delle funzioni che le usano,
+# via _consts(). _verify_worker_key resta esplicito perche' usato in Depends() a
+# import-time (firma identica per l'iniezione FastAPI).
+def _fw():
+    import services.fastapi_worker as fw
+    return fw
+
+
+def _resolve_user_from_token(*args, **kwargs):
+    return _fw()._resolve_user_from_token(*args, **kwargs)
+
+
+def _get_supabase_client(*args, **kwargs):
+    return _fw()._get_supabase_client(*args, **kwargs)
+
+
+def _resolve_ristorante_id(*args, **kwargs):
+    return _fw()._resolve_ristorante_id(*args, **kwargs)
+
+
+def _ore_turno(*args, **kwargs):
+    return _fw()._ore_turno(*args, **kwargs)
+
+
+def _load_fatture_fb_for_period(*args, **kwargs):
+    return _fw()._load_fatture_fb_for_period(*args, **kwargs)
+
+
+def _load_fatture_fb_per_categoria_e_mese(*args, **kwargs):
+    return _fw()._load_fatture_fb_per_categoria_e_mese(*args, **kwargs)
+
+
+def _load_mensile_overrides(*args, **kwargs):
+    return _fw()._load_mensile_overrides(*args, **kwargs)
+
+
+def _calcola_costi_auto_per_periodo(*args, **kwargs):
+    return _fw()._calcola_costi_auto_per_periodo(*args, **kwargs)
+
+
+def _aggrega_mensili_margini(*args, **kwargs):
+    return _fw()._aggrega_mensili_margini(*args, **kwargs)
+
+
+def _consts():
+    """Le costanti dominio margini (dict/set) dal worker, risolte al primo uso."""
+    fw = _fw()
+    return (
+        fw._CATEGORIE_FB_M,
+        fw._CATEGORIE_SPESE_M,
+        fw._CAT_TO_CENTRO,
+        fw._CENTRI_CON_FATTURATO,
+        fw._CENTRI_DI_PRODUZIONE,
+    )
 
 
 def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
-    import services.fastapi_worker as _fw
-    return _fw._verify_worker_key(x_worker_key)
+    return _fw()._verify_worker_key(x_worker_key)
 from services.routers.ricavi import _calc_netto
 
 router = APIRouter()
@@ -92,6 +143,7 @@ def get_margini(
 ) -> MarginiAnnoResponse:
     import pandas as pd
     from datetime import datetime as _dt
+    _CATEGORIE_FB_M, _CATEGORIE_SPESE_M, _CAT_TO_CENTRO, _CENTRI_CON_FATTURATO, _CENTRI_DI_PRODUZIONE = _consts()
     if anno is None:
         anno = _dt.now().year
     user = _resolve_user_from_token(authorization)
@@ -397,6 +449,7 @@ def get_analisi_centri(
     authorization: Optional[str] = Header(None),
 ) -> AnalisiCentriResponse:
     from datetime import date as _date
+    _, _, _, _CENTRI_CON_FATTURATO, _CENTRI_DI_PRODUZIONE = _consts()
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     ristorante_id = _resolve_ristorante_id(user, sb)
@@ -527,6 +580,7 @@ def get_analisi_avanzata(
     authorization: Optional[str] = Header(None),
 ) -> AnalisiAvanzataResponse:
     from datetime import date as _date
+    _, _, _CAT_TO_CENTRO, _CENTRI_CON_FATTURATO, _CENTRI_DI_PRODUZIONE = _consts()
     user = _resolve_user_from_token(authorization)
     sb = _get_supabase_client()
     ristorante_id = _resolve_ristorante_id(user, sb)
