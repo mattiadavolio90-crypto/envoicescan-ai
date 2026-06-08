@@ -1033,10 +1033,16 @@ class LoginResponse(BaseModel):
     user: UserPublic
 
 
+# Default admin se ADMIN_EMAILS non e' impostata (es. produzione Railway senza
+# env): gli unici due admin del progetto. Centralizzato per evitare drift con
+# l'altro default in _admin_emails_set().
+_DEFAULT_ADMIN_EMAILS = "md@oneflux.it,mattiadavolio90@gmail.com"
+
+
 def _is_admin_email(email: Optional[str]) -> bool:
     if not email:
         return False
-    admin_emails_raw = os.getenv("ADMIN_EMAILS", "md@oneflux.it")
+    admin_emails_raw = os.getenv("ADMIN_EMAILS", _DEFAULT_ADMIN_EMAILS)
     admin_emails = {e.strip().lower() for e in admin_emails_raw.split(",") if e.strip()}
     return email.strip().lower() in admin_emails
 
@@ -4329,7 +4335,7 @@ def reset_password_confirm(body: ResetConfirmBody, request: Request):
 # ===========================================================================
 
 def _admin_emails_set() -> set:
-    raw = os.getenv("ADMIN_EMAILS", "md@oneflux.it")
+    raw = os.getenv("ADMIN_EMAILS", _DEFAULT_ADMIN_EMAILS)
     return {e.strip().lower() for e in raw.split(",") if e.strip()}
 
 

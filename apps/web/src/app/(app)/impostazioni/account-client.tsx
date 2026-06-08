@@ -313,7 +313,9 @@ export function AccountClient({ data }: { data: AccountData }) {
         </CardContent>
       </Card>
 
-      {/* Piano e contatori */}
+      {/* Piano e contatori — solo per i clienti. Un admin non ha un piano
+          abbonamento ne' limiti fatture/chat: per lui questa card non ha senso. */}
+      {!data.is_admin && (
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Piano abbonamento</CardTitle>
@@ -364,6 +366,7 @@ export function AccountClient({ data }: { data: AccountData }) {
           )}
         </CardContent>
       </Card>
+      )}
 
       {/* Aspetto (tema chiaro/scuro) */}
       <AspettoCard temaSalvato={data.tema ?? "dark"} />

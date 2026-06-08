@@ -1632,7 +1632,8 @@ import os as _os
 # Lista email degli amministratori - caricata da variabile d'ambiente
 # Configurare: ADMIN_EMAILS=email1@example.com,email2@example.com
 _admin_env = _os.environ.get("ADMIN_EMAILS", "").strip()
-ADMIN_EMAILS = [e.strip().lower() for e in _admin_env.split(",") if e.strip()] if _admin_env else ["md@oneflux.it"]
+# Default se ADMIN_EMAILS non impostata: gli unici due admin del progetto.
+ADMIN_EMAILS = [e.strip().lower() for e in _admin_env.split(",") if e.strip()] if _admin_env else ["md@oneflux.it", "mattiadavolio90@gmail.com"]
 _admin_warning_flag = "OHH_ADMIN_EMAILS_WARNING_EMITTED"
 if not _admin_env and _os.environ.get(_admin_warning_flag) != "1":
     import logging as _logging
