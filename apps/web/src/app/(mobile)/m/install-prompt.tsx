@@ -11,14 +11,6 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-// L'evento e' catturato globalmente da public/pwa-install-capture.js (gira
-// prima dell'idratazione) e conservato qui, perche' Chrome lo emette una sola
-// volta a inizio caricamento, spesso prima che questo componente monti.
-declare global {
-  interface Window {
-    __oneflux_bip?: BeforeInstallPromptEvent | null;
-  }
-}
 
 function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
@@ -56,34 +48,12 @@ export function InstallPrompt() {
       return;
     }
 
-    // Android/Chrome: l'evento beforeinstallprompt e' gia' stato catturato e
-    // conservato da pwa-install-capture.js (che NON fa preventDefault, per non
-    // sopprimere il prompt nativo sulle pagine senza banner). Qui su /m, invece,
-    // abbiamo il banner custom: facciamo noi preventDefault per evitare il
-    // doppione (nativo + custom) e usiamo l'evento conservato.
-    const bip = window.__oneflux_bip;
-    if (bip) {
-      bip.preventDefault();
-      setDeferred(bip);
-      setVisible(true);
-    }
-
-    const onInstallable = () => {
-      const ev = window.__oneflux_bip;
-      if (ev) {
-        ev.preventDefault();
-        setDeferred(ev);
-        setVisible(true);
-      }
-    };
-    window.addEventListener("oneflux:installable", onInstallable);
-
-    // Se l'evento arriva DOPO che siamo gia' montati (es. navigazione che
-    // ricarica /m), lo intercettiamo anche direttamente qui per fare in tempo
-    // a chiamare preventDefault prima che Chrome mostri il nativo.
+    // Android/Chrome: ascoltiamo l'evento e mostriamo il banner custom. Qui su
+    // /m facciamo preventDefault per sostituire il mini-infobar nativo col
+    // nostro banner. Fuori da /m non c'e' questo componente, quindi il nativo di
+    // Chrome resta disponibile (es. /admin), come dev'essere.
     const onBeforeInstall = (e: Event) => {
       e.preventDefault();
-      window.__oneflux_bip = e as BeforeInstallPromptEvent;
       setDeferred(e as BeforeInstallPromptEvent);
       setVisible(true);
     };
@@ -94,7 +64,6 @@ export function InstallPrompt() {
     window.addEventListener("appinstalled", onInstalled);
 
     return () => {
-      window.removeEventListener("oneflux:installable", onInstallable);
       window.removeEventListener("beforeinstallprompt", onBeforeInstall);
       window.removeEventListener("appinstalled", onInstalled);
     };
@@ -117,7 +86,6 @@ export function InstallPrompt() {
     if (outcome === "accepted") setVisible(false);
     else dismiss();
     setDeferred(null);
-    window.__oneflux_bip = null;
   }
 
   if (!visible) return null;
