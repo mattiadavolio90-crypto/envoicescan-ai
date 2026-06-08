@@ -1074,13 +1074,13 @@ function DettaglioGiornalieroDialog({
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
                   <XAxis
                     dataKey="giorno"
-                    tick={{ fontSize: 11, fill: "#ffffff" }}
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                     tickLine={false}
                     axisLine={false}
                     interval={1}
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: "#ffffff" }}
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                     tickLine={false}
                     axisLine={false}
                     width={52}

@@ -686,12 +686,12 @@ function RigheArticolo({
     <table className="w-full text-xs">
       <thead>
         <tr className="text-muted-foreground border-b">
-          <th className="text-left py-1 font-medium">Data</th>
-          <th className="text-left py-1 font-medium">Fornitore</th>
-          <th className="text-right py-1 font-medium">Q.tà</th>
-          <th className="text-right py-1 font-medium">€ unit.</th>
-          <th className="text-right py-1 font-medium">Totale</th>
-          <th className="text-left py-1 font-medium whitespace-nowrap">N° fattura</th>
+          <th className="text-left py-1 pr-4 font-medium">Data</th>
+          <th className="text-left py-1 pr-4 font-medium">Fornitore</th>
+          <th className="text-right py-1 pr-4 font-medium">Q.tà</th>
+          <th className="text-right py-1 pr-4 font-medium">€ unit.</th>
+          <th className="text-right py-1 pr-6 font-medium">Totale</th>
+          <th className="text-left py-1 pr-4 font-medium whitespace-nowrap">N° fattura</th>
           <th className="text-left py-1 font-medium">File</th>
         </tr>
       </thead>
@@ -704,8 +704,8 @@ function RigheArticolo({
               key={r.id}
               className="border-b last:border-0 hover:bg-sky-100/40 dark:hover:bg-sky-900/20 transition-colors"
             >
-              <td className="py-1 text-muted-foreground">{formatData(r.data_documento)}</td>
-              <td className="py-1">
+              <td className="py-1 pr-4 text-muted-foreground">{formatData(r.data_documento)}</td>
+              <td className="py-1 pr-4">
                 {r.fornitore}
                 {isNuova && (
                   <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold whitespace-nowrap">
@@ -713,16 +713,16 @@ function RigheArticolo({
                   </span>
                 )}
               </td>
-              <td className="py-1 text-right tabular-nums">
+              <td className="py-1 pr-4 text-right tabular-nums">
                 {r.quantita ?? "—"} {r.unita_misura ?? ""}
               </td>
-              <td className="py-1 text-right tabular-nums">
+              <td className="py-1 pr-4 text-right tabular-nums">
                 {r.prezzo_unitario != null ? formatEuro(r.prezzo_unitario, 2) : "—"}
               </td>
-              <td className="py-1 text-right tabular-nums font-medium">
+              <td className="py-1 pr-6 text-right tabular-nums font-medium">
                 {r.totale_riga != null ? formatEuro(r.totale_riga, 2) : "—"}
               </td>
-              <td className="py-1 text-muted-foreground whitespace-nowrap">
+              <td className="py-1 pr-4 text-muted-foreground whitespace-nowrap">
                 {r.numero_documento || <em className="opacity-50">—</em>}
               </td>
               <td className="py-1 text-muted-foreground truncate max-w-40" title={r.file_origine}>

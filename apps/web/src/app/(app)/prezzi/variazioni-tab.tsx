@@ -171,10 +171,10 @@ function PrezzoChart({
       </p>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={chartData} margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
-          <XAxis dataKey="data" tick={{ fontSize: 10, fill: "#94a3b8" }} tickLine={false} axisLine={false} />
+          <XAxis dataKey="data" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
           <YAxis
             domain={domain}
-            tick={{ fontSize: 10, fill: "#94a3b8" }}
+            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}%`}
@@ -185,7 +185,8 @@ function PrezzoChart({
               const payload = props.payload as ChartPoint | undefined;
               return [`${v > 0 ? "+" : ""}${v.toFixed(1)}% (${payload?.label ?? ""})`, "Variazione"];
             }}
-            labelStyle={{ fontSize: 11, color: "#94a3b8" }}
+            labelStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))" }}
+            itemStyle={{ color: "hsl(var(--foreground))" }}
             contentStyle={TOOLTIP_STYLE}
           />
           <ReferenceLine
@@ -194,15 +195,14 @@ function PrezzoChart({
             strokeDasharray="4 4"
             strokeWidth={1.5}
             label={{
-              value: "media",
-              position: "insideTopLeft",
+              value: "Media",
+              position: "insideTopRight",
               fontSize: 10,
               fill: "#f43f5e",
-              dy: -6,
-              dx: 4,
+              dy: -4,
             }}
           />
-          <Line type="monotone" dataKey="var_pct" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5 }} />
+          <Line type="monotone" dataKey="var_pct" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5, fill: "#60a5fa", stroke: "hsl(var(--card))", strokeWidth: 2 }} />
         </LineChart>
       </ResponsiveContainer>
     </div>
@@ -571,6 +571,9 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
           <Save className="size-3" />
           {savingSoglia ? "…" : "Salva"}
         </button>
+        <span className="text-xs text-muted-foreground basis-full sm:basis-auto">
+          Questa soglia attiva anche le notifiche sui rincari.
+        </span>
       </div>
 
       {/* ── KPI di sintesi (specifici del tab Variazioni) ── */}

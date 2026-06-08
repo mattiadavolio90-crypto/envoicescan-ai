@@ -716,13 +716,13 @@ function DettaglioCentroDialog({
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
                   <XAxis
                     dataKey="giorno"
-                    tick={{ fontSize: 11, fill: "#ffffff" }}
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                     tickLine={false}
                     axisLine={false}
                     interval={1}
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: "#ffffff" }}
+                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
                     tickLine={false}
                     axisLine={false}
                     width={52}
@@ -801,8 +801,8 @@ function AndamentoLineChart({ andamento, centri, mode }: { andamento: AndamentoM
     <ResponsiveContainer width="100%" height={240}>
       <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
-        <XAxis dataKey="label" tick={{ fontSize: 12, fill: "#ffffff" }} tickLine={false} axisLine={{ stroke: "hsl(var(--border))" }} />
-        <YAxis tick={{ fontSize: 12, fill: "#ffffff" }} tickLine={false} axisLine={false} width={56} tickFormatter={(v: number) => mode === "perc" ? `${v.toFixed(0)}%` : formatEuroCompact(v)} />
+        <XAxis dataKey="label" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={{ stroke: "hsl(var(--border))" }} />
+        <YAxis tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={56} tickFormatter={(v: number) => mode === "perc" ? `${v.toFixed(0)}%` : formatEuroCompact(v)} />
         <Tooltip
           formatter={(value: unknown, name: unknown) => {
             const v = typeof value === "number" ? value : 0;
@@ -813,7 +813,7 @@ function AndamentoLineChart({ andamento, centri, mode }: { andamento: AndamentoM
         />
         <Legend wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} iconType="circle" />
         {centriAttivi.map((centro) => (
-          <Line key={centro} type="monotone" dataKey={centro} stroke={CENTRO_COLOR[centro] ?? "#94a3b8"} strokeWidth={2} dot={{ r: 3, fill: CENTRO_COLOR[centro] ?? "#94a3b8" }} activeDot={{ r: 5 }} name={centro} />
+          <Line key={centro} type="monotone" dataKey={centro} stroke={CENTRO_COLOR[centro] ?? "#94a3b8"} strokeWidth={2} dot={{ r: 3, fill: CENTRO_COLOR[centro] ?? "#94a3b8" }} activeDot={{ r: 5, stroke: "hsl(var(--card))", strokeWidth: 2 }} name={centro} />
         ))}
       </LineChart>
     </ResponsiveContainer>
