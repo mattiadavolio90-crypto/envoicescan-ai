@@ -10,9 +10,22 @@ import { Button } from "@/components/ui/button";
 import { Logo, Wordmark } from "@/components/brand/logo";
 import { LogoSpinner } from "@/components/brand/logo-spinner";
 
+// Su schermo mobile, in assenza di un next esplicito, il default e' /m (la PWA):
+// cosi' il login fa un full reload direttamente sulla vista mobile, senza il
+// rimbalzo SPA /dashboard -> /m. Quel rimbalzo "mangiava" l'evento
+// beforeinstallprompt (sparato una sola volta a inizio caricamento pagina),
+// togliendo il banner "Installa ONEFLUX". Atterrando direttamente su /m con un
+// vero page load, l'evento arriva mentre il listener di /m e' gia' montato.
+function defaultNext(): string {
+  if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+    return "/m";
+  }
+  return "/dashboard";
+}
+
 function LoginForm() {
   const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/dashboard";
+  const next = searchParams.get("next");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,7 +60,7 @@ function LoginForm() {
         return;
       }
 
-      window.location.href = next;
+      window.location.href = next || defaultNext();
     } catch (err) {
       console.error(err);
       setError("Errore di connessione. Riprova.");
