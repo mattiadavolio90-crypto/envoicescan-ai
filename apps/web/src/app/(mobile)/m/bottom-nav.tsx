@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Sparkles, CalendarDays, Users, MessageCircle, Settings } from "lucide-react";
+import { Sparkles, CalendarDays, ArrowRightLeft, MessageCircle, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Tab = {
@@ -16,7 +16,7 @@ type Tab = {
 const TABS: Tab[] = [
   { href: "/m/briefing", label: "Home", icon: Sparkles },
   { href: "/m/diario", label: "Agenda", icon: CalendarDays },
-  { href: "/m/turni", label: "Turni", icon: Users },
+  { href: "/m/turni", label: "Movimenti", icon: ArrowRightLeft },
   { href: "/m/chat", label: "Assistente", icon: MessageCircle },
   // Profilo (Impostazioni) come tab: si naviga con <Link> SPA come le altre.
   // Prima ci si arrivava con router.push da dentro il dropdown a 3 puntini,

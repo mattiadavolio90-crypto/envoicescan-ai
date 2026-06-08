@@ -1,11 +1,53 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Banknote, Wallet, Users } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../confirm-dialog";
+import { MobileIncassi } from "../diario/mobile-incassi";
+import { MobileSpese } from "../diario/mobile-spese";
+
+// ─── Wrapper Movimenti: Incassi / Spese / Turni ─────────────────────────────────
+// Questa e' la sezione "Movimenti" della bottom nav (ex "Turni"): raccoglie i
+// flussi di denaro (Incassi, Spese) + il costo del personale (Turni). Incassi e
+// Spese riusano i componenti di ../diario, dove vivevano prima. Default: Incassi.
+
+type MovTab = "incassi" | "spese" | "turni";
+
+export function MobileTurni() {
+  const [tab, setTab] = useState<MovTab>("incassi");
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-xl font-bold tracking-tight">Movimenti</h1>
+
+      <div className="grid grid-cols-3 gap-1 rounded-xl border bg-card p-1">
+        {([
+          { k: "incassi" as MovTab, l: "Incassi", icon: Banknote },
+          { k: "spese" as MovTab, l: "Spese", icon: Wallet },
+          { k: "turni" as MovTab, l: "Turni", icon: Users },
+        ]).map((s) => {
+          const Icon = s.icon;
+          return (
+            <button
+              key={s.k}
+              onClick={() => setTab(s.k)}
+              className={`inline-flex items-center justify-center gap-1 rounded-lg py-2 text-sm font-medium transition-colors ${
+                tab === s.k ? "bg-primary text-primary-foreground" : "text-muted-foreground active:bg-muted"
+              }`}
+            >
+              <Icon className="size-4 shrink-0" />{s.l}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === "incassi" ? <MobileIncassi /> : tab === "spese" ? <MobileSpese /> : <TurniBody />}
+    </div>
+  );
+}
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -286,7 +328,7 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, onClose, onSaved
 
 // ─── Componente principale ──────────────────────────────────────────────────────
 
-export function MobileTurni() {
+function TurniBody() {
   const [lunedi, setLunedi] = useState(() => lunediDi(new Date()));
   const [data, setData] = useState<PersonaleResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -368,8 +410,6 @@ export function MobileTurni() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold tracking-tight">Turni</h1>
-
       {/* Selettore settimana */}
       <div className="flex items-center justify-between rounded-2xl border bg-card px-2 py-2">
         <button onClick={settPrec} className="rounded-full p-2 active:bg-muted">
