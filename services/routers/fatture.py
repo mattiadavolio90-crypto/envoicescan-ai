@@ -11,18 +11,19 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
-from services.fastapi_worker import (
-    _verify_worker_key,
-    _resolve_user_from_token,
-    _get_supabase_client,
-    _resolve_ristorante_id,
-    _load_num_documento_map,
-    _build_fatture_base_query,
-    _fetch_fatture_rows,
-    _invalidate_fatture_rows_cache,
-    CATEGORIE_NOTE_WORKER,
-    logger,
-)
+# Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
+# (fastapi_worker importa questo router in coda al file). __getattr__ risolve i
+# simboli condivisi al primo accesso a runtime (incluse costanti come
+# CATEGORIE_NOTE_WORKER, usate solo dentro le funzioni); _verify_worker_key resta
+# esplicito perche' usato in Depends() a import-time (firma identica per FastAPI).
+def __getattr__(name: str):
+    import services.fastapi_worker as _fw
+    return getattr(_fw, name)
+
+
+def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
+    import services.fastapi_worker as _fw
+    return _fw._verify_worker_key(x_worker_key)
 
 router = APIRouter()
 

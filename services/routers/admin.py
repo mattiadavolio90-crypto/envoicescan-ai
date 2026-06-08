@@ -27,24 +27,40 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
-from services.fastapi_worker import (
-    WORKER_DEV_MODE,
-    WORKER_SECRET_KEY,
-    _is_admin_email,
-    _admin_emails_set,
-    _log_review_action,
-    _get_ristorante_id_for_user,
-    _agent_notturno_state,
-    _agent_notturno_persist,
-    _run_agent_notturno,
-    get_supabase_client,
-    logger,
-    MarketplaceLeadItem,
-    MarketplaceLeadList,
-    MarketplaceLeadStatoBody,
-)
-
 import asyncio
+
+# Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
+# (fastapi_worker importa questo router in coda al file). __getattr__ risolve i
+# simboli condivisi (costanti WORKER_*, helper _xxx, get_supabase_client, logger,
+# stato agent notturno) al primo accesso a runtime, quando fastapi_worker e' caricato.
+def __getattr__(name: str):
+    import services.fastapi_worker as _fw
+    return getattr(_fw, name)
+
+
+# I modelli Marketplace sono del dominio admin e usati a IMPORT-TIME nei decorator
+# (response_model / annotazioni body): non possono essere lazy. Erano rimasti in
+# fastapi_worker dopo lo split god-file; spostati qui (non usati altrove).
+class MarketplaceLeadItem(BaseModel):
+    id: str
+    servizio_key: str
+    servizio_label: str
+    messaggio: str
+    contatto_email: Optional[str] = None
+    contatto_nome: Optional[str] = None
+    ristorante_nome: Optional[str] = None
+    stato: str
+    created_at: Optional[str] = None
+
+
+class MarketplaceLeadList(BaseModel):
+    leads: List[MarketplaceLeadItem]
+    nuovi: int
+
+
+class MarketplaceLeadStatoBody(BaseModel):
+    stato: str = Field(..., pattern="^(nuovo|gestito|archiviato)$")
+
 
 router = APIRouter()
 

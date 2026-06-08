@@ -8,12 +8,21 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
-from services.fastapi_worker import (
-    _verify_worker_key,
-    _resolve_user_from_token,
-    _get_supabase_client,
-    _resolve_ristorante_id,
-)
+# Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
+# (fastapi_worker importa questo router in coda al file; importarlo qui al top
+# rompe l'import del router fuori dal contesto FastAPI). __getattr__ risolve i
+# simboli condivisi al primo accesso a runtime, quando fastapi_worker e' caricato.
+def __getattr__(name: str):
+    import services.fastapi_worker as _fw
+    return getattr(_fw, name)
+
+
+# Usato in Depends(...) nei decorator (valutato a import-time): firma identica
+# all'originale perche' FastAPI inietta il valore leggendo la signature.
+def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
+    import services.fastapi_worker as _fw
+    return _fw._verify_worker_key(x_worker_key)
+
 
 router = APIRouter()
 

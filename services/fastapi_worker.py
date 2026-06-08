@@ -1837,21 +1837,10 @@ class MarketplaceLeadBody(BaseModel):
     messaggio: str = Field("", max_length=2000)
 
 
-class MarketplaceLeadItem(BaseModel):
-    id: str
-    servizio_key: str
-    servizio_label: str
-    messaggio: str
-    contatto_email: Optional[str] = None
-    contatto_nome: Optional[str] = None
-    ristorante_nome: Optional[str] = None
-    stato: str
-    created_at: Optional[str] = None
-
-
-class MarketplaceLeadList(BaseModel):
-    leads: List[MarketplaceLeadItem]
-    nuovi: int
+# NB: i modelli MarketplaceLeadItem/List/StatoBody sono stati spostati nel router
+# admin (services/routers/admin.py), dove sono usati a import-time nei decorator —
+# tenerli qui ricreava il ciclo admin<->fastapi_worker. Restano qui solo l'endpoint
+# non-admin /api/assistenza/lead e il suo body MarketplaceLeadBody.
 
 
 @app.post(
@@ -1892,12 +1881,8 @@ def crea_marketplace_lead(
     return {"ok": True}
 
 
-class MarketplaceLeadStatoBody(BaseModel):
-    stato: str = Field(..., pattern="^(nuovo|gestito|archiviato)$")
-
-
-# Nota: gli endpoint admin del marketplace sono definiti piu' in basso, dopo
-# _verify_admin (Depends risolve la dependency a import-time del decorator).
+# Nota: gli endpoint admin del marketplace (e il loro body MarketplaceLeadStatoBody)
+# sono nel router admin. Qui resta solo il lead non-admin sopra.
 
 
 # ═══════════════════════════════════════════════════════════════════════════
