@@ -9,6 +9,14 @@ Services disponibili:
 - db_service: ✅ Query e analisi database (caricamento, alert, sconti)
 """
 
+# Nei processi non-UI (worker FastAPI, queue-worker) Streamlit non serve ma viene
+# importato top-level da diversi moduli sottostanti, pagando ~350ms di import a
+# freddo e una cascata di WARNING "No runtime found" a ogni cold-start Railway.
+# Lo shim si auto-disabilita se Streamlit reale e' gia' caricato (sotto app.py),
+# quindi va installato PRIMA di importare qualunque .ai_service/.auth_service/...
+from ._streamlit_shim import install as _install_streamlit_shim
+_install_streamlit_shim()
+
 from .ai_service import (
     carica_memoria_completa,
     invalida_cache_memoria,
