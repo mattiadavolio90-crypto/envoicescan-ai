@@ -22,7 +22,7 @@ jobs:
             -L \
             --max-time 60 \
             --connect-timeout 15 \
-            https://frontend-production-aa79.up.railway.app/ || echo "000")
+            https://app.oneflux.it/ || echo "000")
           echo "http_code=$HTTP_CODE" >> $GITHUB_OUTPUT
           if [ "$HTTP_CODE" = "200" ]; then
             echo "down=false" >> $GITHUB_OUTPUT
@@ -44,7 +44,7 @@ jobs:
             -L \
             --max-time 60 \
             --connect-timeout 15 \
-            https://frontend-production-aa79.up.railway.app/ || echo "000")
+            https://app.oneflux.it/ || echo "000")
           echo "Risposta dopo wake-up: $WAKE_CODE"
           if [ "$WAKE_CODE" = "200" ]; then
             echo "woke_up=true" >> $GITHUB_OUTPUT
@@ -71,5 +71,5 @@ jobs:
               \"sender\": {\"name\": \"ONEFLUX Monitor\", \"email\": \"agent@oneflux.it\"},
               \"to\": [{\"email\": \"md@oneflux.it\", \"name\": \"Mattia\"}],
               \"subject\": \"🚨 ONEFLUX è offline\",
-              \"htmlContent\": \"<h2>⚠️ Attenzione</h2><p>L'app <strong>ONEFLUX</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://frontend-production-aa79.up.railway.app/'>https://frontend-production-aa79.up.railway.app/</a></p><p>Controlla su <a href='https://railway.com'>Railway Dashboard</a> per lo stato del deploy.</p>\"
+              \"htmlContent\": \"<h2>⚠️ Attenzione</h2><p>L'app <strong>ONEFLUX</strong> non risponde.</p><p>$DETAIL</p><p>URL: <a href='https://app.oneflux.it/'>https://app.oneflux.it/</a></p><p>Controlla su <a href='https://vercel.com'>Vercel Dashboard</a> per lo stato del deploy.</p>\"
             }"
