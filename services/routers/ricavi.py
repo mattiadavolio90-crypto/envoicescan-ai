@@ -2,8 +2,14 @@
 
 Estratto da fastapi_worker.py. Include i parser gestionale
 (_detect_gestionale_version, _parse_passbi_v1, _parse_generico): erano nel worker
-e importati da worker/email_queue_processor.py — ora quel modulo li importa da qui
-(nessun ciclo: email_queue_processor non e' importato da fastapi_worker al top).
+e importati da worker/email_queue_processor.py — ora quel modulo li importa da qui.
+
+ATTENZIONE al ciclo ricavi <-> fastapi_worker: questo modulo e' l'UNICO router
+importato anche FUORI dal contesto FastAPI (dal worker, per i parser). fastapi_worker
+importa `from services.routers.ricavi import router` in coda al file; se importassimo
+fastapi_worker AL TOP qui, il worker (che carica ricavi.py per primo) esploderebbe con
+"partially initialized module" e il ciclo email non processerebbe mai la coda ricavi.
+Per questo i simboli di fastapi_worker sotto sono risolti LAZY (helper `_fw()`).
 Path/gate/response invariati.
 """
 import asyncio
@@ -12,12 +18,37 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from services.fastapi_worker import (
-    _verify_worker_key,
-    _resolve_user_from_token,
-    _get_supabase_client,
-    _resolve_ristorante_id,
-)
+# NB: import LAZY di fastapi_worker per evitare il ciclo
+# ricavi -> fastapi_worker -> ricavi. Il worker (worker/email_queue_processor.py)
+# importa da questo modulo SOLO i parser (_detect_gestionale_version, _parse_*),
+# fuori dal contesto FastAPI: importare fastapi_worker al top esplodeva con
+# "partially initialized module" e il ciclo email non processava mai la coda.
+# I 4 simboli sotto servono solo agli endpoint HTTP, risolti al primo uso quando
+# fastapi_worker e' gia' caricato.
+def _fw():
+    import services.fastapi_worker as fw
+    return fw
+
+
+def _resolve_user_from_token(*args, **kwargs):
+    return _fw()._resolve_user_from_token(*args, **kwargs)
+
+
+def _get_supabase_client(*args, **kwargs):
+    return _fw()._get_supabase_client(*args, **kwargs)
+
+
+def _resolve_ristorante_id(*args, **kwargs):
+    return _fw()._resolve_ristorante_id(*args, **kwargs)
+
+
+# Usato in Depends(...) nei decorator (valutato a import-time): non puo' essere
+# lazy come gli altri. La firma DEVE restare identica all'originale (x_worker_key
+# via Header) perche' FastAPI inietta il valore leggendo la signature; delega poi
+# al verificatore reale di fastapi_worker, risolto al primo uso.
+def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
+    return _fw()._verify_worker_key(x_worker_key)
+
 
 router = APIRouter()
 
