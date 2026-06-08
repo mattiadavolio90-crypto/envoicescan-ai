@@ -1854,7 +1854,17 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
 
             if not silent:
                 _ui_msg("success", f"✅ {nome_file}: {num_righe} righe salvate su Supabase")
-            
+
+            # Nuova fattura -> il briefing Home (fatture caricate, alert prezzi)
+            # cambia: invalido lo snapshot di oggi cosi' la prossima Home rigenera.
+            # Best-effort: non deve mai compromettere un salvataggio andato a buon fine.
+            if user_id and ristorante_id:
+                try:
+                    from services.daily_briefing_service import invalidate_today_briefing
+                    invalidate_today_briefing(str(user_id), str(ristorante_id), supabase_client)
+                except Exception as briefing_exc:
+                    logger.warning("invalidazione briefing post-upload fallita: %s", briefing_exc)
+
             return {
                 "success": True,
                 "error": None,

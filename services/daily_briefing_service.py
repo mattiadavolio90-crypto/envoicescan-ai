@@ -755,3 +755,36 @@ def generate_and_save_briefing(
     except Exception as exc:
         logger.error("Errore generate_and_save_briefing: %s", exc)
         return None
+
+
+def invalidate_today_briefing(
+    user_id: str,
+    ristorante_id: str,
+    supabase_client=None,
+) -> None:
+    """Cancella lo snapshot di OGGI cosi' la prossima Home lo rigenera.
+
+    L'endpoint /api/home/briefing serve lo snapshot del giorno in cache-first
+    (senza ricalcolare gli alert prezzi, per non sforare il timeout di 8s del
+    frontend). Quando cambiano i dati che il briefing racconta — nuove fatture
+    caricate, ricavi/costi inseriti — quello snapshot diventa stantio: va
+    invalidato qui, agli EVENTI, invece di rigenerare ad ogni render.
+
+    Best-effort: un errore qui non deve mai bloccare l'operazione che l'ha
+    triggerato (upload/inserimento). Al peggio il briefing si aggiorna il giorno
+    dopo, come prima del fast-path.
+    """
+    if not user_id or not ristorante_id or supabase_client is None:
+        return
+    try:
+        today = _today_rome().isoformat()
+        (
+            supabase_client.table('daily_briefing_state')
+            .delete()
+            .eq('user_id', user_id)
+            .eq('ristorante_id', ristorante_id)
+            .eq('generated_for_date', today)
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("invalidate_today_briefing fallita (non bloccante): %s", exc)

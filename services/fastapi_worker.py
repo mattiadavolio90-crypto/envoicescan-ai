@@ -2915,6 +2915,57 @@ def _briefing_dati_mensili_mancanti(
     return out
 
 
+def _briefing_response_from_snapshot(snapshot: Dict[str, Any], nome: Optional[str]) -> "BriefingResponse":
+    """Costruisce la BriefingResponse da uno snapshot (cache o appena generato).
+
+    Centralizza il mapping snapshot->response cosi' il fast-path (cache-first) e
+    il path completo restituiscono ESATTAMENTE la stessa forma.
+    """
+    from services.daily_briefing_service import _today_rome
+    azioni = [BriefingAzione(**a) for a in (snapshot.get("azioni") or [])]
+    return BriefingResponse(
+        saluto=_saluto_per_ora(nome),
+        data=_today_rome().isoformat(),
+        narrativa=str(snapshot.get("narrative") or ""),
+        severity_max=str(snapshot.get("severity_max") or "info"),
+        tutto_ok=bool(snapshot.get("tutto_ok", len(azioni) == 0)),
+        azioni=azioni,
+        generated_at=snapshot.get("generated_at"),
+    )
+
+
+def _briefing_nome_referente(
+    nome: Optional[str], ristorante_id: Optional[str], supabase_client
+) -> tuple[Optional[str], List[str]]:
+    """Legge override nome + topic spenti da assistant_preferences (query leggera).
+
+    Estratta per essere riusabile sia dal fast-path cache-first (che serve lo
+    snapshot di oggi senza ricalcolare nulla, ma ha comunque bisogno del nome
+    corretto per il saluto) sia dal path completo.
+    """
+    topics_disabled: List[str] = []
+    if not ristorante_id:
+        return nome, topics_disabled
+    try:
+        prefres = (
+            supabase_client.table("assistant_preferences")
+            .select("nome_referente,topics_disabled")
+            .eq("ristorante_id", ristorante_id)
+            .limit(1)
+            .execute()
+        )
+        if prefres.data:
+            pref = prefres.data[0]
+            if pref.get("nome_referente"):
+                nome = pref["nome_referente"]
+            td = pref.get("topics_disabled") or []
+            if isinstance(td, list):
+                topics_disabled = [str(t) for t in td]
+    except Exception as exc:
+        logger.warning("home_briefing: lettura preferenze fallita: %s", exc)
+    return nome, topics_disabled
+
+
 @app.get(
     "/api/home/briefing",
     response_model=BriefingResponse,
@@ -2928,7 +2979,6 @@ def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingRespon
     from services.daily_briefing_service import (
         get_today_briefing,
         generate_and_save_briefing,
-        notifications_fingerprint,
         _today_rome,
     )
 
@@ -2941,6 +2991,22 @@ def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingRespon
 
     supabase_client = get_supabase_client()
     ristorante_id = _resolve_ristorante_id(user, supabase_client)
+
+    # ── Fast-path cache-first ────────────────────────────────────────────────
+    # Il briefing e' un dato GIORNALIERO: se lo snapshot di oggi esiste gia' in
+    # daily_briefing_state, lo serviamo subito (~0.5s) senza ricalcolare gli alert
+    # prezzi (fino a 4s su clienti con molte fatture) ne' le query di notifiche/
+    # ricavi/mensili. Prima il calcolo pesante girava SEMPRE — solo per costruire
+    # il fingerprint con cui poi decidere se la cache era valida — e su clienti
+    # grossi l'endpoint sforava il timeout di 8s del frontend (briefing "sparito"
+    # in Home pur essendo generato lato worker). Un riepilogo giornaliero si
+    # ricalcola una volta al giorno: la freschezza intra-giornaliera (max +1
+    # giorno) e' un trade-off accettabile e coerente col concetto di "daily".
+    if ristorante_id:
+        cached_today = get_today_briefing(user_id, ristorante_id, supabase_client)
+        if cached_today is not None:
+            nome, _ = _briefing_nome_referente(nome, ristorante_id, supabase_client)
+            return _briefing_response_from_snapshot(cached_today, nome)
 
     # Notifiche attive (stesso filtro di /api/notifiche, senza dismissed)
     notifications: List[Dict[str, Any]] = []
@@ -3094,58 +3160,25 @@ def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingRespon
             logger.warning("home_briefing: dati mensili mancanti falliti: %s", exc)
 
     # Preferenze configuratore (Step 6): nome override + topic spenti dal cliente.
-    topics_disabled: List[str] = []
-    if ristorante_id:
-        try:
-            prefres = (
-                supabase_client.table("assistant_preferences")
-                .select("nome_referente,topics_disabled")
-                .eq("ristorante_id", ristorante_id)
-                .limit(1)
-                .execute()
-            )
-            if prefres.data:
-                pref = prefres.data[0]
-                if pref.get("nome_referente"):
-                    nome = pref["nome_referente"]  # override vince sul saluto
-                td = pref.get("topics_disabled") or []
-                if isinstance(td, list):
-                    topics_disabled = [str(t) for t in td]
-        except Exception as exc:
-            logger.warning("home_briefing: lettura preferenze fallita: %s", exc)
+    nome, topics_disabled = _briefing_nome_referente(nome, ristorante_id, supabase_client)
 
+    # Siamo qui SOLO se il fast-path non ha trovato lo snapshot di oggi (prima
+    # apertura della giornata, o assenza ristorante_id): generiamo e salviamo.
+    # Niente piu' ri-lettura cache + fingerprint qui: il fast-path in cima ha gia'
+    # gestito il caso "snapshot di oggi presente".
     snapshot: Optional[Dict[str, Any]] = None
     if ristorante_id:
-        cached = get_today_briefing(user_id, ristorante_id, supabase_client)
-        # Il fingerprint include i topic spenti (stessa formula di _build_snapshot):
-        # cambiando le preferenze il briefing si rigenera anche a notifiche identiche.
-        fingerprint = notifications_fingerprint(notifications)
-        if topics_disabled:
-            fingerprint += "|" + ",".join(sorted(topics_disabled))
-        if cached and cached.get("notif_fingerprint") == fingerprint:
-            snapshot = cached
-        else:
-            snapshot = generate_and_save_briefing(
-                user_id, ristorante_id, notifications, supabase_client,
-                topics_disabled=topics_disabled,
-            )
+        snapshot = generate_and_save_briefing(
+            user_id, ristorante_id, notifications, supabase_client,
+            topics_disabled=topics_disabled,
+        )
 
     if snapshot is None:
         # Fallback senza ristorante o errore DB: snapshot effimero non persistito
         from services.daily_briefing_service import _build_snapshot
         snapshot = _build_snapshot(notifications)
 
-    azioni = [BriefingAzione(**a) for a in (snapshot.get("azioni") or [])]
-
-    return BriefingResponse(
-        saluto=_saluto_per_ora(nome),
-        data=_today_rome().isoformat(),
-        narrativa=str(snapshot.get("narrative") or ""),
-        severity_max=str(snapshot.get("severity_max") or "info"),
-        tutto_ok=bool(snapshot.get("tutto_ok", len(azioni) == 0)),
-        azioni=azioni,
-        generated_at=snapshot.get("generated_at"),
-    )
+    return _briefing_response_from_snapshot(snapshot, nome)
 
 
 _MESI_IT_FULL = [

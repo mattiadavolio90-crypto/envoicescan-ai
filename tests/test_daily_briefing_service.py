@@ -27,6 +27,7 @@ from services.daily_briefing_service import (
     _today_rome,
     generate_and_save_briefing,
     get_today_briefing,
+    invalidate_today_briefing,
 )
 
 
@@ -645,3 +646,45 @@ class TestGenerateAndSaveBriefing:
         generate_and_save_briefing(UID, RID, [], sb)
         on_conflict = sb.upsert.call_args.kwargs.get("on_conflict")
         assert on_conflict == "user_id,ristorante_id,generated_for_date"
+
+
+# ────────────────────────────────────────────────
+# invalidate_today_briefing
+# ────────────────────────────────────────────────
+
+def _make_supabase_delete_mock():
+    q = MagicMock()
+    q.table.return_value = q
+    q.delete.return_value = q
+    q.eq.return_value = q
+    q.execute.return_value = MagicMock(data=[])
+    return q
+
+
+class TestInvalidateTodayBriefing:
+    def test_deletes_today_snapshot(self):
+        sb = _make_supabase_delete_mock()
+        with patch("services.daily_briefing_service._today_rome", return_value=date(2026, 6, 8)):
+            invalidate_today_briefing(UID, RID, sb)
+
+        sb.table.assert_called_with("daily_briefing_state")
+        sb.delete.assert_called_once()
+        # Filtra per user, ristorante e data di oggi
+        eq_args = [c.args for c in sb.eq.call_args_list]
+        assert ("user_id", UID) in eq_args
+        assert ("ristorante_id", RID) in eq_args
+        assert ("generated_for_date", "2026-06-08") in eq_args
+        sb.execute.assert_called_once()
+
+    def test_noop_on_missing_params(self):
+        sb = _make_supabase_delete_mock()
+        invalidate_today_briefing("", RID, sb)
+        invalidate_today_briefing(UID, "", sb)
+        invalidate_today_briefing(UID, RID, None)
+        sb.delete.assert_not_called()
+
+    def test_swallows_exception(self):
+        # Best-effort: un errore qui non deve propagare (non bloccare upload/save).
+        sb = MagicMock()
+        sb.table.side_effect = RuntimeError("DB down")
+        invalidate_today_briefing(UID, RID, sb)  # non solleva

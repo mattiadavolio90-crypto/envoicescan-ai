@@ -240,6 +240,10 @@ def save_margini(
         })
 
     sb.table("margini_mensili").upsert(records, on_conflict="ristorante_id,anno,mese").execute()
+    # Il briefing Home racconta i dati mensili (fatturato/costi): cambiandoli va
+    # invalidato lo snapshot di oggi cosi' la prossima Home rigenera (best-effort).
+    from services.daily_briefing_service import invalidate_today_briefing
+    invalidate_today_briefing(user_id, ristorante_id, sb)
     return {"ok": True, "saved": len(records)}
 
 
@@ -301,6 +305,8 @@ def save_fatturato_centri(
         "fatturato_dolci": body.fatturato_dolci,
         "updated_at": _dt.now(_tz.utc).isoformat(),
     }, on_conflict="ristorante_id,anno,mese").execute()
+    from services.daily_briefing_service import invalidate_today_briefing
+    invalidate_today_briefing(user_id, ristorante_id, sb)
     return {"ok": True}
 
 
