@@ -1171,6 +1171,44 @@ def admin_sistema_retention():
     return status
 
 
+# ── Sistema/Salute — Import ricavi problematici ──────────────────────────────
+
+@router.get("/api/admin/sistema/ricavi-import", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+def admin_sistema_ricavi_import():
+    """Record di import ricavi (ricavi_email_queue) in stato problematico.
+
+    Sola lettura: mostra all'admin gli import bloccati (mittente non mappato,
+    in retry o morti dopo i tentativi) che altrimenti restano solo nei log del
+    worker. Coda pulita → items vuoto, counts a zero (empty-state lato UI).
+    """
+    sb = get_supabase_client()
+    problem_states = ["unknown_sender", "failed", "dead"]
+    try:
+        resp = (
+            sb.table("ricavi_email_queue")
+            .select(
+                "id,status,email_sender,email_subject,attachment_name,"
+                "created_at,attempt_count,max_attempts,last_error,processed_at"
+            )
+            .in_("status", problem_states)
+            .order("created_at", desc=True)
+            .limit(50)
+            .execute()
+        )
+        items = resp.data or []
+    except Exception as exc:
+        logger.error("admin ricavi-import: query fallita: %s", exc)
+        items = []
+
+    counts = {s: 0 for s in problem_states}
+    for it in items:
+        st = it.get("status")
+        if st in counts:
+            counts[st] += 1
+
+    return {"items": items, "counts": counts}
+
+
 # ── Sistema — Agent notturno ──────────────────────────────────────────────────
 
 @router.get("/api/admin/sistema/agent-notturno", tags=["Admin"], dependencies=[Depends(_verify_admin)])

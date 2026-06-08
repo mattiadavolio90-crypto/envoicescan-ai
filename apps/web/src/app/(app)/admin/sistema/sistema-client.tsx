@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RefreshCw, DollarSign, Shield, Clock, CheckCircle, Bot, Play, Moon } from "lucide-react";
+import { RefreshCw, DollarSign, Shield, Clock, CheckCircle, Bot, Play, Moon, AlertTriangle } from "lucide-react";
 
 const VISION_DAILY_LIMIT = 50;
 
@@ -117,6 +117,116 @@ function CostiAiTab() {
 }
 
 // ─── TAB RETENTION ───────────────────────────────────────────────────────────
+// ─── TAB IMPORT RICAVI ────────────────────────────────────────────────────────
+type ImportRicaviItem = {
+  id: string;
+  status: string;
+  email_sender: string | null;
+  email_subject: string | null;
+  attachment_name: string | null;
+  created_at: string | null;
+  attempt_count: number | null;
+  max_attempts: number | null;
+  last_error: string | null;
+};
+
+const IMPORT_STATUS_LABEL: Record<string, string> = {
+  unknown_sender: "Mittente sconosciuto",
+  failed: "In retry",
+  dead: "Bloccato",
+};
+const IMPORT_STATUS_CLASS: Record<string, string> = {
+  dead: "bg-red-500/15 text-red-600 border-red-500/30",
+  unknown_sender: "bg-amber-500/15 text-amber-600 border-amber-500/30",
+  failed: "bg-orange-500/15 text-orange-600 border-orange-500/30",
+};
+
+function ImportRicaviTab() {
+  const [items, setItems] = useState<ImportRicaviItem[] | null>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/sistema/ricavi-import");
+      if (!res.ok) { toast.error("Errore caricamento import ricavi"); return; }
+      const data = await res.json();
+      setItems((data.items as ImportRicaviItem[]) || []);
+      setCounts((data.counts as Record<string, number>) || {});
+    } catch { toast.error("Errore di connessione"); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const totProblemi = Object.values(counts).reduce((s, v) => s + v, 0);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+          <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
+        </Button>
+        {items && totProblemi > 0 && (
+          <div className="flex gap-2 text-xs">
+            {(["dead", "unknown_sender", "failed"] as const).map((s) =>
+              counts[s] ? (
+                <span key={s} className={`rounded-full border px-2 py-0.5 font-medium ${IMPORT_STATUS_CLASS[s]}`}>
+                  {counts[s]} {IMPORT_STATUS_LABEL[s]}
+                </span>
+              ) : null
+            )}
+          </div>
+        )}
+      </div>
+
+      {items && items.length === 0 ? (
+        <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-600">
+          <CheckCircle className="size-4" /> Tutto ok — nessun import ricavi bloccato.
+        </div>
+      ) : items && items.length > 0 ? (
+        <div className="space-y-2">
+          {items.map((it) => (
+            <Card key={it.id}>
+              <CardContent className="flex flex-col gap-1 py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${IMPORT_STATUS_CLASS[it.status] || ""}`}>
+                    {IMPORT_STATUS_LABEL[it.status] || it.status}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {it.created_at ? new Date(it.created_at).toLocaleString("it-IT") : "—"}
+                  </span>
+                </div>
+                <p className="text-sm font-medium">{it.email_sender || "mittente ignoto"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {it.attachment_name || "—"}
+                  {it.email_subject ? ` · ${it.email_subject}` : ""}
+                  {it.attempt_count != null && it.max_attempts != null ? ` · tentativi ${it.attempt_count}/${it.max_attempts}` : ""}
+                </p>
+                {it.last_error && (
+                  <p className="flex items-start gap-1 text-xs text-red-600">
+                    <AlertTriangle className="size-3.5 mt-0.5 shrink-0" /> {it.last_error}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        loading ? <p className="text-muted-foreground text-sm">Caricamento…</p> : null
+      )}
+
+      <p className="text-xs text-muted-foreground">
+        Import ricavi via email (Passbi → coda worker). Qui appaiono solo i casi problematici:
+        mittente non mappato, in retry o bloccati. Mittente sconosciuto → aggiungere il mapping
+        in Ragione sociale / sender map, poi rimettere il record in coda.
+      </p>
+    </div>
+  );
+}
+
+// ─── TAB RETENTION ────────────────────────────────────────────────────────────
 function RetentionTab() {
   const [status, setStatus] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -339,11 +449,11 @@ function AgentNotturnoTab() {
 }
 
 // ─── ROOT CLIENT ─────────────────────────────────────────────────────────────
-const TABS = ["costi", "agent", "retention"] as const;
-const TAB_LABELS: Record<string, string> = { costi: "Costi AI", agent: "Agent AI", retention: "Retention" };
+const TABS = ["costi", "agent", "retention", "import"] as const;
+const TAB_LABELS: Record<string, string> = { costi: "Costi AI", agent: "Agent AI", retention: "Retention", import: "Import Ricavi" };
 
 export function SistemaClient() {
-  const [tab, setTab] = useState<"costi" | "agent" | "retention">("costi");
+  const [tab, setTab] = useState<"costi" | "agent" | "retention" | "import">("costi");
   return (
     <div className="space-y-4">
       <div className="flex gap-1 border-b">
@@ -357,6 +467,7 @@ export function SistemaClient() {
       {tab === "costi" && <CostiAiTab />}
       {tab === "agent" && <AgentNotturnoTab />}
       {tab === "retention" && <RetentionTab />}
+      {tab === "import" && <ImportRicaviTab />}
     </div>
   );
 }
