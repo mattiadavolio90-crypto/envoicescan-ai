@@ -567,25 +567,25 @@ export function PersonaleTab() {
       {Object.keys(monteOre).length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
           {/* Totale ore — sempre prima, verde */}
-          <Card className="ring-1 ring-green-500/60 bg-green-950/20">
+          <Card className="ring-1 ring-green-500/60 bg-green-50 dark:bg-green-950/20">
             <CardContent className="py-3 px-4">
-              <p className="text-xs font-medium text-green-500">Totale ore</p>
-              <p className="text-xl font-bold tabular-nums text-green-400">{fmtOreDisplay(totaleOre)}</p>
+              <p className="text-xs font-medium text-green-700 dark:text-green-500">Totale ore</p>
+              <p className="text-xl font-bold tabular-nums text-green-700 dark:text-green-400">{fmtOreDisplay(totaleOre)}</p>
             </CardContent>
           </Card>
           {/* Totale extra — seconda, ambra (mostrata sempre se c'è almeno una persona) */}
-          <Card className="ring-1 ring-amber-500/60 bg-amber-950/20">
+          <Card className="ring-1 ring-amber-500/60 bg-amber-50 dark:bg-amber-950/20">
             <CardContent className="py-3 px-4">
-              <p className="text-xs font-medium text-amber-500">Totale extra</p>
-              <p className="text-xl font-bold tabular-nums text-amber-400">{fmtOreDisplay(extraTotale)}</p>
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-500">Totale extra</p>
+              <p className="text-xl font-bold tabular-nums text-amber-700 dark:text-amber-400">{fmtOreDisplay(extraTotale)}</p>
             </CardContent>
           </Card>
           {/* Costo lavoro — solo se almeno un costo orario impostato */}
           {costoTotale > 0 && (
-            <Card className="ring-1 ring-sky-500/60 bg-sky-950/20">
+            <Card className="ring-1 ring-sky-500/60 bg-sky-50 dark:bg-sky-950/20">
               <CardContent className="py-3 px-4">
-                <p className="text-xs font-medium text-sky-400">Costo lavoro</p>
-                <p className="text-xl font-bold tabular-nums text-sky-300">{fmtEuro(costoTotale)}</p>
+                <p className="text-xs font-medium text-sky-700 dark:text-sky-400">Costo lavoro</p>
+                <p className="text-xl font-bold tabular-nums text-sky-700 dark:text-sky-300">{fmtEuro(costoTotale)}</p>
               </CardContent>
             </Card>
           )}
@@ -595,8 +595,8 @@ export function PersonaleTab() {
                 <p className="text-xs text-muted-foreground truncate">{n}</p>
                 <p className="text-xl font-bold tabular-nums">{fmtOreDisplay(ore)}</p>
                 <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] leading-tight text-muted-foreground">
-                  {extraPerPersona[n] > 0 && <span className="text-amber-500">di cui {fmtOreDisplay(extraPerPersona[n])} extra</span>}
-                  {costoPerPersona[n] > 0 && <span className="text-sky-400">{fmtEuro(costoPerPersona[n])}</span>}
+                  {extraPerPersona[n] > 0 && <span className="text-amber-600 dark:text-amber-500">di cui {fmtOreDisplay(extraPerPersona[n])} extra</span>}
+                  {costoPerPersona[n] > 0 && <span className="text-sky-700 dark:text-sky-400">{fmtEuro(costoPerPersona[n])}</span>}
                 </div>
               </CardContent>
             </Card>
@@ -688,10 +688,10 @@ export function PersonaleTab() {
                         </span>
                         <span className="text-xs text-muted-foreground tabular-nums">{fmtOreDisplay(calcolaOreTotali(t))}</span>
                         {!!t.ore_extra && t.ore_extra > 0 && (
-                          <span className="text-[11px] text-amber-500 tabular-nums">+{fmtOreDisplay(t.ore_extra)} extra</span>
+                          <span className="text-[11px] text-amber-600 dark:text-amber-500 tabular-nums">+{fmtOreDisplay(t.ore_extra)} extra</span>
                         )}
                         {t.costo_orario != null && (
-                          <span className="text-[11px] text-sky-400 tabular-nums">{fmtEuro(calcolaOreTotali(t) * t.costo_orario)}</span>
+                          <span className="text-[11px] text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(calcolaOreTotali(t) * t.costo_orario)}</span>
                         )}
                         {t.note && <span className="text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
                         <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

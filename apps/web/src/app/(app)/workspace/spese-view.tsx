@@ -334,22 +334,22 @@ export function SpeseView() {
 
       {/* KPI totali */}
       <div className="grid grid-cols-3 gap-2">
-        <Card className="ring-1 ring-orange-500/60 bg-orange-950/20">
+        <Card className="ring-1 ring-orange-500/60 bg-orange-50 dark:bg-orange-950/20">
           <CardContent className="py-3 px-4">
-            <p className="text-xs font-medium text-orange-500">Costi F&B extra</p>
-            <p className="text-xl font-bold tabular-nums text-orange-400">{fmtEuro(totFb)}</p>
+            <p className="text-xs font-medium text-orange-700 dark:text-orange-500">Costi F&B extra</p>
+            <p className="text-xl font-bold tabular-nums text-orange-700 dark:text-orange-400">{fmtEuro(totFb)}</p>
           </CardContent>
         </Card>
-        <Card className="ring-1 ring-purple-500/60 bg-purple-950/20">
+        <Card className="ring-1 ring-purple-500/60 bg-purple-50 dark:bg-purple-950/20">
           <CardContent className="py-3 px-4">
-            <p className="text-xs font-medium text-purple-500">Spese Generali extra</p>
-            <p className="text-xl font-bold tabular-nums text-purple-400">{fmtEuro(totGenerale)}</p>
+            <p className="text-xs font-medium text-purple-700 dark:text-purple-500">Spese Generali extra</p>
+            <p className="text-xl font-bold tabular-nums text-purple-700 dark:text-purple-400">{fmtEuro(totGenerale)}</p>
           </CardContent>
         </Card>
-        <Card className="ring-1 ring-sky-500/60 bg-sky-950/20">
+        <Card className="ring-1 ring-sky-500/60 bg-sky-50 dark:bg-sky-950/20">
           <CardContent className="py-3 px-4">
-            <p className="text-xs font-medium text-sky-400">Totale extra</p>
-            <p className="text-xl font-bold tabular-nums text-sky-300">{fmtEuro(totale)}</p>
+            <p className="text-xs font-medium text-sky-700 dark:text-sky-400">Totale extra</p>
+            <p className="text-xl font-bold tabular-nums text-sky-700 dark:text-sky-300">{fmtEuro(totale)}</p>
           </CardContent>
         </Card>
       </div>

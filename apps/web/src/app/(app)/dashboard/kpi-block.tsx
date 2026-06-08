@@ -29,8 +29,8 @@ function Trend({
       className={cn(
         "inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums",
         positivo === null && "text-muted-foreground",
-        positivo === true && "text-emerald-500",
-        positivo === false && "text-rose-500",
+        positivo === true && "text-emerald-600 dark:text-emerald-500",
+        positivo === false && "text-rose-600 dark:text-rose-500",
       )}
     >
       <Icon className="size-3" />
@@ -114,7 +114,7 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
         <div
           className={cn(
             "text-5xl font-black tabular-nums leading-none sm:text-6xl",
-            molPos ? "text-emerald-500" : "text-rose-500",
+            molPos ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500",
           )}
         >
           {euro(kpi.mol)}
