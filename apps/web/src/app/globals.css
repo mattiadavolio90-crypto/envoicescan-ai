@@ -56,12 +56,19 @@
     --secondary: oklch(0.97 0 0);
     --secondary-foreground: oklch(0.205 0 0);
     --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
+    /* Testo secondario (sottotitoli, etichette, date, "totale netto", ecc.):
+       scurito da 0.556 a 0.47 -> contrasto ~4.9:1 su bianco (era ~3.7:1, sotto
+       soglia), ora AA pieno. Era la causa principale del "testo grigio poco
+       leggibile" in light mode, diffuso ovunque (--muted-foreground e' il token
+       del testo secondario). La dark resta invariata (0.708 sul fondo scuro ok). */
+    --muted-foreground: oklch(0.47 0 0);
     --accent: oklch(0.94 0.04 237.3);
     --accent-foreground: oklch(0.3 0.08 237.3);
     --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
+    /* Bordi leggermente piu' marcati (0.922 -> 0.90) cosi' card, tab e bottoni
+       hanno un contorno visibile in light: lo stato attivo si distingue meglio. */
+    --border: oklch(0.90 0 0);
+    --input: oklch(0.90 0 0);
     --ring: oklch(0.685 0.169 237.3);
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
