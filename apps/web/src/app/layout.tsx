@@ -58,6 +58,11 @@ export default function RootLayout({
             ("couldn't load" al primo tocco). Tenendolo fuori da React, l'albero
             idratato resta integro. */}
         <Script src="/boot-overlay.js" strategy="beforeInteractive" />
+        {/* Cattura beforeinstallprompt prima dell'idratazione e lo conserva su
+            window.__oneflux_bip: l'evento di Chrome arriva una sola volta a
+            inizio caricamento, spesso prima che InstallPrompt monti. Senza
+            questa cattura globale il banner "Installa" non appariva. */}
+        <Script src="/pwa-install-capture.js" strategy="beforeInteractive" />
         <ThemeProvider defaultTheme={tema}>
           <TooltipProvider>
             {children}

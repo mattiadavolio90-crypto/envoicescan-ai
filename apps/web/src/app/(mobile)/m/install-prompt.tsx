@@ -11,6 +11,15 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
+// L'evento e' catturato globalmente da public/pwa-install-capture.js (gira
+// prima dell'idratazione) e conservato qui, perche' Chrome lo emette una sola
+// volta a inizio caricamento, spesso prima che questo componente monti.
+declare global {
+  interface Window {
+    __oneflux_bip?: BeforeInstallPromptEvent | null;
+  }
+}
+
 function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
   return (
@@ -47,20 +56,30 @@ export function InstallPrompt() {
       return;
     }
 
-    // Android/Chrome: aspettiamo l'evento, poi mostriamo il banner con bottone.
-    const onBeforeInstall = (e: Event) => {
-      e.preventDefault();
-      setDeferred(e as BeforeInstallPromptEvent);
+    // Android/Chrome: l'evento beforeinstallprompt e' gia' stato catturato e
+    // conservato da pwa-install-capture.js. Lo leggiamo se gia' presente, e in
+    // parallelo ascoltiamo "oneflux:installable" nel caso arrivi dopo il mount.
+    const bip = window.__oneflux_bip;
+    if (bip) {
+      setDeferred(bip);
       setVisible(true);
+    }
+
+    const onInstallable = () => {
+      const ev = window.__oneflux_bip;
+      if (ev) {
+        setDeferred(ev);
+        setVisible(true);
+      }
     };
-    window.addEventListener("beforeinstallprompt", onBeforeInstall);
+    window.addEventListener("oneflux:installable", onInstallable);
 
     // Quando l'utente installa, nascondiamo tutto.
     const onInstalled = () => setVisible(false);
     window.addEventListener("appinstalled", onInstalled);
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
+      window.removeEventListener("oneflux:installable", onInstallable);
       window.removeEventListener("appinstalled", onInstalled);
     };
   }, []);
@@ -82,6 +101,7 @@ export function InstallPrompt() {
     if (outcome === "accepted") setVisible(false);
     else dismiss();
     setDeferred(null);
+    window.__oneflux_bip = null;
   }
 
   if (!visible) return null;
