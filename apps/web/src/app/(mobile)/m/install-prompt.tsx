@@ -57,10 +57,13 @@ export function InstallPrompt() {
     }
 
     // Android/Chrome: l'evento beforeinstallprompt e' gia' stato catturato e
-    // conservato da pwa-install-capture.js. Lo leggiamo se gia' presente, e in
-    // parallelo ascoltiamo "oneflux:installable" nel caso arrivi dopo il mount.
+    // conservato da pwa-install-capture.js (che NON fa preventDefault, per non
+    // sopprimere il prompt nativo sulle pagine senza banner). Qui su /m, invece,
+    // abbiamo il banner custom: facciamo noi preventDefault per evitare il
+    // doppione (nativo + custom) e usiamo l'evento conservato.
     const bip = window.__oneflux_bip;
     if (bip) {
+      bip.preventDefault();
       setDeferred(bip);
       setVisible(true);
     }
@@ -68,11 +71,23 @@ export function InstallPrompt() {
     const onInstallable = () => {
       const ev = window.__oneflux_bip;
       if (ev) {
+        ev.preventDefault();
         setDeferred(ev);
         setVisible(true);
       }
     };
     window.addEventListener("oneflux:installable", onInstallable);
+
+    // Se l'evento arriva DOPO che siamo gia' montati (es. navigazione che
+    // ricarica /m), lo intercettiamo anche direttamente qui per fare in tempo
+    // a chiamare preventDefault prima che Chrome mostri il nativo.
+    const onBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      window.__oneflux_bip = e as BeforeInstallPromptEvent;
+      setDeferred(e as BeforeInstallPromptEvent);
+      setVisible(true);
+    };
+    window.addEventListener("beforeinstallprompt", onBeforeInstall);
 
     // Quando l'utente installa, nascondiamo tutto.
     const onInstalled = () => setVisible(false);
@@ -80,6 +95,7 @@ export function InstallPrompt() {
 
     return () => {
       window.removeEventListener("oneflux:installable", onInstallable);
+      window.removeEventListener("beforeinstallprompt", onBeforeInstall);
       window.removeEventListener("appinstalled", onInstalled);
     };
   }, []);

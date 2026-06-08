@@ -5,12 +5,18 @@
    InstallPrompt. Se nessuno lo sta ascoltando in quel momento, l'evento e'
    perso e il banner "Installa ONEFLUX" non appare mai.
 
+   IMPORTANTE — perche' NON facciamo preventDefault() qui: chiamarlo sopprime il
+   prompt nativo di Chrome OVUNQUE, anche dove il nostro banner custom non c'e'
+   (es. /admin, /dashboard). Risultato: l'admin smetteva di vedere QUALSIASI
+   proposta di installazione (il nativo soppresso, il custom assente perche'
+   vive solo su /m). Quindi qui ci limitiamo a CONSERVARE l'evento, senza
+   sopprimere il nativo. La soppressione (preventDefault) la fa SOLO
+   InstallPrompt, e solo su /m dove esiste l'alternativa custom.
+
    Questo script gira con strategy="beforeInteractive" (prima dell'idratazione)
    e si limita a:
-     1. preventDefault() sull'evento (cosi' Chrome non mostra il mini-infobar
-        nativo e lascia decidere a noi quando proporre l'installazione);
-     2. conservare l'evento su window.__oneflux_bip;
-     3. ri-emettere un CustomEvent "oneflux:installable" per chi monta dopo.
+     1. conservare l'evento su window.__oneflux_bip;
+     2. ri-emettere un CustomEvent "oneflux:installable" per chi monta dopo.
 
    InstallPrompt al mount legge window.__oneflux_bip (se l'evento e' gia'
    arrivato) e in parallelo ascolta "oneflux:installable" (se arriva dopo).
@@ -21,7 +27,8 @@
   window.__oneflux_bip = null;
 
   window.addEventListener("beforeinstallprompt", function (e) {
-    e.preventDefault();
+    // NIENTE preventDefault qui: su pagine senza il nostro banner (es. /admin)
+    // il prompt nativo di Chrome deve restare disponibile come prima.
     window.__oneflux_bip = e;
     try {
       window.dispatchEvent(new CustomEvent("oneflux:installable"));
