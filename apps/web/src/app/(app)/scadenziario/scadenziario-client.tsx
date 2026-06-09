@@ -1328,7 +1328,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${view === "agenda" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
             onClick={() => setView("agenda")}
           >
-            <List className="size-3.5" /> Agenda
+            <List className="size-3.5" /> Lista
           </button>
           <button
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors border-l ${view === "calendario" ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}

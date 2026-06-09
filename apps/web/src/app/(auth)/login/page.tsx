@@ -60,7 +60,8 @@ function LoginForm() {
         return;
       }
 
-      window.location.href = next || defaultNext();
+      const destination = next || (data.user?.is_admin ? "/admin" : defaultNext());
+      window.location.href = destination;
     } catch (err) {
       console.error(err);
       setError("Errore di connessione. Riprova.");

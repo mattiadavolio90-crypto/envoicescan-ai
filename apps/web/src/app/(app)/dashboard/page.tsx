@@ -1,8 +1,4 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import { getCurrentSession } from "@/lib/auth";
-import { IMPERSONATE_COOKIE } from "@/app/api/admin/_worker";
 import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { HomeBriefing } from "./home-briefing";
@@ -133,18 +129,6 @@ async function ChatBlock() {
 }
 
 export default async function DashboardPage() {
-  // Un admin "puro" (non in impersonazione) atterra sempre sul pannello /admin:
-  // la Home cliente non e' la sua pagina. Durante l'impersonazione invece DEVE
-  // vedere la Home del cliente, quindi il redirect e' inibito dal cookie.
-  const cookieStore = await cookies();
-  const impersonating = cookieStore.get(IMPERSONATE_COOKIE)?.value === "1";
-  if (!impersonating) {
-    const session = await getCurrentSession();
-    if (session.status === "ok" && session.user.is_admin) {
-      redirect("/admin");
-    }
-  }
-
   return (
     <>
       <HomeAutoRefresh />
