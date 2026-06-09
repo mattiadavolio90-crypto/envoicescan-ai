@@ -99,20 +99,27 @@ function RigaVoce({
   return <div className={base}>{contenuto}</div>;
 }
 
-// Sparkline MOL: mini-linea dell'andamento MOL nei mesi dell'anno. Niente assi
-// ne' griglia (sarebbe rumore in uno spazio cosi' piccolo): solo la forma della
-// linea + un pallino sull'ultimo mese, per dare il senso della direzione accanto
-// al numero grande. Colore coerente col segno del MOL corrente.
-function MolSparkline({
+// Mesi abbreviati IT per le etichette della fascia andamento ("gen → mag").
+const MESI_ABBR = [
+  "gen", "feb", "mar", "apr", "mag", "giu",
+  "lug", "ago", "set", "ott", "nov", "dic",
+];
+
+// Fascia "Andamento MOL nell'anno": una sezione a sé in fondo alla card, con la
+// sua etichetta (anno + range mesi), la mini-linea piu' larga e una % di
+// variazione YTD (dal primo all'ultimo mese con dati). Prima la sparkline era
+// schiacciata sotto al numero grande, senza scala ne' periodo: un graffio
+// illeggibile. Qui ha spazio e contesto -> si capisce cosa racconta.
+function MolAndamento({
   punti,
-  positivo,
+  anno,
 }: {
   punti: { mese: number; mol: number }[];
-  positivo: boolean;
+  anno: number | null;
 }) {
-  const W = 120;
-  const H = 28;
-  const PAD = 3;
+  const W = 240;
+  const H = 40;
+  const PAD = 4;
   const vals = punti.map((p) => p.mol);
   const min = Math.min(...vals);
   const max = Math.max(...vals);
@@ -121,19 +128,53 @@ function MolSparkline({
   const x = (i: number) => PAD + (i * (W - 2 * PAD)) / (n - 1);
   const y = (v: number) => H - PAD - ((v - min) / range) * (H - 2 * PAD);
   const d = punti.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.mol).toFixed(1)}`).join(" ");
-  const stroke = positivo ? "text-emerald-500" : "text-rose-500";
   const lastX = x(n - 1);
   const lastY = y(punti[n - 1].mol);
+
+  // Variazione YTD: dal primo mese con dati all'ultimo. Se il primo e' <= 0 una
+  // % sarebbe priva di senso (divisione per ~zero o segno ribaltato): in quel
+  // caso non mostro la percentuale, solo la linea.
+  const primo = punti[0].mol;
+  const ultimo = punti[n - 1].mol;
+  const ytdPct = primo > 0 ? ((ultimo - primo) / primo) * 100 : null;
+  const ytdSu = ytdPct != null && ytdPct >= 0;
+  const stroke = ytdSu ? "text-emerald-500" : "text-rose-500";
+
+  const meseDa = MESI_ABBR[(punti[0].mese - 1) % 12] ?? "";
+  const meseA = MESI_ABBR[(punti[n - 1].mese - 1) % 12] ?? "";
+
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      className="h-7 w-[120px] overflow-visible"
-      role="img"
-      aria-label="Andamento del margine nei mesi dell'anno"
-    >
-      <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", stroke)} />
-      <circle cx={lastX} cy={lastY} r="2.5" className={cn("fill-current", stroke)} />
-    </svg>
+    <div className="mt-4 border-t pt-3">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-muted-foreground/70">
+          Andamento margine{anno ? ` ${anno}` : ""}
+        </span>
+        {ytdPct != null && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums",
+              ytdSu ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500",
+            )}
+          >
+            {ytdSu ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+            {Math.abs(ytdPct).toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
+            <span className="ml-1 font-normal text-muted-foreground/60">
+              {meseDa} → {meseA}
+            </span>
+          </span>
+        )}
+      </div>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        className="h-10 w-full overflow-visible"
+        preserveAspectRatio="none"
+        role="img"
+        aria-label="Andamento del margine nei mesi dell'anno"
+      >
+        <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", stroke)} />
+        <circle cx={lastX} cy={lastY} r="3" className={cn("fill-current", stroke)} />
+      </svg>
+    </div>
   );
 }
 
@@ -188,12 +229,6 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
           {kpi.confronto_label && <span>{kpi.confronto_label}</span>}
           <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu />
         </div>
-        {/* Sparkline andamento MOL nell'anno: appare solo con >=2 mesi di dati. */}
-        {kpi.mol_mensile.length >= 2 && (
-          <div className="mt-2">
-            <MolSparkline punti={kpi.mol_mensile} positivo={molPos} />
-          </div>
-        )}
       </Link>
 
       {/* Breakdown */}
@@ -246,6 +281,12 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
           href="/margini"
         />
       </div>
+
+      {/* Andamento MOL nell'anno: fascia a sé in fondo, con periodo e % YTD.
+          Appare solo con >=2 mesi di dati (sotto, una linea non avrebbe senso). */}
+      {kpi.mol_mensile.length >= 2 && (
+        <MolAndamento punti={kpi.mol_mensile} anno={kpi.mol_mensile_anno} />
+      )}
     </div>
   );
 }

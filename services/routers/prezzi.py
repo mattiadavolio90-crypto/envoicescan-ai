@@ -299,6 +299,10 @@ def set_soglia_alert(
     body: SogliaAlertRequest,
     authorization: Optional[str] = Header(None),
 ) -> SogliaAlertResponse:
+    """DEPRECATO (9/6/2026): la soglia alert si imposta dal configuratore
+    assistente (POST /api/home/config). La pagina Prezzi non scrive piu' qui — usa
+    GET /api/prezzi/soglia-alert solo come valore iniziale del filtro vista.
+    Endpoint mantenuto per compatibilita'; nessun frontend lo chiama piu'."""
     user = _resolve_user_from_token(authorization)
     val = max(0.0, min(50.0, float(body.soglia)))
     sb = _get_supabase_client()

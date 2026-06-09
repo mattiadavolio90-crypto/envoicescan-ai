@@ -132,10 +132,16 @@ def _normalize_custom_tag_key(text: str) -> str:
 
 
 @_make_cache(ttl=120, show_spinner=False)
-def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
+def _carica_fatture_da_supabase(user_id: str, ristorante_id=None, solo_ultimi_giorni=None):
     """
     Funzione interna cached: carica fatture da Supabase.
     Parametri hashable per @st.cache_data.
+
+    ``solo_ultimi_giorni`` (opzionale): se valorizzato, carica SOLO le righe con
+    data_documento/data_competenza negli ultimi N giorni. Usato dai consumatori
+    che lavorano su una finestra recente (es. alert prezzi Home, finestra 90gg):
+    evita il full-load di TUTTA la storia (migliaia di righe) quando i dati vecchi
+    non vengono comunque usati. Default None = comportamento storico (tutte le righe).
     """
     # [DEBUG]
     logger.debug(f"[CACHE MISS] Query reale DB — user_id={user_id} ristorante_id={ristorante_id} ts={time.time():.3f}")
@@ -146,14 +152,25 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
         logger.critical("❌ CRITICAL: Supabase client non inizializzato!")
         return pd.DataFrame()
     
-    logger.info(f"📊 LOAD START (cached): user_id={user_id}, ristorante_id={ristorante_id}")
-    
+    logger.info(f"📊 LOAD START (cached): user_id={user_id}, ristorante_id={ristorante_id}, solo_ultimi_giorni={solo_ultimi_giorni}")
+
+    # Finestra data opzionale: filtra sia su data_documento sia su data_competenza
+    # (il loader usa la competenza quando presente, altrimenti il documento — per
+    # non perdere righe valide tengo chi rientra in almeno uno dei due campi).
+    _data_floor = None
+    if solo_ultimi_giorni is not None and solo_ultimi_giorni > 0:
+        from datetime import date as _date_cls, timedelta as _td
+        _data_floor = (_date_cls.today() - _td(days=int(solo_ultimi_giorni))).isoformat()
+        _or_finestra = f"data_documento.gte.{_data_floor},data_competenza.gte.{_data_floor}"
+
     dati = []
     try:
         # Prima query per ottenere il count totale (usa head per performance)
         query_count = _filter_active(supabase_client.table("fatture").select("id", count="exact", head=True).eq("user_id", user_id))
         if ristorante_id:
             query_count = query_count.eq("ristorante_id", ristorante_id)
+        if _data_floor is not None:
+            query_count = query_count.or_(_or_finestra)
         response_count = query_count.execute()
         total_rows = response_count.count if response_count.count else 0
         logger.info(f"📊 CARICAMENTO: user_id={user_id} ristorante_id={ristorante_id} ha {total_rows} righe su Supabase")
@@ -171,6 +188,8 @@ def _carica_fatture_da_supabase(user_id: str, ristorante_id=None):
             query_select = _filter_active(supabase_client.table("fatture").select(columns).eq("user_id", user_id))
             if ristorante_id:
                 query_select = query_select.eq("ristorante_id", ristorante_id)
+            if _data_floor is not None:
+                query_select = query_select.or_(_or_finestra)
             response = query_select.range(offset, offset + page_size - 1).execute()
             
             if not response.data:
@@ -275,7 +294,7 @@ def _fetch_numero_documento_map_cached(user_id: str, ristorante_id=None) -> Dict
     return mapping
 
 
-def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None, ristorante_id=None, include_review_rows: bool = True):
+def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supabase_client=None, ristorante_id=None, include_review_rows: bool = True, solo_ultimi_giorni=None):
     """
     🔥 SINGLE SOURCE OF TRUTH: Carica fatture SOLO da Supabase
     
@@ -317,7 +336,7 @@ def carica_e_prepara_dataframe(user_id: str, force_refresh: bool = False, supaba
         logger.info("🔄 Cache invalidata per force_refresh")
     
     # 🚀 CACHED: Carica dati da Supabase (cached per 120s)
-    df_result = _carica_fatture_da_supabase(user_id, ristorante_id)
+    df_result = _carica_fatture_da_supabase(user_id, ristorante_id, solo_ultimi_giorni)
     
     if df_result.empty:
         return pd.DataFrame()
@@ -1924,6 +1943,37 @@ def get_custom_tag_prodotti(tag_id: int, user_id: str) -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Errore get_custom_tag_prodotti tag_id={tag_id}: {e}")
         return []
+
+
+def get_custom_tag_prodotti_bulk(tag_ids: List[int], user_id: str) -> Dict[int, List[Dict[str, Any]]]:
+    """Carica le associazioni di PIU' tag in una sola query (IN su tag_id).
+
+    Ritorna un dict {tag_id: [associazioni]}. Usato dove si analizzano tutti i
+    tag insieme (es. alert prezzi Home): evita N query sequenziali
+    get_custom_tag_prodotti (~0.5s l'una) sostituendole con un singolo round-trip.
+    I tag senza associazioni non compaiono nel dict (il chiamante li tratti come []).
+    """
+    out: Dict[int, List[Dict[str, Any]]] = {}
+    ids = [int(t) for t in (tag_ids or [])]
+    if not ids:
+        return out
+    try:
+        from services import get_supabase_client
+        supabase_client = get_supabase_client()
+        response = (
+            supabase_client.table("custom_tag_prodotti")
+            .select("id,tag_id,descrizione,descrizione_key,fattore_kg,created_at")
+            .in_("tag_id", ids)
+            .eq("user_id", user_id)
+            .order("descrizione")
+            .execute()
+        )
+        for row in (response.data or []):
+            out.setdefault(int(row["tag_id"]), []).append(row)
+        return out
+    except Exception as e:
+        logger.error(f"Errore get_custom_tag_prodotti_bulk tag_ids={ids}: {e}")
+        return out
 
 
 @_make_cache(ttl=300, show_spinner=False)

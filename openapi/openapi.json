@@ -838,22 +838,12 @@
           "Home"
         ],
         "summary": "Briefing giornaliero Home AI — saluto, narrativa, azioni",
-        "description": "Raccoglie le notifiche attive + i segnali LIVE che alimentano il briefing.\n\nParte PESANTE della generazione: query notifiche, alert prezzi (budget 4s),\ncheck ricavi automatici, dati mensili mancanti. Estratta dall'endpoint cosi'\npuo' girare in BACKGROUND (vedi _briefing_rigenera_async) invece che in linea\nsul percorso della Home — che altrimenti sforerebbe il timeout di 8s.",
-        "operationId": "_briefing_raccogli_notifiche_api_home_briefing_get",
+        "operationId": "home_briefing_api_home_briefing_get",
         "parameters": [
           {
-            "name": "user_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "User Id"
-            }
-          },
-          {
-            "name": "ristorante_id",
-            "in": "query",
-            "required": true,
+            "name": "authorization",
+            "in": "header",
+            "required": false,
             "schema": {
               "anyOf": [
                 {
@@ -863,15 +853,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Ristorante Id"
-            }
-          },
-          {
-            "name": "supabase_client",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "title": "Supabase Client"
+              "title": "Authorization"
             }
           },
           {
@@ -3709,6 +3691,84 @@
         }
       }
     },
+    "/api/account/svuota-dati": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Account Svuota Dati",
+        "description": "ADMIN ONLY — svuota TUTTI i dati dell'account admin che chiama, per\nripartire da zero nei test. Cancella SOLO i dati del chiamante:\n\n  - l'id target e' SEMPRE admin_user[\"id\"] (dal token verificato), mai un\n    parametro esterno → impossibile colpire un altro account;\n  - le delete usano .eq(\"user_id\", admin_id) con un id concreto → le righe\n    globali con user_id NULL (es. classificazioni_manuali) restano intatte;\n  - cancella i ristoranti del chiamante: il loro ON DELETE CASCADE porta via\n    fatture, ricavi, margini, tag, scadenziario, notifiche, diario, ecc.\n\nNON tocca: la memoria AI globale (prodotti_master, memoria_ai_categorie),\nl'account `users`, le sessioni (resti loggato), e nessun dato di altri utenti.",
+        "operationId": "account_svuota_dati_api_account_svuota_dati_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SvuotaDatiBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Account Svuota Dati Api Account Svuota Dati Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/prezzi/soglia-alert": {
       "get": {
         "tags": [
@@ -3778,6 +3838,7 @@
           "Prezzi"
         ],
         "summary": "Set Soglia Alert",
+        "description": "DEPRECATO (9/6/2026): la soglia alert si imposta dal configuratore\nassistente (POST /api/home/config). La pagina Prezzi non scrive piu' qui — usa\nGET /api/prezzi/soglia-alert solo come valore iniziale del filtro vista.\nEndpoint mantenuto per compatibilita'; nessun frontend lo chiama piu'.",
         "operationId": "set_soglia_alert_api_prezzi_soglia_alert_post",
         "parameters": [
           {
@@ -13863,6 +13924,11 @@
             "type": "integer",
             "title": "Chat Domande Oggi",
             "default": 0
+          },
+          "price_alert_threshold": {
+            "type": "number",
+            "title": "Price Alert Threshold",
+            "default": 5.0
           }
         },
         "type": "object",
@@ -13890,6 +13956,11 @@
             "type": "boolean",
             "title": "Bloccato",
             "default": false
+          },
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione",
+            "default": ""
           }
         },
         "type": "object",
@@ -13932,6 +14003,17 @@
               }
             ],
             "title": "Chat Ai Enabled"
+          },
+          "price_alert_threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Alert Threshold"
           }
         },
         "type": "object",
@@ -16845,6 +16927,19 @@
           "prezzo_medio"
         ],
         "title": "StoricoPrezzoResponse"
+      },
+      "SvuotaDatiBody": {
+        "properties": {
+          "conferma": {
+            "type": "string",
+            "title": "Conferma"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conferma"
+        ],
+        "title": "SvuotaDatiBody"
       },
       "TagCreateRequest": {
         "properties": {

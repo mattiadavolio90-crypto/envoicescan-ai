@@ -1655,6 +1655,7 @@ class ConfigTopic(BaseModel):
     label: str
     enabled: bool
     bloccato: bool = False  # True = sempre attivo, non spegnibile
+    descrizione: str = ""   # micro-spiegazione per i ristoratori antitecnologici
 
 
 class ConfigResponse(BaseModel):
@@ -1666,12 +1667,18 @@ class ConfigResponse(BaseModel):
     # Domande gia' consumate oggi: valore iniziale del contatore "ti restano N"
     # del widget chat, mostrato gia' all'apertura (prima ancora di chattare).
     chat_domande_oggi: int = 0
+    # Soglia % alert prezzi (users.price_alert_threshold): da qui si IMPOSTA quando
+    # scatta l'avviso "Alert prezzi". In pagina Prezzi resta solo come filtro di
+    # visualizzazione, non la salva piu'. Per-utente (non per-ristorante).
+    price_alert_threshold: float = 5.0
 
 
 class ConfigUpdateRequest(BaseModel):
     nome_referente: Optional[str] = None
     topics_disabled: List[str] = []
     chat_ai_enabled: Optional[bool] = None
+    # None = non toccare. Clamp [0,50] lato salvataggio (set_price_alert_threshold).
+    price_alert_threshold: Optional[float] = None
 
 
 class MolMensilePoint(BaseModel):
@@ -1711,18 +1718,26 @@ class HomeKpiResponse(BaseModel):
 # Avvisi mostrabili nel configuratore, in ordine di gerarchia. I due upload
 # falliti sono "bloccati": sempre attivi (guasti tecnici). Decisione Mattia.
 _CONFIG_TOPICS: List[tuple] = [
-    ("upload_failed",            "Upload fatture fallito",        True),
-    ("upload_ricavi_failed",     "Upload ricavi fallito",         True),
-    ("price_alert",              "Alert prezzi",                  False),
-    ("uncategorized_rows",       "Righe da classificare",         False),
-    ("fatturato_mancante",       "Fatturato mancante",            False),
-    ("incasso_mancante",         "Incasso di ieri mancante",      False),
-    ("costo_personale_mancante", "Costo personale mancante",      False),
-    ("scadenza_superata",        "Scadenze",                      False),
+    ("upload_failed",            "Upload fatture fallito",   True,
+     "Ti avviso se una fattura inviata in automatico non viene caricata."),
+    ("upload_ricavi_failed",     "Upload ricavi fallito",    True,
+     "Ti avviso se i tuoi incassi automatici smettono di arrivare."),
+    ("price_alert",              "Alert prezzi",             False,
+     "Ti segnalo quando un prodotto che pesa sulla spesa rincara oltre la tua soglia."),
+    ("uncategorized_rows",       "Righe da classificare",    False,
+     "Ti ricordo le righe di fattura ancora senza categoria."),
+    ("fatturato_mancante",       "Fatturato mancante",       False,
+     "Ti ricordo di inserire il fatturato del mese, serve per food cost e MOL."),
+    ("incasso_mancante",         "Incasso di ieri mancante", False,
+     "Ti ricordo di inserire l'incasso del giorno prima."),
+    ("costo_personale_mancante", "Costo personale mancante", False,
+     "Ti ricordo di inserire il costo del lavoro del mese, serve per il MOL."),
+    ("scadenza_superata",        "Scadenze",                 False,
+     "Ti avviso sulle fatture fornitori scadute o in scadenza a breve."),
 ]
 
 # Topic "bloccati": sempre visibili, mai disattivabili (flag True in _CONFIG_TOPICS).
-_CONFIG_TOPICS_BLOCCATI = frozenset(k for (k, _l, b) in _CONFIG_TOPICS if b)
+_CONFIG_TOPICS_BLOCCATI = frozenset(k for (k, _l, b, _d) in _CONFIG_TOPICS if b)
 
 
 def _filtra_notifiche_topic_spenti(
@@ -1737,7 +1752,10 @@ def _filtra_notifiche_topic_spenti(
     malformato (None / non-lista) = nessun filtro (fail-open)."""
     if not isinstance(topics_disabled, list):
         return rows
-    spenti = {str(t) for t in topics_disabled if str(t) not in _CONFIG_TOPICS_BLOCCATI}
+    # Espande le key dello stesso tema (es. "Scadenze" -> superata + imminente),
+    # stessa logica del briefing: filtro coerente ovunque.
+    from services.daily_briefing_service import espandi_topic_spenti
+    spenti = {t for t in espandi_topic_spenti(topics_disabled) if t not in _CONFIG_TOPICS_BLOCCATI}
     if not spenti:
         return rows
     return [r for r in rows if str(r.get("topic_key") or "") not in spenti]
@@ -2011,13 +2029,17 @@ def _build_chat_system_prompt(
         logger.warning("chat: KPI Home non disponibili: %s", exc)
 
     # 2) Dettaglio costi per categoria/fornitore dalle fatture (ultimi 90 gg)
+    # Serve solo per le top-list nel prompt (food cost a colpo d'occhio, fornitore
+    # piu' caro): NON carichiamo 'descrizione' ne' aggreghiamo per prodotto — quel
+    # dettaglio lo da' il tool query_costi su richiesta. Senza descrizione e con
+    # limit ridotto la query e' molto piu' leggera (era 3000 righe ad ogni domanda).
     try:
         from datetime import date as _date, timedelta as _td
         user_id = str(user["id"])
         da = (_date.today() - _td(days=90)).isoformat()
         q = (
             supabase_client.table("fatture")
-            .select("totale_riga,categoria,fornitore,descrizione")
+            .select("totale_riga,categoria,fornitore")
             .eq("user_id", user_id)
             .is_("deleted_at", "null")
             .gte("data_documento", da)
@@ -2026,25 +2048,21 @@ def _build_chat_system_prompt(
             q = q.eq("ristorante_id", ristorante_id)
         q = (
             q
-            .limit(3000)
+            .limit(1500)
             .execute()
         )
         righe = q.data or []
         if righe:
             per_cat: Dict[str, float] = {}
             per_forn: Dict[str, float] = {}
-            per_prod: Dict[str, float] = {}
             for r in righe:
                 v = float(r.get("totale_riga") or 0)
                 cat = (r.get("categoria") or "Altro").strip()
                 forn = (r.get("fornitore") or "Sconosciuto").strip()
-                desc = (r.get("descrizione") or "").strip()
                 per_cat[cat] = per_cat.get(cat, 0) + v
                 per_forn[forn] = per_forn.get(forn, 0) + v
-                if desc:
-                    per_prod[desc] = per_prod.get(desc, 0) + v
-            top_cat = sorted(per_cat.items(), key=lambda x: x[1], reverse=True)[:8]
-            top_forn = sorted(per_forn.items(), key=lambda x: x[1], reverse=True)[:6]
+            top_cat = sorted(per_cat.items(), key=lambda x: x[1], reverse=True)[:5]
+            top_forn = sorted(per_forn.items(), key=lambda x: x[1], reverse=True)[:5]
 
             kpi_testo += "\n## Costi per categoria (ultimi 90 giorni)\n"
             for cat, v in top_cat:
@@ -2100,12 +2118,14 @@ Oggi e' {oggi_str}. L'anno corrente e' {oggi.year}. {range_dati}
 Quando l'utente non specifica l'anno, usa SEMPRE l'anno corrente ({oggi.year}) — MAI un anno passato.
 "Ultimo acquisto", "ultima fattura", "recente" NON sono un periodo: non filtrare per mese/anno, cerca il piu' recente in assoluto.
 Non inventare anni: se dopo aver usato l'anno corrente non trovi nulla, dillo e proponi di cercare in tutto lo storico.
+Il MESE CORRENTE e' quasi sempre incompleto: i ristoranti caricano le fatture a fine mese o in ritardo. Se cerchi "questo mese" e lo strumento risponde vuoto (o segnala "mese_non_ancora_caricato"), NON dire "non hai speso nulla": spiega che il mese in corso non e' ancora caricato e proponi l'ultimo mese disponibile.
 
 Rispondi SOLO a domande sui dati del ristorante: costi, fornitori, food cost, margini, MOL, fatture, scadenze.
 Per argomenti non pertinenti (ricette generiche, notizie, argomenti personali) rispondi educatamente che puoi aiutare solo sulla gestione del locale.
 
 Tono: diretto, concreto, da collega esperto in F&B — non da chatbot generico. Risposte brevi (2-5 righe al massimo).
 Importi sempre in euro con 2 decimali. Usa i dati qui sotto: sono gli stessi che il cliente vede nella sua schermata Home. Se un dato c'e' qui, NON dire che non hai dati.
+Food cost a "0.0%" o "n/d" NON e' un valore reale: significa quasi sempre che manca il fatturato del mese (i ricavi non sono ancora stati inseriti), non che il cibo costi zero. In quel caso spiega il perche' in una riga ("il food cost non e' calcolabile finche' non inserisci i ricavi del mese") invece di riportare lo zero come se fosse un dato.
 
 Regole per gli strumenti:
 - Per qualsiasi numero specifico (categoria, fornitore, prodotto, periodo preciso) usa SEMPRE lo strumento giusto — non rispondere a memoria.
@@ -2202,7 +2222,9 @@ def _chat_query_costi(
             elif termine_su == "ovunque":
                 # categoria OR descrizione: cattura sia "birra" categoria che prodotto
                 q = q.or_(f"categoria.ilike.%{termine_val}%,descrizione.ilike.%{termine_val}%")
-        return (q.limit(5000).execute().data) or []
+        # Ordina per data desc: se il limite tronca su clienti con molte righe,
+        # conserva le piu' recenti invece di un taglio arbitrario.
+        return (q.order("data_documento", desc=True).limit(5000).execute().data) or []
 
     righe: List[Dict[str, Any]] = []
     trovato_come = None  # "categoria" | "prodotto" | None
@@ -2235,13 +2257,43 @@ def _chat_query_costi(
         dettaglio[k] = dettaglio.get(k, 0) + float(r.get("totale_riga") or 0)
     top = sorted(dettaglio.items(), key=lambda x: x[1], reverse=True)[:15]
 
-    return {
+    risultato = {
         "periodo": periodo_label,
         "totale": round(totale, 2),
         "righe_trovate": len(righe),
         "trovato_come": trovato_come,
         "dettaglio": [{"voce": k, "spesa": round(v, 2)} for k, v in top],
     }
+
+    # "Questo mese" e' quasi sempre vuoto: i ristoranti caricano le fatture a fine
+    # mese o in ritardo. Se l'utente ha chiesto il mese corrente (o futuro) e non
+    # c'e' nulla, NON e' un "non risulta": e' che il mese non e' ancora caricato.
+    # Segnaliamo all'AI l'ultimo mese con acquisti, cosi' propone quello invece di
+    # rispondere seccamente "non hai speso nulla".
+    if not righe and mese and anno:
+        from datetime import date as _date_q
+        _oggi_q = _date_q.today()
+        if (anno, mese) >= (_oggi_q.year, _oggi_q.month):
+            q_ult = (
+                supabase_client.table("fatture")
+                .select("data_documento")
+                .eq("user_id", user_id)
+                .is_("deleted_at", "null")
+            )
+            if ristorante_id:
+                q_ult = q_ult.eq("ristorante_id", ristorante_id)
+            ult = (q_ult.order("data_documento", desc=True).limit(1).execute().data) or []
+            ultima_data = ult[0].get("data_documento") if ult else None
+            risultato["mese_non_ancora_caricato"] = True
+            risultato["ultima_fattura_caricata"] = ultima_data
+            risultato["suggerimento"] = (
+                "Il mese richiesto e' quello corrente e non risulta ancora caricato "
+                "(le fatture arrivano a fine mese/in ritardo). Proponi all'utente di "
+                "guardare l'ultimo mese effettivamente disponibile invece di dire che "
+                "non ha speso nulla."
+            )
+
+    return risultato
 
 
 def _chat_query_scadenze(user: Dict[str, Any], supabase_client, solo_da_pagare: bool = True) -> Dict[str, Any]:
@@ -2347,7 +2399,9 @@ def _chat_trend_prezzo(
         q = q.eq("ristorante_id", ristorante_id)
     # Cerca su descrizione OR categoria (tollerante come query_costi)
     q = q.or_(f"descrizione.ilike.%{prodotto}%,categoria.ilike.%{prodotto}%")
-    righe = (q.limit(5000).execute().data) or []
+    # Ordina per data desc: il trend usa la finestra ~7 mesi, se tronca conserva
+    # i mesi piu' recenti (quelli che servono al confronto primo<->ultimo).
+    righe = (q.order("data_documento", desc=True).limit(5000).execute().data) or []
     if not righe:
         return {"prodotto": prodotto, "punti": [], "variazione_pct": None}
 
@@ -2457,12 +2511,16 @@ def _chat_confronto_prezzi(
         .select("descrizione,fornitore,prezzo_unitario,data_documento")
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
-        .ilike("descrizione", f"%{prodotto}%")
+        # Tollerante come gli altri tool: cerca su descrizione OR categoria, cosi'
+        # "mozzarella" trova anche righe categorizzate ma con descrizione diversa.
+        .or_(f"descrizione.ilike.%{prodotto}%,categoria.ilike.%{prodotto}%")
         .gte("data_documento", da)
     )
     if ristorante_id:
         q = q.eq("ristorante_id", ristorante_id)
-    righe = q.limit(2000).execute().data or []
+    # Ordina per data desc: se il limite tronca, tiene le righe piu' recenti
+    # (quelle che contano per il prezzo attuale) invece di un taglio arbitrario.
+    righe = q.order("data_documento", desc=True).limit(2000).execute().data or []
 
     # Miglior (ultimo) prezzo per fornitore
     per_forn: Dict[str, Dict[str, Any]] = {}
@@ -2808,6 +2866,160 @@ _MESI_IT_BRIEFING = [
 ]
 
 
+def _briefing_buona_notizia(
+    user_id: str, ristorante_id: str, supabase_client,
+) -> Optional[Dict[str, Any]]:
+    """Apertura POSITIVA del briefing: un fatto vero e fresco con cui iniziare.
+
+    Senza questa, il briefing e' una pura to-do list: quando va tutto bene
+    diventa muto o si fissa sull'unica rogna residua (es. le scadute), facendo
+    sembrare in difficolta' anche un'azienda che macina margine. Qui diamo
+    all'AI UN fatto positivo consolidato da cui partire, prima delle cose da
+    fare. Decisioni Mattia (09/06):
+
+    - MAI confronti fuorvianti nel quotidiano (sagre/chiusure/meteo falsano il
+      "vs ieri" / "vs settimana scorsa"). L'eco quotidiana e' solo il dato grezzo.
+    - Priorita': 1) MOL del mese appena chiuso SE in crescita (la festa di
+      inizio mese, confronto su orizzonte pulito); 2) altrimenti l'incasso di
+      IERI, e SOLO di ieri (oltre non e' piu' una notizia fresca -> silenzio).
+    - Niente apertura forzata: se non c'e' un fatto fresco e solido, si torna
+      al to-do puro. Meglio sobri che fuorvianti.
+
+    Restituisce un record-notifica (stesso formato degli altri segnali live) col
+    topic_key 'buona_notizia', oppure None.
+    """
+    from datetime import datetime as _dt2, timedelta as _td2
+
+    # ── 1) MOL del mese appena chiuso, SOLO se in crescita ──────────────────
+    # Riusa la stessa logica/fonte di /api/home/kpi (margini_mensili) cosi' la
+    # card "I tuoi conti" e il briefing non si contraddicono mai.
+    try:
+        from services.margine_service import (
+            carica_margini_anno, calcola_costi_automatici_per_anno,
+        )
+        oggi = _oggi_rome()
+        mm, aa = (12, oggi.year - 1) if oggi.month == 1 else (oggi.month - 1, oggi.year)
+
+        _cache_anno: Dict[int, tuple] = {}
+
+        def _dati(anno: int):
+            if anno not in _cache_anno:
+                try:
+                    m = carica_margini_anno(user_id, ristorante_id, anno)
+                    fb, sp = calcola_costi_automatici_per_anno(user_id, ristorante_id, anno)
+                    _cache_anno[anno] = (m, fb, sp)
+                except Exception:
+                    _cache_anno[anno] = ({}, {}, {})
+            return _cache_anno[anno]
+
+        # Ultimo mese completo con dati (fino a 6 indietro), come home_kpi.
+        kpi = mese_usato = anno_usato = None
+        cm, ca = mm, aa
+        for _ in range(6):
+            margini, cfb, csp = _dati(ca)
+            cand = _kpi_periodo(margini, cfb, csp, cm)
+            if cand["has_data"]:
+                kpi, mese_usato, anno_usato = cand, cm, ca
+                break
+            cm -= 1
+            if cm == 0:
+                cm, ca = 12, ca - 1
+
+        if kpi is not None and kpi.get("mol") is not None:
+            pm, pa = (mese_usato - 1, anno_usato) if mese_usato > 1 else (12, anno_usato - 1)
+            p_margini, p_fb, p_sp = _dati(pa)
+            kpi_prec = _kpi_periodo(p_margini, p_fb, p_sp, pm)
+            mol_curr = float(kpi["mol"])
+            if kpi_prec.get("has_data") and kpi_prec.get("mol") is not None:
+                mol_prec = float(kpi_prec["mol"])
+                # In crescita = MOL positivo E sopra il mese prima. Solo allora e'
+                # una "buona notizia" da festeggiare in apertura.
+                if mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec:
+                    delta_pct = round((mol_curr - mol_prec) / abs(mol_prec) * 100, 1)
+                    return {
+                        "id": f"buona-notizia-mol-{anno_usato}-{mese_usato:02d}",
+                        "topic_key": "buona_notizia",
+                        "source_type": "live",
+                        "severity": "success",
+                        "title": "",
+                        "body": "",
+                        "action_page": "/margini",
+                        "payload": {
+                            "tipo": "mol_mese",
+                            "mese": _MESI_IT_BRIEFING[mese_usato],
+                            "mol": round(mol_curr, 0),
+                            "delta_pct": delta_pct,
+                            "mese_prec": _MESI_IT_BRIEFING[pm],
+                        },
+                        "source_event_at": None,
+                        "dedupe_key": f"buona-notizia-mol-{anno_usato}-{mese_usato:02d}",
+                    }
+                # Perdita in CALO: MOL ancora negativo ma migliore del mese prima.
+                # E' incoraggiante ("sei sulla strada giusta") senza fingere che
+                # vada bene. Decisione Mattia: segnalarlo come spinta.
+                if mol_curr < 0 and mol_prec < 0 and mol_curr > mol_prec:
+                    return {
+                        "id": f"buona-notizia-perdita-{anno_usato}-{mese_usato:02d}",
+                        "topic_key": "buona_notizia",
+                        "source_type": "live",
+                        "severity": "success",
+                        "title": "",
+                        "body": "",
+                        "action_page": "/margini",
+                        "payload": {
+                            "tipo": "perdita_in_calo",
+                            "mese": _MESI_IT_BRIEFING[mese_usato],
+                            "perdita": round(abs(mol_curr), 0),
+                            "perdita_prec": round(abs(mol_prec), 0),
+                            "mese_prec": _MESI_IT_BRIEFING[pm],
+                        },
+                        "source_event_at": None,
+                        "dedupe_key": f"buona-notizia-perdita-{anno_usato}-{mese_usato:02d}",
+                    }
+    except Exception as exc:
+        logger.warning("briefing buona notizia: blocco MOL fallito: %s", exc)
+
+    # ── 2) Incasso di IERI (e solo di ieri) ─────────────────────────────────
+    # Eco del dato fresco appena entrato/inserito. Nessun confronto: solo "ieri
+    # sono entrati €X". Se l'ultimo incasso NON e' di ieri, niente eco (oltre il
+    # giorno prima non e' piu' una notizia fresca -> decisione Mattia).
+    try:
+        ieri = (_oggi_rome() - _td2(days=1)).isoformat()
+        ric = (
+            supabase_client.table("ricavi_giornalieri")
+            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+            .eq("ristorante_id", ristorante_id)
+            .eq("data", ieri)
+            .limit(1)
+            .execute()
+        )
+        rows = ric.data or []
+        if rows:
+            r = rows[0]
+            incasso = (
+                float(r.get("fatturato_iva10") or 0)
+                + float(r.get("fatturato_iva22") or 0)
+                + float(r.get("altri_ricavi_noiva") or 0)
+            )
+            if incasso > 0:
+                return {
+                    "id": f"buona-notizia-incasso-{ieri}",
+                    "topic_key": "buona_notizia",
+                    "source_type": "live",
+                    "severity": "success",
+                    "title": "",
+                    "body": "",
+                    "action_page": "/margini",
+                    "payload": {"tipo": "incasso_ieri", "incasso": round(incasso, 0)},
+                    "source_event_at": None,
+                    "dedupe_key": f"buona-notizia-incasso-{ieri}",
+                }
+    except Exception as exc:
+        logger.warning("briefing buona notizia: blocco incasso fallito: %s", exc)
+
+    return None
+
+
 def _briefing_dati_mensili_mancanti(
     ristorante_id: str, supabase_client,
 ) -> List[Dict[str, Any]]:
@@ -2979,13 +3191,6 @@ def _briefing_nome_referente(
     return nome, topics_disabled
 
 
-@app.get(
-    "/api/home/briefing",
-    response_model=BriefingResponse,
-    summary="Briefing giornaliero Home AI — saluto, narrativa, azioni",
-    tags=["Home"],
-    dependencies=[Depends(_verify_worker_key)],
-)
 def _briefing_raccogli_notifiche(
     user_id: str, ristorante_id: Optional[str], supabase_client
 ) -> List[Dict[str, Any]]:
@@ -3149,6 +3354,17 @@ def _briefing_raccogli_notifiche(
         except Exception as exc:
             logger.warning("home_briefing: dati mensili mancanti falliti: %s", exc)
 
+    # Apertura POSITIVA: un fatto fresco e vero (MOL del mese in crescita o
+    # incasso di ieri) con cui iniziare il briefing prima delle to-do. Best
+    # effort: se manca, il briefing resta to-do puro come prima.
+    if ristorante_id:
+        try:
+            buona = _briefing_buona_notizia(user_id, ristorante_id, supabase_client)
+            if buona is not None:
+                notifications.insert(0, buona)
+        except Exception as exc:
+            logger.warning("home_briefing: buona notizia fallita: %s", exc)
+
     return notifications
 
 
@@ -3178,6 +3394,13 @@ def _briefing_rigenera_async(user_id: str, ristorante_id: Optional[str]) -> None
         logger.warning("_briefing_rigenera_async fallita per ristorante=%s: %s", ristorante_id, exc)
 
 
+@app.get(
+    "/api/home/briefing",
+    response_model=BriefingResponse,
+    summary="Briefing giornaliero Home AI — saluto, narrativa, azioni",
+    tags=["Home"],
+    dependencies=[Depends(_verify_worker_key)],
+)
 def home_briefing(
     background_tasks: BackgroundTasks,
     authorization: Optional[str] = Header(None),
@@ -3748,14 +3971,23 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     if chat_limite > 0 and chat_ai_enabled:
         domande_oggi = _chat_domande_oggi(ristorante_id, str(user["id"]), sb)
 
+    # Soglia alert prezzi (per-utente): qui si IMPOSTA quando scatta l'avviso.
+    try:
+        from services.db_service import get_price_alert_threshold
+        price_alert_threshold = get_price_alert_threshold(str(user["id"]))
+    except Exception as exc:
+        logger.warning("home_config_get: lettura soglia alert fallita: %s", exc)
+        price_alert_threshold = 5.0
+
     topics = [
-        ConfigTopic(key=key, label=label, enabled=key not in disabled, bloccato=bloccato)
-        for (key, label, bloccato) in _CONFIG_TOPICS
+        ConfigTopic(key=key, label=label, enabled=key not in disabled, bloccato=bloccato, descrizione=descrizione)
+        for (key, label, bloccato, descrizione) in _CONFIG_TOPICS
     ]
     return ConfigResponse(
         nome_referente=nome, topics=topics,
         chat_ai_enabled=chat_ai_enabled, chat_limite_giorno=chat_limite,
         chat_domande_oggi=domande_oggi,
+        price_alert_threshold=price_alert_threshold,
     )
 
 
@@ -3779,8 +4011,8 @@ def home_config_post(
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
-    bloccati = {k for (k, _l, b) in _CONFIG_TOPICS if b}
-    validi = {k for (k, _l, _b) in _CONFIG_TOPICS}
+    bloccati = {k for (k, _l, b, _d) in _CONFIG_TOPICS if b}
+    validi = {k for (k, _l, _b, _d) in _CONFIG_TOPICS}
     disabled = [
         t for t in (body.topics_disabled or [])
         if t in validi and t not in bloccati
@@ -3806,10 +4038,27 @@ def home_config_post(
         logger.error("home_config_post: salvataggio fallito: %s", exc)
         raise HTTPException(status_code=500, detail="Salvataggio fallito")
 
+    # Soglia alert prezzi (per-utente). Qui e' l'UNICO punto che la imposta: in
+    # pagina Prezzi e' solo un filtro di visualizzazione. Cambiarla cambia quali
+    # rincari diventano avvisi -> invalida il briefing di oggi.
+    soglia = 5.0
+    try:
+        from services.db_service import get_price_alert_threshold, set_price_alert_threshold
+        if body.price_alert_threshold is not None:
+            set_price_alert_threshold(str(user["id"]), float(body.price_alert_threshold), sb)
+            try:
+                from services.daily_briefing_service import invalidate_today_briefing
+                invalidate_today_briefing(str(user["id"]), ristorante_id, sb)
+            except Exception as exc:
+                logger.warning("home_config_post: invalidazione briefing fallita: %s", exc)
+        soglia = get_price_alert_threshold(str(user["id"]))
+    except Exception as exc:
+        logger.warning("home_config_post: soglia alert non aggiornata: %s", exc)
+
     disabled_set = set(disabled)
     topics = [
-        ConfigTopic(key=key, label=label, enabled=key not in disabled_set, bloccato=bloccato)
-        for (key, label, bloccato) in _CONFIG_TOPICS
+        ConfigTopic(key=key, label=label, enabled=key not in disabled_set, bloccato=bloccato, descrizione=descrizione)
+        for (key, label, bloccato, descrizione) in _CONFIG_TOPICS
     ]
     chat_ai = True if body.chat_ai_enabled is None else bool(body.chat_ai_enabled)
     piano = user.get("piano")
@@ -3819,9 +4068,15 @@ def home_config_post(
             piano = (r.data or {}).get("piano")
         except Exception:
             piano = "base"
+    chat_limite = _chat_limite_per_piano(piano)
+    domande_oggi = 0
+    if chat_limite > 0 and chat_ai:
+        domande_oggi = _chat_domande_oggi(ristorante_id, str(user["id"]), sb)
     return ConfigResponse(
         nome_referente=str(nome or ""), topics=topics,
-        chat_ai_enabled=chat_ai, chat_limite_giorno=_chat_limite_per_piano(piano),
+        chat_ai_enabled=chat_ai, chat_limite_giorno=chat_limite,
+        chat_domande_oggi=domande_oggi,
+        price_alert_threshold=soglia,
     )
 
 

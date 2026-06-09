@@ -18,6 +18,10 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from config.logger_setup import get_logger
+
+logger = get_logger("router_ricavi")
+
 # NB: import LAZY di fastapi_worker per evitare il ciclo
 # ricavi -> fastapi_worker -> ricavi. Il worker (worker/email_queue_processor.py)
 # importa da questo modulo SOLO i parser (_detect_gestionale_version, _parse_*),
@@ -281,6 +285,16 @@ def upsert_ricavi_batch(
                     inserted += 1
         except Exception as e:
             errors.append(f"upsert: {e}")
+
+    # Nuovi ricavi -> lo snapshot briefing di oggi e' stantio (l'apertura
+    # positiva "ieri sono entrati €X" dipende da questi dati). Lo invalidiamo
+    # cosi' al prossimo load si rigenera. Best-effort: non blocca l'upsert.
+    if inserted or updated:
+        try:
+            from services.daily_briefing_service import invalidate_today_briefing
+            invalidate_today_briefing(str(user["id"]), str(ristorante_id), sb)
+        except Exception as exc:
+            logger.warning("upsert_ricavi_batch: invalidate briefing fallita: %s", exc)
 
     return RicaviBatchUpsertResponse(
         inserted=inserted, updated=updated, skipped=skipped, errors=errors,

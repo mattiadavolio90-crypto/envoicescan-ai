@@ -25,6 +25,7 @@ export type ConfigTopic = {
   label: string;
   enabled: boolean;
   bloccato: boolean;
+  descrizione: string; // micro-spiegazione di cosa fa l'avviso (per i ristoratori)
 };
 
 export type AssistantConfig = {
@@ -33,6 +34,9 @@ export type AssistantConfig = {
   chat_ai_enabled: boolean;
   chat_limite_giorno: number; // 0 = piano free, chat non disponibile
   chat_domande_oggi: number; // domande gia' consumate oggi (valore iniziale del contatore)
+  // Soglia % alert prezzi: da qui si imposta quando scatta l'avviso "Alert prezzi".
+  // In pagina Prezzi resta solo come filtro di visualizzazione.
+  price_alert_threshold: number;
 };
 
 export type SaluteVoce = {

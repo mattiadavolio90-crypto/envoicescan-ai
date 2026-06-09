@@ -15,7 +15,11 @@ import { useRouter } from "next/navigation";
 // Il keep-alive (.github/workflows/keepalive_worker.yml) tiene il worker caldo
 // nelle ore di uso: questo retry copre i casi residui (deploy, riavvii).
 
-const BACKOFF_MS = [1500, 3000, 6000, 10000];
+// Backoff progressivo: copre la rigenerazione in background del briefing, che su
+// clienti con molte fatture (full-load righe + alert prezzi) puo' richiedere
+// qualche decina di secondi. Prima si fermava a ~20s e mostrava il fallback
+// "piu' lento del solito" mentre il background stava ancora lavorando.
+const BACKOFF_MS = [1500, 3000, 6000, 10000, 12000, 15000];
 
 type Props = {
   /** Endpoint proxy Next da ripingare, es. "/api/home/briefing". */

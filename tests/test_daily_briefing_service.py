@@ -644,6 +644,48 @@ class TestGetLatestBriefing:
 
 
 # ────────────────────────────────────────────────
+# espandi_topic_spenti + filtro "Scadenze" (fix 9/6: il toggle Scadenze
+# spegne sia scadenza_superata che scadenza_imminente, stesso tema)
+# ────────────────────────────────────────────────
+
+from services.daily_briefing_service import espandi_topic_spenti
+
+
+class TestEspandiTopicSpenti:
+    def test_scadenza_espande_a_imminente(self):
+        spenti = espandi_topic_spenti(["scadenza_superata"])
+        assert spenti == {"scadenza_superata", "scadenza_imminente"}
+
+    def test_topic_senza_figli_invariato(self):
+        assert espandi_topic_spenti(["price_alert"]) == {"price_alert"}
+
+    def test_lista_vuota(self):
+        assert espandi_topic_spenti([]) == set()
+
+    def test_input_malformato_set_vuoto(self):
+        assert espandi_topic_spenti(None) == set()
+        assert espandi_topic_spenti("scadenza_superata") == set()
+
+    def test_mix(self):
+        spenti = espandi_topic_spenti(["scadenza_superata", "price_alert"])
+        assert spenti == {"scadenza_superata", "scadenza_imminente", "price_alert"}
+
+
+class TestFiltroScadenzeNelloSnapshot:
+    def test_spegnere_scadenze_nasconde_anche_imminente(self):
+        notifs = [
+            _notif("scadenza_superata", "error", {"count": 2, "totale": 900.0}),
+            _notif("scadenza_imminente", "warning", {"count": 1, "totale": 100.0}),
+            _notif("price_alert", "warning", {"count": 1}),
+        ]
+        snap = _build_snapshot(notifs, use_ai=False, topics_disabled=["scadenza_superata"])
+        topic_keys = {a.get("topic_key") for a in snap["azioni"]}
+        assert "scadenza_superata" not in topic_keys
+        assert "scadenza_imminente" not in topic_keys  # il fix: spento anche questo
+        assert "price_alert" in topic_keys
+
+
+# ────────────────────────────────────────────────
 # generate_and_save_briefing
 # ────────────────────────────────────────────────
 

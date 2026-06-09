@@ -319,6 +319,7 @@ def analizza_tag(
     data_da,
     data_a,
     df_precaricato: Optional[pd.DataFrame] = None,
+    associazioni_precaricate: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Analisi completa di un tag nel periodo richiesto.
 
@@ -330,6 +331,11 @@ def analizza_tag(
             piu' chiamate condividono lo stesso scope (es. alert prezzi che
             analizza tutti i tag), il chiamante carica UNA volta e lo passa qui,
             evitando una ricarica completa da Supabase per ogni invocazione.
+        associazioni_precaricate: associazioni descrizione del tag gia' lette dal
+            chiamante. Stesso motivo del df: l'alert prezzi analizza ogni tag su
+            DUE finestre (recente/precedente) -> senza questo si farebbe la stessa
+            query get_custom_tag_prodotti due volte per tag (0.55s l'una). Default
+            None = il metodo legge da solo, comportamento storico invariato.
 
     Returns:
         dict con chiavi ``kpi``, ``trend``, ``fornitori``, ``vuoto``.
@@ -338,7 +344,11 @@ def analizza_tag(
     empty_result = {"kpi": None, "trend": {"punti": [], "prezzo_medio_periodo": 0.0},
                     "fornitori": {"fornitori": [], "aggregati": None}, "vuoto": True}
 
-    associazioni = get_custom_tag_prodotti(int(tag_id), user_id)
+    associazioni = (
+        associazioni_precaricate
+        if associazioni_precaricate is not None
+        else get_custom_tag_prodotti(int(tag_id), user_id)
+    )
     if not associazioni:
         return empty_result
 

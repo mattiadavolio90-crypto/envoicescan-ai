@@ -36,12 +36,37 @@ _MAX_CARD = 5
 # (perdita dati) e vanno sempre mostrati. Decisione Mattia (Step 6).
 _TOPIC_NON_DISATTIVABILI = frozenset({'upload_failed', 'upload_ricavi_failed'})
 
+# Un singolo interruttore del configuratore copre piu' topic del briefing quando
+# appartengono allo stesso TEMA. Es: l'avviso "Scadenze" (key 'scadenza_superata')
+# governa anche 'scadenza_imminente' — l'utente che spegne "Scadenze" si aspetta
+# di non vedere ne' quelle superate ne' quelle in arrivo.
+_TOPIC_SPENTO_ESTENDE: Dict[str, frozenset] = {
+    'scadenza_superata': frozenset({'scadenza_superata', 'scadenza_imminente'}),
+}
+
+
+def espandi_topic_spenti(topics_disabled) -> set:
+    """Espande le key spente del configuratore alle key 'figlie' dello stesso tema.
+
+    Centralizzato: usato sia dal briefing (_build_snapshot) sia dal filtro
+    notifiche (_filtra_notifiche_topic_spenti nel worker), cosi' un interruttore
+    spegne ovunque tutti i topic del suo tema. Input malformato -> set vuoto.
+    """
+    if not isinstance(topics_disabled, (list, set, tuple)):
+        return set()
+    spenti: set = set()
+    for t in topics_disabled:
+        key = str(t)
+        spenti |= set(_TOPIC_SPENTO_ESTENDE.get(key, frozenset({key})))
+    return spenti
+
 # Gerarchia TEMATICA delle card (decisa da Mattia, doc Punto 1/2).
 # Regola d'oro: prima il TEMA, poi la gravita' DENTRO lo stesso tema.
 # "Un upload mancato e' sempre piu' importante di un rincaro del 1000%."
 # (piu' basso = prima). I numeri lasciano spazio per i topic futuri:
 #   upload_ricavi_failed (Step 5) ~ 15, tra upload fatture e prezzi.
 _TOPIC_PRIORITY: Dict[str, int] = {
+    'buona_notizia':             0,   # 0. Apertura positiva (NON e' una card to-do)
     'upload_failed':            10,   # 1. Upload fatture fallito
     'upload_ricavi_failed':     15,   # 2. Upload ricavi fallito (solo se mappato)
     'price_alert':              20,   # 3. Alert prezzi
@@ -76,6 +101,44 @@ _TOPIC_ACTION: Dict[str, tuple] = {
 # ============================================================
 # HELPERS INTERNI
 # ============================================================
+
+def _euro_it(valore: float) -> str:
+    """Formatta un importo in stile italiano: 11543 -> '11.543'."""
+    return f"{int(round(valore)):,}".replace(",", ".")
+
+
+def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
+    """Bullet deterministico dell'apertura positiva (MOL in crescita o incasso ieri).
+
+    Numeri gia' corretti dal backend: l'AI li riscrivera' solo in tono. Nessun
+    confronto fuorviante nell'incasso (solo l'eco del dato di ieri); il confronto
+    c'e' SOLO nel MOL, su orizzonte pulito (mese chiuso vs mese chiuso).
+    """
+    tipo = str(payload.get('tipo') or '')
+    if tipo == 'mol_mese':
+        mese = str(payload.get('mese') or '').capitalize()
+        mol = _euro_it(float(payload.get('mol') or 0))
+        delta = payload.get('delta_pct')
+        prec = str(payload.get('mese_prec') or '').lower()
+        prep = "ad" if prec[:1] in ("a", "o") else "a"
+        base = f"\U0001F525 {mese} chiuso con € {mol} di margine"
+        if delta is not None and prec:
+            base += f", +{float(delta):.1f}% rispetto {prep} {prec}"
+        return base + "."
+    if tipo == 'perdita_in_calo':
+        mese = str(payload.get('mese') or '').capitalize()
+        perdita = _euro_it(float(payload.get('perdita') or 0))
+        prec = str(payload.get('mese_prec') or '').lower()
+        prep = "ad" if prec[:1] in ("a", "o") else "a"
+        return (
+            f"\U0001F4AA {mese} in miglioramento: la perdita è scesa a € {perdita}"
+            f" rispetto {prep} {prec} — sei sulla strada giusta."
+        )
+    if tipo == 'incasso_ieri':
+        incasso = _euro_it(float(payload.get('incasso') or 0))
+        return f"\U0001F4B0 Ieri sono entrati € {incasso} di incasso."
+    return ""
+
 
 def _today_rome() -> date:
     """Restituisce la data odierna nel fuso Europe/Rome."""
@@ -169,6 +232,9 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
     topic = str(notif.get('topic_key') or '')
     payload = notif.get('payload') or {}
     title = str(notif.get('title') or '')
+
+    if topic == 'buona_notizia':
+        return _buona_notizia_bullet(payload)
 
     if topic == 'scadenza_superata':
         count = payload.get('count')
@@ -451,13 +517,52 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
     return f"{title}."
 
 
-def _compose_narrative(selected: List[Dict[str, Any]], severity_max: str) -> str:
+def _buona_notizia_frase(payload: Dict[str, Any]) -> str:
+    """Frase narrativa (template) per l'apertura positiva. Niente confronti
+    fuorvianti: l'incasso e' pura eco del dato di ieri."""
+    tipo = str(payload.get('tipo') or '')
+    if tipo == 'mol_mese':
+        mese = str(payload.get('mese') or '').capitalize()
+        mol = _euro_it(float(payload.get('mol') or 0))
+        delta = payload.get('delta_pct')
+        prec = str(payload.get('mese_prec') or '').lower()
+        prep = "ad" if prec[:1] in ("a", "o") else "a"
+        if delta is not None and prec:
+            return f"{mese} si è chiuso bene: € {mol} di margine, +{float(delta):.1f}% rispetto {prep} {prec}! 🔥"
+        return f"{mese} si è chiuso con € {mol} di margine. 🔥"
+    if tipo == 'perdita_in_calo':
+        mese = str(payload.get('mese') or '').capitalize()
+        perdita = _euro_it(float(payload.get('perdita') or 0))
+        prec = str(payload.get('mese_prec') or '').lower()
+        prep = "ad" if prec[:1] in ("a", "o") else "a"
+        return (
+            f"{mese} è in miglioramento: la perdita è scesa a € {perdita} "
+            f"rispetto {prep} {prec}, sei sulla strada giusta! 💪"
+        )
+    if tipo == 'incasso_ieri':
+        incasso = _euro_it(float(payload.get('incasso') or 0))
+        return f"Ieri sono entrati € {incasso} di incasso. 💰"
+    return ""
+
+
+def _compose_narrative(
+    selected: List[Dict[str, Any]],
+    severity_max: str,
+    apertura_buona: Optional[Dict[str, Any]] = None,
+) -> str:
     """Compone il testo narrativo colloquiale con apertura, corpo e chiusura.
 
     Gestisce la fusione di fatturato_mancante + costo_personale_mancante
-    quando si riferiscono allo stesso mese/anno.
+    quando si riferiscono allo stesso mese/anno. Se ``apertura_buona`` e'
+    presente, il briefing apre con quella (prima il bene, poi le to-do).
     """
+    apertura = _buona_notizia_frase(apertura_buona.get('payload') or {}) if apertura_buona else ""
+
     if not selected:
+        if apertura:
+            # C'e' una buona notizia ma niente da fare: valorizziamo invece del
+            # muto "tutto in ordine".
+            return f"Ciao! 👋\n{apertura}\nPer oggi non c'è nulla da sistemare: goditi la giornata! ✅"
         return "Ciao! ✅\nTutto in ordine per oggi, niente da sistemare. Buon lavoro! 👍"
 
     sentences: List[str] = []
@@ -487,6 +592,10 @@ def _compose_narrative(selected: List[Dict[str, Any]], severity_max: str) -> str
         sentences.append(_narrative_phrase_for(n))
 
     body = "\n".join(sentences)
+    if apertura:
+        # Prima il bene, poi la rogna (decisione Mattia): apriamo con la buona
+        # notizia e poi passiamo alle cose da chiudere.
+        return f"Ciao! 👋\n{apertura}\nDetto questo, qualcosa da sistemare oggi c'è:\n{body}\nForza, ce la fai! 🔥"
     return f"Ciao! 👋 Vediamo cosa c'è da sistemare oggi:\n{body}\nForza, ce la fai! 🔥"
 
 
@@ -510,6 +619,16 @@ _NARRATION_SYSTEM_PROMPT = (
     "2) Non aggiungere voci non presenti nell'elenco. "
     "3) Massimo 4 frasi, scorrevoli e con un po' di energia (non burocratiche). "
     "Apri in modo amichevole e chiudi con un incoraggiamento breve. "
+    "3-bis) Se la PRIMA voce dell'elenco e' una buona notizia (un margine in "
+    "crescita, una perdita che si riduce o un incasso, riconoscibile dall'emoji "
+    "🔥 💪 o 💰), aprici il "
+    "briefing con tono positivo PRIMA di passare alle cose da sistemare: prima "
+    "il bene, poi le rogne. Non confrontare ne' commentare l'incasso oltre quello "
+    "che ti viene detto (niente 'in calo/in crescita' inventati sull'incasso). "
+    "3-ter) Le voci che sono PROBLEMI (rincari di prezzo, scadenze, dati "
+    "mancanti) vanno descritte con tono neutro o di allerta, MAI con aggettivi "
+    "entusiasti: vietato 'un bel +X%', 'ottimo', 'fantastico' su un costo che "
+    "sale o una scadenza. L'entusiasmo e' solo per le buone notizie. "
     "4) Usa 2-4 emoji pertinenti per dare ritmo (es. 📊 💰 ⏰ ✅ 🔥 👍), "
     "ma senza esagerare e mai dentro i numeri. "
     "5) Mantieni intatti i segnaposto tipo <<P1>> o <<F1>> se presenti. "
@@ -629,17 +748,25 @@ def _build_snapshot(
         if t and t not in seen_topics:
             seen_topics[t] = n
 
-    # Topic spenti dal configuratore (Step 6). I topic non disattivabili
+    # Topic spenti dal configuratore (Step 6), espansi alle key dello stesso tema
+    # (es. "Scadenze" spegne superata + imminente). I topic non disattivabili
     # (upload falliti) restano sempre attivi anche se finiti in lista per errore.
     spenti = {
-        t for t in (topics_disabled or [])
+        t for t in espandi_topic_spenti(topics_disabled)
         if t not in _TOPIC_NON_DISATTIVABILI
     }
 
+    # Apertura POSITIVA: estratta a parte. NON e' una card "Da fare oggi" (non si
+    # ignora, non ha CTA) e non conta per 'tutto_ok': e' solo il fatto fresco con
+    # cui l'AI apre il briefing. Resta fuori da candidati/azioni.
+    buona_notizia = seen_topics.get('buona_notizia') if 'buona_notizia' not in spenti else None
+
     # Solo topic noti (presenti nella gerarchia), non spenti, E azionabili/utili.
+    # La buona notizia e' esclusa qui: e' apertura narrativa, non una to-do.
     candidati = [
         n for n in seen_topics.values()
         if str(n.get('topic_key') or '') in _TOPIC_PRIORITY
+        and str(n.get('topic_key') or '') != 'buona_notizia'
         and str(n.get('topic_key') or '') not in spenti
         and _is_actionable(n)
     ]
@@ -659,9 +786,15 @@ def _build_snapshot(
     azioni = [_action_for(n) for n in selected]
     sev_max = _severity_max(notifications)
 
-    template_narrative = _compose_narrative(selected, sev_max)
-    if use_ai and selected:
-        narrative = _narrate_with_ai(bullets, template_narrative)
+    # Apertura positiva come primo bullet per l'AI (anonimizzato come gli altri),
+    # cosi' la narrativa inizia dal bene e poi passa alle to-do (decisione Mattia:
+    # "prima il bene, poi la rogna"). Nel template entra come frase d'apertura.
+    apertura = _bullet_for(buona_notizia) if buona_notizia else None
+    bullets_ai = ([apertura] + bullets) if apertura else bullets
+
+    template_narrative = _compose_narrative(selected, sev_max, apertura_buona=buona_notizia)
+    if use_ai and (selected or buona_notizia):
+        narrative = _narrate_with_ai(bullets_ai, template_narrative)
     else:
         narrative = template_narrative
 

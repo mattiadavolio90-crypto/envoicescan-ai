@@ -55,6 +55,10 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali }: ChatWidgetProp
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  // Messaggio d'attesa progressivo: l'assistente puo' impiegare diversi secondi
+  // (legge le fatture, fa piu' giri di ricerca). Un testo fermo su "Sto cercando"
+  // sembra un blocco; farlo avanzare comunica che sta lavorando davvero.
+  const [attesa, setAttesa] = useState(0);
   // Domande consumate oggi: parte dal valore del config e si aggiorna ad ogni
   // risposta del backend (fonte di verita'), cosi' il contatore resta esatto
   // anche se l'utente ha chattato da un altro dispositivo.
@@ -91,6 +95,20 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali }: ChatWidgetProp
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // Fa avanzare il messaggio d'attesa mentre si carica; si azzera a fine richiesta.
+  useEffect(() => {
+    if (!loading) {
+      setAttesa(0);
+      return;
+    }
+    const t1 = setTimeout(() => setAttesa(1), 2500);
+    const t2 = setTimeout(() => setAttesa(2), 6000);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [loading]);
 
   // Focus sull'input quando si apre
   useEffect(() => {
@@ -242,7 +260,13 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali }: ChatWidgetProp
             {loading && (
               <div className="mr-auto flex items-center gap-2 rounded-xl bg-muted px-3 py-2 text-sm text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin" />
-                <span>Sto cercando...</span>
+                <span>
+                  {attesa === 0
+                    ? "Sto cercando..."
+                    : attesa === 1
+                      ? "Sto leggendo le tue fatture..."
+                      : "Ci sono quasi, un attimo..."}
+                </span>
               </div>
             )}
             <div ref={bottomRef} />

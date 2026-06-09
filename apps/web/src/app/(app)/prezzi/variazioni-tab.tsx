@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, Save, ChevronDown, Search, TriangleAlert, CheckCircle2, Calendar, Settings2 } from "lucide-react";
+import { RefreshCw, ChevronDown, Search, TriangleAlert, CheckCircle2, Calendar, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   LineChart,
@@ -315,7 +315,6 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   const [customA, setCustomA] = useState("");
   const [soglia, setSoglia] = useState(initialSoglia);
   const [sogliaInput, setSogliaInput] = useState(String(initialSoglia));
-  const [savingSoglia, setSavingSoglia] = useState(false);
   const [data, setData] = useState<VariazioniResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -379,24 +378,13 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     return isoDateRange(anno, null);
   }
 
-  async function saveSoglia() {
+  // Filtro di SOLA VISUALIZZAZIONE: muove la soglia per vedere cosa supererebbe
+  // in questa pagina, senza salvare nulla. La soglia che fa scattare gli AVVISI si
+  // imposta nel configuratore assistente (Home) ed e' quella di partenza qui.
+  function applicaFiltroSoglia() {
     const val = parseFloat(sogliaInput.replace(",", ".")) || 5;
-    setSavingSoglia(true);
-    try {
-      const res = await fetch("/api/prezzi/soglia-alert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ soglia: val }),
-      });
-      if (!res.ok) throw new Error();
-      setSoglia(val);
-      toast.success(`Soglia salvata: ${val}% — ricarico gli alert`);
-      loadRange(rangeAttivo(), val);
-    } catch {
-      toast.error("Errore nel salvataggio soglia");
-    } finally {
-      setSavingSoglia(false);
-    }
+    setSoglia(val);
+    loadRange(rangeAttivo(), val);
   }
 
   async function toggleCard(r: VariazionePrezzo) {
@@ -550,9 +538,9 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
         )}
       </div>
 
-      {/* ── Soglia alert ── */}
+      {/* ── Soglia di visualizzazione (NON imposta gli avvisi) ── */}
       <div className="flex flex-wrap items-center gap-2">
-        <label className="text-sm text-muted-foreground">Soglia alert</label>
+        <label className="text-sm text-muted-foreground">Mostra variazioni da</label>
         <input
           type="number"
           min="0"
@@ -560,19 +548,20 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
           step="0.5"
           value={sogliaInput}
           onChange={(e) => setSogliaInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") applicaFiltroSoglia(); }}
           className="w-16 rounded-md border border-border px-2 py-1.5 text-sm bg-background text-right"
         />
-        <span className="text-sm text-muted-foreground">%</span>
+        <span className="text-sm text-muted-foreground">% in su</span>
         <button
-          onClick={saveSoglia}
-          disabled={savingSoglia}
+          onClick={applicaFiltroSoglia}
+          disabled={loading}
           className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-md border border-border hover:bg-muted disabled:opacity-50 transition-colors"
         >
-          <Save className="size-3" />
-          {savingSoglia ? "…" : "Salva"}
+          <Search className="size-3" />
+          Applica
         </button>
         <span className="text-xs text-muted-foreground basis-full sm:basis-auto">
-          Questa soglia attiva anche le notifiche sui rincari.
+          Filtro solo per questa pagina. La soglia degli avvisi si imposta nell&apos;assistente, in Home.
         </span>
       </div>
 

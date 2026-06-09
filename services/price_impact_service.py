@@ -33,21 +33,17 @@ _FINESTRA_GIORNI = 90
 # proposito: il filtro VERO e' l'impatto €, non la percentuale.
 _SOGLIA_PERC_CANDIDATO = 3.0
 
-# Rilevanza automatica: un aumento conta solo se il suo impatto €/mese supera
-# questa frazione della spesa food del periodo. Si adatta alla taglia.
-_FRAZIONE_SPESA_FOOD = 0.005   # 0,5%
+# Quota di spesa food coperta dai prodotti "che pesano" (Pareto). Un prodotto e'
+# eleggibile agli alert solo se rientra nella fascia che cumula questa quota
+# della spesa: adattivo alla frammentazione del cliente (vedi _prodotti_pareto).
+_PARETO_QUOTA = 0.80
+
+# Soglia % di default se il cliente non ne ha salvata una in pagina Prezzi
+# (allineata a _PRICE_ALERT_DEFAULT del router prezzi).
+_SOGLIA_PERC_DEFAULT = 5.0
 
 # Numero massimo di alert mostrati in Home ("solo i 2-3 col maggior impatto").
 _MAX_ALERT = 3
-
-
-def _spesa_food_periodo(df: pd.DataFrame) -> float:
-    """Spesa totale Food & Beverage nel DataFrame (esclude spese generali)."""
-    if df.empty or "Categoria" not in df.columns or "TotaleRiga" not in df.columns:
-        return 0.0
-    df_fb = df[~df["Categoria"].isin(CATEGORIE_SPESE_GENERALI)]
-    tot = pd.to_numeric(df_fb["TotaleRiga"], errors="coerce").fillna(0.0).sum()
-    return float(tot)
 
 
 def _filtra_finestra(df: pd.DataFrame, giorni: int) -> pd.DataFrame:
@@ -61,16 +57,58 @@ def _filtra_finestra(df: pd.DataFrame, giorni: int) -> pd.DataFrame:
     return out.drop(columns=["_data_dt"], errors="ignore")
 
 
-def _alert_prodotti(df: pd.DataFrame, soglia_impatto: float) -> List[Dict[str, Any]]:
-    """Aumenti su PRODOTTI food&beverage che superano la soglia d'impatto."""
+def _prodotti_pareto(df: pd.DataFrame, quota: float = _PARETO_QUOTA) -> set:
+    """Prodotti che cumulano la `quota` (es. 80%) della spesa food del periodo.
+
+    Pareto adattivo alla frammentazione del cliente: invece di una soglia di
+    peso fissa (es. "almeno il 3%", che taglia tutto sui clienti con centinaia
+    di prodotti e niente su quelli con pochi), tiene eleggibili SOLO i prodotti
+    che insieme fanno la quota dominante della spesa. Su un cliente concentrato
+    sono pochi pilastri; su uno frammentato sono di piu'. La soglia "peso" si
+    adatta da sola. Cosi' i marginali (limoni, accessori) restano fuori dagli
+    alert prezzi a prescindere da quanto rincarino in percentuale.
+    """
+    if df.empty or "Prodotto" not in df.columns or "TotaleRiga" not in df.columns:
+        return set()
+    df_fb = df[~df["Categoria"].isin(CATEGORIE_SPESE_GENERALI)] if "Categoria" in df.columns else df
+    spesa = (
+        df_fb.assign(_t=pd.to_numeric(df_fb["TotaleRiga"], errors="coerce").fillna(0.0))
+        .groupby("Prodotto")["_t"].sum()
+        .sort_values(ascending=False)
+    )
+    spesa = spesa[spesa > 0]
+    totale = float(spesa.sum())
+    if totale <= 0:
+        return set()
+    cumulata = spesa.cumsum() / totale
+    # Tieni tutti i prodotti fino a coprire la quota (incluso quello che la
+    # supera, cosi' la fascia copre almeno `quota`).
+    eleggibili = cumulata[cumulata.shift(fill_value=0.0) < quota]
+    return set(str(p) for p in eleggibili.index)
+
+
+def _alert_prodotti(
+    df: pd.DataFrame,
+    soglia_perc_cliente: float,
+    prodotti_pareto: set,
+) -> List[Dict[str, Any]]:
+    """Aumenti su PRODOTTI food&beverage rilevanti per il cliente.
+
+    Un prodotto entra solo se: 1) e' aumentato di almeno la soglia % che il
+    cliente ha impostato in pagina Prezzi (price_alert_threshold), 2) ha impatto
+    €/mese positivo, 3) e' tra i prodotti che pesano davvero (fascia Pareto della
+    spesa food). Cosi' i marginali tipo limoni restano fuori anche se rincarano
+    tanto in percentuale: conta il peso sul food cost, non il % di aumento.
+    """
     df_alert = calcola_alert(df, soglia_minima=_SOGLIA_PERC_CANDIDATO)
     if df_alert.empty:
         return []
 
-    # Solo aumenti reali (non ribassi) con impatto stimato rilevante.
+    impatto = pd.to_numeric(df_alert["Impatto_Stimato"], errors="coerce").fillna(0)
     df_alert = df_alert[
-        (df_alert["Aumento_Perc"] > 0)
-        & (pd.to_numeric(df_alert["Impatto_Stimato"], errors="coerce").fillna(0) >= soglia_impatto)
+        (df_alert["Aumento_Perc"] >= soglia_perc_cliente)
+        & (impatto > 0)
+        & (df_alert["Prodotto"].astype(str).isin(prodotti_pareto))
     ]
     if df_alert.empty:
         return []
@@ -92,9 +130,15 @@ def _alert_tag(
     user_id: str,
     ristorante_id: str,
     df_completo: pd.DataFrame,
-    soglia_impatto: float,
+    soglia_perc_cliente: float,
 ) -> List[Dict[str, Any]]:
-    """Aumenti sui custom TAG del cliente, stessa logica impatto €/mese.
+    """Aumenti sui custom TAG del cliente — il SUO focus, quindi prioritari.
+
+    A differenza dei prodotti, i tag NON hanno filtro di peso (Pareto): se il
+    cliente ha creato un tag, ci tiene per definizione, quindi basta che superi
+    la sua soglia % (price_alert_threshold) e abbia un rincaro reale. Decisione
+    Mattia: "i tag dovrebbero sempre rientrare, e' un'informazione su cui ha
+    focus la sua attenzione".
 
     Usa il prezzo medio ponderato del tag (tag_analytics) e confronta la prima
     meta' del periodo con la seconda per stimare la variazione; l'impatto e'
@@ -119,15 +163,26 @@ def _alert_tag(
     meta = oggi - timedelta(days=_FINESTRA_GIORNI // 2)
     inizio = oggi - timedelta(days=_FINESTRA_GIORNI)
 
+    from services.db_service import get_custom_tag_prodotti_bulk
+
+    # Tutte le associazioni dei tag in UNA query (IN su tag_id), invece di una
+    # get_custom_tag_prodotti per tag × due finestre: su clienti con piu' tag era
+    # il collo di bottiglia dell'alert prezzi (N query sequenziali da ~0.5s).
+    tag_ids = [int(t["id"]) for t in tags if t.get("id") is not None]
+    assoc_per_tag = get_custom_tag_prodotti_bulk(tag_ids, user_id)
+
     out: List[Dict[str, Any]] = []
     for tag in tags:
         tag_id = tag.get("id")
         nome = str(tag.get("nome") or tag.get("name") or "").strip()
         if tag_id is None or not nome:
             continue
+        assoc_tag = assoc_per_tag.get(int(tag_id)) or []
+        if not assoc_tag:
+            continue
         try:
-            recente = analizza_tag(user_id, ristorante_id, int(tag_id), meta, oggi, df_precaricato=df_completo)
-            precedente = analizza_tag(user_id, ristorante_id, int(tag_id), inizio, meta, df_precaricato=df_completo)
+            recente = analizza_tag(user_id, ristorante_id, int(tag_id), meta, oggi, df_precaricato=df_completo, associazioni_precaricate=assoc_tag)
+            precedente = analizza_tag(user_id, ristorante_id, int(tag_id), inizio, meta, df_precaricato=df_completo, associazioni_precaricate=assoc_tag)
         except Exception as exc:
             logger.warning("price_impact: analisi tag %s fallita: %s", tag_id, exc)
             continue
@@ -140,6 +195,11 @@ def _alert_tag(
             continue
 
         aumento_pct = (p_new - p_old) / p_old * 100.0
+        # Filtro UNICO sui tag: la soglia % che il cliente ha scelto. Niente peso
+        # Pareto (il tag e' gia' il suo focus). Sotto la sua soglia non e' un
+        # rincaro che gli interessa, sopra si'.
+        if aumento_pct < soglia_perc_cliente:
+            continue
         # Impatto: delta prezzo × quantita' normalizzata acquistata di recente,
         # riportata al mese (la finestra recente e' ~mezza finestra = ~45gg).
         kpi = recente.get("kpi") or {}
@@ -149,9 +209,6 @@ def _alert_tag(
         delta_prezzo = p_new - p_old
         giorni_recenti = max(1, (_FINESTRA_GIORNI // 2))
         impatto_mese = delta_prezzo * qta * (30.0 / giorni_recenti)
-
-        if impatto_mese < soglia_impatto:
-            continue
         out.append({
             "tipo": "tag",
             "nome": nome,
@@ -160,6 +217,30 @@ def _alert_tag(
             "impatto_mese": round(impatto_mese, 0),
         })
     return out
+
+
+def _leggi_soglia_perc_cliente(user_id: str, supabase_client=None) -> float:
+    """Soglia % alert prezzi salvata dal cliente (users.price_alert_threshold).
+
+    E' la stessa che imposta in pagina Prezzi. Clamp [0,50] come il router.
+    Fallback a _SOGLIA_PERC_DEFAULT se assente o illeggibile.
+    """
+    try:
+        sb = supabase_client
+        if sb is None:
+            from services import get_supabase_client
+            sb = get_supabase_client()
+        resp = (
+            sb.table("users").select("price_alert_threshold")
+            .eq("id", user_id).limit(1).execute()
+        )
+        if resp.data:
+            raw = resp.data[0].get("price_alert_threshold")
+            if raw is not None:
+                return max(0.0, min(50.0, float(raw)))
+    except Exception as exc:
+        logger.warning("price_impact: lettura soglia cliente fallita: %s", exc)
+    return _SOGLIA_PERC_DEFAULT
 
 
 def calcola_alert_prezzi_impatto(
@@ -183,9 +264,14 @@ def calcola_alert_prezzi_impatto(
         # force_refresh=True si ricaricavano e rielaboravano TUTTE le righe ogni
         # volta (25s su clienti con migliaia di fatture -> timeout briefing). La
         # cache 120s e' adeguata: gli alert prezzi non richiedono freschezza al secondo.
+        # Carica SOLO la finestra che il motore usa davvero (prodotti + tag lavorano
+        # entro _FINESTRA_GIORNI). Margine extra per i confronti ai bordi delle
+        # sotto-finestre di analizza_tag. Evita il full-load di tutta la storia
+        # (migliaia di righe -> 5s+ su clienti grossi, sforava il budget briefing).
         df = carica_e_prepara_dataframe(
             user_id, ristorante_id=ristorante_id,
             supabase_client=supabase_client, force_refresh=False,
+            solo_ultimi_giorni=_FINESTRA_GIORNI + 10,
         )
     except Exception as exc:
         logger.warning("price_impact: caricamento fatture fallito: %s", exc)
@@ -197,11 +283,17 @@ def calcola_alert_prezzi_impatto(
     if df_periodo.empty:
         return vuoto
 
-    spesa_food = _spesa_food_periodo(df_periodo)
-    soglia_impatto = max(0.0, spesa_food * _FRAZIONE_SPESA_FOOD)
+    # Soglia % scelta dal cliente in pagina Prezzi (price_alert_threshold). E' il
+    # "di quanto deve aumentare un prezzo perche' mi interessi" deciso da lui:
+    # riusarla evita soglie magiche nostre e rispetta la sua sensibilita'.
+    soglia_perc = _leggi_soglia_perc_cliente(user_id, supabase_client)
 
-    prodotti = _alert_prodotti(df_periodo, soglia_impatto)
-    tag = _alert_tag(user_id, ristorante_id, df, soglia_impatto)
+    # Fascia Pareto dei prodotti che pesano davvero sulla spesa food: i marginali
+    # (limoni & co.) restano fuori dagli alert prodotto anche se rincarano molto.
+    prodotti_pareto = _prodotti_pareto(df_periodo)
+
+    prodotti = _alert_prodotti(df_periodo, soglia_perc, prodotti_pareto)
+    tag = _alert_tag(user_id, ristorante_id, df, soglia_perc)
 
     # Unisci e ordina per impatto €/mese decrescente; tieni i top.
     tutti = sorted(prodotti + tag, key=lambda a: a["impatto_mese"], reverse=True)

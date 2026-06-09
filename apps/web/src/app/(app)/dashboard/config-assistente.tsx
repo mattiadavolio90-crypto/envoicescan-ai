@@ -24,7 +24,14 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
   const [nome, setNome] = useState(config.nome_referente);
   const [topics, setTopics] = useState<ConfigTopic[]>(config.topics);
   const [chatEnabled, setChatEnabled] = useState(config.chat_ai_enabled);
+  // Soglia alert prezzi: qui e' l'unico posto dove si IMPOSTA (in pagina Prezzi e'
+  // solo un filtro di visualizzazione). Stringa per gestire input parziali ("5,").
+  const [soglia, setSoglia] = useState(String(config.price_alert_threshold ?? 5));
   const [saving, setSaving] = useState(false);
+
+  // L'avviso "Alert prezzi" governa la soglia: se è spento, il campo soglia non
+  // serve (non scatterebbe comunque). Lo nascondiamo per non confondere.
+  const alertPrezziAttivo = topics.find((t) => t.key === "price_alert")?.enabled ?? true;
 
   function toggle(key: string, enabled: boolean) {
     setTopics((prev) =>
@@ -35,6 +42,8 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
   async function salva() {
     setSaving(true);
     const topics_disabled = topics.filter((t) => !t.enabled && !t.bloccato).map((t) => t.key);
+    // Clamp [0,50] come il backend; valore non numerico -> default 5.
+    const sogliaNum = Math.min(50, Math.max(0, parseFloat(soglia.replace(",", ".")) || 5));
     try {
       const res = await fetch("/api/home/config", {
         method: "POST",
@@ -43,6 +52,7 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
           nome_referente: nome.trim() || null,
           topics_disabled,
           chat_ai_enabled: chatEnabled,
+          price_alert_threshold: sogliaNum,
         }),
       });
       if (!res.ok) throw new Error();
@@ -110,21 +120,43 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
             <p className="text-sm font-medium">Avvisi attivi</p>
             <div className="divide-y rounded-lg border">
               {topics.map((t) => (
-                <div key={t.key} className="flex items-center justify-between gap-3 px-3 py-2.5">
-                  <div className="flex items-center gap-2 text-sm">
-                    {t.label}
-                    {t.bloccato && (
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Lock className="size-3" />
-                        sempre attivo
-                      </span>
-                    )}
+                <div key={t.key} className="px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm">
+                      {t.label}
+                      {t.bloccato && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Lock className="size-3" />
+                          sempre attivo
+                        </span>
+                      )}
+                    </div>
+                    <Switch
+                      checked={t.enabled}
+                      disabled={t.bloccato}
+                      onCheckedChange={(v: boolean) => toggle(t.key, v)}
+                    />
                   </div>
-                  <Switch
-                    checked={t.enabled}
-                    disabled={t.bloccato}
-                    onCheckedChange={(v: boolean) => toggle(t.key, v)}
-                  />
+                  {t.descrizione && (
+                    <p className="mt-0.5 pr-10 text-xs text-muted-foreground">{t.descrizione}</p>
+                  )}
+                  {/* Soglia alert prezzi: appare sotto "Alert prezzi" quando è attivo.
+                      È l'unico punto dove si imposta la sensibilità dell'avviso. */}
+                  {t.key === "price_alert" && alertPrezziAttivo && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <label className="text-xs text-muted-foreground">Mi interessa da un rincaro del</label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="50"
+                        step="0.5"
+                        value={soglia}
+                        onChange={(e) => setSoglia(e.target.value)}
+                        className="h-7 w-16 text-right text-sm"
+                      />
+                      <span className="text-xs text-muted-foreground">% in su</span>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
