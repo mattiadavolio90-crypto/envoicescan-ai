@@ -68,7 +68,7 @@ def test_topic_bloccato_non_viene_mai_filtrato():
 
 def test_bloccati_coerenti_con_config_topics():
     # La lista bloccati deriva da _CONFIG_TOPICS (flag True): niente seconda fonte.
-    attesi = {k for (k, _l, b) in worker._CONFIG_TOPICS if b}
+    attesi = {k for (k, _l, b, _d) in worker._CONFIG_TOPICS if b}
     assert worker._CONFIG_TOPICS_BLOCCATI == attesi
     assert "upload_failed" in worker._CONFIG_TOPICS_BLOCCATI
 
@@ -100,6 +100,6 @@ def test_row_senza_topic_key_non_esplode():
 # ---------------------------------------------------------------------------
 
 def test_incasso_mancante_e_disattivabile_nel_configuratore():
-    topics = {k: b for (k, _l, b) in worker._CONFIG_TOPICS}
+    topics = {k: b for (k, _l, b, _d) in worker._CONFIG_TOPICS}
     assert "incasso_mancante" in topics
     assert topics["incasso_mancante"] is False  # disattivabile (non bloccato)
