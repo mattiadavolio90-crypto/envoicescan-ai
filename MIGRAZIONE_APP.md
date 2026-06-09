@@ -56,22 +56,26 @@ La nuova app Next.js è **funzionalmente completa** (Fasi 0–8 chiuse).
 - [x] Raccogliere e fixare i bug che emergono
 - [ ] Completare la checklist pre-switch qui sotto
 
-### Fase 10 — Switch DNS
+### Fase 10 — Switch DNS ✅ chiusa (8/6)
 
-- [ ] Verificare se Vercel Hobby supporta dominio custom `app.oneflux.it` → upgrade se necessario
-- [ ] Fare backup DB Supabase (snapshot manuale dal dashboard)
-- [ ] Avvisare tutti i clienti con almeno 1 settimana di anticipo (messaggio + eventuale video breve)
-- [ ] Switch DNS: `app.oneflux.it` → Vercel (Next.js)
-- [ ] Creare `old.oneflux.it` → Railway (Streamlit, fallback)
-- [ ] Aggiornare data e versione nell'informativa privacy `/privacy` (obbligo GDPR — annotato in MASTER rev.25)
+- [x] Verificare se Vercel Hobby supporta dominio custom `app.oneflux.it` → **Hobby supporta, nessun upgrade**
+- [~] Fare backup DB Supabase → **N/A** (piano Free non espone backup; rollback via DNS comunque possibile)
+- [~] Avvisare clienti → **N/A** (deciso 7/6, non serve)
+- [x] Switch DNS: `app.oneflux.it` → Vercel (Next.js) — CNAME aggiunto su Aruba (8/6)
+- [~] Creare `old.oneflux.it` → Railway (Streamlit, fallback) → **N/A** (Streamlit eliminato, deciso dismettere subito)
+- [x] Servizio Streamlit eliminato da Railway `ingenious-fascination` (8/6)
+- [x] Homepage redirect a `/login` — pagina "in costruzione" rimossa (8/6)
 - [ ] Monitorare per almeno 7 giorni
 
-### Fase 11 — Spegnimento Streamlit (30 giorni dopo lo switch, se stabile)
+### Fase 11 — Spegnimento Streamlit (parzialmente anticipata l'8/6)
 
-- [ ] Eliminare il servizio Streamlit dal progetto Railway `ingenious-fascination` (lasciare worker FastAPI e queue-worker)
-- [ ] Rimuovere `old.oneflux.it` dal DNS Aruba
-- [ ] Eliminare il progetto Railway `exemplary-creation` (orfano)
-- [ ] Rimuovere `nuovo.oneflux.it` dal DNS (o redirect permanente a `app.oneflux.it`)
+- [x] Eliminare il servizio Streamlit dal progetto Railway `ingenious-fascination` (8/6 — worker FastAPI e queue-worker restano)
+- [x] Eliminare l'app doppione su Streamlit Community Cloud `oneflux.streamlit.app` (8/6 — account Streamlit lasciato vuoto come fallback 30gg)
+- [x] Rimuovere `nuovo.oneflux.it` dal DNS Aruba + da Vercel (8/6)
+- [x] Aggiornare link reset/onboarding e CORS worker da `nuovo` a `app.oneflux.it` (8/6)
+- [~] `old.oneflux.it` → **N/A** (deciso di non creare fallback, Streamlit dismesso subito)
+- [ ] Eliminare il progetto Railway `exemplary-creation` (orfano, vuoto) — dopo 30gg
+- [ ] **Sicurezza**: rigenerare `service_role_key` Supabase + `OPENAI_API_KEY` (erano esposte su Streamlit Cloud per mesi) e aggiornarle sul worker Railway
 
 ---
 

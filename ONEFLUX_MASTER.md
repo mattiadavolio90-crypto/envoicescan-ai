@@ -456,9 +456,9 @@ I due sistemi usano lo stesso database Supabase. Un cliente che carica una fattu
 | Fase 6 | 2-3 sett. | ✅ **chiusa (31/5)** | **Strumenti** (ex Foodcost): pagina `/workspace` a 4 tab. Foodcost ✅ · Inventario ✅ · Diario ✅ · Personale ✅ |
 | Fase 7 | 3-4 sett. | ✅ **chiusa + over-delivery (30/5)** | Admin Core ✅ · Qualità AI ✅ (coda review, auto-review, memoria globale, conflitti, **audit log + undo**) · Sistema/Salute ✅ (costi AI, retention, **agent notturno on/off**; tab Integrità DB rimosso) · **routing confidenza automatica sull'ingest ✅** |
 | Fase 8 | 2-3 sett. | ✅ **chiusa (2/6)** | **Servizi/Marketplace ✅** (6 servizi + lead in DB + coda Admin + WhatsApp) · **Chat AI ✅** (function calling 4 tool, proattività, toggle, limiti per piano) · Account ✅ (dati, piano, contatori fatture+chat, cambio password). Report resta placeholder scollegato (fuori scope) |
-| Fase 9 | 1-2 sett. | ⏳ | Test, performance, sicurezza + comunicazione clienti |
-| Fase 10 | 2-3 sett. | ⏳ | Switch dominio + 30gg coesistenza |
-| Fase 11 | 3-5 giorni | ⏳ | Pulizia Streamlit |
+| Fase 9 | 1-2 sett. | ✅ **chiusa (7/6)** | Test ✅ (uso reale ≥5gg + 2 clienti in parallelo, bug fixati, tutte le sezioni testate). Comunicazione clienti **N/A** (deciso 7/6 — non serve avviso anticipato) |
+| Fase 10 | 2-3 sett. | ✅ **chiusa (8/6)** | Switch DNS `app.oneflux.it` → Vercel ✅ · Streamlit eliminato da Railway ✅ · Homepage redirect a /login ✅ · Monitoraggio in corso |
+| Fase 11 | 3-5 giorni | 🟡 **quasi chiusa (8/6)** | Streamlit eliminato (Railway + Community Cloud) ✅ · `nuovo.oneflux.it` rimosso ✅ · link/CORS → app.oneflux.it ✅. Restano: Railway orfano `exemplary-creation` + rigenerare chiavi esposte (dopo 30gg) |
 | **TOTALE** | **~7-9 mesi** | | App completamente migrata |
 
 ### Fotografia codice reale (30 maggio 2026)
@@ -960,11 +960,11 @@ feature/migration-*   → feature Next.js (es. feature/migration-login)
 - Dopo 30 giorni senza problemi → Streamlit spento (Fase 11)
 
 **Checklist pre-switch (da completare prima di toccare i DNS):**
-- [ ] Tutte le sezioni funzionanti e testate
+- [x] Tutte le sezioni funzionanti e testate (7/6)
 - [x] Reset password funzionante lato Next.js (Brevo in produzione, 31/5)
 - [x] Privacy & Cookie Policy + Termini di Servizio pubblicati e raggiungibili (rev.25)
 - [x] Consenso privacy esplicito raccolto all'onboarding con prova reale (rev.25)
-- [ ] Aggiornare data/versione informativa al cut-over + allineare lista responsabili allo stack di produzione
+- [x] Aggiornare data/versione informativa al cut-over + allineare lista responsabili allo stack di produzione (7/6)
 - [ ] Backup DB confermato
-- [ ] Clienti avvisati con almeno 1 settimana di anticipo
+- [~] Clienti avvisati con almeno 1 settimana di anticipo — **N/A** (deciso 7/6, non serve)
 - [ ] Rollback plan documentato e testato

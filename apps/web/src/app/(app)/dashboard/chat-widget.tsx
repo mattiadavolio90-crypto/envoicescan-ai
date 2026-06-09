@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Send, Loader2 } from "lucide-react";
+import { X, Send, Loader2, SquarePen } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/brand/logo";
@@ -22,13 +22,70 @@ const SUGGERIMENTI = [
   "Chi è il mio fornitore più caro?",
 ];
 
-export function ChatWidget() {
+// La conversazione vive in sessionStorage: cosi' chiudere il pannello, ricaricare
+// o un router.refresh() (es. l'auto-refresh della Home) non la cancella. Si
+// svuota a fine sessione/logout — niente storico permanente, zero impatto privacy.
+const STORAGE_KEY = "oneflux:chat-messages";
+
+function caricaStorico(): Msg[] {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    // Validazione difensiva: tieni solo voci ben formate.
+    return parsed.filter(
+      (m): m is Msg =>
+        m && (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+type ChatWidgetProps = {
+  // Quota giornaliera per il piano (0 = chat non disponibile, gia' filtrata a monte).
+  limiteGiorno: number;
+  // Domande gia' consumate oggi all'apertura della Home (dal config).
+  domandeOggiIniziali: number;
+};
+
+export function ChatWidget({ limiteGiorno, domandeOggiIniziali }: ChatWidgetProps) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  // Domande consumate oggi: parte dal valore del config e si aggiorna ad ogni
+  // risposta del backend (fonte di verita'), cosi' il contatore resta esatto
+  // anche se l'utente ha chattato da un altro dispositivo.
+  const [domandeOggi, setDomandeOggi] = useState(domandeOggiIniziali);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Lo storico si idrata solo dopo il mount (sessionStorage non esiste in SSR):
+  // evita un mismatch di hydration tra server (vuoto) e client.
+  const idratato = useRef(false);
+
+  const rimanenti = Math.max(0, limiteGiorno - domandeOggi);
+  const esaurite = rimanenti <= 0;
+
+  // Carica la conversazione salvata al primo mount.
+  useEffect(() => {
+    const salvati = caricaStorico();
+    if (salvati.length) setMessages(salvati);
+    idratato.current = true;
+  }, []);
+
+  // Persisti la conversazione ad ogni cambiamento (dopo l'idratazione, per non
+  // sovrascrivere lo storico con l'array vuoto iniziale).
+  useEffect(() => {
+    if (!idratato.current) return;
+    try {
+      if (messages.length) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      else sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      /* quota/Safari privato: la chat funziona comunque, solo senza persistenza */
+    }
+  }, [messages]);
 
   // Scroll al fondo ad ogni nuovo messaggio
   useEffect(() => {
@@ -42,7 +99,7 @@ export function ChatWidget() {
 
   async function send(testoParam?: string) {
     const testo = (testoParam ?? input).trim();
-    if (!testo || loading) return;
+    if (!testo || loading || esaurite) return;
 
     const nuovi: Msg[] = [...messages, { role: "user", content: testo }];
     setMessages(nuovi);
@@ -55,7 +112,20 @@ export function ChatWidget() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ messages: nuovi.slice(-MAX_STORICO_INVIATO) }),
       });
-      const data = (await res.json()) as { reply?: string; error?: string };
+      const data = (await res.json()) as {
+        reply?: string;
+        error?: string;
+        domande_oggi?: number;
+        limite_giorno?: number;
+      };
+      // Sincronizza il contatore con la verita' del backend: la risposta porta
+      // quante domande sono state consumate oggi (e il limite del piano).
+      if (typeof data.domande_oggi === "number") {
+        setDomandeOggi(data.domande_oggi);
+      } else if (res.status === 429) {
+        // Limite raggiunto: allinea il contatore a "esaurite".
+        setDomandeOggi(limiteGiorno);
+      }
       let reply: string;
       if (data.reply) {
         reply = data.reply;
@@ -96,13 +166,35 @@ export function ChatWidget() {
             <Logo variant="icon" size={20} className="shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold leading-none">Assistente ONEFLUX</p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">Chiedimi dei tuoi dati</p>
+              <p
+                className={cn(
+                  "text-[11px] mt-0.5",
+                  esaurite ? "text-amber-600 dark:text-amber-500" : "text-muted-foreground",
+                )}
+              >
+                {esaurite
+                  ? "Limite di oggi raggiunto — torna domani"
+                  : `Ti restano ${rimanenti} ${rimanenti === 1 ? "domanda" : "domande"} oggi`}
+              </p>
             </div>
+            {messages.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 shrink-0 text-muted-foreground"
+                onClick={() => setMessages([])}
+                title="Nuova conversazione"
+                aria-label="Nuova conversazione"
+              >
+                <SquarePen className="size-4" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
               className="size-7 shrink-0 text-muted-foreground"
               onClick={() => setOpen(false)}
+              aria-label="Chiudi chat"
             >
               <X className="size-4" />
             </Button>
@@ -118,18 +210,20 @@ export function ChatWidget() {
                   Chiedimi dei tuoi costi, fornitori, food cost, margini o scadenze.
                   Posso anche confrontare i prezzi tra fornitori.
                 </p>
-                <div className="mt-1 flex flex-wrap justify-center gap-1.5">
-                  {SUGGERIMENTI.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => send(s)}
-                      className="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-[11px] text-primary transition-colors hover:bg-primary/10"
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
+                {!esaurite && (
+                  <div className="mt-1 flex flex-wrap justify-center gap-1.5">
+                    {SUGGERIMENTI.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => send(s)}
+                        className="rounded-full border border-primary/30 bg-primary/5 px-2.5 py-1 text-[11px] text-primary transition-colors hover:bg-primary/10"
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {messages.map((m, i) => (
@@ -162,15 +256,15 @@ export function ChatWidget() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
               rows={1}
-              placeholder="Es. Qual è il mio food cost?"
-              disabled={loading}
+              placeholder={esaurite ? "Limite di oggi raggiunto" : "Es. Qual è il mio food cost?"}
+              disabled={loading || esaurite}
               className="flex-1 resize-none rounded-lg border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50"
               style={{ maxHeight: "80px", overflowY: "auto" }}
             />
             <Button
               size="icon"
               className="size-9 shrink-0"
-              disabled={!input.trim() || loading}
+              disabled={!input.trim() || loading || esaurite}
               onClick={() => send()}
             >
               <Send className="size-4" />

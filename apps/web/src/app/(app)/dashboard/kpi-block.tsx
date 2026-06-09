@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { type HomeKpi } from "@/lib/home";
 import { cn } from "@/lib/utils";
@@ -14,12 +15,18 @@ function Trend({
   delta,
   suffix,
   buonoSeSu,
+  sopprimi = false,
 }: {
   delta: number | null;
   suffix: string;
   buonoSeSu: boolean;
+  // Quando il valore corrente della voce e' 0 (tipicamente dato del mese non
+  // ancora caricato), il confronto con un mese che aveva dati produce un crollo
+  // fuorviante ("−100%", "−29pp" da/verso zero). In quel caso mostriamo "—":
+  // un calo a zero quasi sempre significa "manca il dato", non un crollo reale.
+  sopprimi?: boolean;
 }) {
-  if (delta == null) return <span className="text-xs text-muted-foreground/40">—</span>;
+  if (sopprimi || delta == null) return <span className="text-xs text-muted-foreground/40">—</span>;
   const su = delta > 0;
   const piatto = delta === 0;
   const positivo = piatto ? null : su === buonoSeSu;
@@ -48,6 +55,8 @@ function RigaVoce({
   suffix,
   buonoSeSu,
   segno,
+  valoreZero = false,
+  href,
 }: {
   colore: "emerald" | "amber";
   label: string;
@@ -56,10 +65,16 @@ function RigaVoce({
   suffix: string;
   buonoSeSu: boolean;
   segno?: string;
+  // true = il valore corrente della voce e' 0/assente: il trend va soppresso
+  // (vedi commento in Trend).
+  valoreZero?: boolean;
+  // Pagina dove approfondire/sistemare la voce. Rende la riga cliccabile: vedo
+  // un numero che non mi piace -> un click e sono dove lo controllo.
+  href?: string;
 }) {
   const dotCn = colore === "emerald" ? "bg-emerald-400" : "bg-amber-400";
-  return (
-    <div className="flex items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5">
+  const contenuto = (
+    <>
       <span className={cn("mt-0.5 size-2 shrink-0 rounded-full", dotCn)} />
       <span className="flex-1 text-sm text-muted-foreground">
         {segno && <span className="mr-1 text-muted-foreground/50">{segno}</span>}
@@ -68,10 +83,57 @@ function RigaVoce({
       <span className="flex items-baseline gap-2">
         <span className="text-sm font-semibold tabular-nums">{value}</span>
         <span className="w-12 text-right">
-          <Trend delta={delta} suffix={suffix} buonoSeSu={buonoSeSu} />
+          <Trend delta={delta} suffix={suffix} buonoSeSu={buonoSeSu} sopprimi={valoreZero} />
         </span>
       </span>
-    </div>
+    </>
+  );
+  const base = "flex items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5";
+  if (href) {
+    return (
+      <Link href={href} className={cn(base, "transition-colors hover:bg-background/70")}>
+        {contenuto}
+      </Link>
+    );
+  }
+  return <div className={base}>{contenuto}</div>;
+}
+
+// Sparkline MOL: mini-linea dell'andamento MOL nei mesi dell'anno. Niente assi
+// ne' griglia (sarebbe rumore in uno spazio cosi' piccolo): solo la forma della
+// linea + un pallino sull'ultimo mese, per dare il senso della direzione accanto
+// al numero grande. Colore coerente col segno del MOL corrente.
+function MolSparkline({
+  punti,
+  positivo,
+}: {
+  punti: { mese: number; mol: number }[];
+  positivo: boolean;
+}) {
+  const W = 120;
+  const H = 28;
+  const PAD = 3;
+  const vals = punti.map((p) => p.mol);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const range = max - min || 1; // evita /0 se tutti uguali
+  const n = punti.length;
+  const x = (i: number) => PAD + (i * (W - 2 * PAD)) / (n - 1);
+  const y = (v: number) => H - PAD - ((v - min) / range) * (H - 2 * PAD);
+  const d = punti.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.mol).toFixed(1)}`).join(" ");
+  const stroke = positivo ? "text-emerald-500" : "text-rose-500";
+  const lastX = x(n - 1);
+  const lastY = y(punti[n - 1].mol);
+  return (
+    <svg
+      viewBox={`0 0 ${W} ${H}`}
+      className="h-7 w-[120px] overflow-visible"
+      role="img"
+      aria-label="Andamento del margine nei mesi dell'anno"
+    >
+      <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", stroke)} />
+      <circle cx={lastX} cy={lastY} r="2.5" className={cn("fill-current", stroke)} />
+    </svg>
   );
 }
 
@@ -106,8 +168,11 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
         <span className="text-xs text-muted-foreground/70">{kpi.periodo_label}</span>
       </div>
 
-      {/* MOL — il numero che conta */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-1 py-4 text-center">
+      {/* MOL — il numero che conta. Cliccabile: porta alla pagina Margini. */}
+      <Link
+        href="/margini"
+        className="group flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-4 text-center transition-colors hover:bg-background/40"
+      >
         <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
           = MOL (margine)
         </span>
@@ -123,7 +188,13 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
           {kpi.confronto_label && <span>{kpi.confronto_label}</span>}
           <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu />
         </div>
-      </div>
+        {/* Sparkline andamento MOL nell'anno: appare solo con >=2 mesi di dati. */}
+        {kpi.mol_mensile.length >= 2 && (
+          <div className="mt-2">
+            <MolSparkline punti={kpi.mol_mensile} positivo={molPos} />
+          </div>
+        )}
+      </Link>
 
       {/* Breakdown */}
       <div className="mt-auto space-y-1.5">
@@ -134,6 +205,8 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
           delta={kpi.fatturato_delta_pct}
           suffix="%"
           buonoSeSu
+          valoreZero={kpi.fatturato === 0}
+          href="/margini"
         />
         <RigaVoce
           colore="amber"
@@ -147,6 +220,8 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
           suffix="pp"
           buonoSeSu={false}
           segno="−"
+          valoreZero={kpi.food_cost_pct == null || kpi.food_cost_pct === 0}
+          href="/prezzi"
         />
         <RigaVoce
           colore="amber"
@@ -156,6 +231,8 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
           suffix="%"
           buonoSeSu={false}
           segno="−"
+          valoreZero={kpi.costo_personale === 0}
+          href="/margini"
         />
         <RigaVoce
           colore="amber"
@@ -165,6 +242,8 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
           suffix="%"
           buonoSeSu={false}
           segno="−"
+          valoreZero={kpi.spese_generali === 0}
+          href="/margini"
         />
       </div>
     </div>

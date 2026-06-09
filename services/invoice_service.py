@@ -1862,6 +1862,11 @@ def salva_fattura_processata(nome_file: str, dati_prodotti: List[Dict],
                 try:
                     from services.daily_briefing_service import invalidate_today_briefing
                     invalidate_today_briefing(str(user_id), str(ristorante_id), supabase_client)
+                    # Le nuove fatture cambiano food cost / spese della card KPI Home
+                    # (cache TTL 2 min): invalido cosi' i conti riflettono subito
+                    # l'upload. Best-effort come sopra.
+                    from services.fastapi_worker import _invalidate_home_kpi_cache
+                    _invalidate_home_kpi_cache(str(ristorante_id))
                 except Exception as briefing_exc:
                     logger.warning("invalidazione briefing post-upload fallita: %s", briefing_exc)
 

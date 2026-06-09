@@ -62,6 +62,10 @@ def _aggrega_mensili_margini(*args, **kwargs):
     return _fw()._aggrega_mensili_margini(*args, **kwargs)
 
 
+def _invalidate_home_kpi_cache(*args, **kwargs):
+    return _fw()._invalidate_home_kpi_cache(*args, **kwargs)
+
+
 def _consts():
     """Le costanti dominio margini (dict/set) dal worker, risolte al primo uso."""
     fw = _fw()
@@ -291,6 +295,9 @@ def save_margini(
     # invalidato lo snapshot di oggi cosi' la prossima Home rigenera (best-effort).
     from services.daily_briefing_service import invalidate_today_briefing
     invalidate_today_briefing(user_id, ristorante_id, sb)
+    # Stessi dati alimentano la card "I tuoi conti" (cache KPI, TTL 2 min): senza
+    # questo il MOL restava stantio dopo l'inserimento. Invalidazione esplicita.
+    _invalidate_home_kpi_cache(ristorante_id)
     return {"ok": True, "saved": len(records)}
 
 
@@ -354,6 +361,7 @@ def save_fatturato_centri(
     }, on_conflict="ristorante_id,anno,mese").execute()
     from services.daily_briefing_service import invalidate_today_briefing
     invalidate_today_briefing(user_id, ristorante_id, sb)
+    _invalidate_home_kpi_cache(ristorante_id)
     return {"ok": True}
 
 

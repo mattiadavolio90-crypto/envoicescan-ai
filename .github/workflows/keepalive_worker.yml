@@ -1,0 +1,49 @@
+name: Keep-alive Worker - ONEFLUX
+
+# Il worker FastAPI gira su Railway con scale-to-zero: quando resta idle si
+# addormenta e la prima richiesta dopo l'inattivita' paga il cold-start (diversi
+# secondi). In Home questo fa scadere il timeout di 8s del frontend e i blocchi
+# (briefing, card KPI/Salute) "spariscono" finche' non si ricarica la pagina.
+#
+# Questo job pinga /health ogni 5 minuti per tenere sveglio il dyno nelle ore di
+# uso. /health e' leggero e non richiede auth. Costo: zero (GitHub Actions free).
+# NB: l'uptime_check.yml esistente pinga app.oneflux.it (il frontend Vercel, che
+# non dorme) — NON il worker. Sono due cose diverse: questo file copre il worker.
+
+on:
+  schedule:
+    # Ogni 5 minuti. Railway addormenta dopo ~alcuni minuti di idle: un ping piu'
+    # fitto del timeout di sleep mantiene il worker caldo.
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # avvio manuale per test
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sveglia il worker (GET /health)
+        run: |
+          # WORKER_HEALTH_URL e' un secret opzionale: se assente si usa l'URL di
+          # produzione noto. Cosi' il workflow funziona out-of-the-box ma resta
+          # ridirezionabile senza toccare il file.
+          URL="${{ secrets.WORKER_HEALTH_URL }}"
+          if [ -z "$URL" ]; then
+            URL="https://worker-production-a552.up.railway.app/health"
+          fi
+          # --max-time alto: durante un cold-start la prima risposta puo' tardare,
+          # e va bene cosi' — l'obiettivo e' proprio svegliarlo. || echo "000"
+          # evita che un timeout (curl exit 28) faccia fallire il job.
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -L --max-time 90 --connect-timeout 15 \
+            "$URL" || echo "000")
+          echo "Worker /health -> HTTP $CODE"
+          # Non falliamo il job se il worker e' lento/giu': e' un keep-alive
+          # best-effort, l'alerting di uptime vive in uptime_check.yml.
+          if [ "$CODE" = "200" ]; then
+            echo "✅ Worker sveglio"
+          else
+            echo "⚠️ Worker non ha risposto 200 (HTTP $CODE) — sara' risvegliato al prossimo giro"
+          fi

@@ -16,6 +16,7 @@ Dipendenze:
 """
 
 import argon2
+import os
 import secrets
 import requests
 import hashlib
@@ -33,6 +34,17 @@ logger = get_logger('auth')
 
 # Hasher globale Argon2
 ph = argon2.PasswordHasher()
+
+
+def _supabase_auth_bridge_disabilitato() -> bool:
+    """
+    Quando SKIP_SUPABASE_AUTH=1 il login salta il bridge Supabase Auth nativo
+    (tentativo sign_in_with_password + sincronizzazione password). Il path resta
+    inutile finché auth.uid() è NULL — la chiamata anon a Supabase Auth aggiunge
+    ~4s di latenza per login, vicino al timeout di 8s del frontend Next.js.
+    Default OFF: produzione invariata finché non si imposta la env var.
+    """
+    return os.getenv("SKIP_SUPABASE_AUTH", "").strip().lower() in ("1", "true", "yes")
 
 # ============================================================
 # RATE LIMITING LOGIN (persistente su DB — tabella login_attempts)
@@ -695,6 +707,8 @@ def _tenta_login_supabase_auth(email: str, password: str, supabase_client) -> Op
     NOTA: usa anon_key per sign_in_with_password — Supabase aggiorna last_sign_in_at
     solo quando la chiamata proviene da un client con anon_key (non service_role).
     """
+    if _supabase_auth_bridge_disabilitato():
+        return None
     try:
         # Usa client con anon_key: aggiorna last_sign_in_at in auth.users
         anon_client = _get_supabase_anon_client()
@@ -724,6 +738,8 @@ def _sincronizza_password_in_supabase_auth(user_id: str, email: str, password: s
     Returns:
         True se sincronizzazione riuscita, False altrimenti
     """
+    if _supabase_auth_bridge_disabilitato():
+        return False
     try:
         supabase_client.auth.admin.update_user_by_id(user_id, {"password": password})
         logger.info(f"✅ Password sincronizzata in Supabase Auth per user_id={user_id}")

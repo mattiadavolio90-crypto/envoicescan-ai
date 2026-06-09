@@ -838,12 +838,22 @@
           "Home"
         ],
         "summary": "Briefing giornaliero Home AI — saluto, narrativa, azioni",
-        "operationId": "home_briefing_api_home_briefing_get",
+        "description": "Raccoglie le notifiche attive + i segnali LIVE che alimentano il briefing.\n\nParte PESANTE della generazione: query notifiche, alert prezzi (budget 4s),\ncheck ricavi automatici, dati mensili mancanti. Estratta dall'endpoint cosi'\npuo' girare in BACKGROUND (vedi _briefing_rigenera_async) invece che in linea\nsul percorso della Home — che altrimenti sforerebbe il timeout di 8s.",
+        "operationId": "_briefing_raccogli_notifiche_api_home_briefing_get",
         "parameters": [
           {
-            "name": "authorization",
-            "in": "header",
-            "required": false,
+            "name": "user_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "ristorante_id",
+            "in": "query",
+            "required": true,
             "schema": {
               "anyOf": [
                 {
@@ -853,7 +863,15 @@
                   "type": "null"
                 }
               ],
-              "title": "Authorization"
+              "title": "Ristorante Id"
+            }
+          },
+          {
+            "name": "supabase_client",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "title": "Supabase Client"
             }
           },
           {
@@ -13583,6 +13601,16 @@
           "reply": {
             "type": "string",
             "title": "Reply"
+          },
+          "domande_oggi": {
+            "type": "integer",
+            "title": "Domande Oggi",
+            "default": 0
+          },
+          "limite_giorno": {
+            "type": "integer",
+            "title": "Limite Giorno",
+            "default": 0
           }
         },
         "type": "object",
@@ -13830,6 +13858,11 @@
             "type": "integer",
             "title": "Chat Limite Giorno",
             "default": 10
+          },
+          "chat_domande_oggi": {
+            "type": "integer",
+            "title": "Chat Domande Oggi",
+            "default": 0
           }
         },
         "type": "object",
@@ -14350,6 +14383,25 @@
               }
             ],
             "title": "Mol Delta Pct"
+          },
+          "mol_mensile": {
+            "items": {
+              "$ref": "#/components/schemas/MolMensilePoint"
+            },
+            "type": "array",
+            "title": "Mol Mensile",
+            "default": []
+          },
+          "mol_mensile_anno": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mol Mensile Anno"
           }
         },
         "type": "object",
@@ -15193,6 +15245,25 @@
           "mol"
         ],
         "title": "MesiPivot"
+      },
+      "MolMensilePoint": {
+        "properties": {
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "mol": {
+            "type": "number",
+            "title": "Mol"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mese",
+          "mol"
+        ],
+        "title": "MolMensilePoint",
+        "description": "Un punto dello sparkline MOL: mese (1-12) e relativo MOL dell'anno corrente."
       },
       "NotaCreditoItem": {
         "properties": {

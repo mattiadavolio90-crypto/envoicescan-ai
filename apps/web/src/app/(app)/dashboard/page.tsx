@@ -11,6 +11,8 @@ import { ChatWidget } from "./chat-widget";
 import { SaluteCard } from "./salute-card";
 import { KpiBlock } from "./kpi-block";
 import { ConfigAssistente } from "./config-assistente";
+import { BlockRetry } from "./block-retry";
+import { HomeAutoRefresh } from "./home-auto-refresh";
 import { Card, CardContent } from "@/components/ui/card";
 import { Receipt } from "lucide-react";
 
@@ -38,13 +40,19 @@ async function ConfigBlock() {
 async function BriefingBlock() {
   const briefing = await fetchBriefing();
   if (!briefing) {
+    // Briefing assente = worker non ha risposto (cold-start/timeout): NON il
+    // fallback muto di prima (header "Dashboard" e nient'altro, che sembrava
+    // "sparito"). Mostriamo uno skeleton vivo e ripinghiamo finche' il worker
+    // si sveglia, poi router.refresh() fa apparire il briefing da solo.
     return (
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Il riepilogo della tua gestione — aggiornato in tempo reale
-        </p>
-      </div>
+      <BlockRetry endpoint="/api/home/briefing">
+        <div className="space-y-4">
+          <div className="h-40 animate-pulse rounded-2xl border bg-muted/40" />
+          <p className="text-center text-sm text-muted-foreground">
+            Sto preparando il tuo riepilogo…
+          </p>
+        </div>
+      </BlockRetry>
     );
   }
   return <HomeBriefing briefing={briefing} />;
@@ -64,11 +72,27 @@ async function NotificheBlock() {
 async function KpiSaluteBlock() {
   // Solo kpi + salute: prima si chiamava anche fetchDashboardStats() (endpoint
   // pesante su clienti con migliaia di righe) solo per ricavare isEmpty, ma lo
-  // stato vuoto e' gia' deducibile da kpi/salute assenti — niente round-trip in
-  // piu' che rallentava il blocco dentro un Promise.all.
+  // stato vuoto e' gia' deducibile da kpi/salute — niente round-trip in piu'.
   const [kpi, salute] = await Promise.all([fetchKpi(), fetchSalute()]);
 
-  const isEmpty = !salute && !kpi;
+  // Distinzione importante:
+  //   - entrambi null  => il worker NON ha risposto (cold-start/timeout): retry,
+  //     non lo stato "vuoto", altrimenti a un cliente con dati veri comparirebbe
+  //     "Nessuna fattura" finche' non ricarica.
+  //   - dati ricevuti ma kpi.has_data === false => cliente davvero senza fatture.
+  const workerGiu = !salute && !kpi;
+  const vuotoReale = kpi?.has_data === false && !salute;
+
+  if (workerGiu) {
+    return (
+      <BlockRetry endpoint="/api/home/kpi">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      </BlockRetry>
+    );
+  }
 
   return (
     <>
@@ -79,7 +103,7 @@ async function KpiSaluteBlock() {
         </div>
       )}
 
-      {isEmpty && (
+      {vuotoReale && (
         <Card>
           <CardContent className="py-16 text-center">
             <Receipt className="mx-auto size-12 text-muted-foreground/40" />
@@ -100,7 +124,12 @@ async function ChatBlock() {
   const config = await fetchConfig();
   const enabled = (config?.chat_ai_enabled ?? true) && (config?.chat_limite_giorno ?? 0) > 0;
   if (!enabled) return null;
-  return <ChatWidget />;
+  return (
+    <ChatWidget
+      limiteGiorno={config?.chat_limite_giorno ?? 0}
+      domandeOggiIniziali={config?.chat_domande_oggi ?? 0}
+    />
+  );
 }
 
 export default async function DashboardPage() {
@@ -118,6 +147,7 @@ export default async function DashboardPage() {
 
   return (
     <>
+      <HomeAutoRefresh />
       <div className="space-y-8">
         <Suspense fallback={null}>
           <ConfigBlock />

@@ -26,6 +26,7 @@ from services.daily_briefing_service import (
     _severity_max,
     _today_rome,
     generate_and_save_briefing,
+    get_latest_briefing,
     get_today_briefing,
     invalidate_today_briefing,
 )
@@ -44,6 +45,7 @@ def _make_supabase_mock(return_data=None):
     q.table.return_value = q
     q.select.return_value = q
     q.eq.return_value = q
+    q.order.return_value = q
     q.limit.return_value = q
     q.upsert.return_value = q
     q.execute.return_value = MagicMock(data=return_data or [])
@@ -458,6 +460,15 @@ class TestActionFor:
         a = _action_for(n)
         assert a["id"] == "notif-xyz"
 
+    def test_uncategorized_rows_deep_link_analisi_fatture(self):
+        # La classificazione si fa in Analisi Fatture (tab Articoli, filtro
+        # verifica), NON in Analisi e Tag. Deep-link diretto sul filtro.
+        n = _notif("uncategorized_rows", "warning", {"count": 7})
+        a = _action_for(n)
+        assert a["cta_label"] == "Classifica righe"
+        assert a["cta_page"] == "/analisi-fatture?tab=articoli&verifica=1"
+        assert "analisi-e-tag" not in a["cta_page"]
+
 
 # ────────────────────────────────────────────────
 # _build_snapshot — azioni e tutto_ok
@@ -596,6 +607,40 @@ class TestGetTodayBriefing:
         sb.table.side_effect = RuntimeError("DB down")
         result = get_today_briefing(UID, RID, sb)
         assert result is None
+
+
+# ────────────────────────────────────────────────
+# get_latest_briefing (fallback "mai bloccante")
+# ────────────────────────────────────────────────
+
+class TestGetLatestBriefing:
+    def test_returns_latest_marked_stale(self):
+        snap_data = {"bullets": ["b"], "severity_max": "info"}
+        sb = _make_supabase_mock([
+            {"snapshot": snap_data, "created_at": "2026-06-08T07:00:00Z",
+             "generated_for_date": "2026-06-08"},
+        ])
+        result = get_latest_briefing(UID, RID, sb)
+        assert result is not None
+        assert result["bullets"] == ["b"]
+        # marcato come ripiego, cosi' il chiamante sa che e' un briefing passato
+        assert result["_stale"] is True
+        assert result["_db_created_at"] == "2026-06-08T07:00:00Z"
+
+    def test_returns_none_if_no_row(self):
+        sb = _make_supabase_mock([])
+        assert get_latest_briefing(UID, RID, sb) is None
+
+    def test_returns_none_on_missing_params(self):
+        sb = _make_supabase_mock()
+        assert get_latest_briefing("", RID, sb) is None
+        assert get_latest_briefing(UID, "", sb) is None
+        assert get_latest_briefing(UID, RID, None) is None
+
+    def test_returns_none_on_exception(self):
+        sb = MagicMock()
+        sb.table.side_effect = RuntimeError("DB down")
+        assert get_latest_briefing(UID, RID, sb) is None
 
 
 # ────────────────────────────────────────────────

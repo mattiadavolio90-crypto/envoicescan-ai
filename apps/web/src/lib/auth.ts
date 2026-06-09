@@ -10,7 +10,9 @@ export const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY ?? "";
 
 // Timeout su tutte le chiamate worker: evita che il render appeso a un cold-start
 // di Railway blocchi ogni pagina autenticata (getCurrentUser gira nel layout).
-export const WORKER_TIMEOUT_MS = 8000;
+// Override via env per lo sviluppo locale (worker a freddo + init Supabase può
+// avvicinarsi al limite); in produzione resta il default 8s se la var non è settata.
+export const WORKER_TIMEOUT_MS = Number(process.env.WORKER_TIMEOUT_MS) || 8000;
 
 export type SessionUser = {
   id: string;

@@ -69,7 +69,7 @@ _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -1663,12 +1663,21 @@ class ConfigResponse(BaseModel):
     topics: List[ConfigTopic]
     chat_ai_enabled: bool = True
     chat_limite_giorno: int = 10  # 0 = piano free, chat non disponibile
+    # Domande gia' consumate oggi: valore iniziale del contatore "ti restano N"
+    # del widget chat, mostrato gia' all'apertura (prima ancora di chattare).
+    chat_domande_oggi: int = 0
 
 
 class ConfigUpdateRequest(BaseModel):
     nome_referente: Optional[str] = None
     topics_disabled: List[str] = []
     chat_ai_enabled: Optional[bool] = None
+
+
+class MolMensilePoint(BaseModel):
+    """Un punto dello sparkline MOL: mese (1-12) e relativo MOL dell'anno corrente."""
+    mese: int
+    mol: float
 
 
 class HomeKpiResponse(BaseModel):
@@ -1693,6 +1702,10 @@ class HomeKpiResponse(BaseModel):
     personale_delta_pct: Optional[float] = None   # variazione % costo personale
     spese_delta_pct: Optional[float] = None       # variazione % spese generali
     mol_delta_pct: Optional[float] = None         # variazione % MOL
+    # Sparkline andamento MOL dei mesi dell'ANNO CORRENTE con dati (da gennaio
+    # all'ultimo mese completo). Vuoto se un solo mese (niente linea da disegnare).
+    mol_mensile: List[MolMensilePoint] = []
+    mol_mensile_anno: Optional[int] = None       # anno di riferimento dello sparkline
 
 
 # Avvisi mostrabili nel configuratore, in ordine di gerarchia. I due upload
@@ -1955,6 +1968,11 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     reply: str
+    # Quota giornaliera: dopo ogni risposta il widget mostra quante domande
+    # restano oggi, cosi' il limite non e' una sorpresa (prima si scopriva solo
+    # sbattendo contro il 429). domande_oggi = quante gia' consumate oggi.
+    domande_oggi: int = 0
+    limite_giorno: int = 0
 
 
 def _build_chat_system_prompt(
@@ -2759,7 +2777,11 @@ def chat_ai(
     # rate-limit prima della chiamata OpenAI: niente INSERT qui.
     logger.info("chat_ai: user=%s model=%s messages=%d domande_oggi=%d",
                 user.get("email"), CHAT_MODEL, len(body.messages), domande_oggi)
-    return ChatResponse(reply=reply or "Non sono riuscito a elaborare la risposta, riprova.")
+    return ChatResponse(
+        reply=reply or "Non sono riuscito a elaborare la risposta, riprova.",
+        domande_oggi=domande_oggi,
+        limite_giorno=limite,
+    )
 
 
 def _saluto_per_ora(nome: Optional[str]) -> str:
@@ -2964,40 +2986,17 @@ def _briefing_nome_referente(
     tags=["Home"],
     dependencies=[Depends(_verify_worker_key)],
 )
-def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingResponse:
+def _briefing_raccogli_notifiche(
+    user_id: str, ristorante_id: Optional[str], supabase_client
+) -> List[Dict[str, Any]]:
+    """Raccoglie le notifiche attive + i segnali LIVE che alimentano il briefing.
+
+    Parte PESANTE della generazione: query notifiche, alert prezzi (budget 4s),
+    check ricavi automatici, dati mensili mancanti. Estratta dall'endpoint cosi'
+    puo' girare in BACKGROUND (vedi _briefing_rigenera_async) invece che in linea
+    sul percorso della Home — che altrimenti sforerebbe il timeout di 8s.
+    """
     from datetime import datetime as _dt, timezone as _tz
-    from services import get_supabase_client
-    from services.daily_briefing_service import (
-        get_today_briefing,
-        generate_and_save_briefing,
-        _today_rome,
-    )
-
-    user = _resolve_user_from_token(authorization)
-    user_id = str(user["id"])
-    # Saluto Home AI: SOLO il nome_referente scelto nel configuratore. Se manca,
-    # saluto liscio ("Buongiorno") — mai la ragione sociale, che e' brutta da
-    # leggere ("LAND DEI SAPORI SRL") e poco umana.
-    nome = user.get("nome_referente")
-
-    supabase_client = get_supabase_client()
-    ristorante_id = _resolve_ristorante_id(user, supabase_client)
-
-    # ── Fast-path cache-first ────────────────────────────────────────────────
-    # Il briefing e' un dato GIORNALIERO: se lo snapshot di oggi esiste gia' in
-    # daily_briefing_state, lo serviamo subito (~0.5s) senza ricalcolare gli alert
-    # prezzi (fino a 4s su clienti con molte fatture) ne' le query di notifiche/
-    # ricavi/mensili. Prima il calcolo pesante girava SEMPRE — solo per costruire
-    # il fingerprint con cui poi decidere se la cache era valida — e su clienti
-    # grossi l'endpoint sforava il timeout di 8s del frontend (briefing "sparito"
-    # in Home pur essendo generato lato worker). Un riepilogo giornaliero si
-    # ricalcola una volta al giorno: la freschezza intra-giornaliera (max +1
-    # giorno) e' un trade-off accettabile e coerente col concetto di "daily".
-    if ristorante_id:
-        cached_today = get_today_briefing(user_id, ristorante_id, supabase_client)
-        if cached_today is not None:
-            nome, _ = _briefing_nome_referente(nome, ristorante_id, supabase_client)
-            return _briefing_response_from_snapshot(cached_today, nome)
 
     # Notifiche attive (stesso filtro di /api/notifiche, senza dismissed)
     notifications: List[Dict[str, Any]] = []
@@ -3150,25 +3149,105 @@ def home_briefing(authorization: Optional[str] = Header(None)) -> BriefingRespon
         except Exception as exc:
             logger.warning("home_briefing: dati mensili mancanti falliti: %s", exc)
 
-    # Preferenze configuratore (Step 6): nome override + topic spenti dal cliente.
-    nome, topics_disabled = _briefing_nome_referente(nome, ristorante_id, supabase_client)
+    return notifications
 
-    # Siamo qui SOLO se il fast-path non ha trovato lo snapshot di oggi (prima
-    # apertura della giornata, o assenza ristorante_id): generiamo e salviamo.
-    # Niente piu' ri-lettura cache + fingerprint qui: il fast-path in cima ha gia'
-    # gestito il caso "snapshot di oggi presente".
-    snapshot: Optional[Dict[str, Any]] = None
-    if ristorante_id:
-        snapshot = generate_and_save_briefing(
+
+def _briefing_rigenera_async(user_id: str, ristorante_id: Optional[str]) -> None:
+    """Rigenera e salva lo snapshot di OGGI fuori dal ciclo di risposta.
+
+    Lanciata via BackgroundTasks DOPO che la Home ha gia' ricevuto un briefing
+    (stale o template istantaneo). Qui dentro possiamo permetterci la parte lenta
+    (alert prezzi fino a 4s + narrazione Ai) perche' nessuno aspetta: il
+    risultato sara' servito istantaneo al load successivo dal fast-path cache.
+    Best-effort: ogni errore resta confinato qui, non c'e' una request da rompere.
+    """
+    if not ristorante_id:
+        return
+    try:
+        from services import get_supabase_client
+        from services.daily_briefing_service import generate_and_save_briefing
+
+        supabase_client = get_supabase_client()
+        notifications = _briefing_raccogli_notifiche(user_id, ristorante_id, supabase_client)
+        _, topics_disabled = _briefing_nome_referente(None, ristorante_id, supabase_client)
+        generate_and_save_briefing(
             user_id, ristorante_id, notifications, supabase_client,
             topics_disabled=topics_disabled,
         )
+    except Exception as exc:
+        logger.warning("_briefing_rigenera_async fallita per ristorante=%s: %s", ristorante_id, exc)
 
-    if snapshot is None:
-        # Fallback senza ristorante o errore DB: snapshot effimero non persistito
-        from services.daily_briefing_service import _build_snapshot
-        snapshot = _build_snapshot(notifications)
 
+def home_briefing(
+    background_tasks: BackgroundTasks,
+    authorization: Optional[str] = Header(None),
+) -> BriefingResponse:
+    from services import get_supabase_client
+    from services.daily_briefing_service import (
+        get_today_briefing,
+        get_latest_briefing,
+        _build_snapshot,
+    )
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    # Saluto Home AI: SOLO il nome_referente scelto nel configuratore. Se manca,
+    # saluto liscio ("Buongiorno") — mai la ragione sociale, che e' brutta da
+    # leggere ("LAND DEI SAPORI SRL") e poco umana.
+    nome = user.get("nome_referente")
+
+    supabase_client = get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+
+    # ── Fast-path 1: cache-first di OGGI ─────────────────────────────────────
+    # Il briefing e' un dato GIORNALIERO: se lo snapshot di oggi esiste gia' in
+    # daily_briefing_state, lo serviamo subito (~0.5s) senza ricalcolare nulla di
+    # pesante. Caso normale dopo la prima apertura della giornata.
+    if ristorante_id:
+        cached_today = get_today_briefing(user_id, ristorante_id, supabase_client)
+        if cached_today is not None:
+            nome, _ = _briefing_nome_referente(nome, ristorante_id, supabase_client)
+            return _briefing_response_from_snapshot(cached_today, nome)
+
+    # ── Fast-path 2: "mai bloccante" ─────────────────────────────────────────
+    # Manca lo snapshot di oggi (prima apertura del giorno, o cache invalidata da
+    # un upload/inserimento). PRIMA qui si pagava in linea tutta la generazione
+    # pesante (alert prezzi fino a 4s + chiamata OpenAI): su clienti grossi
+    # l'endpoint sforava gli 8s del frontend e il briefing "spariva" dalla Home,
+    # ricomparendo solo al refresh. Ora rispondiamo SEMPRE all'istante e
+    # rigeneriamo in BACKGROUND:
+    #   - se esiste un briefing recente (al max di ieri) lo serviamo subito;
+    #   - altrimenti un template deterministico leggero, senza AI ne' alert prezzi.
+    # Il briefing completo di oggi sara' pronto al load successivo dal fast-path 1.
+    nome, topics_disabled = _briefing_nome_referente(nome, ristorante_id, supabase_client)
+
+    if ristorante_id:
+        background_tasks.add_task(_briefing_rigenera_async, user_id, ristorante_id)
+
+        latest = get_latest_briefing(user_id, ristorante_id, supabase_client)
+        if latest is not None:
+            return _briefing_response_from_snapshot(latest, nome)
+
+    # Nessuno snapshot mai generato (cliente nuovo) o ristorante assente:
+    # template istantaneo dalle sole notifiche in inbox — niente alert prezzi
+    # (live, lento) ne' AI. La versione completa arriva dal background.
+    notifications: List[Dict[str, Any]] = []
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        resp = (
+            supabase_client.table("notification_inbox")
+            .select("id,topic_key,source_type,severity,title,body,action_page,payload,dismissed_at,expires_at,created_at,source_event_at,dedupe_key")
+            .eq("user_id", user_id)
+            .or_("expires_at.is.null,expires_at.gt." + _dt.now(_tz.utc).isoformat())
+            .order("created_at", desc=True)
+            .limit(100)
+            .execute()
+        )
+        notifications = [r for r in (resp.data or []) if not r.get("dismissed_at")]
+    except Exception as exc:
+        logger.warning("home_briefing: lettura notifiche (template istantaneo) fallita: %s", exc)
+
+    snapshot = _build_snapshot(notifications, use_ai=False, topics_disabled=topics_disabled)
     return _briefing_response_from_snapshot(snapshot, nome)
 
 
@@ -3261,14 +3340,20 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     except Exception as exc:
         logger.warning("home_salute: lettura fatture fallita: %s", exc)
 
-    # ── Voce 2: Fatturato inserito (margini_mensili dell'ultimo mese completo) ──
-    # Fonte = margini_mensili (la stessa delle card "manca fatturato" e del KPI):
-    # i ricavi giornalieri non sono usati dai clienti, sarebbe sempre "manca".
+    # ── Voci 2 e 3: Fatturato + Costo personale dell'ultimo mese completo ──
+    # Unica query su margini_mensili (stessa fonte delle card "manca fatturato/
+    # personale" e del KPI): prima erano due round-trip separati sullo STESSO
+    # mese, ricaviamo entrambe le voci dalle stesse righe. I ricavi giornalieri
+    # non sono usati dai clienti, sarebbe sempre "manca".
     fatturato_ok = False
+    personale_ok = False
     try:
         resp = (
             sb.table("margini_mensili")
-            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+            .select(
+                "fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,"
+                "costo_dipendenti,costo_personale_extra"
+            )
             .eq("ristorante_id", ristorante_id)
             .eq("anno", mc_anno)
             .eq("mese", mc_mese)
@@ -3281,29 +3366,12 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
                 + float(r.get("fatturato_iva22") or 0)
                 + float(r.get("altri_ricavi_noiva") or 0)
             )
-        fatturato_ok = netto > 0
-    except Exception as exc:
-        logger.warning("home_salute: lettura fatturato margini fallita: %s", exc)
-
-    # ── Voce 3: Costo personale inserito (ultimo mese completo) ──
-    # Stesso mese della voce Fatturato e delle card "manca personale".
-    personale_ok = False
-    try:
-        resp = (
-            sb.table("margini_mensili")
-            .select("costo_dipendenti,costo_personale_extra")
-            .eq("ristorante_id", ristorante_id)
-            .eq("anno", mc_anno)
-            .eq("mese", mc_mese)
-            .execute()
-        )
-        for r in (resp.data or []):
             if (float(r.get("costo_dipendenti") or 0)
                     + float(r.get("costo_personale_extra") or 0)) > 0:
                 personale_ok = True
-                break
+        fatturato_ok = netto > 0
     except Exception as exc:
-        logger.warning("home_salute: lettura personale fallita: %s", exc)
+        logger.warning("home_salute: lettura fatturato/personale margini fallita: %s", exc)
 
     # ── Voce 4: Righe classificate (% righe del mese senza needs_review) ──
     tot_righe = len(righe_mese)
@@ -3364,7 +3432,10 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             dettaglio="Tutte le righe sono classificate" if classificate_ok
                       else (f"{da_controllare} righe da controllare" if tot_righe
                             else "Nessuna riga da classificare"),
-            cta_page="/analisi-fatture",
+            # Deep-link al tab Articoli gia' filtrato sulle righe da controllare,
+            # quando ce ne sono; pagina liscia altrimenti.
+            cta_page=("/analisi-fatture?tab=articoli&verifica=1"
+                      if da_controllare else "/analisi-fatture"),
         ),
     ]
 
@@ -3414,9 +3485,27 @@ def home_alert_prezzi(authorization: Optional[str] = Header(None)) -> AlertPrezz
 # Cache in-memoria dei KPI Home: i conti cambiano lentamente, un TTL breve
 # abbatte il carico (query + aggregazioni) anche con centinaia di clienti che
 # riaprono la Home. Niente tabella DB: sopravvive senza migration, e al massimo
-# si perde al redeploy (ricalcolo trasparente). Chiave = (ristorante, giorno).
+# si perde al redeploy (ricalcolo trasparente). Chiave = "{ristorante}:{anno}:{mese}".
 _HOME_KPI_CACHE: Dict[str, tuple] = {}
 _HOME_KPI_TTL = 120.0  # secondi
+
+
+def _invalidate_home_kpi_cache(ristorante_id: Optional[str] = None) -> None:
+    """Invalida la cache KPI Home (tutto, o solo un ristorante).
+
+    Va chiamata quando cambiano i dati che alimentano i KPI (inserimento
+    fatturato/personale/centri, upload fatture): senza questo la card "I tuoi
+    conti" restava ferma fino al TTL (2 min) mostrando numeri stantii anche dopo
+    l'inserimento — l'utente vedeva il briefing aggiornarsi ma il MOL no. La
+    chiave include anno:mese, quindi per un singolo ristorante togliamo tutte le
+    sue entry (mese mostrato + eventuali mesi vicini precaricati nel fallback).
+    """
+    if ristorante_id is None:
+        _HOME_KPI_CACHE.clear()
+        return
+    prefisso = f"{ristorante_id}:"
+    for k in [k for k in _HOME_KPI_CACHE if k.startswith(prefisso)]:
+        _HOME_KPI_CACHE.pop(k, None)
 
 
 def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: int) -> dict:
@@ -3557,6 +3646,20 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         if kpi["food_cost_pct"] is not None and kpi_cmp["food_cost_pct"] is not None:
             food_cost_delta = round(kpi["food_cost_pct"] - kpi_cmp["food_cost_pct"], 1)
 
+    # ── Sparkline: MOL mese per mese dell'anno mostrato, da gennaio al mese
+    #    mostrato. Solo i mesi con dati (un mese senza dati non e' uno zero reale,
+    #    spezzerebbe la linea con un falso crollo). Riusa i margini gia' caricati
+    #    in cache_anni via _anno() -> nessuna query in piu'. Lista vuota se c'e'
+    #    un solo punto (niente andamento da disegnare). ──
+    spark_margini, spark_fb, spark_spese = _anno(anno_usato)
+    mol_mensile: List[MolMensilePoint] = []
+    for m in range(1, mese_usato + 1):
+        p = _kpi_periodo(spark_margini, spark_fb, spark_spese, m)
+        if p["has_data"]:
+            mol_mensile.append(MolMensilePoint(mese=m, mol=p["mol"]))
+    if len(mol_mensile) < 2:
+        mol_mensile = []
+
     resp = HomeKpiResponse(
         periodo_label=_MESI_IT[mese_usato],
         is_mese_in_corso=False,
@@ -3572,8 +3675,17 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         personale_delta_pct=personale_delta,
         spese_delta_pct=spese_delta,
         mol_delta_pct=mol_delta,
+        mol_mensile=mol_mensile,
+        mol_mensile_anno=anno_usato if mol_mensile else None,
     )
-    _HOME_KPI_CACHE[cache_key] = (_time.monotonic(), resp)
+    # Eviction opportunistica delle entry scadute: la chiave include anno:mese,
+    # quindi col passare dei giorni si accumulerebbero chiavi morte mai rimosse
+    # (la cache cresceva senza limite). Pulendo ad ogni miss restano solo le
+    # entry vive — costo trascurabile (poche chiavi per cliente).
+    now = _time.monotonic()
+    for k in [k for k, v in _HOME_KPI_CACHE.items() if (now - v[0]) >= _HOME_KPI_TTL]:
+        _HOME_KPI_CACHE.pop(k, None)
+    _HOME_KPI_CACHE[cache_key] = (now, resp)
     return resp
 
 
@@ -3630,6 +3742,12 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
             piano = "base"
     chat_limite = _chat_limite_per_piano(piano)
 
+    # Domande gia' fatte oggi, solo se la chat e' disponibile (piano > 0 e attiva):
+    # evita una query inutile per i piani free / chat spenta.
+    domande_oggi = 0
+    if chat_limite > 0 and chat_ai_enabled:
+        domande_oggi = _chat_domande_oggi(ristorante_id, str(user["id"]), sb)
+
     topics = [
         ConfigTopic(key=key, label=label, enabled=key not in disabled, bloccato=bloccato)
         for (key, label, bloccato) in _CONFIG_TOPICS
@@ -3637,6 +3755,7 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     return ConfigResponse(
         nome_referente=nome, topics=topics,
         chat_ai_enabled=chat_ai_enabled, chat_limite_giorno=chat_limite,
+        chat_domande_oggi=domande_oggi,
     )
 
 

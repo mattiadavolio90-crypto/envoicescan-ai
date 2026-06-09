@@ -32,6 +32,7 @@ export type AssistantConfig = {
   topics: ConfigTopic[];
   chat_ai_enabled: boolean;
   chat_limite_giorno: number; // 0 = piano free, chat non disponibile
+  chat_domande_oggi: number; // domande gia' consumate oggi (valore iniziale del contatore)
 };
 
 export type SaluteVoce = {
@@ -64,6 +65,9 @@ export type HomeKpi = {
   personale_delta_pct: number | null;
   spese_delta_pct: number | null;
   mol_delta_pct: number | null;
+  // Sparkline andamento MOL dei mesi con dati dell'anno corrente (vuoto se <2 punti).
+  mol_mensile: { mese: number; mol: number }[];
+  mol_mensile_anno: number | null;
 };
 
 // Tutte avvolte in cache() come fetchBriefing: nello stesso render piu' punti

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   Bell,
   X,
@@ -42,12 +44,19 @@ const SEVERITY_ACCENT: Record<Notifica["severity"], string> = {
 type Props = { count: number };
 
 export function NotificheWidget({ count }: Props) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [loadingList, setLoadingList] = useState(false);
   const [notifiche, setNotifiche] = useState<Notifica[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [dismissing, setDismissing] = useState<Set<string>>(new Set());
+  // Una archiviazione andata a buon fine rende stantii il badge header e il
+  // contatore "Vedi tutte (N)" (Server Component): segniamo che alla chiusura
+  // del dialog va fatto un router.refresh() per riallinearli. Lo facciamo alla
+  // chiusura e non ad ogni dismiss per non rigenerare la Home mentre l'utente
+  // sta ancora archiviando (eviterebbe sfarfallii e round-trip inutili).
+  const [needsRefresh, setNeedsRefresh] = useState(false);
 
   async function carica() {
     setLoadingList(true);
@@ -66,18 +75,30 @@ export function NotificheWidget({ count }: Props) {
   function onOpenChange(v: boolean) {
     setOpen(v);
     if (v && !loaded) carica();
+    // Alla chiusura, se ho archiviato qualcosa, riallineo badge header e contatore.
+    if (!v && needsRefresh) {
+      setNeedsRefresh(false);
+      router.refresh();
+    }
   }
 
   async function archivia(id: string) {
     setDismissing((prev) => new Set(prev).add(id));
     try {
-      await fetch("/api/notifiche/dismiss", {
+      const res = await fetch("/api/notifiche/dismiss", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id }),
       });
-    } finally {
+      if (!res.ok) throw new Error();
+      // Nascondiamo la notifica SOLO se il dismiss e' riuscito: altrimenti
+      // sparirebbe dalla UI ma ricomparirebbe al refresh (stato incoerente).
+      // Stesso comportamento del briefing (home-briefing.tsx).
       setDismissed((prev) => new Set(prev).add(id));
+      setNeedsRefresh(true);
+    } catch {
+      toast.error("Non sono riuscito ad archiviare l'avviso. Riprova.");
+    } finally {
       setDismissing((prev) => {
         const next = new Set(prev);
         next.delete(id);

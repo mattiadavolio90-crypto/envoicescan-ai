@@ -65,7 +65,11 @@ _TOPIC_ACTION: Dict[str, tuple] = {
     'incasso_mancante':         ('Inserisci incasso',     '/margini'),
     'costo_personale_mancante': ('Inserisci costo',       '/margini'),
     'price_alert':              ('Controlla prezzi',      '/prezzi'),
-    'uncategorized_rows':       ('Classifica righe',      '/analisi-e-tag'),
+    # Deep-link: apre direttamente il tab Articoli gia' filtrato sulle righe da
+    # controllare (needs_review). La classificazione si fa qui, in Analisi
+    # Fatture — NON in Analisi e Tag (quella e' per i tag custom). Prima la CTA
+    # portava a /analisi-e-tag: pagina sbagliata, l'utente non trovava cosa fare.
+    'uncategorized_rows':       ('Classifica righe',      '/analisi-fatture?tab=articoli&verifica=1'),
 }
 
 
@@ -713,6 +717,43 @@ def get_today_briefing(
         return None
     except Exception as exc:
         logger.error("Errore get_today_briefing: %s", exc)
+        return None
+
+
+def get_latest_briefing(
+    user_id: str,
+    ristorante_id: str,
+    supabase_client=None,
+) -> Optional[Dict[str, Any]]:
+    """Legge lo snapshot PIU' RECENTE (anche di un giorno passato).
+
+    Serve al fast-path "mai bloccante": se manca lo snapshot di OGGI, invece di
+    pagare in linea il ricalcolo pesante (alert prezzi + OpenAI) e rischiare il
+    timeout del frontend, serviamo subito l'ultimo briefing disponibile (al
+    massimo di ieri) e rigeneriamo quello di oggi in background. Lo snapshot
+    restituito porta '_stale': True cosi' il chiamante sa che e' un ripiego.
+    """
+    if not user_id or not ristorante_id or supabase_client is None:
+        return None
+    try:
+        resp = (
+            supabase_client.table('daily_briefing_state')
+            .select('snapshot,created_at,generated_for_date')
+            .eq('user_id', user_id)
+            .eq('ristorante_id', ristorante_id)
+            .order('generated_for_date', desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        if rows:
+            snap = dict(rows[0].get('snapshot') or {})
+            snap['_db_created_at'] = rows[0].get('created_at')
+            snap['_stale'] = True
+            return snap
+        return None
+    except Exception as exc:
+        logger.error("Errore get_latest_briefing: %s", exc)
         return None
 
 
