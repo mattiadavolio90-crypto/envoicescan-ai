@@ -62,7 +62,7 @@ type EditableField =
 
 type Section = "ricavi" | "fb" | "spese" | "personale" | "margine";
 
-type ValueColor = "white" | "sign" | "purple" | "sky" | "orange";
+type ValueColor = "white" | "sign" | "purple" | "sky" | "orange" | "pink";
 
 type RowDef = {
   key: string;
@@ -88,8 +88,8 @@ const ROWS: RowDef[] = [
   { key: "primo_margine",         label: "= 1° Margine",           type: "computed", section: "margine", isMetric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "sign" },
   { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", valueColor: "white" },
   { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
-  { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", valueColor: "white" },
-  { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", valueColor: "white" },
+  { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", valueColor: "pink" },
+  { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", valueColor: "pink" },
   { key: "totale_costi",          label: "= Costi gestione totali", type: "computed", section: "spese", isMetric: true, derive: (m) => m.costi_fb_totali + m.costi_spese_totali + m.costi_personale, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
   { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign" },
 ];
@@ -114,6 +114,7 @@ function valueColorCls(vc: ValueColor, raw: number): string {
   if (vc === "purple") return "text-violet-600 dark:text-violet-400";
   if (vc === "sky") return "text-sky-600 dark:text-sky-400";
   if (vc === "orange") return "text-orange-600 dark:text-orange-400";
+  if (vc === "pink") return "text-pink-600 dark:text-pink-400";
   return ""; // white = foreground
 }
 
@@ -483,11 +484,11 @@ function Cell({
           title="Imposta costo (recupera da Personale o inserisci a mano)"
           className="w-full px-3 py-2 text-right tabular-nums hover:bg-muted/40 focus:bg-background focus:ring-1 focus:ring-primary focus:ring-inset outline-none transition-colors group/cella"
         >
-          <span className="inline-flex items-center justify-end gap-1">
+          <span className={`inline-flex items-center justify-end gap-1 ${colorCls}`}>
             {display === "—" ? <span className="text-muted-foreground/60">—</span> : display}
             <Pencil className="size-3 opacity-0 group-hover/cella:opacity-40 transition-opacity" />
           </span>
-          {pct && <span className="block text-[11px] tabular-nums opacity-70">{pct}</span>}
+          {pct && <span className={`block text-[11px] tabular-nums opacity-70 ${colorCls}`}>{pct}</span>}
         </button>
       </td>
     );
@@ -694,7 +695,7 @@ function MobileMeseView({
                 <button
                   type="button"
                   onClick={() => onOpenCosto(current)}
-                  className="inline-flex items-center gap-1.5 text-sm tabular-nums px-2 py-1 rounded-md border border-input hover:bg-muted transition-colors"
+                  className={`inline-flex items-center gap-1.5 text-sm tabular-nums px-2 py-1 rounded-md border border-input hover:bg-muted transition-colors ${raw === 0 ? "" : colorCls}`}
                 >
                   {raw === 0 ? "Imposta" : formatEuro(raw)}
                   <Pencil className="size-3 opacity-40" />
@@ -1071,32 +1072,32 @@ function DettaglioGiornalieroDialog({
               {/* Bar chart */}
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.4} vertical={false} />
                   <XAxis
                     dataKey="giorno"
-                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={false}
                     interval={1}
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={false}
                     width={52}
                     tickFormatter={(v: number) => formatEuroCompact(v)}
                   />
                   <Tooltip
-                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
+                    cursor={{ fill: "var(--muted)", opacity: 0.4 }}
                     formatter={(v: unknown) => [formatEuro(typeof v === "number" ? v : 0), "Fatturato netto"]}
                     labelFormatter={(l) => `Giorno ${l}`}
-                    contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
-                    labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }}
-                    itemStyle={{ color: "hsl(var(--foreground))" }}
+                    contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                    labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
+                    itemStyle={{ color: "var(--foreground)" }}
                   />
                   <Bar dataKey="netto" radius={[3, 3, 0, 0]} maxBarSize={28}>
                     {chartData.map((entry, i) => (
-                      <RCell key={i} fill={entry.netto > 0 ? "#0ea5e9" : "hsl(var(--muted))"} opacity={entry.netto > 0 ? 0.9 : 0.3} />
+                      <RCell key={i} fill={entry.netto > 0 ? "#0ea5e9" : "var(--muted)"} opacity={entry.netto > 0 ? 0.9 : 0.3} />
                     ))}
                   </Bar>
                 </BarChart>

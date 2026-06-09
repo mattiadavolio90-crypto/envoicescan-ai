@@ -267,13 +267,13 @@ export function MobileSpese() {
 
       {/* KPI totali */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-2xl border border-orange-500/40 bg-orange-950/20 p-3">
-          <p className="text-xs font-medium text-orange-500">Costi F&B extra</p>
-          <p className="text-lg font-bold tabular-nums text-orange-400">{fmtEuro(totFb)}</p>
+        <div className="rounded-2xl ring-1 ring-orange-500/60 bg-orange-50 dark:bg-orange-950/20 p-3">
+          <p className="text-xs font-medium text-orange-700 dark:text-orange-500">Costi F&B extra</p>
+          <p className="text-lg font-bold tabular-nums text-orange-700 dark:text-orange-400">{fmtEuro(totFb)}</p>
         </div>
-        <div className="rounded-2xl border border-purple-500/40 bg-purple-950/20 p-3">
-          <p className="text-xs font-medium text-purple-500">Spese Generali extra</p>
-          <p className="text-lg font-bold tabular-nums text-purple-400">{fmtEuro(totGenerale)}</p>
+        <div className="rounded-2xl ring-1 ring-purple-500/60 bg-purple-50 dark:bg-purple-950/20 p-3">
+          <p className="text-xs font-medium text-purple-700 dark:text-purple-500">Spese Generali extra</p>
+          <p className="text-lg font-bold tabular-nums text-purple-700 dark:text-purple-400">{fmtEuro(totGenerale)}</p>
         </div>
       </div>
 

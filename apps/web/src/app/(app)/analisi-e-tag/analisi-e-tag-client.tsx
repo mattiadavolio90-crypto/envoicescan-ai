@@ -39,11 +39,11 @@ function fmtData(s: string) {
 }
 
 const TOOLTIP_STYLE = {
-  backgroundColor: "hsl(var(--card))",
-  border: "1px solid hsl(var(--border))",
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--border)",
   borderRadius: "6px",
   fontSize: 11,
-  color: "hsl(var(--foreground))",
+  color: "var(--foreground)",
 };
 
 /* ── Componenti KPI ── */
@@ -76,22 +76,22 @@ function TrendChart({ punti, media }: { punti: { data: string; prezzo: number; v
       </p>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={data} margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
-          <XAxis dataKey="data" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
-          <YAxis domain={domain} tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false}
+          <XAxis dataKey="data" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
+          <YAxis domain={domain} tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false}
             tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}%`} />
           <Tooltip
             formatter={(v) => {
               const n = typeof v === "number" ? v : 0;
               return [`${n > 0 ? "+" : ""}${n.toFixed(1)}%`, "Variazione vs media"];
             }}
-            labelStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))" }}
-            itemStyle={{ color: "hsl(var(--foreground))" }}
+            labelStyle={{ fontSize: 11, color: "var(--muted-foreground)" }}
+            itemStyle={{ color: "var(--foreground)" }}
             contentStyle={TOOLTIP_STYLE}
           />
           <ReferenceLine y={0} stroke="#f43f5e" strokeDasharray="4 4" strokeWidth={1.5}
             label={{ value: "Media", position: "insideTopRight", fontSize: 10, fill: "#f43f5e", dy: -4 }} />
           <Line type="monotone" dataKey="var_perc" stroke="#60a5fa" strokeWidth={2}
-            dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5, fill: "#60a5fa", stroke: "hsl(var(--card))", strokeWidth: 2 }} />
+            dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5, fill: "#60a5fa", stroke: "var(--card)", strokeWidth: 2 }} />
         </LineChart>
       </ResponsiveContainer>
     </div>

@@ -138,7 +138,7 @@ export function InventarioDatePicker({ value, snapshots, onChange }: Props) {
                     isSelected
                       ? "bg-sky-500 text-white font-semibold"
                       : isToday
-                      ? "border border-sky-400 text-sky-400 hover:bg-accent"
+                      ? "border border-sky-600 text-sky-600 dark:border-sky-400 dark:text-sky-400 hover:bg-accent"
                       : "hover:bg-accent",
                   ].join(" ")}
                 >

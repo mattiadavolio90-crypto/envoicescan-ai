@@ -348,8 +348,8 @@ export function SpeseView() {
         </Card>
         <Card className="ring-1 ring-sky-500/60 bg-sky-50 dark:bg-sky-950/20">
           <CardContent className="py-3 px-4">
-            <p className="text-xs font-medium text-sky-700 dark:text-sky-400">Totale extra</p>
-            <p className="text-xl font-bold tabular-nums text-sky-700 dark:text-sky-300">{fmtEuro(totale)}</p>
+            <p className="text-xs font-medium text-sky-700 dark:text-sky-500">Totale extra</p>
+            <p className="text-xl font-bold tabular-nums text-sky-700 dark:text-sky-400">{fmtEuro(totale)}</p>
           </CardContent>
         </Card>
       </div>

@@ -112,11 +112,11 @@ function Sparkline({ values, rialzo }: { values: number[]; rialzo: boolean }) {
 type ChartPoint = { data: string; var_pct: number; prezzo: number; label: string };
 
 const TOOLTIP_STYLE = {
-  backgroundColor: "hsl(var(--card))",
-  border: "1px solid hsl(var(--border))",
+  backgroundColor: "var(--card)",
+  border: "1px solid var(--border)",
   borderRadius: "6px",
   fontSize: 11,
-  color: "hsl(var(--foreground))",
+  color: "var(--foreground)",
 };
 
 function PrezzoChart({
@@ -171,10 +171,10 @@ function PrezzoChart({
       </p>
       <ResponsiveContainer width="100%" height={200}>
         <LineChart data={chartData} margin={{ top: 8, right: 24, bottom: 4, left: 8 }}>
-          <XAxis dataKey="data" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} />
+          <XAxis dataKey="data" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} />
           <YAxis
             domain={domain}
-            tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+            tick={{ fontSize: 10, fill: "var(--muted-foreground)" }}
             tickLine={false}
             axisLine={false}
             tickFormatter={(v: number) => `${v > 0 ? "+" : ""}${v}%`}
@@ -185,8 +185,8 @@ function PrezzoChart({
               const payload = props.payload as ChartPoint | undefined;
               return [`${v > 0 ? "+" : ""}${v.toFixed(1)}% (${payload?.label ?? ""})`, "Variazione"];
             }}
-            labelStyle={{ fontSize: 11, color: "hsl(var(--muted-foreground))" }}
-            itemStyle={{ color: "hsl(var(--foreground))" }}
+            labelStyle={{ fontSize: 11, color: "var(--muted-foreground)" }}
+            itemStyle={{ color: "var(--foreground)" }}
             contentStyle={TOOLTIP_STYLE}
           />
           <ReferenceLine
@@ -202,7 +202,7 @@ function PrezzoChart({
               dy: -4,
             }}
           />
-          <Line type="monotone" dataKey="var_pct" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5, fill: "#60a5fa", stroke: "hsl(var(--card))", strokeWidth: 2 }} />
+          <Line type="monotone" dataKey="var_pct" stroke="#60a5fa" strokeWidth={2} dot={{ r: 3, fill: "#60a5fa" }} activeDot={{ r: 5, fill: "#60a5fa", stroke: "var(--card)", strokeWidth: 2 }} />
         </LineChart>
       </ResponsiveContainer>
     </div>

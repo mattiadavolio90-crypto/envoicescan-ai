@@ -602,11 +602,11 @@ function CentriDonutChart({ centri }: { centri: CentroDetailItem[] }) {
   return (
     <ResponsiveContainer width="100%" height={240}>
       <PieChart>
-        <Pie data={chartData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" stroke="hsl(var(--card))" strokeWidth={2}>
+        <Pie data={chartData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} dataKey="value" stroke="var(--card)" strokeWidth={2}>
           {chartData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
         </Pie>
-        <Tooltip formatter={(v: unknown) => formatEuro(typeof v === "number" ? v : 0)} contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }} labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }} itemStyle={{ color: "hsl(var(--foreground))" }} />
-        <Legend wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} iconType="circle" />
+        <Tooltip formatter={(v: unknown) => formatEuro(typeof v === "number" ? v : 0)} contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }} labelStyle={{ color: "var(--foreground)", fontWeight: 600 }} itemStyle={{ color: "var(--foreground)" }} />
+        <Legend wrapperStyle={{ fontSize: 12, color: "var(--foreground)" }} iconType="circle" />
       </PieChart>
     </ResponsiveContainer>
   );
@@ -713,32 +713,32 @@ function DettaglioCentroDialog({
             <>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.4} vertical={false} />
                   <XAxis
                     dataKey="giorno"
-                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={false}
                     interval={1}
                   />
                   <YAxis
-                    tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
+                    tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                     tickLine={false}
                     axisLine={false}
                     width={52}
                     tickFormatter={(v: number) => formatEuroCompact(v)}
                   />
                   <Tooltip
-                    cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
+                    cursor={{ fill: "var(--muted)", opacity: 0.4 }}
                     formatter={(v: unknown) => [formatEuro(typeof v === "number" ? v : 0), `Fatturato ${centro}`]}
                     labelFormatter={(l) => `Giorno ${l}`}
-                    contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
-                    labelStyle={{ color: "hsl(var(--foreground))", fontWeight: 600 }}
-                    itemStyle={{ color: "hsl(var(--foreground))" }}
+                    contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+                    labelStyle={{ color: "var(--foreground)", fontWeight: 600 }}
+                    itemStyle={{ color: "var(--foreground)" }}
                   />
                   <Bar dataKey="valore" radius={[3, 3, 0, 0]} maxBarSize={28}>
                     {chartData.map((entry, i) => (
-                      <RCell key={i} fill={entry.valore > 0 ? color : "hsl(var(--muted))"} opacity={entry.valore > 0 ? 0.9 : 0.3} />
+                      <RCell key={i} fill={entry.valore > 0 ? color : "var(--muted)"} opacity={entry.valore > 0 ? 0.9 : 0.3} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -800,20 +800,20 @@ function AndamentoLineChart({ andamento, centri, mode }: { andamento: AndamentoM
   return (
     <ResponsiveContainer width="100%" height={240}>
       <LineChart data={chartData} margin={{ top: 8, right: 16, bottom: 4, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.5} />
-        <XAxis dataKey="label" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={{ stroke: "hsl(var(--border))" }} />
-        <YAxis tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} tickLine={false} axisLine={false} width={56} tickFormatter={(v: number) => mode === "perc" ? `${v.toFixed(0)}%` : formatEuroCompact(v)} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.5} />
+        <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={{ stroke: "var(--border)" }} />
+        <YAxis tick={{ fontSize: 12, fill: "var(--muted-foreground)" }} tickLine={false} axisLine={false} width={56} tickFormatter={(v: number) => mode === "perc" ? `${v.toFixed(0)}%` : formatEuroCompact(v)} />
         <Tooltip
           formatter={(value: unknown, name: unknown) => {
             const v = typeof value === "number" ? value : 0;
             return [mode === "perc" ? `${v.toFixed(1)}%` : formatEuro(v), String(name ?? "")];
           }}
-          contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "hsl(var(--card))", borderColor: "hsl(var(--border))", color: "hsl(var(--foreground))" }}
-          labelStyle={{ color: "hsl(var(--muted-foreground))", marginBottom: 4 }}
+          contentStyle={{ fontSize: 12, borderRadius: 8, backgroundColor: "var(--card)", borderColor: "var(--border)", color: "var(--foreground)" }}
+          labelStyle={{ color: "var(--muted-foreground)", marginBottom: 4 }}
         />
-        <Legend wrapperStyle={{ fontSize: 12, color: "hsl(var(--foreground))" }} iconType="circle" />
+        <Legend wrapperStyle={{ fontSize: 12, color: "var(--foreground)" }} iconType="circle" />
         {centriAttivi.map((centro) => (
-          <Line key={centro} type="monotone" dataKey={centro} stroke={CENTRO_COLOR[centro] ?? "#94a3b8"} strokeWidth={2} dot={{ r: 3, fill: CENTRO_COLOR[centro] ?? "#94a3b8" }} activeDot={{ r: 5, stroke: "hsl(var(--card))", strokeWidth: 2 }} name={centro} />
+          <Line key={centro} type="monotone" dataKey={centro} stroke={CENTRO_COLOR[centro] ?? "#94a3b8"} strokeWidth={2} dot={{ r: 3, fill: CENTRO_COLOR[centro] ?? "#94a3b8" }} activeDot={{ r: 5, stroke: "var(--card)", strokeWidth: 2 }} name={centro} />
         ))}
       </LineChart>
     </ResponsiveContainer>
