@@ -2,11 +2,14 @@
 
 Estratto da fastapi_worker.py. Path, gate e response invariati.
 """
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
+
+logger = logging.getLogger("fastapi_worker")
 
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
@@ -46,6 +49,16 @@ def _is_admin_email(*args, **kwargs):
 
 def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     return _fw()._verify_worker_key(x_worker_key)
+
+
+def _verify_admin(
+    authorization: Optional[str] = Header(None),
+    x_worker_key: Optional[str] = Header(None),
+) -> dict:
+    """Gate admin: delega a routers.admin._verify_admin (firma identica per
+    l'iniezione FastAPI degli header). Import lazy per evitare cicli a import-time."""
+    from services.routers.admin import _verify_admin as _va
+    return _va(authorization=authorization, x_worker_key=x_worker_key)
 
 router = APIRouter()
 
@@ -178,3 +191,72 @@ def account_preferenze(
     sb = _get_supabase_client()
     sb.table("users").update({"tema": tema}).eq("id", str(user["id"])).execute()
     return {"ok": True, "tema": tema}
+
+
+class SvuotaDatiBody(BaseModel):
+    conferma: str
+
+
+# Tabelle figlie di `users`/`ristoranti` SENZA FK ON DELETE CASCADE: vanno
+# cancellate ESPLICITAMENTE per user_id, altrimenti la sola delete di `ristoranti`
+# (che propaga il cascade) le lascerebbe orfane. Verificato sullo schema live.
+# NB: `classificazioni_manuali` NON e' qui: nel DB ha righe globali con
+# user_id NULL e non va filtrata per user → la lasciamo intatta.
+_SVUOTA_TABELLE_NO_CASCADE = [
+    ("fatture_documenti", "user_id"),
+    ("fatture_queue", "user_id"),
+    ("upload_events", "user_id"),
+    ("upload_locks", "user_id"),
+    ("prodotti_utente", "user_id"),
+]
+
+
+@router.post("/api/account/svuota-dati", tags=["Account"])
+def account_svuota_dati(
+    body: SvuotaDatiBody,
+    admin_user: dict = Depends(_verify_admin),
+) -> Dict[str, Any]:
+    """ADMIN ONLY — svuota TUTTI i dati dell'account admin che chiama, per
+    ripartire da zero nei test. Cancella SOLO i dati del chiamante:
+
+      - l'id target e' SEMPRE admin_user["id"] (dal token verificato), mai un
+        parametro esterno → impossibile colpire un altro account;
+      - le delete usano .eq("user_id", admin_id) con un id concreto → le righe
+        globali con user_id NULL (es. classificazioni_manuali) restano intatte;
+      - cancella i ristoranti del chiamante: il loro ON DELETE CASCADE porta via
+        fatture, ricavi, margini, tag, scadenziario, notifiche, diario, ecc.
+
+    NON tocca: la memoria AI globale (prodotti_master, memoria_ai_categorie),
+    l'account `users`, le sessioni (resti loggato), e nessun dato di altri utenti.
+    """
+    if (body.conferma or "").strip() != "SVUOTA":
+        raise HTTPException(status_code=400, detail="Conferma non valida")
+
+    admin_id = str(admin_user.get("id") or "").strip()
+    # Guard difensivo: senza un id concreto NON eseguiamo alcuna delete.
+    if not admin_id:
+        raise HTTPException(status_code=400, detail="Utente non risolto")
+
+    sb = _get_supabase_client()
+    deleted: Dict[str, int] = {}
+
+    # 1) Tabelle senza cascade: delete esplicita per user_id del chiamante.
+    for table, col in _SVUOTA_TABELLE_NO_CASCADE:
+        try:
+            r = sb.table(table).delete().eq(col, admin_id).execute()
+            deleted[table] = len(r.data or [])
+        except Exception as exc:
+            logger.warning("svuota-dati: errore su %s: %s", table, exc)
+
+    # 2) Ristoranti del chiamante → il cascade propaga su tutto il resto.
+    try:
+        r = sb.table("ristoranti").delete().eq("user_id", admin_id).execute()
+        deleted["ristoranti(+cascade)"] = len(r.data or [])
+    except Exception as exc:
+        logger.warning("svuota-dati: errore su ristoranti: %s", exc)
+
+    logger.warning(
+        "SVUOTA_DATI_ADMIN: admin=%s | id=%s | deleted=%s",
+        admin_user.get("email"), admin_id, deleted,
+    )
+    return {"ok": True, "deleted": deleted}

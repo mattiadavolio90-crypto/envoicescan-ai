@@ -1,13 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Moon, Sun } from "lucide-react";
+import { Moon, Sun, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 const PIANO_LABEL: Record<string, string> = {
@@ -185,6 +194,97 @@ function CambioPasswordForm() {
             {loading ? "Salvataggio..." : "Aggiorna password"}
           </Button>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Solo admin: svuota tutti i dati del PROPRIO account (ambiente di test) per
+// ripartire da zero. Backend gated da _verify_admin: opera solo sull'admin che
+// chiama, mai su altri utenti. Doppia conferma: digitare "SVUOTA".
+function ZonaPericolosa() {
+  const router = useRouter();
+  const [conferma, setConferma] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  async function handleSvuota() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/account/svuota-dati", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conferma }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.detail || data.error || "Errore durante lo svuotamento");
+        return;
+      }
+      toast.success("Dati svuotati. L'app è ripartita da zero.");
+      setOpen(false);
+      setConferma("");
+      router.refresh();
+    } catch {
+      toast.error("Errore di connessione. Riprova.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Card className="border-destructive/40">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2 text-destructive">
+          <AlertTriangle className="size-4" />
+          Zona pericolosa (admin)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground max-w-prose">
+          Svuota <span className="font-medium text-foreground">tutti i dati del tuo account admin</span>{" "}
+          (fatture, ricavi, margini, tag, scadenziario, notifiche…) per ripartire da
+          zero nei test. L&apos;account resta attivo e la memoria AI globale non viene
+          toccata. Non tocca i dati degli altri utenti.
+        </p>
+        <Button variant="destructive" onClick={() => setOpen(true)}>
+          Svuota i miei dati
+        </Button>
+        <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setConferma(""); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Confermi lo svuotamento?</DialogTitle>
+              <DialogDescription>
+                Tutti i dati del tuo account admin verranno eliminati
+                definitivamente. L&apos;operazione non è reversibile. Per procedere,
+                scrivi <span className="font-semibold">SVUOTA</span> qui sotto.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5">
+              <Label htmlFor="conferma-svuota">Conferma</Label>
+              <Input
+                id="conferma-svuota"
+                value={conferma}
+                onChange={(e) => setConferma(e.target.value)}
+                placeholder="SVUOTA"
+                autoComplete="off"
+                disabled={loading}
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" disabled={loading} onClick={() => setOpen(false)}>
+                Annulla
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleSvuota}
+                disabled={loading || conferma.trim() !== "SVUOTA"}
+              >
+                {loading ? "Svuotamento..." : "Svuota definitivamente"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
@@ -373,6 +473,9 @@ export function AccountClient({ data }: { data: AccountData }) {
 
       {/* Cambio password */}
       <CambioPasswordForm />
+
+      {/* Zona pericolosa — solo admin: svuota i dati del proprio ambiente di test */}
+      {data.is_admin && <ZonaPericolosa />}
     </div>
   );
 }
