@@ -56,6 +56,12 @@ const TIPO_BADGE: Record<TipoSpesa, string> = {
   generale: "bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200",
 };
 
+// Ring per tipo — coerente con lo stile a card bordate di Personale.
+const TIPO_RING: Record<TipoSpesa, string> = {
+  fb: "ring-orange-500/50 hover:bg-orange-500/5",
+  generale: "ring-purple-500/50 hover:bg-purple-500/5",
+};
+
 // ─── Dialog spesa ─────────────────────────────────────────────────────────────
 
 interface SpesaDialogProps {
@@ -332,24 +338,24 @@ export function SpeseView() {
         </div>
       </div>
 
-      {/* KPI totali */}
-      <div className="grid grid-cols-3 gap-2">
-        <Card className="ring-1 ring-orange-500/60 bg-orange-50 dark:bg-orange-950/20">
-          <CardContent className="py-3 px-4">
-            <p className="text-xs font-medium text-orange-700 dark:text-orange-500">Costi F&B extra</p>
-            <p className="text-xl font-bold tabular-nums text-orange-700 dark:text-orange-400">{fmtEuro(totFb)}</p>
+      {/* KPI totali — stile coerente con Personale (card grandi) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card className="ring-1 ring-orange-500/50 bg-orange-50/60 dark:bg-orange-950/20">
+          <CardContent className="py-5 px-6 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-widest text-orange-700 dark:text-orange-500">Costi F&amp;B extra</p>
+            <p className="text-4xl font-black tabular-nums text-orange-700 dark:text-orange-400 leading-none">{fmtEuro(totFb)}</p>
           </CardContent>
         </Card>
-        <Card className="ring-1 ring-purple-500/60 bg-purple-50 dark:bg-purple-950/20">
-          <CardContent className="py-3 px-4">
-            <p className="text-xs font-medium text-purple-700 dark:text-purple-500">Spese Generali extra</p>
-            <p className="text-xl font-bold tabular-nums text-purple-700 dark:text-purple-400">{fmtEuro(totGenerale)}</p>
+        <Card className="ring-1 ring-purple-500/50 bg-purple-50/60 dark:bg-purple-950/20">
+          <CardContent className="py-5 px-6 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-widest text-purple-700 dark:text-purple-500">Spese Generali extra</p>
+            <p className="text-4xl font-black tabular-nums text-purple-700 dark:text-purple-400 leading-none">{fmtEuro(totGenerale)}</p>
           </CardContent>
         </Card>
-        <Card className="ring-1 ring-sky-500/60 bg-sky-50 dark:bg-sky-950/20">
-          <CardContent className="py-3 px-4">
-            <p className="text-xs font-medium text-sky-700 dark:text-sky-500">Totale extra</p>
-            <p className="text-xl font-bold tabular-nums text-sky-700 dark:text-sky-400">{fmtEuro(totale)}</p>
+        <Card className="ring-1 ring-sky-500/50 bg-sky-50/60 dark:bg-sky-950/20">
+          <CardContent className="py-5 px-6 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-widest text-sky-700 dark:text-sky-400">Totale extra</p>
+            <p className="text-4xl font-black tabular-nums text-sky-700 dark:text-sky-300 leading-none">{fmtEuro(totale)}</p>
           </CardContent>
         </Card>
       </div>
@@ -364,9 +370,9 @@ export function SpeseView() {
             : "Nessuna spesa di questo tipo nel mese."}
         </div>
       ) : (
-        <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+        <div className="space-y-1.5">
           {voci.map(s => (
-            <div key={s.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/40 group">
+            <div key={s.id} className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 ring-1 transition-colors group ${TIPO_RING[s.tipo]}`}>
               <span className="text-xs text-muted-foreground tabular-nums w-12 shrink-0">{fmtData(s.data_spesa)}</span>
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${TIPO_BADGE[s.tipo]}`}>
                 {s.tipo === "fb" ? "F&B" : "Gen."}

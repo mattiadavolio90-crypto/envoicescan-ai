@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, CalendarDays, Wallet, Users, Receipt, ArrowUpRight, LayoutGrid, CalendarRange, List, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays, Wallet, Users, LayoutGrid, CalendarRange, List, Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -12,7 +12,7 @@ type Vista = "mese" | "settimana" | "lista";
 
 // ─── Fonti aggregate ────────────────────────────────────────────────────────
 
-type Fonte = "appuntamento" | "spesa" | "turno" | "scadenza";
+type Fonte = "appuntamento" | "spesa" | "turno";
 
 interface VoceAgenda {
   id: string;
@@ -21,14 +21,13 @@ interface VoceAgenda {
   titolo: string;
   dettaglio?: string;      // riga secondaria
   ora?: string;            // HH:MM se rilevante
-  importo?: number;        // per spese/scadenze
+  importo?: number;        // per spese
 }
 
 const FONTI: Record<Fonte, { label: string; dot: string; chip: string; icon: typeof CalendarDays; href: string }> = {
   appuntamento: { label: "Appuntamenti", dot: "bg-sky-500",    chip: "bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200",       icon: CalendarDays, href: "/agenda?layer=appuntamenti" },
   spesa:        { label: "Spese",        dot: "bg-orange-500", chip: "bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200", icon: Wallet,       href: "/agenda?layer=spese" },
   turno:        { label: "Personale",    dot: "bg-violet-500", chip: "bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200", icon: Users,        href: "/agenda?layer=personale" },
-  scadenza:     { label: "Scadenze",     dot: "bg-red-500",    chip: "bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200",       icon: Receipt,      href: "/scadenziario" },
 };
 
 // ─── Utilità date ─────────────────────────────────────────────────────────────
@@ -76,7 +75,6 @@ function addDays(d: Date, n: number): Date {
 interface EventoRaw { id: string; data_evento: string; titolo: string; ora_inizio?: string | null; ora_fine?: string | null; descrizione?: string | null; }
 interface SpesaRaw { id: string; data_spesa: string; tipo: "fb" | "generale"; importo: number; descrizione: string; }
 interface TurnoRaw { id: string; nome: string; data_turno: string; ora_inizio: string; ora_fine: string; }
-interface ScadenzaRaw { id: string; fornitore: string; totale_documento: number; scadenza_effettiva: string | null; pagata: boolean; is_nota_credito?: boolean; numero_documento: string | null; }
 
 // ─── Vista aggregata "Tutto" ───────────────────────────────────────────────────
 
@@ -91,10 +89,7 @@ export function AgendaOverview() {
   const [vista, setVista] = useState<Vista>("mese");
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   // filtri fonte attivi
-  const [fontiAttive, setFontiAttive] = useState<Set<Fonte>>(new Set(["appuntamento", "spesa", "turno", "scadenza"]));
-
-  const da = `${meseISO(anno, mese)}-01`;
-  const fine = `${meseISO(anno, mese)}-${String(giorniNelMese(anno, mese)).padStart(2, "0")}`;
+  const [fontiAttive, setFontiAttive] = useState<Set<Fonte>>(new Set(["appuntamento", "spesa", "turno"]));
 
   const load = useCallback(async (a: number, m: number) => {
     setLoading(true);
@@ -102,11 +97,10 @@ export function AgendaOverview() {
     const d0 = `${mISO}-01`;
     const dN = `${mISO}-${String(giorniNelMese(a, m)).padStart(2, "0")}`;
     try {
-      const [evRes, spRes, tuRes, scRes] = await Promise.allSettled([
+      const [evRes, spRes, tuRes] = await Promise.allSettled([
         fetch(`/api/workspace/diario?mese=${mISO}`).then(r => r.json()),
         fetch(`/api/workspace/spese?da=${d0}&a=${dN}`).then(r => r.json()),
         fetch(`/api/workspace/personale?da=${d0}&a=${dN}`).then(r => r.json()),
-        fetch(`/api/scadenziario`).then(r => r.json()),
       ]);
 
       const out: VoceAgenda[] = [];
@@ -138,19 +132,6 @@ export function AgendaOverview() {
             titolo: t.nome,
             dettaglio: `${fmtOra(t.ora_inizio)}–${fmtOra(t.ora_fine)}`,
             ora: fmtOra(t.ora_inizio) || undefined,
-          });
-        }
-      }
-      if (scRes.status === "fulfilled") {
-        for (const doc of (scRes.value?.documenti ?? []) as ScadenzaRaw[]) {
-          // Solo scadenze del mese in vista, non pagate, non note di credito
-          if (doc.pagata || doc.is_nota_credito || !doc.scadenza_effettiva) continue;
-          if (doc.scadenza_effettiva < d0 || doc.scadenza_effettiva > dN) continue;
-          out.push({
-            id: `sc-${doc.id}`, fonte: "scadenza", data: doc.scadenza_effettiva.slice(0, 10),
-            titolo: doc.fornitore,
-            dettaglio: doc.numero_documento ? `Fattura n. ${doc.numero_documento}` : "Fattura da pagare",
-            importo: doc.totale_documento,
           });
         }
       }
@@ -274,12 +255,6 @@ export function AgendaOverview() {
           <Button size="sm" onClick={() => setQuickAddOpen(true)}>
             <Plus className="size-4 mr-1" />Appuntamento
           </Button>
-          <Link
-            href="/agenda?layer=appuntamenti"
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Gestisci <ArrowUpRight className="size-3" />
-          </Link>
         </div>
       </div>
 
@@ -426,7 +401,7 @@ function VoceRow({ v }: { v: VoceAgenda }) {
         {v.dettaglio && <p className="text-xs text-muted-foreground truncate">{v.dettaglio}</p>}
       </div>
       {v.importo != null && (
-        <span className={`text-sm font-semibold tabular-nums shrink-0 ${v.fonte === "scadenza" ? "text-red-600 dark:text-red-400" : ""}`}>
+        <span className="text-sm font-semibold tabular-nums shrink-0">
           {fmtEuro(v.importo)}
         </span>
       )}

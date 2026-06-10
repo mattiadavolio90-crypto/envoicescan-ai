@@ -221,26 +221,26 @@ function CalendarioMini({ anno, mese, eventi, selezionato, onSelect }: Calendari
           <div key={i} className="text-center text-[10px] font-medium text-muted-foreground py-1">{g}</div>
         ))}
       </div>
-      <div className="grid grid-cols-7 gap-y-1">
+      <div className="grid grid-cols-7 gap-1">
         {celle.map((giorno, i) => {
           if (!giorno) return <div key={i} />;
           const iso = `${anno}-${String(mese + 1).padStart(2, "0")}-${String(giorno).padStart(2, "0")}`;
           const isOggi = iso === oggi;
           const isSel = iso === selezionato;
-          const dots = (eventiPerGiorno[iso] ?? []).slice(0, 3);
+          const dots = (eventiPerGiorno[iso] ?? []).slice(0, 4);
           return (
             <button
               key={iso}
               onClick={() => onSelect(iso)}
-              className={`flex flex-col items-center justify-center rounded-lg py-1 text-sm transition-colors
+              className={`flex flex-col items-center justify-start rounded-lg py-1.5 min-h-[44px] text-sm transition-colors
                 ${isSel ? "bg-primary text-primary-foreground font-semibold" : isOggi ? "ring-1 ring-primary font-semibold" : "hover:bg-muted"}
               `}
             >
               <span>{giorno}</span>
               {dots.length > 0 && (
-                <div className="flex gap-0.5 mt-0.5">
+                <div className="flex gap-0.5 mt-1">
                   {dots.map((e, di) => (
-                    <span key={di} className={`size-1 rounded-full ${coloreInfo(e.colore).dot} ${isSel ? "opacity-80" : ""}`} />
+                    <span key={di} className={`size-1.5 rounded-full ${coloreInfo(e.colore).dot} ${isSel ? "opacity-90" : ""}`} />
                   ))}
                 </div>
               )}
@@ -311,46 +311,36 @@ export function AgendaView() {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-4 items-start">
-      {/* Sidebar calendaro */}
-      <div className="space-y-4">
-        <Card>
-          <CardContent className="p-4">
-            {/* Navigazione mese */}
-            <div className="flex items-center justify-between mb-3">
-              <button onClick={mesePrecedente} className="p-1 rounded hover:bg-muted">
-                <ChevronLeft className="size-4" />
-              </button>
-              <span className="text-sm font-semibold">{MESI[mese]} {anno}</span>
-              <button onClick={meseSuccessivo} className="p-1 rounded hover:bg-muted">
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-            <CalendarioMini
-              anno={anno}
-              mese={mese}
-              eventi={eventi}
-              selezionato={giornoSel}
-              onSelect={setGiornoSel}
-            />
-          </CardContent>
-        </Card>
-
-        <Button
-          className="w-full"
-          onClick={() => { setEditEvento(null); setDialogOpen(true); }}
-        >
-          <Plus className="size-4 mr-1.5" />Nuovo evento
-        </Button>
-      </div>
+    <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-4 items-start">
+      {/* Calendario largo */}
+      <Card>
+        <CardContent className="p-4">
+          {/* Navigazione mese */}
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <button onClick={mesePrecedente} className="p-1 rounded hover:bg-muted">
+              <ChevronLeft className="size-4" />
+            </button>
+            <span className="text-sm font-semibold min-w-[140px] text-center">{MESI[mese]} {anno}</span>
+            <button onClick={meseSuccessivo} className="p-1 rounded hover:bg-muted">
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+          <CalendarioMini
+            anno={anno}
+            mese={mese}
+            eventi={eventi}
+            selezionato={giornoSel}
+            onSelect={setGiornoSel}
+          />
+        </CardContent>
+      </Card>
 
       {/* Pannello giorno selezionato */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold capitalize">{fmtGiornoLabel(giornoSel)}</h2>
           <Button
             size="sm"
-            variant="outline"
             onClick={() => { setEditEvento(null); setDialogOpen(true); }}
           >
             <Plus className="size-3.5 mr-1" />Aggiungi
