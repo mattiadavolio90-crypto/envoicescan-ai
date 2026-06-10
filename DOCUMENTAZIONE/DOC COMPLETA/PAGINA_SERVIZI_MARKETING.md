@@ -5,7 +5,7 @@ Documento operativo: cosa è stato fatto, cosa resta, e le decisioni prese su co
 NON fare. È la nostra versione rielaborata del brief iniziale, con priorità ribaltate
 rispetto al prompt originale.
 
-Ultimo aggiornamento: 2026-06-10
+Ultimo aggiornamento: 2026-06-10 (aggiunti trigger contestuali soft)
 
 ---
 
@@ -75,6 +75,33 @@ Ogni gruppo ha `border-2` spesso + ombra colorata coordinata sullo stesso accent
 - Lead flow invariato: payload `servizio_key/servizio_label/messaggio` → worker →
   tabella `marketplaceleads` → coda admin. Nessuna regressione.
 
+### Trigger contestuali soft (era roadmap punto 2 — ora fatto)
+Suggerimenti discreti che, dentro l'app, propongono il servizio giusto quando
+c'è un segnale reale. Canale **separato** da briefing/notifiche operative: quelle
+restano pulite e fidate, qui non entrano proposte commerciali.
+
+- **Architettura** (`apps/web/src/lib/trigger-servizi.ts`): unica fonte di verità.
+  Mappa 4 trigger → card di `/assistenza` + `valutaTrigger()` puro che decide SE
+  e QUALE mostrare, **al massimo uno per pagina**. Card 5-6 (partner) mai
+  triggerabili.
+- **UI** (`apps/web/src/components/trigger-hint.tsx`): banner leggero in fondo
+  alla pagina, **mai popup, mai bloccante**, dismissibile con **cooldown 14gg**
+  in `localStorage` (se ignorato non torna subito). Deep-link
+  `/assistenza?servizio=<key>` che scrolla alla card, la evidenzia e apre il
+  dialog lead.
+- **Segnali — riuso di dati GIÀ calcolati, nessuna query pesante nuova:**
+  - `/margini` → **Consulenza**: MOL negativo o food cost oltre soglia (dal KPI
+    di pagina).
+  - `/prezzi` → **Analisi su Richiesta**: prezzi in aumento (topic
+    `price_alert`, letto da `contaTopicAttivo` su `fetchNotifiche` già cache-ata).
+  - `/analisi-fatture` → **Check-up**: molte righe da classificare (topic
+    `uncategorized_rows`).
+- **Toggle per-cliente** (come i flag pagina): switch *"Suggerimenti servizi"*
+  nel pannello admin del cliente. Salvato in `pagine_abilitate` con **convenzione
+  inversa** (`trigger_servizi_off`): assente = **ON di default** (anche per i
+  clienti esistenti), presente = spento. Nessuna migration, nessuna modifica al
+  worker. Lettura centralizzata in `triggerAbilitati()`.
+
 ---
 
 ## 🔜 DA FARE (nostra roadmap, in ordine di priorità)
@@ -92,15 +119,19 @@ Far arrivare lead più qualificati nella coda admin.
   esistente. Oggi c'è già un TODO commentato nel fetch.
 - Rischio basso, ritorno alto.
 
-### 2. Trigger contestuali — SECONDO, con disciplina
-Dentro l'app, dove il ristoratore *vede* un problema, offrirgli il servizio che lo
-risolve (food cost alto → Check-up; margine basso → Consulenza Gestionale).
-È il vero moltiplicatore di valore della pagina.
-**Regola ferrea (filosofia ONEFLUX, non invadente):**
-- massimo **1 trigger per pagina**;
-- **dismissibile**, ricordato come chiuso;
-- **mai popup, mai bloccante** — un banner discreto, non un'agenzia che insegue.
-- Vive in altre pagine (non in `/assistenza`); rimanda alla card giusta.
+### 2. Rifiniture dei trigger contestuali — quando servono
+La base dei trigger è fatta (vedi sopra). Restano migliorie *opzionali*, da fare
+solo se l'uso reale le richiede — non prima:
+- **Trigger Assistenza Continuativa**: oggi non scatta da nessuna parte. Il suo
+  segnale ("uso discontinuo / vuole delegare") richiederebbe un dato nuovo
+  (giorni dall'ultimo accesso / inattività). Volutamente NON implementato per non
+  inventare un calcolo: si aggancia quando avremo un segnale solido e raro.
+- **Segnale "poche fatture" sul Check-up**: oggi il Check-up scatta solo sulle
+  righe da classificare. Aggiungere "pochi dati caricati" serve un conteggio
+  fatture lato server in pagina (ora non c'è pulito): da valutare.
+- **Cooldown lato server invece di `localStorage`**: oggi il "non ripeterlo
+  subito" è per-dispositivo (localStorage). Se serve renderlo per-utente
+  (cross-device), si sposta su DB. Per ora basta così.
 
 ---
 
@@ -130,3 +161,17 @@ clienti e per restare fedeli alla semplicità ONEFLUX.
   coda admin: NON rinominare in id/slug senza toccare worker + tabella.
 - Numero WhatsApp: `NEXT_PUBLIC_WHATSAPP_NUMERO` (fallback al numero noto).
 - `priceValue` è testo già umano ("da 199€/mese"): nessuna formattazione runtime.
+
+### Trigger — file e vincoli
+- `lib/trigger-servizi.ts` — catalogo + `valutaTrigger()` (1 per pagina) +
+  `triggerAbilitati()`. `TriggerDef.servizioKey` deve combaciare con un
+  `Servizio.key` di `assistenza.ts`, altrimenti il deep-link non trova la card.
+- `components/trigger-hint.tsx` — banner, cooldown `localStorage`
+  (`oneflux_trigger_v1_*`). Alza `STORAGE_PREFIX` se cambia la semantica.
+- Flag cliente `trigger_servizi_off` in **convenzione inversa** (presente =
+  spento). NON usare `trigger_servizi` "dritto": la lista `pagine_abilitate` lato
+  client porta solo le chiavi `true` (`_normalize_pagine` scarta i `false`),
+  quindi un OFF deve essere una chiave PRESENTE.
+- I segnali si leggono da dati GIÀ calcolati (KPI margini, topic notifiche via
+  `contaTopicAttivo`). Regola: un trigger non deve mai introdurre query pesanti
+  nuove — se il segnale non c'è pulito, il trigger NON scatta (meglio che inventare).
