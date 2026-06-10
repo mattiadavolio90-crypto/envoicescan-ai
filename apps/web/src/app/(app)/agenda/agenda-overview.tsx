@@ -2,9 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, CalendarDays, Wallet, Users, Receipt, ArrowUpRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, CalendarDays, Wallet, Users, Receipt, ArrowUpRight, LayoutGrid, CalendarRange, List, Plus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { EventoDialog } from "../workspace/diario-tab";
+
+type Vista = "mese" | "settimana" | "lista";
 
 // ─── Fonti aggregate ────────────────────────────────────────────────────────
 
@@ -52,6 +56,20 @@ function fmtOra(t: string | null | undefined) {
 function fmtEuro(v: number) {
   return new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(v);
 }
+function isoOf(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function lunediDi(iso: string): Date {
+  const d = new Date(iso + "T00:00:00");
+  const dow = d.getDay() === 0 ? 6 : d.getDay() - 1;
+  d.setDate(d.getDate() - dow);
+  return d;
+}
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d);
+  r.setDate(r.getDate() + n);
+  return r;
+}
 
 // ─── Tipi grezzi degli endpoint riusati ────────────────────────────────────────
 
@@ -70,6 +88,8 @@ export function AgendaOverview() {
   const [giornoSel, setGiornoSel] = useState<string>(today);
   const [voci, setVoci] = useState<VoceAgenda[]>([]);
   const [loading, setLoading] = useState(false);
+  const [vista, setVista] = useState<Vista>("mese");
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   // filtri fonte attivi
   const [fontiAttive, setFontiAttive] = useState<Set<Fonte>>(new Set(["appuntamento", "spesa", "turno", "scadenza"]));
 
@@ -144,11 +164,22 @@ export function AgendaOverview() {
 
   useEffect(() => { load(anno, mese); }, [anno, mese, load]);
 
-  function mesePrecedente() {
-    if (mese === 0) { setAnno(a => a - 1); setMese(11); } else setMese(m => m - 1);
+  // Allinea mese/anno (e quindi il fetch) a una data ISO
+  function vaiAData(iso: string) {
+    setGiornoSel(iso);
+    const [y, m] = iso.split("-").map(Number);
+    if (y !== anno) setAnno(y);
+    if (m - 1 !== mese) setMese(m - 1);
   }
-  function meseSuccessivo() {
-    if (mese === 11) { setAnno(a => a + 1); setMese(0); } else setMese(m => m + 1);
+  function navPrecedente() {
+    if (vista === "settimana") {
+      vaiAData(isoOf(addDays(lunediDi(giornoSel), -7)));
+    } else if (mese === 0) { setAnno(a => a - 1); setMese(11); } else setMese(m => m - 1);
+  }
+  function navSuccessivo() {
+    if (vista === "settimana") {
+      vaiAData(isoOf(addDays(lunediDi(giornoSel), 7)));
+    } else if (mese === 11) { setAnno(a => a + 1); setMese(0); } else setMese(m => m + 1);
   }
   function toggleFonte(f: Fonte) {
     setFontiAttive(prev => {
@@ -180,6 +211,27 @@ export function AgendaOverview() {
     return d.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
   };
 
+  // Settimana corrente (7 giorni da lunedì del giorno selezionato)
+  const giorniSettimana = useMemo(() => {
+    const lun = lunediDi(giornoSel);
+    return Array.from({ length: 7 }, (_, i) => isoOf(addDays(lun, i)));
+  }, [giornoSel]);
+
+  // Lista: dal giorno selezionato in poi, solo giorni con voci, ordinati
+  const giorniListaConVoci = useMemo(() => {
+    return Object.keys(perGiorno)
+      .filter(d => d >= giornoSel)
+      .sort();
+  }, [perGiorno, giornoSel]);
+
+  function ordina(items: VoceAgenda[]) {
+    return items.slice().sort((a, b) => (a.ora ?? "99:99").localeCompare(b.ora ?? "99:99"));
+  }
+
+  const labelNav = vista === "settimana"
+    ? `${new Date(giorniSettimana[0] + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "short" })} – ${new Date(giorniSettimana[6] + "T00:00:00").toLocaleDateString("it-IT", { day: "2-digit", month: "short" })}`
+    : `${MESI[mese]} ${anno}`;
+
   return (
     <div className="space-y-4">
       {/* Filtri fonte */}
@@ -201,103 +253,183 @@ export function AgendaOverview() {
             </button>
           );
         })}
-        <Link
-          href="/agenda?layer=appuntamenti"
-          className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Gestisci appuntamenti <ArrowUpRight className="size-3" />
-        </Link>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-4 items-start">
-        {/* Calendario */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <button onClick={mesePrecedente} className="p-1 rounded hover:bg-muted">
-                <ChevronLeft className="size-4" />
+        <div className="ml-auto flex items-center gap-2">
+          {/* Toggle vista */}
+          <div className="flex rounded-md border border-border overflow-hidden">
+            {([
+              { k: "mese" as Vista, icon: LayoutGrid, title: "Mese" },
+              { k: "settimana" as Vista, icon: CalendarRange, title: "Settimana" },
+              { k: "lista" as Vista, icon: List, title: "Lista" },
+            ]).map(v => (
+              <button
+                key={v.k}
+                onClick={() => setVista(v.k)}
+                title={v.title}
+                className={`px-2.5 py-1.5 transition-colors ${vista === v.k ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+              >
+                <v.icon className="size-4" />
               </button>
-              <span className="text-sm font-semibold">{MESI[mese]} {anno}</span>
-              <button onClick={meseSuccessivo} className="p-1 rounded hover:bg-muted">
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
-
-            <div className="grid grid-cols-7 mb-1">
-              {GIORNI_BREVI.map((g, i) => (
-                <div key={i} className="text-center text-[10px] font-medium text-muted-foreground py-1">{g}</div>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {celle.map((giorno, i) => {
-                if (!giorno) return <div key={`pad-${i}`} />;
-                const iso = `${meseISO(anno, mese)}-${String(giorno).padStart(2, "0")}`;
-                const isOggi = iso === today;
-                const isSel = iso === giornoSel;
-                const items = perGiorno[iso] ?? [];
-                const fontiGiorno = Array.from(new Set(items.map(v => v.fonte)));
-                return (
-                  <button
-                    key={iso}
-                    onClick={() => setGiornoSel(iso)}
-                    className={`flex flex-col items-center justify-start rounded-lg py-1.5 min-h-[44px] text-sm transition-colors ${
-                      isSel ? "bg-primary text-primary-foreground font-semibold"
-                      : isOggi ? "ring-1 ring-primary font-semibold"
-                      : "hover:bg-muted"
-                    }`}
-                  >
-                    <span>{giorno}</span>
-                    {fontiGiorno.length > 0 && (
-                      <div className="flex gap-0.5 mt-1">
-                        {fontiGiorno.slice(0, 4).map(f => (
-                          <span key={f} className={`size-1.5 rounded-full ${FONTI[f].dot} ${isSel ? "opacity-90" : ""}`} />
-                        ))}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Pannello giorno */}
-        <div className="space-y-2">
-          <h2 className="text-sm font-semibold capitalize">{fmtGiornoLabel(giornoSel)}</h2>
-          {loading ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Caricamento…</div>
-          ) : vociGiorno.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted-foreground">Niente in programma.</div>
-          ) : (
-            <div className="space-y-1.5">
-              {vociGiorno.map(v => {
-                const info = FONTI[v.fonte];
-                return (
-                  <Link
-                    key={v.id}
-                    href={info.href}
-                    className="flex items-start gap-2.5 rounded-lg border border-border p-2.5 hover:bg-muted/40 transition-colors group"
-                  >
-                    <span className={`mt-1 size-2.5 rounded-full shrink-0 ${info.dot}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-sm truncate">{v.titolo}</span>
-                        {v.ora && <span className="text-xs text-muted-foreground shrink-0">{v.ora}</span>}
-                      </div>
-                      {v.dettaglio && <p className="text-xs text-muted-foreground truncate">{v.dettaglio}</p>}
-                    </div>
-                    {v.importo != null && (
-                      <span className={`text-sm font-semibold tabular-nums shrink-0 ${v.fonte === "scadenza" ? "text-red-600 dark:text-red-400" : ""}`}>
-                        {fmtEuro(v.importo)}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          )}
+            ))}
+          </div>
+          <Button size="sm" onClick={() => setQuickAddOpen(true)}>
+            <Plus className="size-4 mr-1" />Appuntamento
+          </Button>
+          <Link
+            href="/agenda?layer=appuntamenti"
+            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Gestisci <ArrowUpRight className="size-3" />
+          </Link>
         </div>
       </div>
+
+      {/* Navigazione periodo (mese o settimana) */}
+      {vista !== "lista" && (
+        <div className="flex items-center justify-center gap-2">
+          <button onClick={navPrecedente} className="p-1 rounded hover:bg-muted">
+            <ChevronLeft className="size-4" />
+          </button>
+          <span className="text-sm font-semibold min-w-[160px] text-center capitalize">{labelNav}</span>
+          <button onClick={navSuccessivo} className="p-1 rounded hover:bg-muted">
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
+      ) : vista === "mese" ? (
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-4 items-start">
+          {/* Calendario mese */}
+          <Card>
+            <CardContent className="p-4">
+              <div className="grid grid-cols-7 mb-1">
+                {GIORNI_BREVI.map((g, i) => (
+                  <div key={i} className="text-center text-[10px] font-medium text-muted-foreground py-1">{g}</div>
+                ))}
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {celle.map((giorno, i) => {
+                  if (!giorno) return <div key={`pad-${i}`} />;
+                  const iso = `${meseISO(anno, mese)}-${String(giorno).padStart(2, "0")}`;
+                  const isOggi = iso === today;
+                  const isSel = iso === giornoSel;
+                  const items = perGiorno[iso] ?? [];
+                  const fontiGiorno = Array.from(new Set(items.map(v => v.fonte)));
+                  return (
+                    <button
+                      key={iso}
+                      onClick={() => setGiornoSel(iso)}
+                      className={`flex flex-col items-center justify-start rounded-lg py-1.5 min-h-[44px] text-sm transition-colors ${
+                        isSel ? "bg-primary text-primary-foreground font-semibold"
+                        : isOggi ? "ring-1 ring-primary font-semibold"
+                        : "hover:bg-muted"
+                      }`}
+                    >
+                      <span>{giorno}</span>
+                      {fontiGiorno.length > 0 && (
+                        <div className="flex gap-0.5 mt-1">
+                          {fontiGiorno.slice(0, 4).map(f => (
+                            <span key={f} className={`size-1.5 rounded-full ${FONTI[f].dot} ${isSel ? "opacity-90" : ""}`} />
+                          ))}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Pannello giorno selezionato */}
+          <div className="space-y-2">
+            <h2 className="text-sm font-semibold capitalize">{fmtGiornoLabel(giornoSel)}</h2>
+            {vociGiorno.length === 0 ? (
+              <div className="py-10 text-center text-sm text-muted-foreground">Niente in programma.</div>
+            ) : (
+              <div className="space-y-1.5">
+                {vociGiorno.map(v => <VoceRow key={v.id} v={v} />)}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : vista === "settimana" ? (
+        // Vista settimana: 7 colonne con gli item di ogni giorno
+        <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
+          {giorniSettimana.map(iso => {
+            const items = ordina(perGiorno[iso] ?? []);
+            const d = new Date(iso + "T00:00:00");
+            const isOggi = iso === today;
+            return (
+              <div key={iso} className={`rounded-lg border p-2 min-h-[120px] ${isOggi ? "border-primary/60" : "border-border"}`}>
+                <div className={`text-center mb-1.5 ${isOggi ? "text-primary font-semibold" : "text-muted-foreground"}`}>
+                  <div className="text-[10px] uppercase">{d.toLocaleDateString("it-IT", { weekday: "short" })}</div>
+                  <div className="text-sm font-bold leading-none">{d.getDate()}</div>
+                </div>
+                <div className="space-y-1">
+                  {items.map(v => {
+                    const info = FONTI[v.fonte];
+                    return (
+                      <Link key={v.id} href={info.href} className={`block rounded px-1.5 py-1 text-[10px] ${info.chip} hover:opacity-80 transition-opacity`}>
+                        <div className="font-semibold truncate">{v.ora ? `${v.ora} ` : ""}{v.titolo}</div>
+                        {v.importo != null && <div className="tabular-nums">{fmtEuro(v.importo)}</div>}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        // Vista lista: cosa arriva da oggi in poi
+        giorniListaConVoci.length === 0 ? (
+          <div className="py-16 text-center text-sm text-muted-foreground">Niente in programma da qui in avanti.</div>
+        ) : (
+          <div className="space-y-3">
+            {giorniListaConVoci.map(iso => (
+              <div key={iso}>
+                <p className="text-xs font-semibold text-muted-foreground mb-1.5 capitalize">{fmtGiornoLabel(iso)}</p>
+                <div className="space-y-1.5">
+                  {ordina(perGiorno[iso]).map(v => <VoceRow key={v.id} v={v} />)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      )}
+
+      <EventoDialog
+        open={quickAddOpen}
+        evento={null}
+        dataDefault={giornoSel}
+        onClose={() => setQuickAddOpen(false)}
+        onSaved={() => load(anno, mese)}
+      />
     </div>
+  );
+}
+
+function VoceRow({ v }: { v: VoceAgenda }) {
+  const info = FONTI[v.fonte];
+  return (
+    <Link
+      href={info.href}
+      className="flex items-start gap-2.5 rounded-lg border border-border p-2.5 hover:bg-muted/40 transition-colors"
+    >
+      <span className={`mt-1 size-2.5 rounded-full shrink-0 ${info.dot}`} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-medium text-sm truncate">{v.titolo}</span>
+          {v.ora && <span className="text-xs text-muted-foreground shrink-0">{v.ora}</span>}
+        </div>
+        {v.dettaglio && <p className="text-xs text-muted-foreground truncate">{v.dettaglio}</p>}
+      </div>
+      {v.importo != null && (
+        <span className={`text-sm font-semibold tabular-nums shrink-0 ${v.fonte === "scadenza" ? "text-red-600 dark:text-red-400" : ""}`}>
+          {fmtEuro(v.importo)}
+        </span>
+      )}
+    </Link>
   );
 }

@@ -10,7 +10,7 @@ import { toast } from "sonner";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
-interface EventoDiario {
+export interface EventoDiario {
   id: string;
   data_evento: string;
   titolo: string;
@@ -76,7 +76,7 @@ interface EventoDialogProps {
   onSaved: () => void;
 }
 
-function EventoDialog({ open, evento, dataDefault, onClose, onSaved }: EventoDialogProps) {
+export function EventoDialog({ open, evento, dataDefault, onClose, onSaved }: EventoDialogProps) {
   const [titolo, setTitolo] = useState("");
   const [descrizione, setDescrizione] = useState("");
   const [data, setData] = useState(dataDefault);
