@@ -117,8 +117,10 @@ export function Marketplace() {
   return (
     <>
       {/* py/px extra: la card featured e' scalata e sollevata, serve respiro
-          perche' ombra ed estensione non vengano tagliate ai bordi della grid. */}
-      <div className="grid gap-5 px-1 py-2 sm:grid-cols-2 lg:grid-cols-3">
+          perche' ombra ed estensione non vengano tagliate ai bordi della grid.
+          auto-rows-fr: tutte le righe prendono la stessa altezza, cosi' le card
+          (con h-full) si allineano e le CTA restano in fondo, allineate tra loro. */}
+      <div className="grid auto-rows-fr gap-5 px-1 py-2 sm:grid-cols-2 lg:grid-cols-3">
         {SERVIZI.map((s) => {
           const variant = s.variant ?? "default";
           const Icon = ICONS[s.icon];
