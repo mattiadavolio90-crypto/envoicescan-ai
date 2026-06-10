@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { LayerSwitcher } from "./layer-switcher";
+import { AgendaOverview } from "./agenda-overview";
 import { AgendaView } from "../workspace/diario-tab";
 import { SpeseView } from "../workspace/spese-view";
 import { PersonaleTab } from "../workspace/personale-tab";
@@ -11,7 +12,7 @@ export default async function AgendaPage({
   searchParams: Promise<{ layer?: string }>;
 }) {
   const sp = await searchParams;
-  const layer = sp.layer ?? "appuntamenti";
+  const layer = sp.layer ?? "tutto";
 
   return (
     <div className="space-y-4">
@@ -26,6 +27,11 @@ export default async function AgendaPage({
       </Suspense>
 
       <div className="mt-2">
+        {layer === "tutto" && (
+          <Suspense>
+            <AgendaOverview />
+          </Suspense>
+        )}
         {layer === "appuntamenti" && (
           <Suspense>
             <AgendaView />

@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 const LAYERS = [
+  { key: "tutto", label: "Tutto" },
   { key: "appuntamenti", label: "Appuntamenti" },
   { key: "spese", label: "Spese" },
   { key: "personale", label: "Personale" },
