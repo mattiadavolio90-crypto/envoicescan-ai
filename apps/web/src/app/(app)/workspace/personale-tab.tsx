@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, Download, CopyPlus, LayoutGrid, List } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, CopyPlus, LayoutGrid, List } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -20,23 +20,53 @@ interface Turno {
   ora_fine2?: string | null;
   ore_extra?: number | null;
   costo_orario?: number | null;
+  costo_orario_extra?: number | null;
   note?: string | null;
+}
+
+interface CostiNoti {
+  std?: number;
+  ext?: number;
 }
 
 interface PersonaleResponse {
   turni: Turno[];
   monte_ore: Record<string, number>;
-  extra_per_persona: Record<string, number>;
+  ore_standard_per_persona: Record<string, number>;
+  ore_extra_per_persona: Record<string, number>;
+  costo_standard_per_persona: Record<string, number>;
+  costo_extra_per_persona: Record<string, number>;
   costo_per_persona: Record<string, number>;
+  ore_standard_totale: number;
+  ore_extra_totale: number;
+  costo_standard_totale: number;
+  costo_extra_totale: number;
   extra_totale: number;
   costo_totale: number;
   nomi: string[];
-  costi_noti: Record<string, number>;
+  costi_noti: Record<string, CostiNoti>;
 }
 
 // ─── Utilità ──────────────────────────────────────────────────────────────────
 
 const GIORNI = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
+
+// Palette colori dipendenti — ciclica, usata sia nell'expander che nel calendario
+const DIP_PALETTE = [
+  { ring: "ring-sky-500/60",     bg: "bg-sky-500/10",     bgChip: "bg-sky-100 dark:bg-sky-900/50",     textChip: "text-sky-800 dark:text-sky-200",     subChip: "text-sky-600 dark:text-sky-300"     },
+  { ring: "ring-emerald-500/60", bg: "bg-emerald-500/10", bgChip: "bg-emerald-100 dark:bg-emerald-900/50", textChip: "text-emerald-800 dark:text-emerald-200", subChip: "text-emerald-600 dark:text-emerald-300" },
+  { ring: "ring-violet-500/60",  bg: "bg-violet-500/10",  bgChip: "bg-violet-100 dark:bg-violet-900/50",  textChip: "text-violet-800 dark:text-violet-200",  subChip: "text-violet-600 dark:text-violet-300"  },
+  { ring: "ring-rose-500/60",    bg: "bg-rose-500/10",    bgChip: "bg-rose-100 dark:bg-rose-900/50",    textChip: "text-rose-800 dark:text-rose-200",    subChip: "text-rose-600 dark:text-rose-300"    },
+  { ring: "ring-orange-500/60",  bg: "bg-orange-500/10",  bgChip: "bg-orange-100 dark:bg-orange-900/50",  textChip: "text-orange-800 dark:text-orange-200",  subChip: "text-orange-600 dark:text-orange-300"  },
+  { ring: "ring-teal-500/60",    bg: "bg-teal-500/10",    bgChip: "bg-teal-100 dark:bg-teal-900/50",    textChip: "text-teal-800 dark:text-teal-200",    subChip: "text-teal-600 dark:text-teal-300"    },
+  { ring: "ring-pink-500/60",    bg: "bg-pink-500/10",    bgChip: "bg-pink-100 dark:bg-pink-900/50",    textChip: "text-pink-800 dark:text-pink-200",    subChip: "text-pink-600 dark:text-pink-300"    },
+  { ring: "ring-indigo-500/60",  bg: "bg-indigo-500/10",  bgChip: "bg-indigo-100 dark:bg-indigo-900/50",  textChip: "text-indigo-800 dark:text-indigo-200",  subChip: "text-indigo-600 dark:text-indigo-300"  },
+] as const;
+
+function getDipColor(nomi: string[], nome: string) {
+  const idx = nomi.indexOf(nome);
+  return DIP_PALETTE[idx >= 0 ? idx % DIP_PALETTE.length : 0];
+}
 
 function lunediDi(iso: string): Date {
   const d = new Date(iso + "T00:00:00");
@@ -105,15 +135,24 @@ interface TurnoDialogProps {
   open: boolean;
   turno: Turno | null;
   dataDefault: string;
+  giorniDisponibili: string[]; // ISO dates della vista corrente
   nomiSuggeriti: string[];
-  costiNoti: Record<string, number>;
+  costiNoti: Record<string, CostiNoti>;
   onClose: () => void;
   onSaved: () => void;
 }
 
-function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClose, onSaved }: TurnoDialogProps) {
+const GIORNI_BREVI = ["Lu", "Ma", "Me", "Gi", "Ve", "Sa", "Do"];
+
+function dowIndex(iso: string): number {
+  const d = new Date(iso + "T00:00:00");
+  return d.getDay() === 0 ? 6 : d.getDay() - 1;
+}
+
+function TurnoDialog({ open, turno, dataDefault, giorniDisponibili, nomiSuggeriti, costiNoti, onClose, onSaved }: TurnoDialogProps) {
   const [nome, setNome] = useState("");
   const [data, setData] = useState(dataDefault);
+  const [giorniSelezionati, setGiorniSelezionati] = useState<Set<string>>(new Set([dataDefault]));
   const [oraInizio, setOraInizio] = useState("09:00");
   const [oraFine, setOraFine] = useState("17:00");
   const [spezzato, setSpezzato] = useState(false);
@@ -121,14 +160,18 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClo
   const [oraFine2, setOraFine2] = useState("23:00");
   const [oreExtra, setOreExtra] = useState("");
   const [costoOrario, setCostoOrario] = useState("");
+  const [costoOrarioExtra, setCostoOrarioExtra] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [showSugg, setShowSugg] = useState(false);
+
+  const isNuovo = !turno;
 
   useEffect(() => {
     if (open) {
       setNome(turno?.nome ?? "");
       setData(turno?.data_turno ?? dataDefault);
+      setGiorniSelezionati(new Set([turno?.data_turno ?? dataDefault]));
       setOraInizio(turno ? fmtOra(turno.ora_inizio) : "09:00");
       setOraFine(turno ? fmtOra(turno.ora_fine) : "17:00");
       const hasSpezzato = !!(turno?.ora_inizio2 && turno?.ora_fine2);
@@ -137,6 +180,7 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClo
       setOraFine2(hasSpezzato ? fmtOra(turno!.ora_fine2) : "23:00");
       setOreExtra(turno?.ore_extra ? String(turno.ore_extra).replace(".", ",") : "");
       setCostoOrario(turno?.costo_orario != null ? String(turno.costo_orario).replace(".", ",") : "");
+      setCostoOrarioExtra(turno?.costo_orario_extra != null ? String(turno.costo_orario_extra).replace(".", ",") : "");
       setNote(turno?.note ?? "");
       setShowSugg(false);
     }
@@ -149,16 +193,46 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClo
   function selezionaNome(n: string) {
     setNome(n);
     setShowSugg(false);
-    // Prefill costo orario dall'ultimo turno noto della persona (solo se non già impostato)
-    if (!costoOrario && costiNoti[n] != null) setCostoOrario(String(costiNoti[n]).replace(".", ","));
+    const noto = costiNoti[n];
+    if (noto) {
+      if (!costoOrario && noto.std != null) setCostoOrario(String(noto.std).replace(".", ","));
+      if (!costoOrarioExtra && noto.ext != null) setCostoOrarioExtra(String(noto.ext).replace(".", ","));
+    }
+  }
+
+  function toggleGiorno(iso: string) {
+    setGiorniSelezionati(prev => {
+      const next = new Set(prev);
+      if (next.has(iso)) {
+        if (next.size === 1) return prev; // almeno uno sempre selezionato
+        next.delete(iso);
+      } else {
+        next.add(iso);
+      }
+      return next;
+    });
+  }
+
+  function toggleTuttaSettimana() {
+    if (giorniSelezionati.size === giorniDisponibili.length) {
+      // deseleziona tutto tranne il primo
+      setGiorniSelezionati(new Set([giorniDisponibili[0]]));
+    } else {
+      setGiorniSelezionati(new Set(giorniDisponibili));
+    }
   }
 
   const ore1 = oraInizio && oraFine ? calcolaSlotOre(oraInizio, oraFine) : 0;
   const ore2 = spezzato && oraInizio2 && oraFine2 ? calcolaSlotOre(oraInizio2, oraFine2) : 0;
   const oreTot = ore1 + ore2;
   const extraNum = oreExtra ? parseFloat(oreExtra.replace(",", ".")) : 0;
+  const stdNum = Math.max(0, oreTot - extraNum);
   const costoNum = costoOrario ? parseFloat(costoOrario.replace(",", ".")) : NaN;
-  const costoTurno = !isNaN(costoNum) && oreTot > 0 ? oreTot * costoNum : 0;
+  const costoNumExtra = costoOrarioExtra ? parseFloat(costoOrarioExtra.replace(",", ".")) : NaN;
+  const costoEffExtra = !isNaN(costoNumExtra) ? costoNumExtra : costoNum;
+  const costoTurno = (!isNaN(costoNum) && oreTot > 0)
+    ? (stdNum * costoNum + (extraNum > 0 && !isNaN(costoEffExtra) ? extraNum * costoEffExtra : 0))
+    : 0;
 
   async function salva() {
     if (!nome.trim()) { toast.error("Il nome è obbligatorio"); return; }
@@ -169,26 +243,58 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClo
     if (costoOrario && (isNaN(costoNum) || costoNum < 0)) { toast.error("Costo orario non valido"); return; }
     setSaving(true);
     try {
-      const payload: Record<string, unknown> = {
-        nome: nome.trim(),
-        data_turno: data,
-        ora_inizio: oraInizio,
-        ora_fine: oraFine,
-        ora_inizio2: spezzato ? oraInizio2 : null,
-        ora_fine2: spezzato ? oraFine2 : null,
-        ore_extra: oreExtra ? extraNum : null,
-        costo_orario: costoOrario ? costoNum : null,
-        note: note || null,
-      };
-      const url = turno ? `/api/workspace/personale/${turno.id}` : "/api/workspace/personale";
-      const method = turno ? "PATCH" : "POST";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error((await res.json()).detail ?? "Errore");
-      toast.success(turno ? "Turno aggiornato" : "Turno aggiunto");
+      if (turno) {
+        // Modifica: singolo PATCH come prima
+        const payload: Record<string, unknown> = {
+          nome: nome.trim(),
+          data_turno: data,
+          ora_inizio: oraInizio,
+          ora_fine: oraFine,
+          ora_inizio2: spezzato ? oraInizio2 : null,
+          ora_fine2: spezzato ? oraFine2 : null,
+          ore_extra: oreExtra ? extraNum : null,
+          costo_orario: costoOrario ? costoNum : null,
+          costo_orario_extra: costoOrarioExtra ? costoNumExtra : null,
+          note: note || null,
+        };
+        const res = await fetch(`/api/workspace/personale/${turno.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail ?? "Errore");
+        toast.success("Turno aggiornato");
+      } else {
+        // Creazione: un POST per ogni giorno selezionato, in parallelo
+        const giorni = [...giorniSelezionati].sort();
+        const basePayload = {
+          nome: nome.trim(),
+          ora_inizio: oraInizio,
+          ora_fine: oraFine,
+          ora_inizio2: spezzato ? oraInizio2 : null,
+          ora_fine2: spezzato ? oraFine2 : null,
+          ore_extra: oreExtra ? extraNum : null,
+          costo_orario: costoOrario ? costoNum : null,
+          costo_orario_extra: costoOrarioExtra ? costoNumExtra : null,
+          note: note || null,
+        };
+        const results = await Promise.allSettled(
+          giorni.map(g =>
+            fetch("/api/workspace/personale", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...basePayload, data_turno: g }),
+            }).then(r => { if (!r.ok) throw new Error(); })
+          )
+        );
+        const ok = results.filter(r => r.status === "fulfilled").length;
+        const fail = results.filter(r => r.status === "rejected").length;
+        if (fail === 0) {
+          toast.success(ok === 1 ? "Turno aggiunto" : `${ok} turni aggiunti`);
+        } else {
+          toast.warning(`${ok} turni aggiunti, ${fail} non salvati`);
+        }
+      }
       onSaved();
       onClose();
     } catch (e: unknown) {
@@ -200,10 +306,11 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClo
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] flex-col max-w-md">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{turno ? "Modifica turno" : "Nuovo turno"}</DialogTitle>
         </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-3 mt-2">
           {/* Nome dipendente con autocomplete */}
           <div className="relative">
@@ -233,11 +340,55 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClo
             )}
           </div>
 
-          {/* Data */}
-          <div>
-            <label className="text-xs font-medium text-muted-foreground mb-1 block">Data *</label>
-            <Input type="date" value={data} onChange={e => setData(e.target.value)} />
-          </div>
+          {/* Selezione giorni: multi per nuovo turno, singola per modifica */}
+          {isNuovo ? (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Giorni *
+                  {giorniSelezionati.size > 1 && (
+                    <span className="ml-1.5 text-primary font-semibold">{giorniSelezionati.size} selezionati</span>
+                  )}
+                </label>
+                {giorniDisponibili.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={toggleTuttaSettimana}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    {giorniSelezionati.size === giorniDisponibili.length ? "Deseleziona tutti" : "Seleziona tutti"}
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {giorniDisponibili.map(iso => {
+                  const sel = giorniSelezionati.has(iso);
+                  const dow = dowIndex(iso);
+                  const giorno = iso.split("-")[2];
+                  return (
+                    <button
+                      key={iso}
+                      type="button"
+                      onClick={() => toggleGiorno(iso)}
+                      className={`flex flex-col items-center px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-colors min-w-[40px] ${
+                        sel
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "border-border text-muted-foreground hover:text-foreground hover:border-foreground/40"
+                      }`}
+                    >
+                      <span className="text-[10px] opacity-70">{GIORNI_BREVI[dow]}</span>
+                      <span className="font-bold">{giorno}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Data *</label>
+              <Input type="date" value={data} onChange={e => setData(e.target.value)} />
+            </div>
+          )}
 
           {/* Slot 1 */}
           <div>
@@ -302,7 +453,7 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClo
               />
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Costo orario (€/h)</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Costo std (€/h)</label>
               <Input
                 type="text"
                 inputMode="decimal"
@@ -312,6 +463,24 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClo
               />
             </div>
           </div>
+          {extraNum > 0 && (
+            <div className="grid grid-cols-2 gap-2">
+              <div />
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">
+                  Costo extra (€/h)
+                  <span className="ml-1 font-normal opacity-60">se diverso</span>
+                </label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={costoOrarioExtra}
+                  onChange={e => setCostoOrarioExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
+                  placeholder={costoOrario || "es. 15,00"}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Note */}
           <div>
@@ -319,10 +488,13 @@ function TurnoDialog({ open, turno, dataDefault, nomiSuggeriti, costiNoti, onClo
             <Input value={note} onChange={e => setNote(e.target.value)} placeholder="Opzionale…" />
           </div>
 
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
-            <Button onClick={salva} disabled={saving}>{saving ? "Salvo…" : "Salva"}</Button>
-          </div>
+        </div>
+        </div>
+        <div className="shrink-0 flex justify-end gap-2 pt-3 border-t border-border mt-1">
+          <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
+          <Button onClick={salva} disabled={saving}>
+            {saving ? "Salvo…" : isNuovo && giorniSelezionati.size > 1 ? `Salva ${giorniSelezionati.size} turni` : "Salva"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
@@ -348,6 +520,7 @@ export function PersonaleTab() {
   const [editTurno, setEditTurno] = useState<Turno | null>(null);
   const [dataDefault, setDataDefault] = useState(oggi);
   const [copiando, setCopiando] = useState(false);
+  const [expandedDip, setExpandedDip] = useState<string | null>(null);
 
   const [da, fine] = (() => {
     if (periodo === "settimana") {
@@ -451,7 +624,7 @@ export function PersonaleTab() {
     });
     const totaleOre = Object.values(risposta.monte_ore).reduce((s, o) => s + o, 0);
     rows.push([]);
-    rows.push(["TOTALE", "", "", "", "", "", num(totaleOre), num(extraTotale), "", costoTotale > 0 ? num(costoTotale) : "", ""]);
+    rows.push(["TOTALE", "", "", "", "", "", num(totaleOre), num(oreExtTotale), "", costoTotale > 0 ? num(costoTotale) : "", ""]);
 
     const csv = [headers, ...rows]
       .map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(";"))
@@ -468,13 +641,44 @@ export function PersonaleTab() {
 
   const turni = risposta?.turni ?? [];
   const monteOre = risposta?.monte_ore ?? {};
-  const extraPerPersona = risposta?.extra_per_persona ?? {};
-  const costoPerPersona = risposta?.costo_per_persona ?? {};
   const nomi = risposta?.nomi ?? [];
   const costiNoti = risposta?.costi_noti ?? {};
-  const totaleOre = Object.values(monteOre).reduce((s, o) => s + o, 0);
-  const extraTotale = risposta?.extra_totale ?? 0;
-  const costoTotale = risposta?.costo_totale ?? 0;
+
+  // Calcola sempre lato frontend dai turni — robusto anche con worker vecchio
+  const { oreStdPerPersona, oreExtPerPersona, costoStdPerPersona, costoExtPerPersona, costoPerPersona } = (() => {
+    const std: Record<string, number> = {};
+    const ext: Record<string, number> = {};
+    const cStd: Record<string, number> = {};
+    const cExt: Record<string, number> = {};
+    const cTot: Record<string, number> = {};
+    for (const t of turni) {
+      const n = t.nome;
+      const ore = calcolaOreTotali(t);
+      const extra = t.ore_extra ?? 0;
+      const ordinarie = Math.max(0, ore - extra);
+      std[n] = (std[n] ?? 0) + ordinarie;
+      ext[n] = (ext[n] ?? 0) + extra;
+      const coStd = t.costo_orario ?? null;
+      const coExt = t.costo_orario_extra ?? coStd;
+      if (coStd != null) {
+        cStd[n] = (cStd[n] ?? 0) + ordinarie * coStd;
+        cExt[n] = (cExt[n] ?? 0) + extra * (coExt ?? coStd);
+        cTot[n] = (cTot[n] ?? 0) + ordinarie * coStd + extra * (coExt ?? coStd);
+      }
+    }
+    return { oreStdPerPersona: std, oreExtPerPersona: ext, costoStdPerPersona: cStd, costoExtPerPersona: cExt, costoPerPersona: cTot };
+  })();
+
+  const oreStdTotale = Object.values(oreStdPerPersona).reduce((s, v) => s + v, 0);
+  const oreExtTotale = Object.values(oreExtPerPersona).reduce((s, v) => s + v, 0);
+  const costoStdTotale = Object.values(costoStdPerPersona).reduce((s, v) => s + v, 0);
+  const costoExtTotale = Object.values(costoExtPerPersona).reduce((s, v) => s + v, 0);
+  const costoTotale = costoStdTotale + costoExtTotale;
+  const totaleOre = oreStdTotale + oreExtTotale;
+
+  // Giorni distinti con almeno un turno
+  const giorniConTurni = new Set(turni.map(t => t.data_turno)).size;
+  const mediaGiornaliera = giorniConTurni > 0 ? totaleOre / giorniConTurni : 0;
 
   const perData: Record<string, Turno[]> = {};
   for (const t of turni) {
@@ -563,44 +767,159 @@ export function PersonaleTab() {
         </div>
       </div>
 
-      {/* Monte ore per persona */}
+      {/* ── KPI cards ── */}
       {Object.keys(monteOre).length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-          {/* Totale ore — sempre prima, verde */}
-          <Card className="ring-1 ring-green-500/60 bg-green-50 dark:bg-green-950/20">
-            <CardContent className="py-3 px-4">
-              <p className="text-xs font-medium text-green-700 dark:text-green-500">Totale ore</p>
-              <p className="text-xl font-bold tabular-nums text-green-700 dark:text-green-400">{fmtOreDisplay(totaleOre)}</p>
-            </CardContent>
-          </Card>
-          {/* Totale extra — seconda, ambra (mostrata sempre se c'è almeno una persona) */}
-          <Card className="ring-1 ring-amber-500/60 bg-amber-50 dark:bg-amber-950/20">
-            <CardContent className="py-3 px-4">
-              <p className="text-xs font-medium text-amber-700 dark:text-amber-500">Totale extra</p>
-              <p className="text-xl font-bold tabular-nums text-amber-700 dark:text-amber-400">{fmtOreDisplay(extraTotale)}</p>
-            </CardContent>
-          </Card>
-          {/* Costo lavoro — solo se almeno un costo orario impostato */}
-          {costoTotale > 0 && (
-            <Card className="ring-1 ring-sky-500/60 bg-sky-50 dark:bg-sky-950/20">
-              <CardContent className="py-3 px-4">
-                <p className="text-xs font-medium text-sky-700 dark:text-sky-400">Costo lavoro</p>
-                <p className="text-xl font-bold tabular-nums text-sky-700 dark:text-sky-300">{fmtEuro(costoTotale)}</p>
-              </CardContent>
-            </Card>
-          )}
-          {Object.entries(monteOre).sort((a, b) => b[1] - a[1]).map(([n, ore]) => (
-            <Card key={n} className="ring-sky-400/60">
-              <CardContent className="py-3 px-4">
-                <p className="text-xs text-muted-foreground truncate">{n}</p>
-                <p className="text-xl font-bold tabular-nums">{fmtOreDisplay(ore)}</p>
-                <div className="mt-0.5 flex flex-wrap gap-x-2 text-[11px] leading-tight text-muted-foreground">
-                  {extraPerPersona[n] > 0 && <span className="text-amber-600 dark:text-amber-500">di cui {fmtOreDisplay(extraPerPersona[n])} extra</span>}
-                  {costoPerPersona[n] > 0 && <span className="text-sky-700 dark:text-sky-400">{fmtEuro(costoPerPersona[n])}</span>}
+        <div className="space-y-3">
+          {/* 3 card principali */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Card 1: Ore ordinarie */}
+            <Card className="ring-1 ring-green-500/50 bg-green-50/60 dark:bg-green-950/20">
+              <CardContent className="py-5 px-6 space-y-2">
+                <div className="flex justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-green-700 dark:text-green-500">Ore ordinarie</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-green-700 dark:text-green-500">Costo ordinarie</p>
+                </div>
+                <div className="flex items-end justify-between gap-2">
+                  <p className="text-4xl font-black tabular-nums text-green-700 dark:text-green-400 leading-none">{fmtOreDisplay(oreStdTotale)}</p>
+                  <p className="text-4xl font-black tabular-nums text-green-600 dark:text-green-500 leading-none text-right">
+                    {costoStdTotale > 0 ? fmtEuro(costoStdTotale) : <span className="text-green-600/30">—</span>}
+                  </p>
                 </div>
               </CardContent>
             </Card>
-          ))}
+
+            {/* Card 2: Straordinario */}
+            <Card className="ring-1 ring-amber-500/50 bg-amber-50/60 dark:bg-amber-950/20">
+              <CardContent className="py-5 px-6 space-y-2">
+                <div className="flex justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-amber-700 dark:text-amber-500">Ore straord.</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-amber-700 dark:text-amber-500">Costo straord.</p>
+                </div>
+                <div className="flex items-end justify-between gap-2">
+                  <p className="text-4xl font-black tabular-nums text-amber-700 dark:text-amber-400 leading-none">{fmtOreDisplay(oreExtTotale)}</p>
+                  <p className="text-4xl font-black tabular-nums text-amber-600 dark:text-amber-500 leading-none text-right">
+                    {costoExtTotale > 0 ? fmtEuro(costoExtTotale) : <span className="text-amber-600/30">—</span>}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Card 3: Totale */}
+            <Card className="ring-1 ring-sky-500/50 bg-sky-50/60 dark:bg-sky-950/20">
+              <CardContent className="py-5 px-6 space-y-2">
+                <div className="flex justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-sky-700 dark:text-sky-400">Totale ore</p>
+                  <p className="text-xs font-semibold uppercase tracking-widest text-sky-700 dark:text-sky-400">Costo totale</p>
+                </div>
+                <div className="flex items-end justify-between gap-2">
+                  <p className="text-4xl font-black tabular-nums text-sky-700 dark:text-sky-300 leading-none">{fmtOreDisplay(totaleOre)}</p>
+                  <p className="text-4xl font-black tabular-nums text-sky-600 dark:text-sky-400 leading-none text-right">
+                    {costoTotale > 0
+                      ? fmtEuro(costoTotale)
+                      : giorniConTurni > 1
+                        ? <span className="text-xl font-semibold text-sky-600/60 dark:text-sky-400/60">~{fmtOreDisplay(mediaGiornaliera)}/g</span>
+                        : <span className="text-sky-600/30">—</span>
+                    }
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Riepilogo per dipendente — accordion */}
+          <div className="space-y-1">
+            {nomi.map(n => {
+              const oreN = monteOre[n] ?? 0;
+              const stdN = oreStdPerPersona[n] ?? 0;
+              const extN = oreExtPerPersona[n] ?? 0;
+              const costoN = costoPerPersona[n] ?? 0;
+              const costoStdN = costoStdPerPersona[n] ?? 0;
+              const costoExtN = costoExtPerPersona[n] ?? 0;
+              const turniN = turni.filter(t => t.nome === n).sort((a, b) => a.data_turno.localeCompare(b.data_turno));
+              const isOpen = expandedDip === n;
+              const col = getDipColor(nomi, n);
+              return (
+                <div key={n} className={`rounded-lg border ring-1 ${col.ring} overflow-hidden`}>
+                  <button
+                    onClick={() => setExpandedDip(isOpen ? null : n)}
+                    className={`w-full flex items-center justify-between px-4 py-3 hover:${col.bg} transition-colors`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="font-semibold text-sm">{n}</span>
+                      <span className="text-sm tabular-nums text-muted-foreground">{fmtOreDisplay(oreN)}</span>
+                      {extN > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums">+{fmtOreDisplay(extN)} str.</span>}
+                      {costoN > 0 && <span className="text-xs text-sky-700 dark:text-sky-400 font-semibold tabular-nums">{fmtEuro(costoN)}</span>}
+                    </div>
+                    {isOpen ? <ChevronUp className="size-4 text-muted-foreground shrink-0" /> : <ChevronDown className="size-4 text-muted-foreground shrink-0" />}
+                  </button>
+
+                  {isOpen && (
+                    <div className="border-t border-border px-4 py-3 space-y-3">
+                      {/* Riepilogo numerico */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="rounded-md bg-muted/40 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Ore ord.</p>
+                          <p className="text-lg font-bold tabular-nums">{fmtOreDisplay(stdN)}</p>
+                          {costoStdN > 0 && <p className="text-xs text-green-600 dark:text-green-400">{fmtEuro(costoStdN)}</p>}
+                        </div>
+                        <div className="rounded-md bg-amber-500/8 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400 font-medium">Straord.</p>
+                          <p className="text-lg font-bold tabular-nums text-amber-700 dark:text-amber-300">{fmtOreDisplay(extN)}</p>
+                          {costoExtN > 0 && <p className="text-xs text-amber-600 dark:text-amber-400">{fmtEuro(costoExtN)}</p>}
+                        </div>
+                        <div className="rounded-md bg-sky-500/8 px-3 py-2">
+                          <p className="text-[10px] uppercase tracking-wide text-sky-600 dark:text-sky-400 font-medium">Totale ore</p>
+                          <p className="text-lg font-bold tabular-nums text-sky-700 dark:text-sky-300">{fmtOreDisplay(oreN)}</p>
+                        </div>
+                        {costoN > 0 && (
+                          <div className="rounded-md bg-sky-500/8 px-3 py-2">
+                            <p className="text-[10px] uppercase tracking-wide text-sky-600 dark:text-sky-400 font-medium">Costo totale</p>
+                            <p className="text-lg font-bold tabular-nums text-sky-700 dark:text-sky-300">{fmtEuro(costoN)}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Lista turni */}
+                      <div className="divide-y divide-border rounded-md border border-border">
+                        {turniN.map(t => {
+                          const oreT = calcolaOreTotali(t);
+                          const costoT = t.costo_orario != null
+                            ? (() => {
+                                const ext = t.ore_extra ?? 0;
+                                const std = Math.max(0, oreT - ext);
+                                const coExt = t.costo_orario_extra ?? t.costo_orario;
+                                return std * t.costo_orario! + (ext > 0 ? ext * coExt! : 0);
+                              })()
+                            : 0;
+                          return (
+                            <div key={t.id} className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted/20 group">
+                              <span className="text-muted-foreground w-16 shrink-0 tabular-nums">{fmtData(t.data_turno)}</span>
+                              <span className="tabular-nums text-muted-foreground">
+                                {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
+                                {t.ora_inizio2 && t.ora_fine2 && <span className="opacity-60 ml-1">· {fmtOra(t.ora_inizio2)}–{fmtOra(t.ora_fine2)}</span>}
+                              </span>
+                              <span className="tabular-nums font-medium">{fmtOreDisplay(oreT)}</span>
+                              {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
+                              {costoT > 0 && <span className="text-xs text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(costoT)}</span>}
+                              {t.note && <span className="text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
+                              <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
+                                  <Pencil className="size-3" />
+                                </Button>
+                                <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => elimina(t)}>
+                                  <Trash2 className="size-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -631,23 +950,26 @@ export function PersonaleTab() {
                     <div className="text-sm font-bold leading-none">{iso.split("-")[2]}</div>
                   </div>
                   <div className="space-y-0.5">
-                    {turniGiorno.map(t => (
-                      <div
-                        key={t.id}
-                        className="rounded bg-sky-100 dark:bg-sky-900/40 px-1 py-0.5 cursor-pointer hover:bg-sky-200 dark:hover:bg-sky-900/60 transition-colors"
-                        onClick={() => { setEditTurno(t); setDialogOpen(true); }}
-                      >
-                        <div className="text-[10px] font-semibold text-sky-800 dark:text-sky-200 truncate">{t.nome}</div>
-                        <div className="text-[9px] text-sky-600 dark:text-sky-300">
-                          {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
-                        </div>
-                        {!!t.ore_extra && t.ore_extra > 0 && (
-                          <div className="text-[9px] font-medium text-amber-600 dark:text-amber-400">
-                            +{fmtOreDisplay(t.ore_extra)} extra
+                    {turniGiorno.map(t => {
+                      const chipCol = getDipColor(nomi, t.nome);
+                      return (
+                        <div
+                          key={t.id}
+                          className={`rounded ${chipCol.bgChip} px-1 py-0.5 cursor-pointer transition-colors hover:opacity-80`}
+                          onClick={() => { setEditTurno(t); setDialogOpen(true); }}
+                        >
+                          <div className={`text-[10px] font-semibold ${chipCol.textChip} truncate`}>{t.nome}</div>
+                          <div className={`text-[9px] ${chipCol.subChip}`}>
+                            {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
                           </div>
-                        )}
-                      </div>
-                    ))}
+                          {!!t.ore_extra && t.ore_extra > 0 && (
+                            <div className="text-[9px] font-medium text-amber-600 dark:text-amber-400">
+                              +{fmtOreDisplay(t.ore_extra)} extra
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                     <button
                       className="w-full text-[9px] text-muted-foreground/40 hover:text-muted-foreground text-center py-0.5"
                       onClick={() => { setEditTurno(null); setDataDefault(iso); setDialogOpen(true); }}
@@ -677,9 +999,11 @@ export function PersonaleTab() {
                     {new Date(iso + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" })}
                   </p>
                   <div className="space-y-1">
-                    {turniGiorno.map(t => (
-                      <div key={t.id} className="flex items-center gap-3 rounded-md border border-border px-3 py-2 hover:bg-muted/40 group">
-                        <span className="font-medium text-sm min-w-[100px]">{t.nome}</span>
+                    {turniGiorno.map(t => {
+                      const rowCol = getDipColor(nomi, t.nome);
+                      return (
+                      <div key={t.id} className={`flex items-center gap-3 rounded-md border px-3 py-2 hover:${rowCol.bg} group ring-1 ${rowCol.ring}`}>
+                        <span className={`font-semibold text-sm min-w-[100px] ${rowCol.textChip}`}>{t.nome}</span>
                         <span className="text-sm text-muted-foreground tabular-nums">
                           {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
                           {t.ora_inizio2 && t.ora_fine2 && (
@@ -703,7 +1027,8 @@ export function PersonaleTab() {
                           </Button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -716,6 +1041,7 @@ export function PersonaleTab() {
         open={dialogOpen}
         turno={editTurno}
         dataDefault={dataDefault}
+        giorniDisponibili={periodo === "settimana" ? giorniSettimana : giorniMese}
         nomiSuggeriti={nomi}
         costiNoti={costiNoti}
         onClose={() => { setDialogOpen(false); setEditTurno(null); }}
