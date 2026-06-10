@@ -45,20 +45,35 @@ const ICONS: Record<ServizioIconName, LucideIcon> = {
 const WHATSAPP_CLS =
   "gap-1.5 border-emerald-500/40 text-emerald-600 hover:border-emerald-500/60 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-500 dark:hover:bg-emerald-950/30";
 
-// Resa grafica per variante. featured = entry-point in risalto (accento primary);
-// partner = area servizi partner, sfondo/ombra separati. La card Recoma (con
-// partnerUrl) riceve in piu' l'accento rosso elegante, gestito inline sotto.
+// Tre gruppi visivi, ciascuno con contorno spesso (border-2) e ombra colorata
+// coordinata sullo stesso accento:
+//  - featured (Check-up, servizio civetta): GIALLO/amber, card "sollevata" in 3D
+//  - default  (2-3-4): AZZURRO ONEFLUX (primary), contorno + ombra azzurra
+//  - partner  (5-6):   ROSSO, contorno + ombra rossa
+// L'ombra colorata usa shadow-<color>-500/<alpha>: l'alone prende la tinta.
 const CARD_VARIANT: Record<NonNullable<Servizio["variant"]>, string> = {
-  default: "border bg-card hover:border-foreground/20",
+  default:
+    "border-2 border-sky-500/40 bg-sky-500/[0.03] shadow-lg shadow-sky-500/10 " +
+    "hover:border-sky-500/60 hover:shadow-sky-500/20",
   featured:
-    "border-primary/30 bg-primary/[0.04] ring-1 ring-primary/20 hover:border-primary/50 hover:ring-primary/30",
-  partner: "border-border/70 bg-muted/30 shadow-sm hover:border-foreground/20",
+    "border-2 border-amber-400/70 bg-amber-400/[0.06] shadow-xl shadow-amber-500/25 " +
+    "-translate-y-1 hover:border-amber-400 hover:shadow-amber-500/35 hover:-translate-y-1.5",
+  partner:
+    "border-2 border-red-500/40 bg-red-500/[0.03] shadow-lg shadow-red-500/10 " +
+    "hover:border-red-500/60 hover:shadow-red-500/20",
 };
 
 const ICON_TILE: Record<NonNullable<Servizio["variant"]>, string> = {
-  default: "bg-primary/10 text-primary",
-  featured: "bg-primary/15 text-primary",
-  partner: "bg-foreground/8 text-foreground/70",
+  default: "bg-sky-500/15 text-sky-500",
+  featured: "bg-amber-400/20 text-amber-500",
+  partner: "bg-red-500/15 text-red-500",
+};
+
+// Badge prezzo, in tinta col gruppo. Mostrato in alto a destra di ogni card.
+const PRICE_BADGE: Record<NonNullable<Servizio["variant"]>, string> = {
+  default: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
+  featured: "bg-amber-400/15 text-amber-600 dark:text-amber-400",
+  partner: "bg-red-500/10 text-red-600 dark:text-red-400",
 };
 
 export function Marketplace() {
@@ -104,40 +119,42 @@ export function Marketplace() {
         {SERVIZI.map((s) => {
           const variant = s.variant ?? "default";
           const Icon = ICONS[s.icon];
-          const isRecoma = Boolean(s.partnerUrl);
           return (
             <div
               key={s.key}
               className={cn(
-                "flex h-full flex-col rounded-xl p-5 transition-colors",
+                "flex h-full flex-col rounded-xl p-5 transition-all duration-200",
                 CARD_VARIANT[variant],
-                isRecoma &&
-                  "border-red-500/25 ring-1 ring-red-500/15 hover:border-red-500/40 hover:ring-red-500/25",
               )}
             >
-              {s.partnerLabel && (
-                <span
-                  className={cn(
-                    "mb-3 inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium",
-                    isRecoma
-                      ? "bg-red-500/10 text-red-600 dark:text-red-400"
-                      : "bg-foreground/8 text-muted-foreground",
-                  )}
-                >
-                  {s.partnerLabel}
-                </span>
-              )}
               {variant === "featured" && (
-                <span className="mb-3 inline-flex w-fit items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary">
+                <span className="mb-3 inline-flex w-fit items-center rounded-full bg-amber-400/15 px-2.5 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
                   Punto di partenza
                 </span>
               )}
+              {s.partnerLabel && (
+                <span className="mb-3 inline-flex w-fit items-center rounded-full bg-red-500/10 px-2.5 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400">
+                  {s.partnerLabel}
+                </span>
+              )}
 
-              <div className="flex items-center gap-3">
-                <div className={cn("rounded-lg p-2.5", ICON_TILE[variant])}>
-                  <Icon className="size-5" />
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={cn("rounded-lg p-2.5", ICON_TILE[variant])}>
+                    <Icon className="size-5" />
+                  </div>
+                  <h3 className="font-semibold leading-tight">{s.label}</h3>
                 </div>
-                <h3 className="font-semibold leading-tight">{s.label}</h3>
+                {s.priceValue && (
+                  <span
+                    className={cn(
+                      "shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold",
+                      PRICE_BADGE[variant],
+                    )}
+                  >
+                    {s.priceValue}
+                  </span>
+                )}
               </div>
 
               <p className="mt-3 flex-1 text-sm leading-relaxed text-muted-foreground">

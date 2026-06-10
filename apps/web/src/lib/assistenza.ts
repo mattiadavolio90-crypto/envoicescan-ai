@@ -108,9 +108,9 @@ export const SERVIZI: Servizio[] = [
     icon: "PiggyBank",
     variant: "partner",
     priceMode: "custom",
-    priceValue: "Proposta su misura",
+    // Prezzo su preventivo: nessun badge in UI. priceValue resta vuoto apposta.
     partnerLabel: "Offerta partner",
-    notesInternal: "Area partner OneFlux. Prezzo da definire in fase 2.",
+    notesInternal: "Area partner OneFlux. Prezzo su preventivo, da definire in fase 2.",
   },
   {
     key: "sito_presenza_online",
@@ -120,7 +120,7 @@ export const SERVIZI: Servizio[] = [
     icon: "Globe",
     variant: "partner",
     priceMode: "custom",
-    priceValue: "Proposta su misura",
+    // Prezzo su preventivo: nessun badge in UI. priceValue resta vuoto apposta.
     partnerLabel: "In collaborazione con Recoma System",
     partnerUrl: "https://recomasystem.it",
     notesInternal:
