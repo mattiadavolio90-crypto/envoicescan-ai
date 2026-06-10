@@ -241,6 +241,72 @@ function AgendaSection({
   );
 }
 
+// ── Note di credito section (read-only, non pagabili) ─────────────────────────
+
+function NoteCreditoSection({
+  docs,
+  onPeek,
+}: {
+  docs: Documento[];
+  onPeek: (doc: Documento) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (docs.length === 0) return null;
+  const totale = docs.reduce((s, d) => s + Math.abs(d.totale_documento || 0), 0);
+
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden">
+      <div className="flex items-center px-3 py-3 hover:bg-muted/30 transition-colors">
+        <button className="flex-1 flex items-center justify-between" onClick={() => setOpen(o => !o)}>
+          <div className="flex items-center gap-2">
+            {open ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+            <span className="font-semibold text-sm text-violet-600 dark:text-violet-400">Note di credito</span>
+            <span className="text-xs text-muted-foreground bg-muted rounded-full px-2 py-0.5">{docs.length}</span>
+            <span className="text-[10px] font-medium rounded-full px-2 py-0.5 bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+              non da pagare
+            </span>
+          </div>
+          <span className="text-sm font-medium text-muted-foreground">{formatEuro(totale)}</span>
+        </button>
+      </div>
+
+      {open && (
+        <div className="border-t divide-y divide-border/50">
+          {docs.map((doc) => (
+            <div
+              key={doc.file_origine}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-md transition-colors cursor-pointer hover:bg-muted/50"
+              onClick={() => onPeek(doc)}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-sm truncate max-w-[200px]">{doc.fornitore}</span>
+                  {doc.numero_documento && (
+                    <span className="text-xs text-muted-foreground">#{doc.numero_documento}</span>
+                  )}
+                  <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400">
+                    nota di credito
+                  </span>
+                </div>
+                {doc.data_documento && (
+                  <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                    <span>Documento: {formatDate(doc.data_documento)}</span>
+                  </div>
+                )}
+              </div>
+              <div className="text-right flex-shrink-0">
+                <p className="font-semibold text-sm text-violet-600 dark:text-violet-400">
+                  {formatEuro(Math.abs(doc.totale_documento || 0))}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Calendar view ────────────────────────────────────────────────────────────
 
 const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
@@ -260,6 +326,7 @@ function CalendarView({ documenti }: CalendarViewProps) {
     const map: Record<number, { totale: number; count: number }> = {};
     for (const doc of documenti) {
       if (doc.pagata) continue;
+      if (doc.is_nota_credito) continue;
       const dt = parseLocalDate(doc.scadenza_effettiva);
       if (dt && dt.getFullYear() === anno && dt.getMonth() === mese) {
         const d = dt.getDate();
@@ -292,6 +359,7 @@ function CalendarView({ documenti }: CalendarViewProps) {
     if (!selectedDay) return [];
     return documenti.filter(d => {
       if (d.pagata) return false;
+      if (d.is_nota_credito) return false;
       const dt = parseLocalDate(d.scadenza_effettiva);
       return !!dt && dt.getFullYear() === anno && dt.getMonth() === mese && dt.getDate() === selectedDay;
     });
@@ -326,10 +394,16 @@ function CalendarView({ documenti }: CalendarViewProps) {
           const isToday = anno === today.getFullYear() && mese === today.getMonth() && day === today.getDate();
           const hasAmount = totale > 0;
           const intensity = hasAmount && maxVal > 0 ? totale / maxVal : 0;
-          const bgOpacity = hasAmount ? Math.max(0.18, intensity * 0.85) : 0;
+          // Opacità su sky-500: minimo 0.28 così anche l'importo più basso è
+          // chiaramente visibile sia su card chiara (light) sia scura (dark).
+          const bgOpacity = hasAmount ? Math.max(0.28, intensity * 0.92) : 0;
           const isSelected = selectedDay === day;
-          // testo bianco su sfondi scuri (intensity > 0.3), grigio scuro su sfondi chiari
-          const onBg = !isSelected && hasAmount ? (intensity > 0.35 ? "text-white" : "text-orange-950") : "";
+          // Testo leggibile in entrambi i temi: su intensità alta lo sfondo sky è
+          // pieno → bianco; su intensità medio-bassa lo sfondo è semitrasparente →
+          // sky scuro in light, sky chiaro in dark (segue il tema sotto la cella).
+          const onBg = !isSelected && hasAmount
+            ? (intensity > 0.55 ? "text-white" : "text-sky-900 dark:text-sky-100")
+            : "";
 
           return (
             <button
@@ -339,7 +413,7 @@ function CalendarView({ documenti }: CalendarViewProps) {
                 ${isToday ? "ring-2 ring-primary ring-offset-1" : ""}
                 ${isSelected ? "bg-primary text-primary-foreground" : hasAmount ? "" : "hover:bg-muted/50"}
               `}
-              style={hasAmount && !isSelected ? { backgroundColor: `rgba(194,65,12,${bgOpacity})` } : {}}
+              style={hasAmount && !isSelected ? { backgroundColor: `rgba(14,165,233,${bgOpacity})` } : {}}
             >
               <span className={`font-semibold leading-none ${isToday && !isSelected ? "text-primary" : ""} ${onBg}`}>{day}</span>
               {hasAmount && (
@@ -491,7 +565,7 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina }: PeekDial
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Tipo</span>
-                  <span>{doc.tipo_documento || "TD01"}</span>
+                  <span>{doc.tipo_documento || "TD01"}{doc.is_nota_credito ? " · Nota di credito" : ""}</span>
                 </div>
                 <div className="flex justify-between text-sm items-center gap-2">
                   <span className="text-muted-foreground">Stato</span>
@@ -606,7 +680,11 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina }: PeekDial
 
               {/* Azione pagamento */}
               <div>
-                {doc.pagata ? (
+                {doc.is_nota_credito ? (
+                  <div className="rounded-lg border border-violet-500/40 bg-violet-50 dark:bg-violet-900/10 px-4 py-3 text-sm text-violet-800 dark:text-violet-300">
+                    Questa è una <strong>nota di credito</strong>: è un accredito del fornitore, non un importo da pagare. Per questo è esclusa da scadenze e totali.
+                  </div>
+                ) : doc.pagata ? (
                   <Button variant="outline" className="w-full" onClick={() => { onPaga(doc, false); onClose(); }}>
                     Segna come non pagata
                   </Button>
@@ -1544,6 +1622,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
           <AgendaSection title="Oltre il mese" docs={buckets.oltre} defaultOpen={false} {...sharedProps} />
           <AgendaSection title="Senza scadenza" docs={buckets.senzaScadenza} defaultOpen={false} accentClass="text-muted-foreground" {...sharedProps} />
           <AgendaSection title="Pagate" docs={buckets.pagate} defaultOpen={false} accentClass="text-emerald-600 dark:text-emerald-400" {...sharedProps} />
+          <NoteCreditoSection docs={buckets.noteCredito} onPeek={setPeekDoc} />
 
           {documentiFiltrati.length === 0 && (
             <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">

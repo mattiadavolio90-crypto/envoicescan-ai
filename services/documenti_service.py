@@ -866,10 +866,14 @@ def get_documenti_scadenziario(
         if scadenza_src == "fornitore_rid":
             pagata = True
 
+        tipo_doc = base.get("tipo_documento") or "TD01"
+        is_nota_credito = tipo_doc.upper().strip() == "TD04"
+
         result.append({
             "file_origine": fo,
             "fornitore": base.get("fornitore") or "Sconosciuto",
-            "tipo_documento": base.get("tipo_documento") or "TD01",
+            "tipo_documento": tipo_doc,
+            "is_nota_credito": is_nota_credito,
             "totale_documento": round(totale, 2),
             "data_documento": base.get("data_documento"),
             "numero_documento": extra.get("numero_documento"),

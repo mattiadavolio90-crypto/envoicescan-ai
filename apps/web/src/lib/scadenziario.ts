@@ -3,6 +3,7 @@ export type Documento = {
   file_origine: string;
   fornitore: string;
   tipo_documento: string;
+  is_nota_credito?: boolean;
   totale_documento: number;
   data_documento: string | null;
   numero_documento: string | null;
@@ -75,6 +76,7 @@ export function computeKpi(documenti: Documento[]): ScadenzarioKpi {
   let pagate_mese_count = 0, pagate_mese_totale = 0;
 
   for (const doc of documenti) {
+    if (doc.is_nota_credito) continue; // le NC non sono debiti da pagare
     const totale = doc.totale_documento || 0;
 
     if (doc.pagata) {
@@ -123,8 +125,15 @@ export function bucketizeDocumenti(documenti: Documento[]) {
   const oltre: Documento[] = [];
   const senzaScadenza: Documento[] = [];
   const pagate: Documento[] = [];
+  const noteCredito: Documento[] = [];
 
   for (const doc of documenti) {
+    // Le note di credito non sono obbligazioni di pagamento: niente bucket di
+    // scadenza, vanno in una sezione informativa separata.
+    if (doc.is_nota_credito) {
+      noteCredito.push(doc);
+      continue;
+    }
     if (doc.pagata) {
       pagate.push(doc);
       continue;
@@ -140,7 +149,7 @@ export function bucketizeDocumenti(documenti: Documento[]) {
     else oltre.push(doc);
   }
 
-  return { scadute, settimana, mese, oltre, senzaScadenza, pagate };
+  return { scadute, settimana, mese, oltre, senzaScadenza, pagate, noteCredito };
 }
 
 // formatEuro centralizzato in lib/format.ts (era equivalente). formatDate resta

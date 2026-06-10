@@ -95,6 +95,8 @@ def get_scadenziario_calendario(
     for doc in docs:
         if doc.get("pagata"):
             continue
+        if doc.get("is_nota_credito"):
+            continue
         scad = doc.get("scadenza_effettiva")
         if not scad:
             continue
@@ -365,6 +367,8 @@ def genera_notifica_scadenze(authorization: Optional[str] = Header(None)):
     scadute, settimana = [], []
     for doc in docs:
         if doc.get("pagata"):
+            continue
+        if doc.get("is_nota_credito"):
             continue
         scad = doc.get("scadenza_effettiva")
         if not scad:
