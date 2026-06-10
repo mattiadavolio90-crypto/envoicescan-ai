@@ -43,6 +43,12 @@ type PageHeaderProps = {
   badge?: React.ReactNode;
   /** Azioni a destra (es. pulsante upload). */
   actions?: React.ReactNode;
+  /**
+   * Sottotitolo visibile sotto il titolo. A differenza di `hint` (tooltip al
+   * hover) resta sempre in pagina: usalo quando la frase fa parte del
+   * posizionamento e deve essere letta, non scoperta.
+   */
+  subtitle?: string;
 };
 
 /**
@@ -50,7 +56,7 @@ type PageHeaderProps = {
  * in un tooltip al hover (così non occupa spazio fisso sotto al titolo).
  * Il blocco icona+titolo è il trigger del tooltip.
  */
-export function PageHeader({ icon, title, hint, badge, actions }: PageHeaderProps) {
+export function PageHeader({ icon, title, hint, badge, actions, subtitle }: PageHeaderProps) {
   const Icon = ICONS[icon];
   const heading = (
     <div className="flex items-center gap-3">
@@ -62,7 +68,7 @@ export function PageHeader({ icon, title, hint, badge, actions }: PageHeaderProp
     </div>
   );
 
-  return (
+  const top = (
     <div className="flex flex-wrap items-center justify-between gap-3">
       {hint ? (
         <Tooltip>
@@ -75,6 +81,15 @@ export function PageHeader({ icon, title, hint, badge, actions }: PageHeaderProp
         heading
       )}
       {actions}
+    </div>
+  );
+
+  if (!subtitle) return top;
+
+  return (
+    <div className="space-y-2">
+      {top}
+      <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">{subtitle}</p>
     </div>
   );
 }

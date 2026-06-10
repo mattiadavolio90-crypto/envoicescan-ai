@@ -7,7 +7,7 @@ export default function AssistenzaPage() {
       <PageHeader
         icon="lifebuoy"
         title="Servizi"
-        hint="Servizi pensati per il tuo locale. Scegli quello che ti serve: ti ricontatto io, senza impegno."
+        subtitle="Supporto operativo e consulenze mirate per migliorare margini, costi e presenza del tuo locale. Scegli quello che ti serve: ti ricontatto io, senza impegno."
       />
 
       <Marketplace />

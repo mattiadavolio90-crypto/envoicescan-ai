@@ -1,58 +1,130 @@
-// Catalogo servizi del Marketplace (Assistenza). Statico in codice: pochi
-// servizi che cambiano di rado, niente tabella DB da gestire. Per aggiungerne
-// uno basta una voce qui (key univoca + testi). L'icona e' un nome lucide-react
-// risolto lato pagina.
+// Catalogo servizi (Assistenza). Statico in codice: pochi servizi che cambiano
+// di rado, niente tabella DB da gestire. Per modificarne uno basta una voce qui.
+//
+// La struttura e' tipizzata in modo forte per essere pronta alla fase 2 (prezzi
+// visibili, report asincroni, automazione check-up) senza renderizzare ora nulla
+// di non richiesto: i campi prezzo/report esistono nei dati ma NON vanno in UI.
+
+// Nomi icona ammessi (lucide-react). Union type: un refuso qui e' errore a
+// compile-time, non un fallback silenzioso a runtime.
+export type ServizioIconName =
+  | "Stethoscope"
+  | "LineChart"
+  | "Headset"
+  | "FileSearch"
+  | "PiggyBank"
+  | "Globe";
+
+// Resa grafica: servizio OneFlux standard, entry-point in risalto, area partner.
+export type ServizioVariant = "default" | "featured" | "partner";
+
+// Modalita' prezzo per la fase 2 (prezzo fisso vs "a partire da" vs custom).
+export type PriceMode = "fixed" | "starting_from" | "custom";
 
 export type Servizio = {
+  // Chiave stabile: mappata 1:1 a `servizio_key` nel payload lead e letta dalla
+  // coda admin. NON rinominare in id/slug senza toccare worker + tabella.
   key: string;
   label: string;
   descrizione: string;
-  icon: string; // nome icona lucide-react
-  badge?: string; // etichetta opzionale (es. "Novità")
+  icon: ServizioIconName;
+  variant?: ServizioVariant;
+
+  // --- Area partner ---
+  partnerLabel?: string; // micro-label sopra il titolo (es. collaborazione Recoma)
+  partnerUrl?: string; // link informativo, secondario
+
+  // --- Fase 2: presenti nei dati, NON renderizzati ora ---
+  priceMode?: PriceMode;
+  priceValue?: string; // testo umano gia' pronto: "49€ una tantum", "da 199€/mese"
+  isFutureAutomated?: boolean; // servizio che diventera' automatizzabile in-app
+  asyncReportTopics?: string[]; // temi dei report scritti asincroni (card Analisi)
+  notesInternal?: string; // promemoria interno, mai mostrato all'utente
 };
 
 export const SERVIZI: Servizio[] = [
   {
-    key: "consulenza_fb",
-    label: "Consulenza F&B",
+    key: "checkup_operativo",
+    label: "Check-up Operativo",
     descrizione:
-      "Analisi del food cost, ottimizzazione dei margini e revisione dei fornitori. Un confronto sui tuoi numeri per capire dove recuperare redditività.",
-    icon: "ChefHat",
+      "Una prima analisi sui tuoi dati in app per capire cosa manca, cosa non torna e su quali priorità conviene intervenire subito nella gestione.",
+    icon: "Stethoscope",
+    variant: "featured",
+    priceMode: "fixed",
+    priceValue: "49€ una tantum",
+    isFutureAutomated: true,
+    notesInternal:
+      "Videocall inclusa. Fase 2: generazione automatica del check-up in-app e invio al cliente; usabile come leva commerciale (regalo/sconto).",
   },
   {
-    key: "studio_menu",
-    label: "Studio del menù",
+    key: "consulenza_gestionale",
+    label: "Consulenza Gestionale",
     descrizione:
-      "Ricerca di mercato nella tua zona: equilibrio del menù, analisi dei competitor e posizionamento dei prezzi. Per capire come ti collochi davvero.",
-    icon: "BookOpen",
+      "Analizziamo i tuoi numeri reali: food cost, fornitori e spese. Ti diciamo dove stai perdendo, cosa puoi recuperare e come impostare una strategia concreta per migliorare.",
+    icon: "LineChart",
+    variant: "default",
+    priceMode: "starting_from",
+    priceValue: "da 199€/mese",
+    notesInternal: "Servizio continuativo.",
   },
   {
-    key: "comparatori",
-    label: "Comparatori utenze e POS",
+    key: "assistenza_continuativa",
+    label: "Assistenza Continuativa",
     descrizione:
-      "Confronto delle offerte di luce, gas, POS e commissioni sui pagamenti. Ti diciamo se stai pagando troppo e dove puoi risparmiare.",
-    icon: "Plug",
+      "Gestiamo noi l'app al posto tuo: carichiamo i dati che ci comunichi, controlliamo i numeri e teniamo tutto sotto monitoraggio. Tu devi solo entrare e guardare l'andamento della tua gestione.",
+    icon: "Headset",
+    variant: "default",
+    priceMode: "fixed",
+    priceValue: "99€/mese",
+    notesInternal: "Servizio continuativo.",
   },
   {
-    key: "sito_web",
-    label: "Rifacimento sito web",
+    key: "analisi_su_richiesta",
+    label: "Analisi su Richiesta",
     descrizione:
-      "Un sito moderno, veloce e fatto per farti trovare. Dalla vetrina alle prenotazioni online, curato nei dettagli.",
+      "Hai una domanda specifica o bisogno di un'analisi sulla tua gestione? Ricevi un'analisi scritta entro 48h sui tuoi numeri o su analisi di mercato, senza appuntamenti, su costi, margini, prezzi o altre criticità operative.",
+    icon: "FileSearch",
+    variant: "default",
+    priceMode: "starting_from",
+    priceValue: "da 49€ una tantum",
+    // TODO (fase 2): contenitore dei report asincroni. Questi topic guideranno
+    // la scelta del tipo di report e, in futuro, la generazione/consegna in-app.
+    asyncReportTopics: [
+      "food_cost",
+      "margini",
+      "fornitori",
+      "prezzi",
+      "criticita_operative",
+      "analisi_mercato",
+    ],
+    notesInternal:
+      "Fase 2: includere food cost, margini, fornitori, prezzi, criticità operative e analisi di mercato come report scritti consegnabili in-app.",
+  },
+  {
+    key: "ottimizzazione_costi",
+    label: "Ottimizzazione Costi",
+    descrizione:
+      "Analizziamo le tue spese fisse: confrontiamo i listini dei fornitori, le offerte su luce e gas e le commissioni del tuo POS. Ti diciamo dove stai pagando troppo e ti prepariamo una proposta concreta per ridurre i costi che hai già con i nostri partner.",
+    icon: "PiggyBank",
+    variant: "partner",
+    priceMode: "custom",
+    priceValue: "Proposta su misura",
+    partnerLabel: "Offerta partner",
+    notesInternal: "Area partner OneFlux. Prezzo da definire in fase 2.",
+  },
+  {
+    key: "sito_presenza_online",
+    label: "Sito e Presenza Online",
+    descrizione:
+      "Sito moderno e performante, social curati, contenuti, foto e video professionali del locale e dei piatti. Tecnologie aggiornate per farti trovare online e fare una buona impressione al primo sguardo.",
     icon: "Globe",
-  },
-  {
-    key: "social_foto",
-    label: "Gestione social e foto",
-    descrizione:
-      "Presenza sui social e food photography professionale. Contenuti che fanno venire fame e attirano clienti nuovi.",
-    icon: "Camera",
-  },
-  {
-    key: "analisi_listini",
-    label: "Analisi listini fornitori",
-    descrizione:
-      "Dimmi su quali prodotti vorresti spuntare prezzi migliori: analizziamo i tuoi listini e ti prepariamo una proposta di acquisto più conveniente.",
-    icon: "TrendingDown",
+    variant: "partner",
+    priceMode: "custom",
+    priceValue: "Proposta su misura",
+    partnerLabel: "In collaborazione con Recoma System",
+    partnerUrl: "https://recomasystem.it",
+    notesInternal:
+      "Il servizio NON si chiama Recoma: Recoma e' citata solo come collaborazione. Link esterno informativo e secondario. Prezzo da definire in fase 2.",
   },
 ];
 
