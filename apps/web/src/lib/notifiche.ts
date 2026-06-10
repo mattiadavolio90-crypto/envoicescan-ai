@@ -9,6 +9,9 @@ export type Notifica = {
   title: string;
   body: string | null;
   action_page: string | null;
+  // Dati strutturati del topic (es. count righe/prezzi). Gia' restituito dal
+  // worker; opzionale lato tipo perche' non tutte le callsite lo usano.
+  payload?: Record<string, unknown> | null;
   dismissed_at: string | null;
   expires_at: string | null;
   created_at: string | null;
@@ -42,3 +45,33 @@ export const fetchNotifiche = cache(
     }
   },
 );
+
+// Somma il `count` (payload o titolo "(N)") delle notifiche attive di un topic.
+// Usato dai trigger contestuali per leggere segnali GIA' calcolati dal worker
+// (es. uncategorized_rows, price_alert) senza query nuove: fetchNotifiche e'
+// gia' cache()-ata, quindi nello stesso render non aggiunge round-trip.
+// Restituisce 0 se non disponibile (mai throw): un segnale assente = niente
+// trigger, che e' il fallback corretto.
+export async function contaTopicAttivo(topicKey: string): Promise<number> {
+  const res = await fetchNotifiche();
+  if (!res) return 0;
+  let totale = 0;
+  for (const n of res.notifiche) {
+    if (n.topic_key !== topicKey) continue;
+    const p = n.payload ?? {};
+    const raw =
+      (p.count as number | undefined) ??
+      (p.uncategorized_rows as number | undefined) ??
+      parseCountFromTitle(n.title);
+    if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) totale += raw;
+  }
+  return totale;
+}
+
+// Estrae il numero tra parentesi da titoli come "Scadenze superate (300)".
+// Allineato a _parse_count_from_title del worker (fallback quando il payload
+// non porta il conteggio).
+function parseCountFromTitle(title: string): number | undefined {
+  const m = /\((\d+)\)/.exec(title);
+  return m ? Number(m[1]) : undefined;
+}

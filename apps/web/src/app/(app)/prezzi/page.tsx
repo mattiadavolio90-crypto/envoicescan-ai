@@ -2,7 +2,10 @@ import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePagina } from "@/lib/page-guard";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { SESSION_COOKIE, getCurrentUser } from "@/lib/auth";
+import { contaTopicAttivo } from "@/lib/notifiche";
+import { TriggerHint } from "@/components/trigger-hint";
+import { triggerAbilitati, valutaTrigger } from "@/lib/trigger-servizi";
 import { TabsSwitcher } from "./tabs-switcher";
 import { VariazioniTab } from "./variazioni-tab";
 import { ScontiTab } from "./sconti-tab";
@@ -36,7 +39,17 @@ export default async function PrezziPage({
   await requirePagina("prezzi");
   const sp = await searchParams;
   const tab = sp.tab ?? "variazioni";
-  const soglia = await fetchSogliaAlert();
+  const [soglia, user, alertPrezzi] = await Promise.all([
+    fetchSogliaAlert(),
+    getCurrentUser(),
+    contaTopicAttivo("price_alert"),
+  ]);
+
+  // Trigger contestuale Analisi su Richiesta: scatta se ci sono prezzi in
+  // aumento (topic price_alert gia' calcolato dal worker, nessuna query nuova).
+  const trigger = triggerAbilitati(user?.pagine_abilitate)
+    ? valutaTrigger("prezzi", { alertPrezziAttivi: alertPrezzi })
+    : null;
 
   return (
     <div className="space-y-4">
@@ -65,6 +78,8 @@ export default async function PrezziPage({
           </Suspense>
         )}
       </div>
+
+      <TriggerHint trigger={trigger} />
     </div>
   );
 }

@@ -2,7 +2,9 @@ import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePagina } from "@/lib/page-guard";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { SESSION_COOKIE, getCurrentUser } from "@/lib/auth";
+import { TriggerHint } from "@/components/trigger-hint";
+import { triggerAbilitati, valutaTrigger } from "@/lib/trigger-servizi";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FiltriPeriodo } from "./filtri-periodo";
 import { KpiBar, type KpiData } from "./kpi-bar";
@@ -79,7 +81,18 @@ export default async function MarginiPage({
   const tab = sp.tab ?? "calcolo";
   const { data_da, data_a, preset, mese } = resolvePeriodo(sp);
 
-  const kpi = await fetchKpiData(data_da, data_a);
+  const [kpi, user] = await Promise.all([fetchKpiData(data_da, data_a), getCurrentUser()]);
+
+  // Trigger contestuale Consulenza: scatta su MOL negativo o food cost oltre
+  // soglia (dati gia' nel KPI di pagina, nessuna query nuova). Mostrato solo se
+  // il toggle cliente e' attivo e c'e' un segnale reale.
+  const triggerOn = triggerAbilitati(user?.pagine_abilitate);
+  const trigger = triggerOn
+    ? valutaTrigger("margini", {
+        foodCostPct: kpi.food_cost_perc,
+        molNegativo: kpi.mol < 0,
+      })
+    : null;
 
   return (
     <div className="space-y-5">
@@ -117,6 +130,8 @@ export default async function MarginiPage({
           </ErrorBoundary>
         )}
       </div>
+
+      <TriggerHint trigger={trigger} />
     </div>
   );
 }

@@ -1,5 +1,9 @@
 import { PageHeader } from "@/components/ui/page-header";
 import { requirePagina } from "@/lib/page-guard";
+import { getCurrentUser } from "@/lib/auth";
+import { contaTopicAttivo } from "@/lib/notifiche";
+import { TriggerHint } from "@/components/trigger-hint";
+import { triggerAbilitati, valutaTrigger } from "@/lib/trigger-servizi";
 import {
   fetchArticoliAggregati,
   fetchCategorie,
@@ -76,7 +80,7 @@ export default async function AnalisiFatturePage({
   // sequenziali (waterfall) e il payload pesante (articoli/pivot) restava bloccato
   // dietro kpi/mesi/categorie pur non dipendendone. Tab Articoli/Pivot: filtri
   // gestiti CLIENT-SIDE, il server fetcha solo per periodo + tipo prodotti.
-  const [kpi, mesi, categorieRes, articoliRes, pivotCategorie, pivotFornitori] =
+  const [kpi, mesi, categorieRes, articoliRes, pivotCategorie, pivotFornitori, user, righeDaClassificare] =
     await Promise.all([
       fetchKpi(data_da, data_a, tipoProdotti, soloNuovi),
       fetchMesiDisponibili(),
@@ -95,7 +99,16 @@ export default async function AnalisiFatturePage({
       tab === "fornitori"
         ? fetchPivot("fornitore", { data_da, data_a, tipo_prodotti: tipoProdotti })
         : Promise.resolve(null),
+      getCurrentUser(),
+      contaTopicAttivo("uncategorized_rows"),
     ]);
+
+  // Trigger contestuale Check-up: scatta quando ci sono molte righe da
+  // classificare (topic uncategorized_rows gia' calcolato dal worker). Segnale
+  // di "dati incompleti / gestione poco monitorata", senza query nuove.
+  const trigger = triggerAbilitati(user?.pagine_abilitate)
+    ? valutaTrigger("analisi-fatture", { righeDaClassificare })
+    : null;
 
   return (
     <div className="space-y-5">
@@ -148,6 +161,8 @@ export default async function AnalisiFatturePage({
           filtri={{ data_da, data_a, tipo_prodotti: tipoProdotti }}
         />
       )}
+
+      <TriggerHint trigger={trigger} />
     </div>
   );
 }
