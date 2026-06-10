@@ -81,14 +81,15 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
         <Sparkles className="size-4" />
         Configura assistente
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[90dvh] flex-col sm:max-w-md">
+        <DialogHeader className="shrink-0">
           <DialogTitle>Configura il tuo assistente</DialogTitle>
           <DialogDescription>
             Scegli come ti saluta e quali avvisi vuoi ricevere in Home.
           </DialogDescription>
         </DialogHeader>
 
+        <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="space-y-5 py-2">
           <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2.5">
             <div className="flex items-center gap-2 text-sm">
@@ -166,8 +167,9 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
             </p>
           </div>
         </div>
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0">
           <Button variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
             Annulla
           </Button>

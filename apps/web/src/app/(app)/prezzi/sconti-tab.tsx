@@ -1,13 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { RefreshCw, Tag, Gift, Building2, Euro } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { RefreshCw, Tag, Gift, Building2, Euro, Calendar, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ScontiOmaggiResponse } from "@/lib/prezzi";
 
 const ANNO_CORRENTE = new Date().getFullYear();
-const ANNI = Array.from({ length: 5 }, (_, i) => ANNO_CORRENTE - i);
-const MESI = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
+const MESI_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+
+type PeriodoPreset = "anno_corrente" | "mese_specifico" | "personalizzato";
+
+function fmtItDate(iso: string) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+}
 
 function fmtEuro(v: number): string {
   if (v === 0) return "—";
@@ -31,16 +37,28 @@ function isoDateRange(anno: number, mese: number | null): { data_da: string; dat
 export function ScontiTab() {
   const [anno, setAnno] = useState(ANNO_CORRENTE);
   const [mese, setMese] = useState<number | null>(null);
+  const [preset, setPreset] = useState<PeriodoPreset>("anno_corrente");
+  const [dataDaCustom, setDataDaCustom] = useState("");
+  const [dataACustom, setDataACustom] = useState("");
+  const [showMese, setShowMese] = useState(false);
+  const [showCustom, setShowCustom] = useState(false);
   const [data, setData] = useState<ScontiOmaggiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [filtroCategoria, setFiltroCategoria] = useState("");
   const [filtroFornitore, setFiltroFornitore] = useState("");
 
-  async function load(a = anno, m = mese) {
+  async function load(da?: string, a?: string) {
     setLoading(true);
     try {
-      const { data_da, data_a } = isoDateRange(a, m);
+      let data_da: string;
+      let data_a: string;
+      if (da && a) {
+        data_da = da; data_a = a;
+      } else {
+        const r = isoDateRange(anno, mese);
+        data_da = r.data_da; data_a = r.data_a;
+      }
       const qs = new URLSearchParams({ data_da, data_a });
       const res = await fetch(`/api/prezzi/sconti-omaggi?${qs}`);
       if (!res.ok) throw new Error();
@@ -54,8 +72,31 @@ export function ScontiTab() {
 
   useEffect(() => { load(); }, []);
 
-  function handleAnno(a: number) { setAnno(a); load(a, mese); }
-  function handleMese(m: number | null) { setMese(m); load(anno, m); }
+  function applyAnno() {
+    setPreset("anno_corrente");
+    setMese(null);
+    setShowMese(false);
+    setShowCustom(false);
+    const r = isoDateRange(ANNO_CORRENTE, null);
+    setAnno(ANNO_CORRENTE);
+    load(r.data_da, r.data_a);
+  }
+
+  function applyMese(yearMonth: string) {
+    if (!yearMonth) return;
+    const [y, m] = yearMonth.split("-").map(Number);
+    setAnno(y);
+    setMese(m);
+    setPreset("mese_specifico");
+    const r = isoDateRange(y, m);
+    load(r.data_da, r.data_a);
+  }
+
+  function applyCustom(da: string, a: string) {
+    if (!da || !a) return;
+    setPreset("personalizzato");
+    load(da, a);
+  }
 
   const items = data?.items ?? [];
 
@@ -79,50 +120,86 @@ export function ScontiTab() {
   return (
     <div className="space-y-4">
       {/* Filtro periodo */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">Anno</label>
-          <select
-            value={anno}
-            onChange={(e) => handleAnno(Number(e.target.value))}
-            className="rounded border border-border px-2 py-1 text-sm bg-background"
-          >
-            {ANNI.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <div className="flex flex-wrap gap-1">
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Chip preset */}
+          {(["anno_corrente", "mese_specifico", "personalizzato"] as PeriodoPreset[]).map((p) => {
+            const labels: Record<PeriodoPreset, React.ReactNode> = {
+              anno_corrente: "Anno in corso",
+              mese_specifico: <><Calendar className="size-3 inline mr-1" />Seleziona mese</>,
+              personalizzato: <><Settings2 className="size-3 inline mr-1" />Personalizzato</>,
+            };
+            const chipBase = "px-3 py-1.5 text-xs font-medium rounded-full border transition-colors inline-flex items-center gap-1";
+            const chipActive = "bg-primary text-primary-foreground border-primary";
+            const chipIdle = "bg-background border-input hover:bg-muted";
+            return (
+              <button
+                key={p}
+                onClick={() => {
+                  if (p === "anno_corrente") { applyAnno(); }
+                  else if (p === "mese_specifico") { setShowMese(true); setShowCustom(false); setPreset("mese_specifico"); }
+                  else { setShowCustom(true); setShowMese(false); setPreset("personalizzato"); }
+                }}
+                className={`${chipBase} ${preset === p ? chipActive : chipIdle}`}
+              >
+                {labels[p]}
+              </button>
+            );
+          })}
+          {preset === "personalizzato" && dataDaCustom && dataACustom && (
+            <span className="ml-2 text-xs font-medium text-sky-500 dark:text-sky-400">
+              {fmtItDate(dataDaCustom)} → {fmtItDate(dataACustom)}
+            </span>
+          )}
           <button
-            onClick={() => handleMese(null)}
-            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-              mese === null
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
-            }`}
+            onClick={() => load()}
+            disabled={loading}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
-            Tutto l&apos;anno
+            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+            Aggiorna
           </button>
-          {MESI.map((label, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleMese(mese === idx + 1 ? null : idx + 1)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                mese === idx + 1
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
         </div>
-        <button
-          onClick={() => load()}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-        >
-          <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-          Aggiorna
-        </button>
+
+        {/* Select mese */}
+        {showMese && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Mese:</span>
+            <select
+              value={mese != null ? `${anno}-${String(mese).padStart(2, "0")}` : ""}
+              onChange={(e) => applyMese(e.target.value)}
+              className="h-7 text-xs rounded-md border border-input bg-background px-2"
+            >
+              <option value="" disabled>Seleziona un mese</option>
+              {Array.from({ length: 4 }, (_, i) => ANNO_CORRENTE - i).flatMap((y) =>
+                MESI_FULL.map((label, mi) => {
+                  const val = `${y}-${String(mi + 1).padStart(2, "0")}`;
+                  return <option key={val} value={val}>{label} {y}</option>;
+                })
+              )}
+            </select>
+          </div>
+        )}
+
+        {/* Range personalizzato */}
+        {showCustom && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">Dal</span>
+            <input
+              type="date"
+              value={dataDaCustom}
+              onChange={(e) => { setDataDaCustom(e.target.value); applyCustom(e.target.value, dataACustom); }}
+              className="h-7 text-xs rounded-md border border-input bg-background px-2 w-36"
+            />
+            <span className="text-xs text-muted-foreground">al</span>
+            <input
+              type="date"
+              value={dataACustom}
+              onChange={(e) => { setDataACustom(e.target.value); applyCustom(dataDaCustom, e.target.value); }}
+              className="h-7 text-xs rounded-md border border-input bg-background px-2 w-36"
+            />
+          </div>
+        )}
       </div>
 
       {/* Filtri secondari */}

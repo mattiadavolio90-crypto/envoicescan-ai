@@ -88,8 +88,8 @@ const ROWS: RowDef[] = [
   { key: "primo_margine",         label: "= 1° Margine",           type: "computed", section: "margine", isMetric: true, labelColor: "text-emerald-500 dark:text-emerald-400", valueColor: "sign" },
   { key: "costi_spese_auto",      label: "Spese Gen. (Fatture)",   type: "input-readonly", section: "spese", valueColor: "white" },
   { key: "altri_costi_spese",     label: "Altre Spese Generali",   type: "input-editable", field: "altri_costi_spese", section: "spese", valueColor: "white" },
-  { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", valueColor: "pink" },
-  { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", valueColor: "pink" },
+  { key: "costo_dipendenti",      label: "Costo Personale Lordo",  type: "input-editable", field: "costo_dipendenti", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
+  { key: "costo_personale_extra", label: "Costo Personale Extra",  type: "input-editable", field: "costo_personale_extra", section: "personale", labelColor: "text-pink-600 dark:text-pink-400", valueColor: "pink" },
   { key: "totale_costi",          label: "= Costi gestione totali", type: "computed", section: "spese", isMetric: true, derive: (m) => m.costi_fb_totali + m.costi_spese_totali + m.costi_personale, labelColor: "text-violet-500 dark:text-violet-400", valueColor: "purple" },
   { key: "mol",                   label: "= 2° Margine (MOL)",     type: "computed", section: "margine", isMetric: true, isMolMargin: true, labelColor: "text-green-600 dark:text-green-300", valueColor: "sign" },
 ];
@@ -374,7 +374,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                   >
                     <td
                       className={`sticky left-0 z-10 bg-card px-3 py-2 border-r border-border whitespace-nowrap ${
-                        isMetric ? `font-bold ${row.labelColor ?? ""}` : ""
+                        isMetric ? `font-bold ${row.labelColor ?? ""}` : row.labelColor ?? ""
                       }`}
                     >
                       {row.label}
@@ -688,7 +688,7 @@ function MobileMeseView({
 
           return (
             <div key={ri} className="flex items-center justify-between gap-3 px-3 py-2.5">
-              <span className={`text-sm ${isMetric ? `font-semibold ${row.labelColor ?? ""}` : ""}`}>
+              <span className={`text-sm ${isMetric ? `font-semibold ${row.labelColor ?? ""}` : row.labelColor ?? ""}`}>
                 {row.label}
               </span>
               {isPersonale && !isTotal ? (

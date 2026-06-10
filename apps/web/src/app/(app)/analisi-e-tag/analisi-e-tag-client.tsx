@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Plus, X, RefreshCw, Download, ChevronDown, ChevronUp,
-  Search, Check, Trash2, Tags, Lightbulb,
+  Search, Check, Trash2, Tags, Lightbulb, Calendar, Settings2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -19,12 +19,121 @@ import type {
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const MESI = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
+const MESI_FULL = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
+
+type PeriodoPreset = "anno_corrente" | "mese_specifico" | "personalizzato";
 
 function isoRange(anno: number, mese: number | null) {
   if (mese === null) return { da: `${anno}-01-01`, a: `${anno}-12-31` };
   const last = new Date(anno, mese, 0).getDate();
   const mm = String(mese).padStart(2, "0");
   return { da: `${anno}-${mm}-01`, a: `${anno}-${mm}-${last}` };
+}
+
+function fmtItDate(iso: string) {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
+/* ── Filtro periodo (stile Analisi Fatture) ── */
+function FiltroPeriodoTag({
+  anno, mese, dataDa, dataA, preset, onChange,
+}: {
+  anno: number;
+  mese: number | null;
+  dataDa: string | null;
+  dataA: string | null;
+  preset: PeriodoPreset;
+  onChange: (v: { anno: number; mese: number | null; preset: PeriodoPreset; dataDa?: string; dataA?: string }) => void;
+}) {
+  const [showMese, setShowMese] = useState(preset === "mese_specifico");
+  const [showCustom, setShowCustom] = useState(preset === "personalizzato");
+
+  const chipBase = "px-3 py-1.5 text-xs font-medium rounded-full border transition-colors inline-flex items-center gap-1.5";
+  const chipActive = "bg-primary text-primary-foreground border-primary";
+  const chipIdle = "bg-background border-input hover:bg-muted";
+
+  function applyAnno() {
+    setShowMese(false);
+    setShowCustom(false);
+    onChange({ anno: ANNO_CORRENTE, mese: null, preset: "anno_corrente" });
+  }
+
+  function applyMese(yearMonth: string) {
+    if (!yearMonth) return;
+    const [y, m] = yearMonth.split("-").map(Number);
+    onChange({ anno: y, mese: m, preset: "mese_specifico" });
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          onClick={applyAnno}
+          className={`${chipBase} ${preset === "anno_corrente" ? chipActive : chipIdle}`}
+        >
+          Anno in corso
+        </button>
+        <button
+          onClick={() => { setShowMese(true); setShowCustom(false); }}
+          className={`${chipBase} ${preset === "mese_specifico" ? chipActive : chipIdle}`}
+        >
+          <Calendar className="size-3" />
+          Seleziona mese
+        </button>
+        <button
+          onClick={() => { setShowCustom(true); setShowMese(false); onChange({ anno, mese, preset: "personalizzato", dataDa: dataDa ?? undefined, dataA: dataA ?? undefined }); }}
+          className={`${chipBase} ${preset === "personalizzato" ? chipActive : chipIdle}`}
+        >
+          <Settings2 className="size-3" />
+          Personalizzato
+        </button>
+        {preset === "personalizzato" && dataDa && dataA && (
+          <span className="ml-2 text-xs font-medium text-sky-500 dark:text-sky-400">
+            {fmtItDate(dataDa)} → {fmtItDate(dataA)}
+          </span>
+        )}
+      </div>
+
+      {showMese && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Mese:</span>
+          <select
+            value={mese != null ? `${anno}-${String(mese).padStart(2, "0")}` : ""}
+            onChange={e => applyMese(e.target.value)}
+            className="h-7 text-xs rounded-md border border-input bg-background px-2"
+          >
+            <option value="" disabled>Seleziona un mese</option>
+            {Array.from({ length: 4 }, (_, i) => ANNO_CORRENTE - i).flatMap(y =>
+              MESI_FULL.map((label, mi) => {
+                const val = `${y}-${String(mi + 1).padStart(2, "0")}`;
+                return <option key={val} value={val}>{label} {y}</option>;
+              })
+            )}
+          </select>
+        </div>
+      )}
+
+      {showCustom && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Dal</span>
+          <input
+            type="date"
+            value={dataDa ?? ""}
+            onChange={e => onChange({ anno, mese, preset: "personalizzato", dataDa: e.target.value || undefined, dataA: dataA ?? undefined })}
+            className="h-7 text-xs rounded-md border border-input bg-background px-2 w-36"
+          />
+          <span className="text-xs text-muted-foreground">al</span>
+          <input
+            type="date"
+            value={dataA ?? ""}
+            onChange={e => onChange({ anno, mese, preset: "personalizzato", dataDa: dataDa ?? undefined, dataA: e.target.value || undefined })}
+            className="h-7 text-xs rounded-md border border-input bg-background px-2 w-36"
+          />
+        </div>
+      )}
+    </div>
+  );
 }
 
 function fmtEuro(v: number) {
@@ -98,7 +207,7 @@ function TrendChart({ punti, media }: { punti: { data: string; prezzo: number; v
   );
 }
 
-/* ── Dialog Nuovo/Modifica Tag ── */
+/* ── Dialog Nuovo/Modifica Tag (wizard 2-step per i nuovi) ── */
 function TagDialog({
   open, onOpenChange, tag, onSaved,
 }: {
@@ -107,18 +216,42 @@ function TagDialog({
   tag: CustomTag | null;
   onSaved: (saved: CustomTag, isNew: boolean) => void;
 }) {
+  const [step, setStep] = useState<1 | 2>(1);
+  const [savedTag, setSavedTag] = useState<CustomTag | null>(null);
   const [nome, setNome] = useState("");
   const [emoji, setEmoji] = useState("");
   const [saving, setSaving] = useState(false);
 
+  // Stato step 2 (prodotti)
+  const [search, setSearch] = useState("");
+  const [descrizioni, setDescrizioni] = useState<DescrizioneDistinta[]>([]);
+  const [loadingDesc, setLoadingDesc] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [savingProdotti, setSavingProdotti] = useState(false);
+
   useEffect(() => {
     if (open) {
+      setStep(1);
+      setSavedTag(null);
       setNome(tag?.nome ?? "");
       setEmoji(tag?.emoji ?? "");
+      setSearch("");
+      setSelected(new Set());
     }
   }, [open, tag]);
 
-  async function save() {
+  // Carica descrizioni quando si entra in step 2
+  useEffect(() => {
+    if (step !== 2) return;
+    setLoadingDesc(true);
+    fetch("/api/tag/descrizioni")
+      .then(r => r.json())
+      .then(d => setDescrizioni(d.descrizioni ?? []))
+      .catch(() => toast.error("Errore nel caricamento prodotti"))
+      .finally(() => setLoadingDesc(false));
+  }, [step]);
+
+  async function saveTag() {
     const n = nome.trim();
     if (!n) { toast.error("Inserisci un nome per il tag"); return; }
     setSaving(true);
@@ -133,9 +266,18 @@ function TagDialog({
       }
       const data = await res.json();
       const saved: CustomTag | null = data?.tag ?? null;
+      if (!saved) throw new Error("Errore nel salvataggio");
       toast.success(tag ? "Tag aggiornato" : "Tag creato");
-      if (saved) onSaved(saved, !tag);
-      onOpenChange(false);
+      if (tag) {
+        // modifica: chiude subito
+        onSaved(saved, false);
+        onOpenChange(false);
+      } else {
+        // nuovo: passa allo step 2
+        setSavedTag(saved);
+        onSaved(saved, true);
+        setStep(2);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Errore nel salvataggio");
     } finally {
@@ -143,61 +285,164 @@ function TagDialog({
     }
   }
 
+  async function saveProdotti() {
+    if (!savedTag) return;
+    if (selected.size === 0) {
+      // salta senza aggiungere prodotti
+      onOpenChange(false);
+      return;
+    }
+    setSavingProdotti(true);
+    try {
+      const items = [...selected].map(k => {
+        const d = descrizioni.find(x => x.descrizione_key === k);
+        return { descrizione: d?.descrizione ?? k, descrizione_key: k, fattore_kg: null };
+      });
+      const res = await fetch(`/api/tag/${savedTag.id}/prodotti`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ descrizioni: items }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success(`${selected.size} prodott${selected.size === 1 ? "o aggiunto" : "i aggiunti"}`);
+      onOpenChange(false);
+    } catch {
+      toast.error("Errore nel salvataggio prodotti");
+    } finally {
+      setSavingProdotti(false);
+    }
+  }
+
+  const filteredDesc = descrizioni
+    .filter(d => !search || d.descrizione.toLowerCase().includes(search.toLowerCase()))
+    .slice(0, 80);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
         <DialogHeader>
-          <DialogTitle>{tag ? "Modifica tag" : "Nuovo tag"}</DialogTitle>
+          <DialogTitle>
+            {tag ? "Modifica tag" : step === 1 ? "Nuovo tag" : `Aggiungi prodotti a "${savedTag?.nome}"`}
+          </DialogTitle>
+          {!tag && step === 2 && (
+            <p className="text-xs text-muted-foreground">Step 2 di 2 — puoi anche saltare e aggiungere prodotti dopo.</p>
+          )}
         </DialogHeader>
-        <div className="space-y-4 pt-2">
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Nome</label>
-            <input
-              className="w-full rounded-md border border-border px-3 py-2 text-sm bg-background"
-              placeholder="Es. Salmone, Pollo, Farina…"
-              value={nome}
-              maxLength={100}
-              onChange={e => setNome(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && save()}
-              autoFocus
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Emoji <span className="text-muted-foreground font-normal">(opzionale)</span></label>
-            <div className="flex flex-wrap gap-1.5">
-              {["🐟","🍗","🥩","🐄","🦐","🍕","🍝","🥗","🧀","🥚","🧈","🥛","🍞","🌾","🫒","🍷","🍺","☕","🧃","🌿","🍋","🧅","🥦","🍅","🧄","🥕","🌶️","🍄"].map(e => (
-                <button
-                  key={e}
-                  type="button"
-                  onClick={() => setEmoji(prev => prev === e ? "" : e)}
-                  className={`w-9 h-9 text-xl rounded-md border transition-colors flex items-center justify-center ${
-                    emoji === e
-                      ? "border-primary bg-primary/10"
-                      : "border-border hover:bg-muted"
-                  }`}
-                >
-                  {e}
-                </button>
-              ))}
+
+        {/* ── Step 1: nome + emoji ── */}
+        {step === 1 && (
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium">Nome</label>
+              <input
+                className="w-full rounded-md border border-border px-3 py-2 text-sm bg-background"
+                placeholder="Es. Salmone, Pollo, Farina…"
+                value={nome}
+                maxLength={100}
+                onChange={e => setNome(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && saveTag()}
+                autoFocus
+              />
             </div>
-            {emoji && (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>Selezionata: <span className="text-lg">{emoji}</span></span>
-                <button type="button" onClick={() => setEmoji("")} className="text-xs hover:text-foreground underline">Rimuovi</button>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Emoji <span className="text-muted-foreground font-normal">(opzionale)</span></label>
+              <div className="flex flex-wrap gap-1.5">
+                {["🐟","🍗","🥩","🐄","🦐","🍕","🍝","🥗","🧀","🥚","🧈","🥛","🍞","🌾","🫒","🍷","🍺","☕","🧃","🌿","🍋","🧅","🥦","🍅","🧄","🥕","🌶️","🍄"].map(em => (
+                  <button
+                    key={em}
+                    type="button"
+                    onClick={() => setEmoji(prev => prev === em ? "" : em)}
+                    className={`w-9 h-9 text-xl rounded-md border transition-colors flex items-center justify-center ${
+                      emoji === em ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+                    }`}
+                  >
+                    {em}
+                  </button>
+                ))}
               </div>
-            )}
+              {emoji && (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <span>Selezionata: <span className="text-lg">{emoji}</span></span>
+                  <button type="button" onClick={() => setEmoji("")} className="text-xs hover:text-foreground underline">Rimuovi</button>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={() => onOpenChange(false)}
+                className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">
+                Annulla
+              </button>
+              <button onClick={saveTag} disabled={saving || !nome.trim()}
+                className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                {saving ? "Salvataggio…" : tag ? "Salva" : "Avanti →"}
+              </button>
+            </div>
           </div>
-          <div className="flex gap-2 justify-end pt-1">
-            <button onClick={() => onOpenChange(false)}
-              className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">
-              Annulla
-            </button>
-            <button onClick={save} disabled={saving || !nome.trim()}
-              className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
-              {saving ? "Salvataggio…" : "Salva"}
-            </button>
+        )}
+
+        {/* ── Step 2: selezione prodotti ── */}
+        {step === 2 && (
+          <div className="space-y-3 pt-2">
+            <div className="relative">
+              <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                className="w-full rounded-md border border-border pl-9 pr-3 py-2 text-sm bg-background"
+                placeholder="Cerca prodotto…"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="rounded-lg border border-border overflow-hidden">
+              <div className="max-h-64 overflow-y-auto">
+                {loadingDesc ? (
+                  <div className="space-y-2 p-3">
+                    {[1,2,3,4].map(i => <div key={i} className="h-9 rounded-md bg-muted animate-pulse" />)}
+                  </div>
+                ) : filteredDesc.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-6 text-center">Nessun prodotto trovato</p>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {filteredDesc.map(d => {
+                      const sel = selected.has(d.descrizione_key);
+                      return (
+                        <button key={d.descrizione_key}
+                          onClick={() => {
+                            const s = new Set(selected);
+                            if (sel) s.delete(d.descrizione_key); else s.add(d.descrizione_key);
+                            setSelected(s);
+                          }}
+                          className={`w-full text-left flex items-center gap-3 px-3 py-2 text-sm transition-colors ${sel ? "bg-primary/10" : "hover:bg-muted"}`}
+                        >
+                          <span className={`size-4 rounded border flex items-center justify-center shrink-0 transition-colors ${sel ? "bg-primary border-primary" : "border-border"}`}>
+                            {sel && <Check className="size-3 text-primary-foreground" />}
+                          </span>
+                          <span className="flex-1 truncate font-medium">{d.descrizione}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">{d.occorrenze} occ.</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <p className="text-sm text-muted-foreground">
+                {selected.size > 0 ? `${selected.size} selezionat${selected.size === 1 ? "o" : "i"}` : "Nessuno selezionato"}
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => onOpenChange(false)}
+                  className="px-3 py-1.5 text-sm rounded-md border border-border hover:bg-muted transition-colors">
+                  Salta
+                </button>
+                <button onClick={saveProdotti} disabled={savingProdotti || selected.size === 0}
+                  className="px-3 py-1.5 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                  {savingProdotti ? "Salvataggio…" : "Aggiungi e chiudi"}
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -554,6 +799,9 @@ export function AnalisiETagClient({
 
   const [anno, setAnno] = useState(ANNO_CORRENTE);
   const [mese, setMese] = useState<number | null>(null);
+  const [periodoPreset, setPeriodoPreset] = useState<PeriodoPreset>("anno_corrente");
+  const [dataDaCustom, setDataDaCustom] = useState<string | null>(null);
+  const [dataACustom, setDataACustom] = useState<string | null>(null);
 
   const [analisi, setAnalisi] = useState<TagAnalisiResponse | null>(null);
   const [loadingAnalisi, setLoadingAnalisi] = useState(false);
@@ -571,11 +819,10 @@ export function AnalisiETagClient({
   const [showTrend, setShowTrend] = useState(true);
   const [showFornitori, setShowFornitori] = useState(true);
 
-  // ── Load analisi ──
-  const loadAnalisi = useCallback(async (tagId: number, a: number, m: number | null) => {
+  // ── Load analisi (range diretto) ──
+  const loadAnalisiRange = useCallback(async (tagId: number, da: string, dataA: string) => {
     setLoadingAnalisi(true);
     setAnalisi(null);
-    const { da, a: dataA } = isoRange(a, m);
     try {
       const res = await fetch(`/api/tag/${tagId}/analisi?data_da=${da}&data_a=${dataA}`);
       if (!res.ok) throw new Error();
@@ -586,6 +833,12 @@ export function AnalisiETagClient({
       setLoadingAnalisi(false);
     }
   }, []);
+
+  // ── Load analisi (anno + mese) ──
+  const loadAnalisi = useCallback(async (tagId: number, a: number, m: number | null) => {
+    const { da, a: dataA } = isoRange(a, m);
+    return loadAnalisiRange(tagId, da, dataA);
+  }, [loadAnalisiRange]);
 
   // ── Load prodotti ──
   const loadProdotti = useCallback(async (tagId: number) => {
@@ -848,38 +1101,26 @@ export function AnalisiETagClient({
           </div>
 
           {/* Filtro periodo */}
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={anno}
-              onChange={e => {
-                const y = Number(e.target.value);
-                setAnno(y);
-                if (selectedTagId) loadAnalisi(selectedTagId, y, mese);
-              }}
-              className="rounded-md border border-border px-2 py-1.5 text-sm bg-background"
-            >
-              {Array.from({ length: 4 }, (_, i) => ANNO_CORRENTE - i).map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-            <button
-              onClick={() => { setMese(null); if (selectedTagId) loadAnalisi(selectedTagId, anno, null); }}
-              className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${mese === null ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
-            >
-              Tutto
-            </button>
-            {MESI.map((label, i) => {
-              const m = i + 1;
-              return (
-                <button key={m}
-                  onClick={() => { setMese(m); if (selectedTagId) loadAnalisi(selectedTagId, anno, m); }}
-                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${mese === m ? "bg-primary text-primary-foreground border-primary" : "border-border text-muted-foreground hover:text-foreground"}`}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
+          <FiltroPeriodoTag
+            anno={anno}
+            mese={mese}
+            dataDa={dataDaCustom}
+            dataA={dataACustom}
+            preset={periodoPreset}
+            onChange={({ anno: a, mese: m, preset, dataDa: dd, dataA: da }) => {
+              setAnno(a);
+              setMese(m);
+              setPeriodoPreset(preset);
+              setDataDaCustom(dd ?? null);
+              setDataACustom(da ?? null);
+              if (selectedTagId) {
+                const range = preset === "personalizzato" && dd && da
+                  ? { da: dd, a: da }
+                  : isoRange(a, m);
+                loadAnalisiRange(selectedTagId, range.da, range.a);
+              }
+            }}
+          />
 
           {/* KPI bar */}
           {loadingAnalisi && (
@@ -1046,12 +1287,23 @@ export function AnalisiETagClient({
       {/* ── Dialogs ── */}
       <TagDialog
         open={dialogTag.open}
-        onOpenChange={v => setDialogTag(d => ({ ...d, open: v }))}
+        onOpenChange={v => {
+          setDialogTag(d => ({ ...d, open: v }));
+          // Alla chiusura del dialog (dopo step 1+2 per nuovi, dopo step 1 per modifica)
+          // ricarica prodotti e analisi del tag corrente
+          if (!v && selectedTagId) {
+            loadProdotti(selectedTagId);
+            loadAnalisi(selectedTagId, anno, mese);
+          }
+        }}
         tag={dialogTag.tag}
         onSaved={(saved, isNew) => {
           if (isNew) {
             setTags(prev => [...prev, saved].sort((a, b) => a.nome.localeCompare(b.nome)));
-            selectTag(saved.id);
+            setSelectedTagId(saved.id);
+            setAnalisi(null);
+            setProdotti([]);
+            loadAnalisi(saved.id, anno, mese);
           } else {
             setTags(prev => prev.map(t => (t.id === saved.id ? saved : t)));
           }
