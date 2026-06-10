@@ -281,13 +281,19 @@ export function AgendaView() {
 
   useEffect(() => { loadEventi(anno, mese); }, [anno, mese, loadEventi]);
 
+  // Entrando in un nuovo mese seleziona oggi (se cade in quel mese) o il giorno 1,
+  // cosi' il pannello giorno non resta su una data fuori dal mese visualizzato.
+  function giornoIngressoMese(a: number, m: number): string {
+    const mISO = meseISO(a, m);
+    return today.startsWith(mISO) ? today : `${mISO}-01`;
+  }
   function mesePrecedente() {
-    if (mese === 0) { setAnno(a => a - 1); setMese(11); }
-    else setMese(m => m - 1);
+    if (mese === 0) { setAnno(anno - 1); setMese(11); setGiornoSel(giornoIngressoMese(anno - 1, 11)); }
+    else { setMese(mese - 1); setGiornoSel(giornoIngressoMese(anno, mese - 1)); }
   }
   function meseSuccessivo() {
-    if (mese === 11) { setAnno(a => a + 1); setMese(0); }
-    else setMese(m => m + 1);
+    if (mese === 11) { setAnno(anno + 1); setMese(0); setGiornoSel(giornoIngressoMese(anno + 1, 0)); }
+    else { setMese(mese + 1); setGiornoSel(giornoIngressoMese(anno, mese + 1)); }
   }
 
   async function elimina(e: EventoDiario) {

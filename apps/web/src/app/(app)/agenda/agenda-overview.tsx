@@ -152,15 +152,28 @@ export function AgendaOverview() {
     if (y !== anno) setAnno(y);
     if (m - 1 !== mese) setMese(m - 1);
   }
+  // Sceglie il giorno da selezionare entrando in un nuovo mese: oggi se cade in
+  // quel mese, altrimenti il giorno 1. Senza, il pannello "giorno selezionato"
+  // restava su un giorno fuori dal mese caricato (sempre vuoto finche' non
+  // cliccavi una cella).
+  function giornoIngressoMese(a: number, m: number): string {
+    const mISO = meseISO(a, m);
+    return today.startsWith(mISO) ? today : `${mISO}-01`;
+  }
+  function vaiAlMese(a: number, m: number) {
+    setAnno(a);
+    setMese(m);
+    setGiornoSel(giornoIngressoMese(a, m));
+  }
   function navPrecedente() {
     if (vista === "settimana") {
       vaiAData(isoOf(addDays(lunediDi(giornoSel), -7)));
-    } else if (mese === 0) { setAnno(a => a - 1); setMese(11); } else setMese(m => m - 1);
+    } else if (mese === 0) { vaiAlMese(anno - 1, 11); } else vaiAlMese(anno, mese - 1);
   }
   function navSuccessivo() {
     if (vista === "settimana") {
       vaiAData(isoOf(addDays(lunediDi(giornoSel), 7)));
-    } else if (mese === 11) { setAnno(a => a + 1); setMese(0); } else setMese(m => m + 1);
+    } else if (mese === 11) { vaiAlMese(anno + 1, 0); } else vaiAlMese(anno, mese + 1);
   }
   function toggleFonte(f: Fonte) {
     setFontiAttive(prev => {
@@ -170,6 +183,14 @@ export function AgendaOverview() {
     });
   }
 
+  // Fonti che hanno almeno una voce nel mese caricato: usato per attenuare i
+  // chip vuoti (niente da filtrare) senza farli sparire/comparire navigando.
+  const fontiConDati = useMemo(() => {
+    const s = new Set<Fonte>();
+    for (const v of voci) s.add(v.fonte);
+    return s;
+  }, [voci]);
+
   const vociVisibili = useMemo(() => voci.filter(v => fontiAttive.has(v.fonte)), [voci, fontiAttive]);
 
   const perGiorno = useMemo(() => {
@@ -178,8 +199,11 @@ export function AgendaOverview() {
     return map;
   }, [vociVisibili]);
 
-  const vociGiorno = (perGiorno[giornoSel] ?? []).slice().sort((a, b) =>
-    (a.ora ?? "99:99").localeCompare(b.ora ?? "99:99")
+  const vociGiorno = useMemo(
+    () => (perGiorno[giornoSel] ?? []).slice().sort((a, b) =>
+      (a.ora ?? "99:99").localeCompare(b.ora ?? "99:99")
+    ),
+    [perGiorno, giornoSel],
   );
 
   const celle: (number | null)[] = [
@@ -220,13 +244,20 @@ export function AgendaOverview() {
         {(Object.keys(FONTI) as Fonte[]).map(f => {
           const info = FONTI[f];
           const attiva = fontiAttive.has(f);
+          const haDati = fontiConDati.has(f);
           const Icon = info.icon;
           return (
             <button
               key={f}
               onClick={() => toggleFonte(f)}
+              disabled={!haDati}
+              title={haDati ? undefined : "Niente di questo tipo in questo mese"}
               className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                attiva ? `${info.chip} border-transparent` : "border-border text-muted-foreground hover:text-foreground opacity-60"
+                !haDati
+                  ? "border-dashed border-border text-muted-foreground/50 cursor-default"
+                  : attiva
+                    ? `${info.chip} border-transparent`
+                    : "border-border text-muted-foreground hover:text-foreground opacity-60"
               }`}
             >
               <Icon className="size-3.5" />

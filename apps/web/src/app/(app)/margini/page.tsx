@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { PageHeader } from "@/components/ui/page-header";
+import { requirePagina } from "@/lib/page-guard";
 import { SESSION_COOKIE } from "@/lib/auth";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FiltriPeriodo } from "./filtri-periodo";
@@ -73,6 +74,7 @@ export default async function MarginiPage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  await requirePagina("margini");
   const sp = await searchParams;
   const tab = sp.tab ?? "calcolo";
   const { data_da, data_a, preset, mese } = resolvePeriodo(sp);

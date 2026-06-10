@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "@/lib/auth";
+import { requirePagina } from "@/lib/page-guard";
 import { PageHeader } from "@/components/ui/page-header";
 import { ScadenziarioClient } from "./scadenziario-client";
 import type { Documento } from "@/lib/scadenziario";
@@ -38,6 +39,7 @@ async function triggerNotifica(token: string): Promise<void> {
 }
 
 export default async function ScadenziarioPage() {
+  await requirePagina("scadenziario");
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value ?? "";
 

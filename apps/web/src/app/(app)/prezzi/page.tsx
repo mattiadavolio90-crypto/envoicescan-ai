@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { cookies } from "next/headers";
 import { PageHeader } from "@/components/ui/page-header";
+import { requirePagina } from "@/lib/page-guard";
 import { SESSION_COOKIE } from "@/lib/auth";
 import { TabsSwitcher } from "./tabs-switcher";
 import { VariazioniTab } from "./variazioni-tab";
@@ -32,6 +33,7 @@ export default async function PrezziPage({
 }: {
   searchParams: Promise<{ tab?: string }>;
 }) {
+  await requirePagina("prezzi");
   const sp = await searchParams;
   const tab = sp.tab ?? "variazioni";
   const soglia = await fetchSogliaAlert();

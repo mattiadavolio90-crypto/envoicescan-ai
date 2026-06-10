@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
+import { requirePagina } from "@/lib/page-guard";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FoodcostTab } from "./foodcost-tab";
 import { InventarioTab } from "./inventario-tab";
@@ -21,9 +22,14 @@ export default async function WorkspacePage({
   const sp = await searchParams;
   const requested = sp.tab ?? "foodcost";
 
+  // Redirect dei vecchi layer PRIMA del guard: un utente con solo 'agenda' (non
+  // 'workspace') che apre un vecchio link ?tab=spese deve atterrare su /agenda,
+  // non prendere un 404 dal guard workspace.
   if (requested in LAYER_REDIRECT) {
     redirect(`/agenda?layer=${LAYER_REDIRECT[requested]}`);
   }
+
+  await requirePagina("workspace");
 
   const tab = requested === "inventario" ? "inventario" : "foodcost";
 

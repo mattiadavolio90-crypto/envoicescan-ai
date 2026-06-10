@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/ui/page-header";
+import { requirePagina } from "@/lib/page-guard";
 import {
   fetchArticoliAggregati,
   fetchCategorie,
@@ -63,6 +64,7 @@ export default async function AnalisiFatturePage({
 }: {
   searchParams: Promise<SearchParams>;
 }) {
+  await requirePagina("analisi_fatture");
   const sp = await searchParams;
   const tab = sp.tab ?? "articoli";
   const { data_da, data_a, preset, mese } = resolvePeriodo(sp);

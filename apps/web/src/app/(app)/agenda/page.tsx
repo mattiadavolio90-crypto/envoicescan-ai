@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { PageHeader } from "@/components/ui/page-header";
+import { requirePagina } from "@/lib/page-guard";
 import { LayerSwitcher } from "./layer-switcher";
 import { AgendaOverview } from "./agenda-overview";
 import { AgendaView } from "../workspace/diario-tab";
@@ -11,6 +12,7 @@ export default async function AgendaPage({
 }: {
   searchParams: Promise<{ layer?: string }>;
 }) {
+  await requirePagina("agenda");
   const sp = await searchParams;
   const layer = sp.layer ?? "tutto";
 

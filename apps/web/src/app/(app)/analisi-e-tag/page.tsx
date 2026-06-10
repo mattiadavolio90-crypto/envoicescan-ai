@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { SESSION_COOKIE } from "@/lib/auth";
+import { requirePagina } from "@/lib/page-guard";
 import { PageHeader } from "@/components/ui/page-header";
 import type { CustomTag, TagSuggestion } from "@/lib/tag";
 import { AnalisiETagClient } from "./analisi-e-tag-client";
@@ -22,6 +23,7 @@ async function fetchInitial<T>(path: string, token: string): Promise<T | null> {
 }
 
 export default async function AnalisiETagPage() {
+  await requirePagina("analisi_e_tag");
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
 
