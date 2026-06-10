@@ -689,7 +689,7 @@ def generate_tag_suggestion_notifications(
                     'Apri Analisi e Tag per confermare la creazione.'
                 ),
                 payload={'suggestions': len(new_tag_suggestions), 'products': prodotti},
-                action_page='pages/4_analisi_personalizzata.py',
+                action_page='/analisi-e-tag',
             )
         )
 
@@ -708,7 +708,7 @@ def generate_tag_suggestion_notifications(
                     'Apri Analisi e Tag per confermare le aggiunte.'
                 ),
                 payload={'suggestions': len(extend_suggestions), 'products': prodotti},
-                action_page='pages/4_analisi_personalizzata.py',
+                action_page='/analisi-e-tag',
             )
         )
 

@@ -62,14 +62,16 @@ export function raggruppa(notifiche: Notifica[]): GruppoNotifiche[] {
 }
 
 // --- CTA inline: action_page -> rotta Next ----------------------------------
-// Molte action_page nel DB sono ancora path Streamlit legacy
-// ("pages/3_controllo_prezzi.py"). Le traduciamo in rotte Next; quelle non
-// mappabili NON producono un bottone (niente link rotti). Stessa logica del
-// briefing lato worker (daily_briefing_service).
+// I nuovi action_page sono gia' path Next (es. "/prezzi"). Ma le notifiche
+// storiche salvate nel DB possono avere ancora path Streamlit legacy
+// ("pages/3_controllo_prezzi.py"): questa mappa li traduce. Quelle non mappabili
+// NON producono un bottone (niente link rotti). Stessa logica del briefing
+// lato worker (daily_briefing_service).
 const LEGACY_TO_NEXT: Record<string, string> = {
   "pages/3_controllo_prezzi.py": "/prezzi",
   "pages/1_calcolo_margine.py": "/margini",
   "pages/5_notifiche_e_gestione.py": "/analisi-e-tag",
+  "pages/4_analisi_personalizzata.py": "/analisi-e-tag",
   "pages/2_analisi_fatture.py": "/analisi-fatture",
   dashboard: "/dashboard",
 };

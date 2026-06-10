@@ -116,7 +116,7 @@ def check_on_upload(
                         f"per €{importo:.2f} entro 30 giorni. Verifica prima di procedere al pagamento."
                     ),
                     payload={'piva': piva, 'importo': importo, 'file_origine': file_orig},
-                    action_page='pages/5_notifiche_e_gestione.py',
+                    action_page='/analisi-e-tag',
                     file_ids=[upload_id],
                 ))
                 break
@@ -156,7 +156,7 @@ def check_on_upload(
                         'Possibile duplicato o cambio ragione sociale.'
                     ),
                     payload={'piva': piva, 'nomi': nomi_sorted},
-                    action_page='pages/3_controllo_prezzi.py',
+                    action_page='/prezzi',
                 ))
     except Exception as exc:
         logger.warning(f'Radar piva_dup fallito: {exc}')
@@ -207,7 +207,7 @@ def check_on_upload(
                         'media': media,
                         'upload_id': upload_id,
                     },
-                    action_page='pages/3_controllo_prezzi.py',
+                    action_page='/prezzi',
                     file_ids=[upload_id],
                 ))
         except Exception as exc:
@@ -282,7 +282,7 @@ def check_weekly(
                             'o un fornitore alternativo.'
                         ),
                         payload={'piva': piva, 'mesi': mesi_sorted, 'consecutivi': consecutivi},
-                        action_page='pages/3_controllo_prezzi.py',
+                        action_page='/prezzi',
                     ))
     except Exception as exc:
         logger.warning(f'Radar fornitore_critico fallito: {exc}')

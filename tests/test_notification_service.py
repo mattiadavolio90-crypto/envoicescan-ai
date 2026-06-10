@@ -180,7 +180,7 @@ class TestNotificationService:
         assert len(notifications) == 1
         assert notifications[0]['id'] == 'price-alerts-upload-2'
         assert 'Mozzarella (+12.4%)' in notifications[0]['body']
-        assert notifications[0]['action_page'] == 'pages/3_controllo_prezzi.py'
+        assert notifications[0]['action_page'] == '/prezzi'
 
     def test_build_upload_quality_notifications_shows_only_real_unresolved_cases(self):
         notifications = build_upload_quality_notifications({

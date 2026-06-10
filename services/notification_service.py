@@ -169,7 +169,7 @@ def build_price_alert_notifications(
         'body': body,
         'toast': f"Attenzione prezzi: {count} {_pluralize(count, 'aumento rilevato', 'aumenti rilevati')}",
         'action_label': 'Vai alla pagina',
-        'action_page': 'pages/3_controllo_prezzi.py',
+        'action_page': '/prezzi',
         'action_state_key': 'cp_tab_attivo',
         'action_state_value': 'variazioni',
     }]
@@ -199,7 +199,7 @@ def build_credit_note_notifications(upload_context: Optional[Dict[str, Any]]) ->
         'body': body,
         'toast': f"{count} {_pluralize(count, 'nota di credito rilevata', 'note di credito rilevate')}",
         'action_label': 'Vai alla pagina',
-        'action_page': 'pages/3_controllo_prezzi.py',
+        'action_page': '/prezzi',
         'action_state_key': 'cp_tab_attivo',
         'action_state_value': 'nc',
     }]
@@ -404,7 +404,7 @@ def build_monthly_data_notifications(
             ),
             'toast': f'Promemoria: manca il fatturato di {month_label} {year}',
             'action_label': 'Vai alla pagina',
-            'action_page': 'pages/1_calcolo_margine.py',
+            'action_page': '/margini',
             'action_state_key': 'margine_tab',
             'action_state_value': 'calcolo',
             'payload_data': {'mese': month_label, 'anno': year},
@@ -422,7 +422,7 @@ def build_monthly_data_notifications(
             ),
             'toast': f'Promemoria: manca il costo del personale di {month_label} {year}',
             'action_label': 'Vai alla pagina',
-            'action_page': 'pages/1_calcolo_margine.py',
+            'action_page': '/margini',
             'action_state_key': 'margine_tab',
             'action_state_value': 'calcolo',
             'payload_data': {'mese': month_label, 'anno': year},
@@ -542,7 +542,7 @@ def build_scadenza_documents_notifications(
                 'body': body,
                 'toast': f"⚠️ {count} {_pluralize(count, 'fattura scaduta', 'fatture scadute')} in attesa di pagamento",
                 'action_label': 'Vai ai Documenti',
-                'action_page': 'pages/5_notifiche_e_gestione.py',
+                'action_page': '/analisi-e-tag',
                 'payload_data': {'count': count, 'totale': round(totale, 2)},
             })
         
@@ -570,7 +570,7 @@ def build_scadenza_documents_notifications(
                 'body': body,
                 'toast': f"📅 {count} {_pluralize(count, 'fattura', 'fatture')} in scadenza nei prossimi 7 giorni",
                 'action_label': 'Vai ai Documenti',
-                'action_page': 'pages/5_notifiche_e_gestione.py',
+                'action_page': '/analisi-e-tag',
                 'payload_data': {'count': count, 'totale': round(totale, 2)},
             })
         
@@ -623,7 +623,7 @@ def build_trial_notifications(
         'body': body,
         'toast': f"Trial in scadenza: {days_left} giorni rimasti",
         'action_label': 'Contatta Support',
-        'action_page': 'Dashboard',
+        'action_page': '/dashboard',
     }]
 
 
@@ -687,7 +687,7 @@ def build_food_cost_notifications(
             ),
             'toast': f'Food Cost {food_cost_pct:.1f}% — sopra soglia',
             'action_label': 'Vai alla pagina',
-            'action_page': 'pages/1_calcolo_margine.py',
+            'action_page': '/margini',
             'action_state_key': 'margine_tab',
             'action_state_value': 'calcolo',
         })
@@ -705,7 +705,7 @@ def build_food_cost_notifications(
             ),
             'toast': f'MOL negativo {month_label}: €{mol:.2f}',
             'action_label': 'Vai alla pagina',
-            'action_page': 'pages/1_calcolo_margine.py',
+            'action_page': '/margini',
             'action_state_key': 'margine_tab',
             'action_state_value': 'calcolo',
         })
@@ -760,7 +760,7 @@ def build_food_cost_notifications(
                 ),
                 'toast': 'Food Cost in aumento da 3 mesi',
                 'action_label': 'Vai alla pagina',
-                'action_page': 'pages/1_calcolo_margine.py',
+                'action_page': '/margini',
                 'action_state_key': 'margine_tab',
                 'action_state_value': 'calcolo',
             })
@@ -869,7 +869,7 @@ def build_controllo_prezzi_notifications(
                 ),
                 'toast': f'Nota credito non compensata: {fornitore}',
                 'action_label': 'Vai alla pagina',
-                'action_page': 'pages/3_controllo_prezzi.py',
+                'action_page': '/prezzi',
                 'action_state_key': 'cp_tab_attivo',
                 'action_state_value': 'nc',
             })
@@ -947,7 +947,7 @@ def build_controllo_prezzi_notifications(
                     ),
                     'toast': f'Sconti assenti: {fornitore}',
                     'action_label': 'Vai alla pagina',
-                    'action_page': 'pages/3_controllo_prezzi.py',
+                    'action_page': '/prezzi',
                     'action_state_key': 'cp_tab_attivo',
                     'action_state_value': 'sconti',
                 })
@@ -1068,7 +1068,7 @@ def build_controllo_prezzi_notifications(
                 ),
                 'toast': f'Record prezzo: {descrizione[:30]}',
                 'action_label': 'Vai alla pagina',
-                'action_page': 'pages/3_controllo_prezzi.py',
+                'action_page': '/prezzi',
                 'action_state_key': 'cp_tab_attivo',
                 'action_state_value': 'variazioni',
             })
@@ -1147,7 +1147,7 @@ def build_qualita_anagrafica_notifications(
                 ),
                 'toast': f'P.IVA mancante: {fornitore}',
                 'action_label': 'Vai alla pagina',
-                'action_page': 'pages/5_notifiche_e_gestione.py',
+                'action_page': '/analisi-e-tag',
             })
 
         return notifications
@@ -1202,7 +1202,7 @@ def build_efficiency_spesa_notifications(
             ),
             'toast': f'Incidenza spesa aumentata: {dimensione}',
             'action_label': 'Vai alla sezione',
-            'action_page': 'pages/4_analisi_personalizzata.py',
+            'action_page': '/analisi-e-tag',
             'action_state_key': 'af_tab_attivo',
             'action_state_value': 'categorie' if 'Categoria' in dimensione else 'fornitori',
         })
@@ -1281,7 +1281,7 @@ def build_da_classificare_notifications(
                 f'richied{_pluralize(count, "e", "ono")} attenzione'
             ),
             'action_label': 'Vai alla gestione',
-            'action_page': 'pages/5_notifiche_e_gestione.py',
+            'action_page': '/analisi-e-tag',
         }]
     except Exception as exc:
         logger.warning(f'Errore build_da_classificare_notifications: {exc}')
