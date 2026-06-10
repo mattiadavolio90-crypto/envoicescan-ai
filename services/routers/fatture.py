@@ -271,6 +271,7 @@ def get_fatture_kpi(
     data_da: Optional[str] = None,
     data_a: Optional[str] = None,
     tipo_prodotti: Optional[str] = None,
+    solo_nuovi: bool = False,
     authorization: Optional[str] = Header(None),
 ) -> KpiResponse:
     user = _resolve_user_from_token(authorization)
@@ -279,6 +280,16 @@ def get_fatture_kpi(
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     supabase_client = _get_supabase_client()
+
+    # cutoff "Nuovo": stesso criterio di /articoli-aggregati (nuovi_da del ristorante,
+    # fallback 24h). Quando solo_nuovi è attivo i KPI riflettono SOLO le righe caricate
+    # nell'ultima sessione, coerentemente con la tabella articoli.
+    cutoff_nuovo = None
+    if solo_nuovi:
+        from datetime import datetime, timedelta, timezone
+        ristorante_row = supabase_client.table("ristoranti").select("nuovi_da").eq("id", ristorante_id).single().execute()
+        nuovi_da_raw = (ristorante_row.data or {}).get("nuovi_da")
+        cutoff_nuovo = nuovi_da_raw or (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
 
     def _calc(rows):
         rows_valid = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) > 0]
@@ -291,6 +302,8 @@ def get_fatture_kpi(
         return totale, num_righe, len(prodotti), media
 
     rows = _fetch_fatture_rows(supabase_client, ristorante_id, data_da, data_a, tipo_prodotti)
+    if cutoff_nuovo is not None:
+        rows = [r for r in rows if (r.get("created_at") or "") >= cutoff_nuovo]
     tot, nr, np, med = _calc(rows)
 
     from datetime import date as _date, timedelta as _timedelta
@@ -400,6 +413,11 @@ def get_articoli_aggregati(
         rows = [r for r in rows if r.get("fornitore") == fornitore]
     if solo_da_verificare:
         rows = [r for r in rows if r.get("needs_review")]
+    # solo_nuovi: filtra le righe PRIMA dell'aggregazione, così totale_speso/quantita/
+    # num_acquisti di ogni articolo riflettono SOLO le righe dell'ultima sessione di
+    # upload (non lo storico del prodotto nel periodo).
+    if solo_nuovi:
+        rows = [r for r in rows if (r.get("created_at") or "") >= cutoff_nuovo]
 
     # Aggrega per descrizione normalizzata
     from collections import defaultdict
@@ -465,16 +483,15 @@ def get_articoli_aggregati(
         # needs_review se almeno una riga
         nr = any(it.get("needs_review") for it in items)
 
-        # is_nuovo: created_at di almeno una riga nelle ultime 24h
+        # is_nuovo: created_at di almeno una riga >= cutoff (ultima sessione upload).
+        # Con solo_nuovi=True le righe vecchie sono già state filtrate a monte, quindi
+        # qui resta sempre True.
         is_nuovo = False
         for it in items:
             ca = it.get("created_at")
             if ca and ca >= cutoff_nuovo:
                 is_nuovo = True
                 break
-
-        if solo_nuovi and not is_nuovo:
-            continue
 
         articoli.append(ArticoloAggregato(
             descrizione=desc,

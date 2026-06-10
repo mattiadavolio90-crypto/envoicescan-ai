@@ -139,8 +139,14 @@ export async function fetchKpi(
   data_da?: string,
   data_a?: string,
   tipo_prodotti?: TipoProdotti,
+  solo_nuovi?: boolean,
 ): Promise<KpiResponse | null> {
-  return workerGet<KpiResponse>("/api/fatture/kpi", { data_da, data_a, tipo_prodotti });
+  return workerGet<KpiResponse>("/api/fatture/kpi", {
+    data_da,
+    data_a,
+    tipo_prodotti,
+    solo_nuovi: solo_nuovi ? true : undefined,
+  });
 }
 
 export async function fetchMesiDisponibili(): Promise<MeseDisponibile[]> {

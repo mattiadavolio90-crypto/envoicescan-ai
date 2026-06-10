@@ -181,7 +181,9 @@ export function ArticoliTab({
         if (!a.altri_fornitori.includes(fornitoreFilter)) return false;
       }
       if (categoriaFilter && a.categoria !== categoriaFilter) return false;
-      if (soloNuovi && !a.is_nuovo) return false;
+      // soloNuovi è applicato server-side (page.tsx → worker): gli articoli arrivano
+      // già filtrati e con totale_speso/quantita ricalcolati sulle sole righe nuove.
+      // Nessun filtro client qui, altrimenti i totali resterebbero quelli storici.
       if (soloVerifica && !a.needs_review) return false;
       if (term) {
         const inDesc = a.descrizione.toLowerCase().includes(term);

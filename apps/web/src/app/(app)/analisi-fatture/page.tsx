@@ -76,7 +76,7 @@ export default async function AnalisiFatturePage({
   // gestiti CLIENT-SIDE, il server fetcha solo per periodo + tipo prodotti.
   const [kpi, mesi, categorieRes, articoliRes, pivotCategorie, pivotFornitori] =
     await Promise.all([
-      fetchKpi(data_da, data_a, tipoProdotti),
+      fetchKpi(data_da, data_a, tipoProdotti, soloNuovi),
       fetchMesiDisponibili(),
       fetchCategorie(),
       tab === "articoli"
@@ -84,6 +84,7 @@ export default async function AnalisiFatturePage({
             data_da,
             data_a,
             tipo_prodotti: tipoProdotti,
+            solo_nuovi: soloNuovi,
           })
         : Promise.resolve(null),
       tab === "categorie"
