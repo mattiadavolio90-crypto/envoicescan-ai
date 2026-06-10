@@ -4936,6 +4936,16 @@
             }
           },
           {
+            "name": "solo_nuovi",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Solo Nuovi"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "required": false,
@@ -8249,6 +8259,80 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/inventario/batch": {
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Inventario Crea Batch",
+        "description": "Aggiunge più voci all'inventario in un'unica operazione.",
+        "operationId": "ws_inventario_crea_batch_api_workspace_inventario_batch_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NuoveVociInventarioBody"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -12676,6 +12760,17 @@
             ],
             "title": "Costo Orario"
           },
+          "costo_orario_extra": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Orario Extra"
+          },
           "note": {
             "anyOf": [
               {
@@ -15712,6 +15807,27 @@
         ],
         "title": "NuovaVoceInventarioBody"
       },
+      "NuoveVociInventarioBody": {
+        "properties": {
+          "data_inventario": {
+            "type": "string",
+            "title": "Data Inventario"
+          },
+          "voci": {
+            "items": {
+              "$ref": "#/components/schemas/VoceInventarioBatchItem"
+            },
+            "type": "array",
+            "title": "Voci"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data_inventario",
+          "voci"
+        ],
+        "title": "NuoveVociInventarioBody"
+      },
       "NuovoClienteBody": {
         "properties": {
           "email": {
@@ -15896,6 +16012,17 @@
               }
             ],
             "title": "Costo Orario"
+          },
+          "costo_orario_extra": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Orario Extra"
           },
           "note": {
             "anyOf": [
@@ -17392,6 +17519,50 @@
           "soglia"
         ],
         "title": "VariazioniResponse"
+      },
+      "VoceInventarioBatchItem": {
+        "properties": {
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "categoria": {
+            "type": "string",
+            "title": "Categoria",
+            "default": ""
+          },
+          "quantita": {
+            "type": "number",
+            "title": "Quantita",
+            "default": 0
+          },
+          "um": {
+            "type": "string",
+            "title": "Um",
+            "default": "KG"
+          },
+          "prezzo_unitario": {
+            "type": "number",
+            "title": "Prezzo Unitario",
+            "default": 0
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome"
+        ],
+        "title": "VoceInventarioBatchItem"
       }
     }
   }

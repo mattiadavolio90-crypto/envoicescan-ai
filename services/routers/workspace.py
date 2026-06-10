@@ -451,6 +451,20 @@ class CopiaSnapshotInventarioBody(BaseModel):
     data_target: str
 
 
+class VoceInventarioBatchItem(BaseModel):
+    nome: str
+    categoria: str = ""
+    quantita: float = 0
+    um: str = "KG"
+    prezzo_unitario: float = 0
+    note: Optional[str] = None
+
+
+class NuoveVociInventarioBody(BaseModel):
+    data_inventario: str
+    voci: list[VoceInventarioBatchItem]
+
+
 @router.get("/api/workspace/inventario/articoli", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_inventario_articoli(authorization: Optional[str] = Header(None)):
     """Articoli dalle fatture con categoria, per ricerca nell'inventario."""
@@ -632,6 +646,36 @@ def ws_inventario_crea(body: NuovaVoceInventarioBody, authorization: Optional[st
     return {"ok": True, "id": resp.data[0]["id"]}
 
 
+@router.post("/api/workspace/inventario/batch", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_inventario_crea_batch(body: NuoveVociInventarioBody, authorization: Optional[str] = Header(None)):
+    """Aggiunge più voci all'inventario in un'unica operazione."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    rows = [
+        {
+            "user_id": user_id,
+            "ristorante_id": ristorante_id,
+            "data_inventario": body.data_inventario,
+            "nome": v.nome.strip(),
+            "categoria": v.categoria.strip(),
+            "quantita": v.quantita,
+            "um": v.um.upper(),
+            "prezzo_unitario": v.prezzo_unitario,
+            "note": v.note,
+        }
+        for v in body.voci
+        if v.nome.strip()
+    ]
+    if not rows:
+        raise HTTPException(status_code=400, detail="Nessuna voce valida da inserire")
+    sb.table("inventario_voci").insert(rows).execute()
+    return {"ok": True, "n_articoli": len(rows)}
+
+
 @router.patch("/api/workspace/inventario/{voce_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_inventario_aggiorna(voce_id: str, body: AggiornaVoceInventarioBody, authorization: Optional[str] = Header(None)):
     """Aggiorna una voce inventario."""
@@ -778,8 +822,9 @@ class NuovoTurnoBody(BaseModel):
     ora_fine: str    # HH:MM
     ora_inizio2: Optional[str] = None  # secondo slot (spezzato)
     ora_fine2: Optional[str] = None
-    ore_extra: Optional[float] = None     # quota straordinario (di cui)
-    costo_orario: Optional[float] = None  # EUR/h
+    ore_extra: Optional[float] = None          # quota straordinario (di cui)
+    costo_orario: Optional[float] = None       # EUR/h ore standard
+    costo_orario_extra: Optional[float] = None # EUR/h ore extra (se diverso)
     note: Optional[str] = None
 
 
@@ -792,6 +837,7 @@ class AggiornaTurnoBody(BaseModel):
     ora_fine2: Optional[str] = None
     ore_extra: Optional[float] = None
     costo_orario: Optional[float] = None
+    costo_orario_extra: Optional[float] = None
     note: Optional[str] = None
 
 
@@ -823,26 +869,46 @@ def ws_personale_list(
     turni = resp.data or []
 
     monte_ore: dict = {}
-    extra_per_persona: dict = {}
-    costo_per_persona: dict = {}
+    ore_standard_per_persona: dict = {}
+    ore_extra_per_persona: dict = {}
+    costo_standard_per_persona: dict = {}
+    costo_extra_per_persona: dict = {}
+
     for t in turni:
         nome = t["nome"]
-        ore = _ore_turno(t)
-        monte_ore[nome] = round(monte_ore.get(nome, 0) + ore, 2)
+        ore_tot = _ore_turno(t)
+        monte_ore[nome] = round(monte_ore.get(nome, 0) + ore_tot, 2)
+
         extra = float(t.get("ore_extra") or 0)
+        std = round(ore_tot - extra, 2)
+
+        ore_standard_per_persona[nome] = round(ore_standard_per_persona.get(nome, 0) + std, 2)
         if extra:
-            extra_per_persona[nome] = round(extra_per_persona.get(nome, 0) + extra, 2)
-        co = t.get("costo_orario")
-        if co is not None:
-            costo_per_persona[nome] = round(costo_per_persona.get(nome, 0) + ore * float(co), 2)
+            ore_extra_per_persona[nome] = round(ore_extra_per_persona.get(nome, 0) + extra, 2)
 
-    extra_totale = round(sum(extra_per_persona.values()), 2)
-    costo_totale = round(sum(costo_per_persona.values()), 2)
+        co_std = t.get("costo_orario")
+        co_ext = t.get("costo_orario_extra")
+        # Se costo_orario_extra non impostato, usa costo_orario anche per le extra
+        co_ext_eff = float(co_ext) if co_ext is not None else (float(co_std) if co_std is not None else None)
+        if co_std is not None:
+            costo_standard_per_persona[nome] = round(
+                costo_standard_per_persona.get(nome, 0) + std * float(co_std), 2
+            )
+        if co_ext_eff is not None and extra:
+            costo_extra_per_persona[nome] = round(
+                costo_extra_per_persona.get(nome, 0) + extra * co_ext_eff, 2
+            )
 
-    # Nomi distinti + ultimo costo orario noto per persona (per prefill nel dialog)
+    ore_standard_totale = round(sum(ore_standard_per_persona.values()), 2)
+    ore_extra_totale = round(sum(ore_extra_per_persona.values()), 2)
+    costo_standard_totale = round(sum(costo_standard_per_persona.values()), 2)
+    costo_extra_totale = round(sum(costo_extra_per_persona.values()), 2)
+    costo_totale = round(costo_standard_totale + costo_extra_totale, 2)
+
+    # Nomi distinti + ultimi costi noti per persona (per prefill nel dialog)
     q_storico = (
         sb.table("turni_personale")
-        .select("nome,costo_orario,data_turno")
+        .select("nome,costo_orario,costo_orario_extra,data_turno")
         .eq("ristorante_id", ristorante_id)
         .order("data_turno", desc=True)
         .execute()
@@ -854,16 +920,34 @@ def ws_personale_list(
         if not nome:
             continue
         nomi_set.add(nome)
-        if nome not in costi_noti and r.get("costo_orario") is not None:
-            costi_noti[nome] = float(r["costo_orario"])
+        if nome not in costi_noti:
+            entry: dict = {}
+            if r.get("costo_orario") is not None:
+                entry["std"] = float(r["costo_orario"])
+            if r.get("costo_orario_extra") is not None:
+                entry["ext"] = float(r["costo_orario_extra"])
+            if entry:
+                costi_noti[nome] = entry
     nomi_distinti = sorted(nomi_set)
 
     return {
         "turni": turni,
         "monte_ore": monte_ore,
-        "extra_per_persona": extra_per_persona,
-        "costo_per_persona": costo_per_persona,
-        "extra_totale": extra_totale,
+        "ore_standard_per_persona": ore_standard_per_persona,
+        "ore_extra_per_persona": ore_extra_per_persona,
+        "costo_standard_per_persona": costo_standard_per_persona,
+        "costo_extra_per_persona": costo_extra_per_persona,
+        # legacy — mantenuto per compatibilità con eventuali consumer
+        "extra_per_persona": ore_extra_per_persona,
+        "costo_per_persona": {
+            n: round(costo_standard_per_persona.get(n, 0) + costo_extra_per_persona.get(n, 0), 2)
+            for n in nomi_distinti
+        },
+        "ore_standard_totale": ore_standard_totale,
+        "ore_extra_totale": ore_extra_totale,
+        "costo_standard_totale": costo_standard_totale,
+        "costo_extra_totale": costo_extra_totale,
+        "extra_totale": ore_extra_totale,
         "costo_totale": costo_totale,
         "nomi": nomi_distinti,
         "costi_noti": costi_noti,
@@ -895,6 +979,8 @@ def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] = Heade
         payload["ore_extra"] = body.ore_extra
     if body.costo_orario is not None:
         payload["costo_orario"] = body.costo_orario
+    if body.costo_orario_extra is not None:
+        payload["costo_orario_extra"] = body.costo_orario_extra
     if body.note:
         payload["note"] = body.note
     resp = sb.table("turni_personale").insert(payload).execute()
@@ -954,7 +1040,7 @@ def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Option
             "ora_inizio": t["ora_inizio"],
             "ora_fine": t["ora_fine"],
         }
-        for campo in ("ora_inizio2", "ora_fine2", "ore_extra", "costo_orario", "note"):
+        for campo in ("ora_inizio2", "ora_fine2", "ore_extra", "costo_orario", "costo_orario_extra", "note"):
             if t.get(campo) is not None:
                 riga[campo] = t[campo]
         nuovi.append(riga)
@@ -974,7 +1060,7 @@ def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization:
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
     raw = body.model_dump()
-    azzerabili = ("ora_inizio2", "ora_fine2", "ore_extra", "costo_orario")
+    azzerabili = ("ora_inizio2", "ora_fine2", "ore_extra", "costo_orario", "costo_orario_extra")
     # Campi standard: includi solo se non None
     updates = {k: v for k, v in raw.items() if k not in azzerabili and v is not None}
     # Slot2 / extra / costo: includi sempre se esplicitamente nel body (anche None = reset)

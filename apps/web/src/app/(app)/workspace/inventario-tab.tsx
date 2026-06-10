@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, BarChart3, Download, Copy, Trash } from "lucide-react";
+import { Plus, Pencil, Trash2, BarChart3, Download, Copy, Trash, History } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -14,6 +14,7 @@ import {
 } from "@/lib/inventario";
 import { InventarioAggiungiDialog } from "./inventario-aggiungi-dialog";
 import { InventarioDatePicker } from "./inventario-date-picker";
+import { InventarioStoricoDialog } from "./inventario-storico-dialog";
 
 function fmtEuro(v: number | null | undefined) {
   if (v == null) return "—";
@@ -37,6 +38,7 @@ export function InventarioTab() {
   const [snapshots, setSnapshots] = useState<SnapshotDate[]>([]);
   const [copiaOpen, setCopiaOpen] = useState(false);
   const [copiaLoading, setCopiaLoading] = useState(false);
+  const [storicoOpen, setStoricoOpen] = useState(false);
 
   async function load(data = dataInventario) {
     setLoading(true);
@@ -153,6 +155,10 @@ export function InventarioTab() {
           onChange={onDataChange}
         />
 
+        <Button variant="outline" onClick={() => setStoricoOpen(true)} disabled={snapshots.length === 0}>
+          <History className="size-4 mr-1.5" />Inventari
+        </Button>
+
         <Button onClick={() => { setEditVoce(null); setDialogOpen(true); }}>
           <Plus className="size-4 mr-1.5" />Aggiungi prodotto
         </Button>
@@ -162,7 +168,7 @@ export function InventarioTab() {
           <PopoverTrigger
             render={
               <Button variant="outline" disabled={snapshotsFiltrati.length === 0}>
-                <Copy className="size-4 mr-1.5" />Copia da snapshot
+                <Copy className="size-4 mr-1.5" />Copia inventario
               </Button>
             }
           />
@@ -350,6 +356,13 @@ export function InventarioTab() {
         dataInventario={dataInventario}
         onClose={() => { setDialogOpen(false); setEditVoce(null); }}
         onSaved={() => { load(); loadSnapshots(); }}
+      />
+
+      <InventarioStoricoDialog
+        open={storicoOpen}
+        snapshots={snapshots}
+        onClose={() => setStoricoOpen(false)}
+        onApri={onDataChange}
       />
     </div>
   );
