@@ -2,7 +2,7 @@
 
 **Sistema SaaS di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 6.0 | Aggiornamento: 5 Giugno 2026 | Autore: Mattia D'Avolio
+Versione: 6.1 | Aggiornamento: 10 Giugno 2026 | Autore: Mattia D'Avolio
 Titolare: Recoma System S.r.l. (P.IVA IT09599210961)
 Frontend: `nuovo.oneflux.it` (Next.js) | Legacy: `app.oneflux.it` (Streamlit)
 
@@ -18,8 +18,9 @@ Piattaforma SaaS AI-first per ristoratori italiani. Automatizza l'analisi delle 
 - Dashboard KPI, pivot mensili per categoria e fornitore
 - Calcolo MOL con centri di produzione (FOOD/BEVERAGE/ALCOLICI/DOLCI)
 - Import ricavi da gestionali (XLS Passbi v1 + email automatica)
-- Briefing AI giornaliero + Chat AI sui dati del ristorante
-- Strumenti operativi: Foodcost, Inventario, Diario, Personale/Turni
+- Briefing AI giornaliero + Chat AI sui dati del ristorante (con promemoria appuntamenti agenda)
+- Agenda operativa: appuntamenti, spese extra, turni del personale (vista aggregata)
+- Strumenti di analisi: Foodcost, Inventario
 - Marketplace servizi (consulenza F&B, studi menù, comparatori)
 - PWA mobile installabile (5 sezioni: Oggi, Avvisi, Diario, Turni, Assistente)
 - Multi-ristorante, soft-delete fatture, custom tags, controllo prezzi
@@ -107,7 +108,8 @@ ONEFLUX/
 | Ricavi e Margini | `/margini` | MOL, centri produzione, import ricavi XLS |
 | Prezzi | `/prezzi` | Variazioni, sconti/omaggi, note credito |
 | Analisi e Tag | `/analisi-e-tag` | Custom tags, trend prezzi, analisi fornitori |
-| Strumenti | `/workspace` | Foodcost, Inventario, Diario, Personale/Turni |
+| Agenda | `/agenda` | Vista aggregata + Appuntamenti, Spese, Personale/Turni (flag `agenda`) |
+| Strumenti | `/workspace` | Foodcost, Inventario (flag `workspace`) |
 | Servizi | `/assistenza` | Marketplace + Chat AI (widget flottante sulla Home) |
 | Notifiche | `/notifiche` | Inbox con filtri, badge unificato |
 | Impostazioni | `/impostazioni` | Account, piano, contatori, cambio password |

@@ -1,6 +1,6 @@
 # ONEFLUX — Assistente AI (chat): funzionamento e guida alle modifiche
 
-Versione: 1.0 | Aggiornamento: 9 Giugno 2026
+Versione: 1.1 | Aggiornamento: 10 Giugno 2026
 
 Questo documento spiega **come funziona la chat con l'assistente AI** (il pannello
 flottante in basso a destra nella Home) e **dove mettere le mani** per modificarla.
@@ -16,10 +16,15 @@ cliente (briefing = "ti dico io cosa guardare"; chat = "chiedimi quello che vuoi
 ## 1. Cos'è l'assistente
 
 Un **agente in linguaggio naturale** che risponde a domande sui dati del
-ristorante: costi, fornitori, food cost, margini/MOL, scadenze, prezzi. Non è un
-chatbot che "racconta": è un agente con **function calling reale** su 6 strumenti
-che leggono il DB. I numeri che dice sono **gli stessi della Home** — usa la
-medesima fonte (`home_kpi`), quindi non contraddice mai la schermata.
+ristorante: costi, fornitori, food cost, margini/MOL, scadenze, prezzi,
+appuntamenti in agenda. Non è un chatbot che "racconta": è un agente con
+**function calling reale** su 7 strumenti che leggono il DB. I numeri che dice
+sono **gli stessi della Home** — usa la medesima fonte (`home_kpi`), quindi non
+contraddice mai la schermata.
+
+> **Permessi (dal 10/6):** la chat offre al modello **solo gli strumenti delle
+> pagine abilitate** all'utente (`pagine_abilitate`). Chi non ha la pagina non
+> ne può interrogare i dati nemmeno in chat (vedi §5.1).
 
 **Filosofia (coerente col briefing):**
 - **Onesto:** non inventa numeri. Se un dato non c'è, lo dice e propone un'alternativa.
@@ -42,9 +47,10 @@ chat_ai()  [fastapi_worker.py]          ← ENDPOINT
    ├─ _resolve_user_from_token          ← chi è
    ├─ _chat_limite_per_piano            ← quante domande/giorno (per piano)
    ├─ RPC chat_usage_check_and_log      ← rate-limit ATOMICO (conta+logga); fail-closed
-   ├─ _build_chat_system_prompt         ← contesto: KPI Home + top categorie/fornitori
+   ├─ _build_chat_system_prompt         ← contesto: KPI Home + top categorie/fornitori + agenda di oggi
+   ├─ gate tool per pagine_abilitate    ← filtra i tool offerti al modello (§5.1)
    ├─ loop tool-calling (max 3 round)   ← l'LLM chiama gli strumenti che gli servono
-   │     └─ _esegui_tool → _chat_*      ← 6 strumenti che leggono il DB
+   │     └─ _esegui_tool → _chat_*      ← 7 strumenti che leggono il DB
    └─ track_ai_usage                    ← costo €  nel ledger AI (come categorizzazione)
         │
         ▼
@@ -121,6 +127,7 @@ Tutti definiti in `chat_ai` (lista `tools`) e dispatchati da `_esegui_tool`. Son
 | `confronto_prezzi` | `_chat_confronto_prezzi` | "chi mi fa X al prezzo migliore" | cuore di ONEFLUX; ultimi 180gg, miglior prezzo per fornitore |
 | `ultimi_acquisti` | `_chat_ultimi_acquisti` | "ultimo acquisto", "ultima fattura di X" | ordine data desc; NON per totali |
 | `trend_prezzo` | `_chat_trend_prezzo` | "la mozzarella è aumentata?" | prezzo unitario medio ponderato/mese, ~7 mesi |
+| `query_appuntamenti` | `_chat_query_appuntamenti` | "cosa ho oggi", "appuntamenti questa settimana" | **sola lettura** su `diario_eventi`; default oggi→+7gg (10/6) |
 
 **Ricerca tollerante (`query_costi`, `trend_prezzo`, `confronto_prezzi`):** un
 termine generico viene cercato **sia su categoria sia su descrizione**, con
@@ -132,6 +139,29 @@ così su clienti con molte righe un eventuale taglio conserva le **più recenti*
 (quelle che contano) invece di tagliare a caso. Resta un *full-load* aggregato in
 Python (vedi `project_audit_findings_rimandati`): per i clienti attuali va bene,
 ma è il punto da spostare lato DB se i volumi crescono.
+
+### 5.1 Gate degli strumenti per permessi pagina (dal 10/6/2026)
+
+Prima di passare la lista `tools` a OpenAI, `chat_ai` la **filtra** in base a
+`pagine_abilitate` dell'utente (mappa **`_TOOL_FLAG`** in `chat_ai`). Coerente con
+la visibilità della sidebar: **chi non vede una pagina non ne interroga i dati
+nemmeno in chat.**
+
+| Strumento | Flag pagina richiesto |
+|---|---|
+| `query_costi`, `ultimi_acquisti` | `analisi_fatture` |
+| `query_scadenze` | `scadenziario` |
+| `query_margini` | `margini` |
+| `confronto_prezzi`, `trend_prezzo` | `prezzi` |
+| `query_appuntamenti` | `agenda` |
+
+- **`pagine_abilitate` = `None`** (admin / nessuna restrizione) → **tutti** i tool
+  (stessa semantica di `_normalize_pagine`: None = tutto abilitato).
+- Lista presente → resta solo il tool il cui flag è nella lista.
+
+> Il gate è **lato chat** (quali tool offrire al modello). È il fratello del
+> **guard di route** lato Next (`requirePagina`, vedi `MIGRAZIONE_NEXTJS.md`):
+> uno impedisce di *aprire* la pagina, l'altro di *interrogarne i dati* via chat.
 
 ---
 
@@ -147,6 +177,10 @@ Costruito **fresco a ogni domanda** con i dati del ristorante. Tre parti:
 3. **Data e periodo:** oggi + range fatture nel sistema. **Cruciale:** senza, il
    modello usa il suo knowledge cutoff (2024) come anno e cerca sistematicamente
    nell'anno sbagliato → "non risulta nulla" anche quando il dato c'è.
+4. **Appuntamenti di oggi** (10/6): se l'utente ha il flag `agenda` e ci sono
+   eventi in `diario_eventi` per oggi, vengono iniettati nel prompt → la chat
+   risponde a "cosa ho oggi" **senza chiamare lo strumento**. Niente flag agenda =
+   sezione assente (e `query_appuntamenti` nemmeno offerto, §5.1).
 
 **Regole-chiave nel prompt (rifinite 9/6/2026 — NON rimuovere senza motivo):**
 - **Mese corrente quasi sempre incompleto:** i ristoranti caricano le fatture a
@@ -178,7 +212,7 @@ I tre punti di contatto AI col cliente **devono dire la stessa cosa**:
 |---|---|---|---|
 | Card "I tuoi conti" (Home) | `home_kpi` | — | — |
 | Briefing | `_kpi_periodo` + price_impact | `gpt-4o-mini` | onesto, non sterile |
-| **Chat** | **`home_kpi`** + 6 tool | `gpt-4.1-mini` | onesto, da collega F&B |
+| **Chat** | **`home_kpi`** + 7 tool | `gpt-4.1-mini` | onesto, da collega F&B |
 
 Chat e briefing **condividono la fonte KPI** (`home_kpi`/`_kpi_periodo`), quindi il
 MOL/food cost detti in chat coincidono con quelli del briefing e della card. Se un
@@ -192,7 +226,8 @@ giorno cambi la logica KPI, cambiala in un punto e si allineano tutti.
 |---|---|
 | Cambiare modello o parametri (temp, max_tokens, round) | `CHAT_MODEL`, loop in `chat_ai` (fastapi_worker.py) |
 | Cambiare i limiti domande/giorno per piano | `CHAT_LIMITI_PIANO` |
-| Aggiungere un nuovo strumento | lista `tools` + `_esegui_tool` + nuova `_chat_*` |
+| Aggiungere un nuovo strumento | lista `tools` + `_esegui_tool` + nuova `_chat_*` + voce in `_TOOL_FLAG` (§5.1) |
+| Cambiare a quale pagina è legato uno strumento | mappa `_TOOL_FLAG` in `chat_ai` |
 | Cambiare cosa sa il modello "a colpo d'occhio" | `_build_chat_system_prompt` (parti 1-2) |
 | Cambiare le regole di comportamento/tono | testo `sistema` in `_build_chat_system_prompt` |
 | Cambiare la ricerca tollerante (singolare/plurale) | `_varianti` in `_chat_query_costi` |
@@ -227,7 +262,8 @@ reale del cliente.
 | Tabella | Uso |
 |---|---|
 | `fatture` | fonte di tutti i tool costi/prezzi/acquisti (filtro `deleted_at IS NULL`) |
-| `users` | `piano` (limite chat), `price_alert_threshold` (non usata dalla chat; si imposta dal **configuratore assistente**, vedi `BRIEFING_HOME.md` §11) |
+| `diario_eventi` | fonte di `query_appuntamenti` + "appuntamenti di oggi" nel prompt (scoped `ristorante_id`) |
+| `users` | `piano` (limite chat), **`pagine_abilitate`** (gate tool §5.1), `price_alert_threshold` (non usata dalla chat; si imposta dal **configuratore assistente**, vedi `BRIEFING_HOME.md` §11) |
 | `sessioni` | autenticazione token (chat e resto dell'app) |
 | `chat_usage_log` | log domande per il rate-limit giornaliero |
 | `ai_cost_log` (ledger) | costo € della chat (via `track_ai_usage`) |
@@ -239,7 +275,7 @@ reale del cliente.
 
 | File | Ruolo |
 |---|---|
-| `services/fastapi_worker.py` | endpoint `chat_ai`, prompt, 6 tool `_chat_*`, limiti |
+| `services/fastapi_worker.py` | endpoint `chat_ai`, prompt, 7 tool `_chat_*`, gate `_TOOL_FLAG`, limiti |
 | `apps/web/src/app/api/chat/route.ts` | proxy Next.js → worker (auth + timeout) |
 | `apps/web/src/app/(app)/dashboard/chat-widget.tsx` | UI pannello, storico, quota, attesa |
 | RPC `chat_usage_check_and_log` (DB) | rate-limit atomico |
@@ -249,6 +285,11 @@ reale del cliente.
 
 ## Changelog rilevante
 
+- **10/6/2026 (Fase D — Agenda nell'assistente)** — 7° tool `query_appuntamenti`
+  (sola lettura su `diario_eventi`); **gate degli strumenti per `pagine_abilitate`**
+  (`_TOOL_FLAG`, §5.1 — vale anche per i 6 tool preesistenti, prima non filtravano);
+  sezione "Appuntamenti di oggi" nel system prompt (solo con flag `agenda`). Lato
+  Home/notifiche: nuovo topic `appuntamento_imminente` (vedi `BRIEFING_HOME.md`).
 - **9/6/2026** — prompt alleggerito (3000→1500 righe, no aggregazione prodotto);
   fix "questo mese vuoto" (propone l'ultimo mese); food cost 0/n/d spiegato non
   grezzo; `confronto_prezzi` reso tollerante su categoria; `.limit()` ordinati

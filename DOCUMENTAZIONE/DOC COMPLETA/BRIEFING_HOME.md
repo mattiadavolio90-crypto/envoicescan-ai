@@ -1,6 +1,6 @@
 # ONEFLUX — Briefing Home AI: funzionamento e guida alle modifiche
 
-Versione: 1.1 | Aggiornamento: 9 Giugno 2026 (agg. §11 configuratore: fix scadenze + soglia prezzi)
+Versione: 1.2 | Aggiornamento: 10 Giugno 2026 (topic `appuntamento_imminente` — Agenda nel briefing/notifiche)
 
 Questo documento spiega **come funziona il briefing della Home** (il saluto + "Da
 fare oggi" + apertura positiva) e **dove mettere le mani** per modificarlo senza
@@ -113,6 +113,7 @@ priorità (più basso = appare prima). **Prima il TEMA, poi la gravità nel tema
 | 50 | `costo_personale_mancante` | Manca il costo del lavoro del mese | ✅ |
 | 60 | `scadenza_superata` | Fatture scadute | ✅ |
 | 61 | `scadenza_imminente` | Fatture in scadenza ≤7gg | ✅ |
+| 70 | `appuntamento_imminente` | Appuntamenti in agenda **per oggi** (importanza medio/bassa, severity `info`) | ✅ |
 
 I segnali **LIVE** (calcolati a ogni generazione, non persistiti) sono prodotti
 in `_briefing_raccogli_notifiche` e nei suoi helper:
@@ -121,6 +122,16 @@ in `_briefing_raccogli_notifiche` e nei suoi helper:
 - `upload_ricavi_failed` → check `ricavi_ragione_sociale_map` + `ricavi_giornalieri`
 - `fatturato_mancante` / `costo_personale_mancante` / `incasso_mancante` →
   `_briefing_dati_mensili_mancanti`
+- `appuntamento_imminente` → `_briefing_appuntamenti_oggi` (dal 10/6)
+
+> **`appuntamento_imminente` è l'eccezione che PERSISTE** (non è solo live):
+> `_briefing_appuntamenti_oggi` fa `upsert_inbox_notifications` in
+> `notification_inbox` (source_type `agenda`, bucket **giornaliero**, expires
+> **1 giorno**). Motivo: la pagina Avvisi (`get_notifiche`) legge **solo dal DB**,
+> e il requisito è che l'appuntamento compaia sia nel briefing sia lì. Bucket
+> giornaliero = una notifica per ristorante al giorno, auto-pulente. Rispetta il
+> flag pagina **`agenda`** (niente flag → niente promemoria) e il toggle del
+> configuratore (`appuntamento_imminente` in `topics_disabled`).
 
 > I topic live **rimpiazzano** eventuali versioni legacy in inbox (scritte dalla
 > vecchia pagina Streamlit, mai aggiornate): `_briefing_raccogli_notifiche` le
@@ -237,6 +248,8 @@ tiene → deve sempre poter rientrare". I tag sono il suo focus dichiarato.
 |---|---|
 | Cambiare l'ordine in cui appaiono i topic | `_TOPIC_PRIORITY` (daily_briefing_service.py) |
 | Aggiungere un nuovo topic | builder live in `_briefing_raccogli_notifiche` + caso in `_is_actionable`, `_bullet_for`, `_narrative_phrase_for`, `_TOPIC_ACTION` |
+| Cambiare l'importanza del promemoria appuntamenti | numero priorità di `appuntamento_imminente` in `_TOPIC_PRIORITY` (70 = medio/bassa) |
+| Cambiare quando scatta il promemoria appuntamenti | `_briefing_appuntamenti_oggi` (fastapi_worker.py) — oggi è "solo oggi" |
 | Cambiare quando un topic appare | `_is_actionable` (daily_briefing_service.py) |
 | Cambiare il testo di una card | `_bullet_for` (daily_briefing_service.py) |
 | Cambiare il discorsetto template | `_compose_narrative` / `_narrative_phrase_for` |
@@ -315,6 +328,7 @@ filtro notifiche (`_filtra_notifiche_topic_spenti`).
 | Toggle UI | key salvata | Topic effettivamente spenti |
 |---|---|---|
 | "Scadenze" | `scadenza_superata` | `scadenza_superata` **+ `scadenza_imminente`** |
+| "Promemoria appuntamenti" | `appuntamento_imminente` | `appuntamento_imminente` (10/6 — singolo tema) |
 
 > Prima del fix: spegnere "Scadenze" lasciava comparire le scadenze **imminenti**
 > (key non mappata) → incoerenza. Ora il tema si spegne tutto insieme. Per
@@ -333,3 +347,18 @@ di sola visualizzazione**: muoverlo cambia cosa vedi in quella pagina, **non
 salva** e non tocca gli avvisi. `GET /api/prezzi/soglia-alert` serve solo a
 leggere il valore di partenza. Il `POST` worker omonimo è **deprecato** (nessun
 frontend lo chiama, tenuto per compat OpenAPI).
+
+---
+
+## Changelog rilevante
+
+- **10/6/2026 (Fase D — Agenda nel briefing/notifiche)** — nuovo topic
+  `appuntamento_imminente` (priorità **70** = importanza medio/bassa, severity
+  `info`), generato da `_briefing_appuntamenti_oggi` **solo per gli appuntamenti
+  di oggi**. Unico topic del briefing che **persiste** in `notification_inbox`
+  (source_type `agenda`, bucket giornaliero, expires 1g) così compare anche nella
+  pagina Avvisi. Toggle "Promemoria appuntamenti" in `_CONFIG_TOPICS`; rispetta il
+  flag pagina `agenda`. Lato chat: tool `query_appuntamenti` (vedi
+  `CHAT_ASSISTENTE.md`).
+- **9/6/2026** — §11 configuratore: fix coerenza toggle Scadenze
+  (`_TOPIC_SPENTO_ESTENDE`) + soglia alert prezzi come unico punto di impostazione.

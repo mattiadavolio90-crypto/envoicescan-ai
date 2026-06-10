@@ -124,6 +124,20 @@ async def _verify_admin(request: Request, token: str = Depends(oauth2_scheme)):
     return user
 ```
 
+### 4.1 Guard di pagina per `pagine_abilitate` (Next.js, dal 10/6/2026)
+
+Oltre al guard admin, dal 10/6 le pagine "di dominio" sono protette per **feature
+flag** con **`requirePagina(flag)`** (`apps/web/src/lib/page-guard.ts`), chiamato in
+cima a ogni `page.tsx` con flag. Prima `pagine_abilitate` filtrava **solo** la
+sidebar → l'URL diretto era raggiungibile col flag spento (information/feature
+disclosure). Ora: flag non abilitato → **`notFound()` (404)**; `pagine_abilitate`
+null (admin) → passa. Doppia difesa con il **gate tool della chat** (`_TOOL_FLAG`),
+che impedisce di interrogare via assistente i dati di una pagina non abilitata.
+
+> Nota: non sostituisce l'isolamento dati (IDOR/`ristorante_id` sulle query del
+> worker), che resta la difesa primaria. È un controllo di **accesso alla
+> funzionalità**, non al dato.
+
 ---
 
 ## 5. Misure di Sicurezza Complete
@@ -136,6 +150,7 @@ async def _verify_admin(request: Request, token: str = Depends(oauth2_scheme)):
 | **Cookie Streamlit** | Secure + SameSite=Strict | Parziale (no HttpOnly per limitazione libreria) |
 | **Rate limiting** | Login su DB + Reset in-memory | Login persistente attraverso i riavvii |
 | **IDOR** | `.eq('user_id', user_id)` su ogni query | Ogni lettura/scrittura include filtro owner |
+| **Accesso pagine** | `requirePagina(flag)` (Next) + `_TOOL_FLAG` (chat) | Pagina/tool negati se il flag non è in `pagine_abilitate` (dal 10/6) |
 | **XSS** | `html.escape()` | Su tutti gli output user-generated in HTML |
 | **CSRF** | `enableXsrfProtection = true` (Streamlit) | Nativo Streamlit |
 | **SQL Injection** | Parametrized queries | Supabase client non permette raw SQL |

@@ -1,6 +1,6 @@
 # ONEFLUX — Stato Migrazione Next.js
 
-Versione: 6.0 | Aggiornamento: 5 Giugno 2026 (rev. 26 ONEFLUX_MASTER.md)
+Versione: 6.1 | Aggiornamento: 10 Giugno 2026 (Agenda/Strumenti split + guard per-pagina)
 
 Questo documento riassume lo stato della migrazione da Streamlit a Next.js.
 Il documento di riferimento primario (con changelog dettagliato) è `ONEFLUX_MASTER.md`.
@@ -56,7 +56,8 @@ Entrambi i frontend puntano allo **stesso database Supabase**. Un cliente che op
 | Ricavi e Margini | `/margini` | ✅ | Tab Marginalità + Analisi Avanzate |
 | Prezzi | `/prezzi` | ✅ | 3 tab: Variazioni + Sconti/Omaggi + NC |
 | Analisi e Tag | `/analisi-e-tag` | ✅ | Chip tag + KPI + trend + suggerimenti |
-| Strumenti | `/workspace` | ✅ | 4 tab: Foodcost + Inventario + Diario + Personale |
+| Agenda | `/agenda` | ✅ | Layer Tutto (vista aggregata) + Appuntamenti + Spese + Personale (flag `agenda`, dal 10/6) |
+| Strumenti | `/workspace` | ✅ | 2 tab: Foodcost + Inventario (flag `workspace`; Diario/Spese/Personale migrati in Agenda) |
 | Servizi | `/assistenza` | ✅ | 6 servizi + form lead + WhatsApp |
 | Notifiche | `/notifiche` | ✅ | Lista + filtri + badge unificato |
 | Impostazioni | `/impostazioni` | ✅ | Account + piano + contatori + cambio password |
@@ -86,15 +87,35 @@ Le fatture elettroniche italiane (XML 10–200 KB, P7M max 500 KB, PDF max 4 MB)
 ### M5 — Tab Ricavi eliminato
 Inserimento ricavi spostato nel tab Marginalità via dialog "Carica ricavi". La voce sidebar "Ricavi e Margini" accorpa entrambe le funzioni.
 
-### M6 — Foodcost → Strumenti
-L'ex pagina "Foodcost" è diventata "Strumenti" — contenitore con 4 tab (Foodcost, Inventario, Diario, Personale). Route `/workspace`, flag `workspace` (ri-allineato con Streamlit).
+### M6 — Foodcost → Strumenti → split Agenda/Strumenti (rivisto 10/6)
+L'ex pagina "Foodcost" era diventata "Strumenti" (4 tab: Foodcost, Inventario,
+Diario, Personale). Dal **10/6** è **divisa in due pagine/voci di sidebar**:
+- **Agenda** (`/agenda`, flag `agenda`): contenitore operativo quotidiano. Layer
+  via `?layer=`: **Tutto** (vista aggregata read-only di appuntamenti+spese+turni)
+  · Appuntamenti · Spese · Personale. Riusa `AgendaView`/`SpeseView`/`PersonaleTab`.
+- **Strumenti** (`/workspace`, flag `workspace`): ridotto a **Foodcost + Inventario**.
+  Vecchi link `?tab=agenda|spese|personale` rediretti a `/agenda?layer=...` (il
+  redirect resta **prima** del guard, così chi ha solo `agenda` non prende 404).
 
-### M7 — Feature flags: nuova tassonomia
-Abbandonati i nomi vecchi Streamlit (`workspace/foodcost`, `calcolo_margine`, ecc.). Nuove chiavi in `users.pagine_abilitate`:
-`analisi_fatture`, `prezzi`, `margini`, `foodcost`, `analisi_e_tag`, `scadenziario`, `blocco_anno_precedente`, `blocco_mesi_precedenti`
+### M7 — Feature flags: nuova tassonomia (agg. 10/6)
+Abbandonati i nomi vecchi Streamlit (`calcolo_margine`, ecc.). Chiavi in
+`users.pagine_abilitate`: `analisi_fatture`, `prezzi`, `margini`, `analisi_e_tag`,
+**`agenda`** (nuovo, 10/6), **`workspace`**, `scadenziario`,
+`blocco_anno_precedente`, `blocco_mesi_precedenti`. Il flag `agenda` è **separato**
+da `workspace` (migration `20260610140000`: propagato `agenda:true` ai clienti che
+avevano `workspace:true`). `pagine_abilitate` può essere un **dict** `{flag: bool}`
+o `null` (admin = tutte abilitate); `_normalize_pagine` (worker) lo normalizza.
 
-### M8 — No gating per-pagina in Next.js
-Next.js non fa gating per-pagina (il layout controlla l'accesso admin, le feature flags sono consultive). I vecchi valori flag di Streamlit restano orfani innocui nel DB.
+### M8 — Gating per-pagina: ora ATTIVO (rivisto 10/6) ⚠️ supera la nota precedente
+**Prima** Next.js NON faceva gating per-pagina: `pagine_abilitate` nascondeva solo
+le voci di sidebar, ma l'URL diretto restava accessibile col flag spento. **Dal
+10/6** c'è un guard di route: **`requirePagina(flag)`** in `apps/web/src/lib/page-guard.ts`,
+chiamato in cima a ogni `page.tsx` con flag (7 pagine: analisi-fatture, margini,
+prezzi, analisi-e-tag, agenda, workspace, scadenziario). Semantica = sidebar:
+`pagine_abilitate` null → passa (admin); flag nella lista → passa; altrimenti
+**`notFound()` (404)**. Usa `getCurrentSession` (cache()-wrapped → nessuna chiamata
+worker extra). Fratello del **gate tool della chat** (`_TOOL_FLAG`, vedi
+`CHAT_ASSISTENTE.md` §5.1). I vecchi valori flag Streamlit restano orfani nel DB.
 
 ### M9 — Admin: doppio guard di sicurezza
 Il pannello admin Next.js ha il guard nel layout (`admin/layout.tsx` → redirect se non admin). Il FastAPI worker ha `_verify_admin` (worker key + bearer token + `is_admin`) su ogni endpoint admin.
@@ -177,5 +198,5 @@ Avvolto in `cache()` di React: una sola chiamata `/api/auth/me` per render, anch
 
 ---
 
-*Migrazione Next.js v6.0 — 5 Giugno 2026*
+*Migrazione Next.js v6.1 — 10 Giugno 2026*
 *Riferimento principale: `ONEFLUX_MASTER.md` (rev. 26)*

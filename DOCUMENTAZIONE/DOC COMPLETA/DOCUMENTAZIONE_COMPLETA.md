@@ -2,8 +2,8 @@
 
 **Sistema SaaS di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 6.0
-Ultimo aggiornamento: 5 Giugno 2026
+Versione: 6.1
+Ultimo aggiornamento: 10 Giugno 2026
 Autore: Mattia D'Avolio
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato)
 Titolare: Recoma System S.r.l. (P.IVA IT09599210961)
@@ -63,7 +63,8 @@ ONEFLUX è una piattaforma SaaS web-based per ristoratori italiani che automatiz
 - Controllo prezzi, sconti, note di credito
 - Briefing AI giornaliero con salute della gestione
 - Chat AI sui dati del ristorante (function calling)
-- Strumenti operativi: Foodcost, Inventario, Diario, Personale/Turni
+- Agenda operativa: appuntamenti, spese extra, turni del personale (vista aggregata)
+- Strumenti di analisi: Foodcost, Inventario
 - Marketplace servizi (consulenza F&B, studi menù, comparatori)
 - PWA mobile installabile (5 sezioni: Oggi, Avvisi, Diario, Turni, Assistente)
 
@@ -280,7 +281,8 @@ ONEFLUX/
 │   │   │   │   ├── analisi-fatture/   # Fatture + upload
 │   │   │   │   ├── prezzi/            # Variazioni, sconti, NC
 │   │   │   │   ├── margini/           # MOL + Ricavi
-│   │   │   │   ├── workspace/         # Strumenti (4 tab)
+│   │   │   │   ├── agenda/            # Agenda: Tutto/Appuntamenti/Spese/Personale
+│   │   │   │   ├── workspace/         # Strumenti (Foodcost + Inventario)
 │   │   │   │   ├── analisi-e-tag/     # Custom tags + analytics
 │   │   │   │   ├── scadenziario/      # Gestione fatture + cestino
 │   │   │   │   ├── notifiche/         # Inbox notifiche
@@ -299,7 +301,7 @@ ONEFLUX/
 │   │   │   │   ├── margini/           # MOL, ricavi, centri
 │   │   │   │   ├── prezzi/            # alert, sconti, NC
 │   │   │   │   ├── tag/               # Custom tags CRUD + analytics
-│   │   │   │   ├── workspace/         # foodcost, inventario, diario, personale
+│   │   │   │   ├── workspace/         # foodcost, inventario, diario, spese, personale (endpoint REST: la UI diario/spese/personale è in /agenda)
 │   │   │   │   ├── notifiche/         # inbox + dismiss
 │   │   │   │   ├── chat/              # Chat AI
 │   │   │   │   ├── assistenza/        # Marketplace leads
@@ -484,9 +486,35 @@ La Home è il cuore dell'esperienza: non mostra solo KPI ma è la voce quotidian
 - Banner suggerimenti automatici (widget ambra + card espandibile, checkbox per accettare)
 - Export XLS client-side (3 fogli: prodotti, fornitori, trend)
 
-### Strumenti / Workspace (`/workspace`)
+### Agenda (`/agenda`) — flag `agenda`
 
-Pagina-contenitore con 4 tab:
+> Dal 10/6/2026 Diario, Spese e Personale sono migrati qui da Strumenti.
+> Contenitore operativo quotidiano con layer via `?layer=`:
+
+**Tutto** (vista aggregata, default):
+- Calendario read-only che aggrega 3 fonti — appuntamenti (diario), spese extra,
+  turni — con viste Mese / Settimana / Lista
+- Filtri a chip per fonte (chip attenuato e non cliccabile se la fonte non ha dati nel mese)
+- Quick-add "+ Appuntamento"; entrando in un mese seleziona oggi o il giorno 1
+
+**Appuntamenti** (ex "Diario"):
+- Calendario mensile largo + pannello laterale eventi del giorno
+- Dialog aggiungi/modifica (titolo, data, orario opzionale, note, 6 colori)
+- Tabella `diario_eventi` (migrazione automatica da vecchia `note_diario`)
+
+**Spese:**
+- Voci di spesa extra (F&B / generale) con card e KPI per tipo
+
+**Personale:**
+- Turni a nomi liberi con autocomplete dai nomi già usati
+- Vista settimana (griglia 7 colonne) + vista mese (lista per data)
+- Campi: ore, di cui extra, costo orario (€/h, autocompila dal nome)
+- KPI cards: monte ore, totale extra, costo lavoro; copia settimana precedente
+- Export CSV per ufficio paghe
+
+### Strumenti / Workspace (`/workspace`) — flag `workspace`
+
+Pagina-contenitore con 2 tab (Foodcost + Inventario):
 
 **Foodcost:**
 - Ricette con ingredienti da 3 fonti: fatture reali, ingredienti workspace, semilavorati
@@ -498,26 +526,11 @@ Pagina-contenitore con 4 tab:
 
 **Inventario:**
 - Conta-giacenze semplice (articolo + quantità + valore), non movimentazione live
-- Articoli pescabili dai prodotti delle fatture (autocomplete, UM bloccata da fattura)
-- Date picker custom con pallini sui giorni con inventario
-- KPI cards (valore magazzino, prodotti, categorie)
-- Analisi per categoria collapsabile
-- Copia da snapshot (articoli con qty=0 da data precedente)
-- Export CSV per Excel
-
-**Diario:**
-- Calendario mensile a griglia con pallini colorati sui giorni con eventi
-- Pannello laterale lista eventi del giorno selezionato
-- Dialog aggiungi/modifica (titolo, data, orario opzionale, note, 6 colori)
-- Migrazione automatica da vecchia tabella `note_diario` → `diario_eventi`
-
-**Personale:**
-- Turni a nomi liberi con autocomplete dai nomi già usati
-- Vista settimana (griglia 7 colonne) + vista mese (lista per data)
-- Campi: ore, di cui extra, costo orario (€/h, autocompila dal nome)
-- KPI cards: monte ore, totale extra, costo lavoro
-- Copia settimana precedente
-- Export CSV per ufficio paghe
+- Articoli pescabili dai prodotti delle fatture (autocomplete, €/UM + UM precompilati da fattura)
+- Inserimento multiplo nel widget (coda bozze) prima di confermare
+- Date picker custom con pallini sui giorni con inventario; "Inventari" → storico + confronto tra due inventari
+- KPI cards (valore magazzino, prodotti, categorie); analisi per categoria collapsabile
+- Copia inventario (articoli con qty=0 da data precedente); Export CSV per Excel
 
 ### Admin Panel (`/admin`)
 
@@ -865,7 +878,7 @@ Il cuore del backend. Unico punto di accesso per entrambi i frontend (Streamlit 
 | Ricavi | `POST /api/ricavi/import-xls`, `POST /api/ricavi/giornaliero`, `POST /api/ricavi/mensile` |
 | AI | `POST /api/classify`, `POST /api/parse` |
 | Tag | 14 endpoint `/api/tag/*` (CRUD + analytics + suggerimenti) |
-| Workspace | 8+ endpoint per foodcost, inventario (7), diario (4), personale (4+) |
+| Workspace | foodcost, inventario (7, incl. batch), diario (4), spese (4), personale (5+) |
 | Notifiche | `GET /api/notifiche`, `POST /api/notifiche/{id}/dismiss` |
 | Chat | `POST /api/chat` |
 | Assistenza | `POST /api/assistenza/lead` |
@@ -880,18 +893,24 @@ Il cuore del backend. Unico punto di accesso per entrambi i frontend (Streamlit 
 
 Widget flottante solo sulla Home (bottone a contorno col logo ONEFLUX). Cronologia nella sessione (no DB messaggi).
 
-**Function calling (`gpt-4o-mini`):** 4 strumenti
+**Function calling (`gpt-4.1-mini`):** 7 strumenti (dettaglio in `CHAT_ASSISTENTE.md` §5)
 - `query_costi` — periodo/categoria/fornitore/prodotto
 - `query_scadenze` — fatture in scadenza
 - `query_margini` — andamento MOL/food cost ultimi 6 mesi
 - `confronto_prezzi` — chi fa un prodotto al prezzo migliore
+- `ultimi_acquisti` — ultime righe d'acquisto per data
+- `trend_prezzo` — andamento prezzo unitario di un prodotto
+- `query_appuntamenti` — appuntamenti in agenda (sola lettura, dal 10/6)
+
+> Gli strumenti sono **filtrati per `pagine_abilitate`** (gate `_TOOL_FLAG`, dal
+> 10/6): la chat offre solo i tool delle pagine abilitate all'utente.
 
 **Limiti domande/giorno per piano:**
 | Piano | Limite |
 |-------|--------|
 | Free | 0 (chat nascosta, 403) |
-| Base | 10 |
-| Plus | 20 |
+| Base | 8 |
+| Plus | 15 |
 | Pro | 30 |
 
 - Costo ~€0,0007/domanda, budget Pro ≤ €3/mese
