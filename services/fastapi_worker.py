@@ -1734,6 +1734,8 @@ _CONFIG_TOPICS: List[tuple] = [
      "Ti ricordo di inserire il costo del lavoro del mese, serve per il MOL."),
     ("scadenza_superata",        "Scadenze",                 False,
      "Ti avviso sulle fatture fornitori scadute o in scadenza a breve."),
+    ("appuntamento_imminente",   "Promemoria appuntamenti",  False,
+     "Ti ricordo gli appuntamenti che hai in agenda per oggi."),
 ]
 
 # Topic "bloccati": sempre visibili, mai disattivabili (flag True in _CONFIG_TOPICS).
@@ -2073,6 +2075,33 @@ def _build_chat_system_prompt(
     except Exception as exc:
         logger.warning("chat: dettaglio fatture non disponibile: %s", exc)
 
+    # 3) Agenda di oggi — solo se l'utente ha il flag 'agenda'. Inietta gli
+    # appuntamenti odierni cosi' la chat risponde a "cosa ho oggi" senza tool-call.
+    pagine = _normalize_pagine(user.get("pagine_abilitate"))
+    if pagine is None or "agenda" in set(pagine):
+        try:
+            from datetime import date as _date_ag
+            oggi_ag = _date_ag.today().isoformat()
+            if ristorante_id:
+                eventi = (
+                    supabase_client.table("diario_eventi")
+                    .select("titolo,ora_inizio")
+                    .eq("ristorante_id", ristorante_id)
+                    .eq("data_evento", oggi_ag)
+                    .order("ora_inizio", nullsfirst=True)
+                    .limit(20)
+                    .execute()
+                    .data or []
+                )
+                if eventi:
+                    kpi_testo += "\n## Appuntamenti di oggi (agenda)\n"
+                    for e in eventi:
+                        ora = (e.get("ora_inizio") or "")[:5]
+                        titolo = (e.get("titolo") or "").strip()
+                        kpi_testo += f"- {ora + ' — ' if ora else ''}{titolo}\n"
+        except Exception as exc:
+            logger.warning("chat: agenda di oggi non disponibile: %s", exc)
+
     if not kpi_testo:
         kpi_testo = "\n\n(Nessun dato di costo o margine ancora registrato.)"
 
@@ -2134,6 +2163,7 @@ Regole per gli strumenti:
 - Per CONFRONTARE due periodi ("ho speso più a marzo o ad aprile?", "quest'anno vs l'anno scorso") chiama query_costi DUE volte (una per periodo) e confronta tu i totali nella risposta.
 - Per l'andamento del PREZZO di un prodotto nel tempo ("la mozzarella è aumentata?", "il prezzo di X è salito?") usa trend_prezzo, NON query_costi.
 - Per "l'ultimo acquisto / l'ultima fattura / cosa ho comprato di recente" usa ultimi_acquisti.
+- Per appuntamenti e impegni in agenda ("cosa ho oggi", "appuntamenti di questa settimana") usa query_appuntamenti.
 - I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
 
     return sistema
@@ -2322,6 +2352,42 @@ def _chat_query_scadenze(user: Dict[str, Any], supabase_client, solo_da_pagare: 
     # Ordina per scadenza (le piu' vicine prima)
     voci.sort(key=lambda x: x.get("scadenza") or "9999")
     return {"scadenze": voci[:30], "totale_da_pagare": round(totale, 2)}
+
+
+def _chat_query_appuntamenti(
+    user: Dict[str, Any], supabase_client,
+    ristorante_id: Optional[str] = None,
+    da: Optional[str] = None, a: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Appuntamenti dell'Agenda (diario_eventi) in un intervallo di date.
+
+    Sola lettura. Default: da oggi ai prossimi 7 giorni — copre 'oggi' e 'questa
+    settimana' senza affollare. Fonte = stessa tabella della vista Appuntamenti."""
+    from datetime import date as _date, timedelta as _td
+    if not ristorante_id:
+        return {"appuntamenti": [], "da": da, "a": a}
+    oggi = _date.today()
+    d_da = da or oggi.isoformat()
+    d_a = a or (oggi + _td(days=7)).isoformat()
+    righe = (
+        supabase_client.table("diario_eventi")
+        .select("data_evento,titolo,descrizione,ora_inizio,ora_fine")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data_evento", d_da)
+        .lte("data_evento", d_a)
+        .order("data_evento")
+        .order("ora_inizio", nullsfirst=True)
+        .limit(50)
+        .execute()
+        .data or []
+    )
+    appuntamenti = [{
+        "data": r.get("data_evento"),
+        "titolo": (r.get("titolo") or "").strip(),
+        "ora": r.get("ora_inizio"),
+        "descrizione": (r.get("descrizione") or "").strip() or None,
+    } for r in righe]
+    return {"appuntamenti": appuntamenti, "da": d_da, "a": d_a, "trovati": len(appuntamenti)}
 
 
 def _chat_ultimi_acquisti(
@@ -2721,7 +2787,46 @@ def chat_ai(
                 },
             },
         },
+        {
+            "type": "function",
+            "function": {
+                "name": "query_appuntamenti",
+                "description": (
+                    "Appuntamenti in agenda del ristorante (titolo, data, ora). Usalo per "
+                    "'cosa ho oggi', 'che appuntamenti ho questa settimana', 'ho impegni "
+                    "domani'. Sola lettura: non crea ne' modifica nulla."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "da": {"type": "string", "description": "Data inizio YYYY-MM-DD (opzionale, default oggi)"},
+                        "a": {"type": "string", "description": "Data fine YYYY-MM-DD (opzionale, default +7 giorni)"},
+                    },
+                },
+            },
+        },
     ]
+
+    # Gate per permessi pagina: la chat offre al modello solo gli strumenti delle
+    # pagine abilitate per l'utente. pagine_abilitate None (admin) => tutti i tool.
+    # Coerente con la visibilita' della sidebar: chi non vede una pagina non puo'
+    # nemmeno interrogarne i dati via chat.
+    _TOOL_FLAG = {
+        "query_costi": "analisi_fatture",
+        "ultimi_acquisti": "analisi_fatture",
+        "query_scadenze": "scadenziario",
+        "query_margini": "margini",
+        "confronto_prezzi": "prezzi",
+        "trend_prezzo": "prezzi",
+        "query_appuntamenti": "agenda",
+    }
+    pagine = _normalize_pagine(user.get("pagine_abilitate"))
+    if pagine is not None:
+        pagine_set = set(pagine)
+        tools = [
+            t for t in tools
+            if _TOOL_FLAG.get(t["function"]["name"]) in pagine_set
+        ]
 
     def _esegui_tool(nome: str, args: Dict[str, Any]) -> Dict[str, Any]:
         if nome == "query_costi":
@@ -2756,6 +2861,11 @@ def chat_ai(
                 supabase_client=supabase_client,
                 prodotto=args.get("prodotto", ""),
                 ristorante_id=ristorante_id,
+            )
+        if nome == "query_appuntamenti":
+            return _chat_query_appuntamenti(
+                user, supabase_client, ristorante_id,
+                da=args.get("da"), a=args.get("a"),
             )
         return {"errore": f"strumento sconosciuto: {nome}"}
 
@@ -3018,6 +3128,102 @@ def _briefing_buona_notizia(
         logger.warning("briefing buona notizia: blocco incasso fallito: %s", exc)
 
     return None
+
+
+def _briefing_appuntamenti_oggi(
+    user_id: str, ristorante_id: str, supabase_client,
+) -> List[Dict[str, Any]]:
+    """Promemoria appuntamenti dell'Agenda IN PROGRAMMA OGGI (topic
+    'appuntamento_imminente', severity 'info' = importanza medio/bassa).
+
+    A differenza degli altri segnali del briefing (price-alert, dati mensili) qui
+    PERSISTIAMO la notifica in notification_inbox: la pagina Avvisi legge solo dal
+    DB, e il requisito e' che l'appuntamento compaia sia nel briefing sia li'.
+    Bucket giornaliero + expires 1 giorno => una notifica per appuntamento al
+    giorno, auto-pulente. Rispetta il flag pagina 'agenda': se il cliente non ha
+    l'Agenda abilitata, niente promemoria. Il toggle del configuratore
+    ('appuntamento_imminente' in topics_disabled) e' gestito a valle, come per
+    tutti gli altri topic. Best-effort: ogni errore resta confinato qui."""
+    try:
+        urec = (
+            supabase_client.table("users")
+            .select("pagine_abilitate")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        pagine = _normalize_pagine((urec.data or {}).get("pagine_abilitate"))
+    except Exception:
+        pagine = None
+    # pagine None = nessuna restrizione (tutte abilitate). Se c'e' una lista e
+    # 'agenda' non e' dentro -> niente promemoria.
+    if pagine is not None and "agenda" not in set(pagine):
+        return []
+
+    from datetime import datetime as _dt_ag
+    try:
+        from zoneinfo import ZoneInfo as _ZI_ag
+        oggi = _dt_ag.now(tz=_ZI_ag("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt_ag.now().date()
+    oggi_iso = oggi.isoformat()
+
+    try:
+        eventi = (
+            supabase_client.table("diario_eventi")
+            .select("titolo,ora_inizio")
+            .eq("ristorante_id", ristorante_id)
+            .eq("data_evento", oggi_iso)
+            .order("ora_inizio", nullsfirst=True)
+            .limit(20)
+            .execute()
+            .data or []
+        )
+    except Exception as exc:
+        logger.warning("briefing appuntamenti: lettura diario fallita: %s", exc)
+        return []
+    if not eventi:
+        return []
+
+    n = len(eventi)
+    primo = (eventi[0].get("titolo") or "").strip() or "appuntamento"
+    ora0 = (eventi[0].get("ora_inizio") or "")[:5]
+    if n == 1:
+        titolo = "Hai un appuntamento oggi"
+        body = f"{ora0 + ' — ' if ora0 else ''}{primo}"
+    else:
+        titolo = f"Hai {n} appuntamenti oggi"
+        body = f"A partire da {ora0 + ' — ' if ora0 else ''}{primo}"
+
+    from services.notification_inbox_service import (
+        build_notification_record, upsert_inbox_notifications,
+    )
+    record = build_notification_record(
+        user_id=user_id,
+        ristorante_id=ristorante_id,
+        topic_key="appuntamento_imminente",
+        source_type="agenda",
+        severity="info",
+        title=titolo,
+        body=body,
+        payload={"count": n, "primo": primo, "ora": ora0 or None},
+        action_page="/agenda",
+    )
+    upsert_inbox_notifications([record], supabase_client)
+    # Lo includo anche nella lista del briefing (forma effimera): _build_snapshot
+    # lavora sui record passati, non rilegge il DB.
+    return [{
+        "id": record["dedupe_key"],
+        "topic_key": "appuntamento_imminente",
+        "source_type": "agenda",
+        "severity": "info",
+        "title": titolo,
+        "body": body,
+        "action_page": "/agenda",
+        "payload": record["payload"],
+        "source_event_at": None,
+        "dedupe_key": record["dedupe_key"],
+    }]
 
 
 def _briefing_dati_mensili_mancanti(
@@ -3353,6 +3559,18 @@ def _briefing_raccogli_notifiche(
             )
         except Exception as exc:
             logger.warning("home_briefing: dati mensili mancanti falliti: %s", exc)
+
+    # Promemoria appuntamenti di oggi (Agenda). Importanza medio/bassa: in fondo
+    # alla gerarchia (_TOPIC_PRIORITY) e severity 'info'. Persiste in inbox cosi'
+    # compare anche nella pagina Avvisi, non solo nel briefing. Rispetta il flag
+    # 'agenda' dell'utente.
+    if ristorante_id:
+        try:
+            notifications.extend(
+                _briefing_appuntamenti_oggi(user_id, ristorante_id, supabase_client)
+            )
+        except Exception as exc:
+            logger.warning("home_briefing: promemoria appuntamenti fallito: %s", exc)
 
     # Apertura POSITIVA: un fatto fresco e vero (MOL del mese in crescita o
     # incasso di ieri) con cui iniziare il briefing prima delle to-do. Best

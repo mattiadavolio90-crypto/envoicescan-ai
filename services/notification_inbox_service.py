@@ -26,6 +26,7 @@ _EXPIRES_DELTA: Dict[str, timedelta] = {
     'operativa':      timedelta(days=7),
     'upload':         timedelta(days=14),
     'invoicetronic':  timedelta(days=3),
+    'agenda':         timedelta(days=1),
 }
 
 # Topic ricorrenti (DO UPDATE su conflict) vs one-shot (DO NOTHING)
@@ -125,7 +126,7 @@ def resolve_bucket(topic_key: str, file_ids: Optional[List[str]] = None,
         'piva_fornitore_mancante',
     ) and file_ids:
         return _bucket_file_ids(file_ids)
-    if topic_key in ('trial_scadenza_imminente', 'incasso_mancante'):
+    if topic_key in ('trial_scadenza_imminente', 'incasso_mancante', 'appuntamento_imminente'):
         return _bucket_daily(ref_dt)
     # upload one-shot e tutto il resto
     if file_ids:

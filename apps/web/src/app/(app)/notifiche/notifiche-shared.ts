@@ -21,12 +21,13 @@ const SOURCE_GROUP: Record<string, Gruppo> = {
   operativa: { key: "operativa", label: "Da sistemare" },
   scadenza: { key: "scadenza", label: "Scadenze" },
   scadenziario: { key: "scadenza", label: "Scadenze" },
+  agenda: { key: "agenda", label: "Agenda" },
 };
 
 const GRUPPO_ALTRO: Gruppo = { key: "altro", label: "Altro" };
 
-// Ordine di visualizzazione dei gruppi.
-const GRUPPO_ORDINE = ["scadenza", "upload", "radar", "operativa", "altro"];
+// Ordine di visualizzazione dei gruppi. Agenda in coda: importanza medio/bassa.
+const GRUPPO_ORDINE = ["scadenza", "upload", "radar", "operativa", "agenda", "altro"];
 
 export function gruppoDi(n: Notifica): Gruppo {
   const st = (n.source_type ?? "").toLowerCase();

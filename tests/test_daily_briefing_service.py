@@ -20,6 +20,7 @@ from services.daily_briefing_service import (
     _anonymize_bullets,
     _build_snapshot,
     _bullet_for,
+    _is_actionable,
     _deanonymize,
     _narrate_with_ai,
     _narrative_phrase_for,
@@ -160,6 +161,38 @@ class TestBulletFor:
     def test_price_alert_fallback(self):
         n = _notif("price_alert", "warning", {}, title="Alert prezzi")
         assert "Alert prezzi" in _bullet_for(n)
+
+    def test_appuntamento_singolo(self):
+        n = _notif("appuntamento_imminente", "info",
+                   {"count": 1, "primo": "Fornitore vini", "ora": "10:30"})
+        b = _bullet_for(n)
+        assert "Fornitore vini" in b
+        assert "10:30" in b
+
+    def test_appuntamento_plurale(self):
+        n = _notif("appuntamento_imminente", "info",
+                   {"count": 3, "primo": "Commercialista", "ora": "09:00"})
+        b = _bullet_for(n)
+        assert "3 appuntamenti" in b
+        assert "Commercialista" in b
+
+    def test_appuntamento_fallback(self):
+        n = _notif("appuntamento_imminente", "info", {}, title="Appuntamenti")
+        assert "Appuntamenti" in _bullet_for(n)
+
+
+# ────────────────────────────────────────────────
+# _is_actionable — appuntamenti
+# ────────────────────────────────────────────────
+
+class TestAppuntamentoActionable:
+    def test_con_appuntamenti_e_card(self):
+        n = _notif("appuntamento_imminente", "info", {"count": 2})
+        assert _is_actionable(n) is True
+
+    def test_senza_appuntamenti_no_card(self):
+        n = _notif("appuntamento_imminente", "info", {"count": 0})
+        assert _is_actionable(n) is False
 
     def test_price_alert_bullet_singolo_prodotto(self):
         n = _notif("price_alert", "warning", {

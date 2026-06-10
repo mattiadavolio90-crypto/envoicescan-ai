@@ -76,6 +76,7 @@ _TOPIC_PRIORITY: Dict[str, int] = {
     'costo_personale_mancante': 50,   # 6. Costo personale mancante
     'scadenza_superata':        60,   # 7. Scadenze (superate prima delle imminenti)
     'scadenza_imminente':       61,   #    e imminenti subito dopo, stesso tema
+    'appuntamento_imminente':   70,   # 8. Appuntamenti agenda (importanza medio/bassa: ultimo)
 }
 
 # Azione primaria suggerita per topic: (label_cta, pagina_destinazione).
@@ -95,6 +96,7 @@ _TOPIC_ACTION: Dict[str, tuple] = {
     # Fatture — NON in Analisi e Tag (quella e' per i tag custom). Prima la CTA
     # portava a /analisi-e-tag: pagina sbagliata, l'utente non trovava cosa fare.
     'uncategorized_rows':       ('Classifica righe',      '/analisi-fatture?tab=articoli&verifica=1'),
+    'appuntamento_imminente':   ('Vedi agenda',           '/agenda'),
 }
 
 
@@ -223,6 +225,10 @@ def _is_actionable(notif: Dict[str, Any]) -> bool:
     if topic in ('fatturato_mancante', 'incasso_mancante', 'costo_personale_mancante', 'upload_ricavi_failed'):
         return True
 
+    # Promemoria appuntamenti: card solo se c'e' almeno un appuntamento oggi.
+    if topic == 'appuntamento_imminente':
+        return bool((payload.get('count') or 0))
+
     # Topic sconosciuti/tecnici: fuori dalla Home (solo pagina Notifiche).
     return False
 
@@ -318,6 +324,18 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
             righe = 'riga richiede' if count == 1 else 'righe richiedono'
             return f"\U0001F3F7\ufe0f {count} {righe} classificazione manuale."
         return f"\U0001F3F7\ufe0f {title}"
+
+    if topic == 'appuntamento_imminente':
+        count = payload.get('count') or 0
+        primo = str(payload.get('primo') or '').strip()
+        ora = str(payload.get('ora') or '').strip()
+        if count == 1:
+            dettaglio = f"{ora + ' — ' if ora else ''}{primo}" if primo else "un appuntamento"
+            return f"\U0001F4C5 Oggi hai {dettaglio}."
+        if count > 1:
+            extra = f", a partire da {ora + ' — ' if ora else ''}{primo}" if primo else ""
+            return f"\U0001F4C5 Oggi hai {count} appuntamenti in agenda{extra}."
+        return f"\U0001F4C5 {title}"
 
     # Fallback generico: restituisce il titolo della notifica
     return title
