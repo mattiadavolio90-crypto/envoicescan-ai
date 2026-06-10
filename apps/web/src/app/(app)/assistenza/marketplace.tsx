@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Stethoscope,
@@ -81,11 +81,40 @@ export function Marketplace() {
   const [attivo, setAttivo] = useState<Servizio | null>(null);
   const [messaggio, setMessaggio] = useState("");
   const [invio, setInvio] = useState(false);
+  // Card evidenziata dal deep-link (?servizio=<key>): ring temporaneo per
+  // guidare l'occhio quando si arriva da un trigger contestuale.
+  const [evidenziata, setEvidenziata] = useState<string | null>(null);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   function apri(s: Servizio) {
     setAttivo(s);
     setMessaggio("");
   }
+
+  // Deep-link dai trigger: /assistenza?servizio=<key> scrolla alla card,
+  // la evidenzia e apre il dialog lead gia' su quel servizio. Letto una volta
+  // dall'URL (no useSearchParams: evita il vincolo Suspense di Next, qui serve
+  // solo il valore iniziale). Il param viene poi ripulito dall'URL.
+  useEffect(() => {
+    const key = new URLSearchParams(window.location.search).get("servizio");
+    if (!key) return;
+    const s = SERVIZI.find((x) => x.key === key);
+    if (!s) return;
+
+    setEvidenziata(key);
+    const t = window.setTimeout(() => {
+      cardRefs.current[key]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setAttivo(s);
+      setMessaggio("");
+    }, 150);
+    // Toglie il ring dopo qualche secondo e pulisce il param senza ricaricare.
+    const tRing = window.setTimeout(() => setEvidenziata(null), 2600);
+    window.history.replaceState(null, "", window.location.pathname);
+    return () => {
+      window.clearTimeout(t);
+      window.clearTimeout(tRing);
+    };
+  }, []);
 
   async function invia() {
     if (!attivo) return;
@@ -127,9 +156,14 @@ export function Marketplace() {
           return (
             <div
               key={s.key}
+              ref={(el) => {
+                cardRefs.current[s.key] = el;
+              }}
               className={cn(
                 "flex h-full flex-col rounded-xl p-5 transition-all duration-200",
                 CARD_VARIANT[variant],
+                evidenziata === s.key &&
+                  "ring-2 ring-sky-500 ring-offset-2 ring-offset-background",
               )}
             >
               {variant === "featured" && (
