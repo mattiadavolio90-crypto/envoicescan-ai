@@ -373,7 +373,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 </div>
               );
             })}
-            <div className="flex items-center justify-between gap-4 py-1">
+            <div className="flex items-center justify-between gap-4 py-1 border-b">
               <div>
                 <p className="text-sm font-medium">Assistente AI (Chat)</p>
                 <p className="text-xs text-muted-foreground">Chat AI nella Home del cliente</p>
@@ -381,6 +381,23 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
               <Switch
                 checked={c.chat_ai_enabled}
                 onCheckedChange={handleToggleChatAi}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-4 py-1">
+              <div>
+                <p className="text-sm font-medium">Suggerimenti servizi</p>
+                <p className="text-xs text-muted-foreground">
+                  Hint contestuali discreti che propongono i servizi giusti nelle pagine
+                </p>
+              </div>
+              {/* Convenzione inversa: salviamo il flag solo da SPENTO
+                  (trigger_servizi_off). Assente = ON di default, anche per i
+                  clienti gia' esistenti. La lista pagine_abilitate lato cliente
+                  porta solo le chiavi true, quindi un OFF deve essere una chiave
+                  presente, non assente. Lo switch mostra l'opposto del flag-off. */}
+              <Switch
+                checked={flags.trigger_servizi_off !== true}
+                onCheckedChange={(v: boolean) => handleToggleFlag("trigger_servizi_off", !v)}
               />
             </div>
           </CardContent>

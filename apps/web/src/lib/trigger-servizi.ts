@@ -82,6 +82,22 @@ export const TRIGGERS: Record<TriggerKey, TriggerDef> = {
   },
 };
 
+// Chiave del flag per-cliente, in convenzione INVERSA: presente = trigger
+// SPENTI per quel cliente. Assente = accesi (default ON, anche per i clienti
+// gia' esistenti). Vive in pagine_abilitate e si attiva/disattiva dal pannello
+// admin del cliente. Convenzione inversa perche' la lista pagine_abilitate che
+// arriva al client porta solo le chiavi attive: per spegnere serve una chiave
+// PRESENTE, non assente.
+export const TRIGGER_OFF_FLAG = "trigger_servizi_off";
+
+// True se i trigger sono abilitati per l'utente corrente. `pagine` e' la
+// SessionUser.pagine_abilitate: null (admin / nessuna restrizione) = ON;
+// lista che contiene il flag-off = OFF; altrimenti ON.
+export function triggerAbilitati(pagine: string[] | null | undefined): boolean {
+  if (pagine == null) return true;
+  return !pagine.includes(TRIGGER_OFF_FLAG);
+}
+
 // Soglia food cost di default oltre cui consideriamo "alto" il costo: usata solo
 // se la pagina non passa una soglia propria. 38% e' un riferimento prudente per
 // la ristorazione; resta sovrascrivibile dai dati reali del cliente.
