@@ -1,11 +1,17 @@
 import { Suspense } from "react";
+import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FoodcostTab } from "./foodcost-tab";
 import { InventarioTab } from "./inventario-tab";
-import { AgendaView } from "./diario-tab";
-import { SpeseView } from "./spese-view";
-import { PersonaleTab } from "./personale-tab";
+
+// I tab Agenda/Spese/Personale sono migrati nella pagina dedicata /agenda.
+// Vecchi link a ?tab=agenda|spese|personale vengono rediretti per non rompersi.
+const LAYER_REDIRECT: Record<string, string> = {
+  agenda: "appuntamenti",
+  spese: "spese",
+  personale: "personale",
+};
 
 export default async function WorkspacePage({
   searchParams,
@@ -13,14 +19,20 @@ export default async function WorkspacePage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const sp = await searchParams;
-  const tab = sp.tab ?? "agenda";
+  const requested = sp.tab ?? "foodcost";
+
+  if (requested in LAYER_REDIRECT) {
+    redirect(`/agenda?layer=${LAYER_REDIRECT[requested]}`);
+  }
+
+  const tab = requested === "inventario" ? "inventario" : "foodcost";
 
   return (
     <div className="space-y-4">
       <PageHeader
         icon="wrench"
         title="Strumenti"
-        hint="Gli strumenti operativi del tuo locale: ricette e foodcost, agenda e spese, turni, inventario."
+        hint="Gli strumenti di analisi del tuo locale: ricette e foodcost, inventario di magazzino."
       />
 
       <Suspense>
@@ -28,21 +40,6 @@ export default async function WorkspacePage({
       </Suspense>
 
       <div className="mt-2">
-        {tab === "agenda" && (
-          <Suspense>
-            <AgendaView />
-          </Suspense>
-        )}
-        {tab === "spese" && (
-          <Suspense>
-            <SpeseView />
-          </Suspense>
-        )}
-        {tab === "personale" && (
-          <Suspense>
-            <PersonaleTab />
-          </Suspense>
-        )}
         {tab === "foodcost" && (
           <Suspense>
             <FoodcostTab />

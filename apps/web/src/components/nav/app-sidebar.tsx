@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  CalendarCheck,
   CalendarDays,
   ChevronsUpDown,
   FileText,
@@ -47,8 +48,9 @@ const navMain = [
   { title: "Ricavi e Margini", url: "/margini", icon: BarChart3, flag: "margini" },
   { title: "Prezzi", url: "/prezzi", icon: Search, flag: "prezzi" },
   { title: "Analisi e Tag", url: "/analisi-e-tag", icon: Tags, flag: "analisi_e_tag" },
+  { title: "Agenda", url: "/agenda", icon: CalendarDays, flag: "agenda" },
   { title: "Strumenti", url: "/workspace", icon: Wrench, flag: "workspace" },
-  { title: "Gestione Fatture", url: "/scadenziario", icon: CalendarDays, flag: "scadenziario" },
+  { title: "Gestione Fatture", url: "/scadenziario", icon: CalendarCheck, flag: "scadenziario" },
 ];
 
 const navSecondary = [
