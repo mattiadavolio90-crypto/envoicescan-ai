@@ -56,8 +56,9 @@ const CARD_VARIANT: Record<NonNullable<Servizio["variant"]>, string> = {
     "border-2 border-sky-500/40 bg-sky-500/[0.03] shadow-lg shadow-sky-500/10 " +
     "hover:border-sky-500/60 hover:shadow-sky-500/20",
   featured:
-    "border-2 border-amber-400/70 bg-amber-400/[0.06] shadow-xl shadow-amber-500/25 " +
-    "-translate-y-1 hover:border-amber-400 hover:shadow-amber-500/35 hover:-translate-y-1.5",
+    "relative z-10 border-2 border-amber-400/70 bg-amber-400/[0.06] " +
+    "scale-[1.04] -translate-y-2 shadow-2xl shadow-amber-500/30 " +
+    "hover:scale-[1.06] hover:-translate-y-3 hover:border-amber-400 hover:shadow-amber-500/40",
   partner:
     "border-2 border-red-500/40 bg-red-500/[0.03] shadow-lg shadow-red-500/10 " +
     "hover:border-red-500/60 hover:shadow-red-500/20",
@@ -115,7 +116,9 @@ export function Marketplace() {
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {/* py/px extra: la card featured e' scalata e sollevata, serve respiro
+          perche' ombra ed estensione non vengano tagliate ai bordi della grid. */}
+      <div className="grid gap-5 px-1 py-2 sm:grid-cols-2 lg:grid-cols-3">
         {SERVIZI.map((s) => {
           const variant = s.variant ?? "default";
           const Icon = ICONS[s.icon];
