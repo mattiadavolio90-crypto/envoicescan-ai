@@ -3,7 +3,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { TabsSwitcher } from "./tabs-switcher";
 import { FoodcostTab } from "./foodcost-tab";
 import { InventarioTab } from "./inventario-tab";
-import { DiarioTab } from "./diario-tab";
+import { AgendaView } from "./diario-tab";
+import { SpeseView } from "./spese-view";
 import { PersonaleTab } from "./personale-tab";
 
 export default async function WorkspacePage({
@@ -12,7 +13,7 @@ export default async function WorkspacePage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const sp = await searchParams;
-  const tab = sp.tab ?? "foodcost";
+  const tab = sp.tab ?? "agenda";
 
   return (
     <div className="space-y-4">
@@ -27,6 +28,21 @@ export default async function WorkspacePage({
       </Suspense>
 
       <div className="mt-2">
+        {tab === "agenda" && (
+          <Suspense>
+            <AgendaView />
+          </Suspense>
+        )}
+        {tab === "spese" && (
+          <Suspense>
+            <SpeseView />
+          </Suspense>
+        )}
+        {tab === "personale" && (
+          <Suspense>
+            <PersonaleTab />
+          </Suspense>
+        )}
         {tab === "foodcost" && (
           <Suspense>
             <FoodcostTab />
@@ -35,16 +51,6 @@ export default async function WorkspacePage({
         {tab === "inventario" && (
           <Suspense>
             <InventarioTab />
-          </Suspense>
-        )}
-        {tab === "diario" && (
-          <Suspense>
-            <DiarioTab />
-          </Suspense>
-        )}
-        {tab === "personale" && (
-          <Suspense>
-            <PersonaleTab />
           </Suspense>
         )}
       </div>

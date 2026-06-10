@@ -1,13 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, CalendarDays, Wallet } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { SpeseView } from "./spese-view";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -253,43 +252,9 @@ function CalendarioMini({ anno, mese, eventi, selezionato, onSelect }: Calendari
   );
 }
 
-// ─── Wrapper: switch Agenda / Spese ────────────────────────────────────────────
-
-type SottoTab = "agenda" | "spese";
-
-export function DiarioTab() {
-  const [sotto, setSotto] = useState<SottoTab>("agenda");
-
-  return (
-    <div className="space-y-4">
-      <div className="flex rounded-md border border-border overflow-hidden w-fit">
-        {([
-          { k: "agenda" as SottoTab, l: "Agenda", icon: CalendarDays },
-          { k: "spese" as SottoTab, l: "Spese", icon: Wallet },
-        ]).map(s => {
-          const Icon = s.icon;
-          return (
-            <button
-              key={s.k}
-              onClick={() => setSotto(s.k)}
-              className={`inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium transition-colors ${
-                sotto === s.k ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
-              }`}
-            >
-              <Icon className="size-4" />{s.l}
-            </button>
-          );
-        })}
-      </div>
-
-      {sotto === "agenda" ? <AgendaView /> : <SpeseView />}
-    </div>
-  );
-}
-
 // ─── Vista Agenda (calendario eventi) ───────────────────────────────────────────
 
-function AgendaView() {
+export function AgendaView() {
   const today = todayISO();
   const now = new Date();
   const [anno, setAnno] = useState(now.getFullYear());

@@ -4,7 +4,8 @@ import { useTransition } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 
 const TABS = [
-  { key: "diario", label: "Agenda e Spese" },
+  { key: "agenda", label: "Agenda" },
+  { key: "spese", label: "Spese" },
   { key: "personale", label: "Personale" },
   { key: "foodcost", label: "Foodcost" },
   { key: "inventario", label: "Inventario" },
