@@ -24,6 +24,7 @@ from services.daily_briefing_service import (
     _deanonymize,
     _narrate_with_ai,
     _narrative_phrase_for,
+    _rientro_bullet,
     _severity_max,
     _today_rome,
     generate_and_save_briefing,
@@ -808,3 +809,50 @@ class TestInvalidateTodayBriefing:
         sb = MagicMock()
         sb.table.side_effect = RuntimeError("DB down")
         invalidate_today_briefing(UID, RID, sb)  # non solleva
+
+
+# ────────────────────────────────────────────────
+# Trigger rientro_assenza (bentornato + amo soft Assistenza)
+# ────────────────────────────────────────────────
+
+class TestRientroAssenza:
+    def test_bullet_solo_bentornato_senza_offerta(self):
+        # Salute non rossa: solo bentornato, niente amo commerciale.
+        testo = _rientro_bullet({"giorni": 10, "offri_assistenza": False})
+        assert "Bentornato" in testo
+        assert "gestire noi" not in testo
+
+    def test_bullet_con_offerta_assistenza(self):
+        # Salute rossa: in coda l'amo soft (un'offerta, mai un rimprovero).
+        testo = _rientro_bullet({"giorni": 10, "offri_assistenza": True})
+        assert "Bentornato" in testo
+        assert "gestire noi" in testo
+        # Mai un tono di rimprovero per l'assenza.
+        assert "arres" not in testo.lower()
+
+    def test_rientro_apre_la_narrativa_e_non_e_una_card(self):
+        # Il rientro e' apertura: entra nella narrativa ma NON conta come card
+        # to-do (non incrementa azioni, non azzera 'tutto_ok' da solo).
+        rientro = _notif("rientro_assenza", severity="info",
+                         payload={"giorni": 9, "offri_assistenza": True})
+        snap = _build_snapshot([rientro], use_ai=False)
+        assert "Bentornato" in snap["narrative"]
+        assert snap["azioni"] == []
+        assert snap["bullets"] == []
+        # Nessuna to-do reale: tutto_ok resta True (il rientro non e' un problema).
+        assert snap["tutto_ok"] is True
+
+    def test_rientro_precede_le_todo(self):
+        # Con rientro + una to-do reale: il bentornato apre, la to-do segue.
+        rientro = _notif("rientro_assenza", severity="info",
+                         payload={"giorni": 8, "offri_assistenza": False})
+        todo = _notif("scadenza_superata", severity="error",
+                      payload={"count": 2, "totale": 500.0})
+        snap = _build_snapshot([rientro, todo], use_ai=False)
+        narr = snap["narrative"]
+        assert "Bentornato" in narr
+        # Il bentornato compare prima della to-do nel testo.
+        assert narr.index("Bentornato") < narr.index("scadenz")
+        # La to-do resta una card vera.
+        assert len(snap["azioni"]) == 1
+        assert snap["tutto_ok"] is False

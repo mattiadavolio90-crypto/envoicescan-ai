@@ -66,6 +66,7 @@ def espandi_topic_spenti(topics_disabled) -> set:
 # (piu' basso = prima). I numeri lasciano spazio per i topic futuri:
 #   upload_ricavi_failed (Step 5) ~ 15, tra upload fatture e prezzi.
 _TOPIC_PRIORITY: Dict[str, int] = {
+    'rientro_assenza':          -1,   # -1. Bentornato al rientro (apertura, prima di tutto)
     'buona_notizia':             0,   # 0. Apertura positiva (NON e' una card to-do)
     'upload_failed':            10,   # 1. Upload fatture fallito
     'upload_ricavi_failed':     15,   # 2. Upload ricavi fallito (solo se mappato)
@@ -83,6 +84,7 @@ _TOPIC_PRIORITY: Dict[str, int] = {
 # La pagina e' un fallback usato quando la notifica non porta un action_page
 # proprio. La Home renderizza il bottone come link generico alla pagina.
 _TOPIC_ACTION: Dict[str, tuple] = {
+    'rientro_assenza':          ('Scopri come ti aiutiamo', '/assistenza?servizio=assistenza_continuativa'),
     'scadenza_superata':        ('Controlla scadenze',   '/scadenziario'),
     'upload_failed':            ('Riprova upload',        '/analisi-fatture'),
     'upload_ricavi_failed':     ('Controlla ricavi',      '/margini'),
@@ -140,6 +142,16 @@ def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
         incasso = _euro_it(float(payload.get('incasso') or 0))
         return f"\U0001F4B0 Ieri sono entrati € {incasso} di incasso."
     return ""
+
+
+def _rientro_bullet(payload: Dict[str, Any]) -> str:
+    """Bullet del bentornato di rientro. Il bentornato e' per tutti; l'amo soft
+    dell'Assistenza si aggiunge SOLO se offri_assistenza (Salute rossa)."""
+    base = "\U0001F44B Bentornato! Da un po' non ci si vedeva."
+    if payload.get('offri_assistenza'):
+        # Amo SOFT, in coda e senza pressione: e' un'offerta, non un rimprovero.
+        base += " Se vuoi, possiamo gestire noi l'app e i tuoi dati al posto tuo."
+    return base
 
 
 def _today_rome() -> date:
@@ -241,6 +253,9 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
 
     if topic == 'buona_notizia':
         return _buona_notizia_bullet(payload)
+
+    if topic == 'rientro_assenza':
+        return _rientro_bullet(payload)
 
     if topic == 'scadenza_superata':
         count = payload.get('count')
@@ -567,19 +582,24 @@ def _compose_narrative(
     selected: List[Dict[str, Any]],
     severity_max: str,
     apertura_buona: Optional[Dict[str, Any]] = None,
+    apertura_rientro: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Compone il testo narrativo colloquiale con apertura, corpo e chiusura.
 
     Gestisce la fusione di fatturato_mancante + costo_personale_mancante
-    quando si riferiscono allo stesso mese/anno. Se ``apertura_buona`` e'
-    presente, il briefing apre con quella (prima il bene, poi le to-do).
+    quando si riferiscono allo stesso mese/anno. Le aperture, se presenti, vanno
+    in testa nell'ordine: prima il bentornato di rientro, poi la buona notizia,
+    poi le to-do (decisione Mattia: prima il contesto, poi il bene, poi la rogna).
     """
-    apertura = _buona_notizia_frase(apertura_buona.get('payload') or {}) if apertura_buona else ""
+    rientro = _rientro_bullet(apertura_rientro.get('payload') or {}) if apertura_rientro else ""
+    buona = _buona_notizia_frase(apertura_buona.get('payload') or {}) if apertura_buona else ""
+    # Aperture concatenate, ognuna sulla sua riga, nell'ordine voluto.
+    apertura = "\n".join(p for p in (rientro, buona) if p)
 
     if not selected:
         if apertura:
-            # C'e' una buona notizia ma niente da fare: valorizziamo invece del
-            # muto "tutto in ordine".
+            # C'e' un'apertura (rientro e/o buona notizia) ma niente da fare:
+            # valorizziamo invece del muto "tutto in ordine".
             return f"Ciao! 👋\n{apertura}\nPer oggi non c'è nulla da sistemare: goditi la giornata! ✅"
         return "Ciao! ✅\nTutto in ordine per oggi, niente da sistemare. Buon lavoro! 👍"
 
@@ -647,6 +667,11 @@ _NARRATION_SYSTEM_PROMPT = (
     "mancanti) vanno descritte con tono neutro o di allerta, MAI con aggettivi "
     "entusiasti: vietato 'un bel +X%', 'ottimo', 'fantastico' su un costo che "
     "sale o una scadenza. L'entusiasmo e' solo per le buone notizie. "
+    "3-quater) Se la PRIMA voce e' un bentornato (emoji 👋, l'utente torna dopo "
+    "un'assenza), aprici davvero il briefing salutandolo con calore, PRIMA di "
+    "tutto il resto. Se quel bentornato include un'offerta di aiuto ('possiamo "
+    "gestire noi l'app al posto tuo'), riportala UNA volta sola, gentile e senza "
+    "insistere: e' un'offerta, mai una pressione o un rimprovero per l'assenza. "
     "4) Usa 2-4 emoji pertinenti per dare ritmo (es. 📊 💰 ⏰ ✅ 🔥 👍), "
     "ma senza esagerare e mai dentro i numeri. "
     "5) Mantieni intatti i segnaposto tipo <<P1>> o <<F1>> se presenti. "
@@ -774,17 +799,21 @@ def _build_snapshot(
         if t not in _TOPIC_NON_DISATTIVABILI
     }
 
-    # Apertura POSITIVA: estratta a parte. NON e' una card "Da fare oggi" (non si
-    # ignora, non ha CTA) e non conta per 'tutto_ok': e' solo il fatto fresco con
-    # cui l'AI apre il briefing. Resta fuori da candidati/azioni.
+    # Aperture: estratte a parte. NON sono card "Da fare oggi" (non si ignorano,
+    # non hanno CTA-card) e non contano per 'tutto_ok': sono il contesto con cui
+    # l'AI apre il briefing. Restano fuori da candidati/azioni.
+    #  - rientro_assenza: bentornato dopo un'assenza (la primissima cosa).
+    #  - buona_notizia: il fatto fresco positivo (MOL/incasso).
+    rientro = seen_topics.get('rientro_assenza') if 'rientro_assenza' not in spenti else None
     buona_notizia = seen_topics.get('buona_notizia') if 'buona_notizia' not in spenti else None
 
     # Solo topic noti (presenti nella gerarchia), non spenti, E azionabili/utili.
-    # La buona notizia e' esclusa qui: e' apertura narrativa, non una to-do.
+    # Le aperture sono escluse qui: sono narrativa, non to-do.
+    _APERTURE = {'rientro_assenza', 'buona_notizia'}
     candidati = [
         n for n in seen_topics.values()
         if str(n.get('topic_key') or '') in _TOPIC_PRIORITY
-        and str(n.get('topic_key') or '') != 'buona_notizia'
+        and str(n.get('topic_key') or '') not in _APERTURE
         and str(n.get('topic_key') or '') not in spenti
         and _is_actionable(n)
     ]
@@ -804,14 +833,19 @@ def _build_snapshot(
     azioni = [_action_for(n) for n in selected]
     sev_max = _severity_max(notifications)
 
-    # Apertura positiva come primo bullet per l'AI (anonimizzato come gli altri),
-    # cosi' la narrativa inizia dal bene e poi passa alle to-do (decisione Mattia:
-    # "prima il bene, poi la rogna"). Nel template entra come frase d'apertura.
-    apertura = _bullet_for(buona_notizia) if buona_notizia else None
-    bullets_ai = ([apertura] + bullets) if apertura else bullets
+    # Aperture come primi bullet per l'AI (anonimizzati come gli altri), cosi' la
+    # narrativa inizia dal contesto e poi passa alle to-do. Ordine: prima il
+    # bentornato (sei tornato), poi la buona notizia (decisione Mattia: "prima il
+    # bene, poi la rogna"). Nel template entrano come frasi d'apertura.
+    aperture_bullets = [
+        _bullet_for(n) for n in (rientro, buona_notizia) if n is not None
+    ]
+    bullets_ai = aperture_bullets + bullets
 
-    template_narrative = _compose_narrative(selected, sev_max, apertura_buona=buona_notizia)
-    if use_ai and (selected or buona_notizia):
+    template_narrative = _compose_narrative(
+        selected, sev_max, apertura_rientro=rientro, apertura_buona=buona_notizia,
+    )
+    if use_ai and (selected or rientro or buona_notizia):
         narrative = _narrate_with_ai(bullets_ai, template_narrative)
     else:
         narrative = template_narrative

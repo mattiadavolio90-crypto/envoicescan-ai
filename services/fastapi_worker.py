@@ -3397,6 +3397,185 @@ def _briefing_nome_referente(
     return nome, topics_disabled
 
 
+# Soglia di assenza oltre cui scatta il bentornato di rientro (giorni). Tenuta
+# alta di proposito: il messaggio deve essere RARO, solo per assenze vere.
+_RIENTRO_GIORNI = 7
+
+
+def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
+    """True se l'indice di Salute della gestione e' 'rosso' (< 50).
+
+    Duplicazione CONSAPEVOLE della sola SOGLIA dell'endpoint /api/home/salute
+    (stesse 4 voci a peso uguale, stessa fonte margini_mensili + fatture): qui
+    serve solo il colore, non le voci/CTA dell'endpoint, e quello non e' una
+    funzione pura riusabile. Se la formula della Salute cambia, allineare anche
+    qui. Best-effort: in caso di errore torna False (niente amo Assistenza, che
+    e' il fallback prudente).
+    """
+    from datetime import datetime as _dt2, timedelta as _td2
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        oggi = _dt2.now(tz=_ZI("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt2.now().date()
+
+    try:
+        inizio = oggi - _td2(days=29)
+        inizio_dt = _dt2.combine(inizio, _dt2.min.time())
+        if oggi.month == 1:
+            mc_anno, mc_mese = oggi.year - 1, 12
+        else:
+            mc_anno, mc_mese = oggi.year, oggi.month - 1
+
+        # Voce 1 + 4: fatture caricate di recente + % righe classificate.
+        righe_mese: List[Dict[str, Any]] = []
+        try:
+            resp = (
+                supabase_client.table("fatture")
+                .select("needs_review,categoria")
+                .eq("ristorante_id", ristorante_id)
+                .is_("deleted_at", "null")
+                .gte("created_at", inizio_dt.isoformat())
+                .execute()
+            )
+            righe_mese = resp.data or []
+        except Exception:
+            righe_mese = []
+        fatture_ok = len(righe_mese) > 0
+        tot_righe = len(righe_mese)
+        da_controllare = sum(1 for r in righe_mese if r.get("needs_review"))
+        pct_classificate = (
+            round((tot_righe - da_controllare) / tot_righe * 100) if tot_righe else 0
+        )
+
+        # Voci 2 + 3: fatturato + costo personale dell'ultimo mese completo.
+        fatturato_ok = False
+        personale_ok = False
+        try:
+            resp = (
+                supabase_client.table("margini_mensili")
+                .select(
+                    "fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,"
+                    "costo_dipendenti,costo_personale_extra"
+                )
+                .eq("ristorante_id", ristorante_id)
+                .eq("anno", mc_anno)
+                .eq("mese", mc_mese)
+                .execute()
+            )
+            netto = 0.0
+            for r in (resp.data or []):
+                netto += (
+                    float(r.get("fatturato_iva10") or 0)
+                    + float(r.get("fatturato_iva22") or 0)
+                    + float(r.get("altri_ricavi_noiva") or 0)
+                )
+                if (float(r.get("costo_dipendenti") or 0)
+                        + float(r.get("costo_personale_extra") or 0)) > 0:
+                    personale_ok = True
+            fatturato_ok = netto > 0
+        except Exception:
+            pass
+
+        score_fatture = 100 if fatture_ok else 0
+        score_fatturato = 100 if fatturato_ok else 0
+        score_personale = 100 if personale_ok else 0
+        score_classificate = pct_classificate if fatture_ok else 0
+        indice = round(
+            (score_fatture + score_fatturato + score_personale + score_classificate) / 4
+        )
+        return indice < 50
+    except Exception as exc:
+        logger.warning("briefing rientro: calcolo salute fallito: %s", exc)
+        return False
+
+
+def _briefing_rientro_assenza(
+    user_id: str, ristorante_id: Optional[str], supabase_client,
+) -> Optional[Dict[str, Any]]:
+    """Apertura di RIENTRO: bentornato dopo un'assenza prolungata.
+
+    Scatta se l'utente non vedeva un briefing da >= _RIENTRO_GIORNI giorni
+    (users.last_briefing_seen, indipendente da last_seen_at/last_login che il
+    login aggiorna prima del briefing). Il bentornato e' per TUTTI: mai un
+    rimprovero. SOLO se anche la Salute della gestione e' rossa (app incompleta)
+    il payload porta offri_assistenza=True, e il template aggiunge in coda l'amo
+    SOFT dell'Assistenza Continuativa. Un cliente diligente in ferie riceve solo
+    il bentornato (decisione Mattia: non insultare chi era solo via).
+
+    NON aggiorna last_briefing_seen qui: lo fa il chiamante DOPO aver letto il
+    valore, cosi' la lettura vede ancora il timestamp precedente. Best-effort:
+    ogni errore -> None (niente rientro, briefing normale).
+    """
+    if not user_id:
+        return None
+    from datetime import datetime as _dt2, timezone as _tz2
+    try:
+        resp = (
+            supabase_client.table("users")
+            .select("last_briefing_seen")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        rows = resp.data or []
+        if not rows:
+            return None
+        raw = rows[0].get("last_briefing_seen")
+        if not raw:
+            # Mai visto un briefing (utente nuovo / pre-feature): non e' un
+            # "rientro". Si parte a contare da ora (lo scrive il chiamante).
+            return None
+        try:
+            last = _dt2.fromisoformat(str(raw).replace("Z", "+00:00"))
+        except Exception:
+            return None
+        giorni = (_dt2.now(_tz2.utc) - last).days
+        if giorni < _RIENTRO_GIORNI:
+            return None
+
+        offri = bool(ristorante_id) and _salute_indice_rosso(ristorante_id, supabase_client)
+        return {
+            "id": "rientro-assenza-live",
+            "topic_key": "rientro_assenza",
+            "source_type": "live",
+            "severity": "info",
+            "title": "",
+            "body": "",
+            # CTA verso l'Assistenza solo se offriamo l'amo; altrimenti la Home
+            "action_page": "/assistenza?servizio=assistenza_continuativa" if offri else "/dashboard",
+            "payload": {
+                "giorni": giorni,
+                "offri_assistenza": offri,
+            },
+            "source_event_at": None,
+            "dedupe_key": "rientro-assenza-live",
+        }
+    except Exception as exc:
+        logger.warning("home_briefing: rientro assenza fallito: %s", exc)
+        return None
+
+
+def _briefing_aggiorna_last_seen(user_id: str, supabase_client) -> None:
+    """Segna 'ora' come ultima volta che l'utente ha visto un briefing.
+
+    Chiamato DOPO _briefing_rientro_assenza (che ha gia' letto il valore vecchio).
+    Best-effort: un errore non deve mai rompere il briefing.
+    """
+    if not user_id:
+        return
+    from datetime import datetime as _dt2, timezone as _tz2
+    try:
+        (
+            supabase_client.table("users")
+            .update({"last_briefing_seen": _dt2.now(_tz2.utc).isoformat()})
+            .eq("id", user_id)
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("home_briefing: update last_briefing_seen fallito: %s", exc)
+
+
 def _briefing_raccogli_notifiche(
     user_id: str, ristorante_id: Optional[str], supabase_client
 ) -> List[Dict[str, Any]]:
@@ -3582,6 +3761,20 @@ def _briefing_raccogli_notifiche(
                 notifications.insert(0, buona)
         except Exception as exc:
             logger.warning("home_briefing: buona notizia fallita: %s", exc)
+
+    # Apertura di RIENTRO dopo un'assenza prolungata: bentornato (+ amo soft
+    # Assistenza se l'app e' incompleta). Letto PRIMA di aggiornare il timestamp,
+    # poi marca "visto ora". Va in testa: "sei tornato" precede ogni altra cosa,
+    # quindi la prepende anche alla buona notizia. last_briefing_seen si aggiorna
+    # sempre (anche senza rientro), cosi' il contatore di assenza riparte ad ogni
+    # briefing realmente generato.
+    try:
+        rientro = _briefing_rientro_assenza(user_id, ristorante_id, supabase_client)
+        if rientro is not None:
+            notifications.insert(0, rientro)
+    except Exception as exc:
+        logger.warning("home_briefing: rientro assenza fallito: %s", exc)
+    _briefing_aggiorna_last_seen(user_id, supabase_client)
 
     return notifications
 
