@@ -290,6 +290,68 @@ function extractPivaDestinatario(xml: string): string | null {
   return null
 }
 
+// ─── Utility: estrazione indirizzo del destinatario da XML FatturaPA ──────────
+// Serve SOLO per i clienti multi-sede (più ristoranti con la stessa P.IVA): l'indirizzo
+// del CessionarioCommittente.Sede distingue a quale sede appartiene la fattura.
+// Nei dati FatturaPA il blocco è <Sede> con <Indirizzo>/<NumeroCivico>/<CAP>/<Comune>.
+
+export function extractIndirizzoDestinatario(xml: string): string | null {
+  const blockMatch = xml.match(
+    /<CessionarioCommittente\b[^>]*>([\s\S]*?)<\/CessionarioCommittente>/,
+  )
+  if (!blockMatch) return null
+  const block = blockMatch[1]
+
+  // Isola la <Sede> per non pescare per errore altri indirizzi (es. StabileOrganizzazione)
+  const sede = block.match(/<Sede\b[^>]*>([\s\S]*?)<\/Sede>/)?.[1] ?? block
+
+  const tag = (n: string): string =>
+    sede.match(new RegExp(`<${n}>\\s*([^<]+?)\\s*<\\/${n}>`, 'i'))?.[1]?.trim() ?? ''
+
+  const indirizzo = tag('Indirizzo')
+  const civico    = tag('NumeroCivico')
+  const cap       = tag('CAP')
+  const comune    = tag('Comune')
+
+  const joined = [indirizzo, civico, cap, comune].filter(Boolean).join(' ').trim()
+  return joined.length > 0 ? joined : null
+}
+
+// ─── Utility: normalizzazione indirizzo (gemella della SQL normalizza_indirizzo_match) ─
+// DEVE restare allineata a public.normalizza_indirizzo_match() (migration
+// 20260611140000_multi_sede_routing): stesse abbreviazioni, stesso output, così
+// l'indirizzo della fattura e quello salvato su ristoranti.indirizzo_match sono
+// confrontabili sulla stessa base.
+
+export function normalizeIndirizzo(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/\bv\.?le\b/g, 'viale')
+    .replace(/\bc\.?so\b/g, 'corso')
+    .replace(/\bp\.?(zza|za)\b/g, 'piazza')
+    .replace(/\bv\.?\b/g, 'via')
+    .replace(/\bstr\.?\b/g, 'strada')
+    .replace(/[^a-z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+// ─── Utility: punteggio di similarità fra due indirizzi normalizzati ──────────
+// Similarità di Dice sui token (parole): |intersezione*2| / (|A|+|B|).
+// Robusta a parole in più/in meno e all'ordine; ritorna [0..1].
+// Scelta su token (non bigrammi di caratteri) perché le sedi hanno indirizzi
+// COMPLETAMENTE diversi (via/civico/comune distinti) → il segnale forte è quante
+// parole-chiave coincidono, non la somiglianza ortografica.
+
+export function indirizzoSimilarity(a: string, b: string): number {
+  const ta = new Set(a.split(' ').filter(Boolean))
+  const tb = new Set(b.split(' ').filter(Boolean))
+  if (ta.size === 0 || tb.size === 0) return 0
+  let inter = 0
+  for (const t of ta) if (tb.has(t)) inter++
+  return (2 * inter) / (ta.size + tb.size)
+}
+
 // ─── Utility: estrazione metadati documento da XML (no PII) ───────────────────
 // Estrae solo dati strutturati non personali per payload_meta.
 // Non vengono estratti nomi, indirizzi, IBAN o altri dati personali.
@@ -320,9 +382,7 @@ function extractDocMeta(xml: string): Record<string, unknown> {
 
 // ─── Handler principale ───────────────────────────────────────────────────────
 
-// Porta configurabile via PORT env var (utile per test locali senza Docker)
-const _servePort = parseInt(Deno.env.get('PORT') ?? '8000', 10)
-Deno.serve({ port: _servePort }, async (req: Request): Promise<Response> => {
+export const handler = async (req: Request): Promise<Response> => {
   // Health check (utile per Supabase dashboard e test rapidi)
   if (req.method === 'GET') return new Response('OK', { status: 200 })
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 })
@@ -399,6 +459,7 @@ Deno.serve({ port: _servePort }, async (req: Request): Promise<Response> => {
   let xmlUrl:       string | null = null
   let xmlHash:      string | null = null
   let pivaRaw                     = 'UNKNOWN'     // sentinel: P.IVA non estratta
+  let indirizzoRaw: string | null = null         // indirizzo destinatario (routing multi-sede)
   let status                      = 'failed'      // default pessimistic
   let userId:       string | null = null
   let ristoranteId: string | null = null
@@ -483,6 +544,11 @@ Deno.serve({ port: _servePort }, async (req: Request): Promise<Response> => {
           // status rimane 'failed' — il worker non può fare nulla senza P.IVA
         }
 
+        // Indirizzo destinatario: serve solo a smistare i clienti multi-sede.
+        // Salvato in payload_meta per mostrarlo nella coda "da assegnare".
+        indirizzoRaw = extractIndirizzoDestinatario(xmlContent)
+        if (indirizzoRaw) meta.indirizzo_destinatario = indirizzoRaw
+
         // Metadati documento (no PII: solo tipo, numero, data, importo, p.iva emittente)
         Object.assign(meta, extractDocMeta(xmlContent))
       }
@@ -499,32 +565,82 @@ Deno.serve({ port: _servePort }, async (req: Request): Promise<Response> => {
   // ── 8. Lookup tenant: cerca P.IVA in tabella ristoranti ───────────────────
   // Solo se abbiamo una P.IVA valida e non siamo già in stato failed.
   // Se P.IVA non trovata → 'unknown_tenant' (mai scartare la fattura SDI).
+  //
+  // Multi-sede: una P.IVA può avere PIÙ ristoranti (sedi). Si recuperano tutti e:
+  //   • 1 sede           → assegna (caso normale, la stragrande maggioranza)
+  //   • N sedi + match    → assegna alla sede col punteggio indirizzo più alto,
+  //                         SE c'è distacco netto dalla seconda (decisione sicura)
+  //   • N sedi + ambiguo  → 'da_assegnare': il cliente sceglie in UI (caso estremo)
   if (status === 'pending') {
-    const { data: rist, error: ristErr } = await db
+    const { data: ristoranti, error: ristErr } = await db
       .from('ristoranti')
-      .select('user_id, id')
+      .select('user_id, id, indirizzo_match, nome_ristorante')
       .eq('partita_iva', pivaRaw)
       .eq('attivo', true)
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
 
     if (ristErr) {
       console.error(`[wh] Errore lookup ristoranti: ${ristErr.message}`)
       // Continua con unknown_tenant per non perdere la fattura
     }
 
-    if (rist) {
-      userId       = rist.user_id as string
-      ristoranteId = rist.id as string
-      // status rimane 'pending' — il worker elaborerà normalmente
-    } else {
+    const sedi = ristoranti ?? []
+
+    if (sedi.length === 0) {
       // P.IVA sconosciuta: salva il record, risolvi quando arriva il ristorante
       // via funzione SQL resolve_unknown_tenant(piva)
       status   = 'unknown_tenant'
       userId   = null
       ristoranteId = null
       console.info(`[wh] Tenant sconosciuto per piva=${pivaRaw} event_id=${eventId}`)
+
+    } else if (sedi.length === 1) {
+      // Caso mono-sede: comportamento storico invariato.
+      userId       = sedi[0].user_id as string
+      ristoranteId = sedi[0].id as string
+
+    } else {
+      // Caso multi-sede: smista per indirizzo. Lo user_id è lo stesso per tutte
+      // (stessa P.IVA = stesso cliente), quindi è noto fin da subito.
+      userId = sedi[0].user_id as string
+
+      // Soglie di sicurezza per l'assegnazione automatica:
+      //   - il match migliore deve superare MIN_SCORE (somiglianza minima accettabile)
+      //   - e distanziare il secondo di almeno MIN_GAP (nessuna ambiguità)
+      // Se non sono soddisfatte → 'da_assegnare' (mai assegnare a caso).
+      const MIN_SCORE = 0.40
+      const MIN_GAP   = 0.20
+
+      const target = indirizzoRaw ? normalizeIndirizzo(indirizzoRaw) : ''
+      const scored = sedi
+        .map(r => ({
+          id:    r.id as string,
+          score: target && r.indirizzo_match
+            ? indirizzoSimilarity(target, r.indirizzo_match as string)
+            : 0,
+        }))
+        .sort((a, b) => b.score - a.score)
+
+      const best   = scored[0]
+      const second = scored[1]
+      const gap    = best.score - (second?.score ?? 0)
+
+      if (best.score >= MIN_SCORE && gap >= MIN_GAP) {
+        ristoranteId = best.id
+        meta.routing = { mode: 'auto', score: best.score, gap }
+        console.info(`[wh] Multi-sede risolto auto piva=${pivaRaw} score=${best.score.toFixed(2)} gap=${gap.toFixed(2)}`)
+      } else {
+        // Ambiguo o indirizzo assente/non distintivo → coda manuale.
+        status       = 'da_assegnare'
+        ristoranteId = null
+        meta.routing = {
+          mode:       'manual',
+          best_score: best.score,
+          gap,
+          sedi_count: sedi.length,
+        }
+        console.info(`[wh] Multi-sede ambiguo → da_assegnare piva=${pivaRaw} best=${best.score.toFixed(2)} gap=${gap.toFixed(2)}`)
+      }
     }
   }
 
@@ -566,4 +682,12 @@ Deno.serve({ port: _servePort }, async (req: Request): Promise<Response> => {
   // Status 2xx → Invoicetronic non ritenta.
   // I retry interni sono gestiti dal worker tramite fatture_queue.status.
   return new Response('OK', { status: 200 })
-})
+}
+
+// Avvia il server solo quando il modulo è eseguito direttamente (deploy / serve),
+// NON quando è importato da un test unitario (import.meta.main === false).
+// Porta configurabile via PORT env var (utile per test locali senza Docker).
+if (import.meta.main) {
+  const _servePort = parseInt(Deno.env.get('PORT') ?? '8000', 10)
+  Deno.serve({ port: _servePort }, handler)
+}

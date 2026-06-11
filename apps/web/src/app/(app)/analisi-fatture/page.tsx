@@ -3,6 +3,7 @@ import { requirePagina } from "@/lib/page-guard";
 import { getCurrentUser } from "@/lib/auth";
 import { contaTopicAttivo } from "@/lib/notifiche";
 import { TriggerHint } from "@/components/trigger-hint";
+import { CodaDaAssegnare } from "@/components/fatture/coda-da-assegnare";
 import { triggerAbilitati, valutaTrigger } from "@/lib/trigger-servizi";
 import {
   fetchArticoliAggregati,
@@ -119,6 +120,9 @@ export default async function AnalisiFatturePage({
         hint="Cosa hai comprato, da chi e quanto incide"
         actions={<UploadModal />}
       />
+
+      {/* Coda fatture multi-sede da assegnare (si auto-nasconde se vuota o mono-sede) */}
+      <CodaDaAssegnare />
 
       {/* Filtri temporali */}
       <FiltriPeriodo

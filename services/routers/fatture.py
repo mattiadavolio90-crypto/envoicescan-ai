@@ -906,3 +906,90 @@ def aggiorna_categoria_riga(
         {"categoria": categoria, "needs_review": False}
     ).eq("id", riga_id).execute()
     return {"ok": True, "id": riga_id, "categoria": categoria}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DA ASSEGNARE — coda fatture multi-sede in attesa di scelta sede dal cliente
+# ─────────────────────────────────────────────────────────────────────────────
+# Quando il webhook Invoicetronic non riesce a smistare automaticamente una fattura
+# fra le sedi di un cliente (indirizzo ambiguo), la mette in status='da_assegnare'.
+# Qui il cliente la vede e sceglie la sede; la RPC assegna_fattura_a_sede() completa.
+
+@router.get("/api/fatture/da-assegnare", dependencies=[Depends(_verify_worker_key)])
+def fatture_da_assegnare(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Elenca le fatture in attesa di assegnazione sede per l'account chiamante.
+
+    Non espone l'XML: solo i metadati non-PII salvati dal webhook in payload_meta
+    (fornitore, numero, data, importo) + l'indirizzo del destinatario letto in
+    fattura, che è ciò che serve al cliente per capire a quale sede appartiene.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+
+    resp = (
+        sb.table("fatture_queue")
+        .select("id, piva_raw, payload_meta, created_at")
+        .eq("user_id", user_id)
+        .eq("status", "da_assegnare")
+        .order("created_at", desc=True)
+        .execute()
+    )
+    items = []
+    for r in (resp.data or []):
+        meta = r.get("payload_meta") or {}
+        items.append({
+            "queue_id": r["id"],
+            "fornitore": meta.get("piva_cedente"),
+            "numero_fattura": meta.get("numero_fattura"),
+            "data_fattura": meta.get("data_fattura"),
+            "importo_totale": meta.get("importo_totale"),
+            "indirizzo_destinatario": meta.get("indirizzo_destinatario"),
+            "created_at": r.get("created_at"),
+        })
+    return {"items": items, "count": len(items)}
+
+
+class AssegnaSedeBody(BaseModel):
+    queue_id: int
+    ristorante_id: str
+
+
+@router.post("/api/fatture/assegna-sede", dependencies=[Depends(_verify_worker_key)])
+def fatture_assegna_sede(
+    body: AssegnaSedeBody,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Assegna una fattura 'da_assegnare' a una sede del cliente e la rimette in coda.
+
+    Verifica prima che il record di coda appartenga al chiamante (la RPC fa già il
+    guard cross-tenant lato DB, ma controlliamo anche qui per restituire un 404
+    pulito invece di un'eccezione SQL).
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    rid = (body.ristorante_id or "").strip()
+    if not rid:
+        raise HTTPException(status_code=400, detail="ristorante_id mancante")
+
+    owns = (
+        sb.table("fatture_queue")
+        .select("id")
+        .eq("id", body.queue_id)
+        .eq("user_id", user_id)
+        .eq("status", "da_assegnare")
+        .execute()
+    )
+    if not owns.data:
+        raise HTTPException(status_code=404, detail="Fattura non trovata o già assegnata")
+
+    res = sb.rpc(
+        "assegna_fattura_a_sede",
+        {"p_queue_id": body.queue_id, "p_ristorante_id": rid},
+    ).execute()
+    assegnata = bool(res.data)
+    if not assegnata:
+        # Race: assegnata da un altro click nel frattempo. Non è un errore per la UI.
+        return {"ok": False, "motivo": "gia_assegnata"}
+    return {"ok": True, "queue_id": body.queue_id, "ristorante_id": rid}

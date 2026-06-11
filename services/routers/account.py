@@ -260,3 +260,81 @@ def account_svuota_dati(
         admin_user.get("email"), admin_id, deleted,
     )
     return {"ok": True, "deleted": deleted}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SEDI — switch fra ristoranti dello stesso account (clienti multi-sede)
+# ─────────────────────────────────────────────────────────────────────────────
+# Un cliente con una sola P.IVA può avere più ristoranti (sedi). La sede attiva è
+# persistita su users.ultimo_ristorante_id e letta da _resolve_ristorante_id().
+
+@router.get("/api/account/sedi", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
+def account_sedi(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """Elenca le sedi (ristoranti attivi) dell'account e indica quella attiva.
+
+    La UI mostra il selettore di sede SOLO se len(sedi) > 1.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+
+    resp = (
+        sb.table("ristoranti")
+        .select("id, nome_ristorante, indirizzo, comune")
+        .eq("user_id", user_id)
+        .eq("attivo", True)
+        .order("created_at")
+        .execute()
+    )
+    sedi = resp.data or []
+    attiva = _resolve_ristorante_id(user, sb)
+
+    return {
+        "sedi": [
+            {
+                "id": str(s["id"]),
+                "nome": s.get("nome_ristorante") or "Sede",
+                "indirizzo": s.get("indirizzo"),
+                "comune": s.get("comune"),
+                "attiva": str(s["id"]) == str(attiva),
+            }
+            for s in sedi
+        ],
+        "ristorante_attivo_id": str(attiva) if attiva else None,
+    }
+
+
+class CambiaSedeBody(BaseModel):
+    ristorante_id: str
+
+
+@router.post("/api/account/cambia-sede", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
+def account_cambia_sede(
+    body: CambiaSedeBody,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Imposta la sede attiva dell'account (users.ultimo_ristorante_id).
+
+    Guard: il ristorante deve appartenere al chiamante ed essere attivo, così non
+    si può puntare la propria sessione al ristorante di un altro cliente.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    rid = (body.ristorante_id or "").strip()
+    if not rid:
+        raise HTTPException(status_code=400, detail="ristorante_id mancante")
+
+    chk = (
+        sb.table("ristoranti")
+        .select("id")
+        .eq("id", rid)
+        .eq("user_id", user_id)
+        .eq("attivo", True)
+        .execute()
+    )
+    if not chk.data:
+        raise HTTPException(status_code=404, detail="Sede non trovata per questo account")
+
+    sb.table("users").update({"ultimo_ristorante_id": rid}).eq("id", user_id).execute()
+    return {"ok": True, "ristorante_attivo_id": rid}

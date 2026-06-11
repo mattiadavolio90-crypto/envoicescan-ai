@@ -4,11 +4,13 @@ import {
   BarChart3,
   CalendarCheck,
   CalendarDays,
+  Check,
   ChevronsUpDown,
   FileText,
   Home,
   LifeBuoy,
   LogOut,
+  MapPin,
   Scale,
   Search,
   Settings,
@@ -19,6 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -39,6 +42,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
@@ -66,6 +71,14 @@ type AppSidebarProps = {
   pagineAbilitate?: string[] | null;
 };
 
+type Sede = {
+  id: string;
+  nome: string;
+  indirizzo: string | null;
+  comune: string | null;
+  attiva: boolean;
+};
+
 export function AppSidebar({
   userEmail = "utente@oneflux.it",
   userInitials = "U",
@@ -89,6 +102,48 @@ export function AppSidebar({
       toast.error("Errore durante il logout");
     }
   }
+
+  // ── Sedi (clienti multi-ristorante) ───────────────────────────────────────
+  // Il selettore di sede appare SOLO se l'account ha più di una sede. Per i
+  // clienti mono-sede (la stragrande maggioranza) il menu resta com'era.
+  const [sedi, setSedi] = useState<Sede[]>([]);
+  const [switching, setSwitching] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/account/sedi", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (alive && d?.sedi) setSedi(d.sedi as Sede[]);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  async function handleCambiaSede(ristoranteId: string) {
+    if (switching) return;
+    setSwitching(true);
+    try {
+      const res = await fetch("/api/account/cambia-sede", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ristorante_id: ristoranteId }),
+      });
+      if (!res.ok) throw new Error();
+      // Ricarica i dati della pagina con la nuova sede attiva (KPI, fatture, margini
+      // sono filtrati per ristorante_id lato server → serve un refresh completo).
+      router.refresh();
+      toast.success("Sede cambiata");
+    } catch {
+      toast.error("Impossibile cambiare sede");
+    } finally {
+      setSwitching(false);
+    }
+  }
+
+  const hasMultiSede = sedi.length > 1;
 
   return (
     <Sidebar collapsible="icon">
@@ -200,8 +255,37 @@ export function AppSidebar({
               <DropdownMenuContent
                 side="top"
                 align="start"
-                className="w-56"
+                className="w-64"
               >
+                {hasMultiSede && (
+                  <>
+                    <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <MapPin className="size-3.5" />
+                      Sedi
+                    </DropdownMenuLabel>
+                    {sedi.map((s) => (
+                      <DropdownMenuItem
+                        key={s.id}
+                        disabled={switching || s.attiva}
+                        onClick={() => handleCambiaSede(s.id)}
+                        className="flex items-start gap-2 py-2.5"
+                      >
+                        <Check
+                          className={`size-4 mt-0.5 shrink-0 ${s.attiva ? "opacity-100 text-sky-500" : "opacity-0"}`}
+                        />
+                        <span className="flex flex-col leading-tight">
+                          <span className="text-sm font-medium">{s.nome}</span>
+                          {(s.indirizzo || s.comune) && (
+                            <span className="text-xs text-muted-foreground truncate max-w-[180px]">
+                              {[s.indirizzo, s.comune].filter(Boolean).join(" · ")}
+                            </span>
+                          )}
+                        </span>
+                      </DropdownMenuItem>
+                    ))}
+                    <DropdownMenuSeparator />
+                  </>
+                )}
                 <DropdownMenuItem variant="destructive" onClick={handleLogout} className="text-base py-3">
                   <LogOut className="size-5" />
                   Esci
