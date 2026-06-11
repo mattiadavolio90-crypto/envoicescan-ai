@@ -993,3 +993,59 @@ def fatture_assegna_sede(
         # Race: assegnata da un altro click nel frattempo. Non è un errore per la UI.
         return {"ok": False, "motivo": "gia_assegnata"}
     return {"ok": True, "queue_id": body.queue_id, "ristorante_id": rid}
+
+
+class SpostaSedeBody(BaseModel):
+    file_origine: str
+    ristorante_id: str
+
+
+@router.post("/api/fatture/sposta-sede", dependencies=[Depends(_verify_worker_key)])
+def fatture_sposta_sede(
+    body: SpostaSedeBody,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """Sposta una fattura GIÀ acquisita verso un'altra sede dello stesso cliente.
+
+    Correzione a posteriori del routing multi-sede: se una fattura è finita nella
+    sede sbagliata (es. indirizzo fornitore errato ma plausibile), il cliente la
+    sposta dal dettaglio fattura (Scadenziario). La RPC sposta_fattura_a_sede fa il
+    guard anti cross-tenant lato DB; qui controlliamo che la fattura appartenga al
+    chiamante per restituire un 404 pulito invece di un'eccezione SQL.
+    """
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    user_id = str(user["id"])
+    rid = (body.ristorante_id or "").strip()
+    fo = (body.file_origine or "").strip()
+    if not rid or not fo:
+        raise HTTPException(status_code=400, detail="Parametri mancanti")
+
+    owns = (
+        sb.table("fatture")
+        .select("id")
+        .eq("file_origine", fo)
+        .eq("user_id", user_id)
+        .is_("deleted_at", "null")
+        .limit(1)
+        .execute()
+    )
+    if not owns.data:
+        raise HTTPException(status_code=404, detail="Fattura non trovata")
+
+    try:
+        res = sb.rpc(
+            "sposta_fattura_a_sede",
+            {"p_user_id": user_id, "p_file_origine": fo, "p_ristorante_id": rid},
+        ).execute()
+    except Exception as exc:
+        # Guard DB (sede non del cliente / non attiva): non esporre l'SQL grezzo.
+        logger.warning("sposta_fattura_a_sede fallita user=%s: %s", user_id, exc)
+        raise HTTPException(status_code=400, detail="Sede non valida")
+
+    spostate = int(res.data or 0)
+    # Lo spostamento cambia il ristorante_id delle righe: invalida tutta la cache
+    # (azione rara, non hot-path) così sia la sede di origine che quella di
+    # destinazione ricaricano dati freschi. La cache è chiavata per ristorante.
+    _invalidate_fatture_rows_cache()
+    return {"ok": spostate > 0, "righe_spostate": spostate, "ristorante_id": rid}

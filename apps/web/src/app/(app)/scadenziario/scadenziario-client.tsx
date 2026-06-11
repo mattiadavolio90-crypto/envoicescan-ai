@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } fro
 import { toast } from "sonner";
 import {
   AlertTriangle, ArchiveRestore, Calendar, CalendarDays, Check, ChevronDown,
-  ChevronRight, Filter, List, Loader2, Pencil, Search, Settings2, Trash2, X,
+  ChevronRight, Filter, List, Loader2, MapPin, Pencil, Search, Settings2, Trash2, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -462,6 +462,8 @@ type RigaFattura = {
   categoria: string | null;
 };
 
+type SedeOpt = { id: string; nome: string; indirizzo: string | null; comune: string | null; attiva?: boolean };
+
 type PeekDialogProps = {
   doc: Documento | null;
   onClose: () => void;
@@ -479,6 +481,11 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina }: PeekDial
   const [loadingRighe, setLoadingRighe] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Sedi del cliente: la sezione "Sposta in altra sede" compare SOLO se l'account
+  // ha più di una sede (clienti multi-sede con P.IVA condivisa). Per gli altri
+  // resta invisibile: niente UI inutile.
+  const [sedi, setSedi] = useState<SedeOpt[]>([]);
+  const [spostandoVerso, setSpostandoVerso] = useState<string | null>(null);
 
   useEffect(() => {
     if (doc) { setScadenzaInput(doc.scadenza_effettiva ?? ""); }
@@ -487,7 +494,40 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina }: PeekDial
     setRighe([]);
     setDeleteConfirm(false);
     setDeleting(false);
+    setSpostandoVerso(null);
   }, [doc]);
+
+  // Carica le sedi una sola volta all'apertura del primo dettaglio (lista breve,
+  // stabile per l'account). Se la fetch fallisce o c'è una sola sede, la sezione
+  // sposta semplicemente non compare.
+  useEffect(() => {
+    if (!doc || sedi.length > 0) return;
+    let alive = true;
+    fetch("/api/account/sedi", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d?.sedi) setSedi(d.sedi as SedeOpt[]); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [doc, sedi.length]);
+
+  async function handleSposta(ristoranteId: string) {
+    if (!doc || spostandoVerso) return;
+    setSpostandoVerso(ristoranteId);
+    try {
+      const res = await fetch("/api/fatture/sposta-sede", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ file_origine: doc.file_origine, ristorante_id: ristoranteId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) throw new Error(data?.detail || data?.error);
+      toast.success("Fattura spostata nell'altra sede");
+      onClose();
+    } catch {
+      toast.error("Non sono riuscito a spostare la fattura. Riprova.");
+      setSpostandoVerso(null);
+    }
+  }
 
   async function handleDelete() {
     if (!doc) return;
@@ -694,6 +734,41 @@ function PeekDialog({ doc, onClose, onPaga, onSetScadenza, onElimina }: PeekDial
                   </Button>
                 )}
               </div>
+
+              {/* Sposta in altra sede — solo clienti multi-sede.
+                  Corregge a posteriori un'assegnazione automatica sbagliata del
+                  routing multi-sede (fattura finita nella sede sbagliata). */}
+              {sedi.length > 1 && (
+                <>
+                  <Separator />
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="size-4 text-muted-foreground" />
+                      <Label className="text-sm font-medium">Sposta in un&apos;altra sede</Label>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Se questa fattura è finita nella sede sbagliata, spostala qui.
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-0.5">
+                      {sedi.filter((s) => !s.attiva).map((s) => (
+                        <Button
+                          key={s.id}
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          disabled={spostandoVerso !== null}
+                          onClick={() => handleSposta(s.id)}
+                        >
+                          {spostandoVerso === s.id
+                            ? <Loader2 className="size-3.5 animate-spin" />
+                            : <MapPin className="size-3.5" />}
+                          {s.nome}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
 
               <Separator />
 
