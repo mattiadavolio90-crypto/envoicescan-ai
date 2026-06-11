@@ -5,7 +5,7 @@ Documento operativo: cosa è stato fatto, cosa resta, e le decisioni prese su co
 NON fare. È la nostra versione rielaborata del brief iniziale, con priorità ribaltate
 rispetto al prompt originale.
 
-Ultimo aggiornamento: 2026-06-10 (aggiunti trigger contestuali soft)
+Ultimo aggiornamento: 2026-06-11 (trigger Assistenza = bentornato di rientro)
 
 ---
 
@@ -102,6 +102,22 @@ restano pulite e fidate, qui non entrano proposte commerciali.
   clienti esistenti), presente = spento. Nessuna migration, nessuna modifica al
   worker. Lettura centralizzata in `triggerAbilitati()`.
 
+### Trigger Assistenza = bentornato di rientro (briefing)
+Il 4° trigger (Assistenza Continuativa) NON è un hint in pagina come gli altri:
+vive nel **briefing Home**, perché "gestiamo noi al posto tuo" ha senso solo a chi
+fatica, non come banner generico. Logica (decisione Mattia):
+- Bentornato per **tutti** dopo **≥7 giorni** di assenza (`users.last_briefing_seen`,
+  colonna nuova: `last_seen_at`/`last_login` sono già aggiornati al login, darebbero
+  sempre 0). Il briefing legge il valore e poi lo aggiorna.
+- L'amo soft "possiamo gestire noi l'app" si aggiunge **solo se** la Salute della
+  gestione è **rossa** (indice < 50 = app incompleta). Chi è diligente ma in ferie
+  riceve **solo** il bentornato — mai un "ti sei arreso".
+- È un'**apertura** del briefing (come la buona notizia), non una card to-do: non
+  si ignora, non conta per `tutto_ok`. Precede tutto il resto.
+- File: `_briefing_rientro_assenza` / `_salute_indice_rosso` in `fastapi_worker.py`;
+  topic `rientro_assenza` in `daily_briefing_service.py`. Gira 1×/giorno in
+  rigenerazione, non a ogni load.
+
 ---
 
 ## 🔜 DA FARE (nostra roadmap, in ordine di priorità)
@@ -120,18 +136,48 @@ Far arrivare lead più qualificati nella coda admin.
 - Rischio basso, ritorno alto.
 
 ### 2. Rifiniture dei trigger contestuali — quando servono
-La base dei trigger è fatta (vedi sopra). Restano migliorie *opzionali*, da fare
-solo se l'uso reale le richiede — non prima:
-- **Trigger Assistenza Continuativa**: oggi non scatta da nessuna parte. Il suo
-  segnale ("uso discontinuo / vuole delegare") richiederebbe un dato nuovo
-  (giorni dall'ultimo accesso / inattività). Volutamente NON implementato per non
-  inventare un calcolo: si aggancia quando avremo un segnale solido e raro.
+La base dei trigger è fatta (vedi sopra). Il trigger Assistenza è ora coperto dal
+**bentornato di rientro** nel briefing (vedi sezione FATTO). Restano migliorie
+*opzionali*, da fare solo se l'uso reale le richiede — non prima:
 - **Segnale "poche fatture" sul Check-up**: oggi il Check-up scatta solo sulle
-  righe da classificare. Aggiungere "pochi dati caricati" serve un conteggio
-  fatture lato server in pagina (ora non c'è pulito): da valutare.
+  righe da classificare (`uncategorized_rows`). Aggiungere "pochi dati caricati"
+  è fattibile riusando `kpi.num_righe` già in pagina `/analisi-fatture`, **con
+  guardia sul preset**: scatta solo su periodi larghi (es. "anno corrente"), dove
+  "poche righe" significa davvero "pochi dati" e non "ho filtrato un mese vuoto".
+  Il campo `fattureTotali` è già predisposto in `valutaTrigger`. Mezz'ora,
+  frontend, zero backend. Da fare quando vuoi.
 - **Cooldown lato server invece di `localStorage`**: oggi il "non ripeterlo
-  subito" è per-dispositivo (localStorage). Se serve renderlo per-utente
-  (cross-device), si sposta su DB. Per ora basta così.
+  subito" (14gg) è per-dispositivo. Renderlo per-utente cross-device serve una
+  tabella `trigger_dismissals` + 2 endpoint. **Sconsigliato ora**: con pochi
+  clienti il costo supera il beneficio. Promuovere solo se un cliente reale si
+  lamenta di rivedere i suggerimenti su un secondo dispositivo.
+
+### 3. Premio costanza / streak — PARCHEGGIATO (mini-progetto, da progettare)
+Idea (Mattia): spingere l'uso dell'app premiando chi inserisce dati con
+costanza. Es. **21 giorni attivi → check-up gratuito**. È *offensivo* (spingere
+chi c'è), distinto dal bentornato di rientro che è *difensivo* (recuperare chi
+sparisce). NON ancora implementato: è un mini-progetto backend, non un ritocco.
+Decisioni da prendere PRIMA di scrivere codice (il bivio che fa o rompe la cosa):
+- **Cosa conta come "giorno valido"** — il nodo centrale:
+  - *semplice (consigliato per partire):* è entrato **e** ha inserito almeno un
+    dato (OR: fatturato / incasso / fattura / turno). Non esclude chi non ha
+    personale.
+  - *"tutte le attività" (AND):* più forte ma rischioso — va personalizzato per
+    ristorante (solo le attività che quel cliente usa davvero), altrimenti il
+    diligente "perde" per colpa nostra. Da progettare con cura.
+- **21 su 31 _rolling_, non del mese di calendario** (chi inizia il 20 non parte
+  perdente; nessuno riparte da zero il 1°).
+- **Tolleranza 1 giorno (streak freeze):** saltare una domenica non azzera 20
+  giorni. Senza, quasi nessuno arriva a 21 → frustrazione invece di premio.
+- **Progresso visibile** nella card Salute ("Sei a 14 giorni: ancora 7 per il
+  check-up gratuito 🎁"): motiva solo se lo vede avvicinarsi.
+- **Check-up gratis = COUPON, non automatismo:** sblocca un diritto (badge
+  "richiedilo"), che porta al lead normale di `/assistenza` con un flag. Coerente
+  con la decisione "il check-up si eroga a mano, niente automazione in-app".
+- **Anti-furbata:** vale l'inserimento dati, non il solo login (altrimenti premi
+  21 aperture a vuoto).
+- **Modello dati:** tabella `ristorante_streak` (streak_corrente, streak_record,
+  ultima_data_valida, checkup_gratis_sbloccato/usato), aggiornata su evento.
 
 ---
 
