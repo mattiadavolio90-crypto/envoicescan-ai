@@ -3609,6 +3609,13 @@ def _briefing_raccogli_notifiche(
     # prodotti + tag. Se non ci sono alert rilevanti, rimuovo il price_alert
     # legacy (zero rumore). I numeri li calcola il backend, l'AI racconta.
     if ristorante_id:
+        # Il legacy price_alert da upload NON ha filtro peso (Pareto): segnala
+        # qualsiasi prodotto rincarato oltre soglia, marginali compresi (es.
+        # "LIMONI TRATTATI"). Va rimosso SEMPRE che subentri il motore live, anche
+        # se questo poi va in timeout/errore: meglio nessun alert prezzi che un
+        # alert sbagliato sui marginali. Per questo la rimozione sta PRIMA del
+        # calcolo, fuori dal try — altrimenti su un timeout il legacy resterebbe.
+        notifications = [n for n in notifications if n.get("topic_key") != "price_alert"]
         try:
             from services.price_impact_service import calcola_alert_prezzi_impatto
             # Budget di tempo: l'alert prezzi e' un "di piu'" del briefing, non deve
@@ -3624,7 +3631,6 @@ def _briefing_raccogli_notifiche(
                 supabase_client=supabase_client,
             )
             ap = _fut.result(timeout=_ALERT_PREZZI_TIMEOUT_SEC)
-            notifications = [n for n in notifications if n.get("topic_key") != "price_alert"]
             if ap.get("count") and ap.get("top"):
                 top = ap["top"]
                 notifications.append({

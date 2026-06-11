@@ -57,6 +57,22 @@ def _filtra_finestra(df: pd.DataFrame, giorni: int) -> pd.DataFrame:
     return out.drop(columns=["_data_dt"], errors="ignore")
 
 
+def _pareto_key(nome: str) -> str:
+    """Chiave normalizzata per confrontare prodotti tra Pareto e calcola_alert.
+
+    `calcola_alert` espone il prodotto come `(Descrizione.mode + nota)[:50]`
+    (vedi db_service): puo' avere case originale, suffisso ` ⚠️ >6m` ed essere
+    troncato a 50 char. Il df grezzo ha invece la `Descrizione` piena. Per far
+    combaciare i due lati confronto su una chiave comune: upper+strip, suffisso
+    rimosso, troncata agli stessi 50 char. Cosi' il filtro peso non fallisce in
+    modo silenzioso su nomi lunghi o stagionali.
+    """
+    s = str(nome).strip().upper()
+    if s.endswith("⚠️ >6M"):
+        s = s[: -len("⚠️ >6M")].strip()
+    return s[:50]
+
+
 def _prodotti_pareto(df: pd.DataFrame, quota: float = _PARETO_QUOTA) -> set:
     """Prodotti che cumulano la `quota` (es. 80%) della spesa food del periodo.
 
@@ -67,13 +83,20 @@ def _prodotti_pareto(df: pd.DataFrame, quota: float = _PARETO_QUOTA) -> set:
     sono pochi pilastri; su uno frammentato sono di piu'. La soglia "peso" si
     adatta da sola. Cosi' i marginali (limoni, accessori) restano fuori dagli
     alert prezzi a prescindere da quanto rincarino in percentuale.
+
+    Raggruppa per `Descrizione` (la colonna che il df grezzo ha davvero: la
+    `Prodotto` nasce solo dentro calcola_alert). Restituisce chiavi normalizzate
+    via `_pareto_key`, le stesse usate poi da `_alert_prodotti` per il match.
     """
-    if df.empty or "Prodotto" not in df.columns or "TotaleRiga" not in df.columns:
+    if df.empty or "Descrizione" not in df.columns or "TotaleRiga" not in df.columns:
         return set()
     df_fb = df[~df["Categoria"].isin(CATEGORIE_SPESE_GENERALI)] if "Categoria" in df.columns else df
     spesa = (
-        df_fb.assign(_t=pd.to_numeric(df_fb["TotaleRiga"], errors="coerce").fillna(0.0))
-        .groupby("Prodotto")["_t"].sum()
+        df_fb.assign(
+            _t=pd.to_numeric(df_fb["TotaleRiga"], errors="coerce").fillna(0.0),
+            _k=df_fb["Descrizione"].map(_pareto_key),
+        )
+        .groupby("_k")["_t"].sum()
         .sort_values(ascending=False)
     )
     spesa = spesa[spesa > 0]
@@ -105,10 +128,11 @@ def _alert_prodotti(
         return []
 
     impatto = pd.to_numeric(df_alert["Impatto_Stimato"], errors="coerce").fillna(0)
+    chiave_pareto = df_alert["Prodotto"].map(_pareto_key)
     df_alert = df_alert[
         (df_alert["Aumento_Perc"] >= soglia_perc_cliente)
         & (impatto > 0)
-        & (df_alert["Prodotto"].astype(str).isin(prodotti_pareto))
+        & (chiave_pareto.isin(prodotti_pareto))
     ]
     if df_alert.empty:
         return []
