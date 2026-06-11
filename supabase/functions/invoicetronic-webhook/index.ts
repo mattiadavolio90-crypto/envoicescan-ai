@@ -684,10 +684,12 @@ export const handler = async (req: Request): Promise<Response> => {
   return new Response('OK', { status: 200 })
 }
 
-// Avvia il server solo quando il modulo è eseguito direttamente (deploy / serve),
-// NON quando è importato da un test unitario (import.meta.main === false).
-// Porta configurabile via PORT env var (utile per test locali senza Docker).
-if (import.meta.main) {
+// Avvia il server tranne quando importato da un test unitario.
+// Fail-safe per produzione: in Supabase Edge il modulo è l'entry point e DEVE
+// servire; ci tiriamo indietro SOLO se un test imposta esplicitamente
+// WEBHOOK_TEST_MODE=1 (così non dipendiamo da import.meta.main, il cui valore
+// può variare col bundler Supabase). Porta configurabile via PORT env var.
+if (Deno.env.get('WEBHOOK_TEST_MODE') !== '1') {
   const _servePort = parseInt(Deno.env.get('PORT') ?? '8000', 10)
   Deno.serve({ port: _servePort }, handler)
 }

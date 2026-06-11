@@ -9,11 +9,16 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import { assert, assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts'
-import {
+
+// Impedisce a index.ts di avviare Deno.serve quando lo importiamo per testare le
+// funzioni pure (deve precedere l'import statico → usiamo un import dinamico sotto).
+Deno.env.set('WEBHOOK_TEST_MODE', '1')
+
+const {
   extractIndirizzoDestinatario,
   normalizeIndirizzo,
   indirizzoSimilarity,
-} from './index.ts'
+} = await import('./index.ts')
 
 // ─── normalizeIndirizzo: deve restare allineata alla SQL normalizza_indirizzo_match ─
 
