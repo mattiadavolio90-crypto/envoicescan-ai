@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { MapPin } from "lucide-react";
+import { MapPin, AlertTriangle } from "lucide-react";
 
 type FatturaDaAssegnare = {
   queue_id: number;
@@ -17,9 +17,11 @@ type FatturaDaAssegnare = {
 
 type Sede = { id: string; nome: string; indirizzo: string | null; comune: string | null };
 
-// Banner che appare SOLO ai clienti multi-sede quando una fattura SDI non è stata
-// smistata automaticamente (indirizzo ambiguo). Il cliente sceglie la sede e la
-// fattura rientra in elaborazione. Per i clienti mono-sede non renderizza nulla.
+// Avviso in Home (con le notifiche) che appare SOLO ai clienti multi-sede quando
+// una fattura SDI non è stata smistata automaticamente (indirizzo assente o
+// ambiguo). Il cliente sceglie la sede e la fattura rientra in elaborazione.
+// Per i clienti mono-sede non renderizza nulla. Linguaggio visivo allineato al
+// widget notifiche della Home (bordo sinistro ambra, icona severity).
 export function CodaDaAssegnare() {
   const router = useRouter();
   const [items, setItems] = useState<FatturaDaAssegnare[]>([]);
@@ -68,19 +70,21 @@ export function CodaDaAssegnare() {
   if (items.length === 0 || sedi.length < 2) return null;
 
   return (
-    <div className="rounded-lg border border-amber-400/40 bg-amber-50 dark:bg-amber-950/20 p-4 space-y-3">
-      <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-        <MapPin className="size-4" />
-        <span className="font-medium text-sm">
-          {items.length === 1
-            ? "1 fattura da assegnare a una sede"
-            : `${items.length} fatture da assegnare a una sede`}
-        </span>
+    <div className="rounded-xl border border-l-4 border-l-amber-500 bg-card p-4 space-y-3">
+      <div className="flex items-start gap-3">
+        <AlertTriangle className="size-5 text-amber-500 shrink-0" />
+        <div className="min-w-0">
+          <p className="text-sm font-medium">
+            {items.length === 1
+              ? "1 fattura da assegnare a una sede"
+              : `${items.length} fatture da assegnare a una sede`}
+          </p>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Non sono riuscito a capire da solo a quale sede appartengono. Scegli tu la sede giusta:
+            la fattura rientra subito in elaborazione.
+          </p>
+        </div>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Non siamo riusciti a capire automaticamente a quale sede appartengono queste fatture.
-        Scegli tu la sede corretta.
-      </p>
 
       <ul className="space-y-3">
         {items.map((f) => (
