@@ -66,12 +66,23 @@ logger = logging.getLogger("worker.run")
 # Railway riavvierebbe il container se uscisse; con sleep infinito resta vivo
 # ma senza consumare CPU o fare chiamate DB/API.
 # Per riattivare: imposta WORKER_ENABLED=1 (o rimuovi la variabile) e redeploy.
+#
+# ATTENZIONE: con il worker in pausa la coda ricavi NON viene consumata e gli
+# incassi dei clienti spariscono dall'app (incidente 9-11 giu 2026: killswitch
+# lasciato attivo per sbaglio dopo un deploy). Il workflow ricavi_queue_monitor
+# allarma via email se la coda resta bloccata, ma il killswitch va trattato
+# come stato di manutenzione TEMPORANEO, mai permanente. Il loro qui sotto
+# ribadisce ogni ora da quanto tempo siamo in pausa per renderlo evidente.
 if os.environ.get("WORKER_ENABLED", "1").strip() in ("0", "false", "False", "no"):
-    logger.warning(
-        "⏸️  WORKER_ENABLED=0 — worker in pausa (killswitch attivo). "
-        "Per riattivare: imposta WORKER_ENABLED=1 e rideploya."
-    )
+    _paused_since = time.monotonic()
     while True:
+        _hours_paused = int((time.monotonic() - _paused_since) // 3600)
+        logger.warning(
+            "⏸️  WORKER_ENABLED=0 — worker in PAUSA da %dh (killswitch attivo). "
+            "La coda ricavi/fatture NON viene consumata. "
+            "Per riattivare: imposta WORKER_ENABLED=1 e rideploya.",
+            _hours_paused,
+        )
         time.sleep(3600)  # dorme 1h alla volta, nessuna chiamata esterna
 
 WORKER_POLL_INTERVAL_SECONDS = int(os.environ.get("WORKER_POLL_INTERVAL_SECONDS", "15"))

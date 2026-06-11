@@ -1,0 +1,94 @@
+name: Ricavi Queue Monitor - ONEFLUX
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Sorveglia la coda ricavi_email_queue e allarma se NON viene consumata.
+#
+# Causa che questo monitor previene (incidente 9-11 giu 2026):
+#   il queue-worker su Railway era fermo (killswitch WORKER_ENABLED=0 lasciato
+#   attivo dopo un deploy). Le email Passbi arrivavano e finivano in coda, ma
+#   nessuno le processava. Gli incassi del cliente sparivano dall'app per giorni
+#   e l'unico segnale era l'assenza di dati — notata solo dal cliente.
+#
+# Logica: una email in stato 'pending' o 'processing' più vecchia di
+#   STALE_MINUTES significa che il worker non sta drenando la coda (fermo,
+#   in crashloop, o bloccato). In condizioni normali una email viene processata
+#   entro pochi minuti dall'arrivo.
+#
+# GITHUB SECRETS richiesti (già presenti, usati anche da uptime_check/queue-worker):
+#   SUPABASE_URL                URL del progetto Supabase
+#   SUPABASE_SERVICE_ROLE_KEY   service_role key (bypassa RLS)
+#   BREVO_API_KEY               per inviare l'email di allerta
+#
+# COSTO: 1 run/ora, < 10s ciascuno. GitHub Actions free tier ampiamente coperto.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    # Ogni ora. Le email Passbi arrivano 1/giorno (~13:05 UTC); un controllo
+    # orario rileva una coda bloccata con al massimo ~1h di ritardo, senza
+    # generare rumore.
+    - cron: '17 * * * *'
+  workflow_dispatch: # avvio manuale per test
+
+permissions:
+  contents: read
+
+env:
+  # Soglia di staleness: una email pending/processing più vecchia di così
+  # indica che il worker non sta consumando la coda.
+  STALE_MINUTES: '90'
+
+jobs:
+  check-queue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conta le email bloccate in coda
+        id: check
+        run: |
+          THRESHOLD=$(date -u -d "-${STALE_MINUTES} minutes" +%Y-%m-%dT%H:%M:%S)
+          echo "Soglia staleness: tutto ciò che è pending/processing e creato prima di $THRESHOLD UTC"
+
+          # PostgREST: righe pending|processing create prima della soglia.
+          # Prefer: count=exact mette il totale nell'header Content-Range.
+          RESP=$(curl -s -D /tmp/headers.txt \
+            -H "apikey: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Prefer: count=exact" \
+            -H "Range-Unit: items" \
+            -H "Range: 0-4" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/ricavi_email_queue?select=id,email_subject,status,created_at,attempt_count,last_error&status=in.(pending,processing)&created_at=lt.${THRESHOLD}&order=created_at.asc" \
+            || echo "[]")
+
+          # Content-Range: items 0-N/TOTAL  →  estrai TOTAL
+          STUCK=$(grep -i "content-range" /tmp/headers.txt | sed -E 's/.*\/([0-9]+).*/\1/' | tr -d '\r')
+          if [ -z "$STUCK" ]; then STUCK=0; fi
+
+          echo "Email bloccate: $STUCK"
+          echo "stuck=$STUCK" >> $GITHUB_OUTPUT
+          # Passa un estratto leggibile delle prime righe all'eventuale alert
+          echo "sample<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESP" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          if [ "$STUCK" -gt 0 ]; then
+            echo "❌ Coda ricavi NON drenata: $STUCK email vecchie oltre ${STALE_MINUTES} min"
+          else
+            echo "✅ Coda ricavi sana (nessuna email bloccata oltre ${STALE_MINUTES} min)"
+          fi
+
+      - name: Invia email di allerta via Brevo
+        if: steps.check.outputs.stuck != '0' && steps.check.outputs.stuck != ''
+        run: |
+          STUCK="${{ steps.check.outputs.stuck }}"
+          # Serializza il sample JSON dentro l'htmlContent in modo sicuro (jq -Rs)
+          SAMPLE=$(printf '%s' '${{ steps.check.outputs.sample }}' | jq -Rs . )
+          curl -s -X POST https://api.brevo.com/v3/smtp/email \
+            -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"sender\": {\"name\": \"ONEFLUX Monitor\", \"email\": \"agent@oneflux.it\"},
+              \"to\": [{\"email\": \"md@oneflux.it\", \"name\": \"Mattia\"}],
+              \"subject\": \"🚨 Coda ricavi ONEFLUX bloccata ($STUCK email)\",
+              \"htmlContent\": \"<h2>⚠️ Il worker ricavi non sta consumando la coda</h2><p>Ci sono <strong>$STUCK</strong> email in <code>ricavi_email_queue</code> ferme da oltre ${STALE_MINUTES} minuti (stato pending/processing).</p><p>Gli incassi dei clienti NON stanno entrando in app.</p><p><strong>Causa più probabile:</strong> il servizio <code>queue-worker</code> su Railway è fermo. Verifica che <code>WORKER_ENABLED=1</code> e che il deploy sia attivo.</p><p>Righe bloccate (prime 5):</p><pre>$SAMPLE</pre>\"
+            }"
+          echo "📧 Alert inviato a md@oneflux.it"
