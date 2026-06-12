@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Info, Lock, BarChart3, Upload, X as XIcon, Pencil } from "lucide-react";
+import { Info, Lock, BarChart3, Upload, X as XIcon, Pencil, Sigma, Divide } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell as RCell,
 } from "recharts";
@@ -102,6 +102,21 @@ function rowVal(row: RowDef, m: MesePivot): number {
   return (m[row.key as keyof MesePivot] as number) ?? 0;
 }
 
+// Divide tutti i campi numerici della pivot per il numero di mesi attivi.
+// Divisore unico di periodo: ogni riga scende dello stesso fattore, quindi
+// la colonna resta coerente (media MOL = media Ricavi − media Costi) e le
+// percentuali di incidenza (riga/fatturato) restano invariate.
+function pivotMedia(p: MesePivot, nMesi: number): MesePivot {
+  const n = Math.max(1, nMesi);
+  const out = { ...p };
+  for (const k of Object.keys(out) as (keyof MesePivot)[]) {
+    if (typeof out[k] === "number") {
+      (out[k] as number) = (out[k] as number) / n;
+    }
+  }
+  return out;
+}
+
 // Colore dei valori (e della % incidenza) in base al value-color mode.
 function valueColorCls(vc: ValueColor, raw: number): string {
   if (vc === "sign") {
@@ -174,6 +189,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
   const [dettaglioMeseSel, setDettaglioMeseSel] = useState<{ anno: number; mese: number; label: string } | null>(null);
   const [costoPersMese, setCostoPersMese] = useState<MesePivot | null>(null);
   const [speseCella, setSpeseCella] = useState<{ mese: MesePivot; tipo: TipoSpesaCella } | null>(null);
+  const [vista, setVista] = useState<"totale" | "media">("totale");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -207,6 +223,13 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
         m.costi_personale > 0,
     );
   }, [data]);
+
+  // Colonna riepilogo: totali grezzi oppure medie mensili sul periodo.
+  const isMedia = vista === "media";
+  const totaliRiepilogo = useMemo(() => {
+    if (!data) return null;
+    return isMedia ? pivotMedia(data.totali, data.num_mesi_attivi) : data.totali;
+  }, [data, isMedia]);
 
   async function postCella(anno: number, mese: number, field: EditableField, value: number) {
     const res = await fetch("/api/margini/cella", {
@@ -274,9 +297,32 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
           <Info className="size-3" />
           Modifica le righe in bianco; le altre sono calcolate o ereditate dalle fatture.
         </p>
+        {/* Toggle Totale / Media */}
+        <div className="ml-auto inline-flex items-center rounded-md border border-input p-0.5 text-xs font-semibold">
+          <button
+            onClick={() => setVista("totale")}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded transition-colors ${
+              vista === "totale" ? "bg-sky-500 text-white" : "text-muted-foreground hover:bg-muted"
+            }`}
+            title="Somma del periodo"
+          >
+            <Sigma className="size-3" />
+            Totale
+          </button>
+          <button
+            onClick={() => setVista("media")}
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded transition-colors ${
+              vista === "media" ? "bg-sky-500 text-white" : "text-muted-foreground hover:bg-muted"
+            }`}
+            title={`Media mensile sui ${data?.num_mesi_attivi ?? 0} mesi con dati`}
+          >
+            <Divide className="size-3" />
+            Media
+          </button>
+        </div>
         <button
           onClick={() => { setDettaglioMeseSel(mesiVisibili[mesiVisibili.length - 1] ?? null); setDettaglioOpen(true); }}
-          className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-input hover:bg-muted transition-colors"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-input hover:bg-muted transition-colors"
         >
           <BarChart3 className="size-3" />
           Dettaglio giornaliero
@@ -358,7 +404,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                   );
                 })}
                 <th className="sticky right-0 z-20 bg-sky-500/8 text-right px-3 py-2.5 font-bold border-l-2 border-r border-sky-500/50 text-sky-600 dark:text-sky-400">
-                  Totale
+                  {isMedia ? "Media" : "Totale"}
                 </th>
               </tr>
             </thead>
@@ -393,8 +439,8 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
                         />
                       );
                     })}
-                    {/* Total column */}
-                    <TotalCell row={row} totali={data.totali} />
+                    {/* Total / Media column */}
+                    <TotalCell row={row} totali={totaliRiepilogo ?? data.totali} />
                   </tr>
                 );
               })}
@@ -407,7 +453,8 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
       <div className="md:hidden">
         <MobileMeseView
           mesi={mesiVisibili}
-          totali={data.totali}
+          totali={totaliRiepilogo ?? data.totali}
+          isMedia={isMedia}
           onSave={saveCell}
           onOpenCosto={setCostoPersMese}
           onOpenSpese={(mese, tipo) => setSpeseCella({ mese, tipo })}
@@ -415,7 +462,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
       </div>
 
       {/* Analisi visiva: cascata conto economico + gauge + commenti */}
-      <AnalisiVisiva data={data} />
+      <AnalisiVisiva data={data} totaliVista={totaliRiepilogo ?? data.totali} isMedia={isMedia} />
 
       {costoPersMese && (
         <CostoPersonaleDialog
@@ -645,12 +692,14 @@ function TotalCell({
 function MobileMeseView({
   mesi,
   totali,
+  isMedia,
   onSave,
   onOpenCosto,
   onOpenSpese,
 }: {
   mesi: MesePivot[];
   totali: MesePivot;
+  isMedia: boolean;
   onSave: (anno: number, mese: number, field: EditableField, value: number, prevValue: number) => void;
   onOpenCosto: (m: MesePivot) => void;
   onOpenSpese: (m: MesePivot, tipo: TipoSpesaCella) => void;
@@ -671,7 +720,7 @@ function MobileMeseView({
           {mesi.map((m, i) => (
             <option key={`${m.anno}-${m.mese}`} value={i}>{m.label}</option>
           ))}
-          <option value={mesi.length}>Totale periodo</option>
+          <option value={mesi.length}>{isMedia ? "Media periodo" : "Totale periodo"}</option>
         </select>
       </div>
 
@@ -786,8 +835,16 @@ function clamp01(v: number) {
   return Math.max(0, Math.min(1, v));
 }
 
-function AnalisiVisiva({ data }: { data: AnalisiResponse }) {
-  const t = data.totali;
+function AnalisiVisiva({
+  data,
+  totaliVista,
+  isMedia,
+}: {
+  data: AnalisiResponse;
+  totaliVista: MesePivot;
+  isMedia: boolean;
+}) {
+  const t = totaliVista;
   const hasData = t.fatturato_netto > 0 || t.costi_fb_totali > 0;
 
   const fc = data.food_cost_perc;
@@ -804,6 +861,11 @@ function AnalisiVisiva({ data }: { data: AnalisiResponse }) {
       <h3 className="text-base font-semibold flex items-center gap-1.5">
         <BarChart3 className="size-4 text-primary" />
         Analisi visiva
+        {isMedia && (
+          <span className="text-[11px] font-medium text-sky-600 dark:text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded-full">
+            valori medi mensili
+          </span>
+        )}
       </h3>
 
       {!hasData ? (
