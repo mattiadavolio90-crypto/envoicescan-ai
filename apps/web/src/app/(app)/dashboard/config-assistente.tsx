@@ -27,6 +27,7 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
   // Soglia alert prezzi: qui e' l'unico posto dove si IMPOSTA (in pagina Prezzi e'
   // solo un filtro di visualizzazione). Stringa per gestire input parziali ("5,").
   const [soglia, setSoglia] = useState(String(config.price_alert_threshold ?? 5));
+  const [soloPreferiti, setSoloPreferiti] = useState(config.alert_prezzi_solo_preferiti ?? false);
   const [saving, setSaving] = useState(false);
 
   // L'avviso "Alert prezzi" governa la soglia: se è spento, il campo soglia non
@@ -53,6 +54,7 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
           topics_disabled,
           chat_ai_enabled: chatEnabled,
           price_alert_threshold: sogliaNum,
+          alert_prezzi_solo_preferiti: soloPreferiti,
         }),
       });
       if (!res.ok) throw new Error();
@@ -144,18 +146,29 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
                   {/* Soglia alert prezzi: appare sotto "Alert prezzi" quando è attivo.
                       È l'unico punto dove si imposta la sensibilità dell'avviso. */}
                   {t.key === "price_alert" && alertPrezziAttivo && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <label className="text-xs text-muted-foreground">Mi interessa da un rincaro del</label>
-                      <Input
-                        type="number"
-                        min="0"
-                        max="50"
-                        step="0.5"
-                        value={soglia}
-                        onChange={(e) => setSoglia(e.target.value)}
-                        className="h-7 w-16 text-right text-sm"
-                      />
-                      <span className="text-xs text-muted-foreground">% in su</span>
+                    <div className="mt-2 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-muted-foreground">Mi interessa da un rincaro del</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="50"
+                          step="0.5"
+                          value={soglia}
+                          onChange={(e) => setSoglia(e.target.value)}
+                          className="h-7 w-16 text-right text-sm"
+                        />
+                        <span className="text-xs text-muted-foreground">% in su</span>
+                      </div>
+                      <div className="flex items-start justify-between gap-3 rounded-md border bg-muted/30 px-2.5 py-2">
+                        <div className="text-xs">
+                          <p className="font-medium">Solo sui prodotti preferiti</p>
+                          <p className="text-muted-foreground">
+                            Avvisami solo sui prodotti con la ⭐ in pagina Prezzi (e sui tuoi tag). Se non hai preferiti, ricevi solo gli avvisi sui tag.
+                          </p>
+                        </div>
+                        <Switch checked={soloPreferiti} onCheckedChange={(v: boolean) => setSoloPreferiti(v)} />
+                      </div>
                     </div>
                   )}
                 </div>

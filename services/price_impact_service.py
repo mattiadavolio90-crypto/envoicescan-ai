@@ -110,30 +110,56 @@ def _prodotti_pareto(df: pd.DataFrame, quota: float = _PARETO_QUOTA) -> set:
     return set(str(p) for p in eleggibili.index)
 
 
+def _pref_match_key(descrizione: str, fornitore: str) -> str:
+    """Chiave per confrontare un prodotto con i preferiti del ristorante.
+
+    I preferiti (tabella prezzi_preferiti) salvano descrizione UPPER+TRIM senza
+    suffissi UI e fornitore UPPER+TRIM. Qui il `Prodotto` di calcola_alert e' gia'
+    troncato/normalizzato come _pareto_key (upper, suffisso rimosso, [:50]):
+    applico lo stesso [:50] sul lato preferito cosi' i due lati combaciano anche
+    su nomi lunghi. Include il fornitore: la stella e' per coppia (prodotto, forn).
+    """
+    d = _pareto_key(descrizione)  # upper+strip, suffisso rimosso, [:50]
+    f = str(fornitore).strip().upper()
+    return f"{d}|{f}"
+
+
 def _alert_prodotti(
     df: pd.DataFrame,
     soglia_perc_cliente: float,
     prodotti_pareto: set,
+    preferiti_keys: Optional[set] = None,
 ) -> List[Dict[str, Any]]:
     """Aumenti su PRODOTTI food&beverage rilevanti per il cliente.
 
     Un prodotto entra solo se: 1) e' aumentato di almeno la soglia % che il
     cliente ha impostato in pagina Prezzi (price_alert_threshold), 2) ha impatto
-    €/mese positivo, 3) e' tra i prodotti che pesano davvero (fascia Pareto della
-    spesa food). Cosi' i marginali tipo limoni restano fuori anche se rincarano
-    tanto in percentuale: conta il peso sul food cost, non il % di aumento.
+    €/mese positivo, 3) supera il filtro di rilevanza.
+
+    Filtro di rilevanza (punto 3):
+    - Default (preferiti_keys=None): fascia Pareto della spesa food — i prodotti
+      che pesano davvero. I marginali tipo limoni restano fuori anche se rincarano.
+    - Modalita' "solo preferiti" (preferiti_keys passato): SOLO i prodotti che il
+      cliente ha messo a preferito (stella in pagina Prezzi). Se la lista e' vuota,
+      nessun prodotto entra (restano solo i tag, gestiti altrove). Decisione Mattia.
     """
     df_alert = calcola_alert(df, soglia_minima=_SOGLIA_PERC_CANDIDATO)
     if df_alert.empty:
         return []
 
     impatto = pd.to_numeric(df_alert["Impatto_Stimato"], errors="coerce").fillna(0)
-    chiave_pareto = df_alert["Prodotto"].map(_pareto_key)
-    df_alert = df_alert[
-        (df_alert["Aumento_Perc"] >= soglia_perc_cliente)
-        & (impatto > 0)
-        & (chiave_pareto.isin(prodotti_pareto))
-    ]
+    base = (df_alert["Aumento_Perc"] >= soglia_perc_cliente) & (impatto > 0)
+
+    if preferiti_keys is not None:
+        # Modalita' solo preferiti: filtra sulla coppia (prodotto, fornitore).
+        match = df_alert.apply(
+            lambda r: _pref_match_key(r["Prodotto"], r.get("Fornitore") or "") in preferiti_keys,
+            axis=1,
+        )
+        df_alert = df_alert[base & match]
+    else:
+        chiave_pareto = df_alert["Prodotto"].map(_pareto_key)
+        df_alert = df_alert[base & chiave_pareto.isin(prodotti_pareto)]
     if df_alert.empty:
         return []
 
@@ -267,6 +293,50 @@ def _leggi_soglia_perc_cliente(user_id: str, supabase_client=None) -> float:
     return _SOGLIA_PERC_DEFAULT
 
 
+def _leggi_solo_preferiti(ristorante_id: str, supabase_client=None) -> bool:
+    """Flag 'avvisi prezzi solo preferiti' da assistant_preferences. Default False."""
+    try:
+        sb = supabase_client
+        if sb is None:
+            from services import get_supabase_client
+            sb = get_supabase_client()
+        resp = (
+            sb.table("assistant_preferences").select("alert_prezzi_solo_preferiti")
+            .eq("ristorante_id", ristorante_id).limit(1).execute()
+        )
+        if resp.data:
+            return bool(resp.data[0].get("alert_prezzi_solo_preferiti"))
+    except Exception as exc:
+        logger.warning("price_impact: lettura flag solo_preferiti fallita: %s", exc)
+    return False
+
+
+def _carica_preferiti_keys(ristorante_id: str, supabase_client=None) -> set:
+    """Set di chiavi '{desc[:50]}|{forn}' dei prodotti preferiti del ristorante.
+
+    Allineato a _pref_match_key: descrizione troncata a 50 (come _pareto_key) e
+    fornitore upper. La tabella prezzi_preferiti gia' salva chiavi UPPER+TRIM.
+    """
+    try:
+        sb = supabase_client
+        if sb is None:
+            from services import get_supabase_client
+            sb = get_supabase_client()
+        resp = (
+            sb.table("prezzi_preferiti").select("descrizione_key,fornitore_key")
+            .eq("ristorante_id", ristorante_id).execute()
+        )
+    except Exception as exc:
+        logger.warning("price_impact: lettura preferiti fallita: %s", exc)
+        return set()
+    out: set = set()
+    for r in (resp.data or []):
+        d = str(r.get("descrizione_key", "")).strip().upper()[:50]
+        f = str(r.get("fornitore_key", "")).strip().upper()
+        out.add(f"{d}|{f}")
+    return out
+
+
 def calcola_alert_prezzi_impatto(
     user_id: str,
     ristorante_id: str,
@@ -312,11 +382,19 @@ def calcola_alert_prezzi_impatto(
     # riusarla evita soglie magiche nostre e rispetta la sua sensibilita'.
     soglia_perc = _leggi_soglia_perc_cliente(user_id, supabase_client)
 
-    # Fascia Pareto dei prodotti che pesano davvero sulla spesa food: i marginali
-    # (limoni & co.) restano fuori dagli alert prodotto anche se rincarano molto.
-    prodotti_pareto = _prodotti_pareto(df_periodo)
+    # Modalita' filtro prodotti: "solo preferiti" (scelta del cliente nel
+    # configuratore) oppure Pareto automatico (default AI-first). In modalita'
+    # preferiti, se non ce ne sono, _alert_prodotti restituisce vuoto e restano
+    # solo i tag (decisione Mattia: niente fallback al Pareto).
+    if _leggi_solo_preferiti(ristorante_id, supabase_client):
+        preferiti_keys = _carica_preferiti_keys(ristorante_id, supabase_client)
+        prodotti = _alert_prodotti(df_periodo, soglia_perc, set(), preferiti_keys=preferiti_keys)
+    else:
+        # Fascia Pareto dei prodotti che pesano davvero sulla spesa food: i
+        # marginali (limoni & co.) restano fuori anche se rincarano molto.
+        prodotti_pareto = _prodotti_pareto(df_periodo)
+        prodotti = _alert_prodotti(df_periodo, soglia_perc, prodotti_pareto)
 
-    prodotti = _alert_prodotti(df_periodo, soglia_perc, prodotti_pareto)
     tag = _alert_tag(user_id, ristorante_id, df, soglia_perc)
 
     # Unisci e ordina per impatto €/mese decrescente; tieni i top.
