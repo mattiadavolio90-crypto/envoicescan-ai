@@ -508,6 +508,9 @@ function CentroCard({ centro, totali }: { centro: CentroDetailItem; totali: Cent
               <p className="text-lg font-bold tabular-nums text-orange-600 dark:text-orange-400">
                 {formatEuroCompact(centro.costo_totale)}
               </p>
+              <p className="text-[11px] tabular-nums text-orange-500/70 dark:text-orange-400/60 mt-0.5">
+                {centro.incidenza_su_fb.toFixed(1)}% su tot. F&B
+              </p>
               <MiniBar pct={(centro.costo_totale / maxCosto) * 100} color="#f97316" />
             </div>
             {/* Incidenza */}
@@ -556,10 +559,13 @@ function CentroCard({ centro, totali }: { centro: CentroDetailItem; totali: Cent
               <div className="w-7 shrink-0" />
               <span className="text-sm text-muted-foreground w-36 shrink-0 truncate">{cat.categoria}</span>
               <div className="flex-1 grid grid-cols-3 gap-6 items-start">
-                {/* Col 1: costo + barra */}
+                {/* Col 1: costo + % su costo centro + barra */}
                 <div className="text-right">
                   <p className="text-sm font-semibold tabular-nums text-orange-600 dark:text-orange-400">
                     {formatEuroCompact(cat.costo)}
+                  </p>
+                  <p className="text-[10px] tabular-nums text-orange-500/70 dark:text-orange-400/60">
+                    {centro.costo_totale > 0 ? `${((cat.costo / centro.costo_totale) * 100).toFixed(1)}%` : "—"}
                   </p>
                   <MiniBar pct={(cat.costo / maxCatCosto) * 100} color="#f97316" opacity={0.6} />
                 </div>
