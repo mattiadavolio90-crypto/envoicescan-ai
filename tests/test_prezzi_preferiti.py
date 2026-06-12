@@ -9,6 +9,7 @@ from services.routers.prezzi import (
     _pulisci_desc_key,
     _pulisci_forn_key,
     _calcola_variazioni_prezzi_sync,
+    StoricoPrezzoPoint,
 )
 
 
@@ -72,3 +73,31 @@ class TestArricchimentoPreferito:
         keys = {"ANATRA ARROSTO|H.D. ITALIA"}
         out = _calcola_variazioni_prezzi_sync(rows, soglia=5.0, preferiti_keys=keys)
         assert out[0]["preferito"] is False
+
+
+class TestStoricoPrezzoPoint:
+    """I campi fattura del punto storico alimentano la lista acquisti cliccabile
+    nella pagina Prezzi. Devono avere default sicuri: durante un deploy
+    incrementale un worker vecchio potrebbe restituire solo data+prezzo, e il
+    frontend filtra le righe su `fattura` non vuoto."""
+
+    def test_campi_fattura_default_vuoti(self):
+        p = StoricoPrezzoPoint(data="2026-01-01", prezzo_unitario=10.0)
+        assert p.fattura == ""
+        assert p.numero_documento == ""
+        assert p.quantita is None
+        assert p.totale_riga is None
+
+    def test_campi_fattura_valorizzati(self):
+        p = StoricoPrezzoPoint(
+            data="2026-01-01",
+            prezzo_unitario=10.0,
+            fattura="f0.xml",
+            numero_documento="FT/123",
+            quantita=2.5,
+            totale_riga=25.0,
+        )
+        assert p.fattura == "f0.xml"
+        assert p.numero_documento == "FT/123"
+        assert p.quantita == 2.5
+        assert p.totale_riga == 25.0

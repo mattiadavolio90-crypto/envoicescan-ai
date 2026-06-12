@@ -17714,6 +17714,38 @@
           "prezzo_unitario": {
             "type": "number",
             "title": "Prezzo Unitario"
+          },
+          "fattura": {
+            "type": "string",
+            "title": "Fattura",
+            "default": ""
+          },
+          "numero_documento": {
+            "type": "string",
+            "title": "Numero Documento",
+            "default": ""
+          },
+          "quantita": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantita"
+          },
+          "totale_riga": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totale Riga"
           }
         },
         "type": "object",

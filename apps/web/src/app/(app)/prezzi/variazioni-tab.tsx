@@ -12,8 +12,9 @@ import {
   ReferenceLine,
   ResponsiveContainer,
 } from "recharts";
-import type { VariazioniResponse, VariazionePrezzo, StoricoPrezzoResponse } from "@/lib/prezzi";
+import type { VariazioniResponse, VariazionePrezzo, StoricoPrezzoResponse, StoricoPrezzoPoint } from "@/lib/prezzi";
 import { Input } from "@/components/ui/input";
+import { AnteprimaFatturaDialog } from "./anteprima-fattura-dialog";
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const MESI_LUNGHI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
@@ -225,6 +226,76 @@ function PrezzoChart({
   );
 }
 
+// Lista degli acquisti (= punti storico, dal più recente) sotto il grafico.
+// Ogni riga è una riga di fattura cliccabile per aprire l'anteprima. Niente
+// fetch extra: sono gli stessi dati del grafico, arricchiti col file_origine.
+function ListaAcquisti({
+  punti,
+  media,
+  onApriFattura,
+}: {
+  punti: StoricoPrezzoPoint[];
+  media: number;
+  onApriFattura: (p: StoricoPrezzoPoint) => void;
+}) {
+  const conFattura = punti.filter((p) => p.fattura);
+  if (conFattura.length === 0) return null;
+
+  // Dal più recente: i punti arrivano ordinati per data crescente dal worker.
+  const ordinati = [...conFattura].reverse();
+
+  return (
+    <div className="mt-4">
+      <p className="text-xs font-medium text-muted-foreground mb-2">
+        Acquisti nel periodo ({ordinati.length}) — clicca per aprire la fattura
+      </p>
+      <div className="rounded-lg border border-border overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Data</th>
+                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Fattura</th>
+                <th className="text-right px-3 py-2 text-muted-foreground font-medium">Qtà</th>
+                <th className="text-right px-3 py-2 text-muted-foreground font-medium">Prezzo unit.</th>
+                <th className="text-right px-3 py-2 text-muted-foreground font-medium">Totale</th>
+                <th className="text-right px-3 py-2 text-muted-foreground font-medium">vs media</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/50">
+              {ordinati.map((p, i) => {
+                const delta = media > 0 ? ((p.prezzo_unitario - media) / media) * 100 : 0;
+                return (
+                  <tr
+                    key={`${p.fattura}-${i}`}
+                    onClick={() => onApriFattura(p)}
+                    className="cursor-pointer hover:bg-muted/30 transition-colors"
+                  >
+                    <td className="px-3 py-2 tabular-nums">{fmtData(p.data)}</td>
+                    <td className="px-3 py-2 max-w-[160px]">
+                      <span className="text-primary truncate inline-block max-w-full align-bottom">
+                        {p.numero_documento || "—"}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums">{p.quantita ?? "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums font-medium">€{p.prezzo_unitario.toFixed(4)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                      {p.totale_riga != null ? fmtEuro(p.totale_riga) : "—"}
+                    </td>
+                    <td className={`px-3 py-2 text-right tabular-nums ${delta > 0.05 ? "text-rose-600" : delta < -0.05 ? "text-emerald-600" : "text-muted-foreground"}`}>
+                      {Math.abs(delta) < 0.05 ? "—" : fmtPct(delta)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AlertCard({
   r,
   expanded,
@@ -233,6 +304,7 @@ function AlertCard({
   storicoLoading,
   onToggle,
   onToggleStar,
+  onApriFattura,
 }: {
   r: VariazionePrezzo;
   expanded: boolean;
@@ -241,6 +313,7 @@ function AlertCard({
   storicoLoading: boolean;
   onToggle: () => void;
   onToggleStar: () => void;
+  onApriFattura: (p: StoricoPrezzoPoint) => void;
 }) {
   const g = gravita(r);
   const style = GRAVITA_STYLE[g];
@@ -307,11 +380,20 @@ function AlertCard({
           {storicoLoading ? (
             <div className="h-20 flex items-center justify-center text-sm text-muted-foreground">Caricamento storico…</div>
           ) : (
-            <PrezzoChart
-              storico={storico}
-              media={r.media}
-              fallbackPrezzi={spark.length >= 2 ? spark : undefined}
-            />
+            <>
+              <PrezzoChart
+                storico={storico}
+                media={r.media}
+                fallbackPrezzi={spark.length >= 2 ? spark : undefined}
+              />
+              {storico && (
+                <ListaAcquisti
+                  punti={storico.punti}
+                  media={storico.prezzo_medio || r.media}
+                  onApriFattura={onApriFattura}
+                />
+              )}
+            </>
           )}
         </div>
       )}
@@ -360,6 +442,8 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   const [currentRange, setCurrentRange] = useState<{ data_da: string; data_a: string }>(
     isoDateRange(ANNO_CORRENTE, null),
   );
+  // Anteprima fattura aperta da una riga della lista acquisti.
+  const [anteprima, setAnteprima] = useState<{ punto: StoricoPrezzoPoint; prodotto: string } | null>(null);
 
   // Carica per range esplicito: cosi' lo stesso fetch serve anno, mese e custom.
   const loadRange = useCallback(async (range: { data_da: string; data_a: string }, sogliaArg: number) => {
@@ -785,6 +869,7 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
                   storicoLoading={expandedKey === key && storicoLoading}
                   onToggle={() => toggleCard(r)}
                   onToggleStar={() => toggleStar(r)}
+                  onApriFattura={(p) => setAnteprima({ punto: p, prodotto: r.prodotto })}
                 />
               );
             })}
@@ -801,6 +886,14 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
           )}
         </>
       )}
+
+      <AnteprimaFatturaDialog
+        open={anteprima !== null}
+        fileOrigine={anteprima?.punto.fattura ?? null}
+        numeroDocumento={anteprima?.punto.numero_documento}
+        prodotto={anteprima?.prodotto ?? ""}
+        onClose={() => setAnteprima(null)}
+      />
     </div>
   );
 }

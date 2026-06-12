@@ -62,6 +62,10 @@ export type NoteCreditoResponse = {
 export type StoricoPrezzoPoint = {
   data: string;
   prezzo_unitario: number;
+  fattura?: string;
+  numero_documento?: string;
+  quantita?: number | null;
+  totale_riga?: number | null;
 };
 
 export type StoricoPrezzoResponse = {

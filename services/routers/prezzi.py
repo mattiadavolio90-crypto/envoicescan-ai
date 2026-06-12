@@ -137,6 +137,10 @@ class NoteCreditoResponse(BaseModel):
 class StoricoPrezzoPoint(BaseModel):
     data: str
     prezzo_unitario: float
+    fattura: str = ""
+    numero_documento: str = ""
+    quantita: Optional[float] = None
+    totale_riga: Optional[float] = None
 
 
 class StoricoPrezzoResponse(BaseModel):
@@ -653,7 +657,7 @@ def get_storico_prodotto(
     while True:
         q = (
             sb.table("fatture")
-            .select("descrizione,fornitore,prezzo_unitario,data_documento")
+            .select("descrizione,fornitore,prezzo_unitario,data_documento,file_origine,quantita,totale_riga")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .gt("prezzo_unitario", 0)
@@ -680,6 +684,8 @@ def get_storico_prodotto(
 
     df = pd.DataFrame(all_rows)
     df['prezzo_unitario'] = pd.to_numeric(df['prezzo_unitario'], errors='coerce').fillna(0.0)
+    df['quantita'] = pd.to_numeric(df.get('quantita', pd.Series(dtype=float)), errors='coerce')
+    df['totale_riga'] = pd.to_numeric(df.get('totale_riga', pd.Series(dtype=float)), errors='coerce')
     df['_desc'] = df['descrizione'].astype(str).str.strip().str.upper()
     df['_forn'] = df['fornitore'].astype(str).str.strip().str.upper()
 
@@ -697,10 +703,15 @@ def get_storico_prodotto(
         return StoricoPrezzoResponse(prodotto=prodotto, fornitore=fornitore, punti=[], prezzo_medio=0.0)
 
     prezzo_medio = round(float(df['prezzo_unitario'].mean()), 4)
+    num_map = _load_num_documento_map(sb, ristorante_id)
     punti = [
         StoricoPrezzoPoint(
             data=str(r['data_documento']),
             prezzo_unitario=round(float(r['prezzo_unitario']), 4),
+            fattura=str(r.get('file_origine', '') or ''),
+            numero_documento=num_map.get(str(r.get('file_origine', '') or ''), ''),
+            quantita=round(float(r['quantita']), 3) if pd.notna(r['quantita']) else None,
+            totale_riga=round(float(r['totale_riga']), 2) if pd.notna(r['totale_riga']) else None,
         )
         for _, r in df.iterrows()
     ]
