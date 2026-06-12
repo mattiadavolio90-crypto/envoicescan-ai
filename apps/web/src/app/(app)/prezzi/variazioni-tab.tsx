@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { RefreshCw, ChevronDown, Search, TriangleAlert, CheckCircle2, Calendar, Settings2 } from "lucide-react";
+import { RefreshCw, ChevronDown, Search, TriangleAlert, CheckCircle2, Calendar, Settings2, Star } from "lucide-react";
 import { toast } from "sonner";
 import {
   LineChart,
@@ -53,6 +53,22 @@ function fmtData(s: string): string {
   const d = new Date(s);
   if (isNaN(d.getTime())) return s;
   return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+// Chiave preferito: gemella di _pulisci_desc_key/_pulisci_forn_key del worker.
+// Rimuove i suffissi UI (" ⚠️ >6m"), UPPER+TRIM. Serve per aggiornare in modo
+// ottimistico il Set locale dei preferiti coerentemente col campo `preferito`
+// che arriva dal server.
+const SUFFISSI_UI = [" ⚠️ >6M", " ⚠ >6M"];
+function prefKey(prodotto: string, fornitore: string): string {
+  let d = prodotto.trim().toUpperCase();
+  for (const s of SUFFISSI_UI) {
+    if (d.endsWith(s)) {
+      d = d.slice(0, -s.length).trim();
+      break;
+    }
+  }
+  return `${d}|${fornitore.trim().toUpperCase()}`;
 }
 
 type Gravita = "critico" | "alto" | "medio";
@@ -212,15 +228,19 @@ function PrezzoChart({
 function AlertCard({
   r,
   expanded,
+  preferito,
   storico,
   storicoLoading,
   onToggle,
+  onToggleStar,
 }: {
   r: VariazionePrezzo;
   expanded: boolean;
+  preferito: boolean;
   storico: StoricoPrezzoResponse | null;
   storicoLoading: boolean;
   onToggle: () => void;
+  onToggleStar: () => void;
 }) {
   const g = gravita(r);
   const style = GRAVITA_STYLE[g];
@@ -231,6 +251,17 @@ function AlertCard({
     <div className={`rounded-lg border border-l-4 ${style.ring} border-border bg-card overflow-hidden`}>
       <button onClick={onToggle} className="w-full text-left px-4 py-3 hover:bg-muted/30 transition-colors">
         <div className="flex items-center gap-3 flex-wrap">
+          <span
+            role="button"
+            tabIndex={0}
+            onClick={(e) => { e.stopPropagation(); onToggleStar(); }}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); e.stopPropagation(); onToggleStar(); } }}
+            aria-label={preferito ? "Rimuovi dai preferiti" : "Aggiungi ai preferiti"}
+            aria-pressed={preferito}
+            className="shrink-0 -m-1 p-1 rounded hover:bg-muted transition-colors cursor-pointer"
+          >
+            <Star className={`size-4 transition-colors ${preferito ? "fill-amber-400 text-amber-400" : "text-muted-foreground/50 hover:text-amber-400"}`} />
+          </span>
           <span className={`size-2.5 rounded-full ${style.dot} shrink-0`} aria-hidden />
 
           <div className="min-w-0 flex-1">
@@ -324,6 +355,8 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
   const [storicoLoading, setStoricoLoading] = useState(false);
   const [filtroCategoria, setFiltroCategoria] = useState("");
   const [filtroFornitore, setFiltroFornitore] = useState("");
+  const [preferiti, setPreferiti] = useState<Set<string>>(new Set());
+  const [soloPreferiti, setSoloPreferiti] = useState(false);
   const [currentRange, setCurrentRange] = useState<{ data_da: string; data_a: string }>(
     isoDateRange(ANNO_CORRENTE, null),
   );
@@ -341,7 +374,18 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
       const qs = new URLSearchParams({ ...range, soglia: String(sogliaArg) });
       const res = await fetch(`/api/prezzi/variazioni?${qs}`);
       if (!res.ok) throw new Error();
-      setData(await res.json());
+      const json: VariazioniResponse = await res.json();
+      setData(json);
+      // Set preferiti iniziale dal campo `preferito` della response: cosi' la
+      // stella riflette lo stato salvato e gli aggiornamenti ottimistici partono
+      // da una base corretta.
+      setPreferiti(
+        new Set(
+          (json.variazioni ?? [])
+            .filter((v) => v.preferito)
+            .map((v) => prefKey(v.prodotto, v.fornitore)),
+        ),
+      );
     } catch {
       toast.error("Errore nel caricamento variazioni");
     } finally {
@@ -413,6 +457,41 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
     }
   }
 
+  // Stella ottimistica: aggiorna subito il Set locale, poi persiste. Su errore
+  // fa rollback e mostra un toast — la stella non resta in uno stato falso.
+  async function toggleStar(r: VariazionePrezzo) {
+    const key = prefKey(r.prodotto, r.fornitore);
+    const eraPreferito = preferiti.has(key);
+    setPreferiti((prev) => {
+      const next = new Set(prev);
+      if (eraPreferito) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    try {
+      let res: Response;
+      if (eraPreferito) {
+        const qs = new URLSearchParams({ prodotto: r.prodotto, fornitore: r.fornitore });
+        res = await fetch(`/api/prezzi/preferiti?${qs}`, { method: "DELETE" });
+      } else {
+        res = await fetch("/api/prezzi/preferiti", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prodotto: r.prodotto, fornitore: r.fornitore }),
+        });
+      }
+      if (!res.ok) throw new Error();
+    } catch {
+      setPreferiti((prev) => {
+        const next = new Set(prev);
+        if (eraPreferito) next.add(key);
+        else next.delete(key);
+        return next;
+      });
+      toast.error("Non sono riuscito ad aggiornare i preferiti");
+    }
+  }
+
   const variazioni = data?.variazioni ?? [];
   const sorted = [...variazioni].sort((a, b) => Math.abs(b.impatto_stimato) - Math.abs(a.impatto_stimato));
 
@@ -427,8 +506,11 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
       r.fornitore.toLowerCase().includes(search.toLowerCase());
     const matchCat = !filtroCategoria || r.categoria === filtroCategoria;
     const matchForn = !filtroFornitore || r.fornitore === filtroFornitore;
-    return matchSearch && matchCat && matchForn;
+    const matchPref = !soloPreferiti || preferiti.has(prefKey(r.prodotto, r.fornitore));
+    return matchSearch && matchCat && matchForn && matchPref;
   });
+
+  const nPreferiti = preferiti.size;
 
   // KPI calcolati sul filtered
   const nCritici = filtered.filter((r) => gravita(r) === "critico").length;
@@ -598,6 +680,21 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
       {/* Filtri di secondo livello — visibili solo quando ci sono dati */}
       {variazioni.length > 0 && (
         <div className="flex flex-wrap gap-2 items-center">
+          <div className="inline-flex rounded-full border border-border p-0.5 bg-background">
+            <button
+              onClick={() => setSoloPreferiti(false)}
+              className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${!soloPreferiti ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            >
+              Tutti
+            </button>
+            <button
+              onClick={() => setSoloPreferiti(true)}
+              className={`inline-flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-full transition-colors ${soloPreferiti ? "bg-primary text-primary-foreground" : "hover:bg-muted"}`}
+            >
+              <Star className={`size-3 ${soloPreferiti ? "fill-current" : "fill-amber-400 text-amber-400"}`} />
+              Preferiti{nPreferiti > 0 ? ` (${nPreferiti})` : ""}
+            </button>
+          </div>
           <div className="relative">
             <Search className="size-4 text-muted-foreground absolute left-3 top-1/2 -translate-y-1/2" />
             <input
@@ -683,14 +780,23 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
                   key={key}
                   r={r}
                   expanded={expandedKey === key}
+                  preferito={preferiti.has(prefKey(r.prodotto, r.fornitore))}
                   storico={expandedKey === key ? storico : null}
                   storicoLoading={expandedKey === key && storicoLoading}
                   onToggle={() => toggleCard(r)}
+                  onToggleStar={() => toggleStar(r)}
                 />
               );
             })}
           </div>
-          {filtered.length === 0 && (
+          {filtered.length === 0 && soloPreferiti && nPreferiti === 0 && (
+            <div className="rounded-lg border border-dashed border-border py-10 text-center">
+              <Star className="size-7 text-amber-400 mx-auto mb-2" />
+              <p className="text-sm font-medium">Non hai ancora prodotti preferiti</p>
+              <p className="text-xs text-muted-foreground mt-1">Tocca la ⭐ accanto a un prodotto per seguirne i prezzi qui.</p>
+            </div>
+          )}
+          {filtered.length === 0 && !(soloPreferiti && nPreferiti === 0) && (
             <p className="text-sm text-muted-foreground py-6 text-center">Nessun risultato per i filtri selezionati</p>
           )}
         </>

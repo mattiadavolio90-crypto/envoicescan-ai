@@ -3769,6 +3769,152 @@
         }
       }
     },
+    "/api/account/sedi": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Account Sedi",
+        "description": "Elenca le sedi (ristoranti attivi) dell'account e indica quella attiva.\n\nLa UI mostra il selettore di sede SOLO se len(sedi) > 1.",
+        "operationId": "account_sedi_api_account_sedi_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Account Sedi Api Account Sedi Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/cambia-sede": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Account Cambia Sede",
+        "description": "Imposta la sede attiva dell'account (users.ultimo_ristorante_id).\n\nGuard: il ristorante deve appartenere al chiamante ed essere attivo, così non\nsi può puntare la propria sessione al ristorante di un altro cliente.",
+        "operationId": "account_cambia_sede_api_account_cambia_sede_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CambiaSedeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Account Cambia Sede Api Account Cambia Sede Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/prezzi/soglia-alert": {
       "get": {
         "tags": [
@@ -3984,6 +4130,227 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/VariazioniResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/prezzi/preferiti": {
+      "get": {
+        "tags": [
+          "Prezzi"
+        ],
+        "summary": "Get Preferiti",
+        "operationId": "get_preferiti_api_prezzi_preferiti_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferitiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Prezzi"
+        ],
+        "summary": "Add Preferito",
+        "description": "Aggiunge un preferito (idempotente). Chiave = coppia normalizzata.",
+        "operationId": "add_preferito_api_prezzi_preferiti_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferitoRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferitiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Prezzi"
+        ],
+        "summary": "Remove Preferito",
+        "operationId": "remove_preferito_api_prezzi_preferiti_delete",
+        "parameters": [
+          {
+            "name": "prodotto",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Prodotto"
+            }
+          },
+          {
+            "name": "fornitore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Fornitore"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreferitiResponse"
                 }
               }
             }
@@ -6005,6 +6372,221 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Aggiorna Categoria Riga Api Fatture  Riga Id  Categoria Patch"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/da-assegnare": {
+      "get": {
+        "summary": "Fatture Da Assegnare",
+        "description": "Elenca le fatture in attesa di assegnazione sede per l'account chiamante.\n\nNon espone l'XML: solo i metadati non-PII salvati dal webhook in payload_meta\n(fornitore, numero, data, importo) + l'indirizzo del destinatario letto in\nfattura, che è ciò che serve al cliente per capire a quale sede appartiene.",
+        "operationId": "fatture_da_assegnare_api_fatture_da_assegnare_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Fatture Da Assegnare Api Fatture Da Assegnare Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/assegna-sede": {
+      "post": {
+        "summary": "Fatture Assegna Sede",
+        "description": "Assegna una fattura 'da_assegnare' a una sede del cliente e la rimette in coda.\n\nVerifica prima che il record di coda appartenga al chiamante (la RPC fa già il\nguard cross-tenant lato DB, ma controlliamo anche qui per restituire un 404\npulito invece di un'eccezione SQL).",
+        "operationId": "fatture_assegna_sede_api_fatture_assegna_sede_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssegnaSedeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Fatture Assegna Sede Api Fatture Assegna Sede Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/fatture/sposta-sede": {
+      "post": {
+        "summary": "Fatture Sposta Sede",
+        "description": "Sposta una fattura GIÀ acquisita verso un'altra sede dello stesso cliente.\n\nCorrezione a posteriori del routing multi-sede: se una fattura è finita nella\nsede sbagliata (es. indirizzo fornitore errato ma plausibile), il cliente la\nsposta dal dettaglio fattura (Scadenziario). La RPC sposta_fattura_a_sede fa il\nguard anti cross-tenant lato DB; qui controlliamo che la fattura appartenga al\nchiamante per restituire un 404 pulito invece di un'eccezione SQL.",
+        "operationId": "fatture_sposta_sede_api_fatture_sposta_sede_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SpostaSedeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Fatture Sposta Sede Api Fatture Sposta Sede Post"
                 }
               }
             }
@@ -13255,6 +13837,24 @@
         ],
         "title": "ArticoloAggregato"
       },
+      "AssegnaSedeBody": {
+        "properties": {
+          "queue_id": {
+            "type": "integer",
+            "title": "Queue Id"
+          },
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "queue_id",
+          "ristorante_id"
+        ],
+        "title": "AssegnaSedeBody"
+      },
       "AssociazioneItem": {
         "properties": {
           "descrizione": {
@@ -13485,6 +14085,19 @@
           "righe"
         ],
         "title": "CalcolaRigheBody"
+      },
+      "CambiaSedeBody": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id"
+        ],
+        "title": "CambiaSedeBody"
       },
       "CambioEmailBody": {
         "properties": {
@@ -14024,6 +14637,11 @@
             "type": "number",
             "title": "Price Alert Threshold",
             "default": 5.0
+          },
+          "alert_prezzi_solo_preferiti": {
+            "type": "boolean",
+            "title": "Alert Prezzi Solo Preferiti",
+            "default": false
           }
         },
         "type": "object",
@@ -14109,6 +14727,17 @@
               }
             ],
             "title": "Price Alert Threshold"
+          },
+          "alert_prezzi_solo_preferiti": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alert Prezzi Solo Preferiti"
           }
         },
         "type": "object",
@@ -16200,6 +16829,58 @@
         ],
         "title": "PreferenzeBody"
       },
+      "PreferitiResponse": {
+        "properties": {
+          "preferiti": {
+            "items": {
+              "$ref": "#/components/schemas/PreferitoItem"
+            },
+            "type": "array",
+            "title": "Preferiti"
+          }
+        },
+        "type": "object",
+        "required": [
+          "preferiti"
+        ],
+        "title": "PreferitiResponse"
+      },
+      "PreferitoItem": {
+        "properties": {
+          "descrizione_key": {
+            "type": "string",
+            "title": "Descrizione Key"
+          },
+          "fornitore_key": {
+            "type": "string",
+            "title": "Fornitore Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "descrizione_key",
+          "fornitore_key"
+        ],
+        "title": "PreferitoItem"
+      },
+      "PreferitoRequest": {
+        "properties": {
+          "prodotto": {
+            "type": "string",
+            "title": "Prodotto"
+          },
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "prodotto"
+        ],
+        "title": "PreferitoRequest"
+      },
       "ResetConfirmBody": {
         "properties": {
           "token": {
@@ -17006,6 +17687,24 @@
         ],
         "title": "SpesaMensilePoint"
       },
+      "SpostaSedeBody": {
+        "properties": {
+          "file_origine": {
+            "type": "string",
+            "title": "File Origine"
+          },
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_origine",
+          "ristorante_id"
+        ],
+        "title": "SpostaSedeBody"
+      },
       "StoricoPrezzoPoint": {
         "properties": {
           "data": {
@@ -17464,6 +18163,11 @@
           "delta_euro": {
             "type": "number",
             "title": "Delta Euro"
+          },
+          "preferito": {
+            "type": "boolean",
+            "title": "Preferito",
+            "default": false
           }
         },
         "type": "object",

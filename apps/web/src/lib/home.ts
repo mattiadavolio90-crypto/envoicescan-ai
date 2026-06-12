@@ -37,6 +37,9 @@ export type AssistantConfig = {
   // Soglia % alert prezzi: da qui si imposta quando scatta l'avviso "Alert prezzi".
   // In pagina Prezzi resta solo come filtro di visualizzazione.
   price_alert_threshold: number;
+  // Se true, gli avvisi prezzi si limitano ai prodotti preferiti (stella in pagina
+  // Prezzi) + tag. Se non hai preferiti, ricevi solo gli avvisi sui tag.
+  alert_prezzi_solo_preferiti: boolean;
 };
 
 export type SaluteVoce = {

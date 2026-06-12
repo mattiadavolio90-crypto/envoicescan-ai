@@ -12,6 +12,7 @@ export type VariazionePrezzo = {
   trend: string;
   impatto_stimato: number;
   delta_euro: number;
+  preferito: boolean;
 };
 
 export type VariazioniResponse = {

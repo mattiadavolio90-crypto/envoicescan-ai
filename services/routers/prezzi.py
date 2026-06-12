@@ -47,6 +47,31 @@ _CATEGORIE_SPESE_PREZZI = [
 ]
 _PRICE_ALERT_DEFAULT = 5.0
 
+# Suffissi UI aggiunti al nome prodotto nelle variazioni (es. " ⚠️ >6m"): vanno
+# rimossi prima di usarlo come chiave preferiti, altrimenti la stella non
+# combacerebbe con la riga al ricaricamento.
+_SUFFISSI_UI_PRODOTTO = (" ⚠️ >6M", " ⚠ >6M")
+
+
+def _pulisci_desc_key(descrizione: str) -> str:
+    """Chiave normalizzata della descrizione: UPPER+TRIM senza suffissi UI.
+
+    Allineata al raggruppamento delle variazioni (_calcola_variazioni_prezzi_sync
+    usa str.strip().str.upper() su 'descrizione') e alla pulizia gia' fatta in
+    get_storico_prodotto. Unica fonte di verita' per la chiave preferiti.
+    """
+    s = str(descrizione).strip().upper()
+    for suffix in _SUFFISSI_UI_PRODOTTO:
+        if s.endswith(suffix):
+            s = s[: -len(suffix)].strip()
+            break
+    return s
+
+
+def _pulisci_forn_key(fornitore: str) -> str:
+    """Chiave normalizzata del fornitore: UPPER+TRIM."""
+    return str(fornitore).strip().upper()
+
 
 class VariazionePrezzo(BaseModel):
     prodotto: str
@@ -62,6 +87,7 @@ class VariazionePrezzo(BaseModel):
     trend: str
     impatto_stimato: float
     delta_euro: float
+    preferito: bool = False
 
 
 class VariazioniResponse(BaseModel):
@@ -128,11 +154,44 @@ class SogliaAlertResponse(BaseModel):
     soglia: float
 
 
-def _calcola_variazioni_prezzi_sync(rows: list, soglia: float) -> list:
+class PreferitoItem(BaseModel):
+    descrizione_key: str
+    fornitore_key: str
+
+
+class PreferitiResponse(BaseModel):
+    preferiti: List[PreferitoItem]
+
+
+class PreferitoRequest(BaseModel):
+    prodotto: str
+    fornitore: str = ""
+
+
+def _carica_preferiti_keys(sb, ristorante_id: str) -> set:
+    """Set di chiavi '{descrizione_key}|{fornitore_key}' dei preferiti del ristorante."""
+    try:
+        resp = (
+            sb.table("prezzi_preferiti")
+            .select("descrizione_key,fornitore_key")
+            .eq("ristorante_id", ristorante_id)
+            .execute()
+        )
+    except Exception:
+        return set()
+    return {
+        f"{r.get('descrizione_key', '')}|{r.get('fornitore_key', '')}"
+        for r in (resp.data or [])
+    }
+
+
+def _calcola_variazioni_prezzi_sync(rows: list, soglia: float, preferiti_keys: set | None = None) -> list:
     import pandas as pd
 
     if not rows:
         return []
+
+    preferiti_keys = preferiti_keys or set()
 
     df = pd.DataFrame(rows)
     df['prezzo_unitario'] = pd.to_numeric(df['prezzo_unitario'], errors='coerce').fillna(0.0)
@@ -197,6 +256,11 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float) -> list:
         else:
             trend = "↕"
 
+        desc_piena = str(group['descrizione'].mode()[0])
+        forn_piena = str(group['fornitore'].mode()[0])
+        pref_key = f"{_pulisci_desc_key(desc_piena)}|{_pulisci_forn_key(forn_piena)}"
+        is_preferito = pref_key in preferiti_keys
+
         qta_all = pd.to_numeric(acquisti['quantita'], errors='coerce').dropna()
         qta_ref = float(qta_all.mean()) if not qta_all.empty else 1.0
 
@@ -207,9 +271,9 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float) -> list:
             freq = len(date_all) / n_mesi
 
         alert_list.append({
-            'prodotto': (str(group['descrizione'].mode()[0]) + nota)[:60],
+            'prodotto': (desc_piena + nota)[:60],
             'categoria': str(ultimo.get('categoria', ''))[:25],
-            'fornitore': str(group['fornitore'].mode()[0])[:30],
+            'fornitore': forn_piena[:30],
             'storico': storico,
             'media': round(media, 4),
             'penultimo': round(prezzo_pen, 4),
@@ -220,6 +284,7 @@ def _calcola_variazioni_prezzi_sync(rows: list, soglia: float) -> list:
             'trend': trend,
             'impatto_stimato': round(float(delta * qta_ref * freq), 2),
             'delta_euro': round(delta, 4),
+            'preferito': is_preferito,
         })
 
     alert_list.sort(key=lambda x: x['aumento_perc'], reverse=True)
@@ -324,7 +389,8 @@ def get_variazioni_prezzi(
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
 
     all_rows = _load_fatture_for_prezzi(sb, ristorante_id, data_da, data_a)
-    variazioni = _calcola_variazioni_prezzi_sync(all_rows, soglia)
+    preferiti_keys = _carica_preferiti_keys(sb, ristorante_id)
+    variazioni = _calcola_variazioni_prezzi_sync(all_rows, soglia, preferiti_keys)
 
     scostamento_medio = 0.0
     impatto_netto = 0.0
@@ -342,6 +408,85 @@ def get_variazioni_prezzi(
         fornitori_coinvolti=len(fornitori),
         soglia=soglia,
     )
+
+
+@router.get("/api/prezzi/preferiti", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
+def get_preferiti(
+    authorization: Optional[str] = Header(None),
+) -> PreferitiResponse:
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    resp = (
+        sb.table("prezzi_preferiti")
+        .select("descrizione_key,fornitore_key")
+        .eq("ristorante_id", ristorante_id)
+        .execute()
+    )
+    items = [
+        PreferitoItem(
+            descrizione_key=str(r.get("descrizione_key", "")),
+            fornitore_key=str(r.get("fornitore_key", "")),
+        )
+        for r in (resp.data or [])
+    ]
+    return PreferitiResponse(preferiti=items)
+
+
+@router.post("/api/prezzi/preferiti", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
+def add_preferito(
+    body: PreferitoRequest,
+    authorization: Optional[str] = Header(None),
+) -> PreferitiResponse:
+    """Aggiunge un preferito (idempotente). Chiave = coppia normalizzata."""
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    desc_key = _pulisci_desc_key(body.prodotto)
+    forn_key = _pulisci_forn_key(body.fornitore)
+    if not desc_key:
+        raise HTTPException(status_code=400, detail="Prodotto mancante")
+
+    sb.table("prezzi_preferiti").upsert(
+        {
+            "ristorante_id": ristorante_id,
+            "user_id": str(user["id"]),
+            "descrizione_key": desc_key,
+            "fornitore_key": forn_key,
+        },
+        on_conflict="ristorante_id,descrizione_key,fornitore_key",
+    ).execute()
+    return get_preferiti(authorization)
+
+
+@router.delete("/api/prezzi/preferiti", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])
+def remove_preferito(
+    prodotto: str,
+    fornitore: str = "",
+    authorization: Optional[str] = Header(None),
+) -> PreferitiResponse:
+    user = _resolve_user_from_token(authorization)
+    sb = _get_supabase_client()
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    desc_key = _pulisci_desc_key(prodotto)
+    forn_key = _pulisci_forn_key(fornitore)
+    (
+        sb.table("prezzi_preferiti")
+        .delete()
+        .eq("ristorante_id", ristorante_id)
+        .eq("descrizione_key", desc_key)
+        .eq("fornitore_key", forn_key)
+        .execute()
+    )
+    return get_preferiti(authorization)
 
 
 @router.get("/api/prezzi/sconti-omaggi", tags=["Prezzi"], dependencies=[Depends(_verify_worker_key)])

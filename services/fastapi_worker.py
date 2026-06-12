@@ -1671,6 +1671,9 @@ class ConfigResponse(BaseModel):
     # scatta l'avviso "Alert prezzi". In pagina Prezzi resta solo come filtro di
     # visualizzazione, non la salva piu'. Per-utente (non per-ristorante).
     price_alert_threshold: float = 5.0
+    # Se true, gli avvisi prezzi (briefing + Home) si limitano ai prodotti
+    # preferiti (stella in pagina Prezzi) + tag. Default false = Pareto + tag.
+    alert_prezzi_solo_preferiti: bool = False
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -1679,6 +1682,8 @@ class ConfigUpdateRequest(BaseModel):
     chat_ai_enabled: Optional[bool] = None
     # None = non toccare. Clamp [0,50] lato salvataggio (set_price_alert_threshold).
     price_alert_threshold: Optional[float] = None
+    # None = non toccare.
+    alert_prezzi_solo_preferiti: Optional[bool] = None
 
 
 class MolMensilePoint(BaseModel):
@@ -4349,11 +4354,12 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     nome = ""
     disabled: set = set()
     chat_ai_enabled = True
+    solo_preferiti = False
     if ristorante_id:
         try:
             resp = (
                 sb.table("assistant_preferences")
-                .select("nome_referente,topics_disabled,chat_ai_enabled")
+                .select("nome_referente,topics_disabled,chat_ai_enabled,alert_prezzi_solo_preferiti")
                 .eq("ristorante_id", ristorante_id)
                 .limit(1)
                 .execute()
@@ -4366,6 +4372,7 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
                     disabled = {str(t) for t in td}
                 if pref.get("chat_ai_enabled") is not None:
                     chat_ai_enabled = bool(pref["chat_ai_enabled"])
+                solo_preferiti = bool(pref.get("alert_prezzi_solo_preferiti"))
         except Exception as exc:
             logger.warning("home_config_get: lettura fallita: %s", exc)
 
@@ -4405,6 +4412,7 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
         chat_ai_enabled=chat_ai_enabled, chat_limite_giorno=chat_limite,
         chat_domande_oggi=domande_oggi,
         price_alert_threshold=price_alert_threshold,
+        alert_prezzi_solo_preferiti=solo_preferiti,
     )
 
 
@@ -4446,6 +4454,9 @@ def home_config_post(
     # chat_ai_enabled: aggiornato solo se passato (None = non toccare).
     if body.chat_ai_enabled is not None:
         record["chat_ai_enabled"] = bool(body.chat_ai_enabled)
+    # alert_prezzi_solo_preferiti: aggiornato solo se passato (None = non toccare).
+    if body.alert_prezzi_solo_preferiti is not None:
+        record["alert_prezzi_solo_preferiti"] = bool(body.alert_prezzi_solo_preferiti)
 
     try:
         sb.table("assistant_preferences").upsert(
@@ -4454,6 +4465,15 @@ def home_config_post(
     except Exception as exc:
         logger.error("home_config_post: salvataggio fallito: %s", exc)
         raise HTTPException(status_code=500, detail="Salvataggio fallito")
+
+    # Cambiare quali prodotti generano avvisi (preferiti vs Pareto) cambia il
+    # briefing di oggi -> invalidalo cosi' si rigenera con la nuova logica.
+    if body.alert_prezzi_solo_preferiti is not None:
+        try:
+            from services.daily_briefing_service import invalidate_today_briefing
+            invalidate_today_briefing(str(user["id"]), ristorante_id, sb)
+        except Exception as exc:
+            logger.warning("home_config_post: invalidazione briefing (preferiti) fallita: %s", exc)
 
     # Soglia alert prezzi (per-utente). Qui e' l'UNICO punto che la imposta: in
     # pagina Prezzi e' solo un filtro di visualizzazione. Cambiarla cambia quali
@@ -4489,11 +4509,26 @@ def home_config_post(
     domande_oggi = 0
     if chat_limite > 0 and chat_ai:
         domande_oggi = _chat_domande_oggi(ristorante_id, str(user["id"]), sb)
+    # Rileggi la flag effettiva: il body puo' non averla passata (None=non toccare),
+    # quindi il valore corrente sta nel record salvato o resta quello esistente.
+    solo_preferiti = False
+    try:
+        rr = (
+            sb.table("assistant_preferences").select("alert_prezzi_solo_preferiti")
+            .eq("ristorante_id", ristorante_id).limit(1).execute()
+        )
+        if rr.data:
+            solo_preferiti = bool(rr.data[0].get("alert_prezzi_solo_preferiti"))
+    except Exception:
+        if body.alert_prezzi_solo_preferiti is not None:
+            solo_preferiti = bool(body.alert_prezzi_solo_preferiti)
+
     return ConfigResponse(
         nome_referente=str(nome or ""), topics=topics,
         chat_ai_enabled=chat_ai, chat_limite_giorno=chat_limite,
         chat_domande_oggi=domande_oggi,
         price_alert_threshold=soglia,
+        alert_prezzi_solo_preferiti=solo_preferiti,
     )
 
 
