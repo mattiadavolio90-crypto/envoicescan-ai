@@ -19,7 +19,7 @@ type Props = { cliente: ClienteDettaglio };
 
 const SIDEBAR_FLAGS: { key: string; label: string; desc: string }[] = [
   { key: "analisi_fatture", label: "Analisi Fatture", desc: "Visualizza e gestisci fatture" },
-  { key: "prezzi", label: "Controllo Prezzi", desc: "Variazioni prezzi, sconti, note credito" },
+  { key: "prezzi", label: "Osservatorio", desc: "Variazioni prezzi, sconti, note di credito, score fornitori" },
   { key: "margini", label: "Ricavi e Margini", desc: "Calcolo marginalità e analisi avanzate" },
   { key: "agenda", label: "Agenda", desc: "Appuntamenti, spese extra, turni del personale" },
   { key: "workspace", label: "Strumenti", desc: "Foodcost e inventario di magazzino" },

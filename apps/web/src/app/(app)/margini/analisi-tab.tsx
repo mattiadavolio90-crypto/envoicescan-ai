@@ -15,6 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { formatEuro, formatEuroCompact, MESI_NOMI_SHORT } from "./periodi";
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -364,23 +365,39 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
   return (
     <div className="space-y-5">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 ml-auto">
-        <button
-          onClick={openDettaglio}
-          disabled={centriFatturato.length === 0}
-          title={centriFatturato.length === 0 ? "Configura prima la ripartizione per centro" : undefined}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-input hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <BarChart3 className="size-3" />
-          Dettaglio giornaliero
-        </button>
-        <button
-          onClick={() => setRipartizioneOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          <Settings2 className="size-3" />
-          Ripartizione centri
-        </button>
+      <div className="flex items-center gap-2">
+        <InfoPopover title="Come leggere l'Analisi margini">
+          <p className="text-muted-foreground">
+            Mostra dove vanno i tuoi soldi: per ogni voce di costo vedi quanto pesa sul fatturato del periodo.
+          </p>
+          <div className="space-y-1.5 text-muted-foreground">
+            <p><strong className="text-foreground">Incidenza %</strong> = costo ÷ fatturato. Più è bassa, meglio è. È il numero chiave per capire se una voce è sotto controllo.</p>
+            <p><strong className="text-foreground">Centri di costo</strong> = come ripartisci il fatturato tra le aree (es. sala, cucina, asporto). Impostala con <em>Ripartizione centri</em> per vedere i margini per area.</p>
+            <p><strong className="text-foreground">Dettaglio giornaliero</strong> = l&apos;andamento giorno per giorno del periodo selezionato.</p>
+          </div>
+          <div className="border-t border-border pt-2 text-muted-foreground">
+            <p>I costi del personale arrivano dai turni/totali del tab Personale, le materie prime dalle fatture, le altre spese dal tab Spese.</p>
+          </div>
+        </InfoPopover>
+
+        <div className="flex items-center gap-2 ml-auto">
+          <button
+            onClick={openDettaglio}
+            disabled={centriFatturato.length === 0}
+            title={centriFatturato.length === 0 ? "Configura prima la ripartizione per centro" : undefined}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md border border-input hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            <BarChart3 className="size-3" />
+            Dettaglio giornaliero
+          </button>
+          <button
+            onClick={() => setRipartizioneOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            <Settings2 className="size-3" />
+            Ripartizione centri
+          </button>
+        </div>
       </div>
 
       <RipartizioneDialog

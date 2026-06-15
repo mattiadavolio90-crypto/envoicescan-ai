@@ -11,6 +11,7 @@ import { formatEuro, formatEuroCompact, scorporoNetto } from "./periodi";
 import { CaricaRicaviDialog } from "./carica-ricavi-dialog";
 import { CostoPersonaleDialog } from "./costo-personale-dialog";
 import { CostoSpeseDialog, type TipoSpesaCella } from "./costo-spese-dialog";
+import { InfoPopover } from "@/components/ui/info-popover";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -293,6 +294,21 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex items-center gap-2">
+        <InfoPopover title="Come compilare la tabella margini">
+          <p className="text-muted-foreground">
+            Ogni costo ha tre possibili origini. La tabella li combina per calcolare margini e incidenze.
+          </p>
+          <div className="space-y-1.5 text-muted-foreground">
+            <p><strong className="text-foreground">Righe grigie (automatiche)</strong> — es. <em>Costi F&amp;B (Fatture)</em> e <em>Spese Gen. (Fatture)</em>: arrivano dalle tue fatture, non si modificano.</p>
+            <p><strong className="text-foreground">Righe in bianco (modificabili)</strong> — cliccale per inserire un valore.</p>
+            <p className="pl-3">· <strong className="text-foreground">Costo Personale</strong>: clicca la cella per <strong className="text-foreground">recuperare il totale dal tab Agenda → Personale</strong> (turni o totali mensili) oppure scrivilo a mano.</p>
+            <p className="pl-3">· <strong className="text-foreground">Altre Spese / Altri Costi F&amp;B</strong>: recupera dal tab <strong className="text-foreground">Agenda → Spese</strong> o inserisci un importo a mano.</p>
+            <p><strong className="text-foreground">Righe colorate (= totali)</strong>: calcolate in automatico dalle righe sopra.</p>
+          </div>
+          <div className="border-t border-border pt-2 text-muted-foreground">
+            <p>Usa <strong className="text-foreground">Totale / Media</strong> per vedere la somma del periodo o la media mensile, e <strong className="text-foreground">Carica ricavi</strong> per inserire gli incassi.</p>
+          </div>
+        </InfoPopover>
         <p className="text-xs text-muted-foreground flex items-center gap-1.5">
           <Info className="size-3" />
           Modifica le righe in bianco; le altre sono calcolate o ereditate dalle fatture.

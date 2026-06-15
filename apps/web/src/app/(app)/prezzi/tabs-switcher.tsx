@@ -7,6 +7,7 @@ const TABS = [
   { key: "variazioni", label: "Variazioni Prezzo" },
   { key: "sconti", label: "Sconti e Omaggi" },
   { key: "nc", label: "Note di Credito" },
+  { key: "score", label: "Score Fornitori" },
 ];
 
 export function TabsSwitcher({ active }: { active: string }) {

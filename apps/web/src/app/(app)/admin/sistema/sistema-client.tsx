@@ -141,19 +141,94 @@ const IMPORT_STATUS_CLASS: Record<string, string> = {
   failed: "bg-orange-500/15 text-orange-600 border-orange-500/30",
 };
 
+// ── Salute import PER RISTORANTE ──────────────────────────────────────────────
+type SaluteRistorante = {
+  ristorante_id: string;
+  nome_ristorante: string;
+  stato: "ok" | "warning" | "critico";
+  ultima_data: string | null;
+  giorni_silenzio: number | null;
+  buchi: string[];
+  n_buchi: number;
+  coda_problemi: number;
+};
+
+const SALUTE_CLASS: Record<string, string> = {
+  critico: "border-red-500/40 bg-red-500/5",
+  warning: "border-amber-500/40 bg-amber-500/5",
+  ok: "border-emerald-500/30 bg-emerald-500/5",
+};
+const SALUTE_DOT: Record<string, string> = {
+  critico: "bg-red-500",
+  warning: "bg-amber-500",
+  ok: "bg-emerald-500",
+};
+
+function formatGiornoMese(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
+}
+
+function SaluteRistoranteCard({ r }: { r: SaluteRistorante }) {
+  const problemi: string[] = [];
+  if (r.giorni_silenzio == null) problemi.push("nessun ricavo registrato");
+  else if (r.stato === "critico" && r.giorni_silenzio > 0)
+    problemi.push(`nessun dato da ${r.giorni_silenzio} giorn${r.giorni_silenzio === 1 ? "o" : "i"}`);
+  if (r.n_buchi > 0)
+    problemi.push(`${r.n_buchi} giorn${r.n_buchi === 1 ? "o" : "i"} mancant${r.n_buchi === 1 ? "e" : "i"}: ${r.buchi.map(formatGiornoMese).join(", ")}`);
+  if (r.coda_problemi > 0)
+    problemi.push(`${r.coda_problemi} import bloccat${r.coda_problemi === 1 ? "o" : "i"} in coda`);
+
+  return (
+    <div className={`rounded-lg border p-3 ${SALUTE_CLASS[r.stato] || ""}`}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className={`size-2.5 rounded-full shrink-0 ${SALUTE_DOT[r.stato] || ""}`} />
+          <p className="font-medium truncate">{r.nome_ristorante}</p>
+        </div>
+        <span className="text-xs text-muted-foreground shrink-0">
+          {r.ultima_data ? `ultimo: ${formatGiornoMese(r.ultima_data)}` : "mai"}
+        </span>
+      </div>
+      {r.stato === "ok" ? (
+        <p className="mt-1 text-xs text-emerald-600 flex items-center gap-1">
+          <CheckCircle className="size-3.5" /> Aggiornato, nessun problema.
+        </p>
+      ) : (
+        <ul className="mt-1.5 space-y-0.5">
+          {problemi.map((p, i) => (
+            <li key={i} className="flex items-start gap-1 text-xs text-foreground/80">
+              <AlertTriangle className={`size-3.5 mt-0.5 shrink-0 ${r.stato === "critico" ? "text-red-600" : "text-amber-600"}`} />
+              {p}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function ImportRicaviTab() {
   const [items, setItems] = useState<ImportRicaviItem[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number>>({});
+  const [salute, setSalute] = useState<SaluteRistorante[] | null>(null);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/sistema/ricavi-import");
-      if (!res.ok) { toast.error("Errore caricamento import ricavi"); return; }
-      const data = await res.json();
+      const [resImport, resSalute] = await Promise.all([
+        fetch("/api/admin/sistema/ricavi-import"),
+        fetch("/api/admin/sistema/ricavi-salute"),
+      ]);
+      if (!resImport.ok) { toast.error("Errore caricamento import ricavi"); return; }
+      const data = await resImport.json();
       setItems((data.items as ImportRicaviItem[]) || []);
       setCounts((data.counts as Record<string, number>) || {});
+      if (resSalute.ok) {
+        const ds = await resSalute.json();
+        setSalute((ds.items as SaluteRistorante[]) || []);
+      }
     } catch { toast.error("Errore di connessione"); }
     finally { setLoading(false); }
   }, []);
@@ -161,6 +236,7 @@ function ImportRicaviTab() {
   useEffect(() => { load(); }, [load]);
 
   const totProblemi = Object.values(counts).reduce((s, v) => s + v, 0);
+  const saluteProblemi = (salute || []).filter((r) => r.stato !== "ok");
 
   return (
     <div className="space-y-4">
@@ -181,6 +257,24 @@ function ImportRicaviTab() {
         )}
       </div>
 
+      {/* Salute per ristorante — silenzio, buchi, coda bloccata */}
+      {salute && salute.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold">Stato per ristorante</h3>
+            {saluteProblemi.length > 0 && (
+              <span className="rounded-full border border-red-500/30 bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-600">
+                {saluteProblemi.length} con problemi
+              </span>
+            )}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {salute.map((r) => <SaluteRistoranteCard key={r.ristorante_id} r={r} />)}
+          </div>
+        </div>
+      )}
+
+      <h3 className="text-sm font-semibold pt-2">Record di coda bloccati</h3>
       {items && items.length === 0 ? (
         <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-600">
           <CheckCircle className="size-4" /> Tutto ok — nessun import ricavi bloccato.

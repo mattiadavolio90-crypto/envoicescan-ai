@@ -5184,7 +5184,21 @@ def _log_review_action(
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _ore_turno(t: dict) -> float:
-    """Calcola le ore totali di un turno (slot1 + eventuale slot2)."""
+    """Calcola le ore TOTALI di un turno.
+
+    Modello: le ore extra sono AGGIUNTIVE, non un sottoinsieme.
+      - mensile=True: ore_dichiarate (gia' totale ord+extra dalla busta paga).
+      - giornaliero: ore dagli orari (= ordinarie del turno) + ore_extra del giorno.
+
+    Tutti i consumer ricavano l'ordinario come (ore_totali - ore_extra), quindi
+    questa definizione mantiene corretto sia il totale sia lo split ord/extra.
+    Usato da Personale e Margini.
+    """
+    if t.get("mensile"):
+        try:
+            return round(float(t.get("ore_dichiarate") or 0), 2)
+        except (TypeError, ValueError):
+            return 0.0
     from datetime import datetime as _dt
     def slot_ore(inizio: Optional[str], fine: Optional[str]) -> float:
         if not inizio or not fine:
@@ -5196,7 +5210,12 @@ def _ore_turno(t: dict) -> float:
             return round(minuti / 60, 2)
         except Exception:
             return 0.0
-    return slot_ore(t.get("ora_inizio"), t.get("ora_fine")) + slot_ore(t.get("ora_inizio2"), t.get("ora_fine2"))
+    ore_orari = slot_ore(t.get("ora_inizio"), t.get("ora_fine")) + slot_ore(t.get("ora_inizio2"), t.get("ora_fine2"))
+    try:
+        extra = float(t.get("ore_extra") or 0)
+    except (TypeError, ValueError):
+        extra = 0.0
+    return round(ore_orari + extra, 2)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

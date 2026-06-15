@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, BarChart3, Download, Copy, Trash, History } from 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { toast } from "sonner";
 import {
   fmtData,
@@ -154,6 +155,17 @@ export function InventarioTab() {
           snapshots={snapshots}
           onChange={onDataChange}
         />
+
+        <InfoPopover title="Come funziona l'Inventario">
+          <p className="text-muted-foreground">
+            Ogni inventario è una <strong className="text-foreground">fotografia a una data</strong>: registri quanto hai in magazzino quel giorno e il sistema calcola il valore totale.
+          </p>
+          <div className="space-y-1.5 text-muted-foreground">
+            <p>Scegli la <strong className="text-foreground">data</strong> in alto, poi <em>Aggiungi prodotto</em> con quantità e prezzo. Puoi cercare i prodotti dalle tue fatture.</p>
+            <p><strong className="text-foreground">Copia da inventario precedente</strong>: riparti dall&apos;ultima fotografia (con quantità a zero) invece di riscrivere tutto — aggiorni solo i numeri.</p>
+            <p><strong className="text-foreground">Inventari</strong> mostra lo storico delle fotografie salvate, per confrontarle nel tempo.</p>
+          </div>
+        </InfoPopover>
 
         <Button variant="outline" onClick={() => setStoricoOpen(true)} disabled={snapshots.length === 0}>
           <History className="size-4 mr-1.5" />Inventari

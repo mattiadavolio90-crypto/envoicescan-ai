@@ -1260,6 +1260,176 @@ def admin_sistema_ricavi_import():
     return {"items": items, "counts": counts}
 
 
+# ── Sistema/Salute — Salute import ricavi PER RISTORANTE ─────────────────────
+
+def _buchi_serie(date_set: set, first_iso: Optional[str], last_iso: Optional[str]) -> List[str]:
+    """Giorni mancanti (ISO) tra first_iso e last_iso inclusi, assenti da date_set.
+
+    Estremi inclusi: se manca anche un estremo (non dovrebbe, sono min/max del set)
+    verrebbe comunque elencato. date_set contiene solo giorni con dati.
+    """
+    from datetime import date as _date
+    if not first_iso or not last_iso:
+        return []
+    try:
+        cur = _date.fromisoformat(first_iso)
+        end = _date.fromisoformat(last_iso)
+    except ValueError:
+        return []
+    out: List[str] = []
+    while cur <= end:
+        iso = cur.isoformat()
+        if iso not in date_set:
+            out.append(iso)
+        cur += timedelta(days=1)
+    return out
+
+
+def _classifica_salute_ricavi(giorni_silenzio: Optional[int], n_buchi: int,
+                              coda_problemi: int, silenzio_giorni: int) -> str:
+    """Stato salute import di un ristorante a partire dai 3 segnali.
+
+    - critico: nessun dato (silenzio None), silenzio oltre soglia, o coda bloccata.
+    - warning: serie con buchi ma silenzio entro soglia e coda pulita.
+    - ok: aggiornato, nessun buco, coda pulita.
+    """
+    silenzio_critico = giorni_silenzio is None or giorni_silenzio > silenzio_giorni
+    if silenzio_critico or coda_problemi > 0:
+        return "critico"
+    if n_buchi > 0:
+        return "warning"
+    return "ok"
+
+
+@router.get("/api/admin/sistema/ricavi-salute", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+def admin_sistema_ricavi_salute(silenzio_giorni: int = 2):
+    """Salute dell'import ricavi aggregata PER RISTORANTE.
+
+    A differenza di /ricavi-import (che elenca i singoli record bloccati in coda),
+    qui ogni ristorante che usa l'import via email ha UNA riga di stato che combina
+    tre segnali:
+      - silenzio: nessun ricavo da > silenzio_giorni giorni (mail mai arrivata o
+        non processata) — è il caso che lascia la coda pulita e passa inosservato;
+      - buchi: giorni mancanti nella serie recente fino all'ultimo dato (il file è
+        arrivato ma non conteneva tutti i giorni);
+      - coda: record failed/dead/unknown_sender di quel ristorante.
+
+    "Usa l'import email" = ha almeno un mittente attivo in ricavi_email_sender_map.
+    Gli altri ristoranti non vengono valutati per silenzio/buchi (inserimento
+    manuale → falsi allarmi). Sola lettura.
+    """
+    from datetime import date as _date
+
+    sb = get_supabase_client()
+    silenzio_giorni = max(1, min(30, int(silenzio_giorni or 2)))
+    oggi = datetime.now(timezone.utc).date()
+    # Finestra di analisi buchi: ultime 2 settimane fino all'ultimo dato noto.
+    finestra_da = (oggi - timedelta(days=14)).isoformat()
+    problem_states = ["unknown_sender", "failed", "dead"]
+
+    # ── Ristoranti che usano l'import email (mittente attivo) ─────────────────
+    try:
+        sender_rows = (
+            sb.table("ricavi_email_sender_map")
+            .select("ristorante_id")
+            .eq("attivo", True)
+            .execute()
+        ).data or []
+    except Exception as exc:
+        logger.error("admin ricavi-salute: sender_map fallita: %s", exc)
+        sender_rows = []
+
+    email_rist_ids = {str(r["ristorante_id"]) for r in sender_rows if r.get("ristorante_id")}
+    if not email_rist_ids:
+        return {"items": [], "counts": {"ok": 0, "warning": 0, "critico": 0}, "silenzio_giorni": silenzio_giorni}
+
+    # Nomi ristoranti
+    nomi: Dict[str, str] = {}
+    try:
+        rist_rows = (
+            sb.table("ristoranti")
+            .select("id,nome_ristorante")
+            .in_("id", list(email_rist_ids))
+            .execute()
+        ).data or []
+        nomi = {str(r["id"]): (r.get("nome_ristorante") or "—") for r in rist_rows}
+    except Exception as exc:
+        logger.error("admin ricavi-salute: nomi ristoranti falliti: %s", exc)
+
+    # ── Ricavi recenti per ristorante (date) ─────────────────────────────────
+    date_per_rist: Dict[str, set] = {rid: set() for rid in email_rist_ids}
+    try:
+        ricavi_rows = (
+            sb.table("ricavi_giornalieri")
+            .select("ristorante_id,data")
+            .in_("ristorante_id", list(email_rist_ids))
+            .gte("data", finestra_da)
+            .execute()
+        ).data or []
+        for r in ricavi_rows:
+            rid = str(r.get("ristorante_id"))
+            d = str(r.get("data") or "")[:10]
+            if rid in date_per_rist and d:
+                date_per_rist[rid].add(d)
+    except Exception as exc:
+        logger.error("admin ricavi-salute: ricavi_giornalieri falliti: %s", exc)
+
+    # ── Coda problematica per ristorante ─────────────────────────────────────
+    coda_per_rist: Dict[str, int] = {rid: 0 for rid in email_rist_ids}
+    try:
+        coda_rows = (
+            sb.table("ricavi_email_queue")
+            .select("ristorante_id,status")
+            .in_("ristorante_id", list(email_rist_ids))
+            .in_("status", problem_states)
+            .execute()
+        ).data or []
+        for r in coda_rows:
+            rid = str(r.get("ristorante_id"))
+            if rid in coda_per_rist:
+                coda_per_rist[rid] += 1
+    except Exception as exc:
+        logger.error("admin ricavi-salute: coda per ristorante fallita: %s", exc)
+
+    def _parse_iso(s: str):
+        try:
+            return _date.fromisoformat(s)
+        except ValueError:
+            return None
+
+    items = []
+    counts = {"ok": 0, "warning": 0, "critico": 0}
+
+    for rid in sorted(email_rist_ids, key=lambda x: nomi.get(x, "")):
+        date_set = date_per_rist.get(rid, set())
+        last_data = max(date_set) if date_set else None
+        last_dt = _parse_iso(last_data) if last_data else None
+        giorni_silenzio = (oggi - last_dt).days if last_dt else None
+
+        # Buchi: giorni mancanti tra il primo dato della finestra e l'ultimo.
+        buchi = _buchi_serie(date_set, min(date_set) if date_set else None, last_data)
+        coda_problemi = coda_per_rist.get(rid, 0)
+        stato = _classifica_salute_ricavi(giorni_silenzio, len(buchi), coda_problemi, silenzio_giorni)
+        counts[stato] += 1
+
+        items.append({
+            "ristorante_id": rid,
+            "nome_ristorante": nomi.get(rid, "—"),
+            "stato": stato,
+            "ultima_data": last_data,
+            "giorni_silenzio": giorni_silenzio,
+            "buchi": buchi,
+            "n_buchi": len(buchi),
+            "coda_problemi": coda_problemi,
+        })
+
+    # Ristoranti problematici in cima
+    ordine = {"critico": 0, "warning": 1, "ok": 2}
+    items.sort(key=lambda it: (ordine.get(it["stato"], 9), it["nome_ristorante"]))
+
+    return {"items": items, "counts": counts, "silenzio_giorni": silenzio_giorni}
+
+
 # ── Sistema — Agent notturno ──────────────────────────────────────────────────
 
 @router.get("/api/admin/sistema/agent-notturno", tags=["Admin"], dependencies=[Depends(_verify_admin)])
@@ -1610,23 +1780,67 @@ class MappingBody(BaseModel):
 
 @router.get("/api/admin/ragione-sociale-map", tags=["Admin"], dependencies=[Depends(_verify_admin)])
 def admin_lista_mapping():
+    # La tabella ha `ragione_sociale_norm` (la chiave normalizzata che il parser
+    # confronta), NON `ragione_sociale`. La esponiamo come `ragione_sociale` per
+    # la UI, che mostra m.ragione_sociale. Prima qui si chiedeva una colonna
+    # inesistente -> la lista risultava vuota anche con mapping presenti nel DB.
     sb = get_supabase_client()
-    resp = sb.table("ricavi_ragione_sociale_map").select("id,ragione_sociale,ristorante_id,created_at").order("ragione_sociale").execute()
-    return resp.data or []
+    resp = (
+        sb.table("ricavi_ragione_sociale_map")
+        .select("id,ragione_sociale_norm,ristorante_id,gestionale,created_at")
+        .order("ragione_sociale_norm")
+        .execute()
+    )
+    return [
+        {
+            "id": r.get("id"),
+            "ragione_sociale": r.get("ragione_sociale_norm"),
+            "ristorante_id": r.get("ristorante_id"),
+            "gestionale": r.get("gestionale"),
+            "created_at": r.get("created_at"),
+        }
+        for r in (resp.data or [])
+    ]
 
 
 @router.post("/api/admin/ragione-sociale-map", tags=["Admin"])
 def admin_crea_mapping(body: MappingBody, admin_user: dict = Depends(_verify_admin)):
     sb = get_supabase_client()
-    dup = sb.table("ricavi_ragione_sociale_map").select("id").eq("ragione_sociale", body.ragione_sociale.strip()).execute()
+    # Normalizzazione IDENTICA a quella del parser (worker/email_queue_processor:
+    # ragione_map.get(raw_ragione.lower().strip())). Se salvassimo la forma grezza,
+    # il match in import fallirebbe e la riga ricadrebbe sul mittente.
+    norm = body.ragione_sociale.strip().lower()
+    if not norm:
+        raise HTTPException(status_code=400, detail="Ragione sociale vuota")
+    # `gestionale` e' NOT NULL e fa parte della chiave univoca
+    # (ragione_sociale_norm, gestionale). Il worker scrive "passbi_v1": stesso
+    # valore qui, altrimenti il dup-check non vedrebbe i mapping del worker.
+    GESTIONALE = "passbi_v1"
+    dup = (
+        sb.table("ricavi_ragione_sociale_map")
+        .select("id")
+        .eq("ragione_sociale_norm", norm)
+        .eq("gestionale", GESTIONALE)
+        .execute()
+    )
     if dup.data:
         raise HTTPException(status_code=409, detail="Ragione sociale già mappata")
     r = sb.table("ricavi_ragione_sociale_map").insert({
-        "ragione_sociale": body.ragione_sociale.strip(),
+        "ragione_sociale_norm": norm,
         "ristorante_id": body.ristorante_id,
+        "gestionale": GESTIONALE,
     }).execute()
-    logger.info("admin_crea_mapping: %s → %s | admin=%s", body.ragione_sociale, body.ristorante_id, admin_user.get("email"))
-    return r.data[0] if r.data else {"ok": True}
+    logger.info("admin_crea_mapping: %s → %s | admin=%s", norm, body.ristorante_id, admin_user.get("email"))
+    row = r.data[0] if r.data else None
+    if not row:
+        return {"ok": True}
+    return {
+        "id": row.get("id"),
+        "ragione_sociale": row.get("ragione_sociale_norm"),
+        "ristorante_id": row.get("ristorante_id"),
+        "gestionale": row.get("gestionale"),
+        "created_at": row.get("created_at"),
+    }
 
 
 @router.delete("/api/admin/ragione-sociale-map/{mapping_id}", tags=["Admin"])

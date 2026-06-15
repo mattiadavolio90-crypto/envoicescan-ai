@@ -4650,6 +4650,100 @@
         }
       }
     },
+    "/api/prezzi/score-fornitori": {
+      "get": {
+        "tags": [
+          "Prezzi"
+        ],
+        "summary": "Get Score Fornitori",
+        "description": "Score interno (0-100) per fornitore, sola lettura cliente↔fornitore.\n\nRiusa gli stessi dati di variazioni/sconti/NC: nessuna nuova tabella, nessun\nbenchmark esterno. Soglia = stessa soglia variazioni (default avvisi).",
+        "operationId": "get_score_fornitori_api_prezzi_score_fornitori_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "soglia",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "number",
+              "default": 5.0,
+              "title": "Soglia"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreFornitoriResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ricavi/giornalieri": {
       "get": {
         "tags": [
@@ -9405,7 +9499,7 @@
           "Workspace"
         ],
         "summary": "Ws Personale List",
-        "description": "Lista turni + nomi distinti + monte ore per persona nel periodo.",
+        "description": "Lista turni + nomi distinti + monte ore per persona nel periodo.\n\nIl filtro `mensile` tiene separate le due viste: giornaliero e mensile non\nvengono MAI mischiati (regola di dominio, vedi guardia in POST).",
         "operationId": "ws_personale_list_api_workspace_personale_get",
         "parameters": [
           {
@@ -9443,6 +9537,24 @@
               "title": "A"
             },
             "description": "Data fine YYYY-MM-DD"
+          },
+          {
+            "name": "mensile",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "True = solo righe mensili, False = solo giornaliere, None = tutte",
+              "title": "Mensile"
+            },
+            "description": "True = solo righe mensili, False = solo giornaliere, None = tutte"
           },
           {
             "name": "authorization",
@@ -9503,7 +9615,7 @@
           "Workspace"
         ],
         "summary": "Ws Personale Crea",
-        "description": "Aggiunge un turno (supporta secondo slot per spezzato).",
+        "description": "Aggiunge un turno giornaliero (supporta secondo slot per spezzato).\n\nEsclusivita': rifiutato se il dipendente ha gia' una riga MENSILE in quel\nmese (giornaliero e mensile non coesistono per dipendente/mese).",
         "operationId": "ws_personale_crea_api_workspace_personale_post",
         "parameters": [
           {
@@ -9645,6 +9757,163 @@
         }
       }
     },
+    "/api/workspace/personale/mensile": {
+      "post": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Personale Crea Mensile",
+        "description": "Inserisce i totali mensili di un dipendente (da busta paga) come singola\nriga mensile. Esclusiva: rifiutato se esistono turni giornalieri per quel\ndipendente in quel mese, o se la riga mensile esiste gia'.",
+        "operationId": "ws_personale_crea_mensile_api_workspace_personale_mensile_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnoMensileBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/personale/mensile/{turno_id}": {
+      "patch": {
+        "tags": [
+          "Workspace"
+        ],
+        "summary": "Ws Personale Aggiorna Mensile",
+        "description": "Aggiorna i totali di una riga mensile esistente.",
+        "operationId": "ws_personale_aggiorna_mensile_api_workspace_personale_mensile__turno_id__patch",
+        "parameters": [
+          {
+            "name": "turno_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Turno Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AggiornaTurnoMensileBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/personale/{turno_id}": {
       "patch": {
         "tags": [
@@ -9732,7 +10001,7 @@
           "Workspace"
         ],
         "summary": "Ws Personale Elimina",
-        "description": "Elimina un turno.",
+        "description": "Elimina un turno o una riga mensile (per id, ristorante).",
         "operationId": "ws_personale_elimina_api_workspace_personale__turno_id__delete",
         "parameters": [
           {
@@ -11754,6 +12023,80 @@
         }
       }
     },
+    "/api/admin/sistema/ricavi-salute": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Sistema Ricavi Salute",
+        "description": "Salute dell'import ricavi aggregata PER RISTORANTE.\n\nA differenza di /ricavi-import (che elenca i singoli record bloccati in coda),\nqui ogni ristorante che usa l'import via email ha UNA riga di stato che combina\ntre segnali:\n  - silenzio: nessun ricavo da > silenzio_giorni giorni (mail mai arrivata o\n    non processata) — è il caso che lascia la coda pulita e passa inosservato;\n  - buchi: giorni mancanti nella serie recente fino all'ultimo dato (il file è\n    arrivato ma non conteneva tutti i giorni);\n  - coda: record failed/dead/unknown_sender di quel ristorante.\n\n\"Usa l'import email\" = ha almeno un mittente attivo in ricavi_email_sender_map.\nGli altri ristoranti non vengono valutati per silenzio/buchi (inserimento\nmanuale → falsi allarmi). Sola lettura.",
+        "operationId": "admin_sistema_ricavi_salute_api_admin_sistema_ricavi_salute_get",
+        "parameters": [
+          {
+            "name": "silenzio_giorni",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 2,
+              "title": "Silenzio Giorni"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/sistema/agent-notturno": {
       "get": {
         "tags": [
@@ -13368,6 +13711,67 @@
         "type": "object",
         "title": "AggiornaTurnoBody"
       },
+      "AggiornaTurnoMensileBody": {
+        "properties": {
+          "ore_totali": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ore Totali"
+          },
+          "lordo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lordo"
+          },
+          "ore_extra": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ore Extra"
+          },
+          "importo_extra": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo Extra"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "title": "AggiornaTurnoMensileBody"
+      },
       "AggiornaVoceInventarioBody": {
         "properties": {
           "nome": {
@@ -13978,6 +14382,28 @@
           "file"
         ],
         "title": "Body_upload_invoice_api_upload_invoice_post"
+      },
+      "BozzaTrattativa": {
+        "properties": {
+          "attiva": {
+            "type": "boolean",
+            "title": "Attiva",
+            "default": true
+          },
+          "testo": {
+            "type": "string",
+            "title": "Testo",
+            "default": ""
+          },
+          "motivo": {
+            "type": "string",
+            "title": "Motivo",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "BozzaTrattativa",
+        "description": "Bozza testuale copiabile, UNICA. Solo testo, nessun invio: il cliente la\ncopia e la usa dove preferisce (mail, messaggio, telefonata).\n\n`attiva=False` quando non c'è nulla da negoziare (fornitore affidabile):\nla UI non mostra il box. `motivo` spiega in una riga perché è vuota."
       },
       "BriefingAzione": {
         "properties": {
@@ -17632,6 +18058,190 @@
         ],
         "title": "ScontoOmaggioItem"
       },
+      "ScoreFornitore": {
+        "properties": {
+          "fornitore": {
+            "type": "string",
+            "title": "Fornitore"
+          },
+          "score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Score"
+          },
+          "stato": {
+            "type": "string",
+            "title": "Stato"
+          },
+          "affidabilita_dato": {
+            "type": "string",
+            "title": "Affidabilita Dato"
+          },
+          "frase_sintesi": {
+            "type": "string",
+            "title": "Frase Sintesi"
+          },
+          "sottometriche": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreSottometrica"
+            },
+            "type": "array",
+            "title": "Sottometriche"
+          },
+          "segnali": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreSegnale"
+            },
+            "type": "array",
+            "title": "Segnali"
+          },
+          "bozza": {
+            "$ref": "#/components/schemas/BozzaTrattativa"
+          },
+          "n_fatture": {
+            "type": "integer",
+            "title": "N Fatture"
+          },
+          "n_prodotti": {
+            "type": "integer",
+            "title": "N Prodotti"
+          },
+          "mesi_coperti": {
+            "type": "integer",
+            "title": "Mesi Coperti"
+          },
+          "periodo": {
+            "type": "string",
+            "title": "Periodo"
+          },
+          "spesa_periodo": {
+            "type": "number",
+            "title": "Spesa Periodo"
+          },
+          "impatto_rincari": {
+            "type": "number",
+            "title": "Impatto Rincari"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fornitore",
+          "score",
+          "stato",
+          "affidabilita_dato",
+          "frase_sintesi",
+          "sottometriche",
+          "segnali",
+          "bozza",
+          "n_fatture",
+          "n_prodotti",
+          "mesi_coperti",
+          "periodo",
+          "spesa_periodo",
+          "impatto_rincari"
+        ],
+        "title": "ScoreFornitore"
+      },
+      "ScoreFornitoriResponse": {
+        "properties": {
+          "fornitori": {
+            "items": {
+              "$ref": "#/components/schemas/ScoreFornitore"
+            },
+            "type": "array",
+            "title": "Fornitori"
+          },
+          "periodo": {
+            "type": "string",
+            "title": "Periodo"
+          },
+          "n_fornitori_valutati": {
+            "type": "integer",
+            "title": "N Fornitori Valutati"
+          },
+          "n_fornitori_insufficienti": {
+            "type": "integer",
+            "title": "N Fornitori Insufficienti"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fornitori",
+          "periodo",
+          "n_fornitori_valutati",
+          "n_fornitori_insufficienti"
+        ],
+        "title": "ScoreFornitoriResponse"
+      },
+      "ScoreSegnale": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "title": "Tipo"
+          },
+          "tono": {
+            "type": "string",
+            "title": "Tono"
+          },
+          "testo": {
+            "type": "string",
+            "title": "Testo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo",
+          "tono",
+          "testo"
+        ],
+        "title": "ScoreSegnale",
+        "description": "Segnale osservato sulla relazione (positivo o di attenzione)."
+      },
+      "ScoreSottometrica": {
+        "properties": {
+          "chiave": {
+            "type": "string",
+            "title": "Chiave"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "punteggio": {
+            "type": "number",
+            "title": "Punteggio"
+          },
+          "stato": {
+            "type": "string",
+            "title": "Stato"
+          },
+          "spiegazione": {
+            "type": "string",
+            "title": "Spiegazione"
+          },
+          "disponibile": {
+            "type": "boolean",
+            "title": "Disponibile"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chiave",
+          "label",
+          "punteggio",
+          "stato",
+          "spiegazione",
+          "disponibile"
+        ],
+        "title": "ScoreSottometrica",
+        "description": "Una delle metriche che compongono lo stato fornitore.\n\n`punteggio` (0-100) resta come dato interno per ordinamento/sintesi, ma la UI\nmostra `stato`: la lettura è per asse (stabile/da monitorare/instabile/non\nvalutabile), non un voto numerico, così non si presta a contestazioni."
+      },
       "SnoozeSuggestionRequest": {
         "properties": {
           "days": {
@@ -17977,6 +18587,68 @@
           "totale"
         ],
         "title": "TrendSerie"
+      },
+      "TurnoMensileBody": {
+        "properties": {
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "mese": {
+            "type": "string",
+            "title": "Mese"
+          },
+          "ore_totali": {
+            "type": "number",
+            "title": "Ore Totali"
+          },
+          "lordo": {
+            "type": "number",
+            "title": "Lordo"
+          },
+          "ore_extra": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ore Extra"
+          },
+          "importo_extra": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Importo Extra"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome",
+          "mese",
+          "ore_totali",
+          "lordo"
+        ],
+        "title": "TurnoMensileBody",
+        "description": "Inserimento aggregato mensile da busta paga: i totali del mese per un\ndipendente, senza spezzare in turni giornalieri."
       },
       "UploadInvoiceResponse": {
         "properties": {

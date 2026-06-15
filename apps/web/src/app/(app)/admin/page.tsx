@@ -24,6 +24,21 @@ async function fetchOverview(token: string): Promise<{ data: Record<string, unkn
   }
 }
 
+async function fetchRicaviProblemi(token: string): Promise<number> {
+  try {
+    const h: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
+    const res = await fetch(`${WORKER_URL}/api/admin/sistema/ricavi-salute`, { headers: h, cache: "no-store" });
+    if (!res.ok) return 0;
+    const data = await res.json();
+    const counts = (data?.counts as Record<string, number>) ?? {};
+    return (counts.critico ?? 0) + (counts.warning ?? 0);
+  } catch (err) {
+    console.error("[admin/ricavi-salute] fetch error:", err);
+    return 0;
+  }
+}
+
 const NAV_CARDS = [
   {
     href: "/admin/clienti",
@@ -46,7 +61,7 @@ const NAV_CARDS = [
   {
     href: "/admin/sistema",
     title: "Sistema & Salute",
-    desc: "Costi AI, retention",
+    desc: "Costi AI, retention, import ricavi",
     icon: Settings,
     border: "border-emerald-500",
     bg: "hover:bg-emerald-500/8",
@@ -78,7 +93,10 @@ export default async function AdminPage() {
 
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value ?? "";
-  const { data: overview, error: overviewError } = await fetchOverview(token);
+  const [{ data: overview, error: overviewError }, ricaviProblemi] = await Promise.all([
+    fetchOverview(token),
+    fetchRicaviProblemi(token),
+  ]);
   const overviewSubErrors = (overview?._errors as string[] | undefined) ?? [];
 
   return (
@@ -145,22 +163,32 @@ export default async function AdminPage() {
 
       {/* Navigation cards — 4 colori */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {NAV_CARDS.map((item) => (
-          <Card key={item.href} className={`border ${item.border} ${item.bg} transition-colors`}>
-            <Link href={item.href} className="block p-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <item.icon className={`size-5 ${item.iconColor} shrink-0`} />
-                  <div>
-                    <p className="font-semibold">{item.title}</p>
-                    <p className="text-sm text-muted-foreground mt-0.5">{item.desc}</p>
+        {NAV_CARDS.map((item) => {
+          const alert = item.href === "/admin/sistema" && ricaviProblemi > 0 ? ricaviProblemi : 0;
+          return (
+            <Card key={item.href} className={`border ${alert ? "border-red-500 ring-1 ring-red-500/40" : item.border} ${item.bg} transition-colors`}>
+              <Link href={item.href} className="block p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <item.icon className={`size-5 ${alert ? "text-red-500" : item.iconColor} shrink-0`} />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold">{item.title}</p>
+                        {alert > 0 && (
+                          <span className="rounded-full bg-red-500/15 border border-red-500/30 px-2 py-0.5 text-xs font-medium text-red-600">
+                            {alert} import ricavi
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-0.5">{item.desc}</p>
+                    </div>
                   </div>
+                  <ChevronRight className="size-5 text-muted-foreground shrink-0" />
                 </div>
-                <ChevronRight className="size-5 text-muted-foreground shrink-0" />
-              </div>
-            </Link>
-          </Card>
-        ))}
+              </Link>
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

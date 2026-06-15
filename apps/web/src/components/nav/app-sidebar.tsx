@@ -51,11 +51,11 @@ const navMain = [
   { title: "Home", url: "/dashboard", icon: Home, flag: null },
   { title: "Analisi Fatture", url: "/analisi-fatture", icon: FileText, flag: "analisi_fatture" },
   { title: "Ricavi e Margini", url: "/margini", icon: BarChart3, flag: "margini" },
-  { title: "Prezzi", url: "/prezzi", icon: Search, flag: "prezzi" },
   { title: "Analisi e Tag", url: "/analisi-e-tag", icon: Tags, flag: "analisi_e_tag" },
-  { title: "Agenda", url: "/agenda", icon: CalendarDays, flag: "agenda" },
-  { title: "Strumenti", url: "/workspace", icon: Wrench, flag: "workspace" },
+  { title: "Osservatorio", url: "/prezzi", icon: Search, flag: "prezzi" },
   { title: "Gestione Fatture", url: "/scadenziario", icon: CalendarCheck, flag: "scadenziario" },
+  { title: "Agenda e Personale", url: "/agenda", icon: CalendarDays, flag: "agenda" },
+  { title: "Strumenti", url: "/workspace", icon: Wrench, flag: "workspace" },
 ];
 
 const navSecondary = [

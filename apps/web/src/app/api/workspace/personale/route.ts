@@ -6,9 +6,11 @@ export async function GET(req: NextRequest) {
   if (!token) return unauthorized();
   const da = req.nextUrl.searchParams.get("da") ?? "";
   const a = req.nextUrl.searchParams.get("a") ?? "";
+  const mensile = req.nextUrl.searchParams.get("mensile");
   const params = new URLSearchParams();
   if (da) params.set("da", da);
   if (a) params.set("a", a);
+  if (mensile !== null) params.set("mensile", mensile);
   const qs = params.toString();
   const res = await fetch(`${WORKER_URL}/api/workspace/personale${qs ? `?${qs}` : ""}`, {
     headers: workerHeaders(token),

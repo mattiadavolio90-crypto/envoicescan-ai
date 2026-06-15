@@ -948,17 +948,29 @@ def get_costo_personale_da_turni(
     n_turni = len(turni)
     n_senza_costo = 0
     for t in turni:
-        ore = _ore_turno(t)
+        ore = _ore_turno(t)                     # totale: orari + extra (giorn.) o ore_dichiarate (mensile)
         extra = float(t.get("ore_extra") or 0)
-        extra = min(extra, ore)  # l'extra è un sottoinsieme delle ore del turno
+        extra = min(extra, ore)                  # difensivo: extra non può eccedere il totale
         ore_totali += ore
         ore_extra_tot += extra
+        if t.get("mensile"):
+            # Riga mensile (busta paga): costo reale da lordo, non da tariffa.
+            # L'esclusivita' giornaliero/mensile per dipendente/mese garantisce
+            # che non si sommi mai al ramo giornaliero.
+            lordo = float(t.get("lordo_mensile") or 0)
+            imp_ext = float(t.get("importo_extra") or 0)
+            costo_personale_extra += imp_ext
+            costo_dipendenti += max(0.0, lordo - imp_ext)
+            continue
         co = t.get("costo_orario")
         if co is None:
             n_senza_costo += 1
             continue
         co = float(co)
-        costo_personale_extra += extra * co
+        # Le ore extra usano costo_orario_extra se impostato, altrimenti il costo standard.
+        co_ext = t.get("costo_orario_extra")
+        co_ext = float(co_ext) if co_ext is not None else co
+        costo_personale_extra += extra * co_ext
         costo_dipendenti += (ore - extra) * co
 
     return {

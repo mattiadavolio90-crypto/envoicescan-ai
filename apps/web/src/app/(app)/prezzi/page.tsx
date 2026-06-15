@@ -10,6 +10,7 @@ import { TabsSwitcher } from "./tabs-switcher";
 import { VariazioniTab } from "./variazioni-tab";
 import { ScontiTab } from "./sconti-tab";
 import { NcTab } from "./nc-tab";
+import { ScoreTab } from "./score-tab";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 async function fetchSogliaAlert(): Promise<number> {
@@ -55,8 +56,9 @@ export default async function PrezziPage({
     <div className="space-y-4">
       <PageHeader
         icon="search"
-        title="Controllo Prezzi"
+        title="Osservatorio"
         hint="Variazioni e anomalie sui tuoi fornitori"
+        subtitle="Monitora l'andamento dei prezzi e la coerenza dei fornitori nel tempo."
       />
       <Suspense>
         <TabsSwitcher active={tab} />
@@ -75,6 +77,11 @@ export default async function PrezziPage({
         {tab === "nc" && (
           <Suspense>
             <NcTab />
+          </Suspense>
+        )}
+        {tab === "score" && (
+          <Suspense>
+            <ScoreTab />
           </Suspense>
         )}
       </div>

@@ -14,6 +14,7 @@ import {
 } from "recharts";
 import type { VariazioniResponse, VariazionePrezzo, StoricoPrezzoResponse, StoricoPrezzoPoint } from "@/lib/prezzi";
 import { Input } from "@/components/ui/input";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { AnteprimaFatturaDialog } from "./anteprima-fattura-dialog";
 
 const ANNO_CORRENTE = new Date().getFullYear();
@@ -658,14 +659,35 @@ export function VariazioniTab({ initialSoglia }: { initialSoglia: number }) {
               {fmtRangeIt(currentRange.data_da, currentRange.data_a)}
             </span>
           )}
-          <button
-            onClick={() => loadRange(rangeAttivo(), soglia)}
-            disabled={loading}
-            className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
-          >
-            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
-            Aggiorna
-          </button>
+          <div className="ml-auto flex items-center gap-1">
+            <InfoPopover title="Come leggere le Variazioni prezzo" ariaLabel="Come leggere le Variazioni prezzo" align="end">
+              <p className="text-muted-foreground">
+                Come sono cambiati i prezzi d&apos;acquisto dei tuoi prodotti nel periodo, confrontando primo e ultimo prezzo nelle fatture.
+              </p>
+              <div className="space-y-1.5 text-muted-foreground">
+                <p><strong className="text-foreground">Media</strong> = il prezzo medio del prodotto nel periodo.</p>
+                <p><TriangleAlert className="inline size-3.5 text-amber-500" /> = prezzo <strong className="text-foreground">aumentato</strong> oltre la soglia che hai impostato · <CheckCircle2 className="inline size-3.5 text-emerald-500" /> = stabile o in calo.</p>
+                <p>Clicca un prodotto per vedere lo <strong className="text-foreground">storico</strong> nel tempo e la fattura di origine.</p>
+              </div>
+              <div className="border-t border-border pt-2 space-y-1.5 text-muted-foreground">
+                <p className="font-medium text-foreground">Impatto/mese</p>
+                <p>Quanto ti costa davvero il rincaro ogni mese, non solo in %:</p>
+                <p className="text-foreground text-xs bg-muted/50 rounded px-2 py-1">aumento di prezzo × quantità abituale × acquisti al mese</p>
+                <p>Così un piccolo rincaro su ciò che ordini spesso può pesare più di un grosso aumento su qualcosa di raro. La lista parte dall&apos;impatto più alto.</p>
+              </div>
+              <div className="border-t border-border pt-2 text-muted-foreground">
+                <p>Dati dalle tue fatture reali: servono almeno due acquisti dello stesso prodotto.</p>
+              </div>
+            </InfoPopover>
+            <button
+              onClick={() => loadRange(rangeAttivo(), soglia)}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted disabled:opacity-50"
+            >
+              <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+              Aggiorna
+            </button>
+          </div>
         </div>
 
         {modo === "mese" && (

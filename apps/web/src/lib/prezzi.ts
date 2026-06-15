@@ -74,3 +74,58 @@ export type StoricoPrezzoResponse = {
   punti: StoricoPrezzoPoint[];
   prezzo_medio: number;
 };
+
+// ─── Score Fornitori (Osservatorio, tab 4) ──────────────────────────────────
+export type ScoreStato =
+  | "affidabile"
+  | "da_monitorare"
+  | "instabile"
+  | "provvisorio"
+  | "dati_insufficienti";
+
+export type MetricaStato = "stabile" | "da_monitorare" | "instabile" | "non_valutabile";
+
+export type ScoreSottometrica = {
+  chiave: "stabilita" | "coerenza" | "impatto" | "documentale";
+  label: string;
+  punteggio: number;
+  stato: MetricaStato;
+  spiegazione: string;
+  disponibile: boolean;
+};
+
+export type ScoreSegnale = {
+  tipo: "rincaro" | "sconto_perso" | "oscillazione" | "nota_credito" | "stabilita";
+  tono: "attenzione" | "positivo" | "neutro";
+  testo: string;
+};
+
+export type BozzaTrattativa = {
+  attiva: boolean;
+  testo: string;
+  motivo: string;
+};
+
+export type ScoreFornitore = {
+  fornitore: string;
+  score: number | null;
+  stato: ScoreStato;
+  affidabilita_dato: "alta" | "media" | "bassa";
+  frase_sintesi: string;
+  sottometriche: ScoreSottometrica[];
+  segnali: ScoreSegnale[];
+  bozza: BozzaTrattativa;
+  n_fatture: number;
+  n_prodotti: number;
+  mesi_coperti: number;
+  periodo: string;
+  spesa_periodo: number;
+  impatto_rincari: number;
+};
+
+export type ScoreFornitoriResponse = {
+  fornitori: ScoreFornitore[];
+  periodo: string;
+  n_fornitori_valutati: number;
+  n_fornitori_insufficienti: number;
+};

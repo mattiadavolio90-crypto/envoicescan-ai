@@ -846,13 +846,37 @@ class CopiaSettimanaBody(BaseModel):
     a: str           # domenica settimana destinazione YYYY-MM-DD
 
 
+class TurnoMensileBody(BaseModel):
+    """Inserimento aggregato mensile da busta paga: i totali del mese per un
+    dipendente, senza spezzare in turni giornalieri."""
+    nome: str
+    mese: str                              # YYYY-MM
+    ore_totali: float                      # monte ore del mese
+    lordo: float                           # importo lordo del mese (EUR)
+    ore_extra: Optional[float] = None       # ore di straordinario incluse nel mese
+    importo_extra: Optional[float] = None   # importo straordinario del mese (EUR)
+    note: Optional[str] = None
+
+
+class AggiornaTurnoMensileBody(BaseModel):
+    ore_totali: Optional[float] = None
+    lordo: Optional[float] = None
+    ore_extra: Optional[float] = None
+    importo_extra: Optional[float] = None
+    note: Optional[str] = None
+
+
 @router.get("/api/workspace/personale", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_personale_list(
     da: Optional[str] = Query(None, description="Data inizio YYYY-MM-DD"),
     a: Optional[str] = Query(None, description="Data fine YYYY-MM-DD"),
+    mensile: Optional[bool] = Query(None, description="True = solo righe mensili, False = solo giornaliere, None = tutte"),
     authorization: Optional[str] = Header(None),
 ):
-    """Lista turni + nomi distinti + monte ore per persona nel periodo."""
+    """Lista turni + nomi distinti + monte ore per persona nel periodo.
+
+    Il filtro `mensile` tiene separate le due viste: giornaliero e mensile non
+    vengono MAI mischiati (regola di dominio, vedi guardia in POST)."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
@@ -864,6 +888,8 @@ def ws_personale_list(
         q = q.gte("data_turno", da)
     if a:
         q = q.lte("data_turno", a)
+    if mensile is not None:
+        q = q.eq("mensile", mensile)
     q = q.order("data_turno").order("ora_inizio")
     resp = q.execute()
     turni = resp.data or []
@@ -885,6 +911,22 @@ def ws_personale_list(
         ore_standard_per_persona[nome] = round(ore_standard_per_persona.get(nome, 0) + std, 2)
         if extra:
             ore_extra_per_persona[nome] = round(ore_extra_per_persona.get(nome, 0) + extra, 2)
+
+        if t.get("mensile"):
+            # Riga mensile: il costo e' il dato reale dalla busta paga, non
+            # ricalcolato da tariffa. lordo_mensile = totale del mese (incl.
+            # quota extra); importo_extra = quota straordinario.
+            lordo = float(t.get("lordo_mensile") or 0)
+            imp_ext = float(t.get("importo_extra") or 0)
+            costo_std = round(max(0.0, lordo - imp_ext), 2)
+            costo_standard_per_persona[nome] = round(
+                costo_standard_per_persona.get(nome, 0) + costo_std, 2
+            )
+            if imp_ext:
+                costo_extra_per_persona[nome] = round(
+                    costo_extra_per_persona.get(nome, 0) + imp_ext, 2
+                )
+            continue
 
         co_std = t.get("costo_orario")
         co_ext = t.get("costo_orario_extra")
@@ -954,19 +996,56 @@ def ws_personale_list(
     }
 
 
+def _mese_bounds(mese: str) -> tuple[str, str]:
+    """('YYYY-MM') -> (primo giorno, ultimo giorno) come ISO date."""
+    import calendar
+    try:
+        anno, mo = mese.split("-")
+        ultimo = calendar.monthrange(int(anno), int(mo))[1]
+    except (ValueError, IndexError):
+        raise HTTPException(status_code=400, detail="Mese non valido (atteso YYYY-MM)")
+    return f"{mese}-01", f"{mese}-{ultimo:02d}"
+
+
+def _esiste_riga_mese(sb, ristorante_id: str, nome: str, mese: str, mensile: bool) -> bool:
+    """True se per nome+mese esiste almeno una riga del tipo richiesto
+    (mensile=True -> riga mensile; mensile=False -> turni giornalieri)."""
+    primo, ultimo = _mese_bounds(mese)
+    r = (
+        sb.table("turni_personale").select("id")
+        .eq("ristorante_id", ristorante_id)
+        .eq("nome", nome)
+        .eq("mensile", mensile)
+        .gte("data_turno", primo).lte("data_turno", ultimo)
+        .limit(1)
+        .execute()
+    )
+    return bool(r.data)
+
+
 @router.post("/api/workspace/personale", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_personale_crea(body: NuovoTurnoBody, authorization: Optional[str] = Header(None)):
-    """Aggiunge un turno (supporta secondo slot per spezzato)."""
+    """Aggiunge un turno giornaliero (supporta secondo slot per spezzato).
+
+    Esclusivita': rifiutato se il dipendente ha gia' una riga MENSILE in quel
+    mese (giornaliero e mensile non coesistono per dipendente/mese)."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()
     ristorante_id = _get_ristorante_id_for_user(user_id, sb)
     if not ristorante_id:
         raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    nome_norm = body.nome.strip()
+    mese = body.data_turno[:7]
+    if _esiste_riga_mese(sb, ristorante_id, nome_norm, mese, mensile=True):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{nome_norm} ha già un inserimento mensile per {mese}. Elimina la riga mensile per inserire turni giornalieri.",
+        )
     payload: dict = {
         "ristorante_id": ristorante_id,
         "user_id": user_id,
-        "nome": body.nome.strip(),
+        "nome": nome_norm,
         "data_turno": body.data_turno,
         "ora_inizio": body.ora_inizio,
         "ora_fine": body.ora_fine,
@@ -1011,6 +1090,7 @@ def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Option
     sorgente = (
         sb.table("turni_personale").select("*")
         .eq("ristorante_id", ristorante_id)
+        .eq("mensile", False)
         .gte("data_turno", src_da).lte("data_turno", src_a)
         .execute()
     ).data or []
@@ -1050,6 +1130,97 @@ def ws_personale_copia_settimana(body: CopiaSettimanaBody, authorization: Option
     return {"ok": True, "n_copiati": len(nuovi), "n_saltati": n_saltati}
 
 
+@router.post("/api/workspace/personale/mensile", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_personale_crea_mensile(body: TurnoMensileBody, authorization: Optional[str] = Header(None)):
+    """Inserisce i totali mensili di un dipendente (da busta paga) come singola
+    riga mensile. Esclusiva: rifiutato se esistono turni giornalieri per quel
+    dipendente in quel mese, o se la riga mensile esiste gia'."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+
+    nome_norm = body.nome.strip()
+    if not nome_norm:
+        raise HTTPException(status_code=400, detail="Il nome è obbligatorio")
+    if body.ore_totali < 0 or body.lordo < 0:
+        raise HTTPException(status_code=400, detail="Ore e lordo non possono essere negativi")
+    if body.ore_totali <= 0 and body.lordo <= 0:
+        raise HTTPException(status_code=400, detail="Inserisci almeno le ore o il lordo del mese")
+    ore_ext = float(body.ore_extra or 0)
+    if ore_ext < 0 or ore_ext > body.ore_totali + 0.01:
+        raise HTTPException(status_code=400, detail="Le ore extra non possono superare le ore totali")
+    imp_ext = float(body.importo_extra or 0)
+    if imp_ext < 0 or imp_ext > body.lordo + 0.01:
+        raise HTTPException(status_code=400, detail="L'importo extra non può superare il lordo")
+
+    primo, _ = _mese_bounds(body.mese)
+    if _esiste_riga_mese(sb, ristorante_id, nome_norm, body.mese, mensile=False):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{nome_norm} ha già turni giornalieri per {body.mese}. Eliminali per usare l'inserimento mensile.",
+        )
+    if _esiste_riga_mese(sb, ristorante_id, nome_norm, body.mese, mensile=True):
+        raise HTTPException(
+            status_code=409,
+            detail=f"{nome_norm} ha già un inserimento mensile per {body.mese}.",
+        )
+
+    payload: dict = {
+        "ristorante_id": ristorante_id,
+        "user_id": user_id,
+        "nome": nome_norm,
+        "data_turno": primo,
+        "ora_inizio": "00:00",
+        "ora_fine": "00:00",
+        "mensile": True,
+        "ore_dichiarate": round(float(body.ore_totali), 2),
+        "lordo_mensile": round(float(body.lordo), 2),
+        "ore_extra": round(ore_ext, 2) if ore_ext else None,
+        "importo_extra": round(imp_ext, 2) if imp_ext else None,
+        "note": body.note or None,
+    }
+    resp = sb.table("turni_personale").insert(payload).execute()
+    return resp.data[0] if resp.data else {}
+
+
+@router.patch("/api/workspace/personale/mensile/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
+def ws_personale_aggiorna_mensile(turno_id: str, body: AggiornaTurnoMensileBody, authorization: Optional[str] = Header(None)):
+    """Aggiorna i totali di una riga mensile esistente."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+    ristorante_id = _get_ristorante_id_for_user(user_id, sb)
+    if not ristorante_id:
+        raise HTTPException(status_code=400, detail="Nessun ristorante associato")
+    raw = body.model_dump(exclude_unset=True)
+    updates: dict = {}
+    if "ore_totali" in raw and raw["ore_totali"] is not None:
+        if raw["ore_totali"] < 0:
+            raise HTTPException(status_code=400, detail="Ore non valide")
+        updates["ore_dichiarate"] = round(float(raw["ore_totali"]), 2)
+    if "lordo" in raw and raw["lordo"] is not None:
+        if raw["lordo"] < 0:
+            raise HTTPException(status_code=400, detail="Lordo non valido")
+        updates["lordo_mensile"] = round(float(raw["lordo"]), 2)
+    if "ore_extra" in raw:  # azzerabile
+        updates["ore_extra"] = round(float(raw["ore_extra"]), 2) if raw["ore_extra"] else None
+    if "importo_extra" in raw:  # azzerabile
+        updates["importo_extra"] = round(float(raw["importo_extra"]), 2) if raw["importo_extra"] else None
+    if "note" in raw:  # azzerabile
+        updates["note"] = raw["note"] or None
+    if not updates:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+    resp = (
+        sb.table("turni_personale").update(updates)
+        .eq("id", turno_id).eq("ristorante_id", ristorante_id).eq("mensile", True)
+        .execute()
+    )
+    return resp.data[0] if resp.data else {}
+
+
 @router.patch("/api/workspace/personale/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization: Optional[str] = Header(None)):
     """Aggiorna un turno (i campi ora_inizio2/ora_fine2 possono essere azzerati passando null)."""
@@ -1069,13 +1240,19 @@ def ws_personale_aggiorna(turno_id: str, body: AggiornaTurnoBody, authorization:
             updates[campo] = raw[campo]
     if not updates:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
-    resp = sb.table("turni_personale").update(updates).eq("id", turno_id).eq("ristorante_id", ristorante_id).execute()
+    # .eq("mensile", False): questo PATCH gestisce solo turni giornalieri, non puo'
+    # corrompere una riga mensile (che ha il suo endpoint /mensile/{id}).
+    resp = (
+        sb.table("turni_personale").update(updates)
+        .eq("id", turno_id).eq("ristorante_id", ristorante_id).eq("mensile", False)
+        .execute()
+    )
     return resp.data[0] if resp.data else {}
 
 
 @router.delete("/api/workspace/personale/{turno_id}", tags=["Workspace"], dependencies=[Depends(_verify_worker_key)])
 def ws_personale_elimina(turno_id: str, authorization: Optional[str] = Header(None)):
-    """Elimina un turno."""
+    """Elimina un turno o una riga mensile (per id, ristorante)."""
     user = _resolve_user_from_token(authorization)
     user_id = str(user["id"])
     sb = _get_supabase_client()

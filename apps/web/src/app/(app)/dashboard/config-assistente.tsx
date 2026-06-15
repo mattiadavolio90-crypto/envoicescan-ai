@@ -164,7 +164,7 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
                         <div className="text-xs">
                           <p className="font-medium">Solo sui prodotti preferiti</p>
                           <p className="text-muted-foreground">
-                            Avvisami solo sui prodotti con la ⭐ in pagina Prezzi (e sui tuoi tag). Se non hai preferiti, ricevi solo gli avvisi sui tag.
+                            Avvisami solo sui prodotti con la ⭐ nell&apos;Osservatorio (e sui tuoi tag). Se non hai preferiti, ricevi solo gli avvisi sui tag.
                           </p>
                         </div>
                         <Switch checked={soloPreferiti} onCheckedChange={(v: boolean) => setSoloPreferiti(v)} />

@@ -12,6 +12,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import { InfoPopover } from "@/components/ui/info-popover";
 import type {
   CustomTag, TagSuggestion, TagAnalisiResponse,
   TagProdotto, DescrizioneDistinta,
@@ -994,6 +995,16 @@ export function AnalisiETagClient({
 
       {/* ── Chip tag + azioni ── */}
       <div className="flex flex-wrap items-center gap-2">
+        <InfoPopover title="Come funzionano i Tag">
+          <p className="text-muted-foreground">
+            I tag sono <strong className="text-foreground">etichette tue</strong> per raggruppare prodotti che l&apos;app non distingue da sola (es. &ldquo;Bio&rdquo;, &ldquo;Fornitore X&rdquo;, &ldquo;Vegano&rdquo;), e analizzarne spesa e andamento insieme.
+          </p>
+          <div className="space-y-1.5 text-muted-foreground">
+            <p><strong className="text-foreground">Crea un tag</strong> con <em>Nuovo tag</em>, poi aggiungi i prodotti che vuoi raggrupparvi.</p>
+            <p><strong className="text-foreground">Suggerimenti</strong>: l&apos;app propone tag pronti in base a quello che compri spesso — accettali con un clic.</p>
+            <p>Seleziona un tag per vedere <strong className="text-foreground">quanto spendi</strong>, il trend nel tempo e i fornitori coinvolti, nel periodo scelto.</p>
+          </div>
+        </InfoPopover>
         {tags.map(tag => (
           <button
             key={tag.id}

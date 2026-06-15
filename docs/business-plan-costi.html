@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ONEFLUX — Business Plan dei Costi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    /* Palette ufficiale ONEFLUX — primary blu #0ea5e9 su dark */
+    --bg:#161616;          /* oklch(0.145 0 0) */
+    --panel:#2b2b2b;       /* card oklch(0.205 0 0) */
+    --panel2:#323232;      /* secondary/muted oklch(0.269 0 0) */
+    --line:rgba(255,255,255,.10);
+    --txt:#fafafa;         /* foreground oklch(0.985 0 0) */
+    --mut:#a3a3a3;         /* muted-foreground oklch(0.708 0 0) */
+    --primary:#38bdf8;     /* oklch(0.751 0.148 237.3) — ONEFLUX blu */
+    --primary-deep:#0ea5e9;
+    --accent-soft:#1a2b38; /* accent oklch(0.25 0.04 237.3) */
+    --good:#4ade80;
+    --warn:#fbbf24;
+    --bad:#f87171;
+    --bep:#a78bfa;         /* viola dedicato break-even */
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:
+      radial-gradient(circle at 20% -10%, rgba(56,189,248,.08), transparent 45%),
+      radial-gradient(circle at 100% 0%, rgba(56,189,248,.05), transparent 40%),
+      var(--bg);
+    color:var(--txt);
+    font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+    line-height:1.5;padding:48px 24px;min-height:100vh;
+  }
+  .wrap{max-width:1080px;margin:0 auto}
+
+  /* HEADER con logo + wordmark ufficiali */
+  header{
+    margin-bottom:40px;padding-bottom:22px;
+    border-bottom:2px solid var(--primary-deep);
+    display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;
+  }
+  .brand{display:flex;align-items:center;gap:16px}
+  .brand svg{color:var(--primary)}
+  .doc-title{text-align:right}
+  .doc-title h1{font-size:20px;font-weight:700;letter-spacing:-.3px}
+  .doc-title .sub{color:var(--mut);font-size:13px;margin-top:4px}
+
+  h2{
+    font-size:13px;text-transform:uppercase;letter-spacing:1.5px;
+    color:var(--primary);margin:38px 0 16px;font-weight:700;
+    display:flex;align-items:center;gap:10px;
+  }
+  h2 .num-badge{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:24px;height:24px;border-radius:7px;
+    background:var(--primary-deep);color:#fff;font-size:13px;font-weight:800;
+  }
+  .grid{display:grid;gap:20px}
+  .cols-2{grid-template-columns:1fr 1fr}
+  .cols-3{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:780px){.cols-2,.cols-3{grid-template-columns:1fr}}
+  .card{
+    background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;padding:20px 22px;
+  }
+  .card h3{font-size:13.5px;color:var(--primary);font-weight:700;margin-bottom:12px}
+  .card ul li{padding:3px 0;color:var(--txt)}
+  code{background:var(--panel2);padding:1px 6px;border-radius:5px;font-size:12.5px;color:var(--primary)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line)}
+  th{color:var(--mut);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+  tr:last-child td{border-bottom:none}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .tot td{font-weight:800;border-top:2px solid var(--primary-deep);color:var(--primary)}
+  .pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;font-weight:700;white-space:nowrap}
+  .pill.good{background:rgba(74,222,128,.15);color:var(--good)}
+  .pill.warn{background:rgba(251,191,36,.15);color:var(--warn)}
+  .pill.bad{background:rgba(248,113,113,.15);color:var(--bad)}
+  .pill.bep{background:rgba(167,139,250,.18);color:var(--bep)}
+  .kpi{display:flex;flex-direction:column;gap:4px}
+  .kpi .v{font-size:28px;font-weight:800;color:var(--primary)}
+  .kpi .l{font-size:13px;color:var(--mut)}
+  .note{
+    background:var(--accent-soft);border-left:3px solid var(--primary);
+    border-radius:0 10px 10px 0;padding:12px 16px;font-size:13.5px;
+    color:#c8d6e0;margin-top:14px;
+  }
+  .note b{color:var(--txt)}
+  .bar-row{display:flex;align-items:center;gap:12px;margin:8px 0}
+  .bar-row .lab{width:90px;font-size:13px;color:var(--mut)}
+  .bar-track{flex:1;height:22px;background:var(--panel2);border-radius:6px;overflow:hidden}
+  .bar-fill{height:100%;background:linear-gradient(90deg,var(--primary-deep),var(--primary));border-radius:6px}
+  .bar-row .val{width:54px;text-align:right;font-size:13px;font-weight:700}
+  footer{margin-top:48px;padding-top:20px;border-top:1px solid var(--line);color:var(--mut);font-size:12px;text-align:center}
+  .be-hero{
+    background:linear-gradient(135deg,rgba(56,189,248,.14),rgba(14,165,233,.06));
+    border:1px solid var(--primary-deep);border-radius:14px;padding:26px;text-align:center;
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  .be-hero .n{font-size:56px;font-weight:800;color:var(--primary);line-height:1}
+  .be-hero .t{font-size:15px;color:var(--mut);margin-top:8px}
+
+  /* riga break-even evidenziata in viola */
+  tr.row-bep td{background:rgba(167,139,250,.12);font-weight:600}
+  tr.row-bep td:first-child{
+    border-left:3px solid var(--bep);box-shadow:inset 3px 0 0 var(--bep);
+  }
+  tr.row-loss td{color:var(--mut)}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:var(--mut);margin-top:12px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .dot{width:11px;height:11px;border-radius:3px;display:inline-block}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand">
+    <!-- LogoMark ufficiale: doppio anello (O) + X a flusso -->
+    <svg width="46" height="46" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="ONEFLUX">
+      <circle cx="50" cy="50" r="42" stroke="currentColor" stroke-width="6" fill="none"/>
+      <circle cx="50" cy="50" r="31" stroke="currentColor" stroke-width="2.5" fill="none"/>
+      <path d="M36 36 C48 44 48 56 64 64" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>
+      <path d="M64 36 C52 44 52 56 36 64" stroke="currentColor" stroke-width="7" stroke-linecap="round"/>
+    </svg>
+    <!-- Wordmark ufficiale: O anello + NEFLU (Quicksand 700) + X flusso -->
+    <svg height="34" viewBox="0 0 398 100" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="ONEFLUX">
+      <g transform="translate(8 7) scale(0.87)">
+        <circle cx="50" cy="50" r="42" stroke="currentColor" stroke-width="6" fill="none"/>
+        <circle cx="50" cy="50" r="31" stroke="currentColor" stroke-width="2.5" fill="none"/>
+      </g>
+      <text x="100" y="74" font-family="'Quicksand',sans-serif" font-weight="700" font-size="68" letter-spacing="3.5" fill="currentColor">NEFLU</text>
+      <g transform="translate(265.19 -48.5) scale(1.95)">
+        <path d="M36 36 C48 44 48 56 64 64" stroke="currentColor" stroke-width="3.59" stroke-linecap="round" fill="none"/>
+        <path d="M64 36 C52 44 52 56 36 64" stroke="currentColor" stroke-width="3.59" stroke-linecap="round" fill="none"/>
+      </g>
+    </svg>
+  </div>
+  <div class="doc-title">
+    <h1>Business Plan dei Costi</h1>
+    <div class="sub">Documento interno · giugno 2026 · prezzi +IVA</div>
+  </div>
+</header>
+
+<!-- COSTI FISSI -->
+<h2><span class="num-badge">1</span> Costi fissi di infrastruttura — a scaglioni</h2>
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Voce</th><th class="num">0-20 cl.</th><th class="num">50 cl.</th><th class="num">100 cl.</th><th>Tipo</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Railway — worker FastAPI</td><td class="num">€10</td><td class="num">€30</td><td class="num">€55</td><td><span class="pill warn">scala col compute</span></td></tr>
+      <tr><td>Supabase — DB + Storage (Pro)</td><td class="num">€25</td><td class="num">€30</td><td class="num">€38</td><td><span class="pill warn">+overage DB</span></td></tr>
+      <tr><td>Vercel — frontend (Pro)</td><td class="num">€20</td><td class="num">€20</td><td class="num">€20</td><td><span class="pill good">fisso</span></td></tr>
+      <tr><td>Aruba — dominio + email</td><td class="num">€5</td><td class="num">€5</td><td class="num">€5</td><td><span class="pill good">fisso</span></td></tr>
+      <tr><td>Brevo — email transazionali</td><td class="num">€0</td><td class="num">€0</td><td class="num">€9</td><td><span class="pill warn">&gt;300/giorno</span></td></tr>
+      <tr><td>AI sviluppo</td><td class="num">€140</td><td class="num">€140</td><td class="num">€140</td><td><span class="pill good">fisso · comprimibile</span></td></tr>
+      <tr class="tot"><td>TOTALE FISSO</td><td class="num">€200</td><td class="num">€225</td><td class="num">€267</td><td></td></tr>
+    </tbody>
+  </table>
+  <div class="note"><b>Solo Railway scala davvero</b> (paghi il compute reale del worker che processa fatture). Supabase ha un overage DB modesto, Vercel è fisso (1 TB banda copre 100+ clienti), Brevo sfora i 300 email/giorno solo oltre ~80 clienti. <b>AI sviluppo (€140)</b> è il 65-70% del fisso: l'unica voce comprimibile — senza sviluppo intensivo il fisso crolla a ~€60. Prezzi USD convertiti ~1:1 (prudente).</div>
+</div>
+
+<!-- COSTI VARIABILI -->
+<h2><span class="num-badge">2</span> Costi variabili per cliente</h2>
+<div class="grid cols-3">
+  <div class="card">
+    <h3>AI Categorizzazione · gpt-4o-mini</h3>
+    <table>
+      <thead><tr><th>Piano</th><th class="num">Doc/mese</th><th class="num">Costo</th></tr></thead>
+      <tbody>
+        <tr><td>Base</td><td class="num">50</td><td class="num">€0,08</td></tr>
+        <tr><td>Plus</td><td class="num">100</td><td class="num">€0,16</td></tr>
+        <tr><td>Pro</td><td class="num">200</td><td class="num">€0,32</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>AI Chat · gpt-4.1-mini</h3>
+    <table>
+      <thead><tr><th>Piano</th><th class="num">Dom/gg</th><th class="num">Costo</th></tr></thead>
+      <tbody>
+        <tr><td>Base</td><td class="num">8</td><td class="num">€0,53</td></tr>
+        <tr><td>Plus</td><td class="num">15</td><td class="num">€1,00</td></tr>
+        <tr><td>Pro</td><td class="num">30</td><td class="num">€2,00</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Invoicetronic · per fattura SDI</h3>
+    <table>
+      <thead><tr><th>Volume</th><th class="num">€/tx</th></tr></thead>
+      <tbody>
+        <tr><td>1.000 tx <span style="color:var(--mut)">(&lt;20 cl.)</span></td><td class="num">€0,10</td></tr>
+        <tr><td>5.000 tx <span style="color:var(--mut)">(20-100)</span></td><td class="num">€0,06</td></tr>
+        <tr><td>20.000 tx <span style="color:var(--mut)">(100+)</span></td><td class="num">€0,04</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MARGINE PER CLIENTE -->
+<h2><span class="num-badge">3</span> Margine lordo per cliente · piani €39 / €59 / €79 (+IVA)</h2>
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Scenario base — caricamento manuale (no SDI)</h3>
+    <table>
+      <thead><tr><th>Piano</th><th class="num">Ricavo</th><th class="num">Margine</th><th class="num">%</th></tr></thead>
+      <tbody>
+        <tr><td>Base</td><td class="num">€39</td><td class="num">€38,39</td><td class="num"><span class="pill good">98%</span></td></tr>
+        <tr><td>Plus</td><td class="num">€59</td><td class="num">€57,84</td><td class="num"><span class="pill good">98%</span></td></tr>
+        <tr><td>Pro</td><td class="num">€79</td><td class="num">€76,68</td><td class="num"><span class="pill good">97%</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <h3>Worst case — tutte le fatture via SDI (fascia €0,10)</h3>
+    <table>
+      <thead><tr><th>Piano</th><th class="num">Ricavo</th><th class="num">Margine</th><th class="num">%</th></tr></thead>
+      <tbody>
+        <tr><td>Base</td><td class="num">€39</td><td class="num">€33,39</td><td class="num"><span class="pill good">86%</span></td></tr>
+        <tr><td>Plus</td><td class="num">€59</td><td class="num">€47,84</td><td class="num"><span class="pill good">81%</span></td></tr>
+        <tr><td>Pro</td><td class="num">€79</td><td class="num">€56,68</td><td class="num"><span class="pill warn">72%</span></td></tr>
+      </tbody>
+    </table>
+    <div class="note">Il Pro scende sotto l'80% solo in fascia €0,10 con SDI al massimo (fase early). Dalla fascia €0,06 torna sopra.</div>
+  </div>
+</div>
+
+<!-- BREAKEVEN -->
+<h2><span class="num-badge">4</span> Breakeven point</h2>
+<div class="grid cols-2">
+  <div class="be-hero">
+    <div class="n">5</div>
+    <div class="t">clienti paganti per coprire i €200 fissi<br>(mix realistico, margine netto ~€47,50/cliente)</div>
+  </div>
+  <div class="card">
+    <table>
+      <thead><tr><th>Mix</th><th class="num">Margine/cl.</th><th class="num">Breakeven</th></tr></thead>
+      <tbody>
+        <tr><td>Tutti Base €39</td><td class="num">~€36</td><td class="num">6 clienti</td></tr>
+        <tr><td>Tutti Plus €59</td><td class="num">~€55</td><td class="num">4 clienti</td></tr>
+        <tr><td>Tutti Pro €79</td><td class="num">~€72</td><td class="num">3 clienti</td></tr>
+        <tr class="tot"><td>Mix realistico €52</td><td class="num">~€47</td><td class="num">5 clienti</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- COSTI TOTALI -->
+<h2><span class="num-badge">5</span> Costi totali (fissi + variabili) e margine d'azienda</h2>
+<div class="card">
+  <table>
+    <thead>
+      <tr><th>Clienti</th><th class="num">Ricavo/mese</th><th class="num">Fissi</th><th class="num">Variabili</th><th class="num">Costi tot.</th><th class="num">Margine netto</th><th class="num">%</th></tr>
+    </thead>
+    <tbody>
+      <tr class="row-loss"><td>4</td><td class="num">€208</td><td class="num">€200</td><td class="num">€18</td><td class="num">€218</td><td class="num">−€10</td><td class="num"><span class="pill bad">sotto BEP</span></td></tr>
+      <tr class="row-bep"><td>5</td><td class="num">€260</td><td class="num">€200</td><td class="num">€23</td><td class="num">€223</td><td class="num">€37</td><td class="num"><span class="pill bep">break-even</span></td></tr>
+      <tr><td>10</td><td class="num">€520</td><td class="num">€205</td><td class="num">€45</td><td class="num">€250</td><td class="num">€270</td><td class="num"><span class="pill warn">52%</span></td></tr>
+      <tr><td>20</td><td class="num">€1.040</td><td class="num">€210</td><td class="num">€90</td><td class="num">€300</td><td class="num">€740</td><td class="num"><span class="pill good">71%</span></td></tr>
+      <tr><td>30</td><td class="num">€1.560</td><td class="num">€218</td><td class="num">€135</td><td class="num">€353</td><td class="num">€1.207</td><td class="num"><span class="pill good">77%</span></td></tr>
+      <tr><td>50</td><td class="num">€2.600</td><td class="num">€225</td><td class="num">€225</td><td class="num">€450</td><td class="num">€2.150</td><td class="num"><span class="pill good">83%</span></td></tr>
+      <tr><td>100</td><td class="num">€5.200</td><td class="num">€267</td><td class="num">€450</td><td class="num">€717</td><td class="num">€4.483</td><td class="num"><span class="pill good">86%</span></td></tr>
+    </tbody>
+  </table>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--bad)"></span> sotto break-even (in perdita)</span>
+    <span><span class="dot" style="background:var(--bep)"></span> break-even point (5 clienti)</span>
+    <span><span class="dot" style="background:var(--good)"></span> margine sano</span>
+  </div>
+</div>
+
+<!-- INCIDENZA FISSI -->
+<h2><span class="num-badge">6</span> Incidenza dei costi fissi sul ricavo</h2>
+<div class="card">
+  <div class="bar-row"><span class="lab">5 clienti</span><div class="bar-track"><div class="bar-fill" style="width:77%"></div></div><span class="val" style="color:var(--bad)">77%</span></div>
+  <div class="bar-row"><span class="lab">10 clienti</span><div class="bar-track"><div class="bar-fill" style="width:39%"></div></div><span class="val" style="color:var(--warn)">39%</span></div>
+  <div class="bar-row"><span class="lab">20 clienti</span><div class="bar-track"><div class="bar-fill" style="width:20%"></div></div><span class="val">20%</span></div>
+  <div class="bar-row"><span class="lab">30 clienti</span><div class="bar-track"><div class="bar-fill" style="width:14%"></div></div><span class="val">14%</span></div>
+  <div class="bar-row"><span class="lab">50 clienti</span><div class="bar-track"><div class="bar-fill" style="width:9%"></div></div><span class="val" style="color:var(--good)">9%</span></div>
+  <div class="bar-row"><span class="lab">100 clienti</span><div class="bar-track"><div class="bar-fill" style="width:5%"></div></div><span class="val" style="color:var(--good)">5%</span></div>
+  <div class="note">I costi fissi pesano fino a ~10 clienti, poi si diluiscono rapidamente. A regime il driver di costo diventa la quota variabile (<b>Invoicetronic</b>) + il compute <b>Railway</b> che cresce col volume.</div>
+</div>
+
+<!-- PROIEZIONE -->
+<h2><span class="num-badge">7</span> Proiezione ricavi annui</h2>
+<div class="card">
+  <table>
+    <thead><tr><th>Target</th><th class="num">Clienti</th><th class="num">Ricavo annuo</th><th class="num">Margine netto annuo</th><th>Fase</th></tr></thead>
+    <tbody>
+      <tr><td><span class="pill bep">2026</span></td><td class="num">20</td><td class="num">€12.480</td><td class="num">€9.000</td><td>Break-even solido</td></tr>
+      <tr><td><span class="pill bep">metà 2027</span></td><td class="num">50</td><td class="num">€31.200</td><td class="num">€26.100</td><td>Reddito principale</td></tr>
+      <tr><td><span class="pill bep">fine 2027</span></td><td class="num">100</td><td class="num">€62.400</td><td class="num">€54.600</td><td>Business maturo</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- MARKETING -->
+<h2><span class="num-badge">8</span> Piano marketing &middot; costi di acquisizione (CAC)</h2>
+<div class="grid cols-2">
+  <div class="card">
+    <h3>Canali e CAC stimato (Meta + Google ADS)</h3>
+    <table>
+      <thead><tr><th>Canale</th><th class="num">CAC tipico</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>Meta / Instagram</td><td class="num">€40-60</td><td>Target ristoratori, ampia portata</td></tr>
+        <tr><td>Google ADS</td><td class="num">€70-100</td><td>Intento alto, chi cerca soluzioni</td></tr>
+        <tr class="tot"><td>Blended (mix)</td><td class="num">~€70</td><td>Stima centrale di partenza</td></tr>
+      </tbody>
+    </table>
+    <div class="note"><b>CAC</b> = costo pubblicitario per ottenere 1 cliente pagante. Spendi €700 in ADS, arrivano 10 clienti &rarr; CAC €70.</div>
+  </div>
+  <div class="card">
+    <h3>Payback — quanto ci mette un cliente a ripagarsi</h3>
+    <table>
+      <thead><tr><th>CAC</th><th class="num">Margine/mese</th><th class="num">Payback</th></tr></thead>
+      <tbody>
+        <tr><td>€50</td><td class="num">~€47</td><td class="num"><span class="pill good">~1,1 mesi</span></td></tr>
+        <tr><td>€70</td><td class="num">~€47</td><td class="num"><span class="pill good">~1,5 mesi</span></td></tr>
+        <tr><td>€100</td><td class="num">~€47</td><td class="num"><span class="pill good">~2,1 mesi</span></td></tr>
+      </tbody>
+    </table>
+    <div class="note">Payback sotto 12 mesi = sano per un SaaS. Qui &egrave; sotto i 3 mesi anche nello scenario peggiore: ogni euro speso in ADS rientra in fretta.</div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:20px">
+  <h3>Budget marketing per centrare i target — ADS solo sopra i 30 clienti</h3>
+  <table>
+    <thead>
+      <tr><th>Periodo</th><th>Canale</th><th class="num">Nuovi clienti</th><th class="num">Budget @ €50</th><th class="num">Budget @ €70</th><th class="num">Budget @ €100</th></tr>
+    </thead>
+    <tbody>
+      <tr class="row-bep"><td>2026 &rarr; 20 clienti</td><td>Passaparola + RECOMA</td><td class="num">18</td><td class="num">€0</td><td class="num">€0</td><td class="num">€0</td></tr>
+      <tr class="row-bep"><td>inizio 2027 &rarr; 30</td><td>Passaparola + RECOMA</td><td class="num">10</td><td class="num">€0</td><td class="num">€0</td><td class="num">€0</td></tr>
+      <tr><td>metà 2027 &rarr; 50</td><td>ADS Meta + Google</td><td class="num">20</td><td class="num">€1.000</td><td class="num">€1.400</td><td class="num">€2.000</td></tr>
+      <tr><td>fine 2027 &rarr; 100</td><td>ADS Meta + Google</td><td class="num">50</td><td class="num">€2.500</td><td class="num">€3.500</td><td class="num">€5.000</td></tr>
+      <tr class="tot"><td>TOTALE acquisizione 100 clienti</td><td>—</td><td class="num">98</td><td class="num">€3.500</td><td class="num">€4.900</td><td class="num">€7.000</td></tr>
+    </tbody>
+  </table>
+  <div class="note"><b>Strategia:</b> i primi <b>30 clienti a costo marketing zero</b> &mdash; tutta crescita organica (passaparola + RECOMA) fino a fine 2026 / inizio 2027. Gli <b>ADS si accendono solo da 30 clienti in poi</b>, quando il margine mensile (~€1.000+) finanzia la pubblicit&agrave; senza intaccare la cassa. Il salto 30&rarr;100 costa tra <b>€3.500 e €7.000</b> totali, ampiamente coperto dal margine di quei mesi.</div>
+</div>
+
+<footer>ONEFLUX · Business Plan dei Costi · documento interno · giugno 2026</footer>
+
+</div>
+</body>
+</html>

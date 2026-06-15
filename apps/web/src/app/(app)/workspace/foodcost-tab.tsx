@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, Info, BookOpen, BarChart3, Copy, ChevronUp, ChevronDown, AlertTriangle } from "lucide-react";
+import { Plus, Pencil, Trash2, BookOpen, BarChart3, Copy, ChevronUp, ChevronDown, AlertTriangle } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { toast } from "sonner";
 import {
   FC_BADGE_CLASS, fmtEuro, fmtPct, coloreFC,
@@ -152,16 +152,7 @@ export function FoodcostTab() {
         </div>
 
         {/* Info popover */}
-        <Popover>
-          <PopoverTrigger
-            render={
-              <Button variant="ghost" size="icon" className="size-8 text-muted-foreground">
-                <Info className="size-4" />
-              </Button>
-            }
-          />
-          <PopoverContent className="w-96 text-sm space-y-3" align="end">
-            <p className="font-semibold">Come usare il Foodcost</p>
+        <InfoPopover title="Come usare il Foodcost" align="end">
             <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground">
               <li>Clicca <strong>Nuova ricetta</strong>, scegli categoria e nome.</li>
               <li>Cerca gli ingredienti: usa i prodotti dalle tue fatture reali (🟢) o crea ingredienti manuali con prezzi stimati (📝).</li>
@@ -177,8 +168,7 @@ export function FoodcostTab() {
               <p className="flex items-center gap-1.5"><AlertTriangle className="size-3.5 text-amber-500" /> = il prezzo di un ingrediente è aumentato nelle fatture rispetto a quando hai salvato la ricetta.</p>
               <p>Usa le frecce ▲▼ per ordinare le ricette e l&apos;icona copia per duplicarne una.</p>
             </div>
-          </PopoverContent>
-        </Popover>
+        </InfoPopover>
       </div>
 
       {/* KPI */}

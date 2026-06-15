@@ -5,6 +5,7 @@ import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { InfoPopover } from "@/components/ui/info-popover";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
@@ -22,6 +23,11 @@ interface Turno {
   costo_orario?: number | null;
   costo_orario_extra?: number | null;
   note?: string | null;
+  // Righe mensili (inserimento aggregato da busta paga)
+  mensile?: boolean | null;
+  ore_dichiarate?: number | null;
+  lordo_mensile?: number | null;
+  importo_extra?: number | null;
 }
 
 interface CostiNoti {
@@ -107,9 +113,23 @@ function calcolaSlotOre(inizio: string, fine: string): number {
 }
 
 function calcolaOreTotali(t: Turno): number {
+  // Righe mensili: ore dichiarate da busta paga (gia' ord+extra).
+  if (t.mensile) return Math.round((t.ore_dichiarate ?? 0) * 100) / 100;
+  // Giornaliero: ore dagli orari (ordinario) + ore extra aggiuntive.
   let tot = calcolaSlotOre(t.ora_inizio, t.ora_fine);
   if (t.ora_inizio2 && t.ora_fine2) tot += calcolaSlotOre(t.ora_inizio2, t.ora_fine2);
+  tot += t.ore_extra ?? 0;
   return Math.round(tot * 100) / 100;
+}
+
+// Costo di un singolo turno giornaliero: ordinario × costo_orario + extra × costo extra.
+function calcolaCostoTurno(t: Turno): number {
+  if (t.costo_orario == null) return 0;
+  const oreT = calcolaOreTotali(t);
+  const ext = t.ore_extra ?? 0;
+  const std = Math.max(0, oreT - ext);
+  const coExt = t.costo_orario_extra ?? t.costo_orario;
+  return std * t.costo_orario + (ext > 0 ? ext * coExt : 0);
 }
 
 function fmtOreDisplay(ore: number): string {
@@ -222,11 +242,12 @@ function TurnoDialog({ open, turno, dataDefault, giorniDisponibili, nomiSuggerit
     }
   }
 
+  // Ore extra AGGIUNTIVE all'orario: ordinario = orari, totale = orari + extra.
   const ore1 = oraInizio && oraFine ? calcolaSlotOre(oraInizio, oraFine) : 0;
   const ore2 = spezzato && oraInizio2 && oraFine2 ? calcolaSlotOre(oraInizio2, oraFine2) : 0;
-  const oreTot = ore1 + ore2;
+  const stdNum = ore1 + ore2;
   const extraNum = oreExtra ? parseFloat(oreExtra.replace(",", ".")) : 0;
-  const stdNum = Math.max(0, oreTot - extraNum);
+  const oreTot = Math.round((stdNum + extraNum) * 100) / 100;
   const costoNum = costoOrario ? parseFloat(costoOrario.replace(",", ".")) : NaN;
   const costoNumExtra = costoOrarioExtra ? parseFloat(costoOrarioExtra.replace(",", ".")) : NaN;
   const costoEffExtra = !isNaN(costoNumExtra) ? costoNumExtra : costoNum;
@@ -239,7 +260,6 @@ function TurnoDialog({ open, turno, dataDefault, giorniDisponibili, nomiSuggerit
     if (!oraInizio || !oraFine) { toast.error("Orario obbligatorio"); return; }
     if (spezzato && (!oraInizio2 || !oraFine2)) { toast.error("Inserisci orario del secondo slot"); return; }
     if (oreExtra && (isNaN(extraNum) || extraNum < 0)) { toast.error("Ore extra non valide"); return; }
-    if (extraNum > oreTot + 0.01) { toast.error("Le ore extra non possono superare le ore totali del turno"); return; }
     if (costoOrario && (isNaN(costoNum) || costoNum < 0)) { toast.error("Costo orario non valido"); return; }
     setSaving(true);
     try {
@@ -428,8 +448,13 @@ function TurnoDialog({ open, turno, dataDefault, giorniDisponibili, nomiSuggerit
           {/* Durata calcolata */}
           {oreTot > 0 && (
             <p className="text-xs text-muted-foreground">
-              Durata: {fmtOreDisplay(oreTot)}
-              {spezzato && ore1 > 0 && ore2 > 0 && (
+              Totale: {fmtOreDisplay(oreTot)}
+              {extraNum > 0 && stdNum > 0 && (
+                <span className="ml-1 text-muted-foreground/60">
+                  ({fmtOreDisplay(stdNum)} orario + {fmtOreDisplay(extraNum)} extra)
+                </span>
+              )}
+              {!extraNum && spezzato && ore1 > 0 && ore2 > 0 && (
                 <span className="ml-1 text-muted-foreground/60">
                   ({fmtOreDisplay(ore1)} + {fmtOreDisplay(ore2)})
                 </span>
@@ -443,7 +468,7 @@ function TurnoDialog({ open, turno, dataDefault, giorniDisponibili, nomiSuggerit
           {/* Extra + costo orario */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">di cui extra (h)</label>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Ore extra (in più)</label>
               <Input
                 type="text"
                 inputMode="decimal"
@@ -501,16 +526,219 @@ function TurnoDialog({ open, turno, dataDefault, giorniDisponibili, nomiSuggerit
   );
 }
 
+// ─── Dialog mensile (inserimento da busta paga) ───────────────────────────────
+
+interface MensileDialogProps {
+  open: boolean;
+  turno: Turno | null;       // riga mensile in modifica, o null per nuovo
+  mese: string;              // YYYY-MM
+  nomiSuggeriti: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+function fmtMese(mese: string): string {
+  const [ay, am] = mese.split("-").map(Number);
+  return new Date(ay, am - 1, 1).toLocaleDateString("it-IT", { month: "long", year: "numeric" });
+}
+
+function MensileDialog({ open, turno, mese, nomiSuggeriti, onClose, onSaved }: MensileDialogProps) {
+  const [nome, setNome] = useState("");
+  // Input separati: ordinarie + extra (il totale è la somma). Lo storage resta
+  // ore_totali / ore_extra (di cui), così l'API e il DB non cambiano.
+  const [oreOrd, setOreOrd] = useState("");
+  const [oreExtra, setOreExtra] = useState("");
+  const [importoOrd, setImportoOrd] = useState("");
+  const [importoExtra, setImportoExtra] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [showSugg, setShowSugg] = useState(false);
+
+  const isNuovo = !turno;
+  const numOr0 = (s: string) => (s ? parseFloat(s.replace(",", ".")) : 0);
+  const toInput = (v: number) => String(v).replace(".", ",");
+
+  useEffect(() => {
+    if (open) {
+      setNome(turno?.nome ?? "");
+      // Ricostruisce ordinarie = totale − extra dai valori salvati.
+      const tot = turno?.ore_dichiarate ?? 0;
+      const ext = turno?.ore_extra ?? 0;
+      setOreOrd(turno ? toInput(Math.max(0, Math.round((tot - ext) * 100) / 100)) : "");
+      setOreExtra(turno?.ore_extra ? toInput(turno.ore_extra) : "");
+      const lordo = turno?.lordo_mensile ?? 0;
+      const impExt = turno?.importo_extra ?? 0;
+      setImportoOrd(turno ? toInput(Math.max(0, Math.round((lordo - impExt) * 100) / 100)) : "");
+      setImportoExtra(turno?.importo_extra ? toInput(turno.importo_extra) : "");
+      setNote(turno?.note ?? "");
+      setShowSugg(false);
+    }
+  }, [open, turno]);
+
+  const suggFiltrati = nome.length > 0
+    ? nomiSuggeriti.filter(n => n.toLowerCase().includes(nome.toLowerCase()) && n !== nome)
+    : [];
+
+  const oreOrdN = numOr0(oreOrd);
+  const oreExtN = numOr0(oreExtra);
+  const oreTot = Math.round((oreOrdN + oreExtN) * 100) / 100;
+  const impOrdN = numOr0(importoOrd);
+  const impExtN = numOr0(importoExtra);
+  const lordoTot = Math.round((impOrdN + impExtN) * 100) / 100;
+
+  async function salva() {
+    if (isNuovo && !nome.trim()) { toast.error("Il nome è obbligatorio"); return; }
+    if (oreOrdN < 0 || oreExtN < 0) { toast.error("Le ore non possono essere negative"); return; }
+    if (impOrdN < 0 || impExtN < 0) { toast.error("Gli importi non possono essere negativi"); return; }
+    if (oreTot <= 0 && lordoTot <= 0) { toast.error("Inserisci almeno le ore o il lordo del mese"); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        ore_totali: oreTot,
+        lordo: lordoTot,
+        ore_extra: oreExtN > 0 ? oreExtN : null,
+        importo_extra: impExtN > 0 ? impExtN : null,
+        note: note || null,
+      };
+      if (turno) {
+        const res = await fetch(`/api/workspace/personale/mensile/${turno.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail ?? "Errore");
+        toast.success("Mese aggiornato");
+      } else {
+        const res = await fetch("/api/workspace/personale/mensile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nome: nome.trim(), mese, ...payload }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail ?? "Errore");
+        toast.success("Mese inserito");
+      }
+      onSaved();
+      onClose();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore salvataggio");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { if (!v) onClose(); }}>
+      <DialogContent className="flex max-h-[90dvh] flex-col max-w-md">
+        <DialogHeader className="shrink-0">
+          <DialogTitle>{turno ? `Modifica ${turno.nome} · ${fmtMese(mese)}` : `Inserisci mese · ${fmtMese(mese)}`}</DialogTitle>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="space-y-3 mt-2">
+            {isNuovo && (
+              <div className="relative">
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Nome dipendente *</label>
+                <Input
+                  value={nome}
+                  onChange={e => { setNome(e.target.value); setShowSugg(true); }}
+                  onFocus={() => setShowSugg(true)}
+                  onBlur={() => setTimeout(() => setShowSugg(false), 150)}
+                  placeholder="es. Mario, Anna…"
+                  autoFocus
+                  autoComplete="off"
+                />
+                {showSugg && suggFiltrati.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 rounded-md border border-border bg-popover shadow-md">
+                    {suggFiltrati.map(n => (
+                      <button
+                        key={n}
+                        type="button"
+                        className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors"
+                        onMouseDown={() => { setNome(n); setShowSugg(false); }}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Ore: ordinarie + extra → totale */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Ore del mese *</label>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={oreOrd}
+                  onChange={e => setOreOrd(e.target.value.replace(/[^0-9,.]/g, ""))}
+                  placeholder="ordinarie · es. 148"
+                />
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={oreExtra}
+                  onChange={e => setOreExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
+                  placeholder="extra · es. 20"
+                />
+              </div>
+              {oreTot > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">Totale ore: <span className="font-semibold tabular-nums">{fmtOreDisplay(oreTot)}</span></p>
+              )}
+            </div>
+
+            {/* Lordo: ordinario + extra → totale */}
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Lordo del mese (€) *</label>
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={importoOrd}
+                  onChange={e => setImportoOrd(e.target.value.replace(/[^0-9,.]/g, ""))}
+                  placeholder="ordinario · es. 1700"
+                />
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={importoExtra}
+                  onChange={e => setImportoExtra(e.target.value.replace(/[^0-9,.]/g, ""))}
+                  placeholder="extra · es. 150"
+                />
+              </div>
+              {lordoTot > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">Lordo totale: <span className="font-semibold tabular-nums">{fmtEuro(lordoTot)}</span></p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Note</label>
+              <Input value={note} onChange={e => setNote(e.target.value)} placeholder="Opzionale…" />
+            </div>
+          </div>
+        </div>
+        <div className="shrink-0 flex justify-end gap-2 pt-3 border-t border-border mt-1">
+          <Button variant="outline" onClick={onClose} disabled={saving}>Annulla</Button>
+          <Button onClick={salva} disabled={saving}>{saving ? "Salvo…" : "Salva"}</Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Selettore periodo ────────────────────────────────────────────────────────
 
-type Periodo = "settimana" | "mese";
+// Modalità è l'unico interruttore temporale: giornaliero = settimana navigabile
+// (turno per turno), mensile = totali aggregati del mese. Niente più toggle
+// settimana/mese separato (era ridondante con la modalità).
+type Modalita = "giornaliero" | "mensile";
 type Vista = "calendario" | "lista";
 
 // ─── Tab principale ───────────────────────────────────────────────────────────
 
 export function PersonaleTab() {
   const oggi = toISO(new Date());
-  const [periodo, setPeriodo] = useState<Periodo>("settimana");
+  const [modalita, setModalita] = useState<Modalita>("giornaliero");
   const [vista, setVista] = useState<Vista>("calendario");
   const [lunedi, setLunedi] = useState<Date>(() => lunediDi(oggi));
   const [meseBase, setMeseBase] = useState(() => oggi.slice(0, 7));
@@ -521,21 +749,27 @@ export function PersonaleTab() {
   const [dataDefault, setDataDefault] = useState(oggi);
   const [copiando, setCopiando] = useState(false);
   const [expandedDip, setExpandedDip] = useState<string | null>(null);
+  const [mensileDialogOpen, setMensileDialogOpen] = useState(false);
+  const [editMensile, setEditMensile] = useState<Turno | null>(null);
+
+  const isMensile = modalita === "mensile";
 
   const [da, fine] = (() => {
-    if (periodo === "settimana") {
+    // Giornaliero = settimana navigabile; mensile = mese intero.
+    if (!isMensile) {
       return [toISO(lunedi), toISO(addDays(lunedi, 6))];
-    } else {
-      const [ay, am] = meseBase.split("-").map(Number);
-      const ultimoGiorno = new Date(ay, am, 0).getDate();
-      return [`${meseBase}-01`, `${meseBase}-${String(ultimoGiorno).padStart(2, "0")}`];
     }
+    const [ay, am] = meseBase.split("-").map(Number);
+    const ultimoGiorno = new Date(ay, am, 0).getDate();
+    return [`${meseBase}-01`, `${meseBase}-${String(ultimoGiorno).padStart(2, "0")}`];
   })();
 
-  const load = useCallback(async (d: string, f: string) => {
+  const load = useCallback(async (d: string, f: string, soloMensile: boolean) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/workspace/personale?da=${d}&a=${f}`);
+      // Le due viste non si mischiano mai: mensile=true mostra solo le righe
+      // mensili, false solo i turni giornalieri.
+      const res = await fetch(`/api/workspace/personale?da=${d}&a=${f}&mensile=${soloMensile}`);
       const j: PersonaleResponse = await res.json();
       setRisposta(j);
     } catch {
@@ -545,10 +779,11 @@ export function PersonaleTab() {
     }
   }, []);
 
-  useEffect(() => { load(da, fine); }, [da, fine, load]);
+  useEffect(() => { load(da, fine, isMensile); }, [da, fine, isMensile, load]);
 
+  // Giornaliero naviga per settimana, mensile per mese.
   function navPrev() {
-    if (periodo === "settimana") setLunedi(d => addDays(d, -7));
+    if (!isMensile) setLunedi(d => addDays(d, -7));
     else {
       const [ay, am] = meseBase.split("-").map(Number);
       const prev = new Date(ay, am - 2, 1);
@@ -556,7 +791,7 @@ export function PersonaleTab() {
     }
   }
   function navNext() {
-    if (periodo === "settimana") setLunedi(d => addDays(d, 7));
+    if (!isMensile) setLunedi(d => addDays(d, 7));
     else {
       const [ay, am] = meseBase.split("-").map(Number);
       const next = new Date(ay, am, 1);
@@ -564,17 +799,18 @@ export function PersonaleTab() {
     }
   }
 
-  function labelPeriodo() {
-    if (periodo === "settimana") return `${fmtData(da)} – ${fmtData(fine)}`;
-    const [ay, am] = meseBase.split("-").map(Number);
-    return new Date(ay, am - 1, 1).toLocaleDateString("it-IT", { month: "long", year: "numeric" });
-  }
-
   async function elimina(t: Turno) {
     if (!confirm(`Eliminare turno di ${t.nome} (${fmtData(t.data_turno)} ${orarioTurno(t)})?`)) return;
     await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" });
     toast.success("Turno eliminato");
-    load(da, fine);
+    load(da, fine, isMensile);
+  }
+
+  async function eliminaMensile(t: Turno) {
+    if (!confirm(`Eliminare l'inserimento mensile di ${t.nome} (${fmtMese(meseBase)})?`)) return;
+    await fetch(`/api/workspace/personale/${t.id}`, { method: "DELETE" });
+    toast.success("Mese eliminato");
+    load(da, fine, isMensile);
   }
 
   async function copiaSettimana() {
@@ -593,7 +829,7 @@ export function PersonaleTab() {
       } else {
         toast.success(`${j.n_copiati} turni copiati${j.n_saltati ? ` · ${j.n_saltati} saltati (giorni già pieni)` : ""}`);
       }
-      load(da, fine);
+      load(da, fine, isMensile);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore copia settimana");
     } finally {
@@ -658,6 +894,16 @@ export function PersonaleTab() {
       const ordinarie = Math.max(0, ore - extra);
       std[n] = (std[n] ?? 0) + ordinarie;
       ext[n] = (ext[n] ?? 0) + extra;
+      if (t.mensile) {
+        // Riga mensile: costo dal lordo reale, non da tariffa oraria.
+        const lordo = t.lordo_mensile ?? 0;
+        const impExt = t.importo_extra ?? 0;
+        const ordCost = Math.max(0, lordo - impExt);
+        cStd[n] = (cStd[n] ?? 0) + ordCost;
+        cExt[n] = (cExt[n] ?? 0) + impExt;
+        cTot[n] = (cTot[n] ?? 0) + lordo;
+        continue;
+      }
       const coStd = t.costo_orario ?? null;
       const coExt = t.costo_orario_extra ?? coStd;
       if (coStd != null) {
@@ -688,82 +934,108 @@ export function PersonaleTab() {
 
   const giorniSettimana = Array.from({ length: 7 }, (_, i) => toISO(addDays(lunedi, i)));
 
-  const giorniMese = (() => {
-    const [ay, am] = meseBase.split("-").map(Number);
-    const ultGiorno = new Date(ay, am, 0).getDate();
-    return Array.from({ length: ultGiorno }, (_, i) =>
-      `${meseBase}-${String(i + 1).padStart(2, "0")}`
-    );
-  })();
-
-  const giorniVista = periodo === "settimana" ? giorniSettimana
-    : vista === "calendario" ? giorniMese
-    : Object.keys(perData).sort();
+  // Giornaliero: calendario = 7 giorni della settimana; lista = solo giorni con turni.
+  const giorniVista = vista === "calendario" ? giorniSettimana : Object.keys(perData).sort();
 
   return (
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Sinistra: periodo + navigazione + vista */}
+        {/* Interruttore principale: turni giornalieri vs totali mensili.
+            È l'unico selettore temporale — etichette parlanti, niente ambiguità. */}
         <div className="flex rounded-md border border-border overflow-hidden">
-          {(["settimana", "mese"] as Periodo[]).map(p => (
-            <button
-              key={p}
-              onClick={() => setPeriodo(p)}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors capitalize ${
-                periodo === p ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
-              }`}
-            >
-              {p}
-            </button>
-          ))}
+          <button
+            onClick={() => { setModalita("giornaliero"); setExpandedDip(null); }}
+            className={`px-3.5 py-1.5 text-sm font-medium transition-colors ${
+              !isMensile ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
+            }`}
+          >
+            Turni giornalieri
+          </button>
+          <button
+            onClick={() => { setModalita("mensile"); setExpandedDip(null); }}
+            className={`px-3.5 py-1.5 text-sm font-medium transition-colors ${
+              isMensile ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
+            }`}
+          >
+            Totali mensili
+          </button>
         </div>
+
+        {/* Info: spiegazione delle due modalità */}
+        <InfoPopover title="Come gestire il personale">
+          <p className="text-muted-foreground">
+            Due modi per registrare le ore e il costo dei dipendenti — scegli quello più comodo per te.
+            Per ogni dipendente, in un dato mese, usa <strong>uno solo</strong> dei due (non si mischiano).
+          </p>
+          <div className="space-y-1.5 text-muted-foreground">
+            <p className="font-medium text-foreground">📅 Turni giornalieri</p>
+            <p>Inserisci i turni giorno per giorno con gli orari. Comodo per pianificare la settimana. Puoi copiare la settimana precedente per non riscrivere tutto.</p>
+          </div>
+          <div className="space-y-1.5 text-muted-foreground">
+            <p className="font-medium text-foreground">🗓️ Totali mensili</p>
+            <p>A fine mese leggi la busta paga e inserisci i totali del dipendente: ore e lordo. Veloce se non vuoi tracciare i singoli turni.</p>
+          </div>
+          <div className="border-t border-border pt-2 text-muted-foreground">
+            <p>In entrambi i casi le <strong>ore extra</strong> si inseriscono a parte e si sommano alle ordinarie: il totale è la somma dei due.</p>
+          </div>
+        </InfoPopover>
 
         <div className="flex items-center gap-1 border border-border rounded-md">
           <button onClick={navPrev} className="p-1.5 hover:bg-muted rounded-l-md">
             <ChevronLeft className="size-4" />
           </button>
-          <span className="px-3 text-sm font-medium min-w-[160px] text-center capitalize">{labelPeriodo()}</span>
+          <span className="px-3 text-sm font-medium min-w-[160px] text-center capitalize">
+            {isMensile ? fmtMese(meseBase) : `${fmtData(da)} – ${fmtData(fine)}`}
+          </span>
           <button onClick={navNext} className="p-1.5 hover:bg-muted rounded-r-md">
             <ChevronRight className="size-4" />
           </button>
         </div>
 
-        {/* Toggle vista calendario / lista */}
-        <div className="flex rounded-md border border-border overflow-hidden">
-          <button
-            onClick={() => setVista("calendario")}
-            title="Vista calendario"
-            className={`px-2.5 py-1.5 transition-colors ${vista === "calendario" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
-          >
-            <LayoutGrid className="size-4" />
-          </button>
-          <button
-            onClick={() => setVista("lista")}
-            title="Vista lista"
-            className={`px-2.5 py-1.5 transition-colors ${vista === "lista" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
-          >
-            <List className="size-4" />
-          </button>
-        </div>
+        {/* Toggle vista calendario / lista: solo in giornaliero */}
+        {!isMensile && (
+          <div className="flex rounded-md border border-border overflow-hidden">
+            <button
+              onClick={() => setVista("calendario")}
+              title="Vista calendario"
+              className={`px-2.5 py-1.5 transition-colors ${vista === "calendario" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+            >
+              <LayoutGrid className="size-4" />
+            </button>
+            <button
+              onClick={() => setVista("lista")}
+              title="Vista lista"
+              className={`px-2.5 py-1.5 transition-colors ${vista === "lista" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+            >
+              <List className="size-4" />
+            </button>
+          </div>
+        )}
 
         {/* Destra: azioni */}
         <div className="ml-auto flex items-center gap-2">
-          {periodo === "settimana" && (
-            <Button variant="outline" onClick={copiaSettimana} disabled={copiando}>
-              <CopyPlus className="size-4 mr-1.5" />{copiando ? "Copio…" : "Copia settimana prec."}
+          {isMensile ? (
+            <Button onClick={() => { setEditMensile(null); setMensileDialogOpen(true); }}>
+              <Plus className="size-4 mr-1.5" />Inserisci mese
             </Button>
-          )}
+          ) : (
+            <>
+              <Button variant="outline" onClick={copiaSettimana} disabled={copiando}>
+                <CopyPlus className="size-4 mr-1.5" />{copiando ? "Copio…" : "Copia settimana prec."}
+              </Button>
 
-          {turni.length > 0 && (
-            <Button variant="outline" onClick={esportaCSV}>
-              <Download className="size-4 mr-1.5" />Esporta CSV
-            </Button>
-          )}
+              {turni.length > 0 && (
+                <Button variant="outline" onClick={esportaCSV}>
+                  <Download className="size-4 mr-1.5" />Esporta CSV
+                </Button>
+              )}
 
-          <Button onClick={() => { setEditTurno(null); setDataDefault(oggi >= da && oggi <= fine ? oggi : da); setDialogOpen(true); }}>
-            <Plus className="size-4 mr-1.5" />Aggiungi turno
-          </Button>
+              <Button onClick={() => { setEditTurno(null); setDataDefault(oggi >= da && oggi <= fine ? oggi : da); setDialogOpen(true); }}>
+                <Plus className="size-4 mr-1.5" />Aggiungi turno
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -883,33 +1155,46 @@ export function PersonaleTab() {
                       <div className="divide-y divide-border rounded-md border border-border">
                         {turniN.map(t => {
                           const oreT = calcolaOreTotali(t);
-                          const costoT = t.costo_orario != null
-                            ? (() => {
-                                const ext = t.ore_extra ?? 0;
-                                const std = Math.max(0, oreT - ext);
-                                const coExt = t.costo_orario_extra ?? t.costo_orario;
-                                return std * t.costo_orario! + (ext > 0 ? ext * coExt! : 0);
-                              })()
-                            : 0;
+                          const costoT = calcolaCostoTurno(t);
                           return (
                             <div key={t.id} className="flex items-center gap-3 px-3 py-2 text-sm hover:bg-muted/20 group">
-                              <span className="text-muted-foreground w-16 shrink-0 tabular-nums">{fmtData(t.data_turno)}</span>
-                              <span className="tabular-nums text-muted-foreground">
-                                {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
-                                {t.ora_inizio2 && t.ora_fine2 && <span className="opacity-60 ml-1">· {fmtOra(t.ora_inizio2)}–{fmtOra(t.ora_fine2)}</span>}
-                              </span>
-                              <span className="tabular-nums font-medium">{fmtOreDisplay(oreT)}</span>
-                              {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
-                              {costoT > 0 && <span className="text-xs text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(costoT)}</span>}
-                              {t.note && <span className="text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
-                              <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
-                                  <Pencil className="size-3" />
-                                </Button>
-                                <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => elimina(t)}>
-                                  <Trash2 className="size-3" />
-                                </Button>
-                              </div>
+                              {t.mensile ? (
+                                <>
+                                  <span className="text-muted-foreground w-24 shrink-0 capitalize">{fmtMese(t.data_turno.slice(0, 7))}</span>
+                                  <span className="tabular-nums font-medium">{fmtOreDisplay(oreT)}</span>
+                                  {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
+                                  {(t.lordo_mensile ?? 0) > 0 && <span className="text-xs text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(t.lordo_mensile!)} lordo</span>}
+                                  {t.note && <span className="text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
+                                  <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditMensile(t); setMensileDialogOpen(true); }}>
+                                      <Pencil className="size-3" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => eliminaMensile(t)}>
+                                      <Trash2 className="size-3" />
+                                    </Button>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-muted-foreground w-16 shrink-0 tabular-nums">{fmtData(t.data_turno)}</span>
+                                  <span className="tabular-nums text-muted-foreground">
+                                    {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
+                                    {t.ora_inizio2 && t.ora_fine2 && <span className="opacity-60 ml-1">· {fmtOra(t.ora_inizio2)}–{fmtOra(t.ora_fine2)}</span>}
+                                  </span>
+                                  <span className="tabular-nums font-medium">{fmtOreDisplay(oreT)}</span>
+                                  {(t.ore_extra ?? 0) > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 tabular-nums">+{fmtOreDisplay(t.ore_extra!)} str.</span>}
+                                  {costoT > 0 && <span className="text-xs text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(costoT)}</span>}
+                                  {t.note && <span className="text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
+                                  <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <Button size="icon" variant="ghost" className="size-6" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
+                                      <Pencil className="size-3" />
+                                    </Button>
+                                    <Button size="icon" variant="ghost" className="size-6 text-muted-foreground hover:text-destructive" onClick={() => elimina(t)}>
+                                      <Trash2 className="size-3" />
+                                    </Button>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           );
                         })}
@@ -926,8 +1211,15 @@ export function PersonaleTab() {
       {/* Vista */}
       {loading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">Caricamento…</div>
+      ) : isMensile ? (
+        // ── Vista mensile: il riepilogo per dipendente sopra è la vista. ──
+        turni.length === 0 ? (
+          <div className="py-12 text-center text-sm text-muted-foreground">
+            Nessun inserimento mensile per {fmtMese(meseBase)}. Usa &ldquo;Inserisci mese&rdquo; per aggiungere i totali da busta paga.
+          </div>
+        ) : null
       ) : vista === "calendario" ? (
-        // ── Vista calendario (settimana: 7 col fisse; mese: griglia con offset) ──
+        // ── Vista calendario settimanale: 7 colonne fisse ──
         <>
           {/* Intestazioni giorni */}
           <div className="grid grid-cols-7 gap-1.5 mb-1">
@@ -936,34 +1228,29 @@ export function PersonaleTab() {
             ))}
           </div>
           <div className="grid grid-cols-7 gap-1.5">
-            {periodo === "mese" && (() => {
-              const primoGiorno = new Date(giorniMese[0] + "T00:00:00");
-              const dow = primoGiorno.getDay() === 0 ? 6 : primoGiorno.getDay() - 1;
-              return Array.from({ length: dow }, (_, i) => <div key={`pad-${i}`} />);
-            })()}
             {giorniVista.map((iso) => {
               const isOggi = iso === oggi;
               const turniGiorno = (perData[iso] ?? []).sort((a, b) => a.ora_inizio.localeCompare(b.ora_inizio));
               return (
-                <div key={iso} className={`rounded-lg border ${isOggi ? "border-primary/60" : "border-border"} p-1.5 min-h-[80px]`}>
-                  <div className={`text-center mb-1 ${isOggi ? "text-primary font-semibold" : "text-muted-foreground"}`}>
-                    <div className="text-sm font-bold leading-none">{iso.split("-")[2]}</div>
+                <div key={iso} className={`rounded-lg border ${isOggi ? "border-primary/60" : "border-border"} p-2 min-h-[200px]`}>
+                  <div className={`text-center mb-1.5 ${isOggi ? "text-primary font-semibold" : "text-muted-foreground"}`}>
+                    <div className="text-base font-bold leading-none">{iso.split("-")[2]}</div>
                   </div>
-                  <div className="space-y-0.5">
+                  <div className="space-y-1">
                     {turniGiorno.map(t => {
                       const chipCol = getDipColor(nomi, t.nome);
                       return (
                         <div
                           key={t.id}
-                          className={`rounded ${chipCol.bgChip} px-1 py-0.5 cursor-pointer transition-colors hover:opacity-80`}
+                          className={`rounded-md ${chipCol.bgChip} px-1.5 py-1 cursor-pointer transition-colors hover:opacity-80`}
                           onClick={() => { setEditTurno(t); setDialogOpen(true); }}
                         >
-                          <div className={`text-[10px] font-semibold ${chipCol.textChip} truncate`}>{t.nome}</div>
-                          <div className={`text-[9px] ${chipCol.subChip}`}>
+                          <div className={`text-xs font-semibold ${chipCol.textChip} truncate`}>{t.nome}</div>
+                          <div className={`text-[10px] ${chipCol.subChip}`}>
                             {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
                           </div>
                           {!!t.ore_extra && t.ore_extra > 0 && (
-                            <div className="text-[9px] font-medium text-amber-600 dark:text-amber-400">
+                            <div className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
                               +{fmtOreDisplay(t.ore_extra)} extra
                             </div>
                           )}
@@ -971,7 +1258,7 @@ export function PersonaleTab() {
                       );
                     })}
                     <button
-                      className="w-full text-[9px] text-muted-foreground/40 hover:text-muted-foreground text-center py-0.5"
+                      className="w-full text-xs text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/40 rounded-md text-center py-1 transition-colors"
                       onClick={() => { setEditTurno(null); setDataDefault(iso); setDialogOpen(true); }}
                     >
                       +
@@ -1014,8 +1301,8 @@ export function PersonaleTab() {
                         {!!t.ore_extra && t.ore_extra > 0 && (
                           <span className="text-[11px] text-amber-600 dark:text-amber-500 tabular-nums">+{fmtOreDisplay(t.ore_extra)} extra</span>
                         )}
-                        {t.costo_orario != null && (
-                          <span className="text-[11px] text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(calcolaOreTotali(t) * t.costo_orario)}</span>
+                        {calcolaCostoTurno(t) > 0 && (
+                          <span className="text-[11px] text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(calcolaCostoTurno(t))}</span>
                         )}
                         {t.note && <span className="text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
                         <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1041,11 +1328,20 @@ export function PersonaleTab() {
         open={dialogOpen}
         turno={editTurno}
         dataDefault={dataDefault}
-        giorniDisponibili={periodo === "settimana" ? giorniSettimana : giorniMese}
+        giorniDisponibili={giorniSettimana}
         nomiSuggeriti={nomi}
         costiNoti={costiNoti}
         onClose={() => { setDialogOpen(false); setEditTurno(null); }}
-        onSaved={() => load(da, fine)}
+        onSaved={() => load(da, fine, isMensile)}
+      />
+
+      <MensileDialog
+        open={mensileDialogOpen}
+        turno={editMensile}
+        mese={meseBase}
+        nomiSuggeriti={nomi}
+        onClose={() => { setMensileDialogOpen(false); setEditMensile(null); }}
+        onSaved={() => load(da, fine, isMensile)}
       />
     </div>
   );
