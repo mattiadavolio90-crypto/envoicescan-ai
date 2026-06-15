@@ -628,3 +628,132 @@ class TestPrioritaMemoria:
         # prodotti_master è vuoto, prodotti_utente non ha 'user_B' → Da Classificare
         assert result == 'Da Classificare', \
             "user_B non deve vedere i prodotti_utente di user_A"
+
+
+class TestRegoleProdottiBancoShop:
+    """Regole dominio CASATI 14: prodotti confezionati da banco → SHOP.
+
+    Materie prime gelati/dolci → PASTICCERIA; dessert serviti al tavolo →
+    GELATI E DESSERT; gelati industriali/snack di marca da banco → SHOP.
+    """
+
+    def _finale(self, descrizione: str):
+        cat = applica_correzioni_dizionario(descrizione, "Da Classificare")
+        out, _ = applica_regole_categoria_forti(descrizione, cat)
+        return out
+
+    @pytest.mark.parametrize("descrizione", [
+        "MAGNUM CLASSICO",
+        "MAGNUM MANDORLE",
+        "MAGNUM SIGNATURE PISTACCHIO",
+        "CUCCIOLONE MAXI",
+        "SOLERO EXOTIC",
+        "CALIPPO COLA",
+        "CREMINO",
+        "GHIACCIOLI ASSORTITI X 20",
+        "GHIACCIOLO MISTO 50 PZ",
+        "SUPER TWISTER",
+    ])
+    def test_gelato_industriale_banco_shop(self, descrizione):
+        assert self._finale(descrizione) == "SHOP"
+
+    @pytest.mark.parametrize("descrizione", [
+        "CORNETTO ALGIDA",
+        "CORNETTO CLASSICO",
+        "CORNETTO MAX PISTACCHIO",
+    ])
+    def test_cornetto_gelato_shop(self, descrizione):
+        assert self._finale(descrizione) == "SHOP"
+
+    @pytest.mark.parametrize("descrizione", [
+        "CORNETTO S GLUTINE S LATTOSIO",
+        "CORNETTI MIGNON BURRO",
+        "CROISSANT VUOTO",
+    ])
+    def test_cornetto_brioche_resta_pasticceria(self, descrizione):
+        # Il cornetto/croissant da forno (senza marcatori gelato) NON è SHOP.
+        assert self._finale(descrizione) == "PASTICCERIA"
+
+    @pytest.mark.parametrize("descrizione", [
+        "DILETT TONNO NAT",
+        "TONNO CONSORCIO OO",
+    ])
+    def test_tonno_resta_pesce(self, descrizione):
+        # Un prodotto con TONNO non può finire altrove (mai SERVIZI E CONSULENZE).
+        assert self._finale(descrizione) == "PESCE"
+
+
+class TestDescrizioneEDubbia:
+    """descrizione_e_dubbia: segnala righe da verificare senza cambiare categoria."""
+
+    @pytest.mark.parametrize("descrizione", [
+        "TRSSE TLTTE GM SHNE",
+        "SC KRFT GRND MDLE",
+        "ALE VRA EN PT CRMQE",
+        "MRR TRMA 31X41",
+    ])
+    def test_descrizione_criptica_e_dubbia(self, descrizione):
+        assert ai_mod.descrizione_e_dubbia(descrizione, "MAISONS DU MONDE ITALIA SRL", "MANUTENZIONE E ATTREZZATURE") is True
+
+    def test_vuota_e_dubbia(self):
+        assert ai_mod.descrizione_e_dubbia("", "X", "FRUTTA") is True
+
+    def test_fornitore_non_food_su_categoria_food(self):
+        # Esselunga (catalogo misto) su categoria food → verifica.
+        assert ai_mod.descrizione_e_dubbia("FIORI RECISI-UN 1", "ESSELUNGA S.P.A", "FRUTTA") is True
+        assert ai_mod.descrizione_e_dubbia("PRO COTTO NAZ", "ESSELUNGA S.P.A", "SALUMI") is True
+
+    @pytest.mark.parametrize("descrizione,categoria", [
+        ("MOZZARELLA DI BUFALA KG1", "LATTICINI"),
+        ("CAFFE ESPRESSO KG1", "CAFFE E THE"),
+        ("RISO ARBORIO KG5", "PASTA E CEREALI"),
+        ("PROSCIUTTO CRUDO PARMA", "SALUMI"),
+        ("VINO ROSSO CHIANTI DOCG", "VINI"),
+    ])
+    def test_prodotti_leggibili_non_dubbi(self, descrizione, categoria):
+        # Fornitore food regolare + descrizione leggibile → non dubbia.
+        assert ai_mod.descrizione_e_dubbia(descrizione, "FORNITORE REGOLARE SRL", categoria) is False
+
+    def test_fornitore_non_food_su_categoria_non_food_ok(self):
+        # Esselunga su MATERIALE/SHOP (non food) NON è di per sé dubbia.
+        assert ai_mod.descrizione_e_dubbia("DETERSIVO PIATTI", "ESSELUNGA S.P.A", "MATERIALE DI CONSUMO") is False
+
+
+class TestCategorizzaConMemoriaFallbackFlag:
+    """return_fallback_flag distingue match veri da fallback forzato a SERVIZI."""
+
+    def test_fallback_flag_true_su_non_matchato(self):
+        invalida_cache_memoria()
+        with patch('services.ai_service.st'), \
+             patch('services.ai_service.carica_memoria_completa'):
+            cat, is_fallback = ai_mod.categorizza_con_memoria(
+                descrizione="ZZZQWX PRODOTTO IGNOTO 999",
+                prezzo=10.0, quantita=1.0, user_id=None,
+                supabase_client=None, return_fallback_flag=True,
+            )
+        assert cat == "SERVIZI E CONSULENZE"
+        assert is_fallback is True
+
+    def test_fallback_flag_false_su_match_regola(self):
+        invalida_cache_memoria()
+        with patch('services.ai_service.st'), \
+             patch('services.ai_service.carica_memoria_completa'):
+            cat, is_fallback = ai_mod.categorizza_con_memoria(
+                descrizione="MAGNUM CLASSICO",
+                prezzo=2.0, quantita=1.0, user_id=None,
+                supabase_client=None, return_fallback_flag=True,
+            )
+        assert cat == "SHOP"
+        assert is_fallback is False
+
+    def test_retrocompat_ritorna_stringa(self):
+        invalida_cache_memoria()
+        with patch('services.ai_service.st'), \
+             patch('services.ai_service.carica_memoria_completa'):
+            out = ai_mod.categorizza_con_memoria(
+                descrizione="MAGNUM CLASSICO",
+                prezzo=2.0, quantita=1.0, user_id=None,
+                supabase_client=None,
+            )
+        assert isinstance(out, str)
+        assert out == "SHOP"

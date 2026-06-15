@@ -17,6 +17,15 @@ import {
 // xlsx importato lazy in exportXls (libreria pesante, serve solo all'export)
 import { type ArticoloAggregato, type RigaFattura } from "@/lib/fatture";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { categoriaIcon, formatData, formatEuro } from "./periodi";
 
 type Props = {
@@ -456,15 +465,11 @@ const ArticoloRiga = memo(function ArticoloRiga({
   dataDa?: string;
   dataA?: string;
 }) {
-  const [editingCat, setEditingCat] = useState(false);
   const [currentCat, setCurrentCat] = useState(articolo.categoria ?? "");
   const [saving, setSaving] = useState(false);
 
   async function saveCategoria(newCat: string) {
-    if (!newCat || newCat === currentCat) {
-      setEditingCat(false);
-      return;
-    }
+    if (!newCat || newCat === currentCat) return;
     setSaving(true);
     try {
       const res = await fetch("/api/fatture/categoria-batch", {
@@ -486,7 +491,6 @@ const ArticoloRiga = memo(function ArticoloRiga({
       toast.error("Errore di rete");
     } finally {
       setSaving(false);
-      setEditingCat(false);
     }
   }
 
@@ -535,51 +539,69 @@ const ArticoloRiga = memo(function ArticoloRiga({
           </div>
         </td>
         <td className="px-3 py-2">
-          {editingCat ? (
-            <select
-              value={currentCat}
+          {/* Dropdown in portale (base-ui Menu): si apre ancorato alla cella senza
+              scrollare la pagina, quindi la riga NON salta più fuori vista come
+              accadeva col <select> nativo + autoFocus. */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
               disabled={saving}
-              autoFocus
-              onChange={(e) => saveCategoria(e.target.value)}
-              onBlur={() => setEditingCat(false)}
-              className="h-6 text-xs rounded border border-input bg-background px-1 max-w-44"
-            >
-              {fbCats.length > 0 && (
-                <optgroup label="🥗 Food & Beverage">
-                  {fbCats.map((c) => (
-                    <option key={c} value={c}>
-                      {categoriaIcon(c)} {c}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {sgCats.length > 0 && (
-                <optgroup label="📊 Spese Generali">
-                  {sgCats.map((c) => (
-                    <option key={c} value={c}>
-                      {categoriaIcon(c)} {c}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              {hasDaClassificare && (
-                <option value="Da Classificare" style={{ color: "red" }}>
-                  Da Classificare
-                </option>
-              )}
-            </select>
-          ) : (
-            <button
-              onClick={() => setEditingCat(true)}
-              className="text-xs inline-flex items-center gap-1.5 hover:text-primary hover:underline text-left"
+              className="text-xs inline-flex items-center gap-1.5 hover:text-primary hover:underline text-left disabled:opacity-60"
             >
               <span className="text-base leading-none">{icon}</span>
               <span className="font-medium">
                 {currentCat || <em className="text-muted-foreground">N/D</em>}
               </span>
-              {saving && <Loader2 className="size-3 animate-spin" />}
-            </button>
-          )}
+              {saving ? (
+                <Loader2 className="size-3 animate-spin" />
+              ) : (
+                <ChevronDown className="size-3 text-muted-foreground" />
+              )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="max-h-80 min-w-52">
+              {fbCats.length > 0 && (
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>🥗 Food &amp; Beverage</DropdownMenuLabel>
+                  {fbCats.map((c) => (
+                    <DropdownMenuItem
+                      key={c}
+                      onClick={() => saveCategoria(c)}
+                      className={c === currentCat ? "font-semibold text-primary" : ""}
+                    >
+                      <span className="text-base leading-none">{categoriaIcon(c)}</span>
+                      {c}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              )}
+              {sgCats.length > 0 && (
+                <DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>📊 Spese Generali</DropdownMenuLabel>
+                  {sgCats.map((c) => (
+                    <DropdownMenuItem
+                      key={c}
+                      onClick={() => saveCategoria(c)}
+                      className={c === currentCat ? "font-semibold text-primary" : ""}
+                    >
+                      <span className="text-base leading-none">{categoriaIcon(c)}</span>
+                      {c}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuGroup>
+              )}
+              {hasDaClassificare && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => saveCategoria("Da Classificare")}
+                  >
+                    Da Classificare
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </td>
         <td className="px-3 py-2 text-xs">
           <span className="truncate inline-block max-w-32" title={articolo.fornitore_principale}>

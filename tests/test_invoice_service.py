@@ -261,7 +261,7 @@ def _run_estrai_xml(xml_bytes, user_id='user_test'):
          patch('services.invoice_service.xmltodict', real_xmltodict), \
          patch('services.ai_service.carica_memoria_completa', return_value=None), \
          patch('services.ai_service.categorizza_con_memoria',
-               return_value='🧀 LATTICINI E FORMAGGI'):
+               return_value=('🧀 LATTICINI E FORMAGGI', False)):
         return estrai_dati_da_xml(file_mock)
 
 

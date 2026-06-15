@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { RefreshCw, DollarSign, Shield, Clock, CheckCircle, Bot, Play, Moon, AlertTriangle } from "lucide-react";
+import { RefreshCw, DollarSign, Shield, Clock, CheckCircle, AlertTriangle } from "lucide-react";
 
 const VISION_DAILY_LIMIT = 50;
 
@@ -374,180 +374,14 @@ function RetentionTab() {
   );
 }
 
-// ─── TAB AGENT NOTTURNO ───────────────────────────────────────────────────────
-type AgentStatus = {
-  enabled: boolean;
-  ora_utc: number;
-  last_run_at: string | null;
-  last_digest: Record<string, unknown> | null;
-  running: boolean;
-};
-
-function AgentNotturnoTab() {
-  const [status, setStatus] = useState<AgentStatus | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [toggling, setToggling] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [oraUtc, setOraUtc] = useState("2");
-
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/admin/sistema/agent-notturno");
-      if (!res.ok) { toast.error("Errore caricamento stato agent"); return; }
-      const d: AgentStatus = await res.json();
-      setStatus(d);
-      setOraUtc(String(d.ora_utc ?? 2));
-    } catch { toast.error("Errore di connessione"); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { load(); }, []);
-
-  async function handleToggle(enabled: boolean) {
-    setToggling(true);
-    try {
-      const res = await fetch("/api/admin/sistema/agent-notturno/toggle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled, ora_utc: parseInt(oraUtc) || 2 }),
-      });
-      const d = await res.json();
-      if (!res.ok) { toast.error(d.detail || "Errore"); return; }
-      toast.success(enabled ? "Agent notturno abilitato" : "Agent notturno disabilitato");
-      load();
-    } catch { toast.error("Errore di connessione"); }
-    finally { setToggling(false); }
-  }
-
-  async function handleEseguiOra() {
-    if (!confirm("Eseguire subito l'agent notturno? Classificherà le righe in coda con suggerimenti certi.")) return;
-    setRunning(true);
-    try {
-      const res = await fetch("/api/admin/sistema/agent-notturno/esegui-ora", { method: "POST" });
-      const d = await res.json();
-      if (!res.ok) { toast.error(d.detail || "Errore avvio"); return; }
-      toast.success(d.message || "Agent avviato — ricarica tra qualche secondo");
-      setTimeout(load, 5000);
-    } catch { toast.error("Errore di connessione"); }
-    finally { setRunning(false); }
-  }
-
-  const digest = status?.last_digest as Record<string, unknown> | null;
-  const oraItaliana = status ? `${((status.ora_utc + 2) % 24).toString().padStart(2, "0")}:00` : "—";
-
-  return (
-    <div className="space-y-6">
-      <div className="flex gap-2">
-        <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-          <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
-        </Button>
-      </div>
-
-      {/* Card principale toggle */}
-      <Card className={status?.enabled ? "border-emerald-500/50" : "border-muted"}>
-        <CardHeader className="flex flex-row items-center justify-between pb-3">
-          <div className="flex items-center gap-2">
-            <Moon className={`size-5 ${status?.enabled ? "text-emerald-500" : "text-muted-foreground"}`} />
-            <CardTitle className="text-base">Agent Notturno AI</CardTitle>
-          </div>
-          <div className="flex items-center gap-2">
-            {status?.running && (
-              <span className="text-xs text-amber-600 font-medium animate-pulse">In esecuzione…</span>
-            )}
-            <span className={`text-sm font-semibold ${status?.enabled ? "text-emerald-600" : "text-muted-foreground"}`}>
-              {status?.enabled ? "Attivo" : "Disattivato"}
-            </span>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Classifica automaticamente ogni notte le righe in coda: diciture sicure, sconti/omaggi e
-            righe con suggerimento deterministico certo. Tutto viene loggato nel tab Attività AI con possibilità di annullare.
-          </p>
-
-          <div className="flex flex-wrap gap-3 items-end">
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-muted-foreground">Ora esecuzione (UTC)</label>
-              <Select value={oraUtc} onValueChange={setOraUtc}>
-                <SelectTrigger className="w-28"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 24 }, (_, h) => (
-                    <SelectItem key={h} value={String(h)}>{String(h).padStart(2, "0")}:00 UTC ({String((h + 2) % 24).padStart(2, "0")}:00 IT)</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex gap-2">
-              {status?.enabled ? (
-                <Button variant="outline" onClick={() => handleToggle(false)} disabled={toggling}>
-                  {toggling ? "…" : "Disabilita"}
-                </Button>
-              ) : (
-                <Button onClick={() => handleToggle(true)} disabled={toggling}>
-                  <Moon className="size-4 mr-1" />
-                  {toggling ? "…" : "Abilita"}
-                </Button>
-              )}
-              <Button variant="outline" onClick={handleEseguiOra} disabled={running || status?.running}>
-                <Play className="size-4 mr-1" />
-                {running ? "Avvio…" : "Esegui ora"}
-              </Button>
-            </div>
-          </div>
-
-          {status?.enabled && (
-            <p className="text-xs text-muted-foreground">
-              Esecuzione programmata ogni giorno alle <strong>{oraItaliana} ora italiana</strong> ({status.ora_utc}:00 UTC)
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Ultimo digest */}
-      {status?.last_run_at && (
-        <Card>
-          <CardHeader><CardTitle className="text-sm font-medium">Ultima esecuzione</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-xs text-muted-foreground">
-              {new Date(status.last_run_at).toLocaleString("it-IT", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
-            </p>
-            {digest && !digest.errore ? (
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {[
-                  { label: "Totale classificate", value: String(digest.classificate ?? "—"), icon: Bot, color: "text-violet-600" },
-                  { label: "Auto-review", value: String(digest.auto_review ?? "—"), icon: CheckCircle, color: "text-emerald-600" },
-                  { label: "Suggerite", value: String(digest.suggerite ?? "—"), icon: Shield, color: "text-sky-600" },
-                  { label: "Errori", value: String(digest.errori ?? "—"), icon: Clock, color: Number(digest.errori) > 0 ? "text-red-600" : "text-muted-foreground" },
-                ].map((k) => (
-                  <Card key={k.label} className="p-3">
-                    <p className="text-xs text-muted-foreground">{k.label}</p>
-                    <p className={`text-xl font-bold tabular-nums ${k.color}`}>{k.value}</p>
-                  </Card>
-                ))}
-              </div>
-            ) : digest?.errore ? (
-              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-                {String(digest.errore)}
-              </div>
-            ) : null}
-            {digest?.elapsed_s !== undefined && (
-              <p className="text-xs text-muted-foreground">Durata: {String(digest.elapsed_s)}s</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-    </div>
-  );
-}
+// (Il pannello "Agent notturno" è stato spostato in Admin → Categorie.)
 
 // ─── ROOT CLIENT ─────────────────────────────────────────────────────────────
-const TABS = ["costi", "agent", "retention", "import"] as const;
-const TAB_LABELS: Record<string, string> = { costi: "Costi AI", agent: "Agent AI", retention: "Retention", import: "Import Ricavi" };
+const TABS = ["costi", "retention", "import"] as const;
+const TAB_LABELS: Record<string, string> = { costi: "Costi AI", retention: "Retention", import: "Import Ricavi" };
 
 export function SistemaClient() {
-  const [tab, setTab] = useState<"costi" | "agent" | "retention" | "import">("costi");
+  const [tab, setTab] = useState<"costi" | "retention" | "import">("costi");
   return (
     <div className="space-y-4">
       <div className="flex gap-1 border-b">
@@ -559,7 +393,6 @@ export function SistemaClient() {
         ))}
       </div>
       {tab === "costi" && <CostiAiTab />}
-      {tab === "agent" && <AgentNotturnoTab />}
       {tab === "retention" && <RetentionTab />}
       {tab === "import" && <ImportRicaviTab />}
     </div>

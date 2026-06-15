@@ -372,11 +372,25 @@ def _run_agent_notturno() -> dict:
                     errori += 1
                     logger.warning("agent_notturno suggerita '%s': %s", desc[:40], exc)
 
+        # ── 3. Prepara suggerimenti AI per le righe ambigue (NON scrive) ───
+        # Le righe 'da_verificare' senza soluzione deterministica vengono
+        # proposte dall'AI: la categoria NON viene applicata, solo salvata come
+        # suggerimento da approvare a mano nello strumento Categorie.
+        suggerite_ai = 0
+        try:
+            from services.routers.admin import prepara_suggerimenti_ai
+            res_ai = prepara_suggerimenti_ai(sb, list(allowed_ids), attore="agent-notturno")
+            suggerite_ai = int(res_ai.get("suggerite", 0))
+            errori += int(res_ai.get("errori", 0))
+        except Exception as exc:
+            logger.warning("agent_notturno suggerimenti AI: %s", exc)
+
         elapsed_s = round(time.monotonic() - t0, 1)
         digest = {
             "classificate": classificate_auto + classificate_suggerite,
             "auto_review": classificate_auto,
             "suggerite": classificate_suggerite,
+            "suggerite_ai": suggerite_ai,
             "errori": errori,
             "elapsed_s": elapsed_s,
         }

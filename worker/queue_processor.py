@@ -71,6 +71,12 @@ except Exception:  # pragma: no cover - fallback difensivo
             return cat, False
         return "SERVIZI E CONSULENZE", True
 
+try:
+    from services.ai_service import descrizione_e_dubbia
+except Exception:  # pragma: no cover - fallback difensivo
+    def descrizione_e_dubbia(_descrizione, _fornitore=None, _categoria=None):
+        return False
+
 logger = logging.getLogger(__name__)
 
 
@@ -197,8 +203,16 @@ def _auto_classify_saved_rows(
                 desc,
                 source="worker_queue_auto_classify",
             )
-            # Confidence routing: media → pre-classificato ma in coda per review
-            needs_review = bool(fallback_forzato) or conf in ('bassa', 'media')
+            # Confidence routing: media → pre-classificato ma in coda per review.
+            # + segnali deterministici (descrizione criptica, fornitore non-food su
+            # categoria food): rendono visibile nella coda "Solo verifica" ciò che
+            # GPT classifica "con sicurezza" ma è probabilmente sbagliato.
+            _forn = desc_map.get(desc, ("", 0))[0]
+            needs_review = (
+                bool(fallback_forzato)
+                or conf in ('bassa', 'media')
+                or descrizione_e_dubbia(desc, _forn, categoria)
+            )
             target_ids = desc_to_ids.get(desc, [])
             if not target_ids:
                 continue

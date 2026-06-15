@@ -27,6 +27,8 @@ from services.ai_service import (
     mostra_loading_ai,
     carica_memoria_completa,
     ottieni_hint_per_ai,
+    applica_correzioni_dizionario,
+    descrizione_e_dubbia,
     _applica_guardrail_note_con_importo,
 )
 from services.invoice_service import (
@@ -395,6 +397,32 @@ _DOC_REFERENCE_RE = re.compile(
 )
 
 
+def _is_fallback_servizi_da_riclassificare(row: dict) -> bool:
+    """True se la riga è finita in SERVIZI E CONSULENZE SOLO per fallback forzato.
+
+    In upload (estrai_dati_da_xml) un prodotto non riconosciuto da memoria/regole/
+    fornitore/UM/dizionario viene forzato a SERVIZI E CONSULENZE con needs_review=True.
+    Quelle righe NON sono servizi reali: vanno ripescate dalla riconciliazione AI.
+
+    Per non toccare i servizi LEGITTIMI (DELUXY, HACCP, POS, cedolini, ecc.) la riga
+    viene inclusa solo se il dizionario keyword NON la riconosce come servizio: se il
+    dizionario la mappa a SERVIZI E CONSULENZE è un servizio vero e resta intatto.
+    """
+    categoria = str(row.get('categoria') or '').strip()
+    if categoria != 'SERVIZI E CONSULENZE':
+        return False
+    if not bool(row.get('needs_review')):
+        return False
+    descrizione = str(row.get('descrizione') or '').strip()
+    if not descrizione:
+        return False
+    # Se una keyword del dizionario la classifica come servizio, è un servizio vero.
+    cat_dict = applica_correzioni_dizionario(descrizione, "Da Classificare")
+    if cat_dict == 'SERVIZI E CONSULENZE':
+        return False
+    return True
+
+
 def _should_skip_post_upload_ai_for_row(row: dict) -> tuple[bool, str]:
     """Stabilisce se una riga deve restare Da Classificare anche dopo il passaggio AI."""
     descrizione = str(row.get('descrizione') or '').strip()
@@ -465,6 +493,7 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
         unresolved_rows = [
             row for row in rows
             if str(row.get('categoria') or '').strip() in {'', 'Da Classificare'}
+            or _is_fallback_servizi_da_riclassificare(row)
         ]
         summary['rows_scanned'] = len(unresolved_rows)
         if not unresolved_rows:
@@ -602,6 +631,10 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     row_id = row.get('id')
                     if row_id is None:
                         continue
+                    # In riclassificazione NON ereditiamo il needs_review pregresso
+                    # (es. flag fallback): la decisione si rifà alla nuova classificazione
+                    # AI + segnali deterministici, altrimenti una riga fallback resterebbe
+                    # "da verificare" anche dopo una buona riclassificazione.
                     special_row = classify_special_row(
                         descrizione=desc,
                         categoria=categoria_finale,
@@ -609,7 +642,7 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                         totale_riga=totale_riga,
                         quantita=row.get('quantita') or 1,
                         tipo_documento=row.get('tipo_documento') or '',
-                        needs_review=bool(row.get('needs_review')),
+                        needs_review=False,
                     )
                     categoria_target = str(special_row['force_categoria'] or categoria_finale)
                     # Guardrail dominio #2: "📝 NOTE E DICITURE" solo se totale_riga == 0.
@@ -631,6 +664,10 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                         needs_review_target = True
                     else:
                         needs_review_target = bool(special_row['should_review'])
+                    # Segnali deterministici: descrizione criptica o fornitore non-food
+                    # su categoria food → in coda di verifica anche con confidence alta.
+                    if descrizione_e_dubbia(desc, meta.get('fornitore'), categoria_target):
+                        needs_review_target = True
                     # Una riga corretta dal guardrail NOTE va sempre rivista a mano
                     needs_review_target = needs_review_target or needs_review_target_force
                     chunk_update_groups.setdefault((categoria_target, needs_review_target), []).append(row_id)

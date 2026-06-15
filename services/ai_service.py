@@ -449,6 +449,64 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
 _CATEGORIE_PLACEHOLDER = {"", "DA CLASSIFICARE"}
 _FALLBACK_CATEGORIA_NON_CLASSIFICATO = CATEGORIA_FALLBACK  # centralizzato in config.constants
 
+# Fornitori generici non-food (GDO/casalinghi): vendono di tutto, quindi una loro
+# riga categorizzata food merita una verifica manuale (alto tasso di errore osservato).
+_FORNITORI_NON_FOOD_GENERICI = (
+    "ESSELUNGA", "MAISONS DU MONDE", "MAISON DU MONDE", "KASANOVA", "IKEA",
+    "LEROY MERLIN", "ZARA HOME", "AMAZON",
+)
+
+# Categorie food/bevande: una riga di un fornitore non-food generico finita qui è sospetta.
+_CATEGORIE_FOOD_PER_REVIEW = frozenset(TUTTE_LE_CATEGORIE) - frozenset(CATEGORIE_SPESE_GENERALI) - {
+    "MATERIALE DI CONSUMO", "SHOP",
+}
+
+
+def descrizione_e_dubbia(descrizione: str | None, fornitore: str | None = None,
+                         categoria: str | None = None) -> bool:
+    """Segnala righe la cui categorizzazione automatica è poco affidabile.
+
+    NON cambia la categoria: ritorna solo se la riga andrebbe marcata needs_review,
+    in aggiunta ai segnali esistenti (confidence GPT bassa/media, fallback forzato).
+
+    Casi dubbi:
+    - descrizione criptica/troncata: pochi token alfabetici utili o prevalenza di
+      sigle senza vocali (es. "TRSSE TLTTE GM SHNE", "SC KRFT GRND MDLE");
+    - fornitore non-food generico (Esselunga, Maisons du Monde, ...) con categoria
+      food: alto tasso di errore osservato su questi cataloghi misti.
+    """
+    desc = str(descrizione or "").strip()
+    if not desc:
+        return True
+
+    desc_u = desc.upper()
+    tokens_alfa = [t for t in re.findall(r"[A-ZÀ-Ý]+", desc_u) if len(t) >= 2]
+
+    # Troppo pochi token alfabetici significativi (resto numeri/sigle/formati).
+    if len(tokens_alfa) < 2:
+        return True
+
+    # Prevalenza di token "illeggibili" (sigle/troncamenti): un token è criptico se
+    # ha pochissime vocali rispetto alla lunghezza (es. "TRSSE", "TLTTE", "GM", "SHNE",
+    # "KRFT", "MDLE"). Vale per token >= 3 lettere; ratio vocali < 1/3 = criptico.
+    def _criptico(t: str) -> bool:
+        if len(t) < 3:
+            return True  # sigla corta senza contesto
+        vocali = len(re.findall(r"[AEIOUÀ-Ý]", t))
+        return (vocali / len(t)) < 0.34
+    criptici = sum(1 for t in tokens_alfa if _criptico(t))
+    if tokens_alfa and criptici / len(tokens_alfa) >= 0.6:
+        return True
+
+    # Fornitore non-food generico + categoria food → verifica.
+    if fornitore and categoria:
+        forn_u = str(fornitore).upper()
+        if any(f in forn_u for f in _FORNITORI_NON_FOOD_GENERICI):
+            if str(categoria).strip().upper() in {c.upper() for c in _CATEGORIE_FOOD_PER_REVIEW}:
+                return True
+
+    return False
+
 
 def enforce_no_unclassified_category(
     categoria: str | None,
@@ -828,6 +886,25 @@ _PISELLI_STANDALONE_RE = re.compile(r"\bPISELLI\b")
 _PASTA_RIPIENA_SECCO_RE = re.compile(r"\b(TORTELLI\w*|TORTELLONI|TORTELLINI|AGNOLOTTI|CAPPELLETTI|MEZZELUNE|GIRASOLI)\b")
 _SURGITAL_RE = re.compile(r"\bSURGITAL\b")
 
+# --- Regole prodotti da banco di compravendita → SHOP (cliente CASATI 14) ---
+# Regola di dominio (Mattia 2026-06-15): i prodotti confezionati di marca venduti
+# al banco (gelati industriali Algida, snack, patatine) sono COMPRAVENDITA → SHOP.
+# NON sono GELATI E DESSERT (quelli sono dessert serviti al tavolo) né PASTICCERIA
+# (quelle sono materie prime/dolci da forno).
+# Brand gelato confezionato + linee Algida tipiche da banco.
+_GELATO_BANCO_BRAND_RE = re.compile(
+    r"\b(MAGNUM|CUCCIOLONE|SOLERO|CREMINO|CALIPPO|WINNER\s*TACO|GHIACCIOL\w*|"
+    r"SUPER\s*TWISTER|TWISTER|BIKINI|MINECRAFT|VOLCANIX|CORNETTO\s+ALGIDA|LIUK)\b"
+)
+# CORNETTO è ambiguo (brioche da forno = PASTICCERIA vs gelato Algida = SHOP):
+# lo trattiamo come gelato SOLO con marcatori gelato espliciti (gusti/linee Algida).
+_CORNETTO_GELATO_RE = re.compile(
+    r"\bCORNETTO\b.*\b(ALGIDA|CLASSICO|MAX|AMARENA|STRACCIATELLA|MANDORLA|NOCCIOLA|PISTACCHIO|GELATO)\b"
+)
+# NB: snack/patatine NON hanno una regola forte: "PATATINE/CHIPS" sono troppo ambigui
+# (patatine fritte ingrediente, fish&chips, patatine di gamberi, tortilla chips...).
+# Restano all'AI, che ora con needs_review li rende visibili nella coda di verifica.
+
 # Regole forti che devono battere cache locali/globali automatiche errate.
 # Non include la memoria admin, che resta prioritaria e intenzionale.
 _NON_NEGOZIABILI_CACHE_OVERRIDE = {
@@ -851,6 +928,7 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "pasta_ripiena_secco",
     "surgital_secco",
     "piselli_verdura",
+    "gelato_banco_shop",
     "gelato_analogo_vaschetta",
     "gelato_ripieno_dessert",
     "brodo_granulare_conserva",
@@ -928,6 +1006,15 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "MANUTENZIONE E ATTREZZATURE"
         if cat != mapped:
             return mapped, "hardware_sicurezza"
+        return cat, None
+
+    # --- Prodotti da banco di compravendita → SHOP (regola dominio CASATI 14) ---
+    # Devono battere PASTICCERIA (per CORNETTO gelato) e GELATI E DESSERT.
+    # Gelato confezionato industriale di marca (Algida & co.) venduto al banco.
+    if _GELATO_BANCO_BRAND_RE.search(desc_u) or _CORNETTO_GELATO_RE.search(desc_u):
+        mapped = "SHOP"
+        if cat != mapped:
+            return mapped, "gelato_banco_shop"
         return cat, None
 
     # --- Regole audit: correzioni anomalie categorizzazione ---
@@ -3287,7 +3374,8 @@ def categorizza_con_memoria(
     unita_misura: Optional[str] = None,
     iva_percentuale: Optional[float] = None,
     pending_local_saves: Optional[List[Dict[str, Any]]] = None,
-) -> str:
+    return_fallback_flag: bool = False,
+) -> Union[str, Tuple[str, bool]]:
     """
     Categorizza usando memoria GLOBALE multi-livello con CACHE IN-MEMORY.
     ELIMINA N+1 QUERY: usa cache invece di query ripetute.
@@ -3310,11 +3398,21 @@ def categorizza_con_memoria(
         supabase_client: Client Supabase (opzionale)
         fornitore: Nome fornitore (opzionale)
         unita_misura: Unità di misura normalizzata (opzionale)
-    
+        return_fallback_flag: se True ritorna (categoria, is_fallback) dove
+            is_fallback indica che la categoria deriva SOLO dal fallback forzato
+            (nessun match in memoria/regole/fornitore/UM/dizionario): in quel caso
+            il chiamante NON deve considerarla classificata e dovrebbe passarla
+            all'AI / marcarla needs_review.
+
     Returns:
-        str: categoria finale
+        str: categoria finale (default).
+        Tuple[str, bool]: (categoria, is_fallback) se return_fallback_flag=True.
     """
     global _memoria_cache
+
+    def _ret(categoria: str, is_fallback: bool = False):
+        # I match veri (memoria/regole/fornitore/UM/dizionario) NON sono fallback.
+        return (categoria, is_fallback) if return_fallback_flag else categoria
 
     # Usa client iniettato o fallback
     if supabase_client is None:
@@ -3333,7 +3431,7 @@ def categorizza_con_memoria(
                 f"⚡ FORNITORE UTENZE HARD OVERRIDE: '{descrizione[:60]}' -> UTENZE E LOCALI "
                 f"(fornitore: {fornitore}, match: {matched_key})"
             )
-            return _applica_guardrail_note_con_importo(descrizione, "UTENZE E LOCALI", prezzo)
+            return _ret(_applica_guardrail_note_con_importo(descrizione, "UTENZE E LOCALI", prezzo))
 
     # PROP-5: snapshot normalizzazione una sola volta (riusato in L2 + L3 + canon)
     desc_stripped = descrizione.strip()
@@ -3357,15 +3455,15 @@ def categorizza_con_memoria(
             record = cache['classificazioni_manuali'][desc_stripped]
             if record.get('is_dicitura'):
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → DICITURA (validata admin)")
-                return _applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", prezzo)
+                return _ret(_applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", prezzo))
             else:
                 logger.info(f"📋 Memoria Admin (cache): '{descrizione}' → {record['categoria']} (validata admin)")
-                return _applica_guardrail_note_con_importo(descrizione, record['categoria'], prezzo)
+                return _ret(_applica_guardrail_note_con_importo(descrizione, record['categoria'], prezzo))
 
         # LIVELLO 1.5: Override forti non negoziabili prima della memoria automatica.
         categoria_forzata, motivo_forzato = applica_regole_categoria_forti(descrizione, "Da Classificare")
         if motivo_forzato in _NON_NEGOZIABILI_CACHE_OVERRIDE:
-            return _applica_guardrail_note_con_importo(descrizione, categoria_forzata, prezzo)
+            return _ret(_applica_guardrail_note_con_importo(descrizione, categoria_forzata, prezzo))
     
     except Exception as e:
         logger.warning(f"Errore check memoria admin (cache): {e}")
@@ -3377,13 +3475,13 @@ def categorizza_con_memoria(
             if desc_stripped in locale_dict:
                 categoria = locale_dict[desc_stripped]
                 logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
-                return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
 
             locale_dict_norm = cache.get('prodotti_utente_norm', {}).get(user_id, {})
             if desc_normalized in locale_dict_norm:
                 categoria = locale_dict_norm[desc_normalized]
                 logger.info(f"🔵 LOCALE UTENTE (cache): '{descrizione}' → {categoria} (personalizzazione cliente)")
-                return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
     
     except Exception as e:
         logger.warning(f"Errore check memoria locale utente (cache): {e}")
@@ -3394,7 +3492,7 @@ def categorizza_con_memoria(
             if desc_normalized in cache['prodotti_master']:
                 categoria = cache['prodotti_master'][desc_normalized]
                 logger.info(f"🟢 MEMORIA GLOBALE (cache): '{descrizione}' → {categoria} (norm: '{desc_normalized}')")
-                return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
 
             # PROP-2: fallback canonico (chiave robusta a varianti formato/quantita)
             master_canon = cache.get('prodotti_master_canon') or {}
@@ -3406,14 +3504,14 @@ def categorizza_con_memoria(
                         f"🟢 MEMORIA GLOBALE CANON (cache): '{descrizione}' → {categoria} "
                         f"(canon: '{canon_key}')"
                     )
-                    return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
-    
+                    return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
+
     except Exception as e:
         logger.warning(f"Errore check memoria globale (cache): {e}")
-    
+
     # LIVELLO 4: Check dicitura (se prezzo = 0)
     if prezzo == 0 and is_dicitura_sicura(descrizione, prezzo, quantita):
-        return _applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", prezzo)
+        return _ret(_applica_guardrail_note_con_importo(descrizione, "📝 NOTE E DICITURE", prezzo))
     
     # LIVELLO 5: Regola FORNITORE specifico (priorità ALTA)
     if fornitore:
@@ -3423,8 +3521,8 @@ def categorizza_con_memoria(
             if fornitore_key_upper in fornitore_upper or fornitore_upper in fornitore_key_upper:
                 logger.info(f"🏭 FORNITORE: '{descrizione}' → {categoria} (fornitore: {fornitore})")
                 # BUG4 FIX: guardrail applicato anche su uscite FORNITORE/UM (difensivo)
-                return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
-    
+                return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
+
     # LIVELLO 6: Regola UNITÀ MISURA (priorità ALTA)
     if unita_misura:
         unita_upper = unita_misura.strip().upper()
@@ -3432,7 +3530,7 @@ def categorizza_con_memoria(
             categoria = UNITA_MISURA_CATEGORIA[unita_upper]
             logger.info(f"📏 UNITÀ MISURA: '{descrizione}' → {categoria} (U.M.: {unita_misura})")
             # BUG4 FIX: guardrail applicato anche su uscite FORNITORE/UM (difensivo)
-            return _applica_guardrail_note_con_importo(descrizione, categoria, prezzo)
+            return _ret(_applica_guardrail_note_con_importo(descrizione, categoria, prezzo))
     
     # LIVELLO 7: Dizionario keyword (fallback)
     categoria_keyword = applica_correzioni_dizionario(descrizione, "Da Classificare")
@@ -3494,12 +3592,15 @@ def categorizza_con_memoria(
         # AUTO-CATEGORIZZAZIONE FALLITA: nessun match nel dizionario
         logger.info(f"⚠️ AUTO-CATEGORIZZAZIONE FALLITA: '{descrizione[:60]}' rimasto 'Da Classificare' (NON salvato in memoria globale)")
 
-    categoria_finale, _ = enforce_no_unclassified_category(
+    categoria_finale, fallback_forzato = enforce_no_unclassified_category(
         categoria_keyword,
         descrizione,
         source="categorizza_con_memoria",
     )
-    return categoria_finale
+    # is_fallback=True solo quando la categoria deriva ESCLUSIVAMENTE dal fallback
+    # forzato (nessun match in memoria/regole/fornitore/UM/dizionario). In quel caso
+    # il chiamante deve passarla all'AI invece di trattarla come classificata.
+    return _ret(categoria_finale, is_fallback=fallback_forzato)
 
 
 # ============================================================

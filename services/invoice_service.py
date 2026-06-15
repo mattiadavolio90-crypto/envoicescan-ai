@@ -673,10 +673,11 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
         from services.ai_service import (
             carica_memoria_completa,
             categorizza_con_memoria,
+            descrizione_e_dubbia,
             enforce_no_unclassified_category,
             flush_pending_local_saves,
         )
-        
+
         # Risolvi user_id: parametro esplicito ha priorità su session_state
         # Il fallback su session_state garantisce retrocompatibilità con Streamlit.
         current_user_id = user_id
@@ -1049,7 +1050,11 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                 
 
                 # Auto-categorizzazione
-                categoria_finale = categorizza_con_memoria(
+                # return_fallback_flag=True: distinguiamo un vero match (memoria/regole/
+                # fornitore/UM/dizionario) da un fallback forzato a SERVIZI E CONSULENZE.
+                # Il fallback NON va trattato come classificato: va passato all'AI in
+                # riconciliazione post-upload e marcato needs_review.
+                categoria_finale, fallback_forzato = categorizza_con_memoria(
                     descrizione=descrizione,
                     prezzo=prezzo_unitario,
                     quantita=quantita,
@@ -1058,12 +1063,14 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     unita_misura=unita_misura,
                     iva_percentuale=aliquota_iva,
                     pending_local_saves=_pending_local_saves,
+                    return_fallback_flag=True,
                 )
-                categoria_finale, fallback_forzato = enforce_no_unclassified_category(
+                categoria_finale, _enforce_fallback = enforce_no_unclassified_category(
                     categoria_finale,
                     descrizione,
                     source="estrai_dati_da_xml",
                 )
+                fallback_forzato = bool(fallback_forzato or _enforce_fallback)
 
                 special_row = classify_special_row(
                     descrizione=descrizione,
@@ -1100,7 +1107,13 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                         f"⚠️ GUARDRAIL NOTE→SERVIZI: '{descrizione[:50]}' con €{prezzo_unitario:.2f} "
                         f"non può restare NOTE E DICITURE → categoria corretta nel DB"
                     )
-                
+
+                # Segnali deterministici di categorizzazione poco affidabile
+                # (descrizione criptica, fornitore non-food su categoria food):
+                # marca la riga per la coda "Solo verifica categoria".
+                if descrizione_e_dubbia(descrizione, fornitore, categoria_finale):
+                    needs_review = True
+
                 # Calcolo prezzo standard (skip per omaggi/prezzo zero - non significativo)
                 if prezzo_unitario != 0 and special_row['include_in_price_average']:
                     prezzo_std = calcola_prezzo_standard_intelligente(

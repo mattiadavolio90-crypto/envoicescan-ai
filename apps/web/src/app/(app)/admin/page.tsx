@@ -50,9 +50,9 @@ const NAV_CARDS = [
     iconColor: "text-sky-500",
   },
   {
-    href: "/admin/qualita-ai",
-    title: "Qualità AI",
-    desc: "Coda review, memoria globale, conflitti",
+    href: "/admin/categorie",
+    title: "Categorie",
+    desc: "Coda revisione, suggerimenti AI, memoria",
     icon: Brain,
     border: "border-violet-500",
     bg: "hover:bg-violet-500/8",
@@ -61,7 +61,7 @@ const NAV_CARDS = [
   {
     href: "/admin/sistema",
     title: "Sistema & Salute",
-    desc: "Costi AI, retention, import ricavi",
+    desc: "Costi, retention, import ricavi",
     icon: Settings,
     border: "border-emerald-500",
     bg: "hover:bg-emerald-500/8",
