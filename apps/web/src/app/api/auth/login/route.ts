@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loginWithCredentials, SESSION_COOKIE } from "@/lib/auth";
+import { IMPERSONATE_COOKIE, IMPERSONATE_BACKUP_COOKIE } from "@/app/api/admin/_worker";
 
 export const runtime = "nodejs";
 
@@ -32,6 +33,18 @@ export async function POST(req: NextRequest) {
     path: "/",
     maxAge: 60 * 60 * 24 * 30,
   });
+  // Un login pulito non deve mai ereditare uno stato di impersonazione
+  // residuo: azzeriamo i cookie per recuperare anche le sessioni rimaste
+  // bloccate prima di questa fix.
+  const clear = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax" as const,
+    path: "/",
+    maxAge: 0,
+  };
+  res.cookies.set(IMPERSONATE_COOKIE, "", clear);
+  res.cookies.set(IMPERSONATE_BACKUP_COOKIE, "", clear);
 
   return res;
 }
