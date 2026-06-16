@@ -4643,15 +4643,10 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     if not nome:
         nome = str(user.get("nome_referente") or "")
 
-    # Limite chat dal piano (0 = free, chat non disponibile)
-    piano = user.get("piano")
-    if piano is None:
-        try:
-            r = sb.table("users").select("piano").eq("id", str(user["id"])).single().execute()
-            piano = (r.data or {}).get("piano")
-        except Exception:
-            piano = "base"
-    chat_limite = _chat_limite_per_piano(piano)
+    # Limite chat dal piano EFFETTIVO (sede attiva, fallback account). DEVE usare
+    # la stessa risoluzione dell'endpoint chat, altrimenti il "ti restano N" mostrato
+    # in Home non combacia col limite realmente applicato. (0 = free, chat off)
+    chat_limite = _chat_limite_per_piano(_resolve_piano_effettivo(user, sb))
 
     # Domande gia' fatte oggi, solo se la chat e' disponibile (piano > 0 e attiva):
     # evita una query inutile per i piani free / chat spenta.
@@ -4762,14 +4757,8 @@ def home_config_post(
         for (key, label, bloccato, descrizione) in _CONFIG_TOPICS
     ]
     chat_ai = True if body.chat_ai_enabled is None else bool(body.chat_ai_enabled)
-    piano = user.get("piano")
-    if piano is None:
-        try:
-            r = sb.table("users").select("piano").eq("id", str(user["id"])).single().execute()
-            piano = (r.data or {}).get("piano")
-        except Exception:
-            piano = "base"
-    chat_limite = _chat_limite_per_piano(piano)
+    # Piano EFFETTIVO (sede attiva, fallback account): coerente con l'endpoint chat.
+    chat_limite = _chat_limite_per_piano(_resolve_piano_effettivo(user, sb))
     domande_oggi = 0
     if chat_limite > 0 and chat_ai:
         domande_oggi = _chat_domande_oggi(ristorante_id, str(user["id"]), sb)
@@ -4845,25 +4834,46 @@ def _resolve_sede_attiva(user: Dict[str, Any], supabase_client) -> tuple[Optiona
     """(id, nome_ristorante) della sede attiva del cliente.
 
     Per i clienti multi-sede la testata deve mostrare la sede SELEZIONATA, non il
-    nome account (users.nome_ristorante = prima sede). Risolve l'id con la stessa
-    logica di _resolve_ristorante_id e legge il nome dalla tabella `ristoranti`.
-    Fallback al nome account se la sede non e' leggibile (mono-sede storici).
+    nome account (users.nome_ristorante = prima sede). Gira nel layout di OGNI
+    pagina autenticata (via /api/auth/me) -> deve costare AL PIU' una query.
+
+    Strategia a 1 query:
+      - se conosciamo gia' l'id della sede attiva (ultimo_ristorante_id) leggiamo
+        id+nome in un colpo;
+      - altrimenti prendiamo la prima sede attiva (id+nome) sempre in 1 query;
+      - nessuna sede -> nome account (0 query in piu').
     """
-    rid = _resolve_ristorante_id(user, supabase_client)
-    if not rid:
-        return None, user.get("nome_ristorante")
+    explicit = user.get("ristorante_id") or user.get("ultimo_ristorante_id")
     try:
-        resp = (
-            supabase_client.table("ristoranti")
-            .select("nome_ristorante")
-            .eq("id", rid)
-            .single()
-            .execute()
-        )
-        nome = (resp.data or {}).get("nome_ristorante")
-        return rid, (nome or user.get("nome_ristorante"))
+        if explicit:
+            resp = (
+                supabase_client.table("ristoranti")
+                .select("id, nome_ristorante")
+                .eq("id", str(explicit))
+                .single()
+                .execute()
+            )
+            row = resp.data or {}
+            if row:
+                return str(row["id"]), (row.get("nome_ristorante") or user.get("nome_ristorante"))
+            # id stantio (sede eliminata): ricadi sulla prima sede sotto.
+        uid = user.get("id")
+        if uid:
+            resp = (
+                supabase_client.table("ristoranti")
+                .select("id, nome_ristorante")
+                .eq("user_id", uid)
+                .eq("attivo", True)
+                .order("created_at")
+                .limit(1)
+                .execute()
+            )
+            if resp.data:
+                r = resp.data[0]
+                return str(r["id"]), (r.get("nome_ristorante") or user.get("nome_ristorante"))
     except Exception:
-        return rid, user.get("nome_ristorante")
+        pass
+    return (str(explicit) if explicit else None), user.get("nome_ristorante")
 
 
 def _resolve_piano_effettivo(user: Dict[str, Any], supabase_client) -> str:

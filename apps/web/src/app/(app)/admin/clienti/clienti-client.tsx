@@ -65,11 +65,15 @@ export function ClientiClient({ clientiIniziali }: Props) {
 
   const filtered = useMemo(() => {
     return clienti.filter((c) => {
+      const q = search.toLowerCase();
       const matchSearch =
         !search ||
-        c.email.toLowerCase().includes(search.toLowerCase()) ||
-        c.nome_ristorante.toLowerCase().includes(search.toLowerCase()) ||
-        (c.nome_gruppo || "").toLowerCase().includes(search.toLowerCase()) ||
+        c.email.toLowerCase().includes(q) ||
+        c.nome_ristorante.toLowerCase().includes(q) ||
+        (c.nome_gruppo || "").toLowerCase().includes(q) ||
+        // P.IVA: ora vive sulle sedi → cerca fra tutte le P.IVA delle sedi
+        // (più il campo account legacy, per i clienti non ancora migrati).
+        c.sedi.some((s) => (s.partita_iva || "").includes(search)) ||
         (c.partita_iva || "").includes(search);
       const matchStato =
         filtroStato === "tutti" ||

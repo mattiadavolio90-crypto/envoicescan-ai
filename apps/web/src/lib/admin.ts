@@ -46,9 +46,9 @@ export type ClienteDettaglio = Cliente & {
 
 export const PIANO_LABEL: Record<string, string> = {
   free: "FREE",
-  base: "50",
-  plus: "100",
-  pro: "100+",
+  base: "BASE",
+  plus: "PLUS",
+  pro: "PRO",
 };
 
 export const PIANO_COLOR: Record<string, string> = {
@@ -60,9 +60,9 @@ export const PIANO_COLOR: Record<string, string> = {
 
 export const PIANO_OPTIONS: { value: string; label: string }[] = [
   { value: "free", label: "FREE" },
-  { value: "base", label: "50 fatture/mese" },
-  { value: "plus", label: "100 fatture/mese" },
-  { value: "pro", label: "100+ fatture/mese" },
+  { value: "base", label: "BASE (50 fatture/mese)" },
+  { value: "plus", label: "PLUS (100 fatture/mese)" },
+  { value: "pro", label: "PRO (100+ fatture/mese)" },
 ];
 
 // Categorie valide (allineate a config/constants.py TUTTE_LE_CATEGORIE + speciale diciture).
