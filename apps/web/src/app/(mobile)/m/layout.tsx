@@ -35,7 +35,7 @@ export default async function MobileLayout({ children }: { children: React.React
       >
         <Logo variant="icon" size={22} />
         <span className="truncate text-sm font-semibold">
-          {user.nome_ristorante ?? "ONEFLUX"}
+          {user.sede_attiva_nome ?? user.nome_ristorante ?? "ONEFLUX"}
         </span>
         <div className="ml-auto flex items-center gap-0.5">
           <NotificheBell unread={unread} />
