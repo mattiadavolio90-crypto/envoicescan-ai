@@ -6,6 +6,8 @@ export type Sede = {
   indirizzo: string | null;
   cap: string | null;
   comune: string | null;
+  piano: string | null;
+  piano_inizio_at: string | null;
   attivo: boolean;
 };
 

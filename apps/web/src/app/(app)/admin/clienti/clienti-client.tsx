@@ -10,7 +10,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
 import { Search, Plus, ChevronRight, CheckCircle, XCircle, Clock, MapPin } from "lucide-react";
-import { Cliente, PIANO_COLOR, PIANO_OPTIONS } from "@/lib/admin";
+import { Cliente, PIANO_COLOR, PIANO_LABEL } from "@/lib/admin";
+
+// P.IVA da mostrare in lista: nel modello account/sede la P.IVA vive sulle sedi.
+// 1 sede → la sua P.IVA; più sedi → conteggio; nessuna → trattino.
+function pivaDisplay(c: Cliente): string {
+  if (c.sedi.length === 1) return c.sedi[0].partita_iva || "—";
+  if (c.sedi.length > 1) return `${c.sedi.length} P.IVA`;
+  return "—";
+}
+
+// Piani distinti fra le sedi del cliente (read-only in lista; si modificano nel
+// dettaglio sede). Default 'base' per le sedi senza piano esplicito.
+function pianiSede(c: Cliente): string[] {
+  const set = new Set<string>();
+  for (const s of c.sedi) set.add((s.piano || "base").toLowerCase());
+  return Array.from(set);
+}
 
 function StatusBadge({ attivo }: { attivo: boolean }) {
   return attivo ? (
@@ -42,12 +58,10 @@ export function ClientiClient({ clientiIniziali }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  // form nuovo cliente
+  // form nuovo cliente: solo identità account (email + etichetta). P.IVA, piano e
+  // dati operativi si aggiungono come SEDI dal dettaglio cliente.
   const [nEmail, setNEmail] = useState("");
   const [nNome, setNNome] = useState("");
-  const [nPiva, setNPiva] = useState("");
-  const [nRagione, setNRagione] = useState("");
-  const [nPiano, setNPiano] = useState("free");
 
   const filtered = useMemo(() => {
     return clienti.filter((c) => {
@@ -66,8 +80,8 @@ export function ClientiClient({ clientiIniziali }: Props) {
   }, [clienti, search, filtroStato]);
 
   async function handleCreaCliente() {
-    if (!nEmail || !nNome || !nPiva) {
-      toast.error("Email, nome ristorante e P.IVA sono obbligatori");
+    if (!nEmail || !nNome) {
+      toast.error("Email e nome account sono obbligatori");
       return;
     }
     setSaving(true);
@@ -78,9 +92,6 @@ export function ClientiClient({ clientiIniziali }: Props) {
         body: JSON.stringify({
           email: nEmail.trim().toLowerCase(),
           nome_ristorante: nNome.trim(),
-          partita_iva: nPiva.trim(),
-          ragione_sociale: nRagione.trim() || undefined,
-          piano: nPiano,
         }),
       });
       const data = await res.json();
@@ -94,7 +105,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
           : `Account creato. Email NON inviata — link: ${data.link_attivazione}`
       );
       setDialogOpen(false);
-      setNEmail(""); setNNome(""); setNPiva(""); setNRagione(""); setNPiano("free");
+      setNEmail(""); setNNome("");
       router.refresh();
       // aggiorna lista localmente
       const refresh = await fetch("/api/admin/clienti");
@@ -106,41 +117,8 @@ export function ClientiClient({ clientiIniziali }: Props) {
     }
   }
 
-  async function handleAggiornaPiano(id: string, piano: string) {
-    setClienti((prev) => prev.map((c) => c.id === id ? { ...c, piano: piano as Cliente["piano"] } : c));
-    try {
-      const res = await fetch(`/api/admin/clienti/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ piano }),
-      });
-      if (!res.ok) {
-        const d = await res.json();
-        toast.error(d.detail || "Errore aggiornamento piano");
-      } else {
-        toast.success("Piano aggiornato");
-      }
-    } catch {
-      toast.error("Errore di connessione");
-    }
-  }
-
-  async function handleAggiornaInizio(id: string, data: string) {
-    setClienti((prev) => prev.map((c) => c.id === id ? { ...c, piano_inizio_at: data || null } : c));
-    try {
-      const res = await fetch(`/api/admin/clienti/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ piano_inizio_at: data || null }),
-      });
-      if (!res.ok) {
-        const d = await res.json();
-        toast.error(d.detail || "Errore aggiornamento data");
-      }
-    } catch {
-      toast.error("Errore di connessione");
-    }
-  }
+  // Piano e P.IVA non si modificano più dalla lista: sono dati di SEDE, gestiti
+  // nel dettaglio cliente (sezione Sedi). La lista li mostra in sola lettura.
 
   // L'impersonazione si avvia dalla pagina di dettaglio cliente
   // (cliente-dettaglio-client.tsx, "Entra come cliente"), non dalla lista.
@@ -178,11 +156,10 @@ export function ClientiClient({ clientiIniziali }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50 text-left">
-              <th className="px-4 py-3 font-medium">Ristorante</th>
+              <th className="px-4 py-3 font-medium">Cliente</th>
               <th className="px-4 py-3 font-medium hidden md:table-cell">P.IVA</th>
               <th className="px-4 py-3 font-medium">Stato</th>
-              <th className="px-4 py-3 font-medium hidden sm:table-cell">Piano</th>
-              <th className="px-4 py-3 font-medium hidden md:table-cell">Inizio piano</th>
+              <th className="px-4 py-3 font-medium hidden sm:table-cell">Piano (per sede)</th>
               <th className="px-4 py-3 font-medium hidden lg:table-cell">Attività</th>
               <th className="px-4 py-3 font-medium hidden lg:table-cell">N. Fatture</th>
               <th className="px-4 py-3" />
@@ -191,7 +168,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
           <tbody className="divide-y">
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
                   Nessun cliente trovato
                 </td>
               </tr>
@@ -216,26 +193,20 @@ export function ClientiClient({ clientiIniziali }: Props) {
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3 hidden md:table-cell text-muted-foreground tabular-nums">{c.partita_iva || "—"}</td>
+                <td className="px-4 py-3 hidden md:table-cell text-muted-foreground tabular-nums">{pivaDisplay(c)}</td>
                 <td className="px-4 py-3"><StatusBadge attivo={c.attivo} /></td>
-                <td className="px-4 py-3 hidden sm:table-cell" onClick={(e) => e.stopPropagation()}>
-                  <NativeSelect
-                    value={c.piano}
-                    onValueChange={(v) => handleAggiornaPiano(c.id, v)}
-                    className={`rounded-full px-2 py-0.5 text-xs font-semibold border-0 cursor-pointer w-auto ${PIANO_COLOR[c.piano] || "bg-slate-100 text-slate-600"}`}
-                  >
-                    {PIANO_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </NativeSelect>
-                </td>
-                <td className="px-4 py-3 hidden md:table-cell" onClick={(e) => e.stopPropagation()}>
-                  <input
-                    type="date"
-                    value={c.piano_inizio_at ? c.piano_inizio_at.slice(0, 10) : ""}
-                    onChange={(e) => handleAggiornaInizio(c.id, e.target.value)}
-                    className="text-xs bg-transparent border border-input rounded px-2 py-1 text-muted-foreground focus:outline-none focus:border-ring w-[130px]"
-                  />
+                <td className="px-4 py-3 hidden sm:table-cell">
+                  {pianiSede(c).length === 0 ? (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  ) : (
+                    <span className="inline-flex flex-wrap gap-1">
+                      {pianiSede(c).map((p, idx) => (
+                        <span key={idx} className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PIANO_COLOR[p] || "bg-slate-100 text-slate-600"}`}>
+                          {PIANO_LABEL[p] || p}
+                        </span>
+                      ))}
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-3 hidden lg:table-cell">
                   <AttivitaLabel lastSeen={c.last_seen_at} />
@@ -264,39 +235,24 @@ export function ClientiClient({ clientiIniziali }: Props) {
             <DialogTitle>Nuovo cliente</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2 space-y-1.5">
+            <div className="space-y-4">
+              <div className="space-y-1.5">
                 <Label htmlFor="n-email">Email *</Label>
                 <Input id="n-email" type="email" placeholder="cliente@esempio.it" value={nEmail} onChange={(e) => setNEmail(e.target.value)} />
               </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="n-nome">Nome ristorante *</Label>
-                <Input id="n-nome" placeholder="Es: Trattoria Da Mario" value={nNome} onChange={(e) => setNNome(e.target.value)} />
-              </div>
               <div className="space-y-1.5">
-                <Label htmlFor="n-piva">P.IVA * (11 cifre)</Label>
-                <Input id="n-piva" placeholder="12345678901" maxLength={11} value={nPiva} onChange={(e) => setNPiva(e.target.value.replace(/\D/g, ""))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="n-piano">Piano</Label>
-                <NativeSelect value={nPiano} onValueChange={setNPiano}>
-                  {PIANO_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </NativeSelect>
-              </div>
-              <div className="col-span-2 space-y-1.5">
-                <Label htmlFor="n-ragione">Ragione sociale</Label>
-                <Input id="n-ragione" placeholder="Mario Rossi S.r.l. (opzionale)" value={nRagione} onChange={(e) => setNRagione(e.target.value)} />
+                <Label htmlFor="n-nome">Nome account / catena *</Label>
+                <Input id="n-nome" placeholder="Es: Trattoria Da Mario, oppure SUSHILAND" value={nNome} onChange={(e) => setNNome(e.target.value)} />
               </div>
             </div>
             <p className="text-xs text-muted-foreground">
-              Il cliente riceverà un&apos;email con il link per impostare la propria password (valido 24 ore).
+              Crea solo l&apos;account. Dopo, dal dettaglio cliente, aggiungi una o più <strong>sedi</strong> con P.IVA, indirizzo e piano (una per il ristorante singolo, più sedi per una catena).
+              Il cliente riceverà un&apos;email con il link per impostare la password (valido 24 ore).
             </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>Annulla</Button>
-            <Button onClick={handleCreaCliente} disabled={saving || !nEmail || !nNome || !nPiva}>
+            <Button onClick={handleCreaCliente} disabled={saving || !nEmail || !nNome}>
               {saving ? "Creazione…" : "Crea account e invia email"}
             </Button>
           </DialogFooter>

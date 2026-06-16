@@ -35,6 +35,10 @@ def _resolve_ristorante_id(*args, **kwargs):
     return _fw()._resolve_ristorante_id(*args, **kwargs)
 
 
+def _resolve_piano_effettivo(*args, **kwargs):
+    return _fw()._resolve_piano_effettivo(*args, **kwargs)
+
+
 def _chat_domande_oggi(*args, **kwargs):
     return _fw()._chat_domande_oggi(*args, **kwargs)
 
@@ -88,13 +92,32 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     )
     row = user_row.data or {}
 
-    piano_raw = (row.get("piano") or "base").lower().strip()
+    # Sede attiva: nel modello piano-per-sede il piano e i dati anagrafici (nome,
+    # P.IVA, ragione) mostrati al cliente sono quelli della SEDE selezionata, non
+    # dell'account. Fallback ai valori account quando la sede non li ha (mono-sede
+    # storici / transizione). Una sola lettura della riga sede.
+    ristorante_id = _resolve_ristorante_id(user, sb)
+    sede = {}
+    if ristorante_id:
+        try:
+            sede_resp = (
+                sb.table("ristoranti")
+                .select("nome_ristorante, partita_iva, ragione_sociale, piano")
+                .eq("id", ristorante_id)
+                .single()
+                .execute()
+            )
+            sede = sede_resp.data or {}
+        except Exception:
+            sede = {}
+
+    # Piano effettivo: sede.piano, altrimenti users.piano, altrimenti 'base'.
+    piano_raw = (sede.get("piano") or row.get("piano") or "base").lower().strip()
     limite_fatture = _PIANO_LIMITI.get(piano_raw, 50)
 
     # Contatore fatture del mese corrente (documenti unici, non righe)
     now = datetime.now(timezone.utc)
     mese_inizio = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
-    ristorante_id = _resolve_ristorante_id(user, sb)
     fatture_mese = 0
     if ristorante_id:
         try:
@@ -116,9 +139,9 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
 
     return {
         "email": row.get("email", user.get("email", "")),
-        "nome_ristorante": row.get("nome_ristorante", user.get("nome_ristorante", "")),
-        "ragione_sociale": row.get("ragione_sociale"),
-        "partita_iva": row.get("partita_iva"),
+        "nome_ristorante": sede.get("nome_ristorante") or row.get("nome_ristorante") or user.get("nome_ristorante", ""),
+        "ragione_sociale": sede.get("ragione_sociale") or row.get("ragione_sociale"),
+        "partita_iva": sede.get("partita_iva") or row.get("partita_iva"),
         "piano": piano_raw,
         "limite_fatture_mese": limite_fatture,
         "fatture_usate_mese": fatture_mese,

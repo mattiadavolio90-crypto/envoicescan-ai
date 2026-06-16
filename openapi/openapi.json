@@ -10859,7 +10859,7 @@
           "Admin"
         ],
         "summary": "Admin Crea Cliente",
-        "description": "Crea nuovo cliente + ristorante + invia email onboarding via Brevo.",
+        "description": "Crea nuovo cliente (account-contenitore) + invia email onboarding via Brevo.\n\nLe sedi (con P.IVA, indirizzo e piano) si aggiungono dopo dal dettaglio cliente.",
         "operationId": "admin_crea_cliente_api_admin_clienti_post",
         "parameters": [
           {
@@ -17694,6 +17694,29 @@
               }
             ],
             "title": "Comune"
+          },
+          "piano": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(free|base|plus|pro)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Piano"
+          },
+          "piano_inizio_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Piano Inizio At"
           }
         },
         "type": "object",
@@ -18022,6 +18045,29 @@
               }
             ],
             "title": "Comune"
+          },
+          "piano": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(free|base|plus|pro)$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Piano"
+          },
+          "piano_inizio_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Piano Inizio At"
           }
         },
         "type": "object",
@@ -18151,36 +18197,12 @@
             "type": "string",
             "maxLength": 100,
             "title": "Nome Ristorante"
-          },
-          "partita_iva": {
-            "type": "string",
-            "maxLength": 11,
-            "title": "Partita Iva"
-          },
-          "ragione_sociale": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 150
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ragione Sociale"
-          },
-          "piano": {
-            "type": "string",
-            "pattern": "^(free|base|plus|pro)$",
-            "title": "Piano",
-            "default": "free"
           }
         },
         "type": "object",
         "required": [
           "email",
-          "nome_ristorante",
-          "partita_iva"
+          "nome_ristorante"
         ],
         "title": "NuovoClienteBody"
       },

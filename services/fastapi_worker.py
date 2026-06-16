@@ -2713,14 +2713,9 @@ def chat_ai(
     # Risolto una sola volta e riusato ovunque (tool dispatcher incluso).
     ristorante_id = _resolve_ristorante_id(user, supabase_client)
 
-    # Limite domande/giorno in base al piano del cliente.
-    piano = user.get("piano")
-    if piano is None:
-        try:
-            r = supabase_client.table("users").select("piano").eq("id", user_id).single().execute()
-            piano = (r.data or {}).get("piano")
-        except Exception:
-            piano = "base"
+    # Limite domande/giorno in base al piano EFFETTIVO del cliente: piano della
+    # sede attiva (modello piano-per-sede), con fallback a users.piano.
+    piano = _resolve_piano_effettivo(user, supabase_client)
     limite = _chat_limite_per_piano(piano)
 
     # Piano free: chat non disponibile.
@@ -4869,6 +4864,43 @@ def _resolve_sede_attiva(user: Dict[str, Any], supabase_client) -> tuple[Optiona
         return rid, (nome or user.get("nome_ristorante"))
     except Exception:
         return rid, user.get("nome_ristorante")
+
+
+def _resolve_piano_effettivo(user: Dict[str, Any], supabase_client) -> str:
+    """Piano tariffario EFFETTIVO del cliente nel modello piano-per-sede.
+
+    Il piano vive sulla SEDE attiva (ristoranti.piano). Se la sede non ha un piano
+    proprio (NULL, transizione in corso) si EREDITA da users.piano. Se nemmeno
+    quello c'e', default 'base'. Mai solleva: il piano guida limiti chat/fatture e
+    un errore qui non deve bloccare l'endpoint chiamante.
+    """
+    fallback = (user.get("piano") or "base")
+    try:
+        rid = _resolve_ristorante_id(user, supabase_client)
+        if rid:
+            resp = (
+                supabase_client.table("ristoranti")
+                .select("piano")
+                .eq("id", rid)
+                .single()
+                .execute()
+            )
+            sede_piano = (resp.data or {}).get("piano")
+            if sede_piano:
+                return str(sede_piano).lower().strip()
+        # Sede senza piano proprio: eredita dall'account.
+        if not user.get("piano"):
+            urow = (
+                supabase_client.table("users")
+                .select("piano")
+                .eq("id", user.get("id"))
+                .single()
+                .execute()
+            )
+            fallback = (urow.data or {}).get("piano") or "base"
+    except Exception:
+        pass
+    return str(fallback).lower().strip()
 
 
 def _build_fatture_base_query(supabase_client, ristorante_id: str):

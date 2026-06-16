@@ -324,7 +324,7 @@ def admin_lista_clienti():
     try:
         for i in range(0, len(user_ids), 100):
             chunk = user_ids[i : i + 100]
-            resp = sb.table("ristoranti").select("user_id,id,nome_ristorante,partita_iva,ragione_sociale,attivo").in_("user_id", chunk).execute()
+            resp = sb.table("ristoranti").select("user_id,id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo").in_("user_id", chunk).execute()
             for r in (resp.data or []):
                 sedi_map.setdefault(r["user_id"], []).append(r)
     except Exception:
@@ -393,7 +393,7 @@ def admin_dettaglio_cliente(cliente_id: str):
         raise HTTPException(status_code=403, detail="Non puoi gestire account admin")
 
     sedi_resp = sb.table("ristoranti").select(
-        "id,nome_ristorante,partita_iva,ragione_sociale,attivo"
+        "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo"
     ).eq("user_id", cliente_id).execute()
     sedi = sedi_resp.data or []
 
@@ -485,15 +485,17 @@ def admin_aggiorna_cliente(cliente_id: str, body: AggiornaClienteBody, admin_use
 
 class NuovoClienteBody(BaseModel):
     email: str = Field(..., max_length=254)
+    # Etichetta dell'ACCOUNT (nome locale o catena). I dati operativi (P.IVA,
+    # ragione, indirizzo, piano) si aggiungono come SEDI dopo la creazione.
     nome_ristorante: str = Field(..., max_length=100)
-    partita_iva: str = Field(..., max_length=11)
-    ragione_sociale: Optional[str] = Field(None, max_length=150)
-    piano: str = Field("free", pattern="^(free|base|plus|pro)$")
 
 
 @router.post("/api/admin/clienti", tags=["Admin"], dependencies=[Depends(_verify_admin)])
 def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(_verify_admin)):
-    """Crea nuovo cliente + ristorante + invia email onboarding via Brevo."""
+    """Crea nuovo cliente (account-contenitore) + invia email onboarding via Brevo.
+
+    Le sedi (con P.IVA, indirizzo e piano) si aggiungono dopo dal dettaglio cliente.
+    """
     from services.auth_service import crea_cliente_con_token
     import html as _html_mod
     import requests as _requests
@@ -501,19 +503,9 @@ def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(_verif
     successo, messaggio, token = crea_cliente_con_token(
         email=body.email,
         nome_ristorante=body.nome_ristorante,
-        partita_iva=body.partita_iva,
-        ragione_sociale=body.ragione_sociale,
     )
     if not successo:
         raise HTTPException(status_code=400, detail=messaggio)
-
-    # Aggiorna piano se diverso da default
-    if body.piano != "base":
-        try:
-            sb = get_supabase_client()
-            sb.table("users").update({"piano": body.piano}).eq("email", body.email.lower()).execute()
-        except Exception:
-            pass
 
     link = f"https://app.oneflux.it/reset-password?token={token}&onboarding=1"
     email_inviata = False
@@ -2355,7 +2347,7 @@ def admin_impersona_exit(body: ImpersonaExitBody, admin_user: dict = Depends(_ve
 # sedi con stessa P.IVA: un trigger DB calcola `indirizzo_match` da questi tre e il
 # webhook Invoicetronic lo confronta con l'indirizzo della fattura. Senza, le
 # fatture multi-sede finiscono in coda `da_assegnare` (smistamento manuale).
-_SEDE_SELECT = "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,attivo"
+_SEDE_SELECT = "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo"
 
 
 class NuovaSedeBody(BaseModel):
@@ -2365,6 +2357,8 @@ class NuovaSedeBody(BaseModel):
     indirizzo: Optional[str] = Field(None, max_length=200)
     cap: Optional[str] = Field(None, max_length=10)
     comune: Optional[str] = Field(None, max_length=100)
+    piano: Optional[str] = Field(None, pattern="^(free|base|plus|pro)$")
+    piano_inizio_at: Optional[str] = None
 
 
 class ModificaSedeBody(BaseModel):
@@ -2374,6 +2368,8 @@ class ModificaSedeBody(BaseModel):
     indirizzo: Optional[str] = Field(None, max_length=200)
     cap: Optional[str] = Field(None, max_length=10)
     comune: Optional[str] = Field(None, max_length=100)
+    piano: Optional[str] = Field(None, pattern="^(free|base|plus|pro)$")
+    piano_inizio_at: Optional[str] = None
 
 
 @router.get("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
@@ -2406,6 +2402,8 @@ def admin_crea_sede(
         "indirizzo": body.indirizzo.strip() if body.indirizzo else None,
         "cap": body.cap.strip() if body.cap else None,
         "comune": body.comune.strip() if body.comune else None,
+        "piano": body.piano or "base",
+        "piano_inizio_at": body.piano_inizio_at or None,
         "attivo": True,
     }).execute()
     logger.info("admin_crea_sede: cliente=%s sede=%s | admin=%s", cliente_id, body.nome_ristorante, admin_user.get("email"))
@@ -2456,6 +2454,10 @@ def admin_modifica_sede(
         upd["cap"] = body.cap.strip() or None
     if body.comune is not None:
         upd["comune"] = body.comune.strip() or None
+    if body.piano is not None:
+        upd["piano"] = body.piano
+    if body.piano_inizio_at is not None:
+        upd["piano_inizio_at"] = body.piano_inizio_at or None
 
     if not upd:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")

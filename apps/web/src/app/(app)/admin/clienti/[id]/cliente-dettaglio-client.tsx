@@ -46,6 +46,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   const [sIndirizzo, setSIndirizzo] = useState("");
   const [sCap, setSCap] = useState("");
   const [sComune, setSComune] = useState("");
+  const [sPiano, setSPiano] = useState("base");
   const [sedeSaving, setSedeSaving] = useState(false);
 
   // Sede dialog (modifica)
@@ -56,15 +57,13 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   const [eIndirizzo, setEIndirizzo] = useState("");
   const [eCap, setECap] = useState("");
   const [eComune, setEComune] = useState("");
+  const [ePiano, setEPiano] = useState("base");
   const [editSedeSaving, setEditSedeSaving] = useState(false);
 
-  // Modifica dati dialog
+  // Modifica dati account (etichetta + gruppo). Il piano è per-SEDE, non qui.
   const [modificaDialog, setModificaDialog] = useState(false);
   const [mNome, setMNome] = useState("");
   const [mGruppo, setMGruppo] = useState("");
-  const [mPiva, setMPiva] = useState("");
-  const [mRagione, setMRagione] = useState("");
-  const [mPiano, setMPiano] = useState("base");
   const [modificaSaving, setModificaSaving] = useState(false);
 
   // Elimina account dialog
@@ -132,9 +131,6 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   function openModifica() {
     setMNome(c.nome_ristorante || "");
     setMGruppo(c.nome_gruppo || "");
-    setMPiva(c.partita_iva || "");
-    setMRagione(c.ragione_sociale || "");
-    setMPiano(c.piano || "base");
     setModificaDialog(true);
   }
 
@@ -147,9 +143,6 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
         body: JSON.stringify({
           nome_ristorante: mNome.trim() || undefined,
           nome_gruppo: mGruppo.trim() || null,
-          partita_iva: mPiva.trim() || undefined,
-          ragione_sociale: mRagione.trim() || null,
-          piano: mPiano,
         }),
       });
       const data = await res.json();
@@ -158,9 +151,6 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
         ...prev,
         nome_ristorante: mNome.trim() || prev.nome_ristorante,
         nome_gruppo: mGruppo.trim() || null,
-        partita_iva: mPiva.trim() || prev.partita_iva,
-        ragione_sociale: mRagione.trim() || null,
-        piano: mPiano as "base" | "plus" | "pro",
       }));
       toast.success("Dati aggiornati");
       setModificaDialog(false);
@@ -192,12 +182,13 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
         indirizzo: sIndirizzo.trim() || undefined,
         cap: sCap.trim() || undefined,
         comune: sComune.trim() || undefined,
+        piano: sPiano,
       });
       setC((prev) => ({ ...prev, sedi: [...prev.sedi, sede], n_sedi: prev.n_sedi + 1 }));
       toast.success("Sede creata");
       setSedeDialog(false);
       setSNome(""); setSPiva(""); setSRagione("");
-      setSIndirizzo(""); setSCap(""); setSComune("");
+      setSIndirizzo(""); setSCap(""); setSComune(""); setSPiano("base");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
     } finally {
@@ -224,6 +215,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
     setEIndirizzo(sede.indirizzo || "");
     setECap(sede.cap || "");
     setEComune(sede.comune || "");
+    setEPiano(sede.piano || "base");
   }
 
   async function handleModificaSedeSubmit() {
@@ -238,6 +230,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
         indirizzo: eIndirizzo.trim() || null,
         cap: eCap.trim() || null,
         comune: eComune.trim() || null,
+        piano: ePiano,
       });
       setC((prev) => ({ ...prev, sedi: prev.sedi.map((s) => (s.id === updated.id ? updated : s)) }));
       toast.success("Sede aggiornata");
@@ -312,26 +305,8 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 </div>
               )}
               <div>
-                <dt className="text-muted-foreground text-xs">Nome ristorante</dt>
+                <dt className="text-muted-foreground text-xs">Nome account</dt>
                 <dd className="font-medium">{c.nome_ristorante || "—"}</dd>
-              </div>
-              {c.ragione_sociale && (
-                <div>
-                  <dt className="text-muted-foreground text-xs">Ragione sociale</dt>
-                  <dd className="font-medium">{c.ragione_sociale}</dd>
-                </div>
-              )}
-              <div>
-                <dt className="text-muted-foreground text-xs">P.IVA</dt>
-                <dd className="font-medium tabular-nums">{c.partita_iva || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground text-xs">Piano</dt>
-                <dd>
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PIANO_COLOR[c.piano] || ""}`}>
-                    {PIANO_LABEL[c.piano] || c.piano}
-                  </span>
-                </dd>
               </div>
               <div>
                 <dt className="text-muted-foreground text-xs">Membro dal</dt>
@@ -481,7 +456,12 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                   return (
                   <div key={sede.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{sede.nome_ristorante}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium truncate">{sede.nome_ristorante}</p>
+                        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold shrink-0 ${PIANO_COLOR[sede.piano || "base"] || ""}`}>
+                          {PIANO_LABEL[sede.piano || "base"] || sede.piano}
+                        </span>
+                      </div>
                       <p className="text-xs text-muted-foreground tabular-nums">{sede.partita_iva || "—"}</p>
                       {ubicazione ? (
                         <p className="text-xs text-muted-foreground truncate">{ubicazione}</p>
@@ -558,35 +538,19 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
       {/* Dialog modifica dati cliente */}
       <Dialog open={modificaDialog} onOpenChange={setModificaDialog}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Modifica dati cliente</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Modifica dati account</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="m-nome">Nome ristorante</Label>
+              <Label htmlFor="m-nome">Nome account</Label>
               <Input id="m-nome" value={mNome} onChange={(e) => setMNome(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="m-gruppo">Nome gruppo / catena</Label>
               <Input id="m-gruppo" placeholder="Es: SUSHILAND (opzionale, per clienti multi-sede)" value={mGruppo} onChange={(e) => setMGruppo(e.target.value)} />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="m-piva">P.IVA (11 cifre)</Label>
-              <Input id="m-piva" maxLength={11} value={mPiva} onChange={(e) => setMPiva(e.target.value.replace(/\D/g, ""))} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="m-ragione">Ragione sociale</Label>
-              <Input id="m-ragione" placeholder="Opzionale" value={mRagione} onChange={(e) => setMRagione(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="m-piano">Piano</Label>
-              <Select value={mPiano} onValueChange={setMPiano}>
-                <SelectTrigger id="m-piano"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="base">Base (50 fatture)</SelectItem>
-                  <SelectItem value="plus">Plus (100 fatture)</SelectItem>
-                  <SelectItem value="pro">Pro (200 fatture)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <p className="text-xs text-muted-foreground">
+              P.IVA, ragione sociale e piano si gestiscono per <strong>sede</strong>, nella sezione Sedi.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setModificaDialog(false)} disabled={modificaSaving}>Annulla</Button>
@@ -628,8 +592,20 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 <Input id="s-comune" placeholder="Città" value={sComune} onChange={(e) => setSComune(e.target.value)} />
               </div>
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="s-piano">Piano</Label>
+              <Select value={sPiano} onValueChange={setSPiano}>
+                <SelectTrigger id="s-piano"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">Free (chat AI esclusa)</SelectItem>
+                  <SelectItem value="base">Base (50 fatture)</SelectItem>
+                  <SelectItem value="plus">Plus (100 fatture)</SelectItem>
+                  <SelectItem value="pro">Pro (200 fatture)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA.
+              Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA. Il piano è per sede.
             </p>
           </div>
           <DialogFooter>
@@ -672,8 +648,20 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 <Input id="e-comune" placeholder="Città" value={eComune} onChange={(e) => setEComune(e.target.value)} />
               </div>
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="e-piano">Piano</Label>
+              <Select value={ePiano} onValueChange={setEPiano}>
+                <SelectTrigger id="e-piano"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">Free (chat AI esclusa)</SelectItem>
+                  <SelectItem value="base">Base (50 fatture)</SelectItem>
+                  <SelectItem value="plus">Plus (100 fatture)</SelectItem>
+                  <SelectItem value="pro">Pro (200 fatture)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA.
+              Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA. Il piano è per sede.
             </p>
           </div>
           <DialogFooter>

@@ -385,48 +385,55 @@ def valida_e_mostra_errori_password(
 def crea_cliente_con_token(
     email: str,
     nome_ristorante: str,
-    partita_iva: str,
+    partita_iva: str = None,
     ragione_sociale: str = None,
     supabase_client = None
 ) -> Tuple[bool, str, str]:
     """
     Crea nuovo cliente SENZA password (GDPR compliant).
-    
+
     Genera token di attivazione e invia email al cliente per impostare password.
     L'admin NON conosce mai la password del cliente.
-    
+
+    Modello account/sede: l'ACCOUNT (`users`) e' un contenitore identita'+accesso
+    con un'etichetta (`nome_ristorante` = nome account/catena). I dati operativi
+    (P.IVA, ragione sociale, indirizzo, piano) vivono sulle SEDI (`ristoranti`),
+    aggiunte dopo dal pannello admin. Per retro-compatibilita': se viene passata
+    una `partita_iva`, si crea anche la prima sede in un colpo (flusso ibrido); se
+    non viene passata, l'account nasce SENZA sedi (le aggiungi tu dal dettaglio).
+
     Args:
         email: Email cliente (obbligatoria, unica)
-        nome_ristorante: Nome locale (obbligatorio)
-        partita_iva: P.IVA normalizzata (obbligatoria)
-        ragione_sociale: Nome azienda (opzionale)
+        nome_ristorante: Nome account/etichetta (obbligatorio)
+        partita_iva: P.IVA della prima sede (OPZIONALE; se assente l'account nasce
+                     senza sedi)
+        ragione_sociale: Ragione sociale prima sede (opzionale, usata solo se c'e' P.IVA)
         supabase_client: Client Supabase
-    
+
     Returns:
         Tuple[bool, str, str]:
             - (True, "Messaggio successo", token) se creato
             - (False, "Messaggio errore", "") se fallito
-    
+
     Note:
         - Token valido 24 ore (più lungo di reset password standard)
         - Account creato con attivo=False, diventa True dopo set password
         - password_hash = NULL finché cliente non imposta
     """
     try:
-        import streamlit as st
         from services import get_supabase_client
         from utils.piva_validator import normalizza_piva, valida_formato_piva
-        
+
         if supabase_client is None:
             supabase_client = get_supabase_client()
-        
+
         # Validazioni base
         if not email or '@' not in email:
             return False, "❌ Email non valida", ""
-        
+
         if not nome_ristorante:
-            return False, "❌ Nome ristorante obbligatorio", ""
-        
+            return False, "❌ Nome account obbligatorio", ""
+
         # Validazione P.IVA
         piva_norm = normalizza_piva(partita_iva) if partita_iva else None
         if piva_norm:
@@ -465,12 +472,11 @@ def crea_cliente_con_token(
         # Token crittografico random - impossibile da indovinare
         placeholder_hash = secrets.token_hex(32)
         
-        # Inserisci cliente
+        # Inserisci ACCOUNT (contenitore). Niente P.IVA/ragione: sono dati di SEDE.
+        # `nome_ristorante` qui e' l'etichetta dell'account (nome/catena).
         nuovo_cliente = {
             'email': email.lower().strip(),
             'nome_ristorante': nome_ristorante.strip(),
-            'partita_iva': piva_norm,
-            'ragione_sociale': ragione_sociale.strip() if ragione_sociale else None,
             'password_hash': placeholder_hash,  # Placeholder, sovrascritto al primo accesso
             'reset_code': token,
             'reset_expires': expires.isoformat(),
@@ -479,16 +485,22 @@ def crea_cliente_con_token(
             'login_attempts': 0,
             'password_changed_at': None
         }
-        
+
         result = supabase_client.table('users').insert(nuovo_cliente).execute()
-        
+
         if not result.data:
             return False, "❌ Errore database durante creazione", ""
-        
+
         user_id = result.data[0]['id']
-        
-        # Crea record ristorante associato (tabella multi-ristorante)
-        # ⚠️ CRITICO: senza questo record il cliente NON può caricare fatture
+
+        # Prima sede: creata SOLO se e' stata passata una P.IVA (flusso ibrido).
+        # Nel flusso nuovo l'account nasce senza sedi e le aggiungi dal pannello
+        # admin (una per il ristorante singolo, N per la catena). Senza almeno una
+        # sede il cliente non riceve/carica fatture: e' atteso, non un errore.
+        if not piva_norm:
+            logger.info(f"✅ Account creato senza sedi: user_id={user_id}")
+            return True, f"✅ Account {email} creato. Aggiungi le sedi dal pannello admin.", token
+
         ristorante_creato = False
         try:
             nuovo_ristorante = {
@@ -496,11 +508,12 @@ def crea_cliente_con_token(
                 'nome_ristorante': nome_ristorante.strip(),
                 'partita_iva': piva_norm,
                 'ragione_sociale': ragione_sociale.strip() if ragione_sociale else None,
+                'piano': 'base',
                 'attivo': True
             }
-            
+
             rist_result = supabase_client.table('ristoranti').insert(nuovo_ristorante).execute()
-            
+
             if rist_result.data:
                 logger.info(f"✅ Ristorante creato per user_id={user_id}")
                 ristorante_creato = True
@@ -508,13 +521,13 @@ def crea_cliente_con_token(
                 logger.error(f"❌ Cliente creato ma ristorante non inserito (response vuota): user_id={user_id}")
         except Exception as rist_err:
             logger.error(f"❌ Errore creazione ristorante per user_id={user_id}: {rist_err}")
-        
+
         logger.info(f"✅ Cliente creato: user_id={user_id}")
-        
+
         if ristorante_creato:
             return True, f"✅ Cliente {email} creato con successo!", token
         else:
-            return True, f"⚠️ Cliente {email} creato, ma il ristorante NON è stato configurato. Verifica nel pannello admin.", token
+            return True, f"⚠️ Cliente {email} creato, ma la sede NON è stata configurata. Verifica nel pannello admin.", token
         
     except Exception as e:
         logger.exception("Errore creazione cliente")
