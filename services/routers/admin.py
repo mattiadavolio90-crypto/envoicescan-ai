@@ -1725,6 +1725,273 @@ def admin_sistema_ricavi_salute(silenzio_giorni: int = 2):
     return {"items": items, "counts": counts, "silenzio_giorni": silenzio_giorni}
 
 
+# ── Flusso dati — salute ricezione fatture Invoicetronic ──────────────────────
+# Specchio di ricavi-salute, ma per la coda fatture (fatture_queue): dà a ogni
+# cliente UNA riga di stato sulla ricezione automatica delle fatture SDI.
+# Sola lettura. Mai espone l'XML (solo payload_meta, già non-PII).
+
+# Stati problematici della coda (gli altri = sano: pending in attesa, done fatto).
+_QUEUE_STATI_PROBLEMA = ["unknown_tenant", "da_assegnare", "failed", "dead"]
+
+
+def _classifica_salute_invoicetronic(n_unknown: int, n_dead: int, n_failed: int,
+                                     n_da_assegnare: int) -> str:
+    """Stato salute ricezione fatture di un cliente.
+
+    - critico: fatture arrivate ma non abbinate (unknown_tenant) o perse (dead),
+      o errori di elaborazione (failed) — fatture reali che non entrano nell'app.
+    - warning: solo multi-sede da smistare (da_assegnare): la fattura c'è, manca
+      solo la scelta della sede.
+    - ok: nessun problema in coda.
+    """
+    if n_unknown > 0 or n_dead > 0 or n_failed > 0:
+        return "critico"
+    if n_da_assegnare > 0:
+        return "warning"
+    return "ok"
+
+
+@router.get("/api/admin/sistema/invoicetronic-salute", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+def admin_sistema_invoicetronic_salute(giorni: int = 30):
+    """Salute della ricezione fatture Invoicetronic aggregata PER CLIENTE.
+
+    Per ogni cliente (via P.IVA delle sue sedi) combina lo stato dei record in
+    fatture_queue:
+      - unknown_tenant: la fattura è arrivata ma la P.IVA non ha trovato il cliente
+        (refuso P.IVA, sede non registrata) → fattura non entra nell'app;
+      - da_assegnare: cliente multi-sede, indirizzo ambiguo → manca la scelta sede;
+      - failed/dead: errore di elaborazione (download XML, parsing) → retry/persa;
+      - done/pending: sane.
+
+    Le P.IVA in unknown_tenant che non corrispondono a NESSUN cliente finiscono in
+    `orfane` (fatture di qualcuno che non è ancora a sistema). Sola lettura.
+    """
+    sb = get_supabase_client()
+    giorni = max(1, min(365, int(giorni or 30)))
+    da_iso = (datetime.now(timezone.utc) - timedelta(days=giorni)).isoformat()
+
+    # ── Mappa P.IVA → cliente (tutte le sedi attive) ─────────────────────────
+    rist_per_piva: Dict[str, dict] = {}
+    sedi_per_user: Dict[str, list] = {}
+    try:
+        rist_rows = (
+            sb.table("ristoranti")
+            .select("id,user_id,nome_ristorante,partita_iva,attivo")
+            .eq("attivo", True)
+            .execute()
+        ).data or []
+    except Exception as exc:
+        logger.error("admin invoicetronic-salute: ristoranti falliti: %s", exc)
+        rist_rows = []
+    for r in rist_rows:
+        piva = (r.get("partita_iva") or "").strip()
+        uid = str(r.get("user_id") or "")
+        if piva:
+            rist_per_piva.setdefault(piva, {"user_id": uid, "ristorante_id": str(r["id"]),
+                                            "nome_ristorante": r.get("nome_ristorante") or "—"})
+        if uid:
+            sedi_per_user.setdefault(uid, []).append({
+                "id": str(r["id"]),
+                "nome_ristorante": r.get("nome_ristorante") or "—",
+                "partita_iva": piva,
+            })
+
+    # Nome cliente per user_id (preferisce nome ristorante della prima sede)
+    nome_cliente: Dict[str, str] = {}
+    for uid, sedi in sedi_per_user.items():
+        nome_cliente[uid] = sedi[0]["nome_ristorante"] if sedi else "—"
+
+    # ── Record problematici della coda (no XML) ──────────────────────────────
+    try:
+        coda_rows = (
+            sb.table("fatture_queue")
+            .select("id,user_id,piva_raw,status,attempt_count,created_at,last_error,payload_meta")
+            .in_("status", _QUEUE_STATI_PROBLEMA)
+            .gte("created_at", da_iso)
+            .order("created_at", desc=True)
+            .execute()
+        ).data or []
+    except Exception as exc:
+        logger.error("admin invoicetronic-salute: coda fallita: %s", exc)
+        coda_rows = []
+
+    # Conteggio sani per cliente (done/pending nel periodo)
+    sani_per_user: Dict[str, int] = {}
+    try:
+        sani_rows = (
+            sb.table("fatture_queue")
+            .select("user_id,status")
+            .in_("status", ["done", "pending", "processing"])
+            .gte("created_at", da_iso)
+            .execute()
+        ).data or []
+        for r in sani_rows:
+            uid = str(r.get("user_id") or "")
+            if uid:
+                sani_per_user[uid] = sani_per_user.get(uid, 0) + 1
+    except Exception as exc:
+        logger.error("admin invoicetronic-salute: sani falliti: %s", exc)
+
+    def _meta(row, *keys):
+        m = row.get("payload_meta") or {}
+        for k in keys:
+            v = m.get(k)
+            if v not in (None, ""):
+                return v
+        return None
+
+    # ── Smista i record problematici per cliente / orfane ────────────────────
+    problemi_per_user: Dict[str, list] = {}
+    orfane: list = []
+    for row in coda_rows:
+        item = {
+            "queue_id": row.get("id"),
+            "status": row.get("status"),
+            "piva_raw": row.get("piva_raw"),
+            "fornitore": _meta(row, "piva_cedente"),
+            "numero": _meta(row, "numero_fattura"),
+            "importo": _meta(row, "importo_totale"),
+            "indirizzo": _meta(row, "indirizzo_destinatario"),
+            "created_at": row.get("created_at"),
+            "attempt_count": row.get("attempt_count"),
+            "last_error": (row.get("last_error") or "")[:200] or None,
+        }
+        uid = str(row.get("user_id") or "")
+        piva = (row.get("piva_raw") or "").strip()
+        # Cliente noto: via user_id (failed/dead/da_assegnare hanno user_id) o via P.IVA.
+        target_uid = uid if uid else (rist_per_piva.get(piva, {}).get("user_id", ""))
+        if target_uid:
+            problemi_per_user.setdefault(target_uid, []).append(item)
+        else:
+            orfane.append(item)
+
+    # ── Una riga per cliente (tutti gli user con sede, anche se sani) ─────────
+    items = []
+    counts = {"ok": 0, "warning": 0, "critico": 0}
+    for uid in sedi_per_user:
+        probs = problemi_per_user.get(uid, [])
+        n_unknown = sum(1 for p in probs if p["status"] == "unknown_tenant")
+        n_dead = sum(1 for p in probs if p["status"] == "dead")
+        n_failed = sum(1 for p in probs if p["status"] == "failed")
+        n_da_assegnare = sum(1 for p in probs if p["status"] == "da_assegnare")
+        stato = _classifica_salute_invoicetronic(n_unknown, n_dead, n_failed, n_da_assegnare)
+        counts[stato] += 1
+        items.append({
+            "user_id": uid,
+            "nome": nome_cliente.get(uid, "—"),
+            "stato": stato,
+            "n_sani": sani_per_user.get(uid, 0),
+            "n_unknown": n_unknown,
+            "n_dead": n_dead,
+            "n_failed": n_failed,
+            "n_da_assegnare": n_da_assegnare,
+            "sedi": sedi_per_user.get(uid, []),
+            "problemi": probs,
+        })
+
+    ordine = {"critico": 0, "warning": 1, "ok": 2}
+    items.sort(key=lambda it: (ordine.get(it["stato"], 9), it["nome"]))
+    return {"items": items, "counts": counts, "orfane": orfane, "giorni": giorni}
+
+
+# ── Flusso dati — azioni correttive sulla coda fatture ────────────────────────
+# Tutte richiedono conferma esplicita lato UI e loggano l'admin. Riusano le RPC
+# DB già esistenti (resolve_unknown_tenant, assegna_fattura_a_sede) o un UPDATE
+# guardato. NIENTE delete dall'UI.
+
+class AssegnaPivaBody(BaseModel):
+    piva: str = Field(..., max_length=32)
+    ristorante_id: Optional[str] = None
+
+
+@router.post("/api/admin/fatture-queue/assegna-piva", tags=["Admin"])
+def admin_queue_assegna_piva(body: AssegnaPivaBody, admin_user: dict = Depends(_verify_admin)):
+    """Sblocca le fatture unknown_tenant di una P.IVA, abbinandole a un cliente.
+
+    Se passo ristorante_id → UPDATE mirato dei record unknown_tenant con quella
+    piva_raw (utile quando la P.IVA in fattura differisce per refuso da quella a
+    DB). Altrimenti delego a resolve_unknown_tenant(piva), che cerca il ristorante
+    con quella P.IVA esatta. In entrambi i casi i record tornano 'pending'.
+    """
+    sb = get_supabase_client()
+    piva = (body.piva or "").strip()
+    if not piva:
+        raise HTTPException(status_code=400, detail="P.IVA mancante")
+
+    if body.ristorante_id:
+        rid = body.ristorante_id
+        rist = sb.table("ristoranti").select("id,user_id").eq("id", rid).eq("attivo", True).limit(1).execute()
+        if not rist.data:
+            raise HTTPException(status_code=404, detail="Ristorante non trovato o non attivo")
+        user_id = rist.data[0]["user_id"]
+        upd = (
+            sb.table("fatture_queue")
+            .update({"user_id": user_id, "ristorante_id": rid, "status": "pending",
+                     "next_retry_at": datetime.now(timezone.utc).isoformat(),
+                     "attempt_count": 0, "last_error": None})
+            .eq("piva_raw", piva)
+            .eq("status", "unknown_tenant")
+            .execute()
+        )
+        n = len(upd.data or [])
+    else:
+        res = sb.rpc("resolve_unknown_tenant", {"p_piva": piva}).execute()
+        n = int(res.data or 0)
+
+    logger.warning("admin_queue_assegna_piva: piva=%s ristorante=%s record=%s | admin=%s",
+                   piva, body.ristorante_id, n, admin_user.get("email"))
+    return {"ok": True, "sbloccate": n}
+
+
+class RiprovaQueueBody(BaseModel):
+    queue_id: int
+
+
+@router.post("/api/admin/fatture-queue/riprova", tags=["Admin"])
+def admin_queue_riprova(body: RiprovaQueueBody, admin_user: dict = Depends(_verify_admin)):
+    """Rimette in 'pending' una fattura failed/dead, azzerando i tentativi."""
+    sb = get_supabase_client()
+    cur = sb.table("fatture_queue").select("id,status").eq("id", body.queue_id).limit(1).execute()
+    if not cur.data:
+        raise HTTPException(status_code=404, detail="Fattura non trovata in coda")
+    stato = cur.data[0].get("status")
+    if stato not in ("failed", "dead"):
+        raise HTTPException(status_code=409, detail=f"Stato '{stato}' non riprovabile (solo failed/dead)")
+    sb.table("fatture_queue").update({
+        "status": "pending",
+        "next_retry_at": datetime.now(timezone.utc).isoformat(),
+        "attempt_count": 0,
+        "last_error": None,
+    }).eq("id", body.queue_id).execute()
+    logger.warning("admin_queue_riprova: queue_id=%s (era %s) | admin=%s",
+                   body.queue_id, stato, admin_user.get("email"))
+    return {"ok": True}
+
+
+class AssegnaSedeQueueBody(BaseModel):
+    queue_id: int
+    ristorante_id: str
+
+
+@router.post("/api/admin/fatture-queue/assegna-sede", tags=["Admin"])
+def admin_queue_assegna_sede(body: AssegnaSedeQueueBody, admin_user: dict = Depends(_verify_admin)):
+    """Smista una fattura multi-sede 'da_assegnare' alla sede scelta dall'admin.
+
+    Riusa la RPC assegna_fattura_a_sede già usata lato cliente; qui l'admin opera
+    per conto del cliente (nessun vincolo di proprietà sul chiamante).
+    """
+    sb = get_supabase_client()
+    cur = sb.table("fatture_queue").select("id,status").eq("id", body.queue_id).eq("status", "da_assegnare").limit(1).execute()
+    if not cur.data:
+        raise HTTPException(status_code=404, detail="Fattura non trovata o già assegnata")
+    res = sb.rpc("assegna_fattura_a_sede", {"p_queue_id": body.queue_id, "p_ristorante_id": body.ristorante_id}).execute()
+    if not bool(res.data):
+        return {"ok": False, "motivo": "gia_assegnata"}
+    logger.warning("admin_queue_assegna_sede: queue_id=%s sede=%s | admin=%s",
+                   body.queue_id, body.ristorante_id, admin_user.get("email"))
+    return {"ok": True}
+
+
 # ── Sistema — Agent notturno ──────────────────────────────────────────────────
 
 @router.get("/api/admin/sistema/agent-notturno", tags=["Admin"], dependencies=[Depends(_verify_admin)])

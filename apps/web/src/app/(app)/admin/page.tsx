@@ -68,9 +68,9 @@ const NAV_CARDS = [
     iconColor: "text-emerald-500",
   },
   {
-    href: "/admin/ragione-sociale",
-    title: "Mapping Ragione Sociale",
-    desc: "Collega ricavi automatici ai ristoranti",
+    href: "/admin/flusso-dati",
+    title: "Flusso dati",
+    desc: "Fatture Invoicetronic, ricavi, mapping",
     icon: Map,
     border: "border-orange-500",
     bg: "hover:bg-orange-500/8",
