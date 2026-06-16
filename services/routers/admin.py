@@ -1761,11 +1761,38 @@ def admin_badges():
                     .select("id", count="exact")
                     .in_("status", _QUEUE_STATI_PROBLEMA)
                     .limit(1))
-    categorie = _count(lambda: sb.table("fatture")
-                       .select("id", count="exact")
-                       .eq("needs_review", True)
-                       .is_("deleted_at", "null")
-                       .limit(1))
+
+    # categorie: deve combaciare con quanto l'admin vede entrando nella pagina
+    # ("Da controllare"): NON le righe grezze needs_review, ma le DESCRIZIONI uniche
+    # da decidere, escluse le scelte cliente a impronta umana (già sacre). Stessa
+    # logica di admin_qualita_coda, così badge e contatore pagina non divergono.
+    def _categorie_da_controllare() -> int:
+        try:
+            admin_emails = _admin_emails_set()
+            allowed_ids = [
+                u["id"] for u in (sb.table("users").select("id,email").execute().data or [])
+                if u.get("email", "").lower() not in admin_emails
+            ]
+            if not allowed_ids:
+                return 0
+            resp = (sb.table("fatture")
+                    .select("descrizione")
+                    .eq("needs_review", True)
+                    .is_("deleted_at", "null")
+                    .in_("user_id", allowed_ids)
+                    .execute())
+            umane = _descrizioni_impronta_umana(sb, allowed_ids)
+            descrizioni = {
+                (r.get("descrizione") or "").strip().upper()
+                for r in (resp.data or [])
+                if (r.get("descrizione") or "").strip()
+            }
+            return len(descrizioni - umane)
+        except Exception as exc:
+            logger.error("admin badges: conteggio categorie fallito: %s", exc)
+            return 0
+
+    categorie = _categorie_da_controllare()
     richieste = _count(lambda: sb.table("marketplace_leads")
                        .select("id", count="exact")
                        .eq("stato", "nuovo")

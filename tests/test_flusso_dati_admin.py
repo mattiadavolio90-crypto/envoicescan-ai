@@ -41,6 +41,7 @@ class _Query:
         self._update_vals = None
         self._is_null = []
         self._count = None
+        self._range = None
 
     def select(self, *_a, **_k):
         self._op = "select"
@@ -76,6 +77,10 @@ class _Query:
         self._limit = n
         return self
 
+    def range(self, start, end):
+        self._range = (start, end)
+        return self
+
     def _matches(self, row):
         for f, v in self._filters:
             if row.get(f) != v:
@@ -100,6 +105,9 @@ class _Query:
             return _Result([dict(r) for r in rows])
         total = len(rows)
         out = [dict(r) for r in rows]
+        if self._range is not None:
+            start, end = self._range
+            out = out[start:end + 1]
         if self._limit is not None:
             out = out[: self._limit]
         return _Result(out, count=(total if self._count else None))
@@ -263,11 +271,23 @@ def test_badges_conta_solo_problematici(monkeypatch):
             {"id": 2, "status": "da_assegnare"},
             {"id": 3, "status": "done"},        # sano → non contato
         ],
-        "fatture": [
-            {"id": "a", "needs_review": True, "deleted_at": None},
-            {"id": "b", "needs_review": True, "deleted_at": "2026-01-01"},  # cestino → escluso
-            {"id": "c", "needs_review": False, "deleted_at": None},         # ok → escluso
+        "users": [
+            {"id": "u1", "email": "cliente@test.it"},
+            {"id": "adm", "email": "md@oneflux.it"},  # admin → escluso da allowed_ids
         ],
+        # categorie = DESCRIZIONI uniche needs_review, escluse le scelte umane
+        "fatture": [
+            {"id": "a", "user_id": "u1", "descrizione": "GELATO X", "needs_review": True, "deleted_at": None},
+            {"id": "a2", "user_id": "u1", "descrizione": "GELATO X", "needs_review": True, "deleted_at": None},  # stessa descr → 1 sola
+            {"id": "d", "user_id": "u1", "descrizione": "TORTA Y", "needs_review": True, "deleted_at": None},
+            {"id": "e", "user_id": "u1", "descrizione": "COUPON Z", "needs_review": True, "deleted_at": None},   # impronta umana → escluso
+            {"id": "b", "user_id": "u1", "descrizione": "X", "needs_review": True, "deleted_at": "2026-01-01"},  # cestino → escluso
+            {"id": "c", "user_id": "u1", "descrizione": "OK", "needs_review": False, "deleted_at": None},        # non review → escluso
+        ],
+        "prodotti_utente": [
+            {"descrizione": "COUPON Z", "classificato_da": "Manuale (cliente)", "user_id": "u1"},
+        ],
+        "prodotti_master": [],
         "marketplace_leads": [
             {"id": "l1", "stato": "nuovo"},
             {"id": "l2", "stato": "gestito"},   # non nuovo → escluso
@@ -276,11 +296,16 @@ def test_badges_conta_solo_problematici(monkeypatch):
     monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
 
     res = admin.admin_badges()
-    assert res == {"flusso_dati": 2, "categorie": 1, "richieste": 1}
+    # categorie = {GELATO X, TORTA Y} = 2 (COUPON Z escluso perché scelta umana)
+    assert res == {"flusso_dati": 2, "categorie": 2, "richieste": 1}
 
 
 def test_badges_tutto_pulito_a_zero(monkeypatch):
     monkeypatch.setattr(admin, "_verify_admin", lambda **k: {"email": "md@oneflux.it"})
-    sb = FakeClient({"fatture_queue": [], "fatture": [], "marketplace_leads": []})
+    sb = FakeClient({
+        "fatture_queue": [], "fatture": [], "marketplace_leads": [],
+        "users": [{"id": "u1", "email": "cliente@test.it"}],
+        "prodotti_utente": [], "prodotti_master": [],
+    })
     monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
     assert admin.admin_badges() == {"flusso_dati": 0, "categorie": 0, "richieste": 0}

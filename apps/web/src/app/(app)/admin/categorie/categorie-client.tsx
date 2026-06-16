@@ -137,8 +137,8 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { k: "totale", label: "Da controllare", color: "text-foreground" },
-          { k: "ambigue", label: "Categoria dubbia", color: "text-red-600" },
+          { k: "totale", label: "Totale in coda", color: "text-foreground" },
+          { k: "ambigue", label: "Da decidere", color: "text-red-600" },
           { k: "diciture", label: "Diciture", color: "text-blue-700" },
           { k: "sconti", label: "Sconti/Omaggi", color: "text-green-700" },
         ].map((s) => (
@@ -151,23 +151,29 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
 
       {/* Toolbar */}
       <div className="flex gap-2 flex-wrap items-center">
-        <Select value={filtroCliente} onValueChange={setFiltroCliente}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Tutti i clienti" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="tutti">Tutti i clienti</SelectItem>
-            {clienti.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <Select value={filtroBucket} onValueChange={setFiltroBucket}>
-          <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="tutti">Tutti i tipi</SelectItem>
-            <SelectItem value="da_verificare">Categoria dubbia</SelectItem>
-            <SelectItem value="dicitura">Diciture</SelectItem>
-            <SelectItem value="sconto_omaggio">Sconti/Omaggi</SelectItem>
-            <SelectItem value="storno">Storni</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">Cliente:</span>
+          <Select value={filtroCliente} onValueChange={setFiltroCliente}>
+            <SelectTrigger className="w-44 border-border bg-background"><SelectValue placeholder="Tutti i clienti" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="tutti">Tutti i clienti</SelectItem>
+              {clienti.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground">Tipo:</span>
+          <Select value={filtroBucket} onValueChange={setFiltroBucket}>
+            <SelectTrigger className="w-40 border-border bg-background"><SelectValue placeholder="Tutti i tipi" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="tutti">Tutti i tipi</SelectItem>
+              <SelectItem value="da_verificare">Da decidere</SelectItem>
+              <SelectItem value="dicitura">Diciture</SelectItem>
+              <SelectItem value="sconto_omaggio">Sconti/Omaggi</SelectItem>
+              <SelectItem value="storno">Storni</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
         </Button>
@@ -601,6 +607,9 @@ function StoricoTab() {
 
   return (
     <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        Registro di tutte le modifiche di categoria (chi, quando, da quale categoria a quale). Da qui puoi anche annullare un&apos;azione.
+      </p>
       <ConflittiRiquadro />
       <div className="flex gap-2 flex-wrap items-center">
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
@@ -788,7 +797,7 @@ const TAB_LABELS: Record<string, string> = {
   da_controllare: "📋 Da controllare",
   scelte_clienti: "🔒 Scelte clienti",
   memoria: "🌍 Memoria globale",
-  storico: "📜 Storico",
+  storico: "📜 Storico modifiche",
 };
 
 export function CategorieClient() {
