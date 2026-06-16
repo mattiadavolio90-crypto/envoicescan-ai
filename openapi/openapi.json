@@ -5125,6 +5125,172 @@
         }
       }
     },
+    "/api/ricavi/coperti-analisi": {
+      "get": {
+        "tags": [
+          "Ricavi"
+        ],
+        "summary": "Get Coperti Analisi",
+        "operationId": "get_coperti_analisi_api_ricavi_coperti_analisi_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopertiAnalisiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ricavi/coperti-categorie": {
+      "get": {
+        "tags": [
+          "Ricavi"
+        ],
+        "summary": "Get Coperti Categorie",
+        "operationId": "get_coperti_categorie_api_ricavi_coperti_categorie_get",
+        "parameters": [
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CopertiCategorieResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ricavi/modalita": {
       "get": {
         "tags": [
@@ -11002,7 +11168,7 @@
           "Admin"
         ],
         "summary": "Admin Qualita Coda",
-        "description": "Righe speciali (€0/diciture/sconti/storni/da_verificare) raggruppate per descrizione.",
+        "description": "Righe speciali raggruppate per descrizione.\n\nscope='da_controllare' (default): coda di lavoro, ESCLUDE le righe la cui\n    descrizione e' stata classificata a mano da un umano (intoccabili).\nscope='scelte_clienti': SOLO quelle a impronta umana, sola lettura.",
         "operationId": "admin_qualita_coda_api_admin_qualita_ai_coda_get",
         "parameters": [
           {
@@ -11035,6 +11201,16 @@
                 }
               ],
               "title": "Bucket"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "da_controllare",
+              "title": "Scope"
             }
           },
           {
@@ -11140,6 +11316,80 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/ClassificaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/qualita-ai/coda/suggerisci-ai": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Qualita Suggerisci Ai",
+        "description": "Prepara suggerimenti AI per le righe dubbie (NON scrive la categoria).",
+        "operationId": "admin_qualita_suggerisci_ai_api_admin_qualita_ai_coda_suggerisci_ai_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuggerisciAiBody"
               }
             }
           }
@@ -12097,6 +12347,366 @@
         }
       }
     },
+    "/api/admin/badges": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Badges",
+        "description": "Conteggi rapidi per i badge \"da controllare\" sulle card del pannello admin.\n\nSolo COUNT veloci (mai full-load): pensato per girare a ogni apertura della\nhome senza rallentarla. Ogni conteggio è isolato in try/except così un errore\nsu una tabella non azzera gli altri badge.\n\n  - flusso_dati: record fatture_queue in stato problematico (fatture che non\n    entrano nell'app: P.IVA sconosciuta, multi-sede da smistare, errori);\n  - categorie: righe fatture con needs_review (proposte AI da approvare a mano);\n  - richieste: lead marketplace ancora in stato 'nuovo'.",
+        "operationId": "admin_badges_api_admin_badges_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/sistema/invoicetronic-salute": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Sistema Invoicetronic Salute",
+        "description": "Salute della ricezione fatture Invoicetronic aggregata PER CLIENTE.\n\nPer ogni cliente (via P.IVA delle sue sedi) combina lo stato dei record in\nfatture_queue:\n  - unknown_tenant: la fattura è arrivata ma la P.IVA non ha trovato il cliente\n    (refuso P.IVA, sede non registrata) → fattura non entra nell'app;\n  - da_assegnare: cliente multi-sede, indirizzo ambiguo → manca la scelta sede;\n  - failed/dead: errore di elaborazione (download XML, parsing) → retry/persa;\n  - done/pending: sane.\n\nLe P.IVA in unknown_tenant che non corrispondono a NESSUN cliente finiscono in\n`orfane` (fatture di qualcuno che non è ancora a sistema). Sola lettura.",
+        "operationId": "admin_sistema_invoicetronic_salute_api_admin_sistema_invoicetronic_salute_get",
+        "parameters": [
+          {
+            "name": "giorni",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 30,
+              "title": "Giorni"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/fatture-queue/assegna-piva": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Queue Assegna Piva",
+        "description": "Sblocca le fatture unknown_tenant di una P.IVA, abbinandole a un cliente.\n\nSe passo ristorante_id → UPDATE mirato dei record unknown_tenant con quella\npiva_raw (utile quando la P.IVA in fattura differisce per refuso da quella a\nDB). Altrimenti delego a resolve_unknown_tenant(piva), che cerca il ristorante\ncon quella P.IVA esatta. In entrambi i casi i record tornano 'pending'.",
+        "operationId": "admin_queue_assegna_piva_api_admin_fatture_queue_assegna_piva_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssegnaPivaBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/fatture-queue/riprova": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Queue Riprova",
+        "description": "Rimette in 'pending' una fattura failed/dead, azzerando i tentativi.",
+        "operationId": "admin_queue_riprova_api_admin_fatture_queue_riprova_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RiprovaQueueBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/fatture-queue/assegna-sede": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Queue Assegna Sede",
+        "description": "Smista una fattura multi-sede 'da_assegnare' alla sede scelta dall'admin.\n\nRiusa la RPC assegna_fattura_a_sede già usata lato cliente; qui l'admin opera\nper conto del cliente (nessun vincolo di proprietà sul chiamante).",
+        "operationId": "admin_queue_assegna_sede_api_admin_fatture_queue_assegna_sede_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssegnaSedeQueueBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/sistema/agent-notturno": {
       "get": {
         "tags": [
@@ -12838,6 +13448,96 @@
       }
     },
     "/api/admin/clienti/{cliente_id}/sedi/{sede_id}": {
+      "patch": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Modifica Sede",
+        "description": "Modifica una sede: nome, ragione sociale, P.IVA e indirizzo (per il routing).\n\nGuard: la sede deve appartenere al cliente. Aggiorna solo i campi forniti; il\ntrigger DB ricalcola `indirizzo_match` quando cambiano indirizzo/cap/comune.",
+        "operationId": "admin_modifica_sede_api_admin_clienti__cliente_id__sedi__sede_id__patch",
+        "parameters": [
+          {
+            "name": "cliente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cliente Id"
+            }
+          },
+          {
+            "name": "sede_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Sede Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModificaSedeBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "tags": [
           "Admin"
@@ -13372,6 +14072,18 @@
               }
             ],
             "title": "Nome Ristorante"
+          },
+          "nome_gruppo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome Gruppo"
           },
           "partita_iva": {
             "anyOf": [
@@ -14241,6 +14953,31 @@
         ],
         "title": "ArticoloAggregato"
       },
+      "AssegnaPivaBody": {
+        "properties": {
+          "piva": {
+            "type": "string",
+            "maxLength": 32,
+            "title": "Piva"
+          },
+          "ristorante_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ristorante Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "piva"
+        ],
+        "title": "AssegnaPivaBody"
+      },
       "AssegnaSedeBody": {
         "properties": {
           "queue_id": {
@@ -14258,6 +14995,24 @@
           "ristorante_id"
         ],
         "title": "AssegnaSedeBody"
+      },
+      "AssegnaSedeQueueBody": {
+        "properties": {
+          "queue_id": {
+            "type": "integer",
+            "title": "Queue Id"
+          },
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "queue_id",
+          "ristorante_id"
+        ],
+        "title": "AssegnaSedeQueueBody"
       },
       "AssociazioneItem": {
         "properties": {
@@ -14588,6 +15343,72 @@
           "nuova_categoria"
         ],
         "title": "CategoriaBatchRequest"
+      },
+      "CategoriaCopertoMese": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "valore": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mese",
+          "label"
+        ],
+        "title": "CategoriaCopertoMese"
+      },
+      "CategoriaCopertoRiga": {
+        "properties": {
+          "categoria": {
+            "type": "string",
+            "title": "Categoria"
+          },
+          "per_mese": {
+            "items": {
+              "$ref": "#/components/schemas/CategoriaCopertoMese"
+            },
+            "type": "array",
+            "title": "Per Mese"
+          },
+          "media": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media"
+          }
+        },
+        "type": "object",
+        "required": [
+          "categoria",
+          "per_mese"
+        ],
+        "title": "CategoriaCopertoRiga"
       },
       "CategoriaDetail": {
         "properties": {
@@ -15168,6 +15989,328 @@
         },
         "type": "object",
         "title": "ConfigUpdateRequest"
+      },
+      "CopertiAnalisiResponse": {
+        "properties": {
+          "mesi": {
+            "items": {
+              "$ref": "#/components/schemas/CopertiMese"
+            },
+            "type": "array",
+            "title": "Mesi"
+          },
+          "totale_coperti": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totale Coperti"
+          },
+          "totale_ricavi_netto": {
+            "type": "number",
+            "title": "Totale Ricavi Netto",
+            "default": 0.0
+          },
+          "totale_ricavi_lordo": {
+            "type": "number",
+            "title": "Totale Ricavi Lordo",
+            "default": 0.0
+          },
+          "giorni": {
+            "items": {
+              "$ref": "#/components/schemas/CopertiGiorno"
+            },
+            "type": "array",
+            "title": "Giorni"
+          },
+          "ha_dati_giornalieri": {
+            "type": "boolean",
+            "title": "Ha Dati Giornalieri",
+            "default": false
+          },
+          "kpi": {
+            "$ref": "#/components/schemas/CopertiKpi"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mesi",
+          "giorni",
+          "kpi"
+        ],
+        "title": "CopertiAnalisiResponse"
+      },
+      "CopertiCategorieResponse": {
+        "properties": {
+          "mesi_label": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Mesi Label"
+          },
+          "righe": {
+            "items": {
+              "$ref": "#/components/schemas/CategoriaCopertoRiga"
+            },
+            "type": "array",
+            "title": "Righe"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mesi_label",
+          "righe"
+        ],
+        "title": "CopertiCategorieResponse"
+      },
+      "CopertiGiorno": {
+        "properties": {
+          "data": {
+            "type": "string",
+            "title": "Data"
+          },
+          "coperti": {
+            "type": "integer",
+            "title": "Coperti"
+          },
+          "ricavi_netto": {
+            "type": "number",
+            "title": "Ricavi Netto"
+          },
+          "ricavi_lordo": {
+            "type": "number",
+            "title": "Ricavi Lordo"
+          }
+        },
+        "type": "object",
+        "required": [
+          "data",
+          "coperti",
+          "ricavi_netto",
+          "ricavi_lordo"
+        ],
+        "title": "CopertiGiorno"
+      },
+      "CopertiKpi": {
+        "properties": {
+          "coperti_totali": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coperti Totali"
+          },
+          "coperti_medi_giorno": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coperti Medi Giorno"
+          },
+          "scontrino_medio_netto": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scontrino Medio Netto"
+          },
+          "scontrino_medio_lordo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scontrino Medio Lordo"
+          },
+          "giorno_top": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CopertiGiorno"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "giorno_min": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CopertiGiorno"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "media_per_dow": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Media Per Dow",
+            "default": []
+          },
+          "delta_coperti_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Coperti Pct"
+          },
+          "confronto_label": {
+            "type": "string",
+            "title": "Confronto Label",
+            "default": "periodo prec."
+          },
+          "costo_fb_per_coperto": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Fb Per Coperto"
+          },
+          "costo_fb_per_coperto_delta_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Fb Per Coperto Delta Pct"
+          },
+          "efficienza_commento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Efficienza Commento"
+          }
+        },
+        "type": "object",
+        "title": "CopertiKpi"
+      },
+      "CopertiMese": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "coperti": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coperti"
+          },
+          "ricavi_netto": {
+            "type": "number",
+            "title": "Ricavi Netto",
+            "default": 0.0
+          },
+          "ricavi_lordo": {
+            "type": "number",
+            "title": "Ricavi Lordo",
+            "default": 0.0
+          },
+          "scontrino_medio_netto": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scontrino Medio Netto"
+          },
+          "scontrino_medio_lordo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scontrino Medio Lordo"
+          },
+          "costo_fb": {
+            "type": "number",
+            "title": "Costo Fb",
+            "default": 0.0
+          },
+          "costo_fb_per_coperto": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Costo Fb Per Coperto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mese",
+          "label"
+        ],
+        "title": "CopertiMese"
       },
       "CopiaSettimanaBody": {
         "properties": {
@@ -16478,6 +17621,84 @@
         ],
         "title": "MesiPivot"
       },
+      "ModificaSedeBody": {
+        "properties": {
+          "nome_ristorante": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome Ristorante"
+          },
+          "partita_iva": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 11
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partita Iva"
+          },
+          "ragione_sociale": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 150
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ragione Sociale"
+          },
+          "indirizzo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indirizzo"
+          },
+          "cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap"
+          },
+          "comune": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comune"
+          }
+        },
+        "type": "object",
+        "title": "ModificaSedeBody"
+      },
       "MolMensilePoint": {
         "properties": {
           "mese": {
@@ -16765,6 +17986,42 @@
               }
             ],
             "title": "Ragione Sociale"
+          },
+          "indirizzo": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indirizzo"
+          },
+          "cap": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cap"
+          },
+          "comune": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comune"
           }
         },
         "type": "object",
@@ -17466,6 +18723,11 @@
             "type": "integer",
             "title": "Skipped"
           },
+          "coperti_giorni": {
+            "type": "integer",
+            "title": "Coperti Giorni",
+            "default": 0
+          },
           "errors": {
             "items": {
               "type": "string"
@@ -17520,6 +18782,17 @@
             "type": "number",
             "title": "Altri Ricavi Noiva",
             "default": 0.0
+          },
+          "coperti": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coperti"
           }
         },
         "type": "object",
@@ -17559,6 +18832,17 @@
             "type": "number",
             "title": "Altri Ricavi Noiva",
             "default": 0.0
+          },
+          "coperti": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coperti"
           }
         },
         "type": "object",
@@ -17600,6 +18884,17 @@
             "title": "Altri Ricavi Noiva",
             "default": 0.0
           },
+          "coperti": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coperti"
+          },
           "source": {
             "type": "string",
             "title": "Source",
@@ -17632,6 +18927,17 @@
             "type": "number",
             "title": "Altri Ricavi Noiva",
             "default": 0.0
+          },
+          "coperti": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coperti"
           }
         },
         "type": "object",
@@ -17830,6 +19136,19 @@
           "ordine"
         ],
         "title": "RiordinaBody"
+      },
+      "RiprovaQueueBody": {
+        "properties": {
+          "queue_id": {
+            "type": "integer",
+            "title": "Queue Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "queue_id"
+        ],
+        "title": "RiprovaQueueBody"
       },
       "RisolviConflittoBody": {
         "properties": {
@@ -18396,6 +19715,37 @@
         ],
         "title": "StoricoPrezzoResponse"
       },
+      "SuggerisciAiBody": {
+        "properties": {
+          "cliente_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cliente Id"
+          },
+          "ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ids"
+          }
+        },
+        "type": "object",
+        "title": "SuggerisciAiBody"
+      },
       "SvuotaDatiBody": {
         "properties": {
           "conferma": {
@@ -18741,6 +20091,28 @@
               }
             ],
             "title": "Nome Ristorante"
+          },
+          "sede_attiva_nome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sede Attiva Nome"
+          },
+          "sede_attiva_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sede Attiva Id"
           },
           "pagine_abilitate": {
             "anyOf": [

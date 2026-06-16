@@ -132,8 +132,12 @@ export function AppSidebar({
         body: JSON.stringify({ ristorante_id: ristoranteId }),
       });
       if (!res.ok) throw new Error();
+      // Sposta subito il ✓ sulla nuova sede senza aspettare il refetch: il selettore
+      // dava un feedback ritardato e sembrava "tornare sempre alla prima sede".
+      setSedi((prev) => prev.map((s) => ({ ...s, attiva: s.id === ristoranteId })));
       // Ricarica i dati della pagina con la nuova sede attiva (KPI, fatture, margini
       // sono filtrati per ristorante_id lato server → serve un refresh completo).
+      // La testata si aggiorna perche' /api/auth/me ora risolve la sede attiva.
       router.refresh();
       toast.success("Sede cambiata");
     } catch {

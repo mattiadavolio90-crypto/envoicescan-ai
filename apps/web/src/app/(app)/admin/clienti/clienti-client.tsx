@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
-import { Search, Plus, ChevronRight, CheckCircle, XCircle, Clock } from "lucide-react";
+import { Search, Plus, ChevronRight, CheckCircle, XCircle, Clock, MapPin } from "lucide-react";
 import { Cliente, PIANO_COLOR, PIANO_OPTIONS } from "@/lib/admin";
 
 function StatusBadge({ attivo }: { attivo: boolean }) {
@@ -55,6 +55,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
         !search ||
         c.email.toLowerCase().includes(search.toLowerCase()) ||
         c.nome_ristorante.toLowerCase().includes(search.toLowerCase()) ||
+        (c.nome_gruppo || "").toLowerCase().includes(search.toLowerCase()) ||
         (c.partita_iva || "").includes(search);
       const matchStato =
         filtroStato === "tutti" ||
@@ -198,7 +199,16 @@ export function ClientiClient({ clientiIniziali }: Props) {
             {filtered.map((c) => (
               <tr key={c.id} className="hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3">
-                  <div className="font-medium truncate max-w-[180px]">{c.nome_ristorante || "—"}</div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-medium truncate max-w-[180px]">
+                      {c.nome_gruppo || c.nome_ristorante || "—"}
+                    </span>
+                    {c.n_sedi > 1 && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-sky-700 bg-sky-100 rounded px-1.5 py-0.5 shrink-0">
+                        <MapPin className="size-2.5" /> {c.n_sedi} sedi
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-muted-foreground truncate max-w-[180px]">{c.email}</div>
                   {c.trial?.active && (
                     <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-100 rounded px-1.5 py-0.5 mt-0.5">

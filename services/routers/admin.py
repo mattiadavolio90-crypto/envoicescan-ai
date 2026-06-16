@@ -289,7 +289,7 @@ def admin_lista_clienti():
     admin_emails = _admin_emails_set()
 
     users_resp = sb.table("users").select(
-        "id,email,nome_ristorante,ragione_sociale,partita_iva,attivo,piano,piano_inizio_at,created_at,"
+        "id,email,nome_ristorante,nome_gruppo,ragione_sociale,partita_iva,attivo,piano,piano_inizio_at,created_at,"
         "last_seen_at,trial_active,trial_activated_at,pagine_abilitate"
     ).order("email").execute()
     clienti_raw = [u for u in (users_resp.data or []) if u.get("email", "").lower() not in admin_emails]
@@ -354,6 +354,7 @@ def admin_lista_clienti():
             "id": uid,
             "email": u["email"],
             "nome_ristorante": u.get("nome_ristorante") or "",
+            "nome_gruppo": u.get("nome_gruppo"),
             "ragione_sociale": u.get("ragione_sociale"),
             "partita_iva": u.get("partita_iva"),
             "attivo": bool(u.get("attivo")),
@@ -381,7 +382,7 @@ def admin_dettaglio_cliente(cliente_id: str):
     admin_emails = _admin_emails_set()
 
     resp = sb.table("users").select(
-        "id,email,nome_ristorante,ragione_sociale,partita_iva,attivo,piano,created_at,"
+        "id,email,nome_ristorante,nome_gruppo,ragione_sociale,partita_iva,attivo,piano,created_at,"
         "last_seen_at,trial_active,trial_activated_at,pagine_abilitate,price_alert_threshold"
     ).eq("id", cliente_id).limit(1).execute()
 
@@ -424,6 +425,7 @@ def admin_dettaglio_cliente(cliente_id: str):
         "id": u["id"],
         "email": u["email"],
         "nome_ristorante": u.get("nome_ristorante") or "",
+        "nome_gruppo": u.get("nome_gruppo"),
         "ragione_sociale": u.get("ragione_sociale"),
         "partita_iva": u.get("partita_iva"),
         "attivo": bool(u.get("attivo")),
@@ -443,6 +445,7 @@ def admin_dettaglio_cliente(cliente_id: str):
 
 class AggiornaClienteBody(BaseModel):
     nome_ristorante: Optional[str] = Field(None, max_length=100)
+    nome_gruppo: Optional[str] = Field(None, max_length=100)
     partita_iva: Optional[str] = Field(None, max_length=11)
     ragione_sociale: Optional[str] = None
     piano: Optional[str] = Field(None, pattern="^(free|base|plus|pro)$")
@@ -462,6 +465,8 @@ def admin_aggiorna_cliente(cliente_id: str, body: AggiornaClienteBody, admin_use
     upd: dict = {}
     if body.nome_ristorante is not None:
         upd["nome_ristorante"] = body.nome_ristorante.strip()
+    if body.nome_gruppo is not None:
+        upd["nome_gruppo"] = body.nome_gruppo.strip() or None
     if body.partita_iva is not None:
         upd["partita_iva"] = body.partita_iva.strip()
     if body.ragione_sociale is not None:
@@ -2346,16 +2351,35 @@ def admin_impersona_exit(body: ImpersonaExitBody, admin_user: dict = Depends(_ve
 
 # ── Sedi (multi-ristorante) ───────────────────────────────────────────────────
 
+# I campi indirizzo/cap/comune alimentano il routing automatico delle fatture fra
+# sedi con stessa P.IVA: un trigger DB calcola `indirizzo_match` da questi tre e il
+# webhook Invoicetronic lo confronta con l'indirizzo della fattura. Senza, le
+# fatture multi-sede finiscono in coda `da_assegnare` (smistamento manuale).
+_SEDE_SELECT = "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,attivo"
+
+
 class NuovaSedeBody(BaseModel):
     nome_ristorante: str = Field(..., max_length=150)
     partita_iva: str = Field(..., max_length=11)
     ragione_sociale: Optional[str] = Field(None, max_length=150)
+    indirizzo: Optional[str] = Field(None, max_length=200)
+    cap: Optional[str] = Field(None, max_length=10)
+    comune: Optional[str] = Field(None, max_length=100)
+
+
+class ModificaSedeBody(BaseModel):
+    nome_ristorante: Optional[str] = Field(None, max_length=150)
+    partita_iva: Optional[str] = Field(None, max_length=11)
+    ragione_sociale: Optional[str] = Field(None, max_length=150)
+    indirizzo: Optional[str] = Field(None, max_length=200)
+    cap: Optional[str] = Field(None, max_length=10)
+    comune: Optional[str] = Field(None, max_length=100)
 
 
 @router.get("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
 def admin_lista_sedi(cliente_id: str):
     sb = get_supabase_client()
-    resp = sb.table("ristoranti").select("id,nome_ristorante,partita_iva,ragione_sociale,attivo").eq("user_id", cliente_id).execute()
+    resp = sb.table("ristoranti").select(_SEDE_SELECT).eq("user_id", cliente_id).execute()
     return resp.data or []
 
 
@@ -2379,10 +2403,67 @@ def admin_crea_sede(
         "nome_ristorante": body.nome_ristorante.strip(),
         "partita_iva": piva,
         "ragione_sociale": body.ragione_sociale.strip() if body.ragione_sociale else None,
+        "indirizzo": body.indirizzo.strip() if body.indirizzo else None,
+        "cap": body.cap.strip() if body.cap else None,
+        "comune": body.comune.strip() if body.comune else None,
         "attivo": True,
     }).execute()
     logger.info("admin_crea_sede: cliente=%s sede=%s | admin=%s", cliente_id, body.nome_ristorante, admin_user.get("email"))
     return r.data[0] if r.data else {"ok": True}
+
+
+@router.patch("/api/admin/clienti/{cliente_id}/sedi/{sede_id}", tags=["Admin"])
+def admin_modifica_sede(
+    cliente_id: str,
+    sede_id: str,
+    body: ModificaSedeBody,
+    admin_user: dict = Depends(_verify_admin),
+):
+    """Modifica una sede: nome, ragione sociale, P.IVA e indirizzo (per il routing).
+
+    Guard: la sede deve appartenere al cliente. Aggiorna solo i campi forniti; il
+    trigger DB ricalcola `indirizzo_match` quando cambiano indirizzo/cap/comune.
+    """
+    from utils.piva_validator import normalizza_piva, valida_formato_piva
+    sb = get_supabase_client()
+    chk = sb.table("ristoranti").select("id").eq("id", sede_id).eq("user_id", cliente_id).limit(1).execute()
+    if not chk.data:
+        raise HTTPException(status_code=404, detail="Sede non trovata")
+
+    upd: Dict[str, Any] = {}
+    if body.nome_ristorante is not None:
+        nome = body.nome_ristorante.strip()
+        if not nome:
+            raise HTTPException(status_code=400, detail="Il nome sede non può essere vuoto")
+        upd["nome_ristorante"] = nome
+    if body.partita_iva is not None:
+        piva = normalizza_piva(body.partita_iva)
+        ok, msg = valida_formato_piva(piva)
+        if not ok:
+            raise HTTPException(status_code=400, detail=msg)
+        dup = (
+            sb.table("ristoranti").select("id")
+            .eq("user_id", cliente_id).eq("partita_iva", piva).neq("id", sede_id).execute()
+        )
+        if dup.data:
+            raise HTTPException(status_code=409, detail=f"P.IVA {piva} già registrata per un'altra sede")
+        upd["partita_iva"] = piva
+    if body.ragione_sociale is not None:
+        upd["ragione_sociale"] = body.ragione_sociale.strip() or None
+    if body.indirizzo is not None:
+        upd["indirizzo"] = body.indirizzo.strip() or None
+    if body.cap is not None:
+        upd["cap"] = body.cap.strip() or None
+    if body.comune is not None:
+        upd["comune"] = body.comune.strip() or None
+
+    if not upd:
+        raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
+
+    sb.table("ristoranti").update(upd).eq("id", sede_id).execute()
+    logger.info("admin_modifica_sede: sede=%s campi=%s | admin=%s", sede_id, list(upd.keys()), admin_user.get("email"))
+    resp = sb.table("ristoranti").select(_SEDE_SELECT).eq("id", sede_id).single().execute()
+    return resp.data or {"ok": True}
 
 
 @router.delete("/api/admin/clienti/{cliente_id}/sedi/{sede_id}", tags=["Admin"])

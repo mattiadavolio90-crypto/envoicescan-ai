@@ -18,6 +18,10 @@ export type SessionUser = {
   id: string;
   email: string;
   nome_ristorante: string | null;
+  // Sede attiva (clienti multi-sede). Per i mono-sede coincide con nome_ristorante.
+  // Il worker la valorizza sempre; resta opzionale per compatibilita' coi vecchi token.
+  sede_attiva_nome?: string | null;
+  sede_attiva_id?: string | null;
   pagine_abilitate: string[] | null;
   is_admin: boolean;
   tema?: "dark" | "light";

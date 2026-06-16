@@ -39,7 +39,7 @@ export default async function ClienteDettaglioPage({ params }: Ctx) {
         <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/admin/clienti" />}>
           <ChevronLeft className="size-4 mr-1" /> Clienti
         </Button>
-        <h1 className="text-2xl font-bold tracking-tight">{cliente.nome_ristorante || cliente.email}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{cliente.nome_gruppo || cliente.nome_ristorante || cliente.email}</h1>
       </div>
       <ClienteDettaglioClient cliente={cliente} />
     </div>

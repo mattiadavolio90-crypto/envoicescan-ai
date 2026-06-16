@@ -1037,6 +1037,10 @@ class UserPublic(BaseModel):
     id: str
     email: str
     nome_ristorante: Optional[str] = None
+    # Nome/id della SEDE attiva (clienti multi-sede). Per i mono-sede coincidono
+    # con nome_ristorante / il loro unico ristorante: la UI puo' usarli sempre.
+    sede_attiva_nome: Optional[str] = None
+    sede_attiva_id: Optional[str] = None
     pagine_abilitate: Optional[List[str]] = None
     is_admin: bool = False
     tema: str = "dark"
@@ -1141,10 +1145,22 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
     if not user:
         raise HTTPException(status_code=401, detail="Sessione non valida o scaduta")
 
+    # Sede attiva: per i clienti multi-sede la testata deve riflettere la sede
+    # SELEZIONATA, non il nome account. Best-effort: se la risoluzione fallisce
+    # si ricade sul nome account senza compromettere la verifica sessione.
+    sede_id: Optional[str] = None
+    sede_nome: Optional[str] = user.get("nome_ristorante")
+    try:
+        sede_id, sede_nome = _resolve_sede_attiva(user, _get_supabase_client())
+    except Exception:
+        pass
+
     return UserPublic(
         id=str(user["id"]),
         email=user["email"],
         nome_ristorante=user.get("nome_ristorante"),
+        sede_attiva_nome=sede_nome,
+        sede_attiva_id=sede_id,
         pagine_abilitate=_normalize_pagine(user.get("pagine_abilitate")),
         is_admin=_is_admin_email(user.get("email")),
         tema=(user.get("tema") or "dark"),
@@ -4828,6 +4844,31 @@ def _resolve_ristorante_id(user: Dict[str, Any], supabase_client) -> Optional[st
     except Exception:
         pass
     return None
+
+
+def _resolve_sede_attiva(user: Dict[str, Any], supabase_client) -> tuple[Optional[str], Optional[str]]:
+    """(id, nome_ristorante) della sede attiva del cliente.
+
+    Per i clienti multi-sede la testata deve mostrare la sede SELEZIONATA, non il
+    nome account (users.nome_ristorante = prima sede). Risolve l'id con la stessa
+    logica di _resolve_ristorante_id e legge il nome dalla tabella `ristoranti`.
+    Fallback al nome account se la sede non e' leggibile (mono-sede storici).
+    """
+    rid = _resolve_ristorante_id(user, supabase_client)
+    if not rid:
+        return None, user.get("nome_ristorante")
+    try:
+        resp = (
+            supabase_client.table("ristoranti")
+            .select("nome_ristorante")
+            .eq("id", rid)
+            .single()
+            .execute()
+        )
+        nome = (resp.data or {}).get("nome_ristorante")
+        return rid, (nome or user.get("nome_ristorante"))
+    except Exception:
+        return rid, user.get("nome_ristorante")
 
 
 def _build_fatture_base_query(supabase_client, ristorante_id: str):

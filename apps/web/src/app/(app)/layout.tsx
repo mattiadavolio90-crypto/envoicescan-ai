@@ -67,8 +67,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <SidebarProvider>
       <AppSidebar
         userEmail={user.email}
-        userInitials={getInitials(user.nome_ristorante, user.email)}
-        ristoranteNome={user.nome_ristorante ?? "Ristorante"}
+        userInitials={getInitials(user.sede_attiva_nome ?? user.nome_ristorante, user.email)}
+        ristoranteNome={user.sede_attiva_nome ?? user.nome_ristorante ?? "Ristorante"}
         isAdmin={user.is_admin}
         pagineAbilitate={user.pagine_abilitate}
       />

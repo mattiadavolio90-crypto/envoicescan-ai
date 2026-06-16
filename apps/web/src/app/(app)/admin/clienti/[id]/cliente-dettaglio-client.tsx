@@ -38,16 +38,30 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   const [nuovaEmail, setNuovaEmail] = useState("");
   const [emailSaving, setEmailSaving] = useState(false);
 
-  // Sede dialog
+  // Sede dialog (crea)
   const [sedeDialog, setSedeDialog] = useState(false);
   const [sNome, setSNome] = useState("");
   const [sPiva, setSPiva] = useState("");
   const [sRagione, setSRagione] = useState("");
+  const [sIndirizzo, setSIndirizzo] = useState("");
+  const [sCap, setSCap] = useState("");
+  const [sComune, setSComune] = useState("");
   const [sedeSaving, setSedeSaving] = useState(false);
+
+  // Sede dialog (modifica)
+  const [editSede, setEditSede] = useState<Sede | null>(null);
+  const [eNome, setENome] = useState("");
+  const [ePiva, setEPiva] = useState("");
+  const [eRagione, setERagione] = useState("");
+  const [eIndirizzo, setEIndirizzo] = useState("");
+  const [eCap, setECap] = useState("");
+  const [eComune, setEComune] = useState("");
+  const [editSedeSaving, setEditSedeSaving] = useState(false);
 
   // Modifica dati dialog
   const [modificaDialog, setModificaDialog] = useState(false);
   const [mNome, setMNome] = useState("");
+  const [mGruppo, setMGruppo] = useState("");
   const [mPiva, setMPiva] = useState("");
   const [mRagione, setMRagione] = useState("");
   const [mPiano, setMPiano] = useState("base");
@@ -117,6 +131,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
 
   function openModifica() {
     setMNome(c.nome_ristorante || "");
+    setMGruppo(c.nome_gruppo || "");
     setMPiva(c.partita_iva || "");
     setMRagione(c.ragione_sociale || "");
     setMPiano(c.piano || "base");
@@ -131,6 +146,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nome_ristorante: mNome.trim() || undefined,
+          nome_gruppo: mGruppo.trim() || null,
           partita_iva: mPiva.trim() || undefined,
           ragione_sociale: mRagione.trim() || null,
           piano: mPiano,
@@ -141,6 +157,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
       setC((prev) => ({
         ...prev,
         nome_ristorante: mNome.trim() || prev.nome_ristorante,
+        nome_gruppo: mGruppo.trim() || null,
         partita_iva: mPiva.trim() || prev.partita_iva,
         ragione_sociale: mRagione.trim() || null,
         piano: mPiano as "base" | "plus" | "pro",
@@ -172,11 +189,15 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
         nome_ristorante: sNome.trim(),
         partita_iva: sPiva.trim(),
         ragione_sociale: sRagione.trim() || undefined,
+        indirizzo: sIndirizzo.trim() || undefined,
+        cap: sCap.trim() || undefined,
+        comune: sComune.trim() || undefined,
       });
       setC((prev) => ({ ...prev, sedi: [...prev.sedi, sede], n_sedi: prev.n_sedi + 1 }));
       toast.success("Sede creata");
       setSedeDialog(false);
       setSNome(""); setSPiva(""); setSRagione("");
+      setSIndirizzo(""); setSCap(""); setSComune("");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
     } finally {
@@ -192,6 +213,39 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
       toast.success("Sede eliminata");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
+    }
+  }
+
+  function openModificaSede(sede: Sede) {
+    setEditSede(sede);
+    setENome(sede.nome_ristorante || "");
+    setEPiva(sede.partita_iva || "");
+    setERagione(sede.ragione_sociale || "");
+    setEIndirizzo(sede.indirizzo || "");
+    setECap(sede.cap || "");
+    setEComune(sede.comune || "");
+  }
+
+  async function handleModificaSedeSubmit() {
+    if (!editSede) return;
+    if (!eNome.trim() || !ePiva.trim()) { toast.error("Nome e P.IVA obbligatori"); return; }
+    setEditSedeSaving(true);
+    try {
+      const updated: Sede = await patch(`/api/admin/clienti/${c.id}/sedi/${editSede.id}`, "PATCH", {
+        nome_ristorante: eNome.trim(),
+        partita_iva: ePiva.trim(),
+        ragione_sociale: eRagione.trim() || null,
+        indirizzo: eIndirizzo.trim() || null,
+        cap: eCap.trim() || null,
+        comune: eComune.trim() || null,
+      });
+      setC((prev) => ({ ...prev, sedi: prev.sedi.map((s) => (s.id === updated.id ? updated : s)) }));
+      toast.success("Sede aggiornata");
+      setEditSede(null);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setEditSedeSaving(false);
     }
   }
 
@@ -251,6 +305,12 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                 <dt className="text-muted-foreground text-xs">Email</dt>
                 <dd className="font-medium break-all">{c.email}</dd>
               </div>
+              {c.nome_gruppo && (
+                <div>
+                  <dt className="text-muted-foreground text-xs">Nome gruppo / catena</dt>
+                  <dd className="font-medium">{c.nome_gruppo}</dd>
+                </div>
+              )}
               <div>
                 <dt className="text-muted-foreground text-xs">Nome ristorante</dt>
                 <dd className="font-medium">{c.nome_ristorante || "—"}</dd>
@@ -416,27 +476,47 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
               <p className="text-sm text-muted-foreground">Nessuna sede configurata</p>
             ) : (
               <div className="space-y-2">
-                {c.sedi.map((sede) => (
+                {c.sedi.map((sede) => {
+                  const ubicazione = [sede.indirizzo, sede.cap, sede.comune].filter(Boolean).join(" · ");
+                  return (
                   <div key={sede.id} className="flex items-center justify-between rounded-lg border px-3 py-2">
-                    <div>
-                      <p className="text-sm font-medium">{sede.nome_ristorante}</p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{sede.nome_ristorante}</p>
                       <p className="text-xs text-muted-foreground tabular-nums">{sede.partita_iva || "—"}</p>
+                      {ubicazione ? (
+                        <p className="text-xs text-muted-foreground truncate">{ubicazione}</p>
+                      ) : (
+                        c.sedi.length > 1 && (
+                          <p className="text-xs text-amber-600 truncate">⚠ Indirizzo mancante — smistamento fatture manuale</p>
+                        )
+                      )}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <span className={`text-xs font-medium ${sede.attivo ? "text-emerald-600" : "text-red-500"}`}>
                         {sede.attivo ? "Attiva" : "Inattiva"}
                       </span>
                       <Button
                         size="sm"
                         variant="ghost"
+                        className="size-7 p-0 text-muted-foreground hover:text-foreground"
+                        onClick={() => openModificaSede(sede)}
+                        title="Modifica sede"
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
                         className="size-7 p-0 text-muted-foreground hover:text-destructive"
                         onClick={() => handleEliminaSede(sede)}
+                        title="Elimina sede"
                       >
                         <X className="size-3.5" />
                       </Button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -485,6 +565,10 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
               <Input id="m-nome" value={mNome} onChange={(e) => setMNome(e.target.value)} />
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="m-gruppo">Nome gruppo / catena</Label>
+              <Input id="m-gruppo" placeholder="Es: SUSHILAND (opzionale, per clienti multi-sede)" value={mGruppo} onChange={(e) => setMGruppo(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="m-piva">P.IVA (11 cifre)</Label>
               <Input id="m-piva" maxLength={11} value={mPiva} onChange={(e) => setMPiva(e.target.value.replace(/\D/g, ""))} />
             </div>
@@ -530,11 +614,72 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
               <Label htmlFor="s-ragione">Ragione sociale</Label>
               <Input id="s-ragione" placeholder="Opzionale" value={sRagione} onChange={(e) => setSRagione(e.target.value)} />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="s-indirizzo">Indirizzo</Label>
+              <Input id="s-indirizzo" placeholder="Via e numero civico" value={sIndirizzo} onChange={(e) => setSIndirizzo(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="s-cap">CAP</Label>
+                <Input id="s-cap" placeholder="00000" maxLength={10} value={sCap} onChange={(e) => setSCap(e.target.value)} />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="s-comune">Comune</Label>
+                <Input id="s-comune" placeholder="Città" value={sComune} onChange={(e) => setSComune(e.target.value)} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA.
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setSedeDialog(false)} disabled={sedeSaving}>Annulla</Button>
             <Button onClick={handleCreaSedeSubmit} disabled={sedeSaving || !sNome.trim() || !sPiva.trim()}>
               {sedeSaving ? "Creazione…" : "Crea sede"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog modifica sede */}
+      <Dialog open={editSede !== null} onOpenChange={(o) => !o && setEditSede(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle>Modifica sede</DialogTitle></DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="e-nome">Nome sede *</Label>
+              <Input id="e-nome" value={eNome} onChange={(e) => setENome(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="e-piva">P.IVA * (11 cifre)</Label>
+              <Input id="e-piva" maxLength={11} value={ePiva} onChange={(e) => setEPiva(e.target.value.replace(/\D/g, ""))} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="e-ragione">Ragione sociale</Label>
+              <Input id="e-ragione" placeholder="Opzionale" value={eRagione} onChange={(e) => setERagione(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="e-indirizzo">Indirizzo</Label>
+              <Input id="e-indirizzo" placeholder="Via e numero civico" value={eIndirizzo} onChange={(e) => setEIndirizzo(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="e-cap">CAP</Label>
+                <Input id="e-cap" placeholder="00000" maxLength={10} value={eCap} onChange={(e) => setECap(e.target.value)} />
+              </div>
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="e-comune">Comune</Label>
+                <Input id="e-comune" placeholder="Città" value={eComune} onChange={(e) => setEComune(e.target.value)} />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditSede(null)} disabled={editSedeSaving}>Annulla</Button>
+            <Button onClick={handleModificaSedeSubmit} disabled={editSedeSaving || !eNome.trim() || !ePiva.trim()}>
+              {editSedeSaving ? "Salvataggio…" : "Salva modifiche"}
             </Button>
           </DialogFooter>
         </DialogContent>

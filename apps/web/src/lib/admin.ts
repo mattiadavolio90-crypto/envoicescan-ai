@@ -3,6 +3,9 @@ export type Sede = {
   nome_ristorante: string;
   partita_iva: string | null;
   ragione_sociale: string | null;
+  indirizzo: string | null;
+  cap: string | null;
+  comune: string | null;
   attivo: boolean;
 };
 
@@ -16,6 +19,9 @@ export type Cliente = {
   id: string;
   email: string;
   nome_ristorante: string;
+  // Etichetta gruppo/catena opzionale (clienti multi-sede). Quando presente la UI
+  // la mostra al posto del nome della prima sede.
+  nome_gruppo: string | null;
   ragione_sociale: string | null;
   partita_iva: string | null;
   attivo: boolean;
