@@ -103,6 +103,8 @@ dettaglio_*.xlsx
 esempio export gestionale/
 esempio export.xlsx
 esempio export*.xlsx
+export*.xlsx
+coperti*.xlsx
 
 # File ricavi reali di clienti scaricati per test (MAI versionare — dati sensibili)
 prova ricavi*.xlsx

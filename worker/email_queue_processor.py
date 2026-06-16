@@ -218,13 +218,14 @@ def run_email_cycle(supabase, worker_url: str = "", worker_secret: str = "") -> 
 
 class _RicavoRow:
     """Riga aggregata per giorno. Stesso shape di RicavoUpsertRequest ma standalone."""
-    __slots__ = ("data", "fatturato_iva10", "fatturato_iva22", "altri_ricavi_noiva")
+    __slots__ = ("data", "fatturato_iva10", "fatturato_iva22", "altri_ricavi_noiva", "coperti")
 
-    def __init__(self, data, iva10, iva22, altri):
+    def __init__(self, data, iva10, iva22, altri, coperti=None):
         self.data = data
         self.fatturato_iva10 = iva10
         self.fatturato_iva22 = iva22
         self.altri_ricavi_noiva = altri
+        self.coperti = coperti
 
 
 def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
@@ -272,6 +273,7 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
     idx_tipo = _find_col(["tipo documento", "testata", "tipo_documento"])
     idx_iva = _find_col(["codice", "iva"])
     idx_importo = _find_col(["importo", "totale"])
+    idx_coperti = _find_col(["coperti"])  # colonna opzionale
 
     if idx_data is None or idx_importo is None:
         return {}, ["Colonne Data o Importo non trovate nel file Passbi"], parsed_rows
@@ -322,7 +324,8 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
         except Exception:
             return 0.0
 
-    aggregato = defaultdict(lambda: {"iva10": 0.0, "iva22": 0.0, "altri": 0.0})
+    aggregato = defaultdict(lambda: {"iva10": 0.0, "iva22": 0.0, "altri": 0.0, "coperti": 0.0})
+    coperti_seen = set()  # giorni con almeno una riga coperti valorizzata
     unmapped = set()
     foreign = set()
     errors = []
@@ -364,6 +367,17 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
         iva_str = "" if raw_iva is None or (isinstance(raw_iva, float) and pd.isna(raw_iva)) else str(raw_iva).strip()
 
         key = (target, data_iso)
+
+        # Coperti: somma su tutti i tipi documento del giorno (frazionari per riga).
+        if idx_coperti is not None and idx_coperti < len(vals):
+            cop_val = vals[idx_coperti]
+            if not (cop_val is None or (isinstance(cop_val, float) and pd.isna(cop_val))):
+                try:
+                    aggregato[key]["coperti"] += float(str(cop_val).replace(",", "."))
+                    coperti_seen.add(key)
+                except (ValueError, TypeError):
+                    pass
+
         if tipo_doc in ("proforma", "") or iva_str == "":
             aggregato[key]["altri"] += importo
         else:
@@ -388,8 +402,10 @@ def _parse_passbi_email(raw_df, fallback_ristorante_id: str, user_id, supabase):
     for (rid, data_iso), b in aggregato.items():
         if b["iva10"] + b["iva22"] + b["altri"] <= 0:
             continue
+        coperti_giorno = round(b["coperti"]) if (rid, data_iso) in coperti_seen else None
         per_ristorante[rid].append(_RicavoRow(
-            data_iso, round(b["iva10"], 4), round(b["iva22"], 4), round(b["altri"], 4)
+            data_iso, round(b["iva10"], 4), round(b["iva22"], 4), round(b["altri"], 4),
+            coperti_giorno,
         ))
 
     return dict(per_ristorante), errors, parsed_rows
@@ -414,6 +430,8 @@ def _upsert_ricavi(supabase, ristorante_id, user_id, parsed_items, filename, ver
         altri = max(0.0, float(it.altri_ricavi_noiva or 0))
         if iva10 + iva22 + altri <= 0:
             continue
+        coperti = getattr(it, "coperti", None)
+        coperti = max(0, int(coperti)) if coperti is not None else None
         rows.append({
             "user_id": user_id,
             "ristorante_id": ristorante_id,
@@ -421,6 +439,7 @@ def _upsert_ricavi(supabase, ristorante_id, user_id, parsed_items, filename, ver
             "fatturato_iva10": iva10,
             "fatturato_iva22": iva22,
             "altri_ricavi_noiva": altri,
+            "coperti": coperti,
             "source": "email",
             "source_meta": source_meta,
         })

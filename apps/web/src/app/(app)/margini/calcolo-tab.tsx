@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Info, Lock, BarChart3, Upload, X as XIcon, Pencil, Sigma, Divide } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell as RCell,
@@ -192,7 +192,9 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
   const [speseCella, setSpeseCella] = useState<{ mese: MesePivot; tipo: TipoSpesaCella } | null>(null);
   const [vista, setVista] = useState<"totale" | "media">("totale");
 
+  const reqIdRef = useRef(0);
   const load = useCallback(async () => {
+    const myReq = ++reqIdRef.current;
     setLoading(true);
     try {
       const res = await fetch(
@@ -201,11 +203,11 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
       );
       if (!res.ok) throw new Error();
       const d: AnalisiResponse = await res.json();
-      setData(d);
+      if (myReq === reqIdRef.current) setData(d);
     } catch {
-      toast.error("Errore nel caricamento margini");
+      if (myReq === reqIdRef.current) toast.error("Errore nel caricamento margini");
     } finally {
-      setLoading(false);
+      if (myReq === reqIdRef.current) setLoading(false);
     }
   }, [dataDa, dataA]);
 

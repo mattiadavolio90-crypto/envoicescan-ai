@@ -1624,6 +1624,30 @@ KPI_SOGLIE = {
 }
 
 # ============================================================
+# COPERTI — soglie alert briefing/notifiche (UNICO punto da tarare)
+# ============================================================
+# Il dato coperti NON deve generare rumore quotidiano: il briefing parla dello
+# scontrino medio solo quando si scosta in modo importante dalla media, e la
+# notifica scatta solo su un'anomalia dei coperti rispetto al periodo di
+# riferimento. Tutte le soglie sono qui: cambiarle non tocca la logica.
+COPERTI_ALERT = {
+    # Briefing: cita lo scontrino medio di ieri solo se |Δ| ≥ questa frazione
+    # rispetto alla media dei giorni con coperti del mese in corso (0.15 = 15%).
+    'scontrino_medio_delta_pct': 0.15,
+    # Notifica: scatta solo se i coperti di ieri si scostano di ≥ questa frazione
+    # rispetto al riferimento (0.30 = 30%, in più o in meno).
+    'coperti_anomalia_delta_pct': 0.30,
+    # Riferimento per l'anomalia coperti: 'settimana_prec' = stesso giorno della
+    # settimana precedente; 'mese_prec' = media giorni con coperti del mese scorso.
+    'riferimento': 'settimana_prec',
+    # Niente alert se la baseline ha meno di N giorni con coperti (dato troppo
+    # magro per essere affidabile).
+    'min_giorni_baseline': 4,
+    # Non ripetere lo stesso tipo di alert per lo stesso ristorante entro N giorni.
+    'cooldown_giorni': 3,
+}
+
+# ============================================================
 # AMMINISTRATORI DI SISTEMA
 # ============================================================
 

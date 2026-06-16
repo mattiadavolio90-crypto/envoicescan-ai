@@ -117,14 +117,29 @@ export function FiltriPeriodo({ presetCorrente, dataDa, dataA, meseSelezionato }
           <Input
             type="date"
             value={dataDa}
-            onChange={(e) => navigate({ preset: "personalizzato", data_da: e.target.value || undefined })}
+            max={dataA || undefined}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return navigate({ preset: "personalizzato", data_da: undefined });
+              // Evita range invertito: se la nuova "dal" supera "al", allinea "al".
+              const updates: Record<string, string | undefined> = { preset: "personalizzato", data_da: v };
+              if (dataA && v > dataA) updates.data_a = v;
+              navigate(updates);
+            }}
             className="h-7 text-xs w-36"
           />
           <span className="text-xs text-muted-foreground">al</span>
           <Input
             type="date"
             value={dataA}
-            onChange={(e) => navigate({ preset: "personalizzato", data_a: e.target.value || undefined })}
+            min={dataDa || undefined}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return navigate({ preset: "personalizzato", data_a: undefined });
+              const updates: Record<string, string | undefined> = { preset: "personalizzato", data_a: v };
+              if (dataDa && v < dataDa) updates.data_da = v;
+              navigate(updates);
+            }}
             className="h-7 text-xs w-36"
           />
         </div>

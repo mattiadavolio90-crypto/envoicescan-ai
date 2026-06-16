@@ -9,6 +9,7 @@ import { TabsSwitcher } from "./tabs-switcher";
 import { FiltriPeriodo } from "./filtri-periodo";
 import { KpiBar, type KpiData } from "./kpi-bar";
 import { CalcoloTab } from "./calcolo-tab";
+import { CopertiTab } from "./coperti-tab";
 import { AnalisiTab } from "./analisi-tab";
 import { calcolaPeriodo, type PeriodoPreset } from "./periodi";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -119,6 +120,13 @@ export default async function MarginiPage({
           <ErrorBoundary>
             <Suspense>
               <CalcoloTab dataDa={data_da} dataA={data_a} />
+            </Suspense>
+          </ErrorBoundary>
+        )}
+        {tab === "coperti" && (
+          <ErrorBoundary>
+            <Suspense>
+              <CopertiTab dataDa={data_da} dataA={data_a} />
             </Suspense>
           </ErrorBoundary>
         )}

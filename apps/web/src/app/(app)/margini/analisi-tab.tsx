@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown, ChevronUp, RefreshCw, TrendingUp,
   PieChart as PieChartIcon, Settings2, ChevronLeft, ChevronRight, X as XIcon, BarChart3,
@@ -309,7 +309,9 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
   const [dettaglioOpen, setDettaglioOpen] = useState(false);
   const [dettaglioCentroSel, setDettaglioCentroSel] = useState<string | null>(null);
 
+  const reqIdRef = useRef(0);
   const load = useCallback(async () => {
+    const myReq = ++reqIdRef.current;
     setLoading(true);
     try {
       const res = await fetch(
@@ -318,11 +320,11 @@ export function AnalisiTab({ dataDa, dataA }: Props) {
       );
       if (!res.ok) throw new Error();
       const d: AnalisiAvanzataResponse = await res.json();
-      setData(d);
+      if (myReq === reqIdRef.current) setData(d);
     } catch {
-      toast.error("Errore nel caricamento analisi");
+      if (myReq === reqIdRef.current) toast.error("Errore nel caricamento analisi");
     } finally {
-      setLoading(false);
+      if (myReq === reqIdRef.current) setLoading(false);
     }
   }, [dataDa, dataA]);
 

@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Upload, FileSpreadsheet, X, CheckCircle2, AlertCircle, Calendar,
-  ChevronLeft, ChevronRight, Trash2, RefreshCw,
+  ChevronLeft, ChevronRight, Trash2, RefreshCw, Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -235,6 +235,11 @@ function XlsView({ onImported, onBack }: { onImported: () => void; onBack: () =>
               <div className="rounded-md bg-sky-500/10 p-2"><p className="text-sky-700 dark:text-sky-400">Aggiornate</p><p className="font-bold text-base mt-0.5 text-sky-700 dark:text-sky-400">{result.updated}</p></div>
               <div className="rounded-md bg-muted/30 p-2"><p className="text-muted-foreground">Scartate</p><p className="font-bold text-base mt-0.5">{result.skipped}</p></div>
             </div>
+            {result.coperti_giorni > 0 && (
+              <p className="text-xs text-violet-700 dark:text-violet-400 flex items-center gap-1.5">
+                <Users className="size-3.5" /> Coperti importati su {result.coperti_giorni} giorni
+              </p>
+            )}
           </div>
           {result.errors.length > 0 && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 max-h-32 overflow-y-auto">
@@ -263,6 +268,7 @@ type GiornoEdit = {
   iva10: string;
   iva22: string;
   altri: string;
+  coperti: string;
   source: "manuale" | "xls" | "email";
   dirty: boolean;
 };
@@ -304,6 +310,7 @@ function GrigliaView({
   const [mensiIva10, setMensiIva10] = useState("");
   const [mensiIva22, setMensiIva22] = useState("");
   const [mensiAltri, setMensiAltri] = useState("");
+  const [mensiCoperti, setMensiCoperti] = useState("");
 
   const meseKey = meseSel ? `${meseSel.anno}-${String(meseSel.mese).padStart(2, "0")}` : "";
 
@@ -330,6 +337,7 @@ function GrigliaView({
           iva10: ex ? String(ex.fatturato_iva10 || "") : "",
           iva22: ex ? String(ex.fatturato_iva22 || "") : "",
           altri: ex ? String(ex.altri_ricavi_noiva || "") : "",
+          coperti: ex && ex.coperti != null ? String(ex.coperti) : "",
           source: ex?.source ?? "manuale",
           dirty: false,
         };
@@ -340,8 +348,9 @@ function GrigliaView({
         setMensiIva10(String(modalitaData.fatturato_iva10 || ""));
         setMensiIva22(String(modalitaData.fatturato_iva22 || ""));
         setMensiAltri(String(modalitaData.altri_ricavi_noiva || ""));
+        setMensiCoperti(modalitaData.coperti != null ? String(modalitaData.coperti) : "");
       } else {
-        setMensiIva10(""); setMensiIva22(""); setMensiAltri("");
+        setMensiIva10(""); setMensiIva22(""); setMensiAltri(""); setMensiCoperti("");
       }
       setLoadingDati(false);
     });
@@ -384,6 +393,7 @@ function GrigliaView({
             fatturato_iva10: parseFloat(r.iva10.replace(",", ".")) || 0,
             fatturato_iva22: parseFloat(r.iva22.replace(",", ".")) || 0,
             altri_ricavi_noiva: parseFloat(r.altri.replace(",", ".")) || 0,
+            coperti: r.coperti.trim() !== "" ? Math.max(0, Math.round(parseFloat(r.coperti.replace(",", ".")) || 0)) : null,
           })) }),
         });
         if (!res.ok) throw new Error();
@@ -398,6 +408,7 @@ function GrigliaView({
             fatturato_iva10: parseFloat(mensiIva10.replace(",", ".")) || 0,
             fatturato_iva22: parseFloat(mensiIva22.replace(",", ".")) || 0,
             altri_ricavi_noiva: parseFloat(mensiAltri.replace(",", ".")) || 0,
+            coperti: mensiCoperti.trim() !== "" ? Math.max(0, Math.round(parseFloat(mensiCoperti.replace(",", ".")) || 0)) : null,
           }),
         });
         if (!res.ok) throw new Error();
@@ -411,7 +422,7 @@ function GrigliaView({
     }
   }
 
-  function setRigaValues(idx: number, vals: { iva10: string; iva22: string; altri: string }) {
+  function setRigaValues(idx: number, vals: { iva10: string; iva22: string; altri: string; coperti: string }) {
     setRighe((prev) => prev.map((r, i) => i === idx ? { ...r, ...vals, dirty: true } : r));
   }
 
@@ -489,6 +500,15 @@ function GrigliaView({
               </div>
             ))}
           </div>
+          <div className="space-y-1.5 max-w-xs">
+            <Label className="text-xs">Coperti del mese (opzionale)</Label>
+            <Input type="number" step="1" min="0" value={mensiCoperti}
+              onChange={(e) => setMensiCoperti(e.target.value)} placeholder="es. 1200"
+              className="text-right tabular-nums" />
+            <p className="text-[11px] text-muted-foreground">
+              Totale persone servite nel mese. Serve per lo scontrino medio e il tab Coperti.
+            </p>
+          </div>
           <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm flex items-center justify-between">
             <span className="text-muted-foreground">Fatturato netto stimato del mese</span>
             <strong className="text-primary tabular-nums text-lg">{nettoMensile > 0 ? formatEuro(nettoMensile) : "—"}</strong>
@@ -540,6 +560,7 @@ function GrigliaView({
                   iva10={r.iva10}
                   iva22={r.iva22}
                   altri={r.altri}
+                  coperti={r.coperti}
                   onSave={(vals) => setRigaValues(idx, vals)}
                 />
               );
@@ -592,7 +613,7 @@ function TotaleBox({ label, value, primary = false }: { label: string; value: nu
 /* ─── Cella giorno del calendario con popover di inserimento ──────────────── */
 function GiornoCell({
   giorno, netto, hasData, dirty, isWeekend, source,
-  iva10, iva22, altri, onSave,
+  iva10, iva22, altri, coperti, onSave,
 }: {
   giorno: number;
   netto: number;
@@ -603,16 +624,18 @@ function GiornoCell({
   iva10: string;
   iva22: string;
   altri: string;
-  onSave: (vals: { iva10: string; iva22: string; altri: string }) => void;
+  coperti: string;
+  onSave: (vals: { iva10: string; iva22: string; altri: string; coperti: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [d10, setD10] = useState(iva10);
   const [d22, setD22] = useState(iva22);
   const [dAltri, setDAltri] = useState(altri);
+  const [dCoperti, setDCoperti] = useState(coperti);
 
   useEffect(() => {
-    if (open) { setD10(iva10); setD22(iva22); setDAltri(altri); }
-  }, [open, iva10, iva22, altri]);
+    if (open) { setD10(iva10); setD22(iva22); setDAltri(altri); setDCoperti(coperti); }
+  }, [open, iva10, iva22, altri, coperti]);
 
   const previewNetto = scorporoNetto(
     parseFloat(d10.replace(",", ".")) || 0,
@@ -621,13 +644,13 @@ function GiornoCell({
   );
 
   function confirm() {
-    onSave({ iva10: d10, iva22: d22, altri: dAltri });
+    onSave({ iva10: d10, iva22: d22, altri: dAltri, coperti: dCoperti });
     setOpen(false);
   }
 
   function clear() {
-    setD10(""); setD22(""); setDAltri("");
-    onSave({ iva10: "", iva22: "", altri: "" });
+    setD10(""); setD22(""); setDAltri(""); setDCoperti("");
+    onSave({ iva10: "", iva22: "", altri: "", coperti: "" });
     setOpen(false);
   }
 
@@ -680,6 +703,16 @@ function GiornoCell({
               />
             </div>
           ))}
+          <div className="space-y-1">
+            <Label className="text-xs">Coperti (opzionale)</Label>
+            <Input
+              type="number" step="1" min="0" value={dCoperti}
+              onChange={(e) => setDCoperti(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") confirm(); }}
+              placeholder="0"
+              className="text-right tabular-nums h-9"
+            />
+          </div>
           <div className="rounded-md bg-muted/30 px-2.5 py-1.5 text-xs flex items-center justify-between">
             <span className="text-muted-foreground">Netto</span>
             <strong className="text-primary tabular-nums">{previewNetto > 0 ? formatEuro(previewNetto) : "—"}</strong>

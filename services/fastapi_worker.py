@@ -1755,6 +1755,8 @@ _CONFIG_TOPICS: List[tuple] = [
      "Ti avviso sulle fatture fornitori scadute o in scadenza a breve."),
     ("appuntamento_imminente",   "Promemoria appuntamenti",  False,
      "Ti ricordo gli appuntamenti che hai in agenda per oggi."),
+    ("coperti_anomalia",         "Anomalia coperti",         False,
+     "Ti avviso quando i coperti di ieri si scostano molto dal solito."),
 ]
 
 # Topic "bloccati": sempre visibili, mai disattivabili (flag True in _CONFIG_TOPICS).
@@ -2183,6 +2185,7 @@ Regole per gli strumenti:
 - Per l'andamento del PREZZO di un prodotto nel tempo ("la mozzarella è aumentata?", "il prezzo di X è salito?") usa trend_prezzo, NON query_costi.
 - Per "l'ultimo acquisto / l'ultima fattura / cosa ho comprato di recente" usa ultimi_acquisti.
 - Per appuntamenti e impegni in agenda ("cosa ho oggi", "appuntamenti di questa settimana") usa query_appuntamenti.
+- Per coperti e scontrino medio ("quanti coperti", "scontrino medio", "quante persone servo", "giorno più pieno") usa query_coperti. Il coperto è una persona servita; lo scontrino medio è quanto spende in media a testa. Se i coperti risultano None/assenti, spiega che il dato non è ancora arrivato dal gestionale o non è stato inserito, NON dire che sono zero.
 - I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
 
     return sistema
@@ -2582,6 +2585,51 @@ def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Op
     return {"mesi": risultati}
 
 
+def _chat_query_coperti(user: Dict[str, Any], supabase_client, authorization: Optional[str]) -> Dict[str, Any]:
+    """Coperti e scontrino medio degli ultimi mesi (per il tool della chat).
+    Riusa l'endpoint coperti-analisi, stessa fonte del tab Coperti."""
+    from datetime import date as _date
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+    if not ristorante_id:
+        return {"mesi": [], "nota": "Nessun ristorante associato."}
+
+    oggi = _oggi_rome()
+    # Ultimi ~6 mesi: dal 1° di 5 mesi fa a oggi.
+    aa, mm = oggi.year, oggi.month - 5
+    while mm <= 0:
+        mm += 12
+        aa -= 1
+    data_da = f"{aa:04d}-{mm:02d}-01"
+    data_a = oggi.isoformat()
+    try:
+        from services.routers.ricavi import get_coperti_analisi
+        resp = get_coperti_analisi(data_da=data_da, data_a=data_a, authorization=authorization)
+    except Exception:
+        return {"mesi": [], "nota": "Dati coperti non disponibili."}
+
+    mesi = [
+        {
+            "mese": m.label,
+            "coperti": m.coperti,
+            "scontrino_medio_netto": m.scontrino_medio_netto,
+            "scontrino_medio_lordo": m.scontrino_medio_lordo,
+        }
+        for m in resp.mesi if m.coperti
+    ]
+    k = resp.kpi
+    return {
+        "mesi": mesi,
+        "coperti_totali_periodo": k.coperti_totali,
+        "coperti_medi_giorno": k.coperti_medi_giorno,
+        "scontrino_medio_netto": k.scontrino_medio_netto,
+        "scontrino_medio_lordo": k.scontrino_medio_lordo,
+        "giorno_piu_pieno": (
+            {"data": k.giorno_top.data, "coperti": k.giorno_top.coperti} if k.giorno_top else None
+        ),
+        "nota": "Coperti = persone servite (somma di tutti i documenti). None = dato non disponibile per quel mese." if not mesi else None,
+    }
+
+
 def _chat_confronto_prezzi(
     user: Dict[str, Any], supabase_client, prodotto: str,
     ristorante_id: Optional[str] = None,
@@ -2751,6 +2799,19 @@ def chat_ai(
         {
             "type": "function",
             "function": {
+                "name": "query_coperti",
+                "description": (
+                    "Coperti (persone servite) e scontrino medio negli ultimi mesi. "
+                    "Usalo per 'quanti coperti ho fatto', 'qual e' il mio scontrino "
+                    "medio', 'quante persone servo al giorno', 'qual e' il giorno piu' "
+                    "pieno'. Diverso da query_margini (che da' fatturato/MOL)."
+                ),
+                "parameters": {"type": "object", "properties": {}},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "confronto_prezzi",
                 "description": (
                     "Confronta il prezzo di un prodotto tra i fornitori per trovare il "
@@ -2835,6 +2896,7 @@ def chat_ai(
         "ultimi_acquisti": "analisi_fatture",
         "query_scadenze": "scadenziario",
         "query_margini": "margini",
+        "query_coperti": "margini",
         "confronto_prezzi": "prezzi",
         "trend_prezzo": "prezzi",
         "query_appuntamenti": "agenda",
@@ -2863,6 +2925,8 @@ def chat_ai(
             return _chat_query_scadenze(user, supabase_client, args.get("solo_da_pagare", True))
         if nome == "query_margini":
             return _chat_query_margini(user, supabase_client, authorization)
+        if nome == "query_coperti":
+            return _chat_query_coperti(user, supabase_client, authorization)
         if nome == "confronto_prezzi":
             return _chat_confronto_prezzi(user, supabase_client, args.get("prodotto", ""), ristorante_id)
         if nome == "ultimi_acquisti":
@@ -2995,6 +3059,69 @@ _MESI_IT_BRIEFING = [
 ]
 
 
+def _scontrino_medio_significativo(
+    ristorante_id: str, supabase_client, ieri_d, coperti_ieri, netto_ieri: float,
+) -> Optional[Dict[str, Any]]:
+    """Scontrino medio di ieri da includere nell'apertura SOLO se si scosta in
+    modo importante dalla media del mese in corso (COPERTI_ALERT). Niente rumore:
+    se manca il dato o lo scostamento è piccolo → None.
+
+    Ritorna {'scontrino_medio': X, 'scontrino_delta_pct': N, 'scontrino_su': bool}.
+    """
+    from config.constants import COPERTI_ALERT
+    if coperti_ieri is None:
+        return None
+    try:
+        cop = int(coperti_ieri)
+    except (ValueError, TypeError):
+        return None
+    if cop <= 0 or netto_ieri <= 0:
+        return None
+    sm_ieri = netto_ieri / cop
+
+    soglia = float(COPERTI_ALERT["scontrino_medio_delta_pct"])
+    min_base = int(COPERTI_ALERT["min_giorni_baseline"])
+
+    # Baseline: scontrino medio dei giorni con coperti del mese in corso, ieri escluso.
+    primo = ieri_d.replace(day=1)
+    try:
+        resp = (
+            supabase_client.table("ricavi_giornalieri")
+            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,coperti,data")
+            .eq("ristorante_id", ristorante_id)
+            .gte("data", primo.isoformat())
+            .lte("data", ieri_d.isoformat())
+            .execute()
+        )
+    except Exception:
+        return None
+    valori = []
+    for x in (resp.data or []):
+        if str(x.get("data")) == ieri_d.isoformat():
+            continue
+        c = x.get("coperti")
+        if c is None or int(c) <= 0:
+            continue
+        n = (float(x.get("fatturato_iva10") or 0) / 1.10
+             + float(x.get("fatturato_iva22") or 0) / 1.22
+             + float(x.get("altri_ricavi_noiva") or 0))
+        if n > 0:
+            valori.append(n / int(c))
+    if len(valori) < min_base:
+        return None
+    base = sum(valori) / len(valori)
+    if base <= 0:
+        return None
+    delta = (sm_ieri - base) / base
+    if abs(delta) < soglia:
+        return None
+    return {
+        "scontrino_medio": round(sm_ieri, 2),
+        "scontrino_delta_pct": abs(round(delta * 100)),
+        "scontrino_su": delta > 0,
+    }
+
+
 def _briefing_buona_notizia(
     user_id: str, ristorante_id: str, supabase_client,
 ) -> Optional[Dict[str, Any]]:
@@ -3113,10 +3240,11 @@ def _briefing_buona_notizia(
     # sono entrati €X". Se l'ultimo incasso NON e' di ieri, niente eco (oltre il
     # giorno prima non e' piu' una notizia fresca -> decisione Mattia).
     try:
-        ieri = (_oggi_rome() - _td2(days=1)).isoformat()
+        ieri_d = _oggi_rome() - _td2(days=1)
+        ieri = ieri_d.isoformat()
         ric = (
             supabase_client.table("ricavi_giornalieri")
-            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,coperti")
             .eq("ristorante_id", ristorante_id)
             .eq("data", ieri)
             .limit(1)
@@ -3125,12 +3253,26 @@ def _briefing_buona_notizia(
         rows = ric.data or []
         if rows:
             r = rows[0]
+            netto_ieri = (
+                float(r.get("fatturato_iva10") or 0) / 1.10
+                + float(r.get("fatturato_iva22") or 0) / 1.22
+                + float(r.get("altri_ricavi_noiva") or 0)
+            )
             incasso = (
                 float(r.get("fatturato_iva10") or 0)
                 + float(r.get("fatturato_iva22") or 0)
                 + float(r.get("altri_ricavi_noiva") or 0)
             )
             if incasso > 0:
+                payload: Dict[str, Any] = {"tipo": "incasso_ieri", "incasso": round(incasso, 0)}
+                # Arricchimento scontrino medio: SOLO se ieri ha coperti e lo
+                # scostamento dalla media del mese è importante (COPERTI_ALERT).
+                sm = _scontrino_medio_significativo(
+                    ristorante_id, supabase_client, ieri_d,
+                    r.get("coperti"), netto_ieri,
+                )
+                if sm:
+                    payload.update(sm)
                 return {
                     "id": f"buona-notizia-incasso-{ieri}",
                     "topic_key": "buona_notizia",
@@ -3139,7 +3281,7 @@ def _briefing_buona_notizia(
                     "title": "",
                     "body": "",
                     "action_page": "/margini",
-                    "payload": {"tipo": "incasso_ieri", "incasso": round(incasso, 0)},
+                    "payload": payload,
                     "source_event_at": None,
                     "dedupe_key": f"buona-notizia-incasso-{ieri}",
                 }
@@ -3362,7 +3504,104 @@ def _briefing_dati_mensili_mancanti(
     except Exception as exc:
         logger.warning("briefing dati mensili: check incasso ieri fallito: %s", exc)
 
+    # Anomalia COPERTI di ieri: notifica SOLO su scostamento forte vs riferimento
+    # (settimana o mese precedente). Parametrizzata in COPERTI_ALERT, niente
+    # rumore quotidiano. Best-effort: non blocca le altre notifiche.
+    try:
+        anomalia = _briefing_anomalia_coperti(ristorante_id, supabase_client, oggi)
+        if anomalia:
+            out.append(anomalia)
+    except Exception as exc:
+        logger.warning("briefing dati mensili: check anomalia coperti fallito: %s", exc)
+
     return out
+
+
+def _briefing_anomalia_coperti(
+    ristorante_id: str, supabase_client, oggi,
+) -> Optional[Dict[str, Any]]:
+    """Notifica anomalia coperti di ieri vs riferimento (COPERTI_ALERT).
+
+    Ritorna un record notifica (stesso formato live) solo se:
+      - ieri ha coperti valorizzati (> 0),
+      - la baseline ha almeno min_giorni_baseline giorni con coperti,
+      - |coperti_ieri - baseline| / baseline >= coperti_anomalia_delta_pct.
+    Altrimenti None (nessun rumore). Il cooldown è gestito a valle dal dedupe_key
+    giornaliero + filtro topic spenti dell'utente.
+    """
+    from datetime import timedelta as _td3
+    from config.constants import COPERTI_ALERT
+
+    soglia = float(COPERTI_ALERT["coperti_anomalia_delta_pct"])
+    min_base = int(COPERTI_ALERT["min_giorni_baseline"])
+    riferimento = str(COPERTI_ALERT["riferimento"])
+
+    ieri = oggi - _td3(days=1)
+
+    r_ieri = (
+        supabase_client.table("ricavi_giornalieri")
+        .select("coperti")
+        .eq("ristorante_id", ristorante_id)
+        .eq("data", ieri.isoformat())
+        .limit(1)
+        .execute()
+    )
+    rows = r_ieri.data or []
+    if not rows or rows[0].get("coperti") is None:
+        return None
+    coperti_ieri = int(rows[0]["coperti"])
+    if coperti_ieri <= 0:
+        return None
+
+    # Baseline: media dei coperti dei giorni di confronto.
+    if riferimento == "mese_prec":
+        primo_mese = ieri.replace(day=1)
+        fine_prec = primo_mese - _td3(days=1)
+        inizio_prec = fine_prec.replace(day=1)
+        base_da, base_a = inizio_prec, fine_prec
+    else:  # settimana_prec (default): i 7 giorni precedenti a ieri
+        base_a = ieri - _td3(days=1)
+        base_da = ieri - _td3(days=7)
+
+    r_base = (
+        supabase_client.table("ricavi_giornalieri")
+        .select("coperti")
+        .eq("ristorante_id", ristorante_id)
+        .gte("data", base_da.isoformat())
+        .lte("data", base_a.isoformat())
+        .execute()
+    )
+    valori = [int(x["coperti"]) for x in (r_base.data or []) if x.get("coperti") is not None and int(x["coperti"]) > 0]
+    if len(valori) < min_base:
+        return None
+    baseline = sum(valori) / len(valori)
+    if baseline <= 0:
+        return None
+
+    delta = (coperti_ieri - baseline) / baseline
+    if abs(delta) < soglia:
+        return None
+
+    su = delta > 0
+    pct = abs(round(delta * 100))
+    rif_label = "della settimana scorsa" if riferimento != "mese_prec" else "del mese scorso"
+    titolo = (
+        f"Ieri {coperti_ieri} coperti, {pct}% in più della media {rif_label}"
+        if su else
+        f"Ieri solo {coperti_ieri} coperti, {pct}% in meno della media {rif_label}"
+    )
+    return {
+        "id": f"coperti-anomalia-live-{ieri.isoformat()}",
+        "topic_key": "coperti_anomalia",
+        "source_type": "live",
+        "severity": "info" if su else "warning",
+        "title": titolo,
+        "body": "",
+        "action_page": "/margini?tab=coperti",
+        "payload": {"coperti": coperti_ieri, "baseline": round(baseline, 1), "delta_pct": pct, "su": su},
+        "source_event_at": None,
+        "dedupe_key": f"coperti-anomalia-live-{ieri.isoformat()}",
+    }
 
 
 def _briefing_response_from_snapshot(snapshot: Dict[str, Any], nome: Optional[str]) -> "BriefingResponse":
@@ -4744,7 +4983,7 @@ def _load_mensile_overrides(sb, ristorante_id: str, annos: List[int]) -> Dict[tu
     try:
         resp = (
             sb.table("ricavi_modalita_mensile")
-            .select("anno,mese,modalita,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+            .select("anno,mese,modalita,fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,coperti")
             .eq("ristorante_id", ristorante_id)
             .in_("anno", annos)
             .eq("modalita", "mensile")
@@ -4758,6 +4997,7 @@ def _load_mensile_overrides(sb, ristorante_id: str, annos: List[int]) -> Dict[tu
             "iva10": float(r.get("fatturato_iva10") or 0),
             "iva22": float(r.get("fatturato_iva22") or 0),
             "altri": float(r.get("altri_ricavi_noiva") or 0),
+            "coperti": (int(r["coperti"]) if r.get("coperti") is not None else None),
         }
     return out
 

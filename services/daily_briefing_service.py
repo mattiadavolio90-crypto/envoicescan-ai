@@ -140,7 +140,14 @@ def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
         )
     if tipo == 'incasso_ieri':
         incasso = _euro_it(float(payload.get('incasso') or 0))
-        return f"\U0001F4B0 Ieri sono entrati € {incasso} di incasso."
+        base = f"\U0001F4B0 Ieri sono entrati € {incasso} di incasso."
+        sm = payload.get('scontrino_medio')
+        if sm:
+            su = bool(payload.get('scontrino_su'))
+            dp = payload.get('scontrino_delta_pct')
+            verso = "sopra" if su else "sotto"
+            base += f" Scontrino medio € {_euro_it(float(sm))}, {dp}% {verso} la media del mese."
+        return base
     return ""
 
 
@@ -574,7 +581,14 @@ def _buona_notizia_frase(payload: Dict[str, Any]) -> str:
         )
     if tipo == 'incasso_ieri':
         incasso = _euro_it(float(payload.get('incasso') or 0))
-        return f"Ieri sono entrati € {incasso} di incasso. 💰"
+        base = f"Ieri sono entrati € {incasso} di incasso."
+        sm = payload.get('scontrino_medio')
+        if sm:
+            su = bool(payload.get('scontrino_su'))
+            dp = payload.get('scontrino_delta_pct')
+            verso = "sopra" if su else "sotto"
+            base += f" Lo scontrino medio è stato € {_euro_it(float(sm))}, {dp}% {verso} la media del mese."
+        return base + " 💰"
     return ""
 
 
