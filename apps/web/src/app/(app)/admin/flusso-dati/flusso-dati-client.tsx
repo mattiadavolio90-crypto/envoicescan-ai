@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { RefreshCw, FileText, TrendingUp, Map, RotateCw, Link2, ChevronDown, ChevronRight } from "lucide-react";
+import { RefreshCw, FileText, TrendingUp, Map, RotateCw, Link2, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, Mail } from "lucide-react";
 import { RagioneSocialeClient } from "../ragione-sociale/ragione-sociale-client";
 
 // ─── Tipi ───────────────────────────────────────────────────────────────────
@@ -35,13 +35,34 @@ type FattureItem = {
   sedi: Sede[];
   problemi: Problema[];
 };
-type RicaviItem = { ristorante_id: string; nome_ristorante: string; stato: string; giorni_silenzio: number | null; n_buchi: number; coda_problemi: number };
+type RicaviItem = {
+  ristorante_id: string;
+  nome_ristorante: string;
+  stato: "ok" | "warning" | "critico";
+  ultima_data: string | null;
+  giorni_silenzio: number | null;
+  buchi: string[];
+  n_buchi: number;
+  coda_problemi: number;
+};
+type RicaviImportItem = {
+  id: string;
+  status: string;
+  email_sender: string | null;
+  email_subject: string | null;
+  attachment_name: string | null;
+  created_at: string | null;
+  attempt_count: number | null;
+  max_attempts: number | null;
+  last_error: string | null;
+};
 type Mapping = { id: string; ragione_sociale: string; ristorante_id: string; created_at: string };
 type Cliente = { id: string; email: string; nome_ristorante: string; sedi: Sede[] };
 
 type Props = {
   fattureIniziali: { items: FattureItem[]; counts: Record<string, number>; orfane: Problema[] };
   ricaviIniziali: { items: RicaviItem[]; counts: Record<string, number> };
+  ricaviImportIniziali: { items: RicaviImportItem[]; counts: Record<string, number> };
   mappingsIniziali: Mapping[];
   clienti: Cliente[];
 };
@@ -65,9 +86,39 @@ function statoRicaviLabel(it: RicaviItem | undefined): { dot: string; testo: str
   return { dot: "🔴", testo: it.giorni_silenzio == null ? "Nessun dato" : `${it.giorni_silenzio}gg fa` };
 }
 
-export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, mappingsIniziali, clienti }: Props) {
+const IMPORT_STATUS_LABEL: Record<string, string> = {
+  unknown_sender: "Mittente sconosciuto",
+  failed: "In retry",
+  dead: "Bloccato",
+};
+const IMPORT_STATUS_CLASS: Record<string, string> = {
+  dead: "bg-red-500/15 text-red-600 border-red-500/30",
+  unknown_sender: "bg-amber-500/15 text-amber-600 border-amber-500/30",
+  failed: "bg-orange-500/15 text-orange-600 border-orange-500/30",
+};
+
+function formatGiornoMese(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" });
+}
+
+// Problemi ricavi di un ristorante in frasi leggibili (riuso della logica di Sistema&Salute).
+function ricaviProblemi(r: RicaviItem): string[] {
+  const out: string[] = [];
+  if (r.giorni_silenzio == null) out.push("nessun ricavo registrato");
+  else if (r.stato === "critico" && r.giorni_silenzio > 0)
+    out.push(`nessun dato da ${r.giorni_silenzio} giorn${r.giorni_silenzio === 1 ? "o" : "i"}`);
+  if (r.n_buchi > 0)
+    out.push(`${r.n_buchi} giorn${r.n_buchi === 1 ? "o" : "i"} mancant${r.n_buchi === 1 ? "e" : "i"}: ${r.buchi.map(formatGiornoMese).join(", ")}`);
+  if (r.coda_problemi > 0)
+    out.push(`${r.coda_problemi} import bloccat${r.coda_problemi === 1 ? "o" : "i"} in coda`);
+  return out;
+}
+
+export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, ricaviImportIniziali, mappingsIniziali, clienti }: Props) {
   const [fatture, setFatture] = useState(fattureIniziali);
   const [ricavi] = useState(ricaviIniziali);
+  const [ricaviImport] = useState(ricaviImportIniziali);
   const [filtroCliente, setFiltroCliente] = useState("tutti");
   const [loading, setLoading] = useState(false);
   const [espanso, setEspanso] = useState<string | null>(null);
@@ -101,7 +152,11 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, mappingsIniz
     [fatture.items, filtroCliente],
   );
 
-  const nProblemi = fatture.items.reduce((acc, it) => acc + it.n_unknown + it.n_dead + it.n_failed + it.n_da_assegnare, 0);
+  const nProblemiFatture = fatture.items.reduce((acc, it) => acc + it.n_unknown + it.n_dead + it.n_failed + it.n_da_assegnare, 0)
+    + fatture.orfane.length;
+  const nProblemiRicavi = ricavi.items.filter((r) => r.stato !== "ok").length;
+  const nRicaviNonRiconosciuti = ricaviImport.items.length;
+  const nProblemi = nProblemiFatture + nProblemiRicavi + nRicaviNonRiconosciuti;
 
   async function reload() {
     setLoading(true);
@@ -187,10 +242,19 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, mappingsIniz
         </Button>
       </div>
 
-      {/* Banner problemi */}
-      {nProblemi > 0 && (
+      {/* Banner problemi unificato (fatture + ricavi) */}
+      {nProblemi > 0 ? (
         <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-700">
-          {nProblemi} {nProblemi === 1 ? "fattura ha" : "fatture hanno"} bisogno di attenzione. Apri il dettaglio del cliente per sbloccarle.
+          <span className="font-medium">{nProblemi} {nProblemi === 1 ? "cosa richiede" : "cose richiedono"} attenzione.</span>{" "}
+          {[
+            nProblemiFatture > 0 ? `${nProblemiFatture} sulle fatture` : null,
+            nProblemiRicavi > 0 ? `${nProblemiRicavi} ristorant${nProblemiRicavi === 1 ? "e" : "i"} coi ricavi` : null,
+            nRicaviNonRiconosciuti > 0 ? `${nRicaviNonRiconosciuti} email ricavi non riconosciut${nRicaviNonRiconosciuti === 1 ? "a" : "e"}` : null,
+          ].filter(Boolean).join(" · ")}.
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-700">
+          <CheckCircle className="size-4" /> Tutto a posto: fatture e ricavi arrivano regolarmente.
         </div>
       )}
 
@@ -218,6 +282,49 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, mappingsIniz
         </Card>
       )}
 
+      {/* Ricavi non riconosciuti (email gestionali bloccate in coda) */}
+      {ricaviImport.items.length > 0 && (
+        <Card className="p-4 border-amber-500/40">
+          <p className="text-sm font-medium mb-2 flex items-center gap-1">
+            <Mail className="size-4" /> Email ricavi non elaborate ({ricaviImport.items.length})
+          </p>
+          <p className="text-xs text-muted-foreground mb-3">
+            Email dei gestionali arrivate ma non importate: mittente non riconosciuto, in retry o bloccate.
+            Per il mittente sconosciuto aggiungi il mapping da <span className="font-medium">Mapping ricavi</span>, poi l’import riparte da solo.
+          </p>
+          <div className="space-y-2">
+            {ricaviImport.items.map((it) => (
+              <div key={it.id} className="rounded border p-2 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${IMPORT_STATUS_CLASS[it.status] || ""}`}>
+                    {IMPORT_STATUS_LABEL[it.status] || it.status}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {it.created_at ? new Date(it.created_at).toLocaleString("it-IT") : "—"}
+                  </span>
+                </div>
+                <p className="mt-1 font-medium">{it.email_sender || "mittente ignoto"}</p>
+                <p className="text-xs text-muted-foreground">
+                  {it.attachment_name || "—"}
+                  {it.email_subject ? ` · ${it.email_subject}` : ""}
+                  {it.attempt_count != null && it.max_attempts != null ? ` · tentativi ${it.attempt_count}/${it.max_attempts}` : ""}
+                </p>
+                {it.last_error && (
+                  <p className="mt-0.5 flex items-start gap-1 text-xs text-red-600">
+                    <AlertTriangle className="size-3.5 mt-0.5 shrink-0" /> {it.last_error}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="mt-3">
+            <Button size="sm" variant="outline" onClick={() => setMappingOpen(true)}>
+              <Link2 className="size-4 mr-1" /> Apri Mapping ricavi
+            </Button>
+          </div>
+        </Card>
+      )}
+
       {/* Tabella clienti */}
       <div className="rounded-lg border overflow-hidden">
         <table className="w-full text-sm">
@@ -235,15 +342,18 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, mappingsIniz
               <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Nessun cliente.</td></tr>
             ) : items.map((it) => {
               const ristIds = it.sedi.map((s) => s.id);
-              const ric = ristIds.map((id) => ricaviPerRist[id]).find(Boolean);
+              const ricList = ristIds.map((id) => ricaviPerRist[id]).filter(Boolean) as RicaviItem[];
+              const ric = ricList.find((r) => r.stato !== "ok") || ricList[0];
               const ricLabel = statoRicaviLabel(ric);
+              const ricConProblemi = ricList.filter((r) => r.stato !== "ok");
               const hasMapping = ristIds.some((id) => mappingRistSet.has(id));
               const isMulti = it.sedi.length > 1;
               const aperto = espanso === it.user_id;
+              const espandibile = it.problemi.length > 0 || ricConProblemi.length > 0;
               return (
                 <Fragment key={it.user_id}>
-                  <tr className="hover:bg-muted/30 cursor-pointer"
-                    onClick={() => setEspanso(aperto ? null : it.user_id)}>
+                  <tr className={espandibile ? "hover:bg-muted/30 cursor-pointer" : ""}
+                    onClick={() => espandibile && setEspanso(aperto ? null : it.user_id)}>
                     <td className="px-4 py-3 font-medium">{it.nome}</td>
                     <td className="px-4 py-3">
                       {STATO_DOT[it.stato]} {it.stato === "ok"
@@ -258,13 +368,44 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, mappingsIniz
                       {isMulti && <span className="ml-2 text-xs text-muted-foreground">{it.sedi.length} sedi</span>}
                     </td>
                     <td className="px-4 py-3 text-right text-muted-foreground">
-                      {it.problemi.length > 0 ? (aperto ? <ChevronDown className="size-4 inline" /> : <ChevronRight className="size-4 inline" />) : null}
+                      {espandibile ? (aperto ? <ChevronDown className="size-4 inline" /> : <ChevronRight className="size-4 inline" />) : null}
                     </td>
                   </tr>
-                  {aperto && it.problemi.length > 0 && (
+                  {aperto && espandibile && (
                     <tr className="bg-muted/20">
                       <td colSpan={5} className="px-4 py-3">
+                        {ricConProblemi.length > 0 && (
+                          <div className="mb-3 space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                              <TrendingUp className="size-3.5" /> Ricavi
+                            </p>
+                            {ricConProblemi.map((r) => (
+                              <div key={r.ristorante_id} className="rounded border bg-background p-2 text-sm">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-medium">{r.nome_ristorante}</span>
+                                  <span className="text-xs text-muted-foreground">
+                                    {r.ultima_data ? `ultimo: ${formatGiornoMese(r.ultima_data)}` : "mai"}
+                                  </span>
+                                </div>
+                                <ul className="mt-1 space-y-0.5">
+                                  {ricaviProblemi(r).map((p, i) => (
+                                    <li key={i} className="flex items-start gap-1 text-xs text-foreground/80">
+                                      <AlertTriangle className={`size-3.5 mt-0.5 shrink-0 ${r.stato === "critico" ? "text-red-600" : "text-amber-600"}`} />
+                                      {p}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {it.problemi.length > 0 && (
                         <div className="space-y-2">
+                          {ricConProblemi.length > 0 && (
+                            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+                              <FileText className="size-3.5" /> Fatture
+                            </p>
+                          )}
                           {it.problemi.map((p) => (
                             <div key={p.queue_id} className="flex flex-wrap items-center justify-between gap-3 rounded border bg-background p-2 text-sm">
                               <div className="min-w-0">
@@ -296,6 +437,7 @@ export function FlussoDatiClient({ fattureIniziali, ricaviIniziali, mappingsIniz
                             </div>
                           ))}
                         </div>
+                        )}
                       </td>
                     </tr>
                   )}

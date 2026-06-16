@@ -61,7 +61,7 @@ const NAV_CARDS = [
   {
     href: "/admin/sistema",
     title: "Sistema & Salute",
-    desc: "Costi, retention, import ricavi",
+    desc: "Costi AI, retention",
     icon: Settings,
     border: "border-emerald-500",
     bg: "hover:bg-emerald-500/8",
@@ -164,7 +164,7 @@ export default async function AdminPage() {
       {/* Navigation cards — 4 colori */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {NAV_CARDS.map((item) => {
-          const alert = item.href === "/admin/sistema" && ricaviProblemi > 0 ? ricaviProblemi : 0;
+          const alert = item.href === "/admin/flusso-dati" && ricaviProblemi > 0 ? ricaviProblemi : 0;
           return (
             <Card key={item.href} className={`border ${alert ? "border-red-500 ring-1 ring-red-500/40" : item.border} ${item.bg} transition-colors`}>
               <Link href={item.href} className="block p-6">
@@ -176,7 +176,7 @@ export default async function AdminPage() {
                         <p className="font-semibold">{item.title}</p>
                         {alert > 0 && (
                           <span className="rounded-full bg-red-500/15 border border-red-500/30 px-2 py-0.5 text-xs font-medium text-red-600">
-                            {alert} import ricavi
+                            {alert} da controllare
                           </span>
                         )}
                       </div>
