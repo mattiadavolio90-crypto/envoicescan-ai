@@ -480,9 +480,11 @@ DIZIONARIO_CORREZIONI = {
     "WÃœRSTEL": "SALUMI",
     
     # ===== UOVA =====
-    "UOVA": "UOVA",
-    "UOVO": "UOVA",
-    
+    # NOTA: "UOVA"/"UOVO" NON sono keyword dirette: "UOVO" pescava dentro
+    # "TAGLIOLINI UOVO"/"PAPPARDELLE UOVO" (che sono PASTA). La classificazione
+    # uova-vere-vs-pasta-all-uovo è gestita contestualmente in
+    # applica_regole_categoria_forti (regola "uovo_contestuale"). ALBUME resta sotto.
+
     # ===== VERDURE =====
     "CONTORNO": "VERDURE",
     "POMODORO": "VERDURE",
@@ -576,11 +578,11 @@ DIZIONARIO_CORREZIONI = {
     "BUCATINI": "PASTA E CEREALI",
     "RISO": "PASTA E CEREALI",
     "FARINA": "PASTA E CEREALI",
-    "ZUCCHERO": "PASTA E CEREALI",
+    "ZUCCHERO": "VARIE BAR",
     "FECOLA": "PASTA E CEREALI",
     "ROUX": "PASTA E CEREALI",
     "CEREALI": "PASTA E CEREALI",
-    "BISCOTTI": "PASTA E CEREALI",
+    "BISCOTTI": "PASTICCERIA",
     "FETTE BISCOTTATE": "PASTA E CEREALI",
     
     # ===== OLIO E CONDIMENTI =====
@@ -844,7 +846,6 @@ DIZIONARIO_CORREZIONI = {
     "GHIACCIO": "VARIE BAR",
     "ZUCCHERO BAR": "VARIE BAR",
     "PORTAZUCCHERO": "VARIE BAR",
-    "DOLCIFICANTE": "VARIE BAR",
     
     # ===== MATERIALI CONSUMO -> MATERIALE DI CONSUMO =====
     "BUSTINE": "MATERIALE DI CONSUMO",
@@ -983,17 +984,6 @@ DIZIONARIO_CORREZIONI = {
     "PENNARELLI": "MATERIALE DI CONSUMO",
     "MARKER": "MATERIALE DI CONSUMO",
     "PACKAGING": "MATERIALE DI CONSUMO",
-    "CONTEN.MONOP": "MATERIALE DI CONSUMO",
-    "FINGERF.": "MATERIALE DI CONSUMO",
-    "BARCHETTE": "MATERIALE DI CONSUMO",
-    "TOV. APE ECO": "MATERIALE DI CONSUMO",
-    "R-PET": "MATERIALE DI CONSUMO",
-    "SACCHETTO COMPOST": "MATERIALE DI CONSUMO",
-    "COMPOST.LE": "MATERIALE DI CONSUMO",
-    "CAMICIA": "MANUTENZIONE E ATTREZZATURE",
-    "CRAVATTINO": "MANUTENZIONE E ATTREZZATURE",
-    "DIVISA": "MANUTENZIONE E ATTREZZATURE",
-    "DIVISE": "MANUTENZIONE E ATTREZZATURE",
     "PORTABACCHETTE": "MATERIALE DI CONSUMO",
     "TAZZE": "MANUTENZIONE E ATTREZZATURE",
     "PIATTINI": "MATERIALE DI CONSUMO",
@@ -1328,7 +1318,7 @@ DIZIONARIO_CORREZIONI = {
     # NOTA: "TAZZA" già definita sopra (sezione MATERIALI CONSUMO)
     "GREMBIULE": "MANUTENZIONE E ATTREZZATURE",
     "ZOCCOLINO": "MANUTENZIONE E ATTREZZATURE",
-    "ACCENDIGAS": "MANUTENZIONE E ATTREZZATURE",
+    "ACCENDIGAS": "MATERIALE DI CONSUMO",
     "SALE PASTIGLIE": "MATERIALE DI CONSUMO",
     "MISTO FROLLA": "PASTICCERIA",
     "NOCE BOV": "CARNE",
@@ -1348,7 +1338,6 @@ DIZIONARIO_CORREZIONI = {
     "POLPA ODK": "VARIE BAR",
     "ODK POLPA": "VARIE BAR",
     "DIMSUM": "PASTA E CEREALI",
-    "HACCP": "SERVIZI E CONSULENZE",
     # NOTA: "ZUCCHERO BAR" già definita sopra (sezione VARIE BAR)
     "PAIN AU CHOCOLAT": "PASTICCERIA",
     "CROIS": "PASTICCERIA",
@@ -1407,7 +1396,6 @@ DIZIONARIO_CORREZIONI = {
 
     # ===== BATCH FIX: Plurali/singolari mancanti =====
     # PESCE - varianti plurali/singolari
-    "SALMONI": "PESCE",          # plurale di SALMONE (×3 fatture)
     "BRANZINI": "PESCE",         # plurale di BRANZINO (×4 fatture)
     "RICCIOLA": "PESCE",         # ricciola oceanica (×3 fatture)
     "SCAMPO": "PESCE",           # singolare di SCAMPI (×2 fatture)
@@ -1448,9 +1436,8 @@ DIZIONARIO_CORREZIONI = {
     "PAPAYA": "FRUTTA",
     "MELAGRANA": "FRUTTA",
     "MELOGRANO": "FRUTTA",
-    "AVOCADO": "FRUTTA",
-    "MANDORLE": "PASTA E CEREALI",         # frutta secca → secco
-    "MANDORLA": "PASTA E CEREALI",
+    "MANDORLE": "SCATOLAME E CONSERVE",    # frutta secca da dispensa/banco (scelta dominio Mattia 16/06)
+    "MANDORLA": "SCATOLAME E CONSERVE",
 
     # ===== BATCH FIX: Carne - keyword generiche sicure =====
     "BOVINO": "CARNE",           # copre: roast-beef bovino, coscia bovino, nervetti bovino (×5)
@@ -1463,7 +1450,6 @@ DIZIONARIO_CORREZIONI = {
     # ===== BATCH FIX: Latticini =====
     "PHILADELPHIA": "LATTICINI",  # formaggio spalmabile (×3 fatture)
     "DOUFU": "LATTICINI",         # variante cinese di tofu
-    "TOFU": "LATTICINI",
     "GORGONZ": "LATTICINI",
 
     # ===== BATCH FIX: Spezie e aromi =====
@@ -1487,7 +1473,6 @@ DIZIONARIO_CORREZIONI = {
     # ===== BATCH FIX: Materiale di consumo =====
     "AMMONIACA": "MATERIALE DI CONSUMO",
     "ALCOOL": "MATERIALE DI CONSUMO",
-    "ACCENDIGAS": "MATERIALE DI CONSUMO",
     "CIF": "MATERIALE DI CONSUMO",
     "CANDEG": "MATERIALE DI CONSUMO",
     "MOP": "MATERIALE DI CONSUMO",     # mop/lavapavimenti
@@ -1495,7 +1480,6 @@ DIZIONARIO_CORREZIONI = {
     "DEO BAGNO": "MATERIALE DI CONSUMO",
 
     # ===== BATCH FIX: Shop =====
-    "DAYGUM": "SHOP",
 
     # ===== BATCH FIX: Servizi e consulenze =====
     "SPESE DI INCASSO": "SERVIZI E CONSULENZE",
@@ -1521,7 +1505,6 @@ DIZIONARIO_CORREZIONI = {
     "GRANBIRAGHI": "LATTICINI",
     "GRATTUGGIATO": "LATTICINI",
     "SPALMABILE": "LATTICINI",
-    "EDAMER": "LATTICINI",
     "OVOLINE": "LATTICINI",
     # Verdure/Ortofrutta
     "ORTOFRUTTA": "VERDURE",
@@ -1541,9 +1524,12 @@ DIZIONARIO_CORREZIONI = {
     # Manutenzione - pulizia macchine caffè
     "PULYCAFF": "MANUTENZIONE E ATTREZZATURE",
     "PULYMILK": "MANUTENZIONE E ATTREZZATURE",
-    # Secco - sale e frutta secca
-    "NOVOSAL": "PASTA E CEREALI",
-    "SALE IODATO": "PASTA E CEREALI",
+    # Sale → SPEZIE E AROMI (condimento, scelta dominio Mattia 16/06)
+    "NOVOSAL": "SPEZIE E AROMI",
+    "SALE IODATO": "SPEZIE E AROMI",
+    "SALE FINO": "SPEZIE E AROMI",
+    "SALE GROSSO": "SPEZIE E AROMI",
+    "SALE MARINO": "SPEZIE E AROMI",
     # Shop - snack
     "TARALLINI": "SHOP",
     "ARACHIDI": "SHOP",
@@ -1556,23 +1542,21 @@ DIZIONARIO_CORREZIONI = {
     # Frutta
     "FRUTTI DI BOSCO": "FRUTTA",
     # Spezie
-    "VANIGLIA": "SPEZIE E AROMI",
+    # NOTA: "VANIGLIA" NON è keyword diretta: pescava dentro GELATO/YOGURT/CREMA
+    # VANIGLIA. Gestita contestualmente in applica_regole_categoria_forti
+    # (regola "vaniglia_contestuale"): bacca/baccello → SPEZIE, dolce/gelato → cede.
     # Varie bar
-    "DOLCIFICANTE": "VARIE BAR",
     # Materiale di consumo - residui
     "BORSA": "MATERIALE DI CONSUMO",
-    "SHOPPER": "MATERIALE DI CONSUMO",
     "VASSOIO": "MATERIALE DI CONSUMO",
     "ADDOLCITORE": "MATERIALE DI CONSUMO",
     "TOV.": "MATERIALE DI CONSUMO",          # abbreviazione tovaglioli
-    "TOVAGLIETTA": "MATERIALE DI CONSUMO",
     "TRAPUNTATI": "MATERIALE DI CONSUMO",     # tovaglioli trapuntati
     "MONOVELO": "MATERIALE DI CONSUMO",       # tovaglioli monovelo
-    "CANGURINO": "MATERIALE DI CONSUMO",      # brand carta/tovaglioli
     # Scatolame
     "SCATOLAME": "SCATOLAME E CONSERVE",
-    # Frutta secca
-    "NOCI": "PASTA E CEREALI",
+    # Frutta secca → SCATOLAME E CONSERVE (dispensa/banco, scelta dominio Mattia 16/06)
+    "NOCI": "SCATOLAME E CONSERVE",
 
 }
 

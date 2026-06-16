@@ -841,8 +841,22 @@ _MIELE_BUSTINE_RE = re.compile(r"\bMIELE\b.*\bBUSTIN\w*\b|\bBUSTIN\w*\b.*\bMIELE
 _CIOCCOLATA_CALDA_RE = re.compile(r"\bCIOCCOLATA\b.*\b(MONODOS|CALDA|LATTE|PREPARATO)\b|\bMONODOS\w*\b.*\bCIOCCOLAT")
 _VINO_DOC_RE = re.compile(r"\b(DOC|DOCG|IGT)\b.*\b(CL\s*75|75\s*CL)\b|\b(CL\s*75|75\s*CL)\b.*\b(DOC|DOCG|IGT)\b")
 _PIADA_RE = re.compile(r"\bPIAD[AE]\b")
-_SALE_ALIMENTARE_RE = re.compile(r"\bSALE\b.*\b(IODATO|FINO|GROSSO|MARINO)\b")
-_VANIGLIA_BACCA_RE = re.compile(r"\b(VANIGLIA|BACCA\s+VANIGLIA)\b")
+# Sale alimentare → SPEZIE E AROMI (condimento). Scelta dominio 16/06: il sale è
+# un insaporitore, non "secco/dispensa". Esclude SALE LAVASTOVIGLIE/PASTIGLIE/ADDOLCIT
+# (gestiti da consumo_rapido_monouso a monte come MATERIALE DI CONSUMO).
+_SALE_ALIMENTARE_RE = re.compile(r"\bSALE\b.*\b(IODATO|IODIO|FINO|GROSSO|MARINO|DOLCE|AFFUMICAT|ROSA|NERO|MALDON)\b|\b(IODATO|FINO|GROSSO|MARINO)\b.*\bSALE\b")
+# Vaniglia: SPEZIE solo come spezia pura (bacca/baccello/bourbon/stecca/polvere/estratto).
+# Se la riga è un dolce/gelato/yogurt/crema, la vaniglia è un aroma del prodotto: CEDE.
+_VANIGLIA_SPEZIA_RE = re.compile(r"\b(BACC[AO]|BACCELL\w*|STECC\w*|BOURBON|POLVERE|ESTRATTO|SEMI)\b.*\bVANIGLIA\b|\bVANIGLIA\b.*\b(BACC[AO]|BACCELL\w*|STECC\w*|BOURBON|POLVERE|ESTRATTO|IN\s+SEMI)\b")
+_VANIGLIA_PRESENTE_RE = re.compile(r"\bVANIGLIA\b")
+# Contesto "dolce/latticino/pasta" che rende vaniglia/uovo un semplice aroma/ingrediente
+_CONTESTO_DOLCE_RE = re.compile(r"\b(GELAT\w*|SORBETT\w*|YOGURT|YOGHURT|CREMA|CREM\w*|BUDINO|PANNA|MOUSSE|TORTA|TORTIN\w*|BISCOTT\w*|CANNONCIN\w*|CORNETT\w*|BRIOCHE|MARITOZZO|PASTICC\w*|DESSERT|SEMIFREDD\w*|MOCHI|MOCCHI|CHEESECAKE|TIRAMIS\w*|SCIROPPO|WAFER|WAFFEL\w*|PUDDING|CUSTARD)\b")
+# Pasta all'uovo: l'UOVO è un ingrediente, il prodotto è PASTA E CEREALI.
+_PASTA_UOVO_RE = re.compile(r"\b(TAGLIOLIN\w*|TAGLIATELL\w*|PAPPARDELL\w*|FETTUCCIN\w*|LASAGN\w*|TAGLIOLINE|MALTAGLIAT\w*|QUADRUCC\w*|RAVIOL\w*|TORTELL\w*|AGNOLOTT\w*|CAPPELLETT\w*|GNOCCH\w*|PASTA|SPAGHETT\w*|BARILLA\s+CHEF)\b")
+# Uovo come prodotto vero (uova fresche/sgusciate/pastorizzate), non dentro pasta.
+_UOVO_VERO_RE = re.compile(r"\bUOV[OA]\b")
+# Uova VERE (forma stretta): uova fresche/cat.A/pastorizzate/sode/intere + tuorlo/albume.
+_UOVA_VERE_RE = re.compile(r"\bUOV[OA]\b.*\b(FRESCH\w*|CAT\.?\s*A|CATEGORIA\s*A|PASTORIZZAT\w*|SODE?|INTERE?|SGUSCIAT\w*|MEDIE?|GRANDI|ALLEVAT\w*)\b|\b(FRESCH\w*|PASTORIZZAT\w*|SODE?|INTERE?)\b.*\bUOV[OA]\b|\bTUORL\w*\b")
 _NOCI_PISTACCHIO_SECCO_RE = re.compile(r"\b(NOCI\s+SGUSCIAT|PISTACCHI\w*\s+(CALIF|TOST|SGUS|INTERO))\b")
 _NON_FOOD_RE = re.compile(r"\bNON\s*FOOD\b")
 
@@ -1493,19 +1507,39 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         return cat, None
 
     if _SALE_ALIMENTARE_RE.search(desc_u):
-        mapped = "PASTA E CEREALI"
+        mapped = "SPEZIE E AROMI"
         if cat != mapped:
             return mapped, "sale_alimentare"
         return cat, None
 
-    if _VANIGLIA_BACCA_RE.search(desc_u):
-        mapped = "SPEZIE E AROMI"
+    # Vaniglia come SPEZIA solo se forma pura (bacca/baccello/bourbon/estratto…) E
+    # non c'è un contesto dolce/latticino che la rende un aroma del prodotto.
+    if _VANIGLIA_PRESENTE_RE.search(desc_u):
+        if _VANIGLIA_SPEZIA_RE.search(desc_u) and not _CONTESTO_DOLCE_RE.search(desc_u):
+            mapped = "SPEZIE E AROMI"
+            if cat != mapped:
+                return mapped, "vaniglia_spezia"
+            return cat, None
+        # altrimenti: vaniglia è aroma di un dolce/gelato/yogurt → lascia decidere
+        # dizionario/AI sul sostantivo principale (nessun override).
+
+    # Pasta all'uovo: l'uovo è ingrediente → PASTA E CEREALI (batte il vecchio UOVO→UOVA)
+    if _UOVO_VERO_RE.search(desc_u) and _PASTA_UOVO_RE.search(desc_u):
+        mapped = "PASTA E CEREALI"
         if cat != mapped:
-            return mapped, "vaniglia_spezia"
+            return mapped, "pasta_all_uovo"
+        return cat, None
+
+    # Uova come prodotto vero (fresche/pastorizzate/sode/tuorlo): UOVA.
+    # Stretto di proposito per non pescare dentro pasta/dolci.
+    if _UOVA_VERE_RE.search(desc_u):
+        mapped = "UOVA"
+        if cat != mapped:
+            return mapped, "uova_vere"
         return cat, None
 
     if _NOCI_PISTACCHIO_SECCO_RE.search(desc_u):
-        mapped = "PASTA E CEREALI"
+        mapped = "SCATOLAME E CONSERVE"
         if cat != mapped:
             return mapped, "frutta_secca_guscio"
         return cat, None
