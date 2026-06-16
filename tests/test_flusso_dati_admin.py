@@ -16,8 +16,9 @@ from fastapi import HTTPException
 
 
 class _Result:
-    def __init__(self, data):
+    def __init__(self, data, count=None):
         self.data = data
+        self.count = count
 
 
 class _RpcCall:
@@ -38,9 +39,17 @@ class _Query:
         self._gte = []
         self._limit = None
         self._update_vals = None
+        self._is_null = []
+        self._count = None
 
     def select(self, *_a, **_k):
         self._op = "select"
+        self._count = _k.get("count")
+        return self
+
+    def is_(self, f, val):
+        if val == "null":
+            self._is_null.append(f)
         return self
 
     def update(self, vals):
@@ -78,6 +87,9 @@ class _Query:
         for f, soglia in self._gte:
             if str(row.get(f) or "") < soglia:
                 return False
+        for f in self._is_null:
+            if row.get(f) is not None:
+                return False
         return True
 
     def execute(self):
@@ -86,10 +98,11 @@ class _Query:
             for r in rows:
                 r.update(self._update_vals)
             return _Result([dict(r) for r in rows])
+        total = len(rows)
         out = [dict(r) for r in rows]
         if self._limit is not None:
             out = out[: self._limit]
-        return _Result(out)
+        return _Result(out, count=(total if self._count else None))
 
 
 class FakeClient:
@@ -238,3 +251,36 @@ def test_modulo_admin_importa_helper_flusso_dati():
     assert hasattr(admin, "admin_queue_riprova")
     assert hasattr(admin, "admin_queue_assegna_sede")
     assert hasattr(admin, "_classifica_salute_invoicetronic")
+
+
+# ─── A5: badges home admin (conteggi leggeri) ─────────────────────────────────
+
+def test_badges_conta_solo_problematici(monkeypatch):
+    monkeypatch.setattr(admin, "_verify_admin", lambda **k: {"email": "md@oneflux.it"})
+    sb = FakeClient({
+        "fatture_queue": [
+            {"id": 1, "status": "unknown_tenant"},
+            {"id": 2, "status": "da_assegnare"},
+            {"id": 3, "status": "done"},        # sano → non contato
+        ],
+        "fatture": [
+            {"id": "a", "needs_review": True, "deleted_at": None},
+            {"id": "b", "needs_review": True, "deleted_at": "2026-01-01"},  # cestino → escluso
+            {"id": "c", "needs_review": False, "deleted_at": None},         # ok → escluso
+        ],
+        "marketplace_leads": [
+            {"id": "l1", "stato": "nuovo"},
+            {"id": "l2", "stato": "gestito"},   # non nuovo → escluso
+        ],
+    })
+    monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
+
+    res = admin.admin_badges()
+    assert res == {"flusso_dati": 2, "categorie": 1, "richieste": 1}
+
+
+def test_badges_tutto_pulito_a_zero(monkeypatch):
+    monkeypatch.setattr(admin, "_verify_admin", lambda **k: {"email": "md@oneflux.it"})
+    sb = FakeClient({"fatture_queue": [], "fatture": [], "marketplace_leads": []})
+    monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
+    assert admin.admin_badges() == {"flusso_dati": 0, "categorie": 0, "richieste": 0}

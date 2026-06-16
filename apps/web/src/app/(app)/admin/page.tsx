@@ -39,6 +39,27 @@ async function fetchRicaviProblemi(token: string): Promise<number> {
   }
 }
 
+type Badges = { flusso_dati: number; categorie: number; richieste: number };
+
+async function fetchBadges(token: string): Promise<Badges> {
+  const vuoto: Badges = { flusso_dati: 0, categorie: 0, richieste: 0 };
+  try {
+    const h: Record<string, string> = { Authorization: `Bearer ${token}` };
+    if (WORKER_SECRET_KEY) h["X-Worker-Key"] = WORKER_SECRET_KEY;
+    const res = await fetch(`${WORKER_URL}/api/admin/badges`, { headers: h, cache: "no-store" });
+    if (!res.ok) return vuoto;
+    const data = await res.json();
+    return {
+      flusso_dati: Number(data?.flusso_dati ?? 0),
+      categorie: Number(data?.categorie ?? 0),
+      richieste: Number(data?.richieste ?? 0),
+    };
+  } catch (err) {
+    console.error("[admin/badges] fetch error:", err);
+    return vuoto;
+  }
+}
+
 const NAV_CARDS = [
   {
     href: "/admin/clienti",
@@ -84,10 +105,17 @@ export default async function AdminPage() {
 
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value ?? "";
-  const [{ data: overview, error: overviewError }, ricaviProblemi] = await Promise.all([
+  const [{ data: overview, error: overviewError }, ricaviProblemi, badges] = await Promise.all([
     fetchOverview(token),
     fetchRicaviProblemi(token),
+    fetchBadges(token),
   ]);
+  // Il badge Flusso dati somma le fatture bloccate (coda) e i ricavi in silenzio/problema.
+  const badgePerCard: Record<string, number> = {
+    "/admin/flusso-dati": badges.flusso_dati + ricaviProblemi,
+    "/admin/categorie": badges.categorie,
+    "/admin/richieste": badges.richieste,
+  };
   const overviewSubErrors = (overview?._errors as string[] | undefined) ?? [];
 
   return (
@@ -155,7 +183,7 @@ export default async function AdminPage() {
       {/* Navigation cards — 4 colori */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {NAV_CARDS.map((item) => {
-          const alert = item.href === "/admin/flusso-dati" && ricaviProblemi > 0 ? ricaviProblemi : 0;
+          const alert = badgePerCard[item.href] ?? 0;
           return (
             <Card key={item.href} className={`border ${alert ? "border-red-500 ring-1 ring-red-500/40" : item.border} ${item.bg} transition-colors`}>
               <Link href={item.href} className="block p-6">

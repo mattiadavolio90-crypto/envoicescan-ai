@@ -1734,6 +1734,46 @@ def admin_sistema_ricavi_salute(silenzio_giorni: int = 2):
 _QUEUE_STATI_PROBLEMA = ["unknown_tenant", "da_assegnare", "failed", "dead"]
 
 
+# ── Badge home admin — conteggi LEGGERI per i contatori sulle card ────────────
+@router.get("/api/admin/badges", tags=["Admin"], dependencies=[Depends(_verify_admin)])
+def admin_badges():
+    """Conteggi rapidi per i badge "da controllare" sulle card del pannello admin.
+
+    Solo COUNT veloci (mai full-load): pensato per girare a ogni apertura della
+    home senza rallentarla. Ogni conteggio è isolato in try/except così un errore
+    su una tabella non azzera gli altri badge.
+
+      - flusso_dati: record fatture_queue in stato problematico (fatture che non
+        entrano nell'app: P.IVA sconosciuta, multi-sede da smistare, errori);
+      - categorie: righe fatture con needs_review (proposte AI da approvare a mano);
+      - richieste: lead marketplace ancora in stato 'nuovo'.
+    """
+    sb = get_supabase_client()
+
+    def _count(build) -> int:
+        try:
+            return build().execute().count or 0
+        except Exception as exc:
+            logger.error("admin badges: conteggio fallito: %s", exc)
+            return 0
+
+    flusso = _count(lambda: sb.table("fatture_queue")
+                    .select("id", count="exact")
+                    .in_("status", _QUEUE_STATI_PROBLEMA)
+                    .limit(1))
+    categorie = _count(lambda: sb.table("fatture")
+                       .select("id", count="exact")
+                       .eq("needs_review", True)
+                       .is_("deleted_at", "null")
+                       .limit(1))
+    richieste = _count(lambda: sb.table("marketplace_leads")
+                       .select("id", count="exact")
+                       .eq("stato", "nuovo")
+                       .limit(1))
+
+    return {"flusso_dati": flusso, "categorie": categorie, "richieste": richieste}
+
+
 def _classifica_salute_invoicetronic(n_unknown: int, n_dead: int, n_failed: int,
                                      n_da_assegnare: int) -> str:
     """Stato salute ricezione fatture di un cliente.
