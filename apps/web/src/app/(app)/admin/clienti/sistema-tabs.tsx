@@ -10,7 +10,7 @@ import { RefreshCw, DollarSign, Shield, Clock, CheckCircle } from "lucide-react"
 const VISION_DAILY_LIMIT = 50;
 
 // ─── TAB COSTI AI ─────────────────────────────────────────────────────────────
-function CostiAiTab() {
+export function CostiAiTab() {
   const [days, setDays] = useState("30");
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
@@ -117,7 +117,7 @@ function CostiAiTab() {
 }
 
 // ─── TAB RETENTION ────────────────────────────────────────────────────────────
-function RetentionTab() {
+export function RetentionTab() {
   const [status, setStatus] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -165,31 +165,7 @@ function RetentionTab() {
       ) : (
         loading ? <p className="text-muted-foreground text-sm">Caricamento…</p> : null
       )}
-      <p className="text-xs text-muted-foreground">La retention gira automaticamente ogni ~24 ore tramite il worker. Elimina fatture con più di 2 anni dalla data documento.</p>
-    </div>
-  );
-}
-
-// (Il pannello "Agent notturno" è stato spostato in Admin → Categorie.)
-
-// ─── ROOT CLIENT ─────────────────────────────────────────────────────────────
-const TABS = ["costi", "retention"] as const;
-const TAB_LABELS: Record<string, string> = { costi: "Costi AI", retention: "Retention" };
-
-export function SistemaClient() {
-  const [tab, setTab] = useState<"costi" | "retention">("costi");
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-1 border-b">
-        {TABS.map((t) => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}>
-            {TAB_LABELS[t]}
-          </button>
-        ))}
-      </div>
-      {tab === "costi" && <CostiAiTab />}
-      {tab === "retention" && <RetentionTab />}
+      <p className="text-xs text-muted-foreground">La retention gira automaticamente ogni ~24 ore tramite il worker. Elimina fatture con più di 2 anni dalla data documento (cestino incluso). Qui controlli solo che il job notturno stia girando.</p>
     </div>
   );
 }

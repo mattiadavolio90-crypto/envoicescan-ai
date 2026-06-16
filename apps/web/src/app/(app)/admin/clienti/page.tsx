@@ -4,7 +4,7 @@ import Link from "next/link";
 import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft } from "lucide-react";
-import { ClientiClient } from "./clienti-client";
+import { ClientiTabs } from "./clienti-tabs";
 import type { Cliente } from "@/lib/admin";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
@@ -36,7 +36,7 @@ export default async function AdminClientiPage() {
         </Button>
         <h1 className="text-2xl font-bold tracking-tight">Clienti</h1>
       </div>
-      <ClientiClient clientiIniziali={clienti} />
+      <ClientiTabs clientiIniziali={clienti} />
     </div>
   );
 }

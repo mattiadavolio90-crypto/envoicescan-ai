@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { getCurrentUser, SESSION_COOKIE } from "@/lib/auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, CheckCircle, DollarSign, ChevronRight, Brain, Settings, Map, LifeBuoy } from "lucide-react";
+import { Users, CheckCircle, DollarSign, ChevronRight, Brain, Map, LifeBuoy } from "lucide-react";
 import Link from "next/link";
 import { FattureMensiliCard } from "./fatture-mensili-card";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
@@ -43,7 +43,7 @@ const NAV_CARDS = [
   {
     href: "/admin/clienti",
     title: "Clienti",
-    desc: "Lista, crea, impersona, gestisci",
+    desc: "Lista, crea, impersona · costi AI, retention",
     icon: Users,
     border: "border-sky-500",
     bg: "hover:bg-sky-500/8",
@@ -57,15 +57,6 @@ const NAV_CARDS = [
     border: "border-violet-500",
     bg: "hover:bg-violet-500/8",
     iconColor: "text-violet-500",
-  },
-  {
-    href: "/admin/sistema",
-    title: "Sistema & Salute",
-    desc: "Costi AI, retention",
-    icon: Settings,
-    border: "border-emerald-500",
-    bg: "hover:bg-emerald-500/8",
-    iconColor: "text-emerald-500",
   },
   {
     href: "/admin/flusso-dati",
