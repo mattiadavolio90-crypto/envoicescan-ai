@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { NativeSelect } from "@/components/ui/select";
 import {
   LogIn, Mail, KeyRound, Trash2, Plus, X, Clock, CheckCircle, XCircle, AlertTriangle, Pencil
 } from "lucide-react";
@@ -594,15 +594,12 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="s-piano">Piano</Label>
-              <Select value={sPiano} onValueChange={setSPiano}>
-                <SelectTrigger id="s-piano"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="free">Free (chat AI esclusa)</SelectItem>
-                  <SelectItem value="base">Base (50 fatture)</SelectItem>
-                  <SelectItem value="plus">Plus (100 fatture)</SelectItem>
-                  <SelectItem value="pro">Pro (200 fatture)</SelectItem>
-                </SelectContent>
-              </Select>
+              <NativeSelect id="s-piano" value={sPiano} onValueChange={setSPiano}>
+                <option value="free">Free (chat AI esclusa)</option>
+                <option value="base">Base (50 fatture)</option>
+                <option value="plus">Plus (100 fatture)</option>
+                <option value="pro">Pro (200 fatture)</option>
+              </NativeSelect>
             </div>
             <p className="text-xs text-muted-foreground">
               Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA. Il piano è per sede.
@@ -650,15 +647,12 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="e-piano">Piano</Label>
-              <Select value={ePiano} onValueChange={setEPiano}>
-                <SelectTrigger id="e-piano"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="free">Free (chat AI esclusa)</SelectItem>
-                  <SelectItem value="base">Base (50 fatture)</SelectItem>
-                  <SelectItem value="plus">Plus (100 fatture)</SelectItem>
-                  <SelectItem value="pro">Pro (200 fatture)</SelectItem>
-                </SelectContent>
-              </Select>
+              <NativeSelect id="e-piano" value={ePiano} onValueChange={setEPiano}>
+                <option value="free">Free (chat AI esclusa)</option>
+                <option value="base">Base (50 fatture)</option>
+                <option value="plus">Plus (100 fatture)</option>
+                <option value="pro">Pro (200 fatture)</option>
+              </NativeSelect>
             </div>
             <p className="text-xs text-muted-foreground">
               Indirizzo, CAP e comune servono a smistare automaticamente le fatture quando più sedi condividono la stessa P.IVA. Il piano è per sede.

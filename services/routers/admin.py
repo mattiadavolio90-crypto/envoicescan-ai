@@ -2391,9 +2391,19 @@ def admin_crea_sede(
     ok, msg = valida_formato_piva(piva)
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
-    dup = sb.table("ristoranti").select("id").eq("user_id", cliente_id).eq("partita_iva", piva).execute()
-    if dup.data:
-        raise HTTPException(status_code=409, detail=f"P.IVA {piva} già registrata per questo cliente")
+    # Piu' sedi dello stesso cliente CONDIVIDONO la P.IVA (catena): e' lo scenario
+    # del routing multi-sede, che smista le fatture per indirizzo a parita' di P.IVA.
+    # Quindi NON si blocca la P.IVA duplicata; si esige solo l'indirizzo quando esiste
+    # gia' una sede con quella P.IVA, senza cui lo smistamento non puo' distinguerle.
+    altre = (
+        sb.table("ristoranti").select("id")
+        .eq("user_id", cliente_id).eq("partita_iva", piva).execute()
+    )
+    if altre.data and not (body.indirizzo and body.indirizzo.strip()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Esiste già una sede con P.IVA {piva}: indica l'indirizzo per distinguere le sedi e smistare le fatture.",
+        )
     r = sb.table("ristoranti").insert({
         "user_id": cliente_id,
         "nome_ristorante": body.nome_ristorante.strip(),
@@ -2439,12 +2449,7 @@ def admin_modifica_sede(
         ok, msg = valida_formato_piva(piva)
         if not ok:
             raise HTTPException(status_code=400, detail=msg)
-        dup = (
-            sb.table("ristoranti").select("id")
-            .eq("user_id", cliente_id).eq("partita_iva", piva).neq("id", sede_id).execute()
-        )
-        if dup.data:
-            raise HTTPException(status_code=409, detail=f"P.IVA {piva} già registrata per un'altra sede")
+        # P.IVA condivisa fra sedi del cliente = catena (vedi admin_crea_sede): consentita.
         upd["partita_iva"] = piva
     if body.ragione_sociale is not None:
         upd["ragione_sociale"] = body.ragione_sociale.strip() or None

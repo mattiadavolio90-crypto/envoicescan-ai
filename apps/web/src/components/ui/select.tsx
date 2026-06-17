@@ -91,14 +91,14 @@ function SelectItem(_props: SelectItemProps) {  // eslint-disable-line @typescri
 // The abstraction above is kept for API compatibility.
 // The actual rendered element is a styled <select>.
 
-type NativeSelectProps = {
+type NativeSelectProps = Omit<
+  React.SelectHTMLAttributes<HTMLSelectElement>,
+  "onChange" | "value" | "defaultValue"
+> & {
   value?: string;
   defaultValue?: string;
   onValueChange?: (value: string) => void;
-  disabled?: boolean;
   placeholder?: string;
-  className?: string;
-  children?: React.ReactNode;
 };
 
 function NativeSelect({
@@ -109,9 +109,11 @@ function NativeSelect({
   placeholder,
   className,
   children,
+  ...props
 }: NativeSelectProps) {
   return (
     <select
+      {...props}
       value={value ?? defaultValue ?? ""}
       disabled={disabled}
       onChange={(e) => onValueChange?.(e.target.value)}
