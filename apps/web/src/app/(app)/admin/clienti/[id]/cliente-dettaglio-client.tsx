@@ -71,6 +71,10 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   const [eliminaMemoria, setEliminaMemoria] = useState(false);
   const [eliminaSaving, setEliminaSaving] = useState(false);
 
+  // Elimina sede dialog
+  const [sedeDaEliminare, setSedeDaEliminare] = useState<Sede | null>(null);
+  const [eliminaSedeSaving, setEliminaSedeSaving] = useState(false);
+
   async function patch(url: string, method: string, body?: object) {
     const res = await fetch(url, {
       method,
@@ -104,9 +108,11 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   async function handleRinviaAttivazione() {
     try {
       const data = await patch(`/api/admin/clienti/${c.id}/rinvia-attivazione`, "POST");
-      toast.success(data.email_inviata ? "Email di attivazione reinviata" : "Inviata");
+      // Il backend ritorna 502 (→ throw) se Brevo fallisce, quindi qui email_inviata
+      // è sempre true; il link resta come fallback copiabile.
+      toast.success(`Email di attivazione reinviata a ${data.email}`);
     } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : "Errore");
+      toast.error(e instanceof Error ? e.message : "Errore reinvio");
     }
   }
 
@@ -205,14 +211,19 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
     }
   }
 
-  async function handleEliminaSede(sede: Sede) {
-    if (!confirm(`Eliminare la sede "${sede.nome_ristorante}"? Tutte le sue fatture verranno eliminate.`)) return;
+  async function handleEliminaSede() {
+    const sede = sedeDaEliminare;
+    if (!sede) return;
+    setEliminaSedeSaving(true);
     try {
       await patch(`/api/admin/clienti/${c.id}/sedi/${sede.id}`, "DELETE");
       setC((prev) => ({ ...prev, sedi: prev.sedi.filter((s) => s.id !== sede.id), n_sedi: prev.n_sedi - 1 }));
       toast.success("Sede eliminata");
+      setSedeDaEliminare(null);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
+    } finally {
+      setEliminaSedeSaving(false);
     }
   }
 
@@ -276,12 +287,16 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
   async function handleEliminaAccount() {
     setEliminaSaving(true);
     try {
-      await fetch(`/api/admin/clienti/${c.id}?elimina_memoria=${eliminaMemoria}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/clienti/${c.id}?elimina_memoria=${eliminaMemoria}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || "Eliminazione non riuscita");
+      }
       toast.success("Account eliminato");
       router.push("/admin/clienti");
       router.refresh();
-    } catch {
-      toast.error("Errore eliminazione");
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore eliminazione");
     } finally {
       setEliminaSaving(false);
     }
@@ -336,6 +351,11 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                     ? <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700"><CheckCircle className="size-3" /> Attivo</span>
                     : <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600"><XCircle className="size-3" /> Disattivo</span>
                   }
+                  {!c.attivo && c.last_seen_at === null && (
+                    <span className="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-600">
+                      <AlertTriangle className="size-3" /> Attivazione in sospeso — mai effettuato accesso
+                    </span>
+                  )}
                 </dd>
               </div>
               {c.trial?.active && (
@@ -502,7 +522,7 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
                         size="sm"
                         variant="ghost"
                         className="size-7 p-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleEliminaSede(sede)}
+                        onClick={() => setSedeDaEliminare(sede)}
                         title="Elimina sede"
                       >
                         <X className="size-3.5" />
@@ -676,6 +696,25 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
             <Button variant="outline" onClick={() => setEditSede(null)} disabled={editSedeSaving}>Annulla</Button>
             <Button onClick={handleModificaSedeSubmit} disabled={editSedeSaving || !eNome.trim() || !ePiva.trim()}>
               {editSedeSaving ? "Salvataggio…" : "Salva modifiche"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog elimina sede */}
+      <Dialog open={sedeDaEliminare !== null} onOpenChange={(o) => !o && setSedeDaEliminare(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-destructive">Elimina sede</DialogTitle>
+            <DialogDescription>
+              Stai per eliminare la sede <strong>{sedeDaEliminare?.nome_ristorante}</strong>.
+              Tutte le sue fatture verranno eliminate. Azione irreversibile.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSedeDaEliminare(null)} disabled={eliminaSedeSaving}>Annulla</Button>
+            <Button variant="destructive" onClick={handleEliminaSede} disabled={eliminaSedeSaving}>
+              {eliminaSedeSaving ? "Eliminazione…" : "Elimina sede"}
             </Button>
           </DialogFooter>
         </DialogContent>

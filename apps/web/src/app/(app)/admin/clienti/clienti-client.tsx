@@ -2,7 +2,6 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation"; // usato in handleCreaCliente + handleImpersona
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -51,7 +50,6 @@ function AttivitaLabel({ lastSeen }: { lastSeen: string | null }) {
 type Props = { clientiIniziali: Cliente[] };
 
 export function ClientiClient({ clientiIniziali }: Props) {
-  const router = useRouter();
   const [clienti, setClienti] = useState<Cliente[]>(clientiIniziali);
   const [search, setSearch] = useState("");
   const [filtroStato, setFiltroStato] = useState<"tutti" | "attivi" | "disattivi">("tutti");
@@ -88,6 +86,10 @@ export function ClientiClient({ clientiIniziali }: Props) {
       toast.error("Email e nome account sono obbligatori");
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nEmail.trim())) {
+      toast.error("Email non valida");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/admin/clienti", {
@@ -110,8 +112,8 @@ export function ClientiClient({ clientiIniziali }: Props) {
       );
       setDialogOpen(false);
       setNEmail(""); setNNome("");
-      router.refresh();
-      // aggiorna lista localmente
+      // Aggiorna la lista in-place (no full reload): il router.refresh ridondante
+      // ricaricava l'intera pagina server inutilmente.
       const refresh = await fetch("/api/admin/clienti");
       if (refresh.ok) setClienti(await refresh.json());
     } catch {

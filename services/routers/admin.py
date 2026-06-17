@@ -298,26 +298,15 @@ def admin_lista_clienti():
 
     user_ids = [u["id"] for u in clienti_raw]
 
-    # Totale fatture per utente (storico completo, non solo mese corrente)
+    # Totale fatture per utente (storico completo). Conteggio aggregato lato DB
+    # via RPC: niente full-load di tutte le righe in memoria.
     n_fatture_map: dict = {}
     try:
-        chunk_size = 100
-        for i in range(0, len(user_ids), chunk_size):
-            chunk = user_ids[i : i + chunk_size]
-            resp = sb.table("fatture_documenti").select("user_id").in_("user_id", chunk).limit(500000).execute()
-            for r in (resp.data or []):
-                uid = r["user_id"]
-                n_fatture_map[uid] = n_fatture_map.get(uid, 0) + 1
+        resp = sb.rpc("admin_conteggio_fatture", {"p_user_ids": user_ids}).execute()
+        for r in (resp.data or []):
+            n_fatture_map[r["user_id"]] = r["n"]
     except Exception:
-        try:
-            for i in range(0, len(user_ids), chunk_size):
-                chunk = user_ids[i : i + chunk_size]
-                resp = sb.table("fatture").select("user_id").in_("user_id", chunk).is_("deleted_at", "null").limit(500000).execute()
-                for r in (resp.data or []):
-                    uid = r["user_id"]
-                    n_fatture_map[uid] = n_fatture_map.get(uid, 0) + 1
-        except Exception:
-            pass
+        logger.warning("admin_conteggio_fatture RPC fallita, n_fatture a 0", exc_info=True)
 
     # Sedi per utente
     sedi_map: dict = {}
@@ -483,26 +472,54 @@ def admin_aggiorna_cliente(cliente_id: str, body: AggiornaClienteBody, admin_use
 
 # ── Crea cliente ─────────────────────────────────────────────────────────────
 
-def _invia_email_onboarding(email: str, nome_ristorante: str, link: str) -> bool:
-    """Invia (o reinvia) l'email di attivazione account via Brevo.
+# Sender di DEFAULT verificato in Brevo. NON usare noreply@/altro come fallback:
+# un mittente non verificato fa fallire l'invio in silenzio (status != 201).
+_BREVO_SENDER_DEFAULT = "agent@oneflux.it"
 
-    Ritorna True solo se Brevo accetta (status 201). Mittente: deve essere un
-    sender VERIFICATO in Brevo (BREVO_SENDER_EMAIL), altrimenti l'invio fallisce
-    in silenzio.
+
+def _brevo_send(to_email: str, to_name: str, subject: str, html_body: str, *, contesto: str = "email") -> bool:
+    """Invia un'email transazionale via Brevo. Ritorna True solo su status 201.
+
+    Mittente: BREVO_SENDER_EMAIL, che DEVE essere un sender verificato in Brevo
+    (default agent@oneflux.it). Centralizza l'invio: onboarding, reinvio
+    attivazione e reset password passano tutti da qui.
     """
-    import html as _html_mod
     import requests as _requests
 
     brevo_key = os.getenv("BREVO_API_KEY", "")
     if not brevo_key:
-        logger.warning("Email onboarding non inviata: BREVO_API_KEY mancante")
+        logger.warning("Email %s non inviata: BREVO_API_KEY mancante", contesto)
         return False
-    sender_email = os.getenv("BREVO_SENDER_EMAIL", "agent@oneflux.it")
+    sender_email = os.getenv("BREVO_SENDER_EMAIL", _BREVO_SENDER_DEFAULT)
     sender_name = os.getenv("BREVO_SENDER_NAME", "ONEFLUX")
     try:
-        nome_safe = _html_mod.escape(nome_ristorante)
-        email_safe = _html_mod.escape(email)
-        html_body = f"""
+        r = _requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            json={
+                "sender": {"email": sender_email, "name": sender_name},
+                "to": [{"email": to_email, "name": to_name}],
+                "replyTo": {"email": "md@oneflux.it", "name": "Mattia - ONEFLUX"},
+                "subject": subject,
+                "htmlContent": html_body,
+            },
+            headers={"api-key": brevo_key, "Content-Type": "application/json"},
+            timeout=10,
+        )
+        if r.status_code != 201:
+            logger.warning("Brevo %s KO: status=%s (sender=%s)", contesto, r.status_code, sender_email)
+        return r.status_code == 201
+    except Exception as exc:
+        logger.warning("Errore invio email %s: %s", contesto, exc)
+        return False
+
+
+def _invia_email_onboarding(email: str, nome_ristorante: str, link: str) -> bool:
+    """Invia (o reinvia) l'email di attivazione account via Brevo."""
+    import html as _html_mod
+
+    nome_safe = _html_mod.escape(nome_ristorante)
+    email_safe = _html_mod.escape(email)
+    html_body = f"""
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
   <h2 style="color:#0ea5e9;">Benvenuto in ONEFLUX</h2>
   <p>Ciao <strong>{nome_safe}</strong>,</p>
@@ -517,25 +534,11 @@ def _invia_email_onboarding(email: str, nome_ristorante: str, link: str) -> bool
   <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
   <p style="color:#666;font-size:13px;"><strong>ONEFLUX Team</strong> — md@oneflux.it</p>
 </div>"""
-        payload = {
-            "sender": {"email": sender_email, "name": sender_name},
-            "to": [{"email": email, "name": nome_safe}],
-            "replyTo": {"email": "md@oneflux.it", "name": "Mattia - ONEFLUX"},
-            "subject": f"Benvenuto {nome_safe} — Attiva il tuo account ONEFLUX",
-            "htmlContent": html_body,
-        }
-        r = _requests.post(
-            "https://api.brevo.com/v3/smtp/email",
-            json=payload,
-            headers={"api-key": brevo_key, "Content-Type": "application/json"},
-            timeout=10,
-        )
-        if r.status_code != 201:
-            logger.warning("Brevo onboarding KO: status=%s (sender=%s)", r.status_code, sender_email)
-        return r.status_code == 201
-    except Exception as exc:
-        logger.warning("Errore invio email onboarding: %s", exc)
-        return False
+    return _brevo_send(
+        email, nome_safe,
+        f"Benvenuto {nome_safe} — Attiva il tuo account ONEFLUX",
+        html_body, contesto="onboarding",
+    )
 
 
 class NuovoClienteBody(BaseModel):
@@ -2187,8 +2190,6 @@ def admin_aggiorna_account(
 def admin_reset_password(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
     """Genera token reset password e invia email al cliente."""
     import html as _html_mod
-    import requests as _requests
-    import secrets as _secrets
 
     sb = get_supabase_client()
     admin_emails = _admin_emails_set()
@@ -2199,20 +2200,13 @@ def admin_reset_password(cliente_id: str, admin_user: dict = Depends(_verify_adm
     if u["email"].lower() in admin_emails:
         raise HTTPException(status_code=403, detail="Non puoi modificare account admin")
 
-    token = _secrets.token_urlsafe(32)
+    token = secrets.token_urlsafe(32)
     expires = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
     sb.table("users").update({"reset_code": token, "reset_expires": expires}).eq("id", cliente_id).execute()
 
     link = f"https://app.oneflux.it/reset-password?token={token}"
-    email_inviata = False
-    brevo_key = os.getenv("BREVO_API_KEY", "")
-    sender_email = os.getenv("BREVO_SENDER_EMAIL", "noreply@oneflux.it")
-    sender_name = os.getenv("BREVO_SENDER_NAME", "ONEFLUX")
-
-    if brevo_key:
-        try:
-            nome_safe = _html_mod.escape(u.get("nome_ristorante") or u["email"])
-            html_body = f"""
+    nome_safe = _html_mod.escape(u.get("nome_ristorante") or u["email"])
+    html_body = f"""
 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
   <h2 style="color:#0ea5e9;">Reset Password ONEFLUX</h2>
   <p>Ciao <strong>{nome_safe}</strong>,</p>
@@ -2226,21 +2220,7 @@ def admin_reset_password(cliente_id: str, admin_user: dict = Depends(_verify_adm
   <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
   <p style="color:#666;font-size:13px;"><strong>ONEFLUX Team</strong> — md@oneflux.it</p>
 </div>"""
-            r = _requests.post(
-                "https://api.brevo.com/v3/smtp/email",
-                json={
-                    "sender": {"email": sender_email, "name": sender_name},
-                    "to": [{"email": u["email"], "name": nome_safe}],
-                    "replyTo": {"email": "md@oneflux.it", "name": "Mattia - ONEFLUX"},
-                    "subject": "Reset Password — ONEFLUX",
-                    "htmlContent": html_body,
-                },
-                headers={"api-key": brevo_key, "Content-Type": "application/json"},
-                timeout=10,
-            )
-            email_inviata = r.status_code == 201
-        except Exception as exc:
-            logger.warning("Errore invio email reset: %s", exc)
+    email_inviata = _brevo_send(u["email"], nome_safe, "Reset Password — ONEFLUX", html_body, contesto="reset")
 
     logger.info("admin_reset_password: cliente=%s | admin=%s | email_inviata=%s", cliente_id, admin_user.get("email"), email_inviata)
     return {"ok": True, "email_inviata": email_inviata, "link": link}
