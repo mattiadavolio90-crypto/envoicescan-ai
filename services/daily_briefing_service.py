@@ -568,8 +568,8 @@ def _buona_notizia_frase(payload: Dict[str, Any]) -> str:
         prec = str(payload.get('mese_prec') or '').lower()
         prep = "ad" if prec[:1] in ("a", "o") else "a"
         if delta is not None and prec:
-            return f"{mese} si è chiuso bene: € {mol} di margine, +{float(delta):.1f}% rispetto {prep} {prec}! 🔥"
-        return f"{mese} si è chiuso con € {mol} di margine. 🔥"
+            return f"{mese} si è chiuso con € {mol} di margine, +{float(delta):.1f}% rispetto {prep} {prec}."
+        return f"{mese} si è chiuso con € {mol} di margine."
     if tipo == 'perdita_in_calo':
         mese = str(payload.get('mese') or '').capitalize()
         perdita = _euro_it(float(payload.get('perdita') or 0))
@@ -577,7 +577,7 @@ def _buona_notizia_frase(payload: Dict[str, Any]) -> str:
         prep = "ad" if prec[:1] in ("a", "o") else "a"
         return (
             f"{mese} è in miglioramento: la perdita è scesa a € {perdita} "
-            f"rispetto {prep} {prec}, sei sulla strada giusta! 💪"
+            f"rispetto {prep} {prec}."
         )
     if tipo == 'incasso_ieri':
         incasso = _euro_it(float(payload.get('incasso') or 0))
@@ -588,7 +588,7 @@ def _buona_notizia_frase(payload: Dict[str, Any]) -> str:
             dp = payload.get('scontrino_delta_pct')
             verso = "sopra" if su else "sotto"
             base += f" Lo scontrino medio è stato € {_euro_it(float(sm))}, {dp}% {verso} la media del mese."
-        return base + " 💰"
+        return base
     return ""
 
 
@@ -612,10 +612,9 @@ def _compose_narrative(
 
     if not selected:
         if apertura:
-            # C'e' un'apertura (rientro e/o buona notizia) ma niente da fare:
-            # valorizziamo invece del muto "tutto in ordine".
-            return f"Ciao! 👋\n{apertura}\nPer oggi non c'è nulla da sistemare: goditi la giornata! ✅"
-        return "Ciao! ✅\nTutto in ordine per oggi, niente da sistemare. Buon lavoro! 👍"
+            # C'e' un'apertura (rientro e/o buona notizia) ma niente da fare.
+            return f"{apertura}\nPer oggi non c'è nulla da sistemare."
+        return "Tutto in ordine per oggi, niente da sistemare."
 
     sentences: List[str] = []
     skip_topics: set = set()
@@ -646,9 +645,10 @@ def _compose_narrative(
     body = "\n".join(sentences)
     if apertura:
         # Prima il bene, poi la rogna (decisione Mattia): apriamo con la buona
-        # notizia e poi passiamo alle cose da chiudere.
-        return f"Ciao! 👋\n{apertura}\nDetto questo, qualcosa da sistemare oggi c'è:\n{body}\nForza, ce la fai! 🔥"
-    return f"Ciao! 👋 Vediamo cosa c'è da sistemare oggi:\n{body}\nForza, ce la fai! 🔥"
+        # notizia e poi passiamo alle cose da chiudere. Tono sobrio, niente
+        # incoraggiamenti di chiusura.
+        return f"{apertura}\nDa sistemare oggi:\n{body}"
+    return f"Da sistemare oggi:\n{body}"
 
 
 # ============================================================
@@ -661,33 +661,31 @@ def _compose_narrative(
 # nella risposta, per non inviarli mai a OpenAI.
 
 _NARRATION_SYSTEM_PROMPT = (
-    "Sei l'assistente AI di un gestionale per ristoratori: sveglio, positivo e "
-    "motivante, come un bravo consulente che ti da' una spinta. Ricevi un elenco "
-    "di cose da fare oggi, gia' scritte con numeri e dettagli corretti. "
-    "Riscrivile in un briefing colloquiale, caldo e diretto, in italiano, dando "
-    "del tu. REGOLE FERREE: "
+    "Sei l'assistente AI di un gestionale per ristoratori. Tono: SOBRIO, "
+    "professionale e asciutto, come un bravo consulente di gestione che riferisce "
+    "i fatti con chiarezza. NON sei un coach motivazionale. Ricevi un elenco di "
+    "cose da fare oggi, gia' scritte con numeri e dettagli corretti. Riscrivile in "
+    "un briefing breve e chiaro, in italiano, dando del tu. REGOLE FERREE: "
     "1) Non inventare, modificare o aggiungere NESSUN numero, importo, "
     "percentuale, data o nome: usa solo quelli che ti vengono dati. "
     "2) Non aggiungere voci non presenti nell'elenco. "
-    "3) Massimo 4 frasi, scorrevoli e con un po' di energia (non burocratiche). "
-    "Apri in modo amichevole e chiudi con un incoraggiamento breve. "
-    "3-bis) Se la PRIMA voce dell'elenco e' una buona notizia (un margine in "
-    "crescita, una perdita che si riduce o un incasso, riconoscibile dall'emoji "
-    "🔥 💪 o 💰), aprici il "
-    "briefing con tono positivo PRIMA di passare alle cose da sistemare: prima "
-    "il bene, poi le rogne. Non confrontare ne' commentare l'incasso oltre quello "
-    "che ti viene detto (niente 'in calo/in crescita' inventati sull'incasso). "
-    "3-ter) Le voci che sono PROBLEMI (rincari di prezzo, scadenze, dati "
-    "mancanti) vanno descritte con tono neutro o di allerta, MAI con aggettivi "
-    "entusiasti: vietato 'un bel +X%', 'ottimo', 'fantastico' su un costo che "
-    "sale o una scadenza. L'entusiasmo e' solo per le buone notizie. "
-    "3-quater) Se la PRIMA voce e' un bentornato (emoji 👋, l'utente torna dopo "
-    "un'assenza), aprici davvero il briefing salutandolo con calore, PRIMA di "
-    "tutto il resto. Se quel bentornato include un'offerta di aiuto ('possiamo "
-    "gestire noi l'app al posto tuo'), riportala UNA volta sola, gentile e senza "
-    "insistere: e' un'offerta, mai una pressione o un rimprovero per l'assenza. "
-    "4) Usa 2-4 emoji pertinenti per dare ritmo (es. 📊 💰 ⏰ ✅ 🔥 👍), "
-    "ma senza esagerare e mai dentro i numeri. "
+    "3) Massimo 3 frasi, sobrie e informative. NIENTE entusiasmo, NIENTE "
+    "incoraggiamenti, NIENTE frasi motivazionali di chiusura ('continua cosi'', "
+    "'sei sulla strada giusta', 'diamo il massimo', 'affronta la giornata con "
+    "energia' e simili: VIETATE). Vai dritto al punto. "
+    "3-bis) VIETATI gli aggettivi enfatici ovunque, anche sulle buone notizie: "
+    "mai 'fantastico', 'incredibile', 'ottimo', 'straordinario', 'che bello', "
+    "'che notizia'. Un margine in crescita si riferisce con un fatto neutro "
+    "(es. 'A maggio il margine e' stato di X, +Y% su aprile'), senza esclamazioni. "
+    "3-ter) Se la PRIMA voce e' una buona notizia (margine in crescita, perdita "
+    "che si riduce, incasso — emoji 🔥 💪 o 💰), riportala per prima con tono "
+    "FATTUALE, poi passa alle cose da sistemare. Non confrontare ne' commentare "
+    "l'incasso oltre quello che ti viene detto. "
+    "3-quater) Se la PRIMA voce e' un bentornato (emoji 👋), apri con un saluto "
+    "breve e pacato, senza enfasi. Se include un'offerta di aiuto, riportala UNA "
+    "volta sola, gentile e senza insistere: mai una pressione ne' un rimprovero. "
+    "4) Al massimo 1 emoji, solo se utile; spesso meglio nessuna. Mai dentro i "
+    "numeri. Niente punti esclamativi se non strettamente necessari. "
     "5) Mantieni intatti i segnaposto tipo <<P1>> o <<F1>> se presenti. "
     "Restituisci solo il testo del briefing, senza elenchi puntati."
 )

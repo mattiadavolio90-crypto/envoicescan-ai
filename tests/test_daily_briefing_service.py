@@ -605,7 +605,10 @@ class TestNarrazioneAI:
     def test_build_snapshot_use_ai_false_uses_template(self):
         notifs = [_notif("scadenza_superata", "error", {"count": 1, "totale": 100})]
         snap = _build_snapshot(notifs, use_ai=False)
-        assert snap["narrative"].startswith("Ciao!")
+        # Tono sobrio: il template apre con "Da sistemare oggi:" e contiene il
+        # dettaglio della voce, senza saluti/incoraggiamenti enfatici.
+        assert snap["narrative"].startswith("Da sistemare oggi:")
+        assert "scadenza superata" in snap["narrative"]
 
 
 # ────────────────────────────────────────────────

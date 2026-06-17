@@ -3586,6 +3586,55 @@ def _briefing_dati_mensili_mancanti(
     return out
 
 
+def _briefing_righe_da_classificare(
+    ristorante_id: str, supabase_client,
+) -> Optional[Dict[str, Any]]:
+    """Notifica LIVE 'righe da classificare', allineata alla card Salute.
+
+    Stessa fonte e finestra della voce 4 di /api/home/salute: fatture con
+    needs_review=True caricate (created_at) negli ultimi 30 giorni. Cosi' se la
+    card mostra "N righe da controllare", anche briefing e campanella lo dicono.
+    None se non c'e' nulla da classificare (zero rumore).
+    """
+    from datetime import datetime as _dt2, timedelta as _td2
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        oggi = _dt2.now(tz=_ZI("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt2.now().date()
+    inizio_dt = _dt2.combine(oggi - _td2(days=29), _dt2.min.time())
+    try:
+        resp = (
+            supabase_client.table("fatture")
+            .select("id", count="exact")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .eq("needs_review", True)
+            .gte("created_at", inizio_dt.isoformat())
+            .execute()
+        )
+        n = resp.count if resp.count is not None else len(resp.data or [])
+    except Exception as exc:
+        logger.warning("briefing righe da classificare: lettura fallita: %s", exc)
+        return None
+
+    if not n or n <= 0:
+        return None
+
+    return {
+        "id": f"uncategorized-rows-live-{ristorante_id}",
+        "topic_key": "uncategorized_rows",
+        "source_type": "live",
+        "severity": "warning",
+        "title": f"{n} {'riga' if n == 1 else 'righe'} da classificare",
+        "body": "",
+        "action_page": "/analisi-fatture?tab=articoli&verifica=1",
+        "payload": {"uncategorized_rows": n, "count": n},
+        "source_event_at": None,
+        "dedupe_key": f"uncategorized-rows-live-{ristorante_id}",
+    }
+
+
 def _briefing_anomalia_coperti(
     ristorante_id: str, supabase_client, oggi,
 ) -> Optional[Dict[str, Any]]:
@@ -4075,6 +4124,24 @@ def _briefing_raccogli_notifiche(
             )
         except Exception as exc:
             logger.warning("home_briefing: dati mensili mancanti falliti: %s", exc)
+
+    # Righe da classificare: calcolate LIVE dalla STESSA fonte/finestra della card
+    # Salute (fatture con needs_review caricate negli ultimi 30 giorni). Prima il
+    # briefing/campanella leggevano solo la notifica 'uncategorized_rows' scritta
+    # all'UPLOAD: se le righe finivano in needs_review per una rilavorazione AI su
+    # fatture gia' caricate (nessun upload recente), la card Salute le mostrava ma
+    # la campanella no -> incoerenza. Rimuovo la versione upload (puo' essere
+    # stantia: non si aggiorna quando classifichi) e uso il conteggio live.
+    if ristorante_id:
+        try:
+            notifications = [
+                n for n in notifications if n.get("topic_key") != "uncategorized_rows"
+            ]
+            _n_da_class = _briefing_righe_da_classificare(ristorante_id, supabase_client)
+            if _n_da_class is not None:
+                notifications.append(_n_da_class)
+        except Exception as exc:
+            logger.warning("home_briefing: righe da classificare live fallite: %s", exc)
 
     # Promemoria appuntamenti di oggi (Agenda). Importanza medio/bassa: in fondo
     # alla gerarchia (_TOPIC_PRIORITY) e severity 'info'. Persiste in inbox cosi'

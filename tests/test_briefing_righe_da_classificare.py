@@ -1,0 +1,50 @@
+"""Test guardia: il briefing segnala le righe da classificare come la card Salute.
+
+Difetto osservato (LAND DEI SAPORI): la card "Salute della gestione" mostrava
+"2 righe da controllare" (conteggio LIVE di needs_review sulle fatture degli
+ultimi 30 giorni), ma campanella e briefing non le segnalavano — perche'
+leggevano solo la notifica 'uncategorized_rows' scritta all'UPLOAD, assente se
+le righe finivano in needs_review per una rilavorazione su fatture gia' caricate.
+
+_briefing_righe_da_classificare ricalcola il segnale LIVE dalla stessa fonte
+della Salute, cosi' le due sezioni Home restano coerenti.
+"""
+from unittest.mock import MagicMock
+
+from services.fastapi_worker import _briefing_righe_da_classificare
+
+RID = "rist-xyz"
+
+
+def _sb(count):
+    sb = MagicMock()
+    q = MagicMock()
+    q.select.return_value = q
+    q.eq.return_value = q
+    q.is_.return_value = q
+    q.gte.return_value = q
+    q.execute.return_value = MagicMock(count=count, data=[{"id": i} for i in range(count or 0)])
+    sb.table.return_value = q
+    return sb
+
+
+def test_nessuna_riga_da_classificare_nessuna_notifica():
+    assert _briefing_righe_da_classificare(RID, _sb(0)) is None
+
+
+def test_righe_da_classificare_genera_notifica_live():
+    out = _briefing_righe_da_classificare(RID, _sb(2))
+    assert out is not None
+    assert out["topic_key"] == "uncategorized_rows"
+    assert out["source_type"] == "live"
+    assert out["payload"]["uncategorized_rows"] == 2
+    assert out["payload"]["count"] == 2
+    assert "2 righe" in out["title"]
+    # Deep-link al tab Articoli filtrato sulle righe da controllare.
+    assert "verifica=1" in out["action_page"]
+
+
+def test_singolare_una_riga():
+    out = _briefing_righe_da_classificare(RID, _sb(1))
+    assert out is not None
+    assert "1 riga" in out["title"]
