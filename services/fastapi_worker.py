@@ -1817,6 +1817,11 @@ def get_notifiche(
     from services import get_supabase_client
     supabase_client = get_supabase_client()
 
+    # Filtro per SEDE attiva: un cliente multi-sede (stesso user_id, N ristoranti)
+    # non deve vedere in campanella le notifiche delle ALTRE sedi. Senza questo
+    # filtro una sede a 0 fatture mostrava i tag/scadenze di un'altra sede.
+    ristorante_id = _resolve_ristorante_id(user, supabase_client)
+
     query = (
         supabase_client.table("notification_inbox")
         .select("id,topic_key,source_type,severity,title,body,action_page,dismissed_at,expires_at,created_at")
@@ -1825,6 +1830,8 @@ def get_notifiche(
         .order("created_at", desc=True)
         .limit(100)
     )
+    if ristorante_id:
+        query = query.eq("ristorante_id", ristorante_id)
 
     resp = query.execute()
     rows = resp.data or []
@@ -1838,7 +1845,6 @@ def get_notifiche(
     # worker, radar). Fail-open: se la lettura preferenze va male, non nascondo
     # nulla. La logica di filtro e' in _filtra_notifiche_topic_spenti (testata).
     try:
-        ristorante_id = _resolve_ristorante_id(user, supabase_client)
         if ristorante_id:
             pref = (
                 supabase_client.table("assistant_preferences")
@@ -3201,7 +3207,15 @@ def _briefing_buona_notizia(
                 mol_prec = float(kpi_prec["mol"])
                 # In crescita = MOL positivo E sopra il mese prima. Solo allora e'
                 # una "buona notizia" da festeggiare in apertura.
-                if mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec:
+                # Ma NON festeggiamo il MOL se la Salute e' rossa: i numeri del
+                # margine vengono da dati inseriti a mano e una card "0% / dati
+                # incompleti" accanto a "+172%!" si contraddice (fatture vecchie
+                # di oltre un mese, mese non ancora consolidato). In quel caso
+                # saltiamo l'apertura festante e cadiamo sull'incasso di ieri (o
+                # sul silenzio): l'incoerenza la risolve l'utente completando i
+                # dati, non un tono trionfale.
+                if (mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec
+                        and not _salute_indice_rosso(ristorante_id, supabase_client)):
                     delta_pct = round((mol_curr - mol_prec) / abs(mol_prec) * 100, 1)
                     return {
                         "id": f"buona-notizia-mol-{anno_usato}-{mese_usato:02d}",
@@ -3224,7 +3238,8 @@ def _briefing_buona_notizia(
                 # Perdita in CALO: MOL ancora negativo ma migliore del mese prima.
                 # E' incoraggiante ("sei sulla strada giusta") senza fingere che
                 # vada bene. Decisione Mattia: segnalarlo come spinta.
-                if mol_curr < 0 and mol_prec < 0 and mol_curr > mol_prec:
+                if (mol_curr < 0 and mol_prec < 0 and mol_curr > mol_prec
+                        and not _salute_indice_rosso(ristorante_id, supabase_client)):
                     return {
                         "id": f"buona-notizia-perdita-{anno_usato}-{mese_usato:02d}",
                         "topic_key": "buona_notizia",
@@ -3875,18 +3890,22 @@ def _briefing_raccogli_notifiche(
     """
     from datetime import datetime as _dt, timezone as _tz
 
-    # Notifiche attive (stesso filtro di /api/notifiche, senza dismissed)
+    # Notifiche attive (stesso filtro di /api/notifiche, senza dismissed).
+    # Filtro per SEDE: il briefing di una sede non deve includere le notifiche
+    # persistite di un'altra sede dello stesso cliente multi-sede.
     notifications: List[Dict[str, Any]] = []
     try:
-        resp = (
+        q = (
             supabase_client.table("notification_inbox")
             .select("id,topic_key,source_type,severity,title,body,action_page,payload,dismissed_at,expires_at,created_at,source_event_at,dedupe_key")
             .eq("user_id", user_id)
             .or_("expires_at.is.null,expires_at.gt." + _dt.now(_tz.utc).isoformat())
             .order("created_at", desc=True)
             .limit(100)
-            .execute()
         )
+        if ristorante_id:
+            q = q.eq("ristorante_id", ristorante_id)
+        resp = q.execute()
         notifications = [r for r in (resp.data or []) if not r.get("dismissed_at")]
     except Exception as exc:
         logger.warning("home_briefing: lettura notifiche fallita: %s", exc)
@@ -4161,15 +4180,17 @@ def home_briefing(
     notifications: List[Dict[str, Any]] = []
     try:
         from datetime import datetime as _dt, timezone as _tz
-        resp = (
+        q = (
             supabase_client.table("notification_inbox")
             .select("id,topic_key,source_type,severity,title,body,action_page,payload,dismissed_at,expires_at,created_at,source_event_at,dedupe_key")
             .eq("user_id", user_id)
             .or_("expires_at.is.null,expires_at.gt." + _dt.now(_tz.utc).isoformat())
             .order("created_at", desc=True)
             .limit(100)
-            .execute()
         )
+        if ristorante_id:
+            q = q.eq("ristorante_id", ristorante_id)
+        resp = q.execute()
         notifications = [r for r in (resp.data or []) if not r.get("dismissed_at")]
     except Exception as exc:
         logger.warning("home_briefing: lettura notifiche (template istantaneo) fallita: %s", exc)
