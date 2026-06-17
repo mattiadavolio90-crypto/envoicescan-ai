@@ -11,7 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/select";
 import {
-  LogIn, Mail, KeyRound, Trash2, Plus, X, Clock, CheckCircle, XCircle, AlertTriangle, Pencil
+  LogIn, Mail, KeyRound, Trash2, Plus, X, Clock, CheckCircle, XCircle, AlertTriangle, Pencil, Send
 } from "lucide-react";
 import { ClienteDettaglio, Sede, PIANO_LABEL, PIANO_COLOR, fmtDate, fmtDateTime } from "@/lib/admin";
 
@@ -96,6 +96,15 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
     try {
       const data = await patch(`/api/admin/clienti/${c.id}/reset-password`, "POST");
       toast.success(data.email_inviata ? "Email reset inviata" : `Email NON inviata. Link: ${data.link}`);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Errore");
+    }
+  }
+
+  async function handleRinviaAttivazione() {
+    try {
+      const data = await patch(`/api/admin/clienti/${c.id}/rinvia-attivazione`, "POST");
+      toast.success(data.email_inviata ? "Email di attivazione reinviata" : "Inviata");
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Errore");
     }
@@ -348,6 +357,11 @@ export function ClienteDettaglioClient({ cliente: iniziale }: Props) {
             <Button className="w-full justify-start" onClick={handleImpersona}>
               <LogIn className="size-4 mr-2" /> Entra come cliente
             </Button>
+            {!c.attivo && (
+              <Button variant="outline" className="w-full justify-start" onClick={handleRinviaAttivazione}>
+                <Send className="size-4 mr-2" /> Rinvia email attivazione
+              </Button>
+            )}
             <Button variant="outline" className="w-full justify-start" onClick={handleResetPassword}>
               <KeyRound className="size-4 mr-2" /> Invia reset password
             </Button>

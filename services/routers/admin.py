@@ -483,6 +483,61 @@ def admin_aggiorna_cliente(cliente_id: str, body: AggiornaClienteBody, admin_use
 
 # ── Crea cliente ─────────────────────────────────────────────────────────────
 
+def _invia_email_onboarding(email: str, nome_ristorante: str, link: str) -> bool:
+    """Invia (o reinvia) l'email di attivazione account via Brevo.
+
+    Ritorna True solo se Brevo accetta (status 201). Mittente: deve essere un
+    sender VERIFICATO in Brevo (BREVO_SENDER_EMAIL), altrimenti l'invio fallisce
+    in silenzio.
+    """
+    import html as _html_mod
+    import requests as _requests
+
+    brevo_key = os.getenv("BREVO_API_KEY", "")
+    if not brevo_key:
+        logger.warning("Email onboarding non inviata: BREVO_API_KEY mancante")
+        return False
+    sender_email = os.getenv("BREVO_SENDER_EMAIL", "agent@oneflux.it")
+    sender_name = os.getenv("BREVO_SENDER_NAME", "ONEFLUX")
+    try:
+        nome_safe = _html_mod.escape(nome_ristorante)
+        email_safe = _html_mod.escape(email)
+        html_body = f"""
+<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
+  <h2 style="color:#0ea5e9;">Benvenuto in ONEFLUX</h2>
+  <p>Ciao <strong>{nome_safe}</strong>,</p>
+  <p>Il tuo account è stato creato. Imposta la tua password per iniziare:</p>
+  <div style="text-align:center;margin:30px 0;">
+    <a href="{link}" style="background:#0ea5e9;color:#fff;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">
+      Attiva il mio account
+    </a>
+  </div>
+  <p style="color:#dc2626;"><strong>⚠️ Il link scade tra 24 ore.</strong></p>
+  <p><strong>Email di accesso:</strong> {email_safe}</p>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
+  <p style="color:#666;font-size:13px;"><strong>ONEFLUX Team</strong> — md@oneflux.it</p>
+</div>"""
+        payload = {
+            "sender": {"email": sender_email, "name": sender_name},
+            "to": [{"email": email, "name": nome_safe}],
+            "replyTo": {"email": "md@oneflux.it", "name": "Mattia - ONEFLUX"},
+            "subject": f"Benvenuto {nome_safe} — Attiva il tuo account ONEFLUX",
+            "htmlContent": html_body,
+        }
+        r = _requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            json=payload,
+            headers={"api-key": brevo_key, "Content-Type": "application/json"},
+            timeout=10,
+        )
+        if r.status_code != 201:
+            logger.warning("Brevo onboarding KO: status=%s (sender=%s)", r.status_code, sender_email)
+        return r.status_code == 201
+    except Exception as exc:
+        logger.warning("Errore invio email onboarding: %s", exc)
+        return False
+
+
 class NuovoClienteBody(BaseModel):
     email: str = Field(..., max_length=254)
     # Etichetta dell'ACCOUNT (nome locale o catena). I dati operativi (P.IVA,
@@ -497,8 +552,6 @@ def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(_verif
     Le sedi (con P.IVA, indirizzo e piano) si aggiungono dopo dal dettaglio cliente.
     """
     from services.auth_service import crea_cliente_con_token
-    import html as _html_mod
-    import requests as _requests
 
     successo, messaggio, token = crea_cliente_con_token(
         email=body.email,
@@ -508,50 +561,44 @@ def admin_crea_cliente(body: NuovoClienteBody, admin_user: dict = Depends(_verif
         raise HTTPException(status_code=400, detail=messaggio)
 
     link = f"https://app.oneflux.it/reset-password?token={token}&onboarding=1"
-    email_inviata = False
-    brevo_key = os.getenv("BREVO_API_KEY", "")
-    sender_email = os.getenv("BREVO_SENDER_EMAIL", "noreply@oneflux.it")
-    sender_name = os.getenv("BREVO_SENDER_NAME", "ONEFLUX")
-
-    if brevo_key:
-        try:
-            nome_safe = _html_mod.escape(body.nome_ristorante)
-            email_safe = _html_mod.escape(body.email)
-            piva_safe = _html_mod.escape(body.partita_iva)
-            html_body = f"""
-<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;">
-  <h2 style="color:#0ea5e9;">Benvenuto in ONEFLUX</h2>
-  <p>Ciao <strong>{nome_safe}</strong>,</p>
-  <p>Il tuo account è stato creato. Imposta la tua password per iniziare:</p>
-  <div style="text-align:center;margin:30px 0;">
-    <a href="{link}" style="background:#0ea5e9;color:#fff;padding:14px 28px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">
-      Attiva il mio account
-    </a>
-  </div>
-  <p style="color:#dc2626;"><strong>⚠️ Il link scade tra 24 ore.</strong></p>
-  <p><strong>Email di accesso:</strong> {email_safe}<br><strong>P.IVA:</strong> {piva_safe}</p>
-  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
-  <p style="color:#666;font-size:13px;"><strong>ONEFLUX Team</strong> — md@oneflux.it</p>
-</div>"""
-            payload = {
-                "sender": {"email": sender_email, "name": sender_name},
-                "to": [{"email": body.email, "name": nome_safe}],
-                "replyTo": {"email": "md@oneflux.it", "name": "Mattia - ONEFLUX"},
-                "subject": f"Benvenuto {nome_safe} — Attiva il tuo account ONEFLUX",
-                "htmlContent": html_body,
-            }
-            r = _requests.post(
-                "https://api.brevo.com/v3/smtp/email",
-                json=payload,
-                headers={"api-key": brevo_key, "Content-Type": "application/json"},
-                timeout=10,
-            )
-            email_inviata = r.status_code == 201
-        except Exception as exc:
-            logger.warning("Errore invio email onboarding: %s", exc)
+    email_inviata = _invia_email_onboarding(body.email, body.nome_ristorante, link)
 
     logger.info("Admin crea_cliente: %s | admin=%s | email_inviata=%s", body.email, admin_user.get("email"), email_inviata)
     return {"ok": True, "email": body.email, "link_attivazione": link, "email_inviata": email_inviata, "warning": messaggio if "⚠️" in messaggio else None}
+
+
+@router.post("/api/admin/clienti/{cliente_id}/rinvia-attivazione", tags=["Admin"])
+def admin_rinvia_attivazione(cliente_id: str, admin_user: dict = Depends(_verify_admin)):
+    """Rigenera il token onboarding (24h) e reinvia l'email di attivazione.
+
+    Utile quando l'email iniziale non è arrivata. Vietato su account admin e su
+    account già attivi (hanno già la password).
+    """
+    sb = get_supabase_client()
+    admin_emails = _admin_emails_set()
+    res = sb.table("users").select("id,email,nome_ristorante,attivo").eq("id", cliente_id).limit(1).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Cliente non trovato")
+    u = res.data[0]
+    if u.get("email", "").lower() in admin_emails:
+        raise HTTPException(status_code=403, detail="Non puoi rinviare l'attivazione a un account admin")
+    if u.get("attivo"):
+        raise HTTPException(status_code=400, detail="Account già attivo: usa 'Invia reset password'")
+
+    token = secrets.token_urlsafe(32)
+    expires = datetime.now(timezone.utc) + timedelta(hours=24)
+    sb.table("users").update({
+        "reset_code": token,
+        "reset_expires": expires.isoformat(),
+    }).eq("id", cliente_id).execute()
+
+    link = f"https://app.oneflux.it/reset-password?token={token}&onboarding=1"
+    email_inviata = _invia_email_onboarding(u["email"], u.get("nome_ristorante") or u["email"], link)
+
+    logger.info("Admin rinvia_attivazione: %s | admin=%s | email_inviata=%s", u["email"], admin_user.get("email"), email_inviata)
+    if not email_inviata:
+        raise HTTPException(status_code=502, detail="Token rigenerato ma invio email fallito (controlla sender Brevo). Usa il link manuale.")
+    return {"ok": True, "email": u["email"], "email_inviata": True, "link_attivazione": link}
 
 
 # ── Qualità AI — Coda review ──────────────────────────────────────────────────
