@@ -60,10 +60,17 @@ class RankingPV(BaseModel):
     dati_incompleti: bool           # True = nessun ricavo nel periodo → in coda
 
 
+class GruppoBriefing(BaseModel):
+    saluto: str                 # "Buongiorno / Buon pomeriggio / Buonasera"
+    narrativa: str              # voce macro deterministica "chi va meglio/peggio"
+    severity_max: str           # "info" | "warning" | "error" (dai segnali)
+
+
 class GruppoOverviewResponse(BaseModel):
     nome_gruppo: str
     num_pv: int
     periodo_label: str
+    briefing: GruppoBriefing
     kpi: GruppoKpi
     salute_indice: int          # media semplice degli indici di salute dei PV
     salute_colore: str          # "verde" | "giallo" | "rosso"
@@ -83,6 +90,106 @@ def _colore_margine(mol_perc: Optional[float]) -> str:
     if mol_perc >= 8:
         return "giallo"
     return "rosso"
+
+
+def _saluto_ora() -> str:
+    from datetime import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        h = _dt.now(tz=ZoneInfo("Europe/Rome")).hour
+    except Exception:
+        h = _dt.now().hour
+    if h < 13:
+        return "Buongiorno"
+    if h < 18:
+        return "Buon pomeriggio"
+    return "Buonasera"
+
+
+def _build_briefing(
+    nome_gruppo: str,
+    ranking: List["RankingPV"],
+    salute_indice: int,
+    salute_colore: str,
+    n_segnali: int,
+    sev_max: str,
+) -> "GruppoBriefing":
+    """Narrativa di gruppo DETERMINISTICA (no AI): si fonda sugli STESSI dati di
+    overview + segnali → coerente per costruzione, tono sobrio. Racconta chi va
+    meglio/peggio (margine%) e quante cose ci sono da vedere."""
+    completi = [r for r in ranking if not r.dati_incompleti and r.margine_perc is not None]
+    frasi: List[str] = []
+
+    if len(completi) >= 2:
+        best = completi[0]   # ranking già ordinato per margine% desc
+        worst = completi[-1]
+        if best.ristorante_id != worst.ristorante_id:
+            frasi.append(
+                f"Va meglio {best.nome} ({best.margine_perc:.0f}% di margine), "
+                f"più indietro {worst.nome} ({worst.margine_perc:.0f}%)."
+            )
+        else:
+            frasi.append(f"Margine attorno al {best.margine_perc:.0f}% sui punti vendita con dati.")
+    elif len(completi) == 1:
+        frasi.append(f"{completi[0].nome} è al {completi[0].margine_perc:.0f}% di margine.")
+
+    n_incompleti = sum(1 for r in ranking if r.dati_incompleti)
+    if n_incompleti:
+        frasi.append(
+            f"{n_incompleti} "
+            + ("punto vendita" if n_incompleti == 1 else "punti vendita")
+            + " ancora senza dati completi nel periodo."
+        )
+
+    if n_segnali == 0:
+        frasi.append("Nessuna segnalazione aperta: tutto sotto controllo.")
+    else:
+        frasi.append(
+            f"{n_segnali} "
+            + ("cosa da vedere" if n_segnali == 1 else "cose da vedere")
+            + " più sotto."
+        )
+
+    if salute_colore == "rosso":
+        frasi.append(f"La salute del gruppo è bassa ({salute_indice}): conviene completare i dati.")
+
+    narrativa = " ".join(frasi) if frasi else "Ecco la sintesi della catena."
+    return GruppoBriefing(saluto=_saluto_ora(), narrativa=narrativa, severity_max=sev_max)
+
+
+def _conta_segnali_cache(sb, user_id: str) -> tuple[int, str]:
+    """(n_segnali, severity_max) dallo snapshot segnali di OGGI in cache.
+
+    Read-only: NON ricalcola (il calcolo avviene su /api/gruppo/segnali). Se la
+    cache di oggi non c'è ancora, ritorna (0, "info") — il briefing si limita a
+    margini/salute finché la card segnali non genera lo snapshot. Coerente con la
+    regola "stessa fonte dati"."""
+    from datetime import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        today = _dt.now(tz=ZoneInfo("Europe/Rome")).date().isoformat()
+    except Exception:
+        today = _dt.now().date().isoformat()
+    try:
+        resp = (
+            sb.table("gruppo_segnali_state")
+            .select("snapshot")
+            .eq("user_id", user_id)
+            .eq("generated_for_date", today)
+            .limit(1)
+            .execute()
+        )
+        if resp.data:
+            segnali = (resp.data[0].get("snapshot") or {}).get("segnali") or []
+            sev_rank = {"error": 2, "warning": 1, "info": 0}
+            sev_max = "info"
+            for s in segnali:
+                if sev_rank.get(s.get("severity"), 0) > sev_rank.get(sev_max, 0):
+                    sev_max = s.get("severity")
+            return len(segnali), sev_max
+    except Exception:
+        pass
+    return 0, "info"
 
 
 def _salute_indice_sede(sb, ristorante_id: str) -> int:
@@ -290,10 +397,17 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     else:
         salute_colore = "rosso"
 
+    # Briefing: legge il conteggio segnali dalla cache di OGGI (read-only, niente
+    # ricalcolo qui → overview resta leggera; i segnali si calcolano alla loro
+    # chiamata). Se la cache manca, il briefing parla solo di margini/salute.
+    n_segnali, sev_max = _conta_segnali_cache(sb, user_id)
+    briefing = _build_briefing(nome_gruppo, ranking, salute_indice, salute_colore, n_segnali, sev_max)
+
     return GruppoOverviewResponse(
         nome_gruppo=nome_gruppo,
         num_pv=len(sedi),
         periodo_label=periodo_label,
+        briefing=briefing,
         kpi=kpi,
         salute_indice=salute_indice,
         salute_colore=salute_colore,

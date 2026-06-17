@@ -18,10 +18,17 @@ export type RankingPV = {
   dati_incompleti: boolean;
 };
 
+export type GruppoBriefing = {
+  saluto: string;
+  narrativa: string;
+  severity_max: "info" | "warning" | "error";
+};
+
 export type GruppoOverview = {
   nome_gruppo: string;
   num_pv: number;
   periodo_label: string;
+  briefing: GruppoBriefing;
   kpi: GruppoKpi;
   salute_indice: number;
   salute_colore: "verde" | "giallo" | "rosso";

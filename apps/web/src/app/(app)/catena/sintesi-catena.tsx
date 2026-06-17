@@ -10,8 +10,9 @@ import {
   Wallet,
   Receipt,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
-import { type GruppoOverview, type RankingPV } from "@/lib/gruppo";
+import { type GruppoOverview, type GruppoBriefing, type RankingPV } from "@/lib/gruppo";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -50,6 +51,25 @@ const SALUTE_RING: Record<GruppoOverview["salute_colore"], string> = {
   giallo: "text-amber-500",
   rosso: "text-rose-500",
 };
+
+function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; nomeGruppo: string }) {
+  return (
+    <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.04] to-background p-6 sm:p-8">
+      <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-sky-400/15 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full bg-violet-400/10 blur-3xl" />
+      <div className="flex items-center gap-2 text-xs font-medium text-primary/80">
+        <Sparkles className="size-4" />
+        <span>Il tuo assistente · catena</span>
+      </div>
+      <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
+        {briefing.saluto}, {nomeGruppo}
+      </h1>
+      <p className="mt-4 max-w-none text-base leading-relaxed text-foreground/90 sm:text-lg">
+        {briefing.narrativa}
+      </p>
+    </div>
+  );
+}
 
 function KpiCard({
   icon: Icon,
@@ -198,6 +218,9 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* Briefing di gruppo — la voce macro, in cima (chi va meglio/peggio) */}
+      <BriefingGruppo briefing={overview.briefing} nomeGruppo={overview.nome_gruppo} />
 
       {/* 3 KPI del gruppo — Margine e Spesa aprono le finestre di confronto */}
       <div className="grid gap-4 sm:grid-cols-3">

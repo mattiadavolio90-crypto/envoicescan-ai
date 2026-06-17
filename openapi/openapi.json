@@ -17024,6 +17024,29 @@
         ],
         "title": "FornitoreRegolaRequest"
       },
+      "GruppoBriefing": {
+        "properties": {
+          "saluto": {
+            "type": "string",
+            "title": "Saluto"
+          },
+          "narrativa": {
+            "type": "string",
+            "title": "Narrativa"
+          },
+          "severity_max": {
+            "type": "string",
+            "title": "Severity Max"
+          }
+        },
+        "type": "object",
+        "required": [
+          "saluto",
+          "narrativa",
+          "severity_max"
+        ],
+        "title": "GruppoBriefing"
+      },
       "GruppoKpi": {
         "properties": {
           "fatturato": {
@@ -17061,6 +17084,9 @@
             "type": "string",
             "title": "Periodo Label"
           },
+          "briefing": {
+            "$ref": "#/components/schemas/GruppoBriefing"
+          },
           "kpi": {
             "$ref": "#/components/schemas/GruppoKpi"
           },
@@ -17085,6 +17111,7 @@
           "nome_gruppo",
           "num_pv",
           "periodo_label",
+          "briefing",
           "kpi",
           "salute_indice",
           "salute_colore",
