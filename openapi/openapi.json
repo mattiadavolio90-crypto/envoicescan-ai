@@ -18727,6 +18727,40 @@
         ],
         "title": "RicaviGiornalieriResponse"
       },
+      "RicaviImportSedeDettaglio": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "nome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome"
+          },
+          "giorni": {
+            "type": "integer",
+            "title": "Giorni",
+            "default": 0
+          },
+          "coperti_giorni": {
+            "type": "integer",
+            "title": "Coperti Giorni",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id"
+        ],
+        "title": "RicaviImportSedeDettaglio"
+      },
       "RicaviImportXlsResponse": {
         "properties": {
           "parsed_rows": {
@@ -18764,6 +18798,14 @@
             },
             "type": "array",
             "title": "Preview",
+            "default": []
+          },
+          "dettaglio_sedi": {
+            "items": {
+              "$ref": "#/components/schemas/RicaviImportSedeDettaglio"
+            },
+            "type": "array",
+            "title": "Dettaglio Sedi",
             "default": []
           }
         },

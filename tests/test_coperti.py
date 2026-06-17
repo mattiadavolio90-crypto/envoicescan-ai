@@ -14,7 +14,9 @@ from unittest.mock import MagicMock
 import pandas as pd
 import pytest
 
-from services.routers.ricavi import _parse_passbi_v1, _parse_generico
+from services.routers.ricavi import (
+    _parse_passbi_v1, _parse_passbi_v1_multisede, _parse_generico,
+)
 
 
 # ── Mock supabase per il mapping ragione sociale ──────────────────────────────
@@ -187,6 +189,54 @@ def test_parse_passbi_email_coperti_per_ristorante():
     sushi = next(r for r in per_rist["RID-SUSHI"] if r.data == "2026-06-10")
     assert land.coperti == 435
     assert sushi.coperti == 193  # 192.9999 → 193
+
+
+# ── Parser Passbi multi-sede (import manuale UI) ──────────────────────────────
+def test_passbi_multisede_smista_per_ragione_sociale():
+    df = _passbi_df([
+        ("10/06/2026 00:00:00", "LAND DEI SAPORI", "Fattura", 10, 912.2, 28),
+        ("10/06/2026 00:00:00", "LAND DEI SAPORI", "Scontrino", 10, 8451.8783, 297.0202),
+        ("10/06/2026 00:00:00", "LAND DEI SAPORI", "proforma", 10, 2622.0224, 109.9797),
+        ("10/06/2026 00:00:00", "SUSHILAND MARIANO", "Scontrino", 10, 5695.9057, 192.9999),
+    ])
+    sb = _sb_email(
+        owned_ids=["RID-LAND", "RID-SUSHI"],
+        mapping=[
+            {"ragione_sociale_norm": "land dei sapori", "ristorante_id": "RID-LAND"},
+            {"ragione_sociale_norm": "sushiland mariano", "ristorante_id": "RID-SUSHI"},
+        ],
+    )
+    per_rist, errors, parsed = _parse_passbi_v1_multisede(df, "RID-LAND", "user-1", sb)
+    assert set(per_rist.keys()) == {"RID-LAND", "RID-SUSHI"}
+    land = next(r for r in per_rist["RID-LAND"] if r.data == "2026-06-10")
+    sushi = next(r for r in per_rist["RID-SUSHI"] if r.data == "2026-06-10")
+    assert land.coperti == 435
+    assert sushi.coperti == 193
+
+
+def test_passbi_multisede_ragione_non_mappata_va_sul_token():
+    df = _passbi_df([
+        ("10/06/2026 00:00:00", "SCONOSCIUTO SRL", "Scontrino", 10, 1100.0, 40),
+    ])
+    sb = _sb_email(owned_ids=["RID-LAND"], mapping=[])
+    per_rist, errors, parsed = _parse_passbi_v1_multisede(df, "RID-LAND", "user-1", sb)
+    # ricade sul ristorante del token, con un avviso
+    assert list(per_rist.keys()) == ["RID-LAND"]
+    assert any("non mappate" in e.lower() for e in errors)
+
+
+def test_passbi_multisede_ristorante_di_altro_utente_scartato():
+    df = _passbi_df([
+        ("10/06/2026 00:00:00", "ALTRUI SPA", "Scontrino", 10, 5000.0, 100),
+    ])
+    # la mappa punta a un ristorante NON posseduto da user-1 → ignorato in sicurezza
+    sb = _sb_email(
+        owned_ids=["RID-LAND"],
+        mapping=[{"ragione_sociale_norm": "altrui spa", "ristorante_id": "RID-ESTRANEO"}],
+    )
+    per_rist, errors, parsed = _parse_passbi_v1_multisede(df, "RID-LAND", "user-1", sb)
+    # mappa filtrata su owned → "altrui spa" non entra → fallback sul token (owned)
+    assert "RID-ESTRANEO" not in per_rist
 
 
 # ── Endpoint coperti-categorie (audit debug) ──────────────────────────────────

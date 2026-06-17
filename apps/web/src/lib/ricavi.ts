@@ -89,6 +89,13 @@ export type RicaviBatchUpsertResponse = {
   errors: string[];
 };
 
+export type RicaviImportSedeDettaglio = {
+  ristorante_id: string;
+  nome: string | null;
+  giorni: number;
+  coperti_giorni: number;
+};
+
 export type RicaviImportXlsResponse = {
   parsed_rows: number;
   inserted: number;
@@ -97,4 +104,5 @@ export type RicaviImportXlsResponse = {
   coperti_giorni: number;
   errors: string[];
   preview: RicavoGiornaliero[];
+  dettaglio_sedi: RicaviImportSedeDettaglio[];
 };

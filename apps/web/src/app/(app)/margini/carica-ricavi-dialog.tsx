@@ -241,6 +241,23 @@ function XlsView({ onImported, onBack }: { onImported: () => void; onBack: () =>
               </p>
             )}
           </div>
+          {result.dettaglio_sedi && result.dettaglio_sedi.length > 1 && (
+            <div className="rounded-lg border border-border p-4 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">
+                Ripartizione per sede ({result.dettaglio_sedi.length} locali)
+              </p>
+              <ul className="space-y-1.5">
+                {result.dettaglio_sedi.map((s) => (
+                  <li key={s.ristorante_id} className="flex items-center justify-between text-xs">
+                    <span className="font-medium truncate">{s.nome ?? s.ristorante_id}</span>
+                    <span className="text-muted-foreground tabular-nums shrink-0 ml-3">
+                      {s.giorni} giorni{s.coperti_giorni > 0 ? ` · ${s.coperti_giorni} con coperti` : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {result.errors.length > 0 && (
             <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 max-h-32 overflow-y-auto">
               <div className="flex items-center gap-2 font-medium text-sm text-amber-700 dark:text-amber-400 mb-1.5">

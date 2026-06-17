@@ -97,6 +97,13 @@ class RicaviBatchUpsertResponse(BaseModel):
     errors: List[str] = []
 
 
+class RicaviImportSedeDettaglio(BaseModel):
+    ristorante_id: str
+    nome: Optional[str] = None
+    giorni: int = 0
+    coperti_giorni: int = 0
+
+
 class RicaviImportXlsResponse(BaseModel):
     parsed_rows: int
     inserted: int
@@ -105,6 +112,8 @@ class RicaviImportXlsResponse(BaseModel):
     coperti_giorni: int = 0   # giorni importati con coperti valorizzati
     errors: List[str] = []
     preview: List[RicavoGiornalieroItem] = []
+    # Catene: ripartizione per sede (multi-ristorante via ragione sociale).
+    dettaglio_sedi: List[RicaviImportSedeDettaglio] = []
 
 
 def _calc_netto(iva10: float, iva22: float, altri: float) -> float:
@@ -346,23 +355,55 @@ async def import_ricavi_xls(
 
     # ── Riconoscimento versione gestionale ───────────────────────────────────
     gestionale_version = _detect_gestionale_version(raw_df)
+    source_meta = {"filename": file.filename or "", "gestionale": gestionale_version}
 
     if gestionale_version == "passbi_v1":
-        items, errors, parsed_rows = _parse_passbi_v1(raw_df, ristorante_id, sb)
+        # Multi-sede: un file di catena alimenta tutti i locali dell'account in un
+        # colpo solo (smistamento via ragione sociale). Le righe senza ragione
+        # sociale mappata ricadono sul ristorante del token (fallback).
+        per_ristorante, errors, parsed_rows = _parse_passbi_v1_multisede(
+            raw_df, ristorante_id, user["id"], sb
+        )
     else:
+        # Generico: niente colonna ragione sociale → tutto sul ristorante del token.
         items, errors, parsed_rows = _parse_generico(raw_df)
+        per_ristorante = {ristorante_id: items} if items else {}
 
-    if not items:
+    total_items = sum(len(v) for v in per_ristorante.values())
+    if not per_ristorante:
         return RicaviImportXlsResponse(parsed_rows=parsed_rows, inserted=0, updated=0,
                                        skipped=parsed_rows, errors=errors or ["Nessuna riga valida"])
 
-    batch_req = RicaviBatchUpsertRequest(
-        items=items,
-        source="xls",
-        source_meta={"filename": file.filename or "", "gestionale": gestionale_version},
-    )
-    batch_res = await asyncio.to_thread(upsert_ricavi_batch, batch_req, authorization=authorization)
+    # Nomi sedi per il dettaglio (1 query). Best-effort: il dettaglio è informativo.
+    nomi_sedi: Dict[str, str] = {}
+    try:
+        rids = list(per_ristorante.keys())
+        nome_resp = sb.table("ristoranti").select("id,nome_ristorante").in_("id", rids).execute()
+        nomi_sedi = {str(r["id"]): r.get("nome_ristorante") for r in (nome_resp.data or [])}
+    except Exception:
+        pass
 
+    inserted = 0
+    updated = 0
+    upsert_errors: List[str] = []
+    dettaglio_sedi: List[RicaviImportSedeDettaglio] = []
+    for rid, items in per_ristorante.items():
+        ins, upd, errs = await asyncio.to_thread(
+            _upsert_ricavi_ristorante, sb, rid, user["id"], items, source_meta
+        )
+        inserted += ins
+        updated += upd
+        upsert_errors.extend(errs)
+        dettaglio_sedi.append(RicaviImportSedeDettaglio(
+            ristorante_id=rid,
+            nome=nomi_sedi.get(rid),
+            giorni=len(items),
+            coperti_giorni=sum(1 for it in items if it.coperti is not None),
+        ))
+    dettaglio_sedi.sort(key=lambda d: (d.nome or d.ristorante_id))
+
+    # Preview: prime 10 righe della prima sede (informativa).
+    first_items = next(iter(per_ristorante.values()), [])
     preview = [RicavoGiornalieroItem(
         data=it.data,
         fatturato_iva10=it.fatturato_iva10,
@@ -370,18 +411,21 @@ async def import_ricavi_xls(
         altri_ricavi_noiva=it.altri_ricavi_noiva,
         coperti=it.coperti,
         source="xls",
-    ) for it in items[:10]]
+    ) for it in first_items[:10]]
 
-    coperti_giorni = sum(1 for it in items if it.coperti is not None)
+    coperti_giorni = sum(
+        1 for items in per_ristorante.values() for it in items if it.coperti is not None
+    )
 
     return RicaviImportXlsResponse(
         parsed_rows=parsed_rows,
-        inserted=batch_res.inserted,
-        updated=batch_res.updated,
-        skipped=batch_res.skipped + (parsed_rows - len(items)),
+        inserted=inserted,
+        updated=updated,
+        skipped=max(0, parsed_rows - total_items),
         coperti_giorni=coperti_giorni,
-        errors=errors + batch_res.errors,
+        errors=errors + upsert_errors,
         preview=preview,
+        dettaglio_sedi=dettaglio_sedi,
     )
 
 
@@ -597,6 +641,268 @@ def _parse_passbi_v1(raw_df, ristorante_id: str, sb) -> tuple:
         )
 
     return items, errors, parsed_rows
+
+
+def _parse_passbi_v1_multisede(raw_df, fallback_ristorante_id: str, user_id, sb) -> tuple:
+    """Parser Passbi v1 per import manuale di CATENE multi-sede.
+
+    A differenza di _parse_passbi_v1 (che collassa tutto sul ristorante del token),
+    smista ogni riga sul ristorante corretto via ragione sociale — così un singolo
+    file di una catena alimenta tutti i locali in un colpo solo. Stessa logica del
+    parser email (_parse_passbi_email), riusata qui per la UI.
+
+    Sicurezza: ogni ristorante_id di destinazione DEVE appartenere allo stesso
+    user_id dell'account che importa. Righe mappate a ristoranti di altri utenti
+    vengono scartate (difesa contro un mapping errato che scriverebbe dati altrui).
+
+    Ritorna (per_ristorante: dict[rid -> list[RicavoUpsertRequest]], errors, parsed_rows).
+    """
+    import pandas as pd
+    from datetime import date as _date, datetime as _dt
+    from collections import defaultdict
+
+    _HEADER_TOKENS = ("data", "importo", "totale", "tipo documento", "ragione sociale", "azienda", "codice")
+    header_idx = None
+    best_score = 0
+    for i, row in raw_df.iterrows():
+        vals = [str(v).strip().lower() for v in row.tolist()]
+        joined = " | ".join(vals)
+        has_data_col = any(v == "data" or v.startswith("data ") or v.endswith(" data") for v in vals)
+        score = sum(1 for tok in _HEADER_TOKENS if tok in joined)
+        if has_data_col and score >= 2 and score > best_score:
+            best_score = score
+            header_idx = i
+    if header_idx is None:
+        if len(raw_df) > 3:
+            header_idx = 3
+        else:
+            return {}, ["Header colonne non trovato nel file Passbi"], len(raw_df)
+
+    headers = [str(v).strip() for v in raw_df.iloc[header_idx].tolist()]
+    data_rows = raw_df.iloc[header_idx + 1:].reset_index(drop=True)
+    parsed_rows = len(data_rows)
+
+    def _find_col(names: list) -> Optional[int]:
+        for i, h in enumerate(headers):
+            norm = h.lower().replace("\n", " ").replace("  ", " ").strip()
+            for n in names:
+                if n in norm:
+                    return i
+        return None
+
+    idx_data = _find_col(["data"])
+    idx_ragione = _find_col(["ragione sociale", "azienda"])
+    idx_tipo = _find_col(["tipo documento", "testata", "tipo_documento"])
+    idx_iva = _find_col(["codice", "iva"])
+    idx_importo = _find_col(["importo", "totale"])
+    idx_coperti = _find_col(["coperti"])
+
+    if idx_data is None or idx_importo is None:
+        return {}, ["Colonne Data o Importo non trovate nel file Passbi"], parsed_rows
+
+    # Mapping ragione_sociale → ristorante_id, filtrato sui ristoranti di QUESTO
+    # account. Il filtro su ristoranti.user_id è la barriera di sicurezza: una
+    # ragione sociale che punta a un ristorante di un altro utente non entra.
+    try:
+        owned = sb.table("ristoranti").select("id").eq("user_id", user_id).execute()
+        owned_ids = {str(r["id"]) for r in (owned.data or [])}
+    except Exception as exc:
+        return {}, [f"Lookup ristoranti utente fallito: {exc}"], parsed_rows
+    if not owned_ids:
+        return {}, [f"Utente {user_id} non ha ristoranti: import scartato"], parsed_rows
+
+    ragione_map: Dict[str, str] = {}
+    try:
+        mp = sb.table("ricavi_ragione_sociale_map").select("ragione_sociale_norm,ristorante_id").execute()
+        for r in (mp.data or []):
+            rid = str(r["ristorante_id"])
+            if rid in owned_ids:
+                ragione_map[str(r["ragione_sociale_norm"]).strip().lower()] = rid
+    except Exception as exc:
+        return {}, [f"Lookup mapping ragione sociale fallito: {exc}"], parsed_rows
+
+    def _parse_date(v) -> Optional[str]:
+        if isinstance(v, (_date, _dt)):
+            d = v.date() if isinstance(v, _dt) else v
+            return d.isoformat()
+        s = str(v).strip()
+        if not s or s.lower() in ("nan", "none", ""):
+            return None
+        for fmt in ("%d/%m/%Y %H:%M:%S", "%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+            try:
+                return _dt.strptime(s, fmt).date().isoformat()
+            except ValueError:
+                continue
+        return None
+
+    def _to_float(v) -> float:
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return 0.0
+        try:
+            return max(0.0, float(str(v).replace(",", ".")))
+        except Exception:
+            return 0.0
+
+    aggregato: Dict[tuple, Dict[str, float]] = defaultdict(
+        lambda: {"iva10": 0.0, "iva22": 0.0, "altri": 0.0, "coperti": 0.0}
+    )
+    coperti_seen: set = set()
+    unmapped: set = set()
+    foreign: set = set()
+    errors: List[str] = []
+
+    for _, row in data_rows.iterrows():
+        vals = row.tolist()
+
+        data_iso = _parse_date(vals[idx_data] if idx_data < len(vals) else None)
+        if data_iso is None:
+            continue
+        importo = _to_float(vals[idx_importo] if idx_importo < len(vals) else None)
+        if importo <= 0:
+            continue
+
+        raw_ragione = ""
+        if idx_ragione is not None and idx_ragione < len(vals):
+            raw_ragione = str(vals[idx_ragione]).strip()
+
+        if not raw_ragione or raw_ragione.lower() in ("nan", "none"):
+            target = fallback_ristorante_id
+        else:
+            target = ragione_map.get(raw_ragione.lower().strip())
+            if target is None:
+                unmapped.add(raw_ragione)
+                target = fallback_ristorante_id
+
+        if target not in owned_ids:
+            foreign.add(str(target))
+            continue
+
+        tipo_doc = ""
+        if idx_tipo is not None and idx_tipo < len(vals):
+            tipo_doc = str(vals[idx_tipo]).strip().lower()
+        raw_iva = vals[idx_iva] if (idx_iva is not None and idx_iva < len(vals)) else None
+        iva_str = "" if raw_iva is None or (isinstance(raw_iva, float) and pd.isna(raw_iva)) else str(raw_iva).strip()
+
+        key = (target, data_iso)
+
+        if idx_coperti is not None and idx_coperti < len(vals):
+            cop_val = vals[idx_coperti]
+            if not (cop_val is None or (isinstance(cop_val, float) and pd.isna(cop_val))):
+                try:
+                    aggregato[key]["coperti"] += float(str(cop_val).replace(",", "."))
+                    coperti_seen.add(key)
+                except (ValueError, TypeError):
+                    pass
+
+        if tipo_doc in ("proforma", "") or iva_str == "":
+            aggregato[key]["altri"] += importo
+        else:
+            try:
+                iva_val = int(float(iva_str))
+            except (ValueError, TypeError):
+                aggregato[key]["altri"] += importo
+                continue
+            if iva_val == 10:
+                aggregato[key]["iva10"] += importo
+            elif iva_val == 22:
+                aggregato[key]["iva22"] += importo
+            else:
+                aggregato[key]["altri"] += importo
+
+    if unmapped:
+        errors.append(f"Ragioni sociali non mappate (usato ristorante corrente): {', '.join(sorted(unmapped))}")
+    if foreign:
+        errors.append(f"{len(foreign)} ristoranti di altri utenti ignorati (sicurezza ownership)")
+
+    per_ristorante: Dict[str, List[RicavoUpsertRequest]] = defaultdict(list)
+    for (rid, data_iso), b in aggregato.items():
+        if b["iva10"] + b["iva22"] + b["altri"] <= 0:
+            continue
+        coperti_giorno = round(b["coperti"]) if (rid, data_iso) in coperti_seen else None
+        per_ristorante[rid].append(RicavoUpsertRequest(
+            data=data_iso,
+            fatturato_iva10=round(b["iva10"], 4),
+            fatturato_iva22=round(b["iva22"], 4),
+            altri_ricavi_noiva=round(b["altri"], 4),
+            coperti=coperti_giorno,
+        ))
+
+    return dict(per_ristorante), errors, parsed_rows
+
+
+def _upsert_ricavi_ristorante(sb, ristorante_id: str, user_id, items, source_meta) -> tuple:
+    """Upsert dei ricavi di UN ristorante con user_id/ristorante_id espliciti.
+
+    Usato dall'import manuale multi-sede (la UI può scrivere su sedi diverse da
+    quella del token, purché appartengano allo stesso account: la verifica avviene
+    a monte in _parse_passbi_v1_multisede). Ritorna (inserted, updated, errors).
+    """
+    inserted = 0
+    updated = 0
+    errors: List[str] = []
+    if not items:
+        return 0, 0, errors
+
+    dates = [it.data for it in items if it.data]
+    existing_set: set = set()
+    if dates:
+        try:
+            existing = (
+                sb.table("ricavi_giornalieri")
+                .select("data")
+                .eq("ristorante_id", ristorante_id)
+                .in_("data", dates)
+                .execute()
+            )
+            existing_set = {str(r["data"]) for r in (existing.data or [])}
+        except Exception as exc:
+            errors.append(f"pre-check {ristorante_id}: {exc}")
+
+    rows_to_upsert = []
+    for it in items:
+        if not it.data:
+            continue
+        iva10 = max(0.0, float(it.fatturato_iva10 or 0))
+        iva22 = max(0.0, float(it.fatturato_iva22 or 0))
+        altri = max(0.0, float(it.altri_ricavi_noiva or 0))
+        if iva10 + iva22 + altri <= 0:
+            continue
+        coperti = (max(0, int(it.coperti)) if it.coperti is not None else None)
+        rows_to_upsert.append({
+            "user_id": user_id,
+            "ristorante_id": ristorante_id,
+            "data": it.data,
+            "fatturato_iva10": iva10,
+            "fatturato_iva22": iva22,
+            "altri_ricavi_noiva": altri,
+            "coperti": coperti,
+            "source": "xls",
+            "source_meta": source_meta or None,
+        })
+
+    if rows_to_upsert:
+        try:
+            resp = (
+                sb.table("ricavi_giornalieri")
+                .upsert(rows_to_upsert, on_conflict="ristorante_id,data")
+                .execute()
+            )
+            for row in (resp.data or []):
+                if str(row.get("data")) in existing_set:
+                    updated += 1
+                else:
+                    inserted += 1
+        except Exception as exc:
+            errors.append(f"upsert {ristorante_id}: {exc}")
+
+    if inserted or updated:
+        try:
+            from services.daily_briefing_service import invalidate_today_briefing
+            invalidate_today_briefing(str(user_id), str(ristorante_id), sb)
+        except Exception as exc:
+            logger.warning("_upsert_ricavi_ristorante: invalidate briefing fallita: %s", exc)
+
+    return inserted, updated, errors
 
 
 def _parse_generico(raw_df) -> tuple:
