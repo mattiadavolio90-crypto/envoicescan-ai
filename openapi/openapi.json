@@ -14364,6 +14364,607 @@
           }
         }
       }
+    },
+    "/api/gruppo/tag": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Gruppo Tag List",
+        "operationId": "gruppo_tag_list_api_gruppo_tag_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Gruppo Tag Create",
+        "operationId": "gruppo_tag_create_api_gruppo_tag_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GruppoTagCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gruppo/tag/{tag_id}": {
+      "delete": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Gruppo Tag Delete",
+        "operationId": "gruppo_tag_delete_api_gruppo_tag__tag_id__delete",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gruppo/tag/descrizioni": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Gruppo Tag Descrizioni",
+        "description": "Descrizioni distinte su tutti i PV del gruppo (per costruire il tag).",
+        "operationId": "gruppo_tag_descrizioni_api_gruppo_tag_descrizioni_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gruppo/tag/{tag_id}/prodotti": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Gruppo Tag Prodotti List",
+        "operationId": "gruppo_tag_prodotti_list_api_gruppo_tag__tag_id__prodotti_get",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Gruppo Tag Prodotti Add",
+        "operationId": "gruppo_tag_prodotti_add_api_gruppo_tag__tag_id__prodotti_post",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GruppoTagAssocRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gruppo/tag/prodotti/{assoc_id}": {
+      "delete": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Gruppo Tag Prodotti Remove",
+        "operationId": "gruppo_tag_prodotti_remove_api_gruppo_tag_prodotti__assoc_id__delete",
+        "parameters": [
+          {
+            "name": "assoc_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Assoc Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gruppo/tag/{tag_id}/analisi": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Gruppo Tag Analisi",
+        "description": "Analisi macro PER PV del tag di catena: spesa/quantità/righe/fornitori per\nogni punto vendita, via RPC SQL (no full-load).",
+        "operationId": "gruppo_tag_analisi_api_gruppo_tag__tag_id__analisi_get",
+        "parameters": [
+          {
+            "name": "tag_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Tag Id"
+            }
+          },
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GruppoTagAnalisiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -17118,6 +17719,117 @@
           "ranking"
         ],
         "title": "GruppoOverviewResponse"
+      },
+      "GruppoTagAnalisiResponse": {
+        "properties": {
+          "tag_id": {
+            "type": "integer",
+            "title": "Tag Id"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "periodo_label": {
+            "type": "string",
+            "title": "Periodo Label"
+          },
+          "spesa_totale": {
+            "type": "number",
+            "title": "Spesa Totale"
+          },
+          "per_pv": {
+            "items": {
+              "$ref": "#/components/schemas/TagAnalisiPV"
+            },
+            "type": "array",
+            "title": "Per Pv"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tag_id",
+          "nome",
+          "periodo_label",
+          "spesa_totale",
+          "per_pv"
+        ],
+        "title": "GruppoTagAnalisiResponse"
+      },
+      "GruppoTagAssocItem": {
+        "properties": {
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "fattore_kg": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fattore Kg"
+          }
+        },
+        "type": "object",
+        "required": [
+          "descrizione"
+        ],
+        "title": "GruppoTagAssocItem"
+      },
+      "GruppoTagAssocRequest": {
+        "properties": {
+          "descrizioni": {
+            "items": {
+              "$ref": "#/components/schemas/GruppoTagAssocItem"
+            },
+            "type": "array",
+            "title": "Descrizioni"
+          }
+        },
+        "type": "object",
+        "required": [
+          "descrizioni"
+        ],
+        "title": "GruppoTagAssocRequest"
+      },
+      "GruppoTagCreate": {
+        "properties": {
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
+          "colore": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Colore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome"
+        ],
+        "title": "GruppoTagCreate"
       },
       "HTTPValidationError": {
         "properties": {
@@ -20620,6 +21332,44 @@
           "conferma"
         ],
         "title": "SvuotaDatiBody"
+      },
+      "TagAnalisiPV": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "spesa": {
+            "type": "number",
+            "title": "Spesa"
+          },
+          "quantita": {
+            "type": "number",
+            "title": "Quantita"
+          },
+          "n_righe": {
+            "type": "integer",
+            "title": "N Righe"
+          },
+          "n_fornitori": {
+            "type": "integer",
+            "title": "N Fornitori"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id",
+          "nome",
+          "spesa",
+          "quantita",
+          "n_righe",
+          "n_fornitori"
+        ],
+        "title": "TagAnalisiPV"
       },
       "TagCreateRequest": {
         "properties": {

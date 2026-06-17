@@ -821,3 +821,218 @@ def gruppo_segnali(
         generated_at=generated_at,
         segnali=[Segnale(**s) for s in segnali],
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TAG DI CATENA — livello account, SCOLLEGATI dai tag di sede (custom_tags)
+# ═══════════════════════════════════════════════════════════════════════════
+# Un tag di catena = nome + lista di descrizioni prodotto (descrizione_key),
+# definito una volta per il gruppo, applicato a TUTTI i PV. Analisi macro per PV
+# via RPC SQL (no full-load). L'anagrafica prodotti è già account-wide, quindi le
+# stesse descrizioni ricorrono fra i PV.
+
+class GruppoTagCreate(BaseModel):
+    nome: str
+    emoji: Optional[str] = None
+    colore: Optional[str] = None
+
+
+class GruppoTagAssocItem(BaseModel):
+    descrizione: str
+    fattore_kg: Optional[float] = None
+
+
+class GruppoTagAssocRequest(BaseModel):
+    descrizioni: List[GruppoTagAssocItem]
+
+
+def _norm_key(*args, **kwargs):
+    """Normalizzazione descrizione → chiave, IDENTICA ai tag di sede."""
+    from services.db_service import _normalize_custom_tag_key
+    return _normalize_custom_tag_key(*args, **kwargs)
+
+
+def _assert_gruppo_tag(sb, tag_id: int, user_id: str) -> None:
+    r = (
+        sb.table("gruppo_tags").select("id")
+        .eq("id", int(tag_id)).eq("user_id", user_id).limit(1).execute()
+    )
+    if not (r.data or []):
+        raise HTTPException(status_code=404, detail="Tag di catena non trovato")
+
+
+@router.get("/api/gruppo/tag", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_list(authorization: Optional[str] = Header(None)):
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    tags = (
+        sb.table("gruppo_tags").select("id,nome,emoji,colore")
+        .eq("user_id", user_id).order("created_at").execute()
+    ).data or []
+    # conteggio associazioni per tag (una query)
+    if tags:
+        assoc = (
+            sb.table("gruppo_tag_prodotti").select("tag_id")
+            .eq("user_id", user_id).execute()
+        ).data or []
+        from collections import Counter
+        cnt = Counter(int(a["tag_id"]) for a in assoc)
+        for t in tags:
+            t["n_prodotti"] = cnt.get(int(t["id"]), 0)
+    return {"tags": tags}
+
+
+@router.post("/api/gruppo/tag", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_create(body: GruppoTagCreate, authorization: Optional[str] = Header(None)):
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    nome = (body.nome or "").strip()
+    if not nome:
+        raise HTTPException(status_code=400, detail="Nome tag obbligatorio")
+    row = sb.table("gruppo_tags").insert({
+        "user_id": user_id, "nome": nome, "emoji": body.emoji, "colore": body.colore,
+    }).execute()
+    return {"tag": (row.data or [{}])[0]}
+
+
+@router.delete("/api/gruppo/tag/{tag_id}", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_delete(tag_id: int, authorization: Optional[str] = Header(None)):
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    _assert_gruppo_tag(sb, tag_id, user_id)
+    sb.table("gruppo_tags").delete().eq("id", int(tag_id)).eq("user_id", user_id).execute()
+    return {"ok": True}
+
+
+@router.get("/api/gruppo/tag/descrizioni", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_descrizioni(authorization: Optional[str] = Header(None)):
+    """Descrizioni distinte su tutti i PV del gruppo (per costruire il tag)."""
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    res = sb.rpc("gruppo_tag_descrizioni", {"p_ristorante_ids": ids, "p_limit": 500}).execute()
+    out = [
+        {
+            "descrizione": r.get("descrizione"),
+            "descrizione_key": r.get("descrizione_key"),
+            "n": int(r.get("n") or 0),
+            "spesa": round(float(r.get("spesa") or 0), 2),
+        }
+        for r in (res.data or [])
+    ]
+    return {"descrizioni": out}
+
+
+@router.get("/api/gruppo/tag/{tag_id}/prodotti", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_prodotti_list(tag_id: int, authorization: Optional[str] = Header(None)):
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    _assert_gruppo_tag(sb, tag_id, user_id)
+    rows = (
+        sb.table("gruppo_tag_prodotti").select("id,descrizione,descrizione_key,fattore_kg")
+        .eq("tag_id", int(tag_id)).eq("user_id", user_id).order("descrizione").execute()
+    ).data or []
+    return {"prodotti": rows}
+
+
+@router.post("/api/gruppo/tag/{tag_id}/prodotti", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_prodotti_add(
+    tag_id: int, body: GruppoTagAssocRequest, authorization: Optional[str] = Header(None)
+):
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    _assert_gruppo_tag(sb, tag_id, user_id)
+    records = []
+    visti = set()
+    for item in body.descrizioni:
+        desc = (item.descrizione or "").strip()
+        if not desc:
+            continue
+        key = _norm_key(desc)
+        if not key or key in visti:
+            continue
+        visti.add(key)
+        records.append({
+            "tag_id": int(tag_id), "user_id": user_id,
+            "descrizione": desc, "descrizione_key": key, "fattore_kg": item.fattore_kg,
+        })
+    if not records:
+        return {"associazioni": [], "aggiunte": 0}
+    # upsert per non duplicare (vincolo unico tag_id+descrizione_key)
+    res = sb.table("gruppo_tag_prodotti").upsert(
+        records, on_conflict="tag_id,descrizione_key"
+    ).execute()
+    return {"associazioni": res.data or [], "aggiunte": len(records)}
+
+
+@router.delete("/api/gruppo/tag/prodotti/{assoc_id}", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_prodotti_remove(assoc_id: int, authorization: Optional[str] = Header(None)):
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    sb.table("gruppo_tag_prodotti").delete().eq("id", int(assoc_id)).eq("user_id", user_id).execute()
+    return {"ok": True}
+
+
+class TagAnalisiPV(BaseModel):
+    ristorante_id: str
+    nome: str
+    spesa: float
+    quantita: float
+    n_righe: int
+    n_fornitori: int
+
+
+class GruppoTagAnalisiResponse(BaseModel):
+    tag_id: int
+    nome: str
+    periodo_label: str
+    spesa_totale: float
+    per_pv: List[TagAnalisiPV]
+
+
+@router.get("/api/gruppo/tag/{tag_id}/analisi", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
+def gruppo_tag_analisi(
+    tag_id: int,
+    data_da: Optional[str] = None,
+    data_a: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+) -> GruppoTagAnalisiResponse:
+    """Analisi macro PER PV del tag di catena: spesa/quantità/righe/fornitori per
+    ogni punto vendita, via RPC SQL (no full-load)."""
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    tag_row = (
+        sb.table("gruppo_tags").select("id,nome").eq("id", int(tag_id)).eq("user_id", user_id).limit(1).execute()
+    ).data or []
+    if not tag_row:
+        raise HTTPException(status_code=404, detail="Tag di catena non trovato")
+    nome = tag_row[0].get("nome") or "Tag"
+
+    keys = [
+        r["descrizione_key"]
+        for r in (
+            sb.table("gruppo_tag_prodotti").select("descrizione_key")
+            .eq("tag_id", int(tag_id)).eq("user_id", user_id).execute()
+        ).data or []
+    ]
+    da, a, periodo_label = _periodo_da_query(data_da, data_a)
+
+    per_pv: List[TagAnalisiPV] = []
+    if keys:
+        res = sb.rpc("gruppo_tag_analisi", {
+            "p_ristorante_ids": ids,
+            "p_descrizione_keys": keys,
+            "p_data_da": da,
+            "p_data_a": a,
+        }).execute()
+        by_rid = {str(r.get("ristorante_id")): r for r in (res.data or [])}
+        for rid in ids:
+            r = by_rid.get(rid)
+            per_pv.append(TagAnalisiPV(
+                ristorante_id=rid,
+                nome=rid_to_nome[rid],
+                spesa=round(float(r.get("spesa") or 0), 2) if r else 0.0,
+                quantita=round(float(r.get("quantita") or 0), 2) if r else 0.0,
+                n_righe=int(r.get("n_righe") or 0) if r else 0,
+                n_fornitori=int(r.get("n_fornitori") or 0) if r else 0,
+            ))
+        per_pv.sort(key=lambda x: -x.spesa)
+
+    return GruppoTagAnalisiResponse(
+        tag_id=int(tag_id),
+        nome=nome,
+        periodo_label=periodo_label,
+        spesa_totale=round(sum(p.spesa for p in per_pv), 2),
+        per_pv=per_pv,
+    )

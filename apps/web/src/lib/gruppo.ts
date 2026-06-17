@@ -95,3 +95,44 @@ export type SegnaliGruppo = {
   generated_at: string | null;
   segnali: Segnale[];
 };
+
+// ─── Tag di catena (Analisi e Tag, solo multi-sede) ───────────────────────
+
+export type GruppoTag = {
+  id: number;
+  nome: string;
+  emoji: string | null;
+  colore: string | null;
+  n_prodotti?: number;
+};
+
+export type GruppoTagDescrizione = {
+  descrizione: string;
+  descrizione_key: string;
+  n: number;
+  spesa: number;
+};
+
+export type GruppoTagProdotto = {
+  id: number;
+  descrizione: string;
+  descrizione_key: string;
+  fattore_kg: number | null;
+};
+
+export type TagAnalisiPV = {
+  ristorante_id: string;
+  nome: string;
+  spesa: number;
+  quantita: number;
+  n_righe: number;
+  n_fornitori: number;
+};
+
+export type GruppoTagAnalisi = {
+  tag_id: number;
+  nome: string;
+  periodo_label: string;
+  spesa_totale: number;
+  per_pv: TagAnalisiPV[];
+};

@@ -1,9 +1,10 @@
 import { cookies } from "next/headers";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { SESSION_COOKIE, getCurrentUser } from "@/lib/auth";
 import { requirePagina } from "@/lib/page-guard";
 import { PageHeader } from "@/components/ui/page-header";
 import type { CustomTag, TagSuggestion } from "@/lib/tag";
 import { AnalisiETagClient } from "./analisi-e-tag-client";
+import { GruppoTagSection } from "./gruppo-tag-section";
 import { WORKER_URL, WORKER_SECRET_KEY } from "@/lib/worker-config";
 
 async function fetchInitial<T>(path: string, token: string): Promise<T | null> {
@@ -39,6 +40,11 @@ export default async function AnalisiETagPage() {
     suggestions = suggestionsRes?.suggestions ?? [];
   }
 
+  // I tag di catena compaiono solo per i clienti multi-sede (la sezione confronta
+  // un prodotto fra i punti vendita). Per i mono-sede la pagina resta com'era.
+  const user = await getCurrentUser();
+  const multiSede = (user?.num_sedi ?? 1) >= 2;
+
   return (
     <div className="space-y-4">
       <PageHeader
@@ -46,6 +52,7 @@ export default async function AnalisiETagPage() {
         title="Analisi e Tag"
         hint="Raggruppa i prodotti come ragioni tu"
       />
+      {multiSede && <GruppoTagSection />}
       <AnalisiETagClient initialTags={tags} initialSuggestions={suggestions} />
     </div>
   );
