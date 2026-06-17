@@ -78,6 +78,7 @@ _TOPIC_PRIORITY: Dict[str, int] = {
     'costo_personale_mancante': 50,   # 6. Costo personale mancante
     'scadenza_superata':        60,   # 7. Scadenze (superate prima delle imminenti)
     'scadenza_imminente':       61,   #    e imminenti subito dopo, stesso tema
+    'coperti_anomalia':         65,   #    Anomalia coperti di ieri (segnale, non to-do)
     'appuntamento_imminente':   70,   # 8. Appuntamenti agenda (importanza medio/bassa: ultimo)
 }
 
@@ -100,6 +101,7 @@ _TOPIC_ACTION: Dict[str, tuple] = {
     # Fatture — NON in Analisi e Tag (quella e' per i tag custom). Prima la CTA
     # portava a /analisi-e-tag: pagina sbagliata, l'utente non trovava cosa fare.
     'uncategorized_rows':       ('Classifica righe',      '/analisi-fatture?tab=articoli&verifica=1'),
+    'coperti_anomalia':         ('Vedi coperti',          '/margini?tab=coperti'),
     'appuntamento_imminente':   ('Vedi agenda',           '/agenda'),
 }
 
@@ -250,6 +252,11 @@ def _is_actionable(notif: Dict[str, Any]) -> bool:
     # Promemoria appuntamenti: card solo se c'e' almeno un appuntamento oggi.
     if topic == 'appuntamento_imminente':
         return bool((payload.get('count') or 0))
+
+    # Anomalia coperti: generata dal backend solo su scostamento forte -> sempre
+    # azionabile quando presente (il filtro di rilevanza e' gia' a monte).
+    if topic == 'coperti_anomalia':
+        return True
 
     # Topic sconosciuti/tecnici: fuori dalla Home (solo pagina Notifiche).
     return False
@@ -481,6 +488,11 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
             "non si possono calcolare food cost e margini reali."
         )
 
+    if topic == 'coperti_anomalia':
+        # Il title backend e' gia' completo (es. "Ieri 120 coperti, 40% in piu'
+        # della media della settimana scorsa"): lo riusiamo come frase.
+        return f"{title.rstrip('.')}." if title else "Ieri i coperti si sono scostati molto dalla media."
+
     if topic == 'scadenza_imminente':
         count = payload.get('count') or _parse_count_from_title(title)
         totale = payload.get('totale')
@@ -573,6 +585,9 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
                 f"categorizzarle rende i tuoi report pi\u00f9 precisi e affidabili."
             )
         return f"{title}."
+
+    if topic == 'coperti_anomalia':
+        return f"\U0001F465 {title}" if title else "\U0001F465 Coperti di ieri fuori media."
 
     return f"{title}."
 

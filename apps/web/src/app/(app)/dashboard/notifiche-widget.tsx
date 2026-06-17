@@ -194,16 +194,21 @@ export function NotificheWidget({ count }: Props) {
                           )}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7 shrink-0 text-muted-foreground"
-                        disabled={dismissing.has(n.id)}
-                        onClick={() => archivia(n.id)}
-                        title="Archivia"
-                      >
-                        <X className="size-4" />
-                      </Button>
+                      {/* I segnali live (dismissible === false) non si
+                          archiviano: si chiudono da soli quando inserisci il
+                          dato. Nascondiamo la X per non illudere l'utente. */}
+                      {n.dismissible !== false && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="size-7 shrink-0 text-muted-foreground"
+                          disabled={dismissing.has(n.id)}
+                          onClick={() => archivia(n.id)}
+                          title="Archivia"
+                        >
+                          <X className="size-4" />
+                        </Button>
+                      )}
                     </div>
                   );
                 })}

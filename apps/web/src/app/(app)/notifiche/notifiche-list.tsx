@@ -179,16 +179,20 @@ export function NotificheList({ notifiche, hideCta = false }: Props) {
                         )}
                       </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-7 shrink-0"
-                      disabled={loading.has(n.id)}
-                      onClick={() => dismiss(n.id)}
-                      title="Archivia"
-                    >
-                      <X className="size-4" />
-                    </Button>
+                    {/* Segnali live (dismissible === false): non archiviabili,
+                        si chiudono da soli quando inserisci il dato. */}
+                    {n.dismissible !== false && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 shrink-0"
+                        disabled={loading.has(n.id)}
+                        onClick={() => dismiss(n.id)}
+                        title="Archivia"
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    )}
                   </div>
                 );
               })}

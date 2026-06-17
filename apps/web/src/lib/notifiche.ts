@@ -12,6 +12,10 @@ export type Notifica = {
   // Dati strutturati del topic (es. count righe/prezzi). Gia' restituito dal
   // worker; opzionale lato tipo perche' non tutte le callsite lo usano.
   payload?: Record<string, unknown> | null;
+  // False per i segnali LIVE (fatturato/fatture/righe mancanti...): non si
+  // archiviano (si chiudono da soli quando inserisci il dato). Il frontend
+  // nasconde la X. Default true per compatibilita' coi vecchi payload.
+  dismissible?: boolean;
   dismissed_at: string | null;
   expires_at: string | null;
   created_at: string | null;

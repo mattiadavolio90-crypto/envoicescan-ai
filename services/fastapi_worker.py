@@ -1644,6 +1644,15 @@ class NotificaItem(BaseModel):
     dismissed_at: Optional[str] = None
     expires_at: Optional[str] = None
     created_at: Optional[str] = None
+    # Dati strutturati del topic (es. count righe da classificare): usati dai
+    # trigger contestuali frontend (contaTopicAttivo). Prima non era serializzato
+    # e il fallback su titolo falliva sui segnali live -> trigger mai scattati.
+    payload: Optional[Dict[str, Any]] = None
+    # False per i segnali LIVE ricalcolati (fatturato/fatture/righe mancanti...):
+    # non hanno una riga in notification_inbox, quindi "archivia" non li
+    # persisterebbe e riapparirebbero al refresh. Il frontend nasconde la X.
+    # Si chiudono da soli quando il dato viene inserito.
+    dismissible: bool = True
 
 
 class NotificheResponse(BaseModel):
@@ -1916,6 +1925,7 @@ def get_notifiche(
                     "title": s.get("title") or "",
                     "body": s.get("body"),
                     "action_page": s.get("action_page"),
+                    "payload": s.get("payload"),
                     "dismissed_at": None,
                     "expires_at": None,
                     "created_at": _now_iso,
@@ -1932,6 +1942,10 @@ def get_notifiche(
             title=r.get("title") or "",
             body=r.get("body"),
             action_page=r.get("action_page"),
+            payload=r.get("payload"),
+            # Un segnale live non e' archiviabile (non ha riga in inbox): la X
+            # sparirebbe ma riapparirebbe al refresh. Si chiude da solo col dato.
+            dismissible=(r.get("topic_key") not in _LIVE_TOPICS_DATI_MANCANTI),
             dismissed_at=str(r["dismissed_at"]) if r.get("dismissed_at") else None,
             expires_at=str(r["expires_at"]) if r.get("expires_at") else None,
             created_at=str(r["created_at"]) if r.get("created_at") else None,
@@ -4230,7 +4244,10 @@ def _briefing_raccogli_notifiche(
             if mappato:
                 from datetime import date as _date, timedelta as _tdelta
                 finestra_giorni = 3
-                soglia_data = (_date.today() - _tdelta(days=finestra_giorni)).isoformat()
+                # _oggi_rome() (non date.today() = UTC su Railway): nella finestra
+                # notturna italiana l'UTC e' ancora il giorno prima e l'avviso
+                # comparirebbe/sparirebbe in modo incoerente con incasso_mancante.
+                soglia_data = (_oggi_rome() - _tdelta(days=finestra_giorni)).isoformat()
                 recres = (
                     supabase_client.table("ricavi_giornalieri")
                     .select("data")
@@ -4541,6 +4558,25 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
         ]
         return SaluteResponse(indice=0, colore="rosso", mese_label=mese_label, voci=voci)
 
+    # Toggle del configuratore: una voce SPENTA sparisce dalla card E non pesa
+    # sull'indice (decisione: tutta la Home e' soggetta ai toggle). Mappa
+    # voce-Salute -> topic del configuratore. Best-effort: se la lettura fallisce,
+    # nessuna voce viene esclusa (fail-open, mostra tutto).
+    _VOCE_TOPIC = {
+        "fatture": "fatture_mancanti",
+        "fatturato": "fatturato_mancante",
+        "personale": "costo_personale_mancante",
+        "classificate": "uncategorized_rows",
+    }
+    voci_spente: set = set()
+    try:
+        from services.daily_briefing_service import espandi_topic_spenti
+        _, _td_salute = _briefing_nome_referente(None, ristorante_id, sb)
+        spenti = set(espandi_topic_spenti(_td_salute or []))
+        voci_spente = {k for k, t in _VOCE_TOPIC.items() if t in spenti}
+    except Exception as exc:
+        logger.warning("home_salute: lettura topic spenti fallita: %s", exc)
+
     # ── Voce 1: Fatture caricate di recente ──
     # Conta il CARICAMENTO recente (created_at), non la data della fattura: le
     # fatture elettroniche arrivano con ritardo SDI, quindi un cliente attivo
@@ -4606,15 +4642,19 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
         pct_classificate = round((tot_righe - da_controllare) / tot_righe * 100)
         classificate_ok = da_controllare == 0
 
-    # ── Indice: 4 voci a peso uguale. Le voci binarie valgono 0/100;
-    #    le righe usano la loro %. Senza fatture, le righe valgono 0. ──
-    score_fatture = 100 if fatture_ok else 0
-    score_fatturato = 100 if fatturato_ok else 0
-    score_personale = 100 if personale_ok else 0
-    score_classificate = pct_classificate if fatture_ok else 0
-    indice = round(
-        (score_fatture + score_fatturato + score_personale + score_classificate) / 4
-    )
+    # ── Indice: voci ATTIVE a peso uguale. Le voci binarie valgono 0/100;
+    #    le righe usano la loro %. Senza fatture, le righe valgono 0. Le voci
+    #    spente nel configuratore non pesano (e non compaiono nella card). ──
+    _score = {
+        "fatture": 100 if fatture_ok else 0,
+        "fatturato": 100 if fatturato_ok else 0,
+        "personale": 100 if personale_ok else 0,
+        "classificate": pct_classificate if fatture_ok else 0,
+    }
+    _attive = [k for k in _score if k not in voci_spente]
+    # Se l'utente ha spento TUTTE le voci, l'indice non e' misurabile: 100 (verde),
+    # niente da completare per sua scelta.
+    indice = round(sum(_score[k] for k in _attive) / len(_attive)) if _attive else 100
 
     if indice >= 80:
         colore = "verde"
@@ -4623,8 +4663,8 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     else:
         colore = "rosso"
 
-    voci = [
-        SaluteVoce(
+    _voci_tutte = {
+        "fatture": SaluteVoce(
             key="fatture",
             label="Fatture caricate",
             ok=fatture_ok,
@@ -4632,7 +4672,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
                       else "Nessuna fattura recente",
             cta_page="/analisi-fatture",
         ),
-        SaluteVoce(
+        "fatturato": SaluteVoce(
             key="fatturato",
             label="Fatturato inserito",
             ok=fatturato_ok,
@@ -4640,7 +4680,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
                       else f"Manca {mese_completo_label}",
             cta_page="/margini",
         ),
-        SaluteVoce(
+        "personale": SaluteVoce(
             key="personale",
             label="Costo personale inserito",
             ok=personale_ok,
@@ -4648,7 +4688,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
                       else f"Manca {mese_completo_label}",
             cta_page="/margini",
         ),
-        SaluteVoce(
+        "classificate": SaluteVoce(
             key="classificate",
             label="Righe classificate",
             ok=classificate_ok,
@@ -4660,7 +4700,8 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             cta_page=("/analisi-fatture?tab=articoli&verifica=1"
                       if da_controllare else "/analisi-fatture"),
         ),
-    ]
+    }
+    voci = [_voci_tutte[k] for k in _voci_tutte if k not in voci_spente]
 
     return SaluteResponse(
         indice=indice, colore=colore, mese_label=mese_label, voci=voci
