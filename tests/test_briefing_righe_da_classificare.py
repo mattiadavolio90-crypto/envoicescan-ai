@@ -11,7 +11,10 @@ della Salute, cosi' le due sezioni Home restano coerenti.
 """
 from unittest.mock import MagicMock
 
-from services.fastapi_worker import _briefing_righe_da_classificare
+from services.fastapi_worker import (
+    _briefing_righe_da_classificare,
+    _briefing_fatture_mancanti,
+)
 
 RID = "rist-xyz"
 
@@ -23,6 +26,7 @@ def _sb(count):
     q.eq.return_value = q
     q.is_.return_value = q
     q.gte.return_value = q
+    q.limit.return_value = q
     q.execute.return_value = MagicMock(count=count, data=[{"id": i} for i in range(count or 0)])
     sb.table.return_value = q
     return sb
@@ -48,3 +52,18 @@ def test_singolare_una_riga():
     out = _briefing_righe_da_classificare(RID, _sb(1))
     assert out is not None
     assert "1 riga" in out["title"]
+
+
+# ── Fatture mancanti: stesso pattern (voce 1 della Salute) ──
+
+def test_con_fatture_recenti_nessuna_notifica():
+    # Almeno una fattura negli ultimi 30 gg -> niente avviso.
+    assert _briefing_fatture_mancanti(RID, _sb(3)) is None
+
+
+def test_senza_fatture_recenti_genera_notifica_live():
+    out = _briefing_fatture_mancanti(RID, _sb(0))
+    assert out is not None
+    assert out["topic_key"] == "fatture_mancanti"
+    assert out["source_type"] == "live"
+    assert out["action_page"] == "/analisi-fatture"

@@ -503,6 +503,17 @@ class TestActionFor:
         assert a["cta_page"] == "/analisi-fatture?tab=articoli&verifica=1"
         assert "analisi-e-tag" not in a["cta_page"]
 
+    def test_fatture_mancanti_azionabile_e_in_snapshot(self):
+        # La voce 1 della Salute ("Fatture caricate" rossa) deve diventare
+        # un'azione nel briefing, non restare un pallino muto.
+        n = _notif("fatture_mancanti", "warning", {})
+        assert _is_actionable(n) is True
+        a = _action_for(n)
+        assert a["cta_page"] == "/analisi-fatture"
+        snap = _build_snapshot([n], use_ai=False)
+        assert snap["tutto_ok"] is False
+        assert any(az["topic_key"] == "fatture_mancanti" for az in snap["azioni"])
+
 
 # ────────────────────────────────────────────────
 # _build_snapshot — azioni e tutto_ok

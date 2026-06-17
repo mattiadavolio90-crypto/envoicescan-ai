@@ -72,6 +72,7 @@ _TOPIC_PRIORITY: Dict[str, int] = {
     'upload_ricavi_failed':     15,   # 2. Upload ricavi fallito (solo se mappato)
     'price_alert':              20,   # 3. Alert prezzi
     'uncategorized_rows':       30,   # 4. Righe da classificare
+    'fatture_mancanti':         35,   #    Nessuna fattura caricata di recente (dato primario)
     'fatturato_mancante':       40,   # 5. Fatturato mancante (mese)
     'incasso_mancante':         45,   #    Incasso di ieri mancante (giorno), stesso tema
     'costo_personale_mancante': 50,   # 6. Costo personale mancante
@@ -87,6 +88,7 @@ _TOPIC_ACTION: Dict[str, tuple] = {
     'rientro_assenza':          ('Scopri come ti aiutiamo', '/assistenza?servizio=assistenza_continuativa'),
     'scadenza_superata':        ('Controlla scadenze',   '/scadenziario'),
     'upload_failed':            ('Riprova upload',        '/analisi-fatture'),
+    'fatture_mancanti':         ('Vai a Analisi Fatture', '/analisi-fatture'),
     'upload_ricavi_failed':     ('Controlla ricavi',      '/margini'),
     'scadenza_imminente':       ('Vedi scadenze',         '/scadenziario'),
     'fatturato_mancante':       ('Inserisci fatturato',   '/margini'),
@@ -241,7 +243,8 @@ def _is_actionable(notif: Dict[str, Any]) -> bool:
     # Topic generati dal backend solo quando il problema esiste davvero:
     # azionabili per definizione (fatturato/personale mancante, ricavi auto KO,
     # incasso di ieri mancante).
-    if topic in ('fatturato_mancante', 'incasso_mancante', 'costo_personale_mancante', 'upload_ricavi_failed'):
+    if topic in ('fatturato_mancante', 'incasso_mancante', 'costo_personale_mancante',
+                 'upload_ricavi_failed', 'fatture_mancanti'):
         return True
 
     # Promemoria appuntamenti: card solo se c'e' almeno un appuntamento oggi.
@@ -295,6 +298,9 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
             parola = 'fattura in scadenza' if count == 1 else 'fatture in scadenza'
             return f"\U0001F4C5 {count} {parola} entro 7 giorni per \u20ac {totale:,.2f}."
         return f"\U0001F4C5 {title}"
+
+    if topic == 'fatture_mancanti':
+        return "\U0001F4C4 Non ci sono fatture caricate di recente \u2014 senza i costi d'acquisto food cost e margini non sono calcolabili."
 
     if topic == 'fatturato_mancante':
         mese = payload.get('mese')
@@ -459,6 +465,12 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
         return (
             "I ricavi automatici dal gestionale non stanno arrivando: controlla l'invio, "
             "senza fatturato i margini non sono aggiornati."
+        )
+
+    if topic == 'fatture_mancanti':
+        return (
+            "Non ci sono fatture caricate di recente: senza i costi d'acquisto "
+            "non si possono calcolare food cost e margini reali."
         )
 
     if topic == 'scadenza_imminente':

@@ -1786,6 +1786,8 @@ _CONFIG_TOPICS: List[tuple] = [
      "Ti segnalo quando un prodotto che pesa sulla spesa rincara oltre la tua soglia."),
     ("uncategorized_rows",       "Righe da classificare",    False,
      "Ti ricordo le righe di fattura ancora senza categoria."),
+    ("fatture_mancanti",         "Nessuna fattura recente",  False,
+     "Ti avviso se non risultano fatture caricate negli ultimi 30 giorni."),
     ("fatturato_mancante",       "Fatturato mancante",       False,
      "Ti ricordo di inserire il fatturato del mese, serve per food cost e MOL."),
     ("incasso_mancante",         "Incasso di ieri mancante", False,
@@ -3635,6 +3637,55 @@ def _briefing_righe_da_classificare(
     }
 
 
+def _briefing_fatture_mancanti(
+    ristorante_id: str, supabase_client,
+) -> Optional[Dict[str, Any]]:
+    """Notifica LIVE 'nessuna fattura caricata di recente', come la card Salute.
+
+    Stessa fonte/finestra della voce 1 di /api/home/salute: fatture (non
+    cancellate) con created_at negli ultimi 30 giorni. Se ce n'e' almeno una,
+    None (nessun avviso). Allinea il briefing alla card: una sede senza fatture
+    recenti vede l'avviso, non solo il pallino rosso muto.
+    """
+    from datetime import datetime as _dt2, timedelta as _td2
+    try:
+        from zoneinfo import ZoneInfo as _ZI
+        oggi = _dt2.now(tz=_ZI("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt2.now().date()
+    inizio_dt = _dt2.combine(oggi - _td2(days=29), _dt2.min.time())
+    try:
+        resp = (
+            supabase_client.table("fatture")
+            .select("id", count="exact")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .gte("created_at", inizio_dt.isoformat())
+            .limit(1)
+            .execute()
+        )
+        n = resp.count if resp.count is not None else len(resp.data or [])
+    except Exception as exc:
+        logger.warning("briefing fatture mancanti: lettura fallita: %s", exc)
+        return None
+
+    if n and n > 0:
+        return None
+
+    return {
+        "id": f"fatture-mancanti-live-{ristorante_id}",
+        "topic_key": "fatture_mancanti",
+        "source_type": "live",
+        "severity": "warning",
+        "title": "Nessuna fattura caricata di recente",
+        "body": "",
+        "action_page": "/analisi-fatture",
+        "payload": {},
+        "source_event_at": None,
+        "dedupe_key": f"fatture-mancanti-live-{ristorante_id}",
+    }
+
+
 def _briefing_anomalia_coperti(
     ristorante_id: str, supabase_client, oggi,
 ) -> Optional[Dict[str, Any]]:
@@ -4142,6 +4193,18 @@ def _briefing_raccogli_notifiche(
                 notifications.append(_n_da_class)
         except Exception as exc:
             logger.warning("home_briefing: righe da classificare live fallite: %s", exc)
+
+    # Nessuna fattura caricata di recente: stessa voce 1 della card Salute. Se la
+    # card e' rossa su "Fatture caricate", anche il briefing deve segnalarlo —
+    # tutte le sedi dentro l'app sono operative, non esiste lo stato "in avvio
+    # silenzioso". Calcolo LIVE (created_at ultimi 30 gg), zero persistenza.
+    if ristorante_id:
+        try:
+            _n_fatt = _briefing_fatture_mancanti(ristorante_id, supabase_client)
+            if _n_fatt is not None:
+                notifications.append(_n_fatt)
+        except Exception as exc:
+            logger.warning("home_briefing: fatture mancanti live fallite: %s", exc)
 
     # Promemoria appuntamenti di oggi (Agenda). Importanza medio/bassa: in fondo
     # alla gerarchia (_TOPIC_PRIORITY) e severity 'info'. Persiste in inbox cosi'
