@@ -3456,6 +3456,18 @@ def _briefing_dati_mensili_mancanti(
         logger.warning("briefing dati mensili: lettura margini fallita: %s", exc)
         return []
 
+    # Modalità 'mensile': il fatturato è in ricavi_modalita_mensile, non in
+    # margini_mensili (l'aggregato del trigger resta a 0 perché non ci sono
+    # giornalieri). Stessa fonte della pagina Margini (_load_mensile_overrides):
+    # se una delle due modalità è soddisfatta, l'alert non deve comparire.
+    if not fatturato_ok:
+        try:
+            ov = _load_mensile_overrides(supabase_client, ristorante_id, [mc_anno]).get((mc_anno, mc_mese))
+            if ov and (ov.get("iva10", 0) + ov.get("iva22", 0) + ov.get("altri", 0)) > 0:
+                fatturato_ok = True
+        except Exception as exc:
+            logger.warning("briefing dati mensili: lettura override mensile fallita: %s", exc)
+
     out: List[Dict[str, Any]] = []
     if not fatturato_ok:
         out.append({
@@ -3490,6 +3502,12 @@ def _briefing_dati_mensili_mancanti(
     # tolleranza weekend/chiusura: identico all'endpoint (non inventiamo qui una
     # semantica di chiusura che non esiste in DB).
     try:
+        # Se il mese corrente è in modalità 'mensile' il cliente non inserisce i
+        # giornalieri di proposito: l'incasso di ieri non mancherà mai davvero,
+        # quindi niente alert (altrimenti tornerebbe ogni giorno).
+        mese_corrente_mensile = (oggi.year, oggi.month) in _load_mensile_overrides(
+            supabase_client, ristorante_id, [oggi.year]
+        )
         ieri = (oggi - _td2(days=1)).isoformat()
         ric = (
             supabase_client.table("ricavi_giornalieri")
@@ -3499,7 +3517,7 @@ def _briefing_dati_mensili_mancanti(
             .limit(1)
             .execute()
         )
-        if not (ric.data or []):
+        if not mese_corrente_mensile and not (ric.data or []):
             out.append({
                 "id": f"incasso-mancante-live-{ieri}",
                 "topic_key": "incasso_mancante",

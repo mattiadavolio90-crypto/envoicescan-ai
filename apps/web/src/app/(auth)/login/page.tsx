@@ -9,17 +9,18 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Logo, Wordmark } from "@/components/brand/logo";
 import { LogoSpinner } from "@/components/brand/logo-spinner";
+import { isPhoneViewport } from "@/lib/device";
 
-// Su schermo mobile, in assenza di un next esplicito, il default e' /m (la PWA):
-// cosi' il login fa un full reload direttamente sulla vista mobile, senza il
-// rimbalzo SPA /dashboard -> /m. Quel rimbalzo "mangiava" l'evento
-// beforeinstallprompt (sparato una sola volta a inizio caricamento pagina),
-// togliendo il banner "Installa ONEFLUX". Atterrando direttamente su /m con un
-// vero page load, l'evento arriva mentre il listener di /m e' gia' montato.
+// Su TELEFONO, in assenza di un next esplicito, il default e' /m (la PWA): cosi'
+// il login fa un full reload direttamente sulla vista mobile, senza il rimbalzo
+// SPA /dashboard -> /m. Quel rimbalzo "mangiava" l'evento beforeinstallprompt
+// (sparato una sola volta a inizio caricamento pagina), togliendo il banner
+// "Installa ONEFLUX". Atterrando direttamente su /m con un vero page load,
+// l'evento arriva mentre il listener di /m e' gia' montato.
+// I TABLET (iPad/Android tablet) vanno sempre su desktop: schermo grande, app
+// completa (vedi lib/device.ts).
 function defaultNext(): string {
-  if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
-    return "/m";
-  }
+  if (isPhoneViewport()) return "/m";
   return "/dashboard";
 }
 

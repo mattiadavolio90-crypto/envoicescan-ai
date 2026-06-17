@@ -8,6 +8,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Check,
   ChevronDown,
   ChevronRight,
   Loader2,
@@ -358,7 +359,7 @@ export function ArticoliTab({
           <span className="text-xs inline-flex items-center gap-1.5 text-sky-500">
             Totale filtrato:
             <span className="font-semibold tabular-nums">
-              {formatEuro(totaleFiltrato)}
+              {formatEuro(totaleFiltrato, 2)}
             </span>
             <span className="text-sky-500/70">
               · {quantitaFiltrata.toLocaleString("it-IT")} acquisti
@@ -466,10 +467,14 @@ const ArticoloRiga = memo(function ArticoloRiga({
   dataA?: string;
 }) {
   const [currentCat, setCurrentCat] = useState(articolo.categoria ?? "");
+  const [needsReview, setNeedsReview] = useState(Boolean(articolo.needs_review));
   const [saving, setSaving] = useState(false);
 
-  async function saveCategoria(newCat: string) {
-    if (!newCat || newCat === currentCat) return;
+  // confirmOnly: conferma la categoria già suggerita senza cambiarla (toglie il
+  // badge Verifica). Negli altri casi salta se non c'è nulla da fare.
+  async function saveCategoria(newCat: string, confirmOnly = false) {
+    if (!newCat) return;
+    if (!confirmOnly && newCat === currentCat && !needsReview) return;
     setSaving(true);
     try {
       const res = await fetch("/api/fatture/categoria-batch", {
@@ -483,7 +488,12 @@ const ArticoloRiga = memo(function ArticoloRiga({
       const data = await res.json();
       if (res.ok) {
         setCurrentCat(newCat);
-        toast.success(`Categoria aggiornata · ${data.righe_aggiornate} righe`);
+        setNeedsReview(false);
+        toast.success(
+          confirmOnly
+            ? `Categoria confermata · ${data.righe_aggiornate} righe`
+            : `Categoria aggiornata · ${data.righe_aggiornate} righe`,
+        );
       } else {
         toast.error(data.error ?? "Errore aggiornamento");
       }
@@ -531,10 +541,28 @@ const ArticoloRiga = memo(function ArticoloRiga({
                 Nuovo
               </span>
             )}
-            {articolo.needs_review && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap">
-                <AlertTriangle className="size-2.5" /> Verifica
-              </span>
+            {needsReview && (
+              <>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap">
+                  <AlertTriangle className="size-2.5" /> Verifica
+                </span>
+                {currentCat && (
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => saveCategoria(currentCat, true)}
+                    title={`Conferma categoria «${currentCat}»`}
+                    className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap disabled:opacity-60"
+                  >
+                    {saving ? (
+                      <Loader2 className="size-2.5 animate-spin" />
+                    ) : (
+                      <Check className="size-2.5" />
+                    )}
+                    Conferma
+                  </button>
+                )}
+              </>
             )}
           </div>
         </td>
