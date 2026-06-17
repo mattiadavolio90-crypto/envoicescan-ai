@@ -2672,7 +2672,7 @@ def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Op
     if not ristorante_id:
         return {"mesi": []}
 
-    from services.margine_service import carica_margini_anno, calcola_costi_automatici_per_anno
+    from services.margine_service import carica_margini_anno, calcola_costi_automatici_per_anno_sql
     _MESI = ["", "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
              "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"]
     oggi = _oggi_rome()
@@ -2682,7 +2682,7 @@ def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Op
         if a not in cache_anni:
             try:
                 m = carica_margini_anno(user_id, ristorante_id, a)
-                fb, sp = calcola_costi_automatici_per_anno(user_id, ristorante_id, a)
+                fb, sp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, a)
                 cache_anni[a] = (m, fb, sp)
             except Exception:
                 cache_anni[a] = ({}, {}, {})
@@ -3267,7 +3267,7 @@ def _briefing_buona_notizia(
     # card "I tuoi conti" e il briefing non si contraddicono mai.
     try:
         from services.margine_service import (
-            carica_margini_anno, calcola_costi_automatici_per_anno,
+            carica_margini_anno, calcola_costi_automatici_per_anno_sql,
         )
         oggi = _oggi_rome()
         mm, aa = (12, oggi.year - 1) if oggi.month == 1 else (oggi.month - 1, oggi.year)
@@ -3278,7 +3278,7 @@ def _briefing_buona_notizia(
             if anno not in _cache_anno:
                 try:
                     m = carica_margini_anno(user_id, ristorante_id, anno)
-                    fb, sp = calcola_costi_automatici_per_anno(user_id, ristorante_id, anno)
+                    fb, sp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, anno)
                     _cache_anno[anno] = (m, fb, sp)
                 except Exception:
                     _cache_anno[anno] = ({}, {}, {})
@@ -3949,6 +3949,13 @@ def _briefing_response_from_snapshot(snapshot: Dict[str, Any], nome: Optional[st
 # Cache in-process di assistant_preferences per ristorante. Un singolo load Home
 # la legge da 4 punti (get_notifiche, briefing, salute, config): senza cache erano
 # 4 SELECT identiche. TTL 30s; invalidata al salvataggio del configuratore.
+#
+# NOTA multi-worker (WORKER_WEB_CONCURRENCY=4 in prod): questa cache e' per-processo,
+# come tutte le altre in-process del worker. L'invalidazione (home_config_post)
+# tocca solo il processo che serve la POST: gli altri 3 possono servire il vecchio
+# valore fino allo scadere del TTL. Accettato consapevolmente: il TTL e' breve e i
+# dati (toggle/nome) cambiano di rado. Per coerenza immediata cross-processo
+# servirebbe una cache condivisa (Redis), sproporzionata all'attuale scala.
 _ASSIST_PREF_CACHE: Dict[str, tuple] = {}
 _ASSIST_PREF_TTL = 30.0  # secondi
 
@@ -4903,13 +4910,17 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
 
     from services.margine_service import (
         carica_margini_anno,
-        calcola_costi_automatici_per_anno,
+        calcola_costi_automatici_per_anno_sql,
     )
 
     def _dati_anno(anno: int):
         try:
             m = carica_margini_anno(user_id, ristorante_id, anno)
-            fb, sp = calcola_costi_automatici_per_anno(user_id, ristorante_id, anno)
+            # Variante SQL (RPC): aggrega i costi food/spese lato DB invece del
+            # full-load + pandas. home_kpi puo' toccare 2 anni (mostrato + confronto)
+            # -> evita 2 full-load di tutte le righe fattura. Ha fallback pandas
+            # interno, quindi non puo' rompersi.
+            fb, sp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, anno)
             return m, fb, sp
         except Exception as exc:
             logger.warning("home_kpi: caricamento anno %s fallito: %s", anno, exc)

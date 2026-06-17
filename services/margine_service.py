@@ -148,6 +148,51 @@ def calcola_costi_automatici_per_anno(user_id: str, ristorante_id: str, anno: in
         return {}, {}
 
 
+def calcola_costi_automatici_per_anno_sql(user_id: str, ristorante_id: str, anno: int) -> tuple:
+    """Variante SQL di calcola_costi_automatici_per_anno: aggrega lato DB via RPC
+    costi_automatici_mensili invece di scaricare tutte le righe e usare pandas.
+
+    Stessa firma e stesso risultato (dict {mese: somma_float}), verificato
+    numericamente identico al metodo pandas. Pensata per il worker FastAPI, dove
+    il decoratore @_make_cache (Streamlit) NON funziona e il full-load era il
+    collo di bottiglia di home_kpi su clienti con molte fatture.
+
+    Fallback: se la RPC fallisce per qualsiasi motivo, ricade sul metodo pandas
+    storico — il calcolo dei margini non deve mai rompersi.
+    """
+    try:
+        supabase = get_supabase_client()
+        resp = supabase.rpc(
+            "costi_automatici_mensili",
+            {
+                "p_user_id": user_id,
+                "p_ristorante_id": ristorante_id,
+                "p_anno": int(anno),
+                "p_cat_food": list(CATEGORIE_FOOD),
+                "p_cat_spese": list(CATEGORIE_SPESE_GENERALI),
+            },
+        ).execute()
+        rows = resp.data or []
+        costi_fb_mensili = {}
+        costi_spese_mensili = {}
+        for r in rows:
+            mese = int(r["mese"])
+            food = float(r.get("food") or 0)
+            spese = float(r.get("spese") or 0)
+            # Coerenza col metodo pandas: groupby produce una chiave solo se c'e'
+            # almeno una riga di quel tipo. Replichiamo (no chiavi a 0 spurie).
+            if food:
+                costi_fb_mensili[mese] = food
+            if spese:
+                costi_spese_mensili[mese] = spese
+        return costi_fb_mensili, costi_spese_mensili
+    except Exception as e:
+        logger.warning(
+            f"⚠️ RPC costi_automatici_mensili fallita (anno {anno}), fallback pandas: {e}"
+        )
+        return calcola_costi_automatici_per_anno(user_id, ristorante_id, anno)
+
+
 # ============================================
 # COSTI PER CATEGORIA (Analisi Avanzate)
 # ============================================

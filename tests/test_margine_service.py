@@ -696,6 +696,45 @@ class TestMargineServiceDB:
         assert costi_fb.get(1) == 150.0
         assert costi_spese.get(1) == 80.0
 
+    def test_calcola_costi_automatici_per_anno_sql(self):
+        """La variante SQL usa la RPC costi_automatici_mensili e mappa il risultato
+        in (dict food, dict spese) — stessa forma del metodo pandas."""
+        margine_module = _reload_margine_module_without_cache_wrapper()
+        mock_client = MagicMock()
+        rpc_chain = MagicMock()
+        rpc_chain.execute.return_value = SimpleNamespace(data=[
+            {"mese": 1, "food": 150.0, "spese": 80.0},
+            {"mese": 2, "food": 200.0, "spese": 0},   # spese 0 -> niente chiave (come groupby)
+        ])
+        mock_client.rpc.return_value = rpc_chain
+
+        with patch("services.margine_service.get_supabase_client", return_value=mock_client):
+            fb, sp = margine_module.calcola_costi_automatici_per_anno_sql(
+                user_id="u", ristorante_id="r", anno=2026,
+            )
+
+        # Ha chiamato la RPC giusta coi parametri attesi
+        assert mock_client.rpc.call_args[0][0] == "costi_automatici_mensili"
+        assert fb == {1: 150.0, 2: 200.0}
+        assert sp == {1: 80.0}  # mese 2 con spese 0 non genera chiave
+
+    def test_calcola_costi_automatici_per_anno_sql_fallback_su_errore(self):
+        """Se la RPC solleva, ricade sul metodo pandas (il calcolo margini non
+        deve mai rompersi)."""
+        margine_module = _reload_margine_module_without_cache_wrapper()
+        mock_client = MagicMock()
+        mock_client.rpc.side_effect = RuntimeError("rpc giù")
+
+        with patch("services.margine_service.get_supabase_client", return_value=mock_client), \
+             patch.object(margine_module, "calcola_costi_automatici_per_anno",
+                          return_value=({3: 99.0}, {})) as m_fallback:
+            fb, sp = margine_module.calcola_costi_automatici_per_anno_sql(
+                user_id="u", ristorante_id="r", anno=2026,
+            )
+
+        m_fallback.assert_called_once()
+        assert fb == {3: 99.0}
+
     def test_carica_costi_per_categoria(self):
         """
         Verifica DataFrame aggregato per categoria/mese su sole categorie F&B.
