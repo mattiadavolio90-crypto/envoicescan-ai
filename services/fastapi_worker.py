@@ -1871,6 +1871,7 @@ def get_notifiche(
     # unico e centralizzato: vale per ogni topic e ogni sorgente (Streamlit,
     # worker, radar). Fail-open: se la lettura preferenze va male, non nascondo
     # nulla. La logica di filtro e' in _filtra_notifiche_topic_spenti (testata).
+    td: Optional[List[Any]] = None  # topics_disabled, riusato anche per i live sotto
     try:
         if ristorante_id:
             pref = (
@@ -1884,6 +1885,43 @@ def get_notifiche(
             rows = _filtra_notifiche_topic_spenti(rows, td)
     except Exception as exc:
         logger.warning("get_notifiche: filtro topics_disabled fallito: %s", exc)
+
+    # ── Fusione con i segnali LIVE (card) ────────────────────────────────────
+    # La campanella deve essere la SOMMA reale: card live (sempre fresche) +
+    # notifiche minori persistite. Prima mostrava solo le persistite, divergendo
+    # dalle card (es. "manca costo personale" appariva nel briefing ma non in
+    # campanella; e versioni persistite stantie restavano dopo l'inserimento del
+    # dato). Scartiamo dai record persistiti i topic gestiti live (così non si
+    # duplicano ne' restano stantii) e aggiungiamo i live ricalcolati. Niente
+    # alert prezzi qui: pesante, la campanella non deve mai essere lenta.
+    if ristorante_id and not include_dismissed:
+        try:
+            live = _segnali_live_dati_mancanti(ristorante_id, supabase_client)
+            # Topic spenti dell'utente valgono anche per i live (coerenza col briefing).
+            live = _filtra_notifiche_topic_spenti(live, td)
+            # I topic live sono la fonte AUTOREVOLE: rimuovi SEMPRE le persistite di
+            # questi topic (anche se il live ora e' vuoto), cosi' una versione
+            # stantia — es. "manca fatturato" non aggiornata dopo l'inserimento —
+            # sparisce dalla campanella invece di restare fino a expires_at.
+            rows = [r for r in rows if r.get("topic_key") not in _LIVE_TOPICS_DATI_MANCANTI]
+            _now_iso = __import__("datetime").datetime.now(
+                __import__("datetime").timezone.utc
+            ).isoformat()
+            for s in live:
+                rows.append({
+                    "id": s.get("id"),
+                    "topic_key": s.get("topic_key"),
+                    "source_type": s.get("source_type") or "live",
+                    "severity": s.get("severity") or "warning",
+                    "title": s.get("title") or "",
+                    "body": s.get("body"),
+                    "action_page": s.get("action_page"),
+                    "dismissed_at": None,
+                    "expires_at": None,
+                    "created_at": _now_iso,
+                })
+        except Exception as exc:
+            logger.warning("get_notifiche: fusione segnali live fallita: %s", exc)
 
     notifiche = [
         NotificaItem(
@@ -3646,6 +3684,12 @@ def _briefing_fatture_mancanti(
     cancellate) con created_at negli ultimi 30 giorni. Se ce n'e' almeno una,
     None (nessun avviso). Allinea il briefing alla card: una sede senza fatture
     recenti vede l'avviso, non solo il pallino rosso muto.
+
+    Distingue il CANALE di ricezione: un cliente con P.IVA configurata riceve le
+    fatture in automatico via SDI/Invoicetronic, quindi "nessuna fattura" non e'
+    un'azione sua ("carica le fatture") ma un possibile guasto del flusso
+    automatico ("non stanno arrivando, verifica"). Senza P.IVA il caricamento e'
+    manuale e l'azione e' caricarle. payload['canale'] = 'sdi' | 'manuale'.
     """
     from datetime import datetime as _dt2, timedelta as _td2
     try:
@@ -3672,18 +3716,94 @@ def _briefing_fatture_mancanti(
     if n and n > 0:
         return None
 
+    # Canale: P.IVA presente -> ricezione automatica SDI; assente -> manuale.
+    canale = "manuale"
+    try:
+        rinfo = (
+            supabase_client.table("ristoranti")
+            .select("partita_iva")
+            .eq("id", ristorante_id)
+            .single()
+            .execute()
+        )
+        if (rinfo.data or {}).get("partita_iva"):
+            canale = "sdi"
+    except Exception as exc:
+        logger.warning("briefing fatture mancanti: lettura P.IVA fallita: %s", exc)
+
+    if canale == "sdi":
+        title = "Non stanno arrivando fatture dal flusso automatico"
+    else:
+        title = "Nessuna fattura caricata di recente"
+
     return {
         "id": f"fatture-mancanti-live-{ristorante_id}",
         "topic_key": "fatture_mancanti",
         "source_type": "live",
         "severity": "warning",
-        "title": "Nessuna fattura caricata di recente",
+        "title": title,
         "body": "",
         "action_page": "/analisi-fatture",
-        "payload": {},
+        "payload": {"canale": canale},
         "source_event_at": None,
         "dedupe_key": f"fatture-mancanti-live-{ristorante_id}",
     }
+
+
+# Topic dei segnali LIVE "leggeri" (dati mancanti): ricalcolati dalla fonte
+# autorevole, senza query pesanti. Sono le STESSE voci delle card Salute/briefing.
+# La campanella (get_notifiche) li fonde con i record persistiti per essere la
+# somma reale (card + notifiche minori), non un sottoinsieme divergente.
+_LIVE_TOPICS_DATI_MANCANTI = frozenset({
+    "fatturato_mancante", "costo_personale_mancante", "incasso_mancante",
+    "uncategorized_rows", "fatture_mancanti", "coperti_anomalia",
+})
+
+# Cache in-process dei segnali live per sede: get_notifiche gira nel layout di
+# OGNI pagina (badge campanella). Senza cache, ~7 query leggere ad ogni
+# navigazione. TTL breve: al massimo 60s di ritardo dopo l'inserimento di un dato
+# (poi la card e la campanella tornano allineate).
+_LIVE_SEGNALI_CACHE: Dict[str, tuple] = {}
+_LIVE_SEGNALI_TTL = 60.0  # secondi
+
+
+def _segnali_live_dati_mancanti(
+    ristorante_id: str, supabase_client,
+) -> List[Dict[str, Any]]:
+    """Raccoglie i segnali LIVE leggeri (dati mancanti) di una sede.
+
+    Stesse voci che il briefing calcola live + le righe da classificare e le
+    fatture mancanti. NIENTE alert prezzi (pesante, fino a 4s): la campanella non
+    deve mai essere lenta. Usato da get_notifiche per fondere live + persistite.
+    Best-effort: ogni blocco e' isolato, un errore non azzera gli altri segnali.
+    Cache in-process TTL 60s, keyed per ristorante.
+    """
+    import time as _time
+    _now = _time.monotonic()
+    _cached = _LIVE_SEGNALI_CACHE.get(ristorante_id)
+    if _cached and (_now - _cached[0]) < _LIVE_SEGNALI_TTL:
+        return list(_cached[1])
+
+    out: List[Dict[str, Any]] = []
+    try:
+        out.extend(_briefing_dati_mensili_mancanti(ristorante_id, supabase_client))
+    except Exception as exc:
+        logger.warning("segnali live: dati mensili falliti: %s", exc)
+    try:
+        r = _briefing_righe_da_classificare(ristorante_id, supabase_client)
+        if r is not None:
+            out.append(r)
+    except Exception as exc:
+        logger.warning("segnali live: righe da classificare fallite: %s", exc)
+    try:
+        f = _briefing_fatture_mancanti(ristorante_id, supabase_client)
+        if f is not None:
+            out.append(f)
+    except Exception as exc:
+        logger.warning("segnali live: fatture mancanti fallite: %s", exc)
+
+    _LIVE_SEGNALI_CACHE[ristorante_id] = (_now, list(out))
+    return out
 
 
 def _briefing_anomalia_coperti(

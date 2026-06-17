@@ -300,6 +300,8 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
         return f"\U0001F4C5 {title}"
 
     if topic == 'fatture_mancanti':
+        if str(payload.get('canale') or '') == 'sdi':
+            return "\U0001F4C4 Non stanno arrivando fatture dal flusso automatico \u2014 verifica la ricezione."
         return "\U0001F4C4 Non ci sono fatture caricate di recente \u2014 senza i costi d'acquisto food cost e margini non sono calcolabili."
 
     if topic == 'fatturato_mancante':
@@ -468,6 +470,12 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
         )
 
     if topic == 'fatture_mancanti':
+        if str(payload.get('canale') or '') == 'sdi':
+            return (
+                "Non stanno arrivando fatture dal flusso automatico: vale la pena "
+                "verificare la ricezione, senza i costi d'acquisto food cost e "
+                "margini non sono calcolabili."
+            )
         return (
             "Non ci sono fatture caricate di recente: senza i costi d'acquisto "
             "non si possono calcolare food cost e margini reali."

@@ -67,3 +67,49 @@ def test_get_notifiche_senza_sede_non_filtra_ristorante():
 
     cols = [c for (c, _v) in sb._q.eq_calls]
     assert "ristorante_id" not in cols
+
+
+# ── Fusione live + persistite: la campanella e' la SOMMA (card + minori) ──
+
+def _live(topic, title="x"):
+    return {"id": f"live-{topic}", "topic_key": topic, "source_type": "live",
+            "severity": "warning", "title": title, "body": "", "action_page": "/x"}
+
+
+def test_campanella_include_segnali_live():
+    # Persistita: una notifica minore (tag). Live: costo personale mancante (card).
+    # La campanella deve contenere ENTRAMBE.
+    persistite = [{"id": "p1", "topic_key": "tag_suggestion_new_tag", "source_type": "operativa",
+                   "severity": "info", "title": "Tag", "body": None, "action_page": None,
+                   "dismissed_at": None, "expires_at": None, "created_at": "2026-06-17T10:00:00Z"}]
+    sb = _make_sb(rows=persistite)
+    with patch.object(fw, "_resolve_user_from_token", return_value=_USER), \
+         patch("services.get_supabase_client", return_value=sb), \
+         patch.object(fw, "_resolve_ristorante_id", return_value=_RID), \
+         patch.object(fw, "_segnali_live_dati_mancanti",
+                      return_value=[_live("costo_personale_mancante")]):
+        res = fw.get_notifiche(authorization="Bearer tok")
+
+    topics = {n.topic_key for n in res.notifiche}
+    assert "tag_suggestion_new_tag" in topics  # minore persistita
+    assert "costo_personale_mancante" in topics  # card live
+
+
+def test_campanella_scarta_persistita_stantia_se_live_assente():
+    # Persistita stantia "fatturato_mancante" ma il LIVE non lo segnala piu'
+    # (dato ormai inserito): non deve restare in campanella.
+    persistite = [{"id": "p1", "topic_key": "fatturato_mancante", "source_type": "operativa",
+                   "severity": "warning", "title": "Manca fatturato", "body": None,
+                   "action_page": None, "dismissed_at": None, "expires_at": None,
+                   "created_at": "2026-06-01T10:00:00Z"}]
+    sb = _make_sb(rows=persistite)
+    with patch.object(fw, "_resolve_user_from_token", return_value=_USER), \
+         patch("services.get_supabase_client", return_value=sb), \
+         patch.object(fw, "_resolve_ristorante_id", return_value=_RID), \
+         patch.object(fw, "_segnali_live_dati_mancanti", return_value=[]):
+        res = fw.get_notifiche(authorization="Bearer tok")
+
+    topics = {n.topic_key for n in res.notifiche}
+    assert "fatturato_mancante" not in topics, (
+        "una persistita stantia deve sparire se il segnale live non la conferma piu'"
+    )

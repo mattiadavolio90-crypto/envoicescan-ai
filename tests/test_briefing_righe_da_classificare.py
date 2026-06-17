@@ -56,14 +56,50 @@ def test_singolare_una_riga():
 
 # ── Fatture mancanti: stesso pattern (voce 1 della Salute) ──
 
+def _sb_fatture(count, partita_iva=None):
+    """Mock a due tabelle: 'fatture' (conteggio) e 'ristoranti' (.single -> P.IVA)."""
+    sb = MagicMock()
+    state = {"table": None}
+
+    def _table(name):
+        state["table"] = name
+        return q
+
+    def _execute():
+        if state["table"] == "ristoranti":
+            return MagicMock(data={"partita_iva": partita_iva})
+        return MagicMock(count=count, data=[{"id": i} for i in range(count or 0)])
+
+    q = MagicMock()
+    q.table = None
+    sb.table.side_effect = _table
+    q.select.return_value = q
+    q.eq.return_value = q
+    q.is_.return_value = q
+    q.gte.return_value = q
+    q.limit.return_value = q
+    q.single.return_value = q
+    q.execute.side_effect = _execute
+    return sb
+
+
 def test_con_fatture_recenti_nessuna_notifica():
     # Almeno una fattura negli ultimi 30 gg -> niente avviso.
-    assert _briefing_fatture_mancanti(RID, _sb(3)) is None
+    assert _briefing_fatture_mancanti(RID, _sb_fatture(3)) is None
 
 
-def test_senza_fatture_recenti_genera_notifica_live():
-    out = _briefing_fatture_mancanti(RID, _sb(0))
+def test_senza_fatture_recenti_canale_manuale():
+    # Nessuna P.IVA -> caricamento manuale -> "carica le fatture".
+    out = _briefing_fatture_mancanti(RID, _sb_fatture(0, partita_iva=None))
     assert out is not None
     assert out["topic_key"] == "fatture_mancanti"
-    assert out["source_type"] == "live"
-    assert out["action_page"] == "/analisi-fatture"
+    assert out["payload"]["canale"] == "manuale"
+    assert "caricata" in out["title"].lower()
+
+
+def test_senza_fatture_recenti_canale_sdi():
+    # Con P.IVA -> ricezione automatica SDI -> messaggio sul flusso, non "carica".
+    out = _briefing_fatture_mancanti(RID, _sb_fatture(0, partita_iva="12345678901"))
+    assert out is not None
+    assert out["payload"]["canale"] == "sdi"
+    assert "automatico" in out["title"].lower()
