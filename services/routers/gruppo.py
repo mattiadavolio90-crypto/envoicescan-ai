@@ -472,3 +472,238 @@ def gruppo_margini_coperti(
         righe=righe,
         gruppo=gruppo,
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# SEGNALI — "Da vedere nella catena" (3 segnali di analisi, cache 1×/giorno)
+# ═══════════════════════════════════════════════════════════════════════════
+# Filosofia: ogni segnale parla SOLO con un numero che lo giustifica ("66%, era
+# 71%"). Niente AI interpretativa, soglie nette. Deep link "Vedi PV →" = switch
+# sede + naviga alla pagina del PV giusto. Calcolo 1×/giorno (cache su
+# gruppo_segnali_state, per account), payload JSON piccolo.
+
+# Soglie v1 confermate da Mattia.
+_SOGLIA_MARGINE_CALO_PT = 3.0      # margine% mese < media 3 mesi − 3 punti
+_SOGLIA_PREZZO_SOPRA = 1.10        # prezzo categoria PV > media catena × 1.10
+_PREZZI_MIN_RIGHE = 5              # min righe per categoria/PV per essere affidabile
+_PREZZI_MIN_PV = 2                 # serve almeno 2 PV con la categoria per la media
+
+
+class Segnale(BaseModel):
+    tipo: str                       # "margine_calo" | "prezzi_sopra" | "ricavi_mancanti"
+    severity: str                   # "warning" | "error"
+    ristorante_id: str
+    pv_nome: str
+    testo: str                      # messaggio con il numero che lo giustifica
+    cta_page: str                   # pagina PV dove approfondire (deep link)
+
+
+class SegnaliResponse(BaseModel):
+    nome_gruppo: str
+    generated_at: Optional[str]
+    segnali: List[Segnale]
+
+
+def _mesi_indietro(anno: int, mese: int, n: int) -> List[tuple]:
+    """Lista degli n (anno, mese) PRECEDENTI a (anno, mese), dal più recente."""
+    out = []
+    y, m = anno, mese
+    for _ in range(n):
+        m -= 1
+        if m < 1:
+            m = 12
+            y -= 1
+        out.append((y, m))
+    return out
+
+
+def _calcola_segnali(sb, ids: List[str], rid_to_nome: Dict[str, str]) -> List[Dict[str, Any]]:
+    """Calcola i 3 segnali di analisi della catena. Tutto SQL aggregato / letture
+    su tabelle pre-aggregate — niente full-load righe fattura."""
+    from datetime import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        oggi = _dt.now(tz=ZoneInfo("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt.now().date()
+
+    segnali: List[Dict[str, Any]] = []
+
+    # ── Segnale 1: margine in calo (per PV vs se stesso) ──
+    # margini_mensili pre-aggregata: prendo gli ultimi 5 mesi possibili per ogni
+    # PV, l'ultimo con dati = "corrente", media dei 3 precedenti con dati.
+    anni = sorted({oggi.year, oggi.year - 1})
+    mm = (
+        sb.table("margini_mensili")
+        .select("ristorante_id,anno,mese,mol_perc,fatturato_netto")
+        .in_("ristorante_id", ids)
+        .in_("anno", anni)
+        .execute()
+    )
+    per_pv_mesi: Dict[str, Dict[tuple, float]] = {rid: {} for rid in ids}
+    for r in (mm.data or []):
+        rid = str(r.get("ristorante_id"))
+        if rid not in per_pv_mesi:
+            continue
+        if float(r.get("fatturato_netto") or 0) <= 0:
+            continue  # mese senza ricavi: mol% non significativo
+        per_pv_mesi[rid][(int(r["anno"]), int(r["mese"]))] = float(r.get("mol_perc") or 0)
+
+    for rid in ids:
+        mesi_dati = per_pv_mesi[rid]
+        if len(mesi_dati) < 2:
+            continue
+        ultimo = max(mesi_dati.keys())
+        cur = mesi_dati[ultimo]
+        prec = [mesi_dati[k] for k in _mesi_indietro(ultimo[0], ultimo[1], 3) if k in mesi_dati]
+        if not prec:
+            continue
+        media_prec = sum(prec) / len(prec)
+        if cur < media_prec - _SOGLIA_MARGINE_CALO_PT:
+            segnali.append({
+                "tipo": "margine_calo",
+                "severity": "warning",
+                "ristorante_id": rid,
+                "pv_nome": rid_to_nome[rid],
+                "testo": f"Margine al {cur:.0f}%, era {media_prec:.0f}% di media nei mesi precedenti",
+                "cta_page": "/margini",
+            })
+
+    # ── Segnale 3: ricavi mancanti nel mese in corso (per PV) ──
+    primo_mese = oggi.replace(day=1).isoformat()
+    for rid in ids:
+        try:
+            rg = (
+                sb.table("ricavi_giornalieri")
+                .select("data", count="exact")
+                .eq("ristorante_id", rid)
+                .gte("data", primo_mese)
+                .lte("data", oggi.isoformat())
+                .execute()
+            )
+            if (rg.count or 0) == 0:
+                segnali.append({
+                    "tipo": "ricavi_mancanti",
+                    "severity": "warning",
+                    "ristorante_id": rid,
+                    "pv_nome": rid_to_nome[rid],
+                    "testo": "Nessun ricavo registrato questo mese",
+                    "cta_page": "/margini",
+                })
+        except Exception:
+            pass
+
+    # ── Segnale 2: prezzi categoria sopra la media catena (PV vs media catena) ──
+    # Finestra: ultimi ~90 giorni sull'effective date. RPC aggregata.
+    from datetime import timedelta as _td
+    da = (oggi - _td(days=90)).isoformat()
+    a = oggi.isoformat()
+    try:
+        pr = sb.rpc("gruppo_prezzi_categoria", {
+            "p_ristorante_ids": ids,
+            "p_data_da": da,
+            "p_data_a": a,
+        }).execute()
+        # raggruppa per categoria: {cat: {rid: (prezzo, n_righe)}}
+        from collections import defaultdict
+        per_cat: Dict[str, Dict[str, tuple]] = defaultdict(dict)
+        for row in (pr.data or []):
+            rid = str(row.get("ristorante_id"))
+            if rid not in rid_to_nome:
+                continue
+            cat = row.get("categoria") or "N/D"
+            prezzo = float(row.get("prezzo_medio") or 0)
+            n = int(row.get("n_righe") or 0)
+            if prezzo > 0:
+                per_cat[cat][rid] = (prezzo, n)
+        # per ogni categoria con ≥2 PV: media catena, poi PV sopra soglia
+        # (solo il PV più sopra per categoria, per non inondare di segnali).
+        for cat, pv_map in per_cat.items():
+            affidabili = {rid: p for rid, (p, n) in pv_map.items() if n >= _PREZZI_MIN_RIGHE}
+            if len(affidabili) < _PREZZI_MIN_PV:
+                continue
+            media_catena = sum(affidabili.values()) / len(affidabili)
+            if media_catena <= 0:
+                continue
+            peggiore = max(affidabili.items(), key=lambda kv: kv[1])
+            rid_p, prezzo_p = peggiore
+            if prezzo_p > media_catena * _SOGLIA_PREZZO_SOPRA:
+                scarto = (prezzo_p / media_catena - 1) * 100
+                segnali.append({
+                    "tipo": "prezzi_sopra",
+                    "severity": "warning",
+                    "ristorante_id": rid_p,
+                    "pv_nome": rid_to_nome[rid_p],
+                    "testo": f"{cat.title()}: prezzo medio +{scarto:.0f}% sulla media catena",
+                    "cta_page": "/prezzi",
+                })
+    except Exception:
+        pass
+
+    # Ordine: errori prima, poi per nome PV. (tutti warning in v1, ma futuro-proof)
+    sev_rank = {"error": 0, "warning": 1, "info": 2}
+    segnali.sort(key=lambda s: (sev_rank.get(s["severity"], 9), s["pv_nome"]))
+    return segnali
+
+
+@router.get(
+    "/api/gruppo/segnali",
+    tags=["Catena"],
+    summary="Segnali catena 'Da vedere' (cache 1×/giorno, 3 segnali di analisi)",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_segnali(
+    force: bool = False,
+    authorization: Optional[str] = Header(None),
+) -> SegnaliResponse:
+    from datetime import datetime as _dt, timezone as _tz
+    try:
+        from zoneinfo import ZoneInfo
+        oggi = _dt.now(tz=ZoneInfo("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt.now().date()
+
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    today_iso = oggi.isoformat()
+
+    # Fast-path: snapshot di oggi già in cache (1×/giorno per account).
+    if not force:
+        try:
+            cached = (
+                sb.table("gruppo_segnali_state")
+                .select("snapshot")
+                .eq("user_id", user_id)
+                .eq("generated_for_date", today_iso)
+                .limit(1)
+                .execute()
+            )
+            if cached.data:
+                snap = cached.data[0].get("snapshot") or {}
+                return SegnaliResponse(
+                    nome_gruppo=nome_gruppo,
+                    generated_at=snap.get("generated_at"),
+                    segnali=[Segnale(**s) for s in (snap.get("segnali") or [])],
+                )
+        except Exception:
+            pass
+
+    segnali = _calcola_segnali(sb, ids, rid_to_nome)
+    generated_at = _dt.now(_tz.utc).isoformat()
+
+    # Salva lo snapshot di oggi (best-effort: un errore di scrittura non deve far
+    # fallire la lettura dei segnali appena calcolati).
+    try:
+        sb.table("gruppo_segnali_state").upsert({
+            "user_id": user_id,
+            "generated_for_date": today_iso,
+            "snapshot": {"segnali": segnali, "generated_at": generated_at},
+            "updated_at": generated_at,
+        }, on_conflict="user_id,generated_for_date").execute()
+    except Exception:
+        pass
+
+    return SegnaliResponse(
+        nome_gruppo=nome_gruppo,
+        generated_at=generated_at,
+        segnali=[Segnale(**s) for s in segnali],
+    )

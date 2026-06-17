@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { FinestraSpesaPV } from "./finestra-spesa-pv";
 import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
+import { CardSegnali } from "./card-segnali";
 
 function euro(n: number): string {
   return new Intl.NumberFormat("it-IT", {
@@ -130,29 +131,15 @@ function SaluteGauge({
   );
 }
 
-function DaVedere() {
-  // Fase 2 (motore segnali) popolerà questa card. Per ora placeholder coerente
-  // con il widget notifiche: nessun segnale = stato sereno, niente rumore.
-  return (
-    <div className="rounded-2xl border bg-card p-5">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Da vedere nella catena
-      </div>
-      <p className="mt-3 text-sm text-muted-foreground">
-        Nessuna segnalazione al momento. Qui compariranno gli avvisi sui punti
-        vendita da tenere d&apos;occhio.
-      </p>
-    </div>
-  );
-}
-
 export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
   const [spesaOpen, setSpesaOpen] = useState(false);
   const [marginiOpen, setMarginiOpen] = useState(false);
 
-  async function vaiAlPV(ristoranteId: string) {
+  // Deep link catena→PV: cambia la sede attiva e naviga alla pagina giusta del PV
+  // (default Home). Il "fare" è nel PV; la catena indirizza.
+  async function vaiAlPV(ristoranteId: string, page = "/dashboard") {
     if (switching) return;
     setSwitching(true);
     try {
@@ -162,7 +149,7 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
         body: JSON.stringify({ ristorante_id: ristoranteId }),
       });
       if (!res.ok) throw new Error();
-      router.push("/dashboard");
+      router.push(page);
     } catch {
       toast.error("Impossibile aprire il punto vendita");
       setSwitching(false);
@@ -238,7 +225,7 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
           colore={overview.salute_colore}
           numPv={overview.num_pv}
         />
-        <DaVedere />
+        <CardSegnali vaiAlPV={vaiAlPV} switching={switching} />
       </div>
 
       {/* Ranking punti vendita per margine % */}

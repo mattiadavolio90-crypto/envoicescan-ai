@@ -71,3 +71,20 @@ export type MarginiCoperti = {
   righe: MarginiCopertiPV[];
   gruppo: MarginiCopertiPV;
 };
+
+// ─── Segnali "Da vedere nella catena" ─────────────────────────────────────
+
+export type Segnale = {
+  tipo: "margine_calo" | "prezzi_sopra" | "ricavi_mancanti";
+  severity: "warning" | "error";
+  ristorante_id: string;
+  pv_nome: string;
+  testo: string;
+  cta_page: string; // pagina PV dove approfondire (deep link "Vedi PV →")
+};
+
+export type SegnaliGruppo = {
+  nome_gruppo: string;
+  generated_at: string | null;
+  segnali: Segnale[];
+};

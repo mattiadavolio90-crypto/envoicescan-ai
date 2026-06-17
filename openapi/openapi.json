@@ -14289,6 +14289,81 @@
           }
         }
       }
+    },
+    "/api/gruppo/segnali": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Segnali catena 'Da vedere' (cache 1×/giorno, 3 segnali di analisi)",
+        "operationId": "gruppo_segnali_api_gruppo_segnali_get",
+        "parameters": [
+          {
+            "name": "force",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Force"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegnaliResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -20163,6 +20238,77 @@
         ],
         "title": "ScoreSottometrica",
         "description": "Una delle metriche che compongono lo stato fornitore.\n\n`punteggio` (0-100) resta come dato interno per ordinamento/sintesi, ma la UI\nmostra `stato`: la lettura è per asse (stabile/da monitorare/instabile/non\nvalutabile), non un voto numerico, così non si presta a contestazioni."
+      },
+      "Segnale": {
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "title": "Tipo"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity"
+          },
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "pv_nome": {
+            "type": "string",
+            "title": "Pv Nome"
+          },
+          "testo": {
+            "type": "string",
+            "title": "Testo"
+          },
+          "cta_page": {
+            "type": "string",
+            "title": "Cta Page"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tipo",
+          "severity",
+          "ristorante_id",
+          "pv_nome",
+          "testo",
+          "cta_page"
+        ],
+        "title": "Segnale"
+      },
+      "SegnaliResponse": {
+        "properties": {
+          "nome_gruppo": {
+            "type": "string",
+            "title": "Nome Gruppo"
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At"
+          },
+          "segnali": {
+            "items": {
+              "$ref": "#/components/schemas/Segnale"
+            },
+            "type": "array",
+            "title": "Segnali"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome_gruppo",
+          "generated_at",
+          "segnali"
+        ],
+        "title": "SegnaliResponse"
       },
       "SnoozeSuggestionRequest": {
         "properties": {
