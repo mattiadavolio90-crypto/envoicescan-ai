@@ -61,3 +61,39 @@ def test_coperti_anomalia_ha_azione_coperti():
 def test_coperti_anomalia_bullet_usa_title():
     b = _bullet_for(_notif_coperti())
     assert "coperti" in b.lower()
+
+
+# ── Perf #1: cache assistant_preferences condivisa (1 query, non N) ──
+
+def test_assistant_preferences_cache_una_sola_query():
+    from unittest.mock import MagicMock
+    sb = MagicMock()
+    q = MagicMock()
+    q.select.return_value = q
+    q.eq.return_value = q
+    q.limit.return_value = q
+    q.execute.return_value = MagicMock(data=[{"nome_referente": "X", "topics_disabled": []}])
+    sb.table.return_value = q
+
+    fw._invalidate_assist_pref_cache("rid-perf")
+    fw._get_assistant_preferences("rid-perf", sb)
+    fw._get_assistant_preferences("rid-perf", sb)  # seconda: deve venire dalla cache
+    # Una sola execute() nonostante 2 chiamate ravvicinate.
+    assert q.execute.call_count == 1
+
+
+def test_assistant_preferences_invalidazione():
+    from unittest.mock import MagicMock
+    sb = MagicMock()
+    q = MagicMock()
+    q.select.return_value = q
+    q.eq.return_value = q
+    q.limit.return_value = q
+    q.execute.return_value = MagicMock(data=[{"nome_referente": "X", "topics_disabled": []}])
+    sb.table.return_value = q
+
+    fw._invalidate_assist_pref_cache("rid-perf2")
+    fw._get_assistant_preferences("rid-perf2", sb)
+    fw._invalidate_assist_pref_cache("rid-perf2")
+    fw._get_assistant_preferences("rid-perf2", sb)  # cache svuotata: rilegge
+    assert q.execute.call_count == 2

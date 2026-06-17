@@ -372,6 +372,9 @@ def account_cambia_sede(
         if token:
             from services.auth_service import _clear_sessione_cache
             _clear_sessione_cache(token)
+            # Anche la micro-cache della sede attiva (TTL 5s): senza, lo switch
+            # resterebbe stantio fino a 5s sugli endpoint successivi.
+            _fw()._invalidate_sede_attiva_cache(token)
     except Exception as exc:
         logger.warning("cambia-sede: invalidazione cache sessione fallita: %s", exc)
 

@@ -30,14 +30,22 @@ export function CodaDaAssegnare() {
 
   useEffect(() => {
     let alive = true;
-    Promise.all([
-      fetch("/api/fatture/da-assegnare", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
-      fetch("/api/account/sedi", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)),
-    ])
-      .then(([coda, sediRes]) => {
+    // Prima le sedi (fetch leggera): se l'account e' mono-sede (la maggioranza)
+    // la coda non si applica e NON facciamo la seconda fetch su /da-assegnare.
+    // Prima si chiamavano sempre entrambe in parallelo, 2 round-trip sprecati su
+    // ogni Home per i mono-sede.
+    fetch("/api/account/sedi", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((sediRes) => {
         if (!alive) return;
-        if (coda?.items) setItems(coda.items as FatturaDaAssegnare[]);
-        if (sediRes?.sedi) setSedi(sediRes.sedi as Sede[]);
+        const lista = (sediRes?.sedi ?? []) as Sede[];
+        setSedi(lista);
+        if (lista.length < 2) return; // mono-sede: niente seconda fetch
+        return fetch("/api/fatture/da-assegnare", { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((coda) => {
+            if (alive && coda?.items) setItems(coda.items as FatturaDaAssegnare[]);
+          });
       })
       .catch(() => {});
     return () => {

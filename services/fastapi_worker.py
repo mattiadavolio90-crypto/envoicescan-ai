@@ -1230,6 +1230,23 @@ class DashboardStats(BaseModel):
     top_categorie: List[TopItem]
 
 
+# Micro-cache della sede attiva (ultimo_ristorante_id) keyed per token. La Home
+# fa ~6 chiamate worker per load, ognuna passa di qui: senza cache erano 6 SELECT
+# su users per render. TTL 5s: abbastanza per condividere il valore entro un
+# singolo load (chiamate quasi simultanee) senza reintrodurre la stantia' che lo
+# switch sede deve evitare. Invalidata esplicitamente al cambio sede.
+_SEDE_ATTIVA_CACHE: Dict[str, tuple] = {}
+_SEDE_ATTIVA_TTL = 5.0  # secondi
+
+
+def _invalidate_sede_attiva_cache(token: Optional[str] = None) -> None:
+    """Invalida la micro-cache della sede attiva (un token, o tutta)."""
+    if token is None:
+        _SEDE_ATTIVA_CACHE.clear()
+    else:
+        _SEDE_ATTIVA_CACHE.pop(token, None)
+
+
 def _resolve_user_from_token(authorization: Optional[str]) -> Dict[str, Any]:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Token mancante")
@@ -1247,23 +1264,33 @@ def _resolve_user_from_token(authorization: Optional[str]) -> Dict[str, Any]:
     # uvicorn la richiesta successiva poteva colpire un processo con cache calda,
     # mostrando in modo intermittente la sede VECCHIA (KPI, salute, notifiche,
     # testata). E' la causa del "devo ricaricare piu' volte e aspettare" sullo
-    # switch. Una select single-column su PK indicizzata: costo trascurabile.
+    # switch. Micro-cache TTL 5s keyed per token: i ~6 endpoint di un singolo load
+    # condividono una SELECT invece di rifarla 6 volte; lo switch invalida la cache
+    # (account_cambia_sede), quindi resta immediato.
     # Non tocchiamo un eventuale ristorante_id esplicito (impersonazione admin).
     if not user.get("ristorante_id"):
-        try:
-            sb = _get_supabase_client()
-            fresh = (
-                sb.table("users")
-                .select("ultimo_ristorante_id")
-                .eq("id", user.get("id"))
-                .single()
-                .execute()
-            )
-            rid_fresh = (fresh.data or {}).get("ultimo_ristorante_id")
-            if rid_fresh:
-                user["ultimo_ristorante_id"] = rid_fresh
-        except Exception as exc:
-            logger.warning("_resolve_user_from_token: rilettura sede fresca fallita: %s", exc)
+        import time as _t
+        _now = _t.monotonic()
+        _cached = _SEDE_ATTIVA_CACHE.get(token)
+        if _cached and (_now - _cached[0]) < _SEDE_ATTIVA_TTL:
+            if _cached[1]:
+                user["ultimo_ristorante_id"] = _cached[1]
+        else:
+            try:
+                sb = _get_supabase_client()
+                fresh = (
+                    sb.table("users")
+                    .select("ultimo_ristorante_id")
+                    .eq("id", user.get("id"))
+                    .single()
+                    .execute()
+                )
+                rid_fresh = (fresh.data or {}).get("ultimo_ristorante_id")
+                _SEDE_ATTIVA_CACHE[token] = (_now, rid_fresh)
+                if rid_fresh:
+                    user["ultimo_ristorante_id"] = rid_fresh
+            except Exception as exc:
+                logger.warning("_resolve_user_from_token: rilettura sede fresca fallita: %s", exc)
 
     return user
 
@@ -1883,14 +1910,7 @@ def get_notifiche(
     td: Optional[List[Any]] = None  # topics_disabled, riusato anche per i live sotto
     try:
         if ristorante_id:
-            pref = (
-                supabase_client.table("assistant_preferences")
-                .select("topics_disabled")
-                .eq("ristorante_id", ristorante_id)
-                .limit(1)
-                .execute()
-            )
-            td = pref.data[0].get("topics_disabled") if pref.data else None
+            td = _get_assistant_preferences(ristorante_id, supabase_client).get("topics_disabled")
             rows = _filtra_notifiche_topic_spenti(rows, td)
     except Exception as exc:
         logger.warning("get_notifiche: filtro topics_disabled fallito: %s", exc)
@@ -3926,10 +3946,56 @@ def _briefing_response_from_snapshot(snapshot: Dict[str, Any], nome: Optional[st
     )
 
 
+# Cache in-process di assistant_preferences per ristorante. Un singolo load Home
+# la legge da 4 punti (get_notifiche, briefing, salute, config): senza cache erano
+# 4 SELECT identiche. TTL 30s; invalidata al salvataggio del configuratore.
+_ASSIST_PREF_CACHE: Dict[str, tuple] = {}
+_ASSIST_PREF_TTL = 30.0  # secondi
+
+
+def _invalidate_assist_pref_cache(ristorante_id: Optional[str] = None) -> None:
+    """Invalida la cache assistant_preferences (una sede, o tutta)."""
+    if ristorante_id is None:
+        _ASSIST_PREF_CACHE.clear()
+    else:
+        _ASSIST_PREF_CACHE.pop(str(ristorante_id), None)
+
+
+def _get_assistant_preferences(ristorante_id: str, supabase_client) -> Dict[str, Any]:
+    """Riga assistant_preferences della sede, cachata in-process (TTL 30s).
+
+    Fonte unica condivisa dai 4 call-site della Home. Ritorna {} se assente o su
+    errore (fail-open: nessun nome override, nessun topic spento). Seleziona tutte
+    le colonne usate dai chiamanti, cosi' ognuno prende quello che gli serve.
+    """
+    if not ristorante_id:
+        return {}
+    import time as _t
+    _now = _t.monotonic()
+    _cached = _ASSIST_PREF_CACHE.get(str(ristorante_id))
+    if _cached and (_now - _cached[0]) < _ASSIST_PREF_TTL:
+        return dict(_cached[1])
+    pref: Dict[str, Any] = {}
+    try:
+        resp = (
+            supabase_client.table("assistant_preferences")
+            .select("nome_referente,topics_disabled,chat_ai_enabled,alert_prezzi_solo_preferiti")
+            .eq("ristorante_id", ristorante_id)
+            .limit(1)
+            .execute()
+        )
+        if resp.data:
+            pref = dict(resp.data[0])
+    except Exception as exc:
+        logger.warning("_get_assistant_preferences: lettura fallita: %s", exc)
+    _ASSIST_PREF_CACHE[str(ristorante_id)] = (_now, dict(pref))
+    return pref
+
+
 def _briefing_nome_referente(
     nome: Optional[str], ristorante_id: Optional[str], supabase_client
 ) -> tuple[Optional[str], List[str]]:
-    """Legge override nome + topic spenti da assistant_preferences (query leggera).
+    """Legge override nome + topic spenti da assistant_preferences (cachata).
 
     Estratta per essere riusabile sia dal fast-path cache-first (che serve lo
     snapshot di oggi senza ricalcolare nulla, ma ha comunque bisogno del nome
@@ -3938,23 +4004,12 @@ def _briefing_nome_referente(
     topics_disabled: List[str] = []
     if not ristorante_id:
         return nome, topics_disabled
-    try:
-        prefres = (
-            supabase_client.table("assistant_preferences")
-            .select("nome_referente,topics_disabled")
-            .eq("ristorante_id", ristorante_id)
-            .limit(1)
-            .execute()
-        )
-        if prefres.data:
-            pref = prefres.data[0]
-            if pref.get("nome_referente"):
-                nome = pref["nome_referente"]
-            td = pref.get("topics_disabled") or []
-            if isinstance(td, list):
-                topics_disabled = [str(t) for t in td]
-    except Exception as exc:
-        logger.warning("home_briefing: lettura preferenze fallita: %s", exc)
+    pref = _get_assistant_preferences(ristorante_id, supabase_client)
+    if pref.get("nome_referente"):
+        nome = pref["nome_referente"]
+    td = pref.get("topics_disabled") or []
+    if isinstance(td, list):
+        topics_disabled = [str(t) for t in td]
     return nome, topics_disabled
 
 
@@ -4975,25 +5030,15 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     chat_ai_enabled = True
     solo_preferiti = False
     if ristorante_id:
-        try:
-            resp = (
-                sb.table("assistant_preferences")
-                .select("nome_referente,topics_disabled,chat_ai_enabled,alert_prezzi_solo_preferiti")
-                .eq("ristorante_id", ristorante_id)
-                .limit(1)
-                .execute()
-            )
-            if resp.data:
-                pref = resp.data[0]
-                nome = str(pref.get("nome_referente") or "")
-                td = pref.get("topics_disabled") or []
-                if isinstance(td, list):
-                    disabled = {str(t) for t in td}
-                if pref.get("chat_ai_enabled") is not None:
-                    chat_ai_enabled = bool(pref["chat_ai_enabled"])
-                solo_preferiti = bool(pref.get("alert_prezzi_solo_preferiti"))
-        except Exception as exc:
-            logger.warning("home_config_get: lettura fallita: %s", exc)
+        pref = _get_assistant_preferences(ristorante_id, sb)
+        if pref:
+            nome = str(pref.get("nome_referente") or "")
+            td = pref.get("topics_disabled") or []
+            if isinstance(td, list):
+                disabled = {str(t) for t in td}
+            if pref.get("chat_ai_enabled") is not None:
+                chat_ai_enabled = bool(pref["chat_ai_enabled"])
+            solo_preferiti = bool(pref.get("alert_prezzi_solo_preferiti"))
 
     if not nome:
         nome = str(user.get("nome_referente") or "")
@@ -5079,6 +5124,12 @@ def home_config_post(
     except Exception as exc:
         logger.error("home_config_post: salvataggio fallito: %s", exc)
         raise HTTPException(status_code=500, detail="Salvataggio fallito")
+
+    # Le preferenze appena salvate guidano nome, topic spenti e (via toggle) i
+    # segnali live mostrati: invalida entrambe le cache cosi' la Home riflette
+    # subito il cambiamento invece di aspettare il TTL.
+    _invalidate_assist_pref_cache(ristorante_id)
+    _LIVE_SEGNALI_CACHE.pop(ristorante_id, None)
 
     # Cambiare quali prodotti generano avvisi (preferiti vs Pareto) cambia il
     # briefing di oggi -> invalidalo cosi' si rigenera con la nuova logica.
