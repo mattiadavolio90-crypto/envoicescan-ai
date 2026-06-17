@@ -1041,6 +1041,9 @@ class UserPublic(BaseModel):
     # con nome_ristorante / il loro unico ristorante: la UI puo' usarli sempre.
     sede_attiva_nome: Optional[str] = None
     sede_attiva_id: Optional[str] = None
+    # Numero di sedi attive dell'account. ≥2 = cliente catena → la UI lo atterra
+    # su /catena (vista gruppo) invece che sulla Home del singolo PV.
+    num_sedi: int = 1
     pagine_abilitate: Optional[List[str]] = None
     is_admin: bool = False
     tema: str = "dark"
@@ -1150,8 +1153,21 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
     # si ricade sul nome account senza compromettere la verifica sessione.
     sede_id: Optional[str] = None
     sede_nome: Optional[str] = user.get("nome_ristorante")
+    num_sedi = 1
     try:
-        sede_id, sede_nome = _resolve_sede_attiva(user, _get_supabase_client())
+        sb = _get_supabase_client()
+        sede_id, sede_nome = _resolve_sede_attiva(user, sb)
+        # Conteggio sedi attive: serve alla UI per atterrare i clienti catena
+        # (≥2 sedi) su /catena. count="exact" con head → niente payload righe.
+        cnt = (
+            sb.table("ristoranti")
+            .select("id", count="exact")
+            .eq("user_id", user.get("id"))
+            .eq("attivo", True)
+            .execute()
+        )
+        if cnt.count is not None:
+            num_sedi = int(cnt.count)
     except Exception:
         pass
 
@@ -1161,6 +1177,7 @@ def auth_me(authorization: Optional[str] = Header(None)) -> UserPublic:
         nome_ristorante=user.get("nome_ristorante"),
         sede_attiva_nome=sede_nome,
         sede_attiva_id=sede_id,
+        num_sedi=num_sedi,
         pagine_abilitate=_normalize_pagine(user.get("pagine_abilitate")),
         is_admin=_is_admin_email(user.get("email")),
         tema=(user.get("tema") or "dark"),
@@ -5990,6 +6007,7 @@ from services.routers.fatture import router as _fatture_router  # noqa: E402
 from services.routers.margini import router as _margini_router  # noqa: E402
 from services.routers.workspace import router as _workspace_router  # noqa: E402
 from services.routers.admin import router as _admin_router  # noqa: E402
+from services.routers.gruppo import router as _gruppo_router  # noqa: E402
 app.include_router(_tag_router)
 app.include_router(_scadenziario_router)
 app.include_router(_cestino_router)
@@ -6000,6 +6018,7 @@ app.include_router(_fatture_router)
 app.include_router(_margini_router)
 app.include_router(_workspace_router)
 app.include_router(_admin_router)
+app.include_router(_gruppo_router)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

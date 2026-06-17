@@ -11162,6 +11162,79 @@
         }
       }
     },
+    "/api/admin/clienti/{cliente_id}/rinvia-attivazione": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Admin Rinvia Attivazione",
+        "description": "Rigenera il token onboarding (24h) e reinvia l'email di attivazione.\n\nUtile quando l'email iniziale non è arrivata. Vietato su account admin e su\naccount già attivi (hanno già la password).",
+        "operationId": "admin_rinvia_attivazione_api_admin_clienti__cliente_id__rinvia_attivazione_post",
+        "parameters": [
+          {
+            "name": "cliente_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Cliente Id"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/qualita-ai/coda": {
       "get": {
         "tags": [
@@ -13979,6 +14052,71 @@
           }
         }
       }
+    },
+    "/api/gruppo/overview": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Vista gruppo: KPI + salute media + ranking PV per margine%",
+        "operationId": "gruppo_overview_api_gruppo_overview_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GruppoOverviewResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -16639,6 +16777,74 @@
         ],
         "title": "FornitoreRegolaRequest"
       },
+      "GruppoKpi": {
+        "properties": {
+          "fatturato": {
+            "type": "number",
+            "title": "Fatturato"
+          },
+          "margine_medio_perc": {
+            "type": "number",
+            "title": "Margine Medio Perc"
+          },
+          "spesa_fornitori": {
+            "type": "number",
+            "title": "Spesa Fornitori"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fatturato",
+          "margine_medio_perc",
+          "spesa_fornitori"
+        ],
+        "title": "GruppoKpi"
+      },
+      "GruppoOverviewResponse": {
+        "properties": {
+          "nome_gruppo": {
+            "type": "string",
+            "title": "Nome Gruppo"
+          },
+          "num_pv": {
+            "type": "integer",
+            "title": "Num Pv"
+          },
+          "periodo_label": {
+            "type": "string",
+            "title": "Periodo Label"
+          },
+          "kpi": {
+            "$ref": "#/components/schemas/GruppoKpi"
+          },
+          "salute_indice": {
+            "type": "integer",
+            "title": "Salute Indice"
+          },
+          "salute_colore": {
+            "type": "string",
+            "title": "Salute Colore"
+          },
+          "ranking": {
+            "items": {
+              "$ref": "#/components/schemas/RankingPV"
+            },
+            "type": "array",
+            "title": "Ranking"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome_gruppo",
+          "num_pv",
+          "periodo_label",
+          "kpi",
+          "salute_indice",
+          "salute_colore",
+          "ranking"
+        ],
+        "title": "GruppoOverviewResponse"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -17913,6 +18119,23 @@
               }
             ],
             "title": "Created At"
+          },
+          "payload": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payload"
+          },
+          "dismissible": {
+            "type": "boolean",
+            "title": "Dismissible",
+            "default": true
           }
         },
         "type": "object",
@@ -18585,6 +18808,51 @@
           "prodotto"
         ],
         "title": "PreferitoRequest"
+      },
+      "RankingPV": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "margine_perc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margine Perc"
+          },
+          "fatturato": {
+            "type": "number",
+            "title": "Fatturato"
+          },
+          "colore": {
+            "type": "string",
+            "title": "Colore"
+          },
+          "dati_incompleti": {
+            "type": "boolean",
+            "title": "Dati Incompleti"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id",
+          "nome",
+          "margine_perc",
+          "fatturato",
+          "colore",
+          "dati_incompleti"
+        ],
+        "title": "RankingPV"
       },
       "ResetConfirmBody": {
         "properties": {
@@ -20177,6 +20445,11 @@
               }
             ],
             "title": "Sede Attiva Id"
+          },
+          "num_sedi": {
+            "type": "integer",
+            "title": "Num Sedi",
+            "default": 1
           },
           "pagine_abilitate": {
             "anyOf": [

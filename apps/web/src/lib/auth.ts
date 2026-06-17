@@ -22,6 +22,9 @@ export type SessionUser = {
   // Il worker la valorizza sempre; resta opzionale per compatibilita' coi vecchi token.
   sede_attiva_nome?: string | null;
   sede_attiva_id?: string | null;
+  // Numero di sedi attive dell'account: ≥2 = cliente catena (landing su /catena).
+  // Opzionale per compatibilità coi vecchi token (default mono-sede).
+  num_sedi?: number;
   pagine_abilitate: string[] | null;
   is_admin: boolean;
   tema?: "dark" | "light";

@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  Building2,
   CalendarCheck,
   CalendarDays,
   Check,
@@ -176,6 +177,20 @@ export function AppSidebar({
         <SidebarGroup>
           <SidebarGroupLabel>Menu principale</SidebarGroupLabel>
           <SidebarMenu>
+            {/* Catena: solo account multi-sede. È la plancia di gruppo (vista
+                superiore di analisi), separata dalle pagine del singolo PV. */}
+            {hasMultiSede && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  render={<Link href="/catena" />}
+                  isActive={pathname === "/catena"}
+                  className="data-active:!bg-sky-500/15 data-active:!text-sky-600 dark:data-active:!text-sky-400 data-active:!font-semibold data-active:!border-l-2 data-active:!border-sky-500"
+                >
+                  <Building2 />
+                  <span>Catena</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
             {visibleNav.map((item) => (
               <SidebarMenuItem key={item.title}>
                 <SidebarMenuButton
