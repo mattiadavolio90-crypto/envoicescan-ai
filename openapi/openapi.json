@@ -14117,6 +14117,178 @@
           }
         }
       }
+    },
+    "/api/gruppo/spesa-pivot": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Finestra Spesa per PV: pivot dimensione × punto vendita (SQL aggregata)",
+        "operationId": "gruppo_spesa_pivot_api_gruppo_spesa_pivot_get",
+        "parameters": [
+          {
+            "name": "dimensione",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "categoria",
+              "title": "Dimensione"
+            }
+          },
+          {
+            "name": "data_da",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data Da"
+            }
+          },
+          {
+            "name": "data_a",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Data A"
+            }
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpesaPivotResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/gruppo/margini-coperti": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Finestra Margini e Coperti per PV (da margini_mensili, anno corrente)",
+        "operationId": "gruppo_margini_coperti_api_gruppo_margini_coperti_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MarginiCopertiResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -17301,6 +17473,105 @@
         ],
         "title": "MarginiCellaResponse"
       },
+      "MarginiCopertiPV": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "margine_perc": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margine Perc"
+          },
+          "fatturato": {
+            "type": "number",
+            "title": "Fatturato"
+          },
+          "coperti": {
+            "type": "integer",
+            "title": "Coperti"
+          },
+          "scontrino_medio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scontrino Medio"
+          },
+          "mp_per_coperto": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mp Per Coperto"
+          },
+          "dati_incompleti": {
+            "type": "boolean",
+            "title": "Dati Incompleti"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id",
+          "nome",
+          "margine_perc",
+          "fatturato",
+          "coperti",
+          "scontrino_medio",
+          "mp_per_coperto",
+          "dati_incompleti"
+        ],
+        "title": "MarginiCopertiPV"
+      },
+      "MarginiCopertiResponse": {
+        "properties": {
+          "nome_gruppo": {
+            "type": "string",
+            "title": "Nome Gruppo"
+          },
+          "periodo_label": {
+            "type": "string",
+            "title": "Periodo Label"
+          },
+          "righe": {
+            "items": {
+              "$ref": "#/components/schemas/MarginiCopertiPV"
+            },
+            "type": "array",
+            "title": "Righe"
+          },
+          "gruppo": {
+            "$ref": "#/components/schemas/MarginiCopertiPV"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome_gruppo",
+          "periodo_label",
+          "righe",
+          "gruppo"
+        ],
+        "title": "MarginiCopertiResponse"
+      },
       "MarginiKpiResponse": {
         "properties": {
           "fatturato_lordo": {
@@ -19947,6 +20218,92 @@
           "spesa"
         ],
         "title": "SpesaMensilePoint"
+      },
+      "SpesaPivotResponse": {
+        "properties": {
+          "nome_gruppo": {
+            "type": "string",
+            "title": "Nome Gruppo"
+          },
+          "periodo_label": {
+            "type": "string",
+            "title": "Periodo Label"
+          },
+          "dimensione": {
+            "type": "string",
+            "title": "Dimensione"
+          },
+          "pv": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Pv"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/SpesaPivotRow"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "totali_pv": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Totali Pv"
+          },
+          "grand_total": {
+            "type": "number",
+            "title": "Grand Total"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome_gruppo",
+          "periodo_label",
+          "dimensione",
+          "pv",
+          "rows",
+          "totali_pv",
+          "grand_total"
+        ],
+        "title": "SpesaPivotResponse"
+      },
+      "SpesaPivotRow": {
+        "properties": {
+          "dim_val": {
+            "type": "string",
+            "title": "Dim Val"
+          },
+          "per_pv": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Per Pv"
+          },
+          "totale": {
+            "type": "number",
+            "title": "Totale"
+          },
+          "incidenza_pct": {
+            "type": "number",
+            "title": "Incidenza Pct"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dim_val",
+          "per_pv",
+          "totale",
+          "incidenza_pct"
+        ],
+        "title": "SpesaPivotRow"
       },
       "SpostaSedeBody": {
         "properties": {

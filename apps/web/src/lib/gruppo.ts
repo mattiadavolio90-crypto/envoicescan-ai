@@ -32,3 +32,42 @@ export const fetchGruppoOverview = cache(
   async (): Promise<GruppoOverview | null> =>
     workerGet<GruppoOverview>("/api/gruppo/overview", "gruppo.overview"),
 );
+
+// ─── Finestra "Spesa per PV" ──────────────────────────────────────────────
+
+export type SpesaPivotRow = {
+  dim_val: string;
+  per_pv: Record<string, number>; // ristorante_id -> spesa
+  totale: number;
+  incidenza_pct: number;
+};
+
+export type SpesaPivot = {
+  nome_gruppo: string;
+  periodo_label: string;
+  dimensione: "categoria" | "fornitore";
+  pv: { id: string; nome: string }[];
+  rows: SpesaPivotRow[];
+  totali_pv: Record<string, number>;
+  grand_total: number;
+};
+
+// ─── Finestra "Margini e Coperti per PV" ──────────────────────────────────
+
+export type MarginiCopertiPV = {
+  ristorante_id: string;
+  nome: string;
+  margine_perc: number | null;
+  fatturato: number;
+  coperti: number;
+  scontrino_medio: number | null;
+  mp_per_coperto: number | null; // BASSO = meglio
+  dati_incompleti: boolean;
+};
+
+export type MarginiCoperti = {
+  nome_gruppo: string;
+  periodo_label: string;
+  righe: MarginiCopertiPV[];
+  gruppo: MarginiCopertiPV;
+};

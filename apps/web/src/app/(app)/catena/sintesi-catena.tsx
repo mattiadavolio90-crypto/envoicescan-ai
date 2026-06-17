@@ -20,6 +20,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { FinestraSpesaPV } from "./finestra-spesa-pv";
+import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
 
 function euro(n: number): string {
   return new Intl.NumberFormat("it-IT", {
@@ -52,20 +54,37 @@ function KpiCard({
   icon: Icon,
   label,
   value,
+  onClick,
+  hint,
 }: {
   icon: typeof TrendingUp;
   label: string;
   value: string;
+  onClick?: () => void;
+  hint?: string;
 }) {
-  return (
-    <div className="flex flex-col gap-2 rounded-2xl border bg-card p-5">
+  const body = (
+    <>
       <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         <Icon className="size-4" />
         {label}
       </div>
       <div className="text-3xl font-black tabular-nums">{value}</div>
-    </div>
+      {hint && <div className="text-xs text-muted-foreground/70">{hint}</div>}
+    </>
   );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex flex-col gap-2 rounded-2xl border bg-card p-5 text-left transition-colors hover:bg-accent"
+      >
+        {body}
+      </button>
+    );
+  }
+  return <div className="flex flex-col gap-2 rounded-2xl border bg-card p-5">{body}</div>;
 }
 
 function SaluteGauge({
@@ -130,6 +149,8 @@ function DaVedere() {
 export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
+  const [spesaOpen, setSpesaOpen] = useState(false);
+  const [marginiOpen, setMarginiOpen] = useState(false);
 
   async function vaiAlPV(ristoranteId: string) {
     if (switching) return;
@@ -191,11 +212,23 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
         </DropdownMenu>
       </div>
 
-      {/* 3 KPI del gruppo */}
+      {/* 3 KPI del gruppo — Margine e Spesa aprono le finestre di confronto */}
       <div className="grid gap-4 sm:grid-cols-3">
         <KpiCard icon={Wallet} label="Fatturato gruppo" value={euro(kpi.fatturato)} />
-        <KpiCard icon={TrendingUp} label="Margine medio" value={pct(kpi.margine_medio_perc)} />
-        <KpiCard icon={Receipt} label="Spesa fornitori" value={euro(kpi.spesa_fornitori)} />
+        <KpiCard
+          icon={TrendingUp}
+          label="Margine medio"
+          value={pct(kpi.margine_medio_perc)}
+          hint="Confronta margini e coperti →"
+          onClick={() => setMarginiOpen(true)}
+        />
+        <KpiCard
+          icon={Receipt}
+          label="Spesa fornitori"
+          value={euro(kpi.spesa_fornitori)}
+          hint="Confronta spesa per PV →"
+          onClick={() => setSpesaOpen(true)}
+        />
       </div>
 
       {/* Salute gruppo + Da vedere */}
@@ -212,7 +245,16 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
       <div className="rounded-2xl border bg-card">
         <div className="flex items-baseline justify-between gap-2 border-b px-5 py-4">
           <h2 className="text-sm font-semibold">Ranking punti vendita</h2>
-          <span className="text-xs text-muted-foreground">{overview.periodo_label} · per margine %</span>
+          <span className="flex items-baseline gap-3 text-xs text-muted-foreground">
+            <span>{overview.periodo_label} · per margine %</span>
+            <button
+              type="button"
+              onClick={() => setMarginiOpen(true)}
+              className="font-medium text-primary hover:underline"
+            >
+              Confronta →
+            </button>
+          </span>
         </div>
         <ul className="divide-y">
           {ranking.map((pv) => (
@@ -241,6 +283,10 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
           ))}
         </ul>
       </div>
+
+      {/* Finestre di confronto: caricano i dati solo all'apertura (lazy). */}
+      <FinestraSpesaPV open={spesaOpen} onOpenChange={setSpesaOpen} />
+      <FinestraMarginiCoperti open={marginiOpen} onOpenChange={setMarginiOpen} />
     </div>
   );
 }
