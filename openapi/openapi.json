@@ -14965,6 +14965,71 @@
           }
         }
       }
+    },
+    "/api/gruppo/chat-config": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Config chat catena: pool AI unico (limite gruppo + domande oggi)",
+        "operationId": "gruppo_chat_config_api_gruppo_chat_config_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GruppoChatConfig"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -16590,6 +16655,12 @@
             "maxItems": 20,
             "minItems": 1,
             "title": "Messages"
+          },
+          "contesto": {
+            "type": "string",
+            "pattern": "^(sede|catena)$",
+            "title": "Contesto",
+            "default": "sede"
           }
         },
         "type": "object",
@@ -17647,6 +17718,29 @@
           "severity_max"
         ],
         "title": "GruppoBriefing"
+      },
+      "GruppoChatConfig": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          },
+          "limite_giorno": {
+            "type": "integer",
+            "title": "Limite Giorno"
+          },
+          "domande_oggi": {
+            "type": "integer",
+            "title": "Domande Oggi"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "limite_giorno",
+          "domande_oggi"
+        ],
+        "title": "GruppoChatConfig"
       },
       "GruppoKpi": {
         "properties": {

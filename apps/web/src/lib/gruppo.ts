@@ -40,6 +40,17 @@ export const fetchGruppoOverview = cache(
     workerGet<GruppoOverview>("/api/gruppo/overview", "gruppo.overview"),
 );
 
+export type GruppoChatConfig = {
+  enabled: boolean;
+  limite_giorno: number;
+  domande_oggi: number;
+};
+
+export const fetchGruppoChatConfig = cache(
+  async (): Promise<GruppoChatConfig | null> =>
+    workerGet<GruppoChatConfig>("/api/gruppo/chat-config", "gruppo.chatConfig"),
+);
+
 // ─── Finestra "Spesa per PV" ──────────────────────────────────────────────
 
 export type SpesaPivotRow = {

@@ -22,6 +22,14 @@ const SUGGERIMENTI = [
   "Chi è il mio fornitore più caro?",
 ];
 
+// In modalità catena la chat parla del gruppo: suggerimenti dedicati.
+const SUGGERIMENTI_CATENA = [
+  "Quale punto vendita ha il margine peggiore?",
+  "Dove si spende di più in pesce?",
+  "Cosa c'è da vedere nella catena?",
+  "Chi ha lo scontrino medio più alto?",
+];
+
 // La conversazione vive in sessionStorage: cosi' chiudere il pannello, ricaricare
 // o un router.refresh() (es. l'auto-refresh della Home) non la cancella. Si
 // svuota a fine sessione/logout — niente storico permanente, zero impatto privacy.
@@ -48,9 +56,13 @@ type ChatWidgetProps = {
   limiteGiorno: number;
   // Domande gia' consumate oggi all'apertura della Home (dal config).
   domandeOggiIniziali: number;
+  // "catena" = chat della vista gruppo (tool di gruppo, pool AI). Default "sede".
+  contesto?: "sede" | "catena";
 };
 
-export function ChatWidget({ limiteGiorno, domandeOggiIniziali }: ChatWidgetProps) {
+export function ChatWidget({ limiteGiorno, domandeOggiIniziali, contesto = "sede" }: ChatWidgetProps) {
+  const isCatena = contesto === "catena";
+  const suggerimenti = isCatena ? SUGGERIMENTI_CATENA : SUGGERIMENTI;
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -128,7 +140,7 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali }: ChatWidgetProp
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nuovi.slice(-MAX_STORICO_INVIATO) }),
+        body: JSON.stringify({ messages: nuovi.slice(-MAX_STORICO_INVIATO), contesto }),
       });
       const data = (await res.json()) as {
         reply?: string;
@@ -225,12 +237,13 @@ export function ChatWidget({ limiteGiorno, domandeOggiIniziali }: ChatWidgetProp
                 <Logo variant="icon" size={32} className="opacity-40" />
                 <p className="text-sm font-medium">Ciao! Sono il tuo assistente.</p>
                 <p className="text-xs leading-relaxed text-muted-foreground max-w-[240px]">
-                  Chiedimi dei tuoi costi, fornitori, food cost, margini o scadenze.
-                  Posso anche confrontare i prezzi tra fornitori.
+                  {isCatena
+                    ? "Chiedimi del confronto tra i punti vendita: margini, spesa, coperti e cosa c'è da tenere d'occhio."
+                    : "Chiedimi dei tuoi costi, fornitori, food cost, margini o scadenze. Posso anche confrontare i prezzi tra fornitori."}
                 </p>
                 {!esaurite && (
                   <div className="mt-1 flex flex-wrap justify-center gap-1.5">
-                    {SUGGERIMENTI.map((s) => (
+                    {suggerimenti.map((s) => (
                       <button
                         key={s}
                         type="button"

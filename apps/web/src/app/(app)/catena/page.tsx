@@ -1,7 +1,8 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { fetchGruppoOverview } from "@/lib/gruppo";
+import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
 import { SintesiCatena } from "./sintesi-catena";
+import { ChatWidget } from "../dashboard/chat-widget";
 
 // Modalità catena (Fase 1) — UNA pagina: la Sintesi (plancia di sola lettura).
 // La catena è un layer superiore di analisi/visualizzazione sopra i PV;
@@ -38,10 +39,30 @@ async function SintesiBlock() {
   return <SintesiCatena overview={overview} />;
 }
 
+// Chat di catena: pool AI unico (limite = somma dei limiti delle sedi). Compare
+// solo se il pool è > 0 (almeno una sede con piano a pagamento). Suspense a parte
+// per non ritardare la Sintesi.
+async function ChatBlockCatena() {
+  const config = await fetchGruppoChatConfig();
+  if (!config || !config.enabled || config.limite_giorno <= 0) return null;
+  return (
+    <ChatWidget
+      contesto="catena"
+      limiteGiorno={config.limite_giorno}
+      domandeOggiIniziali={config.domande_oggi}
+    />
+  );
+}
+
 export default async function CatenaPage() {
   return (
-    <Suspense fallback={<SintesiSkeleton />}>
-      <SintesiBlock />
-    </Suspense>
+    <>
+      <Suspense fallback={<SintesiSkeleton />}>
+        <SintesiBlock />
+      </Suspense>
+      <Suspense fallback={null}>
+        <ChatBlockCatena />
+      </Suspense>
+    </>
   );
 }

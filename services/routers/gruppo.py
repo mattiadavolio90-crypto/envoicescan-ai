@@ -38,6 +38,14 @@ def _verify_worker_key(x_worker_key: Optional[str] = Header(None)) -> None:
     return _fw()._verify_worker_key(x_worker_key)
 
 
+def _chat_limite_pool_gruppo(*args, **kwargs):
+    return _fw()._chat_limite_pool_gruppo(*args, **kwargs)
+
+
+def _chat_domande_oggi(*args, **kwargs):
+    return _fw()._chat_domande_oggi(*args, **kwargs)
+
+
 router = APIRouter()
 
 
@@ -1035,4 +1043,34 @@ def gruppo_tag_analisi(
         periodo_label=periodo_label,
         spesa_totale=round(sum(p.spesa for p in per_pv), 2),
         per_pv=per_pv,
+    )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CHAT CATENA — config del pool AI (limite gruppo + domande oggi)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class GruppoChatConfig(BaseModel):
+    enabled: bool                 # pool > 0 (almeno una sede non-free)
+    limite_giorno: int            # SOMMA dei limiti effettivi delle sedi
+    domande_oggi: int             # richieste chat dell'account già fatte oggi
+
+
+@router.get(
+    "/api/gruppo/chat-config",
+    tags=["Catena"],
+    summary="Config chat catena: pool AI unico (limite gruppo + domande oggi)",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_chat_config(authorization: Optional[str] = Header(None)) -> GruppoChatConfig:
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    user = _resolve_user_from_token(authorization)
+    limite = _chat_limite_pool_gruppo(user, sb)
+    # Domande oggi a livello account: conteggio per user_id (ristorante_id=None) →
+    # tutte le righe chat dell'account (catena + ogni PV), coerente col pool unico.
+    domande = _chat_domande_oggi(None, user_id, sb)
+    return GruppoChatConfig(
+        enabled=limite > 0,
+        limite_giorno=limite,
+        domande_oggi=domande,
     )

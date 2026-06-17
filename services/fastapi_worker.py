@@ -2116,6 +2116,35 @@ def _chat_limite_per_piano(piano: Optional[str]) -> int:
     return CHAT_LIMITI_PIANO.get((piano or "base").lower().strip(), CHAT_LIMITI_PIANO["base"])
 
 
+def _chat_limite_pool_gruppo(user: Dict[str, Any], supabase_client) -> int:
+    """Limite chat del POOL di gruppo = SOMMA dei limiti effettivi di ogni sede.
+
+    Modalità catena: un solo contatore condiviso, niente piano-catena. Ogni sede
+    contribuisce col limite del SUO piano (es. 3 Base 8 + 1 Pro 30 = 54), non
+    n×costante (i piani possono differire). Le sedi 'free' (limite 0) non
+    contribuiscono. Fallback prudente al limite della sede attiva se la lettura
+    sedi fallisce (non blocca la chat di gruppo)."""
+    try:
+        sedi = (
+            supabase_client.table("ristoranti")
+            .select("piano")
+            .eq("user_id", str(user["id"]))
+            .eq("attivo", True)
+            .execute()
+        ).data or []
+        if sedi:
+            # Risolve il piano per sede col fallback corretto (sede.piano →
+            # users.piano → 'base'), mai users.piano diretto.
+            tot = 0
+            for s in sedi:
+                piano_sede = (s.get("piano") or user.get("piano") or "base")
+                tot += _chat_limite_per_piano(piano_sede)
+            return tot
+    except Exception as exc:
+        logger.warning("chat: calcolo pool gruppo fallito, fallback sede: %s", exc)
+    return _chat_limite_per_piano(_resolve_piano_effettivo(user, supabase_client))
+
+
 def _chat_domande_oggi(ristorante_id: Optional[str], user_id: str, supabase_client) -> int:
     """Conta le domande alla chat fatte oggi (UTC) per il ristorante (o utente)."""
     from datetime import datetime as _dt, timezone as _tz
@@ -2143,6 +2172,9 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage] = Field(..., min_length=1, max_length=20)
+    # "catena" = chat in modalità catena (/catena): tool di gruppo, pool AI unico
+    # (SUM limiti effettivi sedi). Default "sede" = chat del singolo PV, invariata.
+    contesto: str = Field("sede", pattern="^(sede|catena)$")
 
 
 class ChatResponse(BaseModel):
@@ -2327,6 +2359,205 @@ Regole per gli strumenti:
 - I dati qui sotto coprono periodi diversi (KPI = ultimo mese completo; categorie/fornitori = ultimi 90 giorni): non mescolarli.{kpi_testo}"""
 
     return sistema
+
+
+# ─── Chat modalità CATENA: doppia competenza (tool di gruppo) ──────────────
+
+def _build_chat_system_prompt_catena(
+    user: Dict[str, Any], supabase_client, authorization: Optional[str]
+) -> str:
+    """System prompt per la chat in modalità catena: parla del GRUPPO, non del
+    singolo PV. Inietta la sintesi di gruppo (KPI + ranking) come contesto, gli
+    stessi numeri che il cliente vede su /catena."""
+    from datetime import date as _date_today
+    oggi = _date_today.today()
+    referente = user.get("nome_referente") or ""
+
+    contesto = ""
+    nome_gruppo = "il gruppo"
+    try:
+        ov = _gruppo_router_mod().gruppo_overview(authorization)
+        nome_gruppo = ov.nome_gruppo
+        contesto += (
+            f"\n\n## Sintesi della catena «{ov.nome_gruppo}» ({ov.num_pv} punti vendita, {ov.periodo_label})\n"
+            f"- Fatturato gruppo: €{ov.kpi.fatturato:,.2f}\n"
+            f"- Margine medio: {ov.kpi.margine_medio_perc:.1f}%\n"
+            f"- Spesa fornitori: €{ov.kpi.spesa_fornitori:,.2f}\n"
+            f"- Salute del gruppo: {ov.salute_indice}/100\n"
+            "\n### Ranking punti vendita (per margine %)\n"
+        )
+        for r in ov.ranking:
+            if r.dati_incompleti:
+                contesto += f"- {r.nome}: dati incompleti\n"
+            else:
+                contesto += f"- {r.nome}: margine {r.margine_perc:.1f}%, fatturato €{r.fatturato:,.2f}\n"
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("chat catena: contesto overview non disponibile: %s", exc)
+
+    return f"""Sei l'assistente AI di ONEFLUX in MODALITÀ CATENA: parli del GRUPPO di ristoranti «{nome_gruppo}», non di un singolo locale.
+{f"Stai parlando con {referente}." if referente else ""}
+
+## Data
+Oggi è {oggi.day}/{oggi.month}/{oggi.year}. L'anno corrente è {oggi.year}.
+
+Rispondi SOLO a domande sul confronto e l'andamento dei punti vendita del gruppo: chi va meglio/peggio, margini, spesa fornitori, coperti, segnalazioni. Per domande sul singolo locale invita ad aprire quel punto vendita.
+
+Tono: diretto, concreto, da direttore di catena. Risposte brevi (2-5 righe). Importi in euro con 2 decimali. Confronta SEMPRE per percentuali/incidenze quando paragoni PV di taglia diversa (i valori assoluti in € ingannano).
+
+Regole strumenti:
+- Per il quadro d'insieme (KPI, ranking, salute) usa i dati qui sotto o gruppo_overview.
+- Per "quale PV ha il margine/scontrino/coperti migliore o peggiore" usa gruppo_margini_coperti.
+- Per "dove si spende di più per categoria/fornitore" usa gruppo_spesa.
+- Per "cosa c'è da vedere/sistemare" usa gruppo_segnali.
+- Non inventare numeri: se uno strumento torna vuoto, dillo.{contesto}"""
+
+
+_CHAT_TOOLS_GRUPPO = [
+    {
+        "type": "function",
+        "function": {
+            "name": "gruppo_overview",
+            "description": (
+                "Quadro d'insieme della catena: fatturato di gruppo, margine medio, "
+                "spesa fornitori, salute e ranking dei punti vendita per margine %. "
+                "Usalo per 'come va il gruppo', 'qual è il quadro generale'."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gruppo_margini_coperti",
+            "description": (
+                "Confronto per punto vendita di margine %, fatturato, coperti, scontrino "
+                "medio e € materia prima per coperto. Usalo per 'quale PV ha il margine "
+                "peggiore', 'chi ha lo scontrino più alto', 'dove costa di più la materia "
+                "prima per coperto'."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gruppo_spesa",
+            "description": (
+                "Spesa per punto vendita ripartita per categoria o fornitore. Usalo per "
+                "'dove si spende di più in pesce', 'quale PV spende di più dal fornitore X', "
+                "'come è distribuita la spesa fra i locali'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "dimensione": {
+                        "type": "string",
+                        "enum": ["categoria", "fornitore"],
+                        "description": "Raggruppa per 'categoria' (default) o 'fornitore'",
+                    },
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "gruppo_segnali",
+            "description": (
+                "Le segnalazioni aperte della catena (margine in calo, prezzi sopra la "
+                "media, ricavi mancanti) con il punto vendita coinvolto. Usalo per 'cosa "
+                "c'è da vedere', 'ci sono problemi', 'su quali locali devo intervenire'."
+            ),
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+]
+
+
+def _gruppo_router_mod():
+    import services.routers.gruppo as g
+    return g
+
+
+def _chat_esegui_tool_gruppo(nome: str, args: Dict[str, Any], authorization: Optional[str]) -> Dict[str, Any]:
+    """Dispatcher dei tool di gruppo: chiama gli endpoint /api/gruppo/* (sola
+    lettura) e ritorna dict serializzabili. Stesso scope/auth della chat."""
+    g = _gruppo_router_mod()
+    try:
+        if nome == "gruppo_overview":
+            return g.gruppo_overview(authorization).model_dump()
+        if nome == "gruppo_margini_coperti":
+            return g.gruppo_margini_coperti(authorization).model_dump()
+        if nome == "gruppo_spesa":
+            dim = args.get("dimensione") if args.get("dimensione") in ("categoria", "fornitore") else "categoria"
+            return g.gruppo_spesa_pivot(dimensione=dim, authorization=authorization).model_dump()
+        if nome == "gruppo_segnali":
+            return g.gruppo_segnali(authorization=authorization).model_dump()
+    except HTTPException as exc:
+        return {"errore": exc.detail}
+    except Exception as exc:
+        logger.warning("chat catena: tool %s fallito: %s", nome, exc)
+        return {"errore": "strumento non disponibile al momento"}
+    return {"errore": f"strumento sconosciuto: {nome}"}
+
+
+def _chat_loop_openai(client, messages, tools, esegui_tool):
+    """Loop di tool-calling OpenAI condiviso. Ritorna (reply, prompt_tok, completion_tok).
+    Max 3 round, 1 retry su errori transienti. Usato dalla chat catena (la chat
+    di sede mantiene il suo loop inline, invariato)."""
+    import json as _json
+    from openai import APITimeoutError as _OAITimeout, RateLimitError as _OAIRateLimit, APIError as _OAIError
+    p_tok = 0
+    c_tok = 0
+    reply = ""
+    try:
+        for _ in range(3):
+            for tentativo in range(2):
+                try:
+                    resp = client.chat.completions.create(
+                        model=CHAT_MODEL, messages=messages, tools=tools,
+                        max_tokens=900, temperature=0.3,
+                    )
+                    break
+                except _OAITimeout:
+                    if tentativo == 0:
+                        continue
+                    raise HTTPException(status_code=504, detail="L'assistente ha impiegato troppo tempo. Riprova.")
+                except _OAIRateLimit:
+                    raise HTTPException(status_code=429, detail="Servizio temporaneamente sovraccarico. Riprova tra qualche secondo.")
+                except _OAIError as exc:
+                    if tentativo == 0 and getattr(exc, "status_code", 0) >= 500:
+                        continue
+                    raise
+            if resp.usage:
+                p_tok += resp.usage.prompt_tokens or 0
+                c_tok += resp.usage.completion_tokens or 0
+            msg = resp.choices[0].message
+            if not msg.tool_calls:
+                reply = msg.content or ""
+                break
+            messages.append({
+                "role": "assistant", "content": msg.content,
+                "tool_calls": [tc.model_dump() for tc in msg.tool_calls],
+            })
+            for tc in msg.tool_calls:
+                try:
+                    args = _json.loads(tc.function.arguments or "{}")
+                except Exception:
+                    args = {}
+                risultato = esegui_tool(tc.function.name, args)
+                messages.append({
+                    "role": "tool", "tool_call_id": tc.id,
+                    "content": _json.dumps(risultato, ensure_ascii=False, default=str),
+                })
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("chat _chat_loop_openai: errore inatteso: %s", exc)
+        raise HTTPException(status_code=502, detail="Errore nella comunicazione con l'assistente. Riprova.")
+    return reply, p_tok, c_tok
 
 
 # Mesi italiani -> numero, per interpretare i periodi richiesti via chat.
@@ -2835,10 +3066,21 @@ def chat_ai(
     # Risolto una sola volta e riusato ovunque (tool dispatcher incluso).
     ristorante_id = _resolve_ristorante_id(user, supabase_client)
 
-    # Limite domande/giorno in base al piano EFFETTIVO del cliente: piano della
-    # sede attiva (modello piano-per-sede), con fallback a users.piano.
-    piano = _resolve_piano_effettivo(user, supabase_client)
-    limite = _chat_limite_per_piano(piano)
+    # Contesto: catena (vista gruppo /catena) o sede (singolo PV, default).
+    is_catena = body.contesto == "catena"
+
+    if is_catena:
+        # Pool AI unico: limite = SOMMA dei limiti effettivi di ogni sede; il
+        # conteggio è a livello ACCOUNT (p_ristorante_id NULL → la RPC conta per
+        # user_id, cioè tutte le righe chat dell'account). Un solo contatore.
+        limite = _chat_limite_pool_gruppo(user, supabase_client)
+        rate_ristorante = None
+    else:
+        # Limite domande/giorno in base al piano EFFETTIVO del cliente: piano della
+        # sede attiva (modello piano-per-sede), con fallback a users.piano.
+        piano = _resolve_piano_effettivo(user, supabase_client)
+        limite = _chat_limite_per_piano(piano)
+        rate_ristorante = ristorante_id
 
     # Piano free: chat non disponibile.
     if limite <= 0:
@@ -2854,7 +3096,7 @@ def chat_ai(
     try:
         _rpc = supabase_client.rpc("chat_usage_check_and_log", {
             "p_user_id": user_id,
-            "p_ristorante_id": ristorante_id,
+            "p_ristorante_id": rate_ristorante,
             "p_limite": limite,
         }).execute()
         domande_oggi = int(_rpc.data) if _rpc.data is not None else -1
@@ -2867,7 +3109,11 @@ def chat_ai(
             detail=f"Hai raggiunto il limite di {limite} domande per oggi. Riprova domani.",
         )
 
-    system_prompt = _build_chat_system_prompt(user, supabase_client, authorization, ristorante_id)
+    system_prompt = (
+        _build_chat_system_prompt_catena(user, supabase_client, authorization)
+        if is_catena
+        else _build_chat_system_prompt(user, supabase_client, authorization, ristorante_id)
+    )
 
     from openai import OpenAI
     import json as _json
@@ -3019,6 +3265,32 @@ def chat_ai(
             },
         },
     ]
+
+    # Doppia competenza per contesto (gate tool per "pagina"): in /catena la chat
+    # accende SOLO i tool di gruppo (leggono /api/gruppo/*) e spegne quelli per-sede;
+    # nei PV resta com'era. Stesso meccanismo del gate per flag pagina, applicato al
+    # contesto. I tool di gruppo sono definiti/dispatchati a parte (_CHAT_TOOLS_GRUPPO).
+    if is_catena:
+        reply, p_tok, c_tok = _chat_loop_openai(
+            client,
+            messages,
+            _CHAT_TOOLS_GRUPPO,
+            lambda nome, args: _chat_esegui_tool_gruppo(nome, args, authorization),
+        )
+        try:
+            from services.ai_cost_service import track_ai_usage
+            track_ai_usage(
+                operation_type="chat", prompt_tokens=p_tok, completion_tokens=c_tok,
+                ristorante_id=ristorante_id, user_id=user_id, model=CHAT_MODEL,
+            )
+        except Exception as exc:
+            logger.warning("chat catena: tracking costi fallito (non blocca): %s", exc)
+        logger.info("chat_ai[catena]: user=%s domande_oggi=%d", user.get("email"), domande_oggi)
+        return ChatResponse(
+            reply=reply or "Non sono riuscito a elaborare la risposta, riprova.",
+            domande_oggi=domande_oggi,
+            limite_giorno=limite,
+        )
 
     # Gate per permessi pagina: la chat offre al modello solo gli strumenti delle
     # pagine abilitate per l'utente. pagine_abilitate None (admin) => tutti i tool.
