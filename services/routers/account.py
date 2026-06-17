@@ -360,4 +360,19 @@ def account_cambia_sede(
         raise HTTPException(status_code=404, detail="Sede non trovata per questo account")
 
     sb.table("users").update({"ultimo_ristorante_id": rid}).eq("id", user_id).execute()
+
+    # Invalida la cache di sessione (TTL 30s, keyed sul token): senza questo
+    # /api/auth/me e tutti gli endpoint che risolvono la sede attiva
+    # continuerebbero a vedere la sede VECCHIA per ~30s dopo lo switch. Era la
+    # causa del "devo ricaricare piu' volte e aspettare" segnalato sul selettore
+    # sede. Best-effort: se l'invalidazione fallisce, al massimo resta il vecchio
+    # comportamento (ritardo fino a 30s), non un errore.
+    try:
+        token = (authorization or "").split(" ", 1)[1].strip() if authorization else ""
+        if token:
+            from services.auth_service import _clear_sessione_cache
+            _clear_sessione_cache(token)
+    except Exception as exc:
+        logger.warning("cambia-sede: invalidazione cache sessione fallita: %s", exc)
+
     return {"ok": True, "ristorante_attivo_id": rid}

@@ -1240,6 +1240,31 @@ def _resolve_user_from_token(authorization: Optional[str]) -> Dict[str, Any]:
     user = verifica_sessione_da_cookie(token)
     if not user:
         raise HTTPException(status_code=401, detail="Sessione non valida o scaduta")
+
+    # Rilettura FRESCA della sede attiva, scavalcando la cache di sessione (TTL
+    # 30s, in-memory per-processo). Senza questo, dopo uno switch sede il valore
+    # cached di ultimo_ristorante_id restava stantio fino a 30s — e su piu' worker
+    # uvicorn la richiesta successiva poteva colpire un processo con cache calda,
+    # mostrando in modo intermittente la sede VECCHIA (KPI, salute, notifiche,
+    # testata). E' la causa del "devo ricaricare piu' volte e aspettare" sullo
+    # switch. Una select single-column su PK indicizzata: costo trascurabile.
+    # Non tocchiamo un eventuale ristorante_id esplicito (impersonazione admin).
+    if not user.get("ristorante_id"):
+        try:
+            sb = _get_supabase_client()
+            fresh = (
+                sb.table("users")
+                .select("ultimo_ristorante_id")
+                .eq("id", user.get("id"))
+                .single()
+                .execute()
+            )
+            rid_fresh = (fresh.data or {}).get("ultimo_ristorante_id")
+            if rid_fresh:
+                user["ultimo_ristorante_id"] = rid_fresh
+        except Exception as exc:
+            logger.warning("_resolve_user_from_token: rilettura sede fresca fallita: %s", exc)
+
     return user
 
 
@@ -4881,6 +4906,9 @@ def _resolve_sede_attiva(user: Dict[str, Any], supabase_client) -> tuple[Optiona
         id+nome in un colpo;
       - altrimenti prendiamo la prima sede attiva (id+nome) sempre in 1 query;
       - nessuna sede -> nome account (0 query in piu').
+
+    Nota: ultimo_ristorante_id qui e' gia' FRESCO — _resolve_user_from_token lo
+    rilegge dal DB ad ogni richiesta, scavalcando la cache di sessione (vedi li').
     """
     explicit = user.get("ristorante_id") or user.get("ultimo_ristorante_id")
     try:
