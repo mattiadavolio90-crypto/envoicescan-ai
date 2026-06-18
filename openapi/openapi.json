@@ -14365,6 +14365,142 @@
         }
       }
     },
+    "/api/gruppo/assistant-config": {
+      "get": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Config assistente catena: segnali attivi + PV inclusi",
+        "operationId": "gruppo_assistant_config_get_api_gruppo_assistant_config_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GruppoAssistantConfigResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Catena"
+        ],
+        "summary": "Salva config assistente catena (ricalcola i segnali di oggi)",
+        "operationId": "gruppo_assistant_config_save_api_gruppo_assistant_config_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GruppoAssistantConfigSave"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/gruppo/tag": {
       "get": {
         "tags": [
@@ -17696,6 +17832,103 @@
         ],
         "title": "FornitoreRegolaRequest"
       },
+      "GruppoAssistantConfigResponse": {
+        "properties": {
+          "segnali": {
+            "items": {
+              "$ref": "#/components/schemas/GruppoAssistantSegnale"
+            },
+            "type": "array",
+            "title": "Segnali"
+          },
+          "pv": {
+            "items": {
+              "$ref": "#/components/schemas/GruppoAssistantPV"
+            },
+            "type": "array",
+            "title": "Pv"
+          }
+        },
+        "type": "object",
+        "required": [
+          "segnali",
+          "pv"
+        ],
+        "title": "GruppoAssistantConfigResponse"
+      },
+      "GruppoAssistantConfigSave": {
+        "properties": {
+          "segnali_disattivati": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Segnali Disattivati",
+            "default": []
+          },
+          "pv_esclusi": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pv Esclusi",
+            "default": []
+          }
+        },
+        "type": "object",
+        "title": "GruppoAssistantConfigSave"
+      },
+      "GruppoAssistantPV": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "incluso": {
+            "type": "boolean",
+            "title": "Incluso"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id",
+          "nome",
+          "incluso"
+        ],
+        "title": "GruppoAssistantPV"
+      },
+      "GruppoAssistantSegnale": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "descrizione": {
+            "type": "string",
+            "title": "Descrizione"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "descrizione",
+          "enabled"
+        ],
+        "title": "GruppoAssistantSegnale"
+      },
       "GruppoBriefing": {
         "properties": {
           "saluto": {
@@ -17755,13 +17988,40 @@
           "spesa_fornitori": {
             "type": "number",
             "title": "Spesa Fornitori"
+          },
+          "mol": {
+            "type": "number",
+            "title": "Mol"
+          },
+          "food_cost_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Food Cost Pct"
+          },
+          "costo_personale": {
+            "type": "number",
+            "title": "Costo Personale"
+          },
+          "spese_generali": {
+            "type": "number",
+            "title": "Spese Generali"
           }
         },
         "type": "object",
         "required": [
           "fatturato",
           "margine_medio_perc",
-          "spesa_fornitori"
+          "spesa_fornitori",
+          "mol",
+          "food_cost_pct",
+          "costo_personale",
+          "spese_generali"
         ],
         "title": "GruppoKpi"
       },
@@ -17785,6 +18045,17 @@
           "kpi": {
             "$ref": "#/components/schemas/GruppoKpi"
           },
+          "mol_mensile": {
+            "items": {
+              "$ref": "#/components/schemas/MolMensile"
+            },
+            "type": "array",
+            "title": "Mol Mensile"
+          },
+          "mol_mensile_anno": {
+            "type": "integer",
+            "title": "Mol Mensile Anno"
+          },
           "salute_indice": {
             "type": "integer",
             "title": "Salute Indice"
@@ -17792,6 +18063,13 @@
           "salute_colore": {
             "type": "string",
             "title": "Salute Colore"
+          },
+          "salute_pv": {
+            "items": {
+              "$ref": "#/components/schemas/SalutePV"
+            },
+            "type": "array",
+            "title": "Salute Pv"
           },
           "ranking": {
             "items": {
@@ -17808,8 +18086,11 @@
           "periodo_label",
           "briefing",
           "kpi",
+          "mol_mensile",
+          "mol_mensile_anno",
           "salute_indice",
           "salute_colore",
+          "salute_pv",
           "ranking"
         ],
         "title": "GruppoOverviewResponse"
@@ -18044,6 +18325,11 @@
               }
             ],
             "title": "Mol Delta Pct"
+          },
+          "costi_mancanti": {
+            "type": "boolean",
+            "title": "Costi Mancanti",
+            "default": false
           },
           "mol_mensile": {
             "items": {
@@ -19106,6 +19392,24 @@
         },
         "type": "object",
         "title": "ModificaSedeBody"
+      },
+      "MolMensile": {
+        "properties": {
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "mol": {
+            "type": "number",
+            "title": "Mol"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mese",
+          "mol"
+        ],
+        "title": "MolMensile"
       },
       "MolMensilePoint": {
         "properties": {
@@ -20679,6 +20983,34 @@
           "azione"
         ],
         "title": "RisolviConflittoBody"
+      },
+      "SalutePV": {
+        "properties": {
+          "ristorante_id": {
+            "type": "string",
+            "title": "Ristorante Id"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "indice": {
+            "type": "integer",
+            "title": "Indice"
+          },
+          "colore": {
+            "type": "string",
+            "title": "Colore"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ristorante_id",
+          "nome",
+          "indice",
+          "colore"
+        ],
+        "title": "SalutePV"
       },
       "SaluteResponse": {
         "properties": {

@@ -72,6 +72,9 @@ export type HomeKpi = {
   personale_delta_pct: number | null;
   spese_delta_pct: number | null;
   mol_delta_pct: number | null;
+  // true = il mese ha ricavi ma zero costi (food + spese): MOL e food cost non
+  // sono reali. La card lo spiega e nasconde le variazioni "in meglio".
+  costi_mancanti?: boolean;
   // Sparkline andamento MOL dei mesi con dati dell'anno corrente (vuoto se <2 punti).
   mol_mensile: { mese: number; mol: number }[];
   mol_mensile_anno: number | null;

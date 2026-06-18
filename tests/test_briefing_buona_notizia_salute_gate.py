@@ -43,13 +43,23 @@ def _margini_in_crescita():
     return {m: {"mol": 1000 + m, "fatturato_iva10": 50000} for m in range(1, 13)}
 
 
-def _patch_loaders():
-    """Patcha i loader del margine importati dentro _briefing_buona_notizia."""
+def _patch_loaders(costi=True):
+    """Patcha i loader del margine importati dentro _briefing_buona_notizia.
+
+    `costi=True` -> costi food/spese presenti in ogni mese, cosi' il gate
+    'costi_mancanti' NON scatta e si testa SOLO il gate Salute. `costi=False`
+    -> mese senza costi (food + spese = 0), per testare il gate costi.
+    """
     margini = _margini_in_crescita()
+    if costi:
+        cfb = {m: 5000.0 for m in range(1, 13)}
+        csp = {m: 1000.0 for m in range(1, 13)}
+    else:
+        cfb, csp = {}, {}
     return patch.multiple(
         "services.margine_service",
         carica_margini_anno=MagicMock(return_value=margini),
-        calcola_costi_automatici_per_anno=MagicMock(return_value=({}, {})),
+        calcola_costi_automatici_per_anno_sql=MagicMock(return_value=(cfb, csp)),
     )
 
 
@@ -73,3 +83,14 @@ def test_salute_non_rossa_mostra_buona_notizia_mol():
     assert out is not None
     assert out["topic_key"] == "buona_notizia"
     assert out["payload"]["tipo"] == "mol_mese"
+
+
+def test_costi_mancanti_sopprime_buona_notizia_mol():
+    """Anche con Salute non rossa, un mese con ricavi ma ZERO costi (food+spese)
+    non si festeggia: il MOL sarebbe fatturato - personale, un '+X%' falso."""
+    sb = _sb_senza_incasso()
+    with _patch_loaders(costi=False), patch(
+        "services.fastapi_worker._salute_indice_rosso", return_value=False
+    ):
+        out = _briefing_buona_notizia(UID, RID, sb)
+    assert out is None

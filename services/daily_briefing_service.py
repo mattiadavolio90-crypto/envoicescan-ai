@@ -307,6 +307,13 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
         return f"\U0001F4C5 {title}"
 
     if topic == 'fatture_mancanti':
+        if str(payload.get('tipo') or '') == 'mese_senza_costi':
+            mese = payload.get('mese')
+            coda = f"di {mese} " if mese else ""
+            return (
+                f"\U0001F4C4 Mancano le fatture costo {coda}\u2014 il food cost di "
+                f"quel mese risulta 0 e il margine non \u00e8 reale."
+            )
         if str(payload.get('canale') or '') == 'sdi':
             return "\U0001F4C4 Non stanno arrivando fatture dal flusso automatico \u2014 verifica la ricezione."
         return "\U0001F4C4 Non ci sono fatture caricate di recente \u2014 senza i costi d'acquisto food cost e margini non sono calcolabili."
@@ -477,6 +484,14 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
         )
 
     if topic == 'fatture_mancanti':
+        if str(payload.get('tipo') or '') == 'mese_senza_costi':
+            mese = payload.get('mese')
+            coda = f"di {mese} " if mese else ""
+            return (
+                f"Mancano le fatture costo {coda}: il food cost di quel mese "
+                "risulta 0, quindi il margine che vedi non è reale. Appena "
+                "arrivano i conti tornano veri."
+            )
         if str(payload.get('canale') or '') == 'sdi':
             return (
                 "Non stanno arrivando fatture dal flusso automatico: vale la pena "

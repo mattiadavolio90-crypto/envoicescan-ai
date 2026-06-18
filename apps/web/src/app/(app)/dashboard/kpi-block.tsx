@@ -231,6 +231,22 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
         </div>
       </Link>
 
+      {/* Costi mancanti: il mese ha ricavi ma zero fatture costo (food cost 0%).
+          Il MOL e' gonfiato — lo diciamo chiaro invece di mostrare un margine
+          finto e un trend "in meglio". Coerente con la card Salute e il briefing. */}
+      {kpi.costi_mancanti && (
+        <Link
+          href="/analisi-fatture"
+          className="mt-2 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 transition-colors hover:bg-amber-500/15 dark:text-amber-400"
+        >
+          <span className="mt-px">⚠</span>
+          <span>
+            Mancano le fatture costo di {kpi.periodo_label.toLowerCase()}: il food cost risulta
+            0 e questo margine non è reale. Si aggiorna da solo appena arrivano.
+          </span>
+        </Link>
+      )}
+
       {/* Breakdown */}
       <div className="mt-auto space-y-1.5">
         <RigaVoce

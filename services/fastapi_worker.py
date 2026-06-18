@@ -1840,6 +1840,10 @@ class HomeKpiResponse(BaseModel):
     personale_delta_pct: Optional[float] = None   # variazione % costo personale
     spese_delta_pct: Optional[float] = None       # variazione % spese generali
     mol_delta_pct: Optional[float] = None         # variazione % MOL
+    # True = il mese ha ricavi ma ZERO costi (food + spese): MOL e food cost non
+    # sono reali. La Home lo segnala e non mostra le variazioni "in meglio"
+    # (MOL/food/spese) che sarebbero solo l'effetto dei costi mancanti.
+    costi_mancanti: bool = False
     # Sparkline andamento MOL dei mesi dell'ANNO CORRENTE con dati (da gennaio
     # all'ultimo mese completo). Vuoto se un solo mese (niente linea da disegnare).
     mol_mensile: List[MolMensilePoint] = []
@@ -3613,14 +3617,14 @@ def _briefing_buona_notizia(
                 mol_prec = float(kpi_prec["mol"])
                 # In crescita = MOL positivo E sopra il mese prima. Solo allora e'
                 # una "buona notizia" da festeggiare in apertura.
-                # Ma NON festeggiamo il MOL se la Salute e' rossa: i numeri del
-                # margine vengono da dati inseriti a mano e una card "0% / dati
-                # incompleti" accanto a "+172%!" si contraddice (fatture vecchie
-                # di oltre un mese, mese non ancora consolidato). In quel caso
-                # saltiamo l'apertura festante e cadiamo sull'incasso di ieri (o
-                # sul silenzio): l'incoerenza la risolve l'utente completando i
-                # dati, non un tono trionfale.
+                # Due freni: (1) NON festeggiamo se la Salute e' rossa (dati
+                # inseriti a mano, mese non consolidato); (2) NON festeggiamo se i
+                # COSTI del mese mancano (food + spese = 0): il MOL sarebbe solo
+                # fatturato - personale, un "+172%!" falso accanto a un food cost
+                # 0%. In entrambi i casi cadiamo sull'incasso di ieri (o sul
+                # silenzio): l'incoerenza la risolve l'utente completando i dati.
                 if (mol_curr > 0 and mol_prec > 0 and mol_curr > mol_prec
+                        and not kpi.get("costi_mancanti")
                         and not _salute_indice_rosso(ristorante_id, supabase_client)):
                     delta_pct = round((mol_curr - mol_prec) / abs(mol_prec) * 100, 1)
                     return {
@@ -3645,6 +3649,7 @@ def _briefing_buona_notizia(
                 # E' incoraggiante ("sei sulla strada giusta") senza fingere che
                 # vada bene. Decisione Mattia: segnalarlo come spinta.
                 if (mol_curr < 0 and mol_prec < 0 and mol_curr > mol_prec
+                        and not kpi.get("costi_mancanti")
                         and not _salute_indice_rosso(ristorante_id, supabase_client)):
                     return {
                         "id": f"buona-notizia-perdita-{anno_usato}-{mese_usato:02d}",
@@ -4019,18 +4024,20 @@ def _briefing_righe_da_classificare(
 def _briefing_fatture_mancanti(
     ristorante_id: str, supabase_client,
 ) -> Optional[Dict[str, Any]]:
-    """Notifica LIVE 'nessuna fattura caricata di recente', come la card Salute.
+    """Notifica LIVE 'mancano fatture costo', coerente con la card Salute.
 
-    Stessa fonte/finestra della voce 1 di /api/home/salute: fatture (non
-    cancellate) con created_at negli ultimi 30 giorni. Se ce n'e' almeno una,
-    None (nessun avviso). Allinea il briefing alla card: una sede senza fatture
-    recenti vede l'avviso, non solo il pallino rosso muto.
+    Due casi, in ordine di priorita':
+      B) Il MESE appena chiuso ha ricavi ma ZERO costi (food + spese): e' la
+         causa del food cost 0% e del MOL gonfiato. Stessa fonte RPC della voce
+         "Fatture caricate" della Salute -> mai una contraddizione fra card e
+         notifica. payload['tipo'] = 'mese_senza_costi', payload['mese'].
+      A) La pipeline e' ferma: nessuna fattura caricata negli ultimi 30 giorni
+         (created_at). Per i clienti nuovi/pre-go-live senza ricavi nel mese, e'
+         l'unico segnale (B non scatta su un mese vuoto).
 
-    Distingue il CANALE di ricezione: un cliente con P.IVA configurata riceve le
-    fatture in automatico via SDI/Invoicetronic, quindi "nessuna fattura" non e'
-    un'azione sua ("carica le fatture") ma un possibile guasto del flusso
-    automatico ("non stanno arrivando, verifica"). Senza P.IVA il caricamento e'
-    manuale e l'azione e' caricarle. payload['canale'] = 'sdi' | 'manuale'.
+    Distingue il CANALE di ricezione: con P.IVA configurata le fatture arrivano
+    in automatico via SDI/Invoicetronic ("non stanno arrivando, verifica"), senza
+    P.IVA il caricamento e' manuale ("carica le fatture"). payload['canale'].
     """
     from datetime import datetime as _dt2, timedelta as _td2
     try:
@@ -4038,6 +4045,77 @@ def _briefing_fatture_mancanti(
         oggi = _dt2.now(tz=_ZI("Europe/Rome")).date()
     except Exception:
         oggi = _dt2.now().date()
+
+    # Ultimo mese completo (lo stesso di cui parlano la card KPI e la Salute).
+    if oggi.month == 1:
+        mc_anno, mc_mese = oggi.year - 1, 12
+    else:
+        mc_anno, mc_mese = oggi.year, oggi.month - 1
+
+    # P.IVA + user_id in un colpo: la P.IVA decide il canale, l'user_id serve
+    # alla RPC dei costi. Canale: P.IVA presente -> SDI; assente -> manuale.
+    canale = "manuale"
+    user_id_r = None
+    try:
+        rinfo = (
+            supabase_client.table("ristoranti")
+            .select("partita_iva,user_id")
+            .eq("id", ristorante_id)
+            .single()
+            .execute()
+        )
+        rd = rinfo.data or {}
+        if rd.get("partita_iva"):
+            canale = "sdi"
+        user_id_r = rd.get("user_id")
+    except Exception as exc:
+        logger.warning("briefing fatture mancanti: lettura ristorante fallita: %s", exc)
+
+    # ── Caso B (prioritario): mese CHIUSO con ricavi ma ZERO costi ──
+    # E' la causa del food cost 0% e del MOL gonfiato. Coerente con la voce
+    # "Fatture caricate" della card Salute (stesso mese, stessa fonte RPC). Vale
+    # solo se il mese e' "attivo" (ha fatturato): un mese vuoto non e' un buco da
+    # segnalare, e' solo non ancora iniziato (clienti pre-go-live).
+    try:
+        fatt_resp = (
+            supabase_client.table("margini_mensili")
+            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva")
+            .eq("ristorante_id", ristorante_id)
+            .eq("anno", mc_anno)
+            .eq("mese", mc_mese)
+            .execute()
+        )
+        fatturato_mese = 0.0
+        for r in (fatt_resp.data or []):
+            fatturato_mese += (
+                float(r.get("fatturato_iva10") or 0)
+                + float(r.get("fatturato_iva22") or 0)
+                + float(r.get("altri_ricavi_noiva") or 0)
+            )
+    except Exception as exc:
+        logger.warning("briefing fatture mancanti: lettura fatturato fallita: %s", exc)
+        fatturato_mese = 0.0
+
+    if fatturato_mese > 0:
+        costi_mese = _costi_automatici_mese(
+            ristorante_id, mc_anno, mc_mese, supabase_client, user_id_r
+        )
+        if costi_mese is not None and costi_mese <= 0:
+            mese_lbl = _MESI_IT_BRIEFING[mc_mese]
+            return {
+                "id": f"fatture-mancanti-live-{ristorante_id}",
+                "topic_key": "fatture_mancanti",
+                "source_type": "live",
+                "severity": "warning",
+                "title": f"Mancano le fatture costo di {mese_lbl}",
+                "body": "",
+                "action_page": "/analisi-fatture",
+                "payload": {"canale": canale, "tipo": "mese_senza_costi", "mese": mese_lbl},
+                "source_event_at": None,
+                "dedupe_key": f"fatture-mancanti-live-{ristorante_id}",
+            }
+
+    # ── Caso A: pipeline ferma, nessuna fattura caricata negli ultimi 30 giorni ──
     inizio_dt = _dt2.combine(oggi - _td2(days=29), _dt2.min.time())
     try:
         resp = (
@@ -4056,21 +4134,6 @@ def _briefing_fatture_mancanti(
 
     if n and n > 0:
         return None
-
-    # Canale: P.IVA presente -> ricezione automatica SDI; assente -> manuale.
-    canale = "manuale"
-    try:
-        rinfo = (
-            supabase_client.table("ristoranti")
-            .select("partita_iva")
-            .eq("id", ristorante_id)
-            .single()
-            .execute()
-        )
-        if (rinfo.data or {}).get("partita_iva"):
-            canale = "sdi"
-    except Exception as exc:
-        logger.warning("briefing fatture mancanti: lettura P.IVA fallita: %s", exc)
 
     if canale == "sdi":
         title = "Non stanno arrivando fatture dal flusso automatico"
@@ -4332,6 +4395,40 @@ def _briefing_nome_referente(
 _RIENTRO_GIORNI = 7
 
 
+def _costi_automatici_mese(
+    ristorante_id: str, anno: int, mese: int, supabase_client,
+    user_id: Optional[str] = None,
+) -> Optional[float]:
+    """Costi automatici (food + spese, dalle fatture) di un singolo mese.
+
+    Stessa fonte della card 'I tuoi conti' (RPC costi_automatici_mensili, con
+    COALESCE(data_competenza, data_documento) e categorie reali): cosi' la voce
+    'Fatture caricate' della Salute e il KPI non si contraddicono mai. Un mese
+    chiuso con ricavi ma zero qui = food cost 0% = dati incompleti, non un mese
+    sano. None se non determinabile (RPC/utente non disponibili): il chiamante
+    sceglie il fallback prudente. user_id opzionale: se assente lo ricava dal
+    ristorante.
+    """
+    try:
+        if not user_id:
+            r = (
+                supabase_client.table("ristoranti")
+                .select("user_id")
+                .eq("id", ristorante_id)
+                .single()
+                .execute()
+            )
+            user_id = (r.data or {}).get("user_id")
+        if not user_id:
+            return None
+        from services.margine_service import calcola_costi_automatici_per_anno_sql
+        cfb, csp = calcola_costi_automatici_per_anno_sql(str(user_id), ristorante_id, anno)
+        return float(cfb.get(mese) or 0) + float(csp.get(mese) or 0)
+    except Exception as exc:
+        logger.warning("costi automatici mese fallito: %s", exc)
+        return None
+
+
 def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
     """True se l'indice di Salute della gestione e' 'rosso' (< 50).
 
@@ -4357,7 +4454,7 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
         else:
             mc_anno, mc_mese = oggi.year, oggi.month - 1
 
-        # Voce 1 + 4: fatture caricate di recente + % righe classificate.
+        # Voce 4: % righe classificate sulle fatture recenti (created_at 30gg).
         righe_mese: List[Dict[str, Any]] = []
         try:
             resp = (
@@ -4371,12 +4468,16 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
             righe_mese = resp.data or []
         except Exception:
             righe_mese = []
-        fatture_ok = len(righe_mese) > 0
         tot_righe = len(righe_mese)
         da_controllare = sum(1 for r in righe_mese if r.get("needs_review"))
         pct_classificate = (
             round((tot_righe - da_controllare) / tot_righe * 100) if tot_righe else 0
         )
+        # Voce 1: fatture COSTO del mese analizzato (stessa fonte della card KPI),
+        # non un caricamento recente qualsiasi. Se la fonte non e' disponibile,
+        # ripiego sul caricamento recente (fail-open, niente rosso ingiusto).
+        costi_mese = _costi_automatici_mese(ristorante_id, mc_anno, mc_mese, supabase_client)
+        fatture_ok = (costi_mese > 0) if costi_mese is not None else (tot_righe > 0)
 
         # Voci 2 + 3: fatturato + costo personale dell'ultimo mese completo.
         fatturato_ok = False
@@ -4410,7 +4511,7 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
         score_fatture = 100 if fatture_ok else 0
         score_fatturato = 100 if fatturato_ok else 0
         score_personale = 100 if personale_ok else 0
-        score_classificate = pct_classificate if fatture_ok else 0
+        score_classificate = pct_classificate if tot_righe else 0
         indice = round(
             (score_fatture + score_fatturato + score_personale + score_classificate) / 4
         )
@@ -4946,13 +5047,11 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
     except Exception as exc:
         logger.warning("home_salute: lettura topic spenti fallita: %s", exc)
 
-    # ── Voce 1: Fatture caricate di recente ──
-    # Conta il CARICAMENTO recente (created_at), non la data della fattura: le
-    # fatture elettroniche arrivano con ritardo SDI, quindi un cliente attivo
-    # puo' caricare oggi fatture datate settimane fa. Usare data_documento qui
-    # lasciava i clienti attivi "in arancione" ingiustamente.
+    # ── Voce 4 (dati): fatture recenti per la % di righe classificate ──
+    # Il CARICAMENTO recente (created_at) misura la pipeline: un cliente attivo
+    # puo' caricare oggi fatture datate settimane fa, e quelle righe vanno
+    # comunque classificate. Serve solo alla voce "Righe classificate".
     inizio_dt = _dt.combine(inizio, _dt.min.time())
-    fatture_ok = False
     righe_mese: List[Dict[str, Any]] = []
     try:
         resp = (
@@ -4964,9 +5063,24 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             .execute()
         )
         righe_mese = resp.data or []
-        fatture_ok = len(righe_mese) > 0
     except Exception as exc:
         logger.warning("home_salute: lettura fatture fallita: %s", exc)
+
+    # ── Voce 1: Fatture COSTO del mese analizzato (ultimo mese completo) ──
+    # Coerente con fatturato/personale e con la card "I tuoi conti": misura se le
+    # fatture DEL MESE di cui parliamo sono arrivate (stessa fonte RPC del KPI),
+    # non un caricamento recente qualsiasi. Cosi' una sede con maggio a food cost
+    # 0% vede la voce ROSSA, non un falso verde da fatture di marzo caricate ieri.
+    # Se la fonte RPC non e' disponibile, ripiego sul caricamento recente.
+    costi_mese = _costi_automatici_mese(ristorante_id, mc_anno, mc_mese, sb, user_id)
+    if costi_mese is None:
+        fatture_ok = len(righe_mese) > 0
+        fatture_dett = ("Fatture recenti registrate" if fatture_ok
+                        else "Nessuna fattura recente")
+    else:
+        fatture_ok = costi_mese > 0
+        fatture_dett = (f"{mese_completo_label.capitalize()} registrate" if fatture_ok
+                        else f"Mancano le fatture di {mese_completo_label}")
 
     # ── Voci 2 e 3: Fatturato + Costo personale dell'ultimo mese completo ──
     # Unica query su margini_mensili (stessa fonte delle card "manca fatturato/
@@ -5018,7 +5132,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
         "fatture": 100 if fatture_ok else 0,
         "fatturato": 100 if fatturato_ok else 0,
         "personale": 100 if personale_ok else 0,
-        "classificate": pct_classificate if fatture_ok else 0,
+        "classificate": pct_classificate if tot_righe else 0,
     }
     _attive = [k for k in _score if k not in voci_spente]
     # Se l'utente ha spento TUTTE le voci, l'indice non e' misurabile: 100 (verde),
@@ -5037,8 +5151,7 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             key="fatture",
             label="Fatture caricate",
             ok=fatture_ok,
-            dettaglio="Fatture recenti registrate" if fatture_ok
-                      else "Nessuna fattura recente",
+            dettaglio=fatture_dett,
             cta_page="/analisi-fatture",
         ),
         "fatturato": SaluteVoce(
@@ -5171,6 +5284,11 @@ def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: in
         "costo_personale": round(personale, 2),
         "spese_generali": round(spese, 2),
         "mol": round(mol, 2),
+        # Mese con ricavi ma SENZA alcun costo automatico (food + spese = 0): il
+        # MOL e' fatturato - personale, non un margine reale. Un ristorante ha
+        # sempre food cost -> e' un mese a dati incompleti, non una buona notizia
+        # da festeggiare (il briefing non deve dire "+172%!" su costi mancanti).
+        "costi_mancanti": fatturato > 0 and fb <= 0 and spese <= 0,
         "has_data": fatturato > 0 or fb > 0 or spese > 0 or personale > 0,
     }
 
@@ -5283,6 +5401,16 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         if kpi["food_cost_pct"] is not None and kpi_cmp["food_cost_pct"] is not None:
             food_cost_delta = round(kpi["food_cost_pct"] - kpi_cmp["food_cost_pct"], 1)
 
+    # Mese con costi mancanti: MOL, food cost e spese non sono reali. Non mostriamo
+    # le variazioni "in meglio" (un +172% di MOL accanto a un food cost 0% e' una
+    # bugia: e' solo l'effetto dei costi assenti). La card espone costi_mancanti
+    # cosi' la Home spiega il perche'. Fatturato e personale (inseriti a mano)
+    # restano confrontabili.
+    if kpi.get("costi_mancanti"):
+        mol_delta = None
+        food_cost_delta = None
+        spese_delta = None
+
     # ── Sparkline: MOL mese per mese dell'anno mostrato, da gennaio al mese
     #    mostrato. Solo i mesi con dati (un mese senza dati non e' uno zero reale,
     #    spezzerebbe la linea con un falso crollo). Riusa i margini gia' caricati
@@ -5312,6 +5440,7 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
         personale_delta_pct=personale_delta,
         spese_delta_pct=spese_delta,
         mol_delta_pct=mol_delta,
+        costi_mancanti=bool(kpi.get("costi_mancanti")),
         mol_mensile=mol_mensile,
         mol_mensile_anno=anno_usato if mol_mensile else None,
     )
