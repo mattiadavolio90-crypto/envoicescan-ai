@@ -54,10 +54,13 @@ router = APIRouter()
 # ═══════════════════════════════════════════════════════════════════════════
 
 class GruppoKpi(BaseModel):
-    fatturato: float            # Σ fatturato_netto del periodo (totale gruppo)
+    fatturato: float            # Σ fatturato LORDO (iva10+iva22+altri) — come la Home PV
     margine_medio_perc: float   # margine % aggregato del gruppo (Σmol / Σnetto)
-    spesa_fornitori: float      # Σ costi_fb_totali del periodo
+    spesa_fornitori: float      # Σ costi_fb_totali del periodo (food cost in €)
     mol: float                  # Σ mol del periodo (totale gruppo, valore assoluto)
+    food_cost_pct: Optional[float]  # Σ costi_fb_totali / Σ lordo — come food cost % della Home PV
+    costo_personale: float      # Σ (costo_dipendenti + costo_personale_extra)
+    spese_generali: float       # Σ (costi_spese_auto + altri_costi_spese)
 
 
 class MolMensile(BaseModel):
@@ -352,13 +355,20 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # qui sommiamo per ristorante_id — niente loop sulle righe fattura.
     mm_resp = (
         sb.table("margini_mensili")
-        .select("ristorante_id,mese,fatturato_netto,mol,costi_fb_totali")
+        .select(
+            "ristorante_id,mese,fatturato_netto,fatturato_iva10,fatturato_iva22,"
+            "altri_ricavi_noiva,mol,costi_fb_totali,costi_spese_auto,altri_costi_spese,"
+            "costo_dipendenti,costo_personale_extra"
+        )
         .in_("ristorante_id", ids)
         .eq("anno", anno)
         .execute()
     )
+    # Fatturato LORDO (iva10+iva22+altri): è quello che mostra la Home del PV.
+    # Il NETTO (scorporo IVA) resta per il margine % (come pagina Margini).
     agg: Dict[str, Dict[str, float]] = {
-        rid: {"netto": 0.0, "mol": 0.0, "fb": 0.0} for rid in ids
+        rid: {"netto": 0.0, "lordo": 0.0, "mol": 0.0, "fb": 0.0, "spese": 0.0, "pers": 0.0}
+        for rid in ids
     }
     mol_per_mese: Dict[int, float] = {}
     netto_per_mese: Dict[int, float] = {}
@@ -367,9 +377,17 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         a = agg.get(rid)
         if a is None:
             continue
+        lordo = (
+            float(r.get("fatturato_iva10") or 0)
+            + float(r.get("fatturato_iva22") or 0)
+            + float(r.get("altri_ricavi_noiva") or 0)
+        )
         a["netto"] += float(r.get("fatturato_netto") or 0)
+        a["lordo"] += lordo
         a["mol"] += float(r.get("mol") or 0)
         a["fb"] += float(r.get("costi_fb_totali") or 0)
+        a["spese"] += float(r.get("costi_spese_auto") or 0) + float(r.get("altri_costi_spese") or 0)
+        a["pers"] += float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)
         try:
             m = int(r.get("mese"))
         except (TypeError, ValueError):
@@ -379,15 +397,23 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
             netto_per_mese[m] = netto_per_mese.get(m, 0.0) + float(r.get("fatturato_netto") or 0)
 
     tot_netto = sum(a["netto"] for a in agg.values())
+    tot_lordo = sum(a["lordo"] for a in agg.values())
     tot_mol = sum(a["mol"] for a in agg.values())
     tot_fb = sum(a["fb"] for a in agg.values())
+    tot_spese = sum(a["spese"] for a in agg.values())
+    tot_pers = sum(a["pers"] for a in agg.values())
     margine_medio = round(tot_mol / tot_netto * 100, 1) if tot_netto > 0 else 0.0
+    # Food cost %: come la Home PV → costi F&B sul fatturato LORDO.
+    food_cost_pct = round(tot_fb / tot_lordo * 100, 1) if tot_lordo > 0 else None
 
     kpi = GruppoKpi(
-        fatturato=round(tot_netto, 2),
+        fatturato=round(tot_lordo, 2),
         margine_medio_perc=margine_medio,
         spesa_fornitori=round(tot_fb, 2),
         mol=round(tot_mol, 2),
+        food_cost_pct=food_cost_pct,
+        costo_personale=round(tot_pers, 2),
+        spese_generali=round(tot_spese, 2),
     )
 
     # Serie MOL mensile del gruppo (solo mesi con ricavi → la sparkline non mostra
@@ -408,7 +434,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
             ristorante_id=rid,
             nome=rid_to_nome[rid],
             margine_perc=mol_perc,
-            fatturato=round(a["netto"], 2),
+            fatturato=round(a["lordo"], 2),
             colore=_colore_margine(mol_perc),
             dati_incompleti=incompleti,
         ))
@@ -582,13 +608,16 @@ def gruppo_margini_coperti(
     # margini_mensili è già pre-aggregata: una lettura, somma per ristorante_id.
     mm_resp = (
         sb.table("margini_mensili")
-        .select("ristorante_id,fatturato_netto,mol,costi_fb_totali,coperti")
+        .select(
+            "ristorante_id,fatturato_netto,fatturato_iva10,fatturato_iva22,"
+            "altri_ricavi_noiva,mol,costi_fb_totali,coperti"
+        )
         .in_("ristorante_id", ids)
         .eq("anno", anno)
         .execute()
     )
     agg: Dict[str, Dict[str, float]] = {
-        rid: {"netto": 0.0, "mol": 0.0, "fb": 0.0, "cop": 0.0} for rid in ids
+        rid: {"netto": 0.0, "lordo": 0.0, "mol": 0.0, "fb": 0.0, "cop": 0.0} for rid in ids
     }
     for r in (mm_resp.data or []):
         rid = str(r.get("ristorante_id"))
@@ -596,6 +625,11 @@ def gruppo_margini_coperti(
         if a is None:
             continue
         a["netto"] += float(r.get("fatturato_netto") or 0)
+        a["lordo"] += (
+            float(r.get("fatturato_iva10") or 0)
+            + float(r.get("fatturato_iva22") or 0)
+            + float(r.get("altri_ricavi_noiva") or 0)
+        )
         a["mol"] += float(r.get("mol") or 0)
         a["fb"] += float(r.get("costi_fb_totali") or 0)
         a["cop"] += float(r.get("coperti") or 0)
@@ -604,11 +638,13 @@ def gruppo_margini_coperti(
         netto = a["netto"]
         cop = int(round(a["cop"]))
         incompleti = netto <= 0
+        # Fatturato mostrato = LORDO (come la Home PV). Margine % e scontrino medio
+        # restano sul NETTO (come pagina Margini/Coperti del PV).
         return MarginiCopertiPV(
             ristorante_id=rid,
             nome=nome,
             margine_perc=None if incompleti else round(a["mol"] / netto * 100, 1),
-            fatturato=round(netto, 2),
+            fatturato=round(a["lordo"], 2),
             coperti=cop,
             scontrino_medio=round(netto / cop, 2) if cop > 0 else None,
             mp_per_coperto=round(a["fb"] / cop, 2) if cop > 0 else None,
@@ -620,6 +656,7 @@ def gruppo_margini_coperti(
 
     tot = {
         "netto": sum(a["netto"] for a in agg.values()),
+        "lordo": sum(a["lordo"] for a in agg.values()),
         "mol": sum(a["mol"] for a in agg.values()),
         "fb": sum(a["fb"] for a in agg.values()),
         "cop": sum(a["cop"] for a in agg.values()),

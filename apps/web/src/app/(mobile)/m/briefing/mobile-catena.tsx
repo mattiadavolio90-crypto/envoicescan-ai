@@ -119,6 +119,20 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
         <div className="mt-1 text-xs text-muted-foreground">
           margine {pct(kpi.margine_medio_perc)} · fatturato {euro(kpi.fatturato)}
         </div>
+        <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-center">
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Food cost</div>
+            <div className="text-sm font-semibold tabular-nums">{pct(kpi.food_cost_pct)}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Personale</div>
+            <div className="text-sm font-semibold tabular-nums">{euro(kpi.costo_personale)}</div>
+          </div>
+          <div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Spese gen.</div>
+            <div className="text-sm font-semibold tabular-nums">{euro(kpi.spese_generali)}</div>
+          </div>
+        </div>
       </div>
 
       {/* Salute del gruppo */}

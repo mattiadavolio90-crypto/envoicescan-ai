@@ -166,6 +166,37 @@ function MolSparkline({ punti, anno }: { punti: MolMensile[]; anno: number }) {
   );
 }
 
+// Riga del breakdown conti (gemella di RigaVoce della Home PV): pallino + label
+// + valore, cliccabile per aprire la finestra di confronto.
+function VoceConto({
+  colore,
+  label,
+  value,
+  segno,
+  onClick,
+}: {
+  colore: "emerald" | "amber";
+  label: string;
+  value: string;
+  segno?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5 text-left transition-colors hover:bg-background/70"
+    >
+      <span className={cn("mt-0.5 size-2 shrink-0 rounded-full", colore === "emerald" ? "bg-emerald-400" : "bg-amber-400")} />
+      <span className="flex-1 text-sm text-muted-foreground">
+        {segno && <span className="mr-1 text-muted-foreground/50">{segno}</span>}
+        {label}
+      </span>
+      <span className="text-sm font-semibold tabular-nums">{value}</span>
+    </button>
+  );
+}
+
 // ─── Card "I conti del gruppo" (gemella di KpiBlock) ───────────────────────
 function ContiGruppoCard({
   overview,
@@ -206,28 +237,19 @@ function ContiGruppoCard({
         </div>
       </button>
 
-      {/* Breakdown: Fatturato (→Margini) e Spesa fornitori (→Spesa per PV) */}
+      {/* Breakdown come la Home PV: Fatturato, Food cost %, Costo personale,
+          Spese generali. Le voci di costo aprono il confronto giusto. */}
       <div className="mt-auto space-y-1.5">
-        <button
-          type="button"
-          onClick={onApriMargini}
-          className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5 text-left transition-colors hover:bg-background/70"
-        >
-          <span className="mt-0.5 size-2 shrink-0 rounded-full bg-emerald-400" />
-          <span className="flex-1 text-sm text-muted-foreground">Fatturato gruppo</span>
-          <span className="text-sm font-semibold tabular-nums">{euro(kpi.fatturato)}</span>
-        </button>
-        <button
-          type="button"
+        <VoceConto colore="emerald" label="Fatturato gruppo" value={euro(kpi.fatturato)} onClick={onApriMargini} />
+        <VoceConto
+          colore="amber"
+          segno="−"
+          label="Food cost"
+          value={kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
           onClick={onApriSpesa}
-          className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5 text-left transition-colors hover:bg-background/70"
-        >
-          <span className="mt-0.5 size-2 shrink-0 rounded-full bg-amber-400" />
-          <span className="flex-1 text-sm text-muted-foreground">
-            <span className="mr-1 text-muted-foreground/50">−</span>Spesa fornitori
-          </span>
-          <span className="text-sm font-semibold tabular-nums">{euro(kpi.spesa_fornitori)}</span>
-        </button>
+        />
+        <VoceConto colore="amber" segno="−" label="Costo personale" value={euro(kpi.costo_personale)} onClick={onApriMargini} />
+        <VoceConto colore="amber" segno="−" label="Spese generali" value={euro(kpi.spese_generali)} onClick={onApriMargini} />
       </div>
 
       <MolSparkline punti={overview.mol_mensile} anno={overview.mol_mensile_anno} />

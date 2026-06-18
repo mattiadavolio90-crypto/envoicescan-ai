@@ -8,6 +8,9 @@ export type GruppoKpi = {
   margine_medio_perc: number;
   spesa_fornitori: number;
   mol: number;
+  food_cost_pct: number | null;
+  costo_personale: number;
+  spese_generali: number;
 };
 
 export type MolMensile = {
