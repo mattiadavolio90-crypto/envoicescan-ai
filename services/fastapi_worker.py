@@ -2952,6 +2952,7 @@ def _chat_query_margini(user: Dict[str, Any], supabase_client, authorization: Op
         if a not in cache_anni:
             try:
                 m = carica_margini_anno(user_id, ristorante_id, a)
+                m = _merge_override_mensile(m, supabase_client, ristorante_id, a)
                 fb, sp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, a)
                 cache_anni[a] = (m, fb, sp)
             except Exception:
@@ -3589,6 +3590,7 @@ def _briefing_buona_notizia(
             if anno not in _cache_anno:
                 try:
                     m = carica_margini_anno(user_id, ristorante_id, anno)
+                    m = _merge_override_mensile(m, supabase_client, ristorante_id, anno)
                     fb, sp = calcola_costi_automatici_per_anno_sql(user_id, ristorante_id, anno)
                     _cache_anno[anno] = (m, fb, sp)
                 except Exception:
@@ -5274,29 +5276,58 @@ def _invalidate_home_kpi_cache(ristorante_id: Optional[str] = None) -> None:
         _HOME_KPI_CACHE.pop(k, None)
 
 
+def _merge_override_mensile(margini_anno: dict, sb, ristorante_id: str, anno: int) -> dict:
+    """Sovrappone alle righe margini_mensili il fatturato della modalità 'mensile'.
+
+    Alcuni clienti inseriscono il fatturato come totale del mese: vive in
+    ricavi_modalita_mensile, e per quei mesi margini_mensili.fatturato_* resta 0.
+    La pagina Margini (get_margini_analisi) fonde questa fonte; qui facciamo lo
+    stesso, così la card KPI e la pagina Margini mostrano gli stessi numeri (caso
+    CASATI 14). Best-effort: se la lettura override fallisce, margini invariati.
+    """
+    try:
+        ovs = _load_mensile_overrides(sb, ristorante_id, [anno])
+    except Exception as exc:
+        logger.warning("merge override mensile fallito: %s", exc)
+        return margini_anno
+    for (a, m), ov in ovs.items():
+        if a != anno:
+            continue
+        row = dict(margini_anno.get(m) or {})
+        row["fatturato_iva10"] = ov.get("iva10", 0)
+        row["fatturato_iva22"] = ov.get("iva22", 0)
+        row["altri_ricavi_noiva"] = ov.get("altri", 0)
+        margini_anno[m] = row
+    return margini_anno
+
+
 def _kpi_periodo(margini_anno: dict, costi_fb: dict, costi_spese: dict, mese: int) -> dict:
     """Compone i 4 KPI per un mese di calendario.
 
-    Fonte universale: margini_mensili (fatturato + MOL, gli stessi della pagina
-    Margini) e costi food/spese dalle fatture aggregate per mese. Nessun cliente
-    usa i ricavi giornalieri, quindi il mese e' l'unica fotografia affidabile.
+    Fonte universale: margini_mensili (+ override modalità mensile, già fusi dal
+    chiamante) e costi food/spese dalle fatture aggregate per mese. Il MOL è
+    RICALCOLATO dai componenti come la pagina Margini (get_margini_analisi), non
+    letto dal campo `mol` salvato.
     """
     row = margini_anno.get(mese, {}) or {}
-    fatturato = (
-        float(row.get("fatturato_iva10") or 0)
-        + float(row.get("fatturato_iva22") or 0)
-        + float(row.get("altri_ricavi_noiva") or 0)
-    )
+    iva10 = float(row.get("fatturato_iva10") or 0)
+    iva22 = float(row.get("fatturato_iva22") or 0)
+    altri = float(row.get("altri_ricavi_noiva") or 0)
+    fatturato = iva10 + iva22 + altri  # lordo: l'headline mostrato sulla card
+    # Netto scorporato IVA, identico alla pagina Margini: è la base del MOL.
+    netto = (iva10 / 1.10) + (iva22 / 1.22) + altri
     fb = float(costi_fb.get(mese) or 0) + float(row.get("altri_costi_fb") or 0)
     spese = float(costi_spese.get(mese) or 0) + float(row.get("altri_costi_spese") or 0)
-    # Costo personale: stessa fonte e formula della pagina Margini, cosi' il
-    # conto economico della Home torna esattamente (Fatturato - F&B - Personale
-    # - Spese = MOL). Senza questa voce il MOL non quadrava con le righe mostrate.
     personale = (
         float(row.get("costo_dipendenti") or 0)
         + float(row.get("costo_personale_extra") or 0)
     )
-    mol = float(row.get("mol") or 0)
+    # MOL RICALCOLATO (netto − F&B − spese − personale), come get_margini_analisi.
+    # Il `mol` salvato in margini_mensili è uno snapshot che diventa stantio
+    # quando cambiano i costi auto (nuove fatture) o quando il fatturato è in
+    # modalità mensile (lì margini_mensili.mol resta a 0 → MOL falso). Ricalcolare
+    # qui garantisce che la card KPI e la pagina Margini diano lo stesso MOL.
+    mol = netto - fb - spese - personale
     food_cost_pct = round(fb / fatturato * 100, 1) if fatturato > 0 else None
     return {
         "fatturato": round(fatturato, 2),
@@ -5361,6 +5392,10 @@ def home_kpi(authorization: Optional[str] = Header(None)) -> HomeKpiResponse:
     def _dati_anno(anno: int):
         try:
             m = carica_margini_anno(user_id, ristorante_id, anno)
+            # Fonde il fatturato della modalità mensile (ricavi_modalita_mensile),
+            # come la pagina Margini: senza, i mesi in modalità mensile uscirebbero
+            # a fatturato 0 e MOL sbagliato (caso CASATI 14).
+            m = _merge_override_mensile(m, sb, ristorante_id, anno)
             # Variante SQL (RPC): aggrega i costi food/spese lato DB invece del
             # full-load + pandas. home_kpi puo' toccare 2 anni (mostrato + confronto)
             # -> evita 2 full-load di tutte le righe fattura. Ha fallback pandas

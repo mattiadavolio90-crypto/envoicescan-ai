@@ -32,15 +32,14 @@ def _sb_senza_incasso():
 
 
 def _margini_in_crescita():
-    """Due mesi consecutivi con MOL positivo e in crescita -> 'buona notizia' MOL.
+    """Mesi con MOL positivo e CRESCENTE -> 'buona notizia' MOL.
 
-    _kpi_periodo legge 'mol' grezzo dalla riga del mese: basta popolarlo. Le altre
-    voci non servono per il ramo mol_curr > mol_prec > 0.
+    Il MOL è ora RICALCOLATO da _kpi_periodo (netto − costi), non letto dal campo
+    salvato. Uso altri_ricavi_noiva crescente (niente scorporo IVA): con i costi
+    food/spese fissi del patch (5000+1000), il MOL = (10000 + m*1000) − 6000 =
+    4000 + m*1000, positivo e crescente mese su mese.
     """
-    # mese corrente "appena chiuso" deve avere mol > del precedente.
-    # Mappa mese->riga; copriamo qualunque mese il codice scelga come ultimo
-    # completo, dando a ogni mese un MOL e al precedente uno piu' basso.
-    return {m: {"mol": 1000 + m, "fatturato_iva10": 50000} for m in range(1, 13)}
+    return {m: {"altri_ricavi_noiva": 10000 + m * 1000} for m in range(1, 13)}
 
 
 def _patch_loaders(costi=True):

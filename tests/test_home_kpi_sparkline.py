@@ -33,9 +33,11 @@ def _patch_common(margini_per_anno, costi_fb_per_anno=None, costi_spese_per_anno
     return fake_carica, fake_costi
 
 
-def _row(fatturato, mol):
-    # _kpi_periodo somma i 3 fatturati; basta uno per has_data, e mol esplicito.
-    return {"fatturato_iva10": fatturato, "mol": mol}
+def _row(fatturato, mol=None):
+    # Il MOL è ora RICALCOLATO da _kpi_periodo (netto − costi), il campo 'mol'
+    # salvato non è più usato. Uso altri_ricavi_noiva (niente scorporo IVA) e
+    # costi a zero -> MOL ricalcolato == fatturato, così i valori restano puliti.
+    return {"altri_ricavi_noiva": fatturato}
 
 
 def _call_kpi(margini_per_anno):
@@ -65,7 +67,8 @@ def test_sparkline_solo_mesi_con_dati():
     mesi = [p.mese for p in resp.mol_mensile]
     assert mesi == [1, 3, 4]  # febbraio (vuoto) escluso, maggio non ancora completo
     assert resp.mol_mensile_anno == 2026
-    assert [p.mol for p in resp.mol_mensile] == [100, 150, 200]
+    # MOL ricalcolato == fatturato (costi 0, no scorporo su altri_ricavi_noiva).
+    assert [p.mol for p in resp.mol_mensile] == [1000, 1200, 1300]
 
 
 def test_sparkline_vuoto_se_un_solo_mese():
