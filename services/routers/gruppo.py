@@ -701,9 +701,52 @@ def _mesi_indietro(anno: int, mese: int, n: int) -> List[tuple]:
     return out
 
 
-def _calcola_segnali(sb, ids: List[str], rid_to_nome: Dict[str, str]) -> List[Dict[str, Any]]:
+# Catalogo dei segnali di catena (per la config "Configura assistente catena").
+_SEGNALI_CATALOGO = [
+    {"key": "margine_calo", "label": "Margine in calo",
+     "descrizione": "Avvisa quando il margine di un PV scende sotto la media dei mesi precedenti."},
+    {"key": "prezzi_sopra", "label": "Prezzi sopra la media catena",
+     "descrizione": "Avvisa quando un PV paga una categoria più della media del gruppo."},
+    {"key": "ricavi_mancanti", "label": "Ricavi mancanti",
+     "descrizione": "Avvisa quando un PV non ha ricavi registrati nel mese in corso."},
+]
+_SEGNALI_KEYS = {s["key"] for s in _SEGNALI_CATALOGO}
+
+
+def _get_gruppo_config(sb, user_id: str) -> tuple:
+    """(segnali_disattivati:set, pv_esclusi:set) dalla config assistente catena.
+    Default (nessuna riga) = tutto attivo, nessun PV escluso."""
+    try:
+        r = (
+            sb.table("gruppo_assistant_config")
+            .select("segnali_disattivati,pv_esclusi")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if r.data:
+            row = r.data[0]
+            return (
+                set(row.get("segnali_disattivati") or []),
+                set(str(x) for x in (row.get("pv_esclusi") or [])),
+            )
+    except Exception:
+        pass
+    return set(), set()
+
+
+def _calcola_segnali(
+    sb,
+    ids: List[str],
+    rid_to_nome: Dict[str, str],
+    segnali_off: Optional[set] = None,
+    pv_esclusi: Optional[set] = None,
+) -> List[Dict[str, Any]]:
     """Calcola i 3 segnali di analisi della catena. Tutto SQL aggregato / letture
-    su tabelle pre-aggregate — niente full-load righe fattura."""
+    su tabelle pre-aggregate — niente full-load righe fattura.
+
+    Config assistente catena: `pv_esclusi` toglie i PV da OGNI segnale (anche dalla
+    media catena dei prezzi); `segnali_off` disattiva interi tipi di segnale."""
     from datetime import datetime as _dt
     try:
         from zoneinfo import ZoneInfo
@@ -712,6 +755,10 @@ def _calcola_segnali(sb, ids: List[str], rid_to_nome: Dict[str, str]) -> List[Di
         oggi = _dt.now().date()
 
     segnali: List[Dict[str, Any]] = []
+
+    segnali_off = segnali_off or set()
+    if pv_esclusi:
+        ids = [r for r in ids if r not in pv_esclusi]
 
     # ── Segnale 1: margine in calo (per PV vs se stesso) ──
     # margini_mensili pre-aggregata: prendo gli ultimi 5 mesi possibili per ogni
@@ -824,6 +871,10 @@ def _calcola_segnali(sb, ids: List[str], rid_to_nome: Dict[str, str]) -> List[Di
     except Exception:
         pass
 
+    # Tipi di segnale disattivati dalla config: fuori.
+    if segnali_off:
+        segnali = [s for s in segnali if s["tipo"] not in segnali_off]
+
     # Ordine: errori prima, poi per nome PV. (tutti warning in v1, ma futuro-proof)
     sev_rank = {"error": 0, "warning": 1, "info": 2}
     segnali.sort(key=lambda s: (sev_rank.get(s["severity"], 9), s["pv_nome"]))
@@ -871,7 +922,8 @@ def gruppo_segnali(
         except Exception:
             pass
 
-    segnali = _calcola_segnali(sb, ids, rid_to_nome)
+    seg_off, pv_excl = _get_gruppo_config(sb, user_id)
+    segnali = _calcola_segnali(sb, ids, rid_to_nome, seg_off, pv_excl)
     generated_at = _dt.now(_tz.utc).isoformat()
 
     # Salva lo snapshot di oggi (best-effort: un errore di scrittura non deve far
@@ -891,6 +943,87 @@ def gruppo_segnali(
         generated_at=generated_at,
         segnali=[Segnale(**s) for s in segnali],
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CONFIGURA ASSISTENTE CATENA — quali segnali attivi, su quali PV (per account)
+# ═══════════════════════════════════════════════════════════════════════════
+
+class GruppoAssistantSegnale(BaseModel):
+    key: str
+    label: str
+    descrizione: str
+    enabled: bool
+
+
+class GruppoAssistantPV(BaseModel):
+    ristorante_id: str
+    nome: str
+    incluso: bool
+
+
+class GruppoAssistantConfigResponse(BaseModel):
+    segnali: List[GruppoAssistantSegnale]
+    pv: List[GruppoAssistantPV]
+
+
+class GruppoAssistantConfigSave(BaseModel):
+    segnali_disattivati: List[str] = []
+    pv_esclusi: List[str] = []
+
+
+@router.get(
+    "/api/gruppo/assistant-config",
+    tags=["Catena"],
+    summary="Config assistente catena: segnali attivi + PV inclusi",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_assistant_config_get(authorization: Optional[str] = Header(None)) -> GruppoAssistantConfigResponse:
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    seg_off, pv_excl = _get_gruppo_config(sb, user_id)
+    return GruppoAssistantConfigResponse(
+        segnali=[
+            GruppoAssistantSegnale(
+                key=s["key"], label=s["label"], descrizione=s["descrizione"],
+                enabled=s["key"] not in seg_off,
+            )
+            for s in _SEGNALI_CATALOGO
+        ],
+        pv=[
+            GruppoAssistantPV(ristorante_id=rid, nome=rid_to_nome[rid], incluso=rid not in pv_excl)
+            for rid in ids
+        ],
+    )
+
+
+@router.post(
+    "/api/gruppo/assistant-config",
+    tags=["Catena"],
+    summary="Salva config assistente catena (ricalcola i segnali di oggi)",
+    dependencies=[Depends(_verify_worker_key)],
+)
+def gruppo_assistant_config_save(
+    body: GruppoAssistantConfigSave, authorization: Optional[str] = Header(None)
+):
+    sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
+    id_set = set(ids)
+    seg_off = sorted({k for k in body.segnali_disattivati if k in _SEGNALI_KEYS})
+    pv_excl = sorted({p for p in body.pv_esclusi if p in id_set})
+    from datetime import datetime as _dt, timezone as _tz
+    now = _dt.now(_tz.utc).isoformat()
+    sb.table("gruppo_assistant_config").upsert({
+        "user_id": user_id,
+        "segnali_disattivati": seg_off,
+        "pv_esclusi": pv_excl,
+        "updated_at": now,
+    }, on_conflict="user_id").execute()
+    # La config cambia i segnali: butto lo snapshot in cache così alla prossima
+    # lettura si ricalcolano con le nuove regole (niente attesa fino a domani).
+    try:
+        sb.table("gruppo_segnali_state").delete().eq("user_id", user_id).execute()
+    except Exception:
+        pass
+    return {"ok": True}
 
 
 # ═══════════════════════════════════════════════════════════════════════════

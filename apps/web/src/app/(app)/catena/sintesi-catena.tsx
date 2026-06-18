@@ -33,6 +33,7 @@ import { FinestraSpesaPV } from "./finestra-spesa-pv";
 import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
 import { CardSegnali } from "./card-segnali";
 import { TagCatenaDialog } from "./gruppo-tag-section";
+import { ConfigAssistenteCatena } from "./config-assistente-catena";
 
 function euro(n: number): string {
   return new Intl.NumberFormat("it-IT", {
@@ -378,28 +379,31 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
           Gruppo {overview.nome_gruppo}
           <span className="text-base font-normal text-muted-foreground">· {overview.num_pv} punti vendita</span>
         </h1>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <button
-                type="button"
-                disabled={switching}
-                className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
-              >
-                Vai a un punto vendita
-                <ChevronsUpDown className="size-4" />
-              </button>
-            }
-          />
-          <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuLabel className="text-xs text-muted-foreground">Apri un punto vendita</DropdownMenuLabel>
-            {ranking.map((pv) => (
-              <DropdownMenuItem key={pv.ristorante_id} disabled={switching} onClick={() => vaiAlPV(pv.ristorante_id)}>
-                {pv.nome}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-2">
+          <ConfigAssistenteCatena />
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <button
+                  type="button"
+                  disabled={switching}
+                  className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
+                >
+                  Vai a un punto vendita
+                  <ChevronsUpDown className="size-4" />
+                </button>
+              }
+            />
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="text-xs text-muted-foreground">Apri un punto vendita</DropdownMenuLabel>
+              {ranking.map((pv) => (
+                <DropdownMenuItem key={pv.ristorante_id} disabled={switching} onClick={() => vaiAlPV(pv.ristorante_id)}>
+                  {pv.nome}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Briefing di gruppo — la voce macro, in cima */}
