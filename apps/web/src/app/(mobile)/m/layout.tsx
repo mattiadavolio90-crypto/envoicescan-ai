@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { getCurrentUser } from "@/lib/auth";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { fetchConfig } from "@/lib/home";
@@ -20,6 +21,11 @@ export default async function MobileLayout({ children }: { children: React.React
   ]);
   if (!user) redirect("/login");
 
+  // In modalità catena (multi-sede, cookie != pv) l'header parla del gruppo, non
+  // della sede attiva.
+  const cookieStore = await cookies();
+  const inChain = (user.num_sedi ?? 1) >= 2 && cookieStore.get("oneflux_view")?.value !== "pv";
+
   const unread = notifiche?.unread ?? 0;
   // Stessa regola del widget chat desktop: la chat c'e' solo se abilitata e il
   // piano ha un limite > 0 (i piani free hanno limite 0). Se non disponibile,
@@ -35,7 +41,7 @@ export default async function MobileLayout({ children }: { children: React.React
       >
         <Logo variant="icon" size={22} />
         <span className="truncate text-sm font-semibold">
-          {user.sede_attiva_nome ?? user.nome_ristorante ?? "ONEFLUX"}
+          {inChain ? "Tutti i punti vendita" : (user.sede_attiva_nome ?? user.nome_ristorante ?? "ONEFLUX")}
         </span>
         <div className="ml-auto flex items-center gap-0.5">
           <NotificheBell unread={unread} />

@@ -2,8 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { MoreVertical, LogOut, MapPin, Check } from "lucide-react";
+import { MoreVertical, LogOut, MapPin, Check, Building2 } from "lucide-react";
 import { toast } from "sonner";
+
+function writeViewCookie(v: "chain" | "pv") {
+  if (typeof document === "undefined") return;
+  document.cookie = `oneflux_view=${v}; path=/; max-age=${60 * 60 * 24 * 30}; samesite=lax`;
+}
+function isChainCookie(): boolean {
+  if (typeof document === "undefined") return false;
+  return /(?:^|;\s*)oneflux_view=chain/.test(document.cookie);
+}
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,9 +38,11 @@ export function HeaderMenu() {
   const router = useRouter();
   const [sedi, setSedi] = useState<Sede[]>([]);
   const [switching, setSwitching] = useState(false);
+  const [inChain, setInChain] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    setInChain(isChainCookie());
     fetch("/api/account/sedi", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -43,6 +54,14 @@ export function HeaderMenu() {
     };
   }, []);
 
+  // Entra nella vista di gruppo: modalità catena + torna alla home mobile.
+  function vaiAllaCatena() {
+    writeViewCookie("chain");
+    setInChain(true);
+    router.push("/m/briefing");
+    router.refresh();
+  }
+
   async function cambiaSede(id: string) {
     if (switching) return;
     setSwitching(true);
@@ -53,9 +72,12 @@ export function HeaderMenu() {
         body: JSON.stringify({ ristorante_id: id }),
       });
       if (!res.ok) throw new Error();
+      // Scegliere una sede = SCENDERE in quel PV: modalità PV.
+      writeViewCookie("pv");
+      setInChain(false);
       setSedi((prev) => prev.map((s) => ({ ...s, attiva: s.id === id })));
       router.refresh();
-      toast.success("Sede cambiata");
+      toast.success("Punto vendita aperto");
     } catch {
       toast.error("Impossibile cambiare sede");
     } finally {
@@ -90,18 +112,29 @@ export function HeaderMenu() {
       <DropdownMenuContent side="bottom" align="end" className="w-60">
         {multiSede && (
           <>
+            <DropdownMenuItem onClick={vaiAllaCatena} className="flex items-center gap-2 py-2.5">
+              <Building2 className="size-4 shrink-0 text-sky-500" />
+              <span className="flex flex-1 flex-col leading-tight">
+                <span className="text-sm font-medium">Vista catena</span>
+                <span className="text-xs text-muted-foreground">Tutti i punti vendita</span>
+              </span>
+              {inChain && <Check className="ml-auto size-4 shrink-0 text-sky-500" />}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuLabel className="flex items-center gap-2 text-xs text-muted-foreground">
               <MapPin className="size-3.5" />
               Sedi
             </DropdownMenuLabel>
-            {sedi.map((s) => (
+            {sedi.map((s) => {
+              const corrente = s.attiva && !inChain;
+              return (
               <DropdownMenuItem
                 key={s.id}
-                disabled={switching || s.attiva}
+                disabled={switching || corrente}
                 onClick={() => cambiaSede(s.id)}
                 className="flex items-start gap-2 py-2.5"
               >
-                <Check className={`mt-0.5 size-4 shrink-0 ${s.attiva ? "text-sky-500 opacity-100" : "opacity-0"}`} />
+                <Check className={`mt-0.5 size-4 shrink-0 ${corrente ? "text-sky-500 opacity-100" : "opacity-0"}`} />
                 <span className="flex flex-col leading-tight">
                   <span className="text-sm font-medium">{s.nome}</span>
                   {(s.indirizzo || s.comune) && (
@@ -111,7 +144,8 @@ export function HeaderMenu() {
                   )}
                 </span>
               </DropdownMenuItem>
-            ))}
+              );
+            })}
             <DropdownMenuSeparator />
           </>
         )}

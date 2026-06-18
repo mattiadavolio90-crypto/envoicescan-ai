@@ -1,8 +1,12 @@
 import { Suspense } from "react";
+import { cookies } from "next/headers";
+import { getCurrentUser } from "@/lib/auth";
 import { fetchBriefing, fetchSalute, fetchKpi } from "@/lib/home";
+import { fetchGruppoOverview } from "@/lib/gruppo";
 import { SaluteCard } from "@/app/(app)/dashboard/salute-card";
 import { KpiBlock } from "@/app/(app)/dashboard/kpi-block";
 import { MobileBriefing } from "./mobile-briefing";
+import { MobileCatena } from "./mobile-catena";
 
 // Briefing: e' il primo blocco, lo mostriamo appena pronto.
 async function BriefingBlock() {
@@ -38,7 +42,25 @@ function CardSkeleton() {
   );
 }
 
-export default function MobileBriefingPage() {
+async function CatenaBlock() {
+  const overview = await fetchGruppoOverview();
+  // Se l'overview non c'è (worker lento) o l'account non è multi-sede, lascia
+  // proseguire la Home del PV qui sotto (il chiamante gestisce il fallback).
+  if (!overview || overview.num_pv < 2) return null;
+  return <MobileCatena overview={overview} />;
+}
+
+export default async function MobileBriefingPage() {
+  // Cliente catena (≥2 sedi) in modalità "chain" (cookie oneflux_view): la Home
+  // mobile è la vista di GRUPPO (briefing + segnali + ranking). Scendendo in un PV
+  // il cookie passa a "pv" e qui torna la Home del singolo locale.
+  const [user, cookieStore] = await Promise.all([getCurrentUser(), cookies()]);
+  const inChain = (user?.num_sedi ?? 1) >= 2 && cookieStore.get("oneflux_view")?.value !== "pv";
+  if (inChain) {
+    const blocco = await CatenaBlock();
+    if (blocco) return <div className="space-y-5">{blocco}</div>;
+  }
+
   // Streaming: ogni blocco ha il suo Suspense -> il briefing appare per primo,
   // conti e salute arrivano dopo con skeleton, senza bloccarsi a vicenda.
   return (
