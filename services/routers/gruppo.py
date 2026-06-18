@@ -140,11 +140,28 @@ def _build_briefing(
     salute_colore: str,
     n_segnali: int,
     sev_max: str,
+    salute_pv: Optional[List["SalutePV"]] = None,
 ) -> "GruppoBriefing":
     """Narrativa di gruppo DETERMINISTICA (no AI): si fonda sugli STESSI dati di
-    overview + segnali → coerente per costruzione, tono sobrio. Racconta chi va
-    meglio/peggio (margine%) e quante cose ci sono da vedere."""
-    completi = [r for r in ranking if not r.dati_incompleti and r.margine_perc is not None]
+    overview + segnali → coerente per costruzione, tono sobrio.
+
+    Completezza misurata sulla SALUTE per-PV (che rileva i costi mancanti), non
+    solo sul fatturato: una sede con ricavi ma food cost 0% ha un margine FINTO,
+    quindi non la usiamo per dire "va meglio/peggio" e la contiamo tra quelle da
+    completare. E non diciamo MAI "tutto sotto controllo" se la salute è rossa o
+    se ci sono sedi incomplete (sarebbe una contraddizione con la card Salute)."""
+    # Salute per-PV: una sede è "affidabile" per il confronto margini solo se la
+    # salute è decente (>=50). Sotto, i dati di costo mancano e il margine non è
+    # reale. Se salute_pv non è disponibile, ripiego sul vecchio criterio (ricavi).
+    salute_by_id = {s.ristorante_id: s.indice for s in (salute_pv or [])}
+
+    def _affidabile(r: "RankingPV") -> bool:
+        if r.dati_incompleti or r.margine_perc is None:
+            return False
+        ix = salute_by_id.get(r.ristorante_id)
+        return ix is None or ix >= 50
+
+    completi = [r for r in ranking if _affidabile(r)]
     frasi: List[str] = []
 
     if len(completi) >= 2:
@@ -156,29 +173,40 @@ def _build_briefing(
                 f"più indietro {worst.nome} ({worst.margine_perc:.0f}%)."
             )
         else:
-            frasi.append(f"Margine attorno al {best.margine_perc:.0f}% sui punti vendita con dati.")
+            frasi.append(f"Margine attorno al {best.margine_perc:.0f}% sui punti vendita con dati completi.")
     elif len(completi) == 1:
         frasi.append(f"{completi[0].nome} è al {completi[0].margine_perc:.0f}% di margine.")
 
-    n_incompleti = sum(1 for r in ranking if r.dati_incompleti)
+    # Sedi con dati da completare: dalla salute (costi mancanti), non solo ricavi.
+    if salute_by_id:
+        n_incompleti = sum(1 for ix in salute_by_id.values() if ix < 50)
+    else:
+        n_incompleti = sum(1 for r in ranking if r.dati_incompleti)
     if n_incompleti:
         frasi.append(
             f"{n_incompleti} "
-            + ("punto vendita" if n_incompleti == 1 else "punti vendita")
-            + " ancora senza dati completi nel periodo."
+            + ("punto vendita ha" if n_incompleti == 1 else "punti vendita hanno")
+            + " i dati di costo ancora da completare: lì il margine non è reale."
         )
 
-    if n_segnali == 0:
-        frasi.append("Nessuna segnalazione aperta: tutto sotto controllo.")
-    else:
+    # "Tutto sotto controllo" SOLO se non manca davvero nulla: niente segnali,
+    # salute non rossa, nessuna sede incompleta. Mai dire che va tutto bene mentre
+    # la salute è bassa (la contraddizione segnalata da Mattia).
+    tutto_ok = (n_segnali == 0 and salute_colore != "rosso" and n_incompleti == 0)
+    if n_segnali > 0:
         frasi.append(
             f"{n_segnali} "
             + ("cosa da vedere" if n_segnali == 1 else "cose da vedere")
             + " più sotto."
         )
+    elif tutto_ok:
+        frasi.append("Nessuna segnalazione aperta: tutto sotto controllo.")
 
     if salute_colore == "rosso":
-        frasi.append(f"La salute del gruppo è bassa ({salute_indice}): conviene completare i dati.")
+        frasi.append(
+            f"La salute del gruppo è bassa ({salute_indice}): "
+            "conviene completare i dati prima di leggere i margini."
+        )
 
     narrativa = " ".join(frasi) if frasi else "Ecco la sintesi della catena."
     return GruppoBriefing(saluto=_saluto_ora(), narrativa=narrativa, severity_max=sev_max)
@@ -470,7 +498,10 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # ricalcolo qui → overview resta leggera; i segnali si calcolano alla loro
     # chiamata). Se la cache manca, il briefing parla solo di margini/salute.
     n_segnali, sev_max = _conta_segnali_cache(sb, user_id)
-    briefing = _build_briefing(nome_gruppo, ranking, salute_indice, salute_colore, n_segnali, sev_max)
+    briefing = _build_briefing(
+        nome_gruppo, ranking, salute_indice, salute_colore, n_segnali, sev_max,
+        salute_pv=salute_pv,
+    )
 
     return GruppoOverviewResponse(
         nome_gruppo=nome_gruppo,

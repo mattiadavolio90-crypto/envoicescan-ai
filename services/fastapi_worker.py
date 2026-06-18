@@ -4608,7 +4608,8 @@ def _briefing_aggiorna_last_seen(user_id: str, supabase_client) -> None:
 
 
 def _briefing_raccogli_notifiche(
-    user_id: str, ristorante_id: Optional[str], supabase_client
+    user_id: str, ristorante_id: Optional[str], supabase_client,
+    includi_alert_prezzi: bool = True,
 ) -> List[Dict[str, Any]]:
     """Raccoglie le notifiche attive + i segnali LIVE che alimentano il briefing.
 
@@ -4616,6 +4617,11 @@ def _briefing_raccogli_notifiche(
     check ricavi automatici, dati mensili mancanti. Estratta dall'endpoint cosi'
     puo' girare in BACKGROUND (vedi _briefing_rigenera_async) invece che in linea
     sul percorso della Home — che altrimenti sforerebbe il timeout di 8s.
+
+    `includi_alert_prezzi=False` salta SOLO l'alert prezzi (l'unica parte lenta,
+    budget 4s): tutti gli altri segnali live (fatture/righe/dati mancanti) sono
+    leggeri. Serve al briefing ISTANTANEO del fast-path 2, che cosi' resta
+    coerente (mai un falso "tutto in ordine") senza pagare i 4s dell'alert prezzi.
     """
     from datetime import datetime as _dt, timezone as _tz
 
@@ -4651,6 +4657,7 @@ def _briefing_raccogli_notifiche(
         # alert sbagliato sui marginali. Per questo la rimozione sta PRIMA del
         # calcolo, fuori dal try — altrimenti su un timeout il legacy resterebbe.
         notifications = [n for n in notifications if n.get("topic_key") != "price_alert"]
+    if ristorante_id and includi_alert_prezzi:
         try:
             from services.price_impact_service import calcola_alert_prezzi_impatto
             # Budget di tempo: l'alert prezzi e' un "di piu'" del briefing, non deve
@@ -4893,7 +4900,6 @@ def home_briefing(
     from services import get_supabase_client
     from services.daily_briefing_service import (
         get_today_briefing,
-        get_latest_briefing,
         _build_snapshot,
     )
 
@@ -4917,47 +4923,33 @@ def home_briefing(
             nome, _ = _briefing_nome_referente(nome, ristorante_id, supabase_client)
             return _briefing_response_from_snapshot(cached_today, nome)
 
-    # ── Fast-path 2: "mai bloccante" ─────────────────────────────────────────
+    # ── Fast-path 2: "mai bloccante" MA coerente ─────────────────────────────
     # Manca lo snapshot di oggi (prima apertura del giorno, o cache invalidata da
     # un upload/inserimento). PRIMA qui si pagava in linea tutta la generazione
-    # pesante (alert prezzi fino a 4s + chiamata OpenAI): su clienti grossi
-    # l'endpoint sforava gli 8s del frontend e il briefing "spariva" dalla Home,
-    # ricomparendo solo al refresh. Ora rispondiamo SEMPRE all'istante e
-    # rigeneriamo in BACKGROUND:
-    #   - se esiste un briefing recente (al max di ieri) lo serviamo subito;
-    #   - altrimenti un template deterministico leggero, senza AI ne' alert prezzi.
-    # Il briefing completo di oggi sara' pronto al load successivo dal fast-path 1.
+    # pesante (alert prezzi fino a 4s + OpenAI): su clienti grossi l'endpoint
+    # sforava gli 8s e il briefing spariva. La prima soluzione (servire l'ultimo
+    # snapshot o un template dalle sole notifiche persistite) era veloce ma
+    # INCOERENTE: ignorava i segnali live, cosi' diceva "tutto in ordine" anche
+    # con Salute rossa e dati mancanti. Ora costruiamo SEMPRE un briefing fresco
+    # con TUTTI i segnali live tranne l'alert prezzi (l'unica parte da 4s) e senza
+    # riscrittura AI: istantaneo E coerente con la card Salute. Il tono AI + alert
+    # prezzi arrivano col load successivo (fast-path 1) dalla rigenerazione async.
     nome, topics_disabled = _briefing_nome_referente(nome, ristorante_id, supabase_client)
 
     if ristorante_id:
         background_tasks.add_task(_briefing_rigenera_async, user_id, ristorante_id)
+        try:
+            notifications = _briefing_raccogli_notifiche(
+                user_id, ristorante_id, supabase_client, includi_alert_prezzi=False,
+            )
+        except Exception as exc:
+            logger.warning("home_briefing: raccolta istantanea fallita: %s", exc)
+            notifications = []
+        snapshot = _build_snapshot(notifications, use_ai=False, topics_disabled=topics_disabled)
+        return _briefing_response_from_snapshot(snapshot, nome)
 
-        latest = get_latest_briefing(user_id, ristorante_id, supabase_client)
-        if latest is not None:
-            return _briefing_response_from_snapshot(latest, nome)
-
-    # Nessuno snapshot mai generato (cliente nuovo) o ristorante assente:
-    # template istantaneo dalle sole notifiche in inbox — niente alert prezzi
-    # (live, lento) ne' AI. La versione completa arriva dal background.
-    notifications: List[Dict[str, Any]] = []
-    try:
-        from datetime import datetime as _dt, timezone as _tz
-        q = (
-            supabase_client.table("notification_inbox")
-            .select("id,topic_key,source_type,severity,title,body,action_page,payload,dismissed_at,expires_at,created_at,source_event_at,dedupe_key")
-            .eq("user_id", user_id)
-            .or_("expires_at.is.null,expires_at.gt." + _dt.now(_tz.utc).isoformat())
-            .order("created_at", desc=True)
-            .limit(100)
-        )
-        if ristorante_id:
-            q = q.eq("ristorante_id", ristorante_id)
-        resp = q.execute()
-        notifications = [r for r in (resp.data or []) if not r.get("dismissed_at")]
-    except Exception as exc:
-        logger.warning("home_briefing: lettura notifiche (template istantaneo) fallita: %s", exc)
-
-    snapshot = _build_snapshot(notifications, use_ai=False, topics_disabled=topics_disabled)
+    # Nessun ristorante associato: niente da raccogliere, briefing vuoto.
+    snapshot = _build_snapshot([], use_ai=False, topics_disabled=topics_disabled)
     return _briefing_response_from_snapshot(snapshot, nome)
 
 
