@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { fetchGruppoOverview, fetchGruppoChatConfig } from "@/lib/gruppo";
 import { SintesiCatena } from "./sintesi-catena";
 import { ChatWidget } from "../dashboard/chat-widget";
+import { BlockRetry } from "../dashboard/block-retry";
 
 // Modalità catena (Fase 1) — UNA pagina: la Sintesi (plancia di sola lettura).
 // La catena è un layer superiore di analisi/visualizzazione sopra i PV;
@@ -25,12 +26,13 @@ function SintesiSkeleton() {
 async function SintesiBlock() {
   const overview = await fetchGruppoOverview();
   // Account mono-sede (o worker che risponde 400): non c'è un gruppo da mostrare,
-  // si torna alla Home del PV. Worker giù (null) → mostra lo skeleton/retry.
+  // si torna alla Home del PV. Worker giù/lento (null) → BlockRetry ripinga e fa
+  // refresh da solo appena risponde (niente più vicolo cieco "ricarica a mano").
   if (overview === null) {
     return (
-      <div className="rounded-2xl border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
-        Sto preparando la vista della catena… ricarica tra qualche secondo.
-      </div>
+      <BlockRetry endpoint="/api/account/sedi">
+        <SintesiSkeleton />
+      </BlockRetry>
     );
   }
   if (overview.num_pv < 2) {

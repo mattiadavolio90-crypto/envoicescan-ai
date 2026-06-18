@@ -7,12 +7,20 @@ import {
   Building2,
   ChevronsUpDown,
   TrendingUp,
-  Wallet,
   Receipt,
   ChevronRight,
   Sparkles,
+  Tags,
+  ArrowUp,
+  ArrowDown,
+  ArrowRight,
 } from "lucide-react";
-import { type GruppoOverview, type GruppoBriefing, type RankingPV } from "@/lib/gruppo";
+import {
+  type GruppoOverview,
+  type GruppoBriefing,
+  type SalutePV,
+  type MolMensile,
+} from "@/lib/gruppo";
 import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
@@ -24,6 +32,7 @@ import {
 import { FinestraSpesaPV } from "./finestra-spesa-pv";
 import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
 import { CardSegnali } from "./card-segnali";
+import { TagCatenaDialog } from "./gruppo-tag-section";
 
 function euro(n: number): string {
   return new Intl.NumberFormat("it-IT", {
@@ -38,20 +47,54 @@ function pct(n: number | null): string {
   return `${n.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%`;
 }
 
-// Token semantici a contrasto AA su dark E light (regola di design catena).
-const DOT: Record<RankingPV["colore"], string> = {
-  verde: "bg-emerald-500",
-  giallo: "bg-amber-500",
-  rosso: "bg-rose-500",
-  grigio: "bg-muted-foreground/40",
-};
+// Palette per stato salute/colore — stessa famiglia visiva della Home PV
+// (gradiente + orb + ring), token a tema → dark/light-safe.
+const TINT = {
+  verde: {
+    ring: "text-emerald-500",
+    text: "text-emerald-600 dark:text-emerald-500",
+    badge: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400",
+    card: "bg-gradient-to-br from-emerald-500/10 via-emerald-500/[0.03] to-background",
+    orb1: "bg-emerald-400/15",
+    orb2: "bg-emerald-400/8",
+    dot: "bg-emerald-500",
+    label: "In salute",
+  },
+  giallo: {
+    ring: "text-amber-500",
+    text: "text-amber-600 dark:text-amber-500",
+    badge: "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400",
+    card: "bg-gradient-to-br from-amber-500/10 via-amber-500/[0.03] to-background",
+    orb1: "bg-amber-400/15",
+    orb2: "bg-amber-400/8",
+    dot: "bg-amber-500",
+    label: "Da completare",
+  },
+  rosso: {
+    ring: "text-rose-500",
+    text: "text-rose-600 dark:text-rose-500",
+    badge: "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400",
+    card: "bg-gradient-to-br from-rose-500/10 via-rose-500/[0.03] to-background",
+    orb1: "bg-rose-400/15",
+    orb2: "bg-rose-400/8",
+    dot: "bg-rose-500",
+    label: "Dati incompleti",
+  },
+  grigio: {
+    ring: "text-muted-foreground/40",
+    text: "text-muted-foreground",
+    badge: "bg-muted text-muted-foreground",
+    card: "bg-card",
+    orb1: "bg-transparent",
+    orb2: "bg-transparent",
+    dot: "bg-muted-foreground/40",
+    label: "Dati incompleti",
+  },
+} as const;
 
-const SALUTE_RING: Record<GruppoOverview["salute_colore"], string> = {
-  verde: "text-emerald-500",
-  giallo: "text-amber-500",
-  rosso: "text-rose-500",
-};
+type ColoreTint = keyof typeof TINT;
 
+// ─── Briefing di gruppo (hero) ─────────────────────────────────────────────
 function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; nomeGruppo: string }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.04] to-background p-6 sm:p-8">
@@ -71,83 +114,230 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
   );
 }
 
-function KpiCard({
-  icon: Icon,
-  label,
-  value,
-  onClick,
-  hint,
-}: {
-  icon: typeof TrendingUp;
-  label: string;
-  value: string;
-  onClick?: () => void;
-  hint?: string;
-}) {
-  const body = (
-    <>
-      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        <Icon className="size-4" />
-        {label}
+// ─── Sparkline andamento MOL del gruppo (come MolAndamento della Home) ──────
+const MESI_ABBR = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+
+function MolSparkline({ punti, anno }: { punti: MolMensile[]; anno: number }) {
+  if (punti.length < 2) return null;
+  const W = 240;
+  const H = 40;
+  const PAD = 4;
+  const vals = punti.map((p) => p.mol);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const range = max - min || 1;
+  const n = punti.length;
+  const x = (i: number) => PAD + (i * (W - 2 * PAD)) / (n - 1);
+  const y = (v: number) => H - PAD - ((v - min) / range) * (H - 2 * PAD);
+  const d = punti.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.mol).toFixed(1)}`).join(" ");
+  const primo = punti[0].mol;
+  const ultimo = punti[n - 1].mol;
+  const ytdPct = primo > 0 ? ((ultimo - primo) / primo) * 100 : null;
+  const su = ytdPct != null && ytdPct >= 0;
+  const stroke = su ? "text-emerald-500" : "text-rose-500";
+  const meseDa = MESI_ABBR[(punti[0].mese - 1) % 12] ?? "";
+  const meseA = MESI_ABBR[(punti[n - 1].mese - 1) % 12] ?? "";
+
+  return (
+    <div className="mt-4 border-t pt-3">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-muted-foreground/70">Andamento margine {anno}</span>
+        {ytdPct != null && (
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums",
+              su ? "text-emerald-600 dark:text-emerald-500" : "text-rose-600 dark:text-rose-500",
+            )}
+          >
+            {su ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
+            {Math.abs(ytdPct).toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
+            <span className="ml-1 font-normal text-muted-foreground/60">
+              {meseDa} → {meseA}
+            </span>
+          </span>
+        )}
       </div>
-      <div className="text-3xl font-black tabular-nums">{value}</div>
-      {hint && <div className="text-xs text-muted-foreground/70">{hint}</div>}
-    </>
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-10 w-full overflow-visible" preserveAspectRatio="none" role="img" aria-label="Andamento del margine del gruppo">
+        <path d={d} fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={cn("stroke-current", stroke)} />
+        <circle cx={x(n - 1)} cy={y(ultimo)} r="3" className={cn("fill-current", stroke)} />
+      </svg>
+    </div>
   );
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="flex flex-col gap-2 rounded-2xl border bg-card p-5 text-left transition-colors hover:bg-accent"
-      >
-        {body}
-      </button>
-    );
-  }
-  return <div className="flex flex-col gap-2 rounded-2xl border bg-card p-5">{body}</div>;
 }
 
-function SaluteGauge({
-  indice,
-  colore,
-  numPv,
+// ─── Card "I conti del gruppo" (gemella di KpiBlock) ───────────────────────
+function ContiGruppoCard({
+  overview,
+  onApriSpesa,
+  onApriMargini,
 }: {
-  indice: number;
-  colore: GruppoOverview["salute_colore"];
-  numPv: number;
+  overview: GruppoOverview;
+  onApriSpesa: () => void;
+  onApriMargini: () => void;
 }) {
-  const R = 34;
-  const C = 2 * Math.PI * R;
-  const dash = (indice / 100) * C;
+  const { kpi } = overview;
+  const molPos = kpi.mol >= 0;
+  const tint = molPos ? TINT.verde : TINT.rosso;
+
   return (
-    <div className="flex items-center gap-4 rounded-2xl border bg-card p-5">
-      <svg viewBox="0 0 80 80" className="size-20 shrink-0 -rotate-90">
-        <circle cx="40" cy="40" r={R} className="fill-none stroke-muted" strokeWidth="7" />
+    <div className={cn("relative flex h-full flex-col overflow-hidden rounded-2xl border p-6 sm:p-7", tint.card)}>
+      <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
+      <div className={cn("pointer-events-none absolute -bottom-20 left-1/4 size-52 rounded-full blur-3xl", tint.orb2)} />
+
+      <div className="mb-4 flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold">I conti del gruppo</h2>
+        <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
+      </div>
+
+      {/* MOL gruppo + margine medio → apre il confronto Margini e Coperti */}
+      <button
+        type="button"
+        onClick={onApriMargini}
+        className="group flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-4 text-center transition-colors hover:bg-background/40"
+      >
+        <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">MOL del gruppo</span>
+        <div className={cn("text-5xl font-black tabular-nums leading-none sm:text-6xl", tint.text)}>{euro(kpi.mol)}</div>
+        <div className="mt-1 inline-flex items-center gap-2 text-xs text-muted-foreground/70">
+          <span className={cn("rounded-full px-2 py-0.5 font-medium", tint.badge)}>margine {pct(kpi.margine_medio_perc)}</span>
+          <span className="inline-flex items-center gap-0.5 font-medium text-primary">
+            confronta i PV <ArrowRight className="size-3" />
+          </span>
+        </div>
+      </button>
+
+      {/* Breakdown: Fatturato (→Margini) e Spesa fornitori (→Spesa per PV) */}
+      <div className="mt-auto space-y-1.5">
+        <button
+          type="button"
+          onClick={onApriMargini}
+          className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5 text-left transition-colors hover:bg-background/70"
+        >
+          <span className="mt-0.5 size-2 shrink-0 rounded-full bg-emerald-400" />
+          <span className="flex-1 text-sm text-muted-foreground">Fatturato gruppo</span>
+          <span className="text-sm font-semibold tabular-nums">{euro(kpi.fatturato)}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onApriSpesa}
+          className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3.5 py-2.5 text-left transition-colors hover:bg-background/70"
+        >
+          <span className="mt-0.5 size-2 shrink-0 rounded-full bg-amber-400" />
+          <span className="flex-1 text-sm text-muted-foreground">
+            <span className="mr-1 text-muted-foreground/50">−</span>Spesa fornitori
+          </span>
+          <span className="text-sm font-semibold tabular-nums">{euro(kpi.spesa_fornitori)}</span>
+        </button>
+      </div>
+
+      <MolSparkline punti={overview.mol_mensile} anno={overview.mol_mensile_anno} />
+    </div>
+  );
+}
+
+// ─── Card "Salute del gruppo" (gemella di SaluteCard) ──────────────────────
+function AnelloSalute({ indice, colore }: { indice: number; colore: ColoreTint }) {
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  const offset = c - (Math.max(0, Math.min(100, indice)) / 100) * c;
+  const tint = TINT[colore];
+  return (
+    <div className="relative size-32 shrink-0">
+      <svg viewBox="0 0 120 120" className="size-32 -rotate-90">
+        <circle cx="60" cy="60" r={r} className="stroke-muted" strokeWidth="10" fill="none" />
         <circle
-          cx="40"
-          cy="40"
-          r={R}
-          className={cn("fill-none stroke-current", SALUTE_RING[colore])}
-          strokeWidth="7"
-          strokeLinecap="round"
-          strokeDasharray={`${dash} ${C}`}
+          cx="60" cy="60" r={r}
+          className={cn("transition-all", tint.ring)}
+          stroke="currentColor" strokeWidth="10" fill="none" strokeLinecap="round"
+          strokeDasharray={c} strokeDashoffset={offset}
         />
       </svg>
-      <div>
-        <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Salute del gruppo
-        </div>
-        <div className="mt-0.5 flex items-baseline gap-2">
-          <span className={cn("text-3xl font-black tabular-nums", SALUTE_RING[colore])}>
-            {indice}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            media {numPv} {numPv === 1 ? "sede" : "sedi"}
-          </span>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className={cn("text-3xl font-bold tabular-nums", tint.text)}>{indice}</span>
+        <span className="text-[10px] uppercase tracking-wide text-muted-foreground/60">su 100</span>
+      </div>
+    </div>
+  );
+}
+
+function SaluteGruppoCard({
+  indice,
+  colore,
+  salutePv,
+  onApriPV,
+  switching,
+}: {
+  indice: number;
+  colore: ColoreTint;
+  salutePv: SalutePV[];
+  onApriPV: (id: string) => void;
+  switching: boolean;
+}) {
+  const tint = TINT[colore];
+  return (
+    <div className={cn("relative flex h-full flex-col overflow-hidden rounded-2xl border p-6 sm:p-7", tint.card)}>
+      <div className={cn("pointer-events-none absolute -right-16 -top-16 size-56 rounded-full blur-3xl", tint.orb1)} />
+      <div className={cn("pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full blur-3xl", tint.orb2)} />
+      <div className="mb-4 flex items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold">Salute del gruppo</h2>
+        <span className="text-xs text-muted-foreground/70">media {salutePv.length} {salutePv.length === 1 ? "sede" : "sedi"}</span>
+      </div>
+      <div className="flex flex-1 flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-7">
+        <AnelloSalute indice={indice} colore={colore} />
+        <div className="flex-1 space-y-3">
+          <span className={cn("inline-block rounded-full px-3 py-1 text-xs font-medium", tint.badge)}>{tint.label}</span>
+          <ul className="space-y-1.5">
+            {salutePv.map((pv) => {
+              const t = TINT[pv.colore];
+              return (
+                <li key={pv.ristorante_id}>
+                  <button
+                    type="button"
+                    disabled={switching}
+                    onClick={() => onApriPV(pv.ristorante_id)}
+                    className="flex w-full items-center gap-3 rounded-xl bg-background/40 px-3 py-2 text-left text-sm transition-colors hover:bg-background/70 disabled:opacity-50"
+                  >
+                    <span className={cn("size-2.5 shrink-0 rounded-full", t.dot)} />
+                    <span className="flex-1 truncate">{pv.nome}</span>
+                    <span className={cn("text-sm font-semibold tabular-nums", t.text)}>{pv.indice}</span>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground/40" />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Card-azione "Confronti / strumenti" (apre una finestra) ───────────────
+function ConfrontoCard({
+  icon: Icon,
+  titolo,
+  sottotitolo,
+  onClick,
+}: {
+  icon: typeof Receipt;
+  titolo: string;
+  sottotitolo: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex items-center gap-4 rounded-2xl border bg-card p-5 text-left transition-colors hover:bg-accent"
+    >
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Icon className="size-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold">{titolo}</span>
+        <span className="block text-xs text-muted-foreground">{sottotitolo}</span>
+      </span>
+      <ArrowRight className="size-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
+    </button>
   );
 }
 
@@ -156,6 +346,7 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
   const [switching, setSwitching] = useState(false);
   const [spesaOpen, setSpesaOpen] = useState(false);
   const [marginiOpen, setMarginiOpen] = useState(false);
+  const [tagOpen, setTagOpen] = useState(false);
 
   // Deep link catena→PV: cambia la sede attiva e naviga alla pagina giusta del PV
   // (default Home). Il "fare" è nel PV; la catena indirizza.
@@ -176,18 +367,16 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
     }
   }
 
-  const { kpi, ranking } = overview;
+  const { ranking } = overview;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header gruppo + selettore "Vai a un PV" */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="flex items-center gap-2 text-xl font-semibold">
           <Building2 className="size-6 text-primary" />
           Gruppo {overview.nome_gruppo}
-          <span className="text-base font-normal text-muted-foreground">
-            · {overview.num_pv} punti vendita
-          </span>
+          <span className="text-base font-normal text-muted-foreground">· {overview.num_pv} punti vendita</span>
         </h1>
         <DropdownMenu>
           <DropdownMenuTrigger
@@ -203,15 +392,9 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
             }
           />
           <DropdownMenuContent align="end" className="w-64">
-            <DropdownMenuLabel className="text-xs text-muted-foreground">
-              Apri un punto vendita
-            </DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Apri un punto vendita</DropdownMenuLabel>
             {ranking.map((pv) => (
-              <DropdownMenuItem
-                key={pv.ristorante_id}
-                disabled={switching}
-                onClick={() => vaiAlPV(pv.ristorante_id)}
-              >
+              <DropdownMenuItem key={pv.ristorante_id} disabled={switching} onClick={() => vaiAlPV(pv.ristorante_id)}>
                 {pv.nome}
               </DropdownMenuItem>
             ))}
@@ -219,37 +402,34 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
         </DropdownMenu>
       </div>
 
-      {/* Briefing di gruppo — la voce macro, in cima (chi va meglio/peggio) */}
+      {/* Briefing di gruppo — la voce macro, in cima */}
       <BriefingGruppo briefing={overview.briefing} nomeGruppo={overview.nome_gruppo} />
 
-      {/* 3 KPI del gruppo — Margine e Spesa aprono le finestre di confronto */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <KpiCard icon={Wallet} label="Fatturato gruppo" value={euro(kpi.fatturato)} />
-        <KpiCard
-          icon={TrendingUp}
-          label="Margine medio"
-          value={pct(kpi.margine_medio_perc)}
-          hint="Confronta margini e coperti →"
-          onClick={() => setMarginiOpen(true)}
+      {/* Due card grandi come la Home PV: Conti + Salute */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+        <ContiGruppoCard
+          overview={overview}
+          onApriSpesa={() => setSpesaOpen(true)}
+          onApriMargini={() => setMarginiOpen(true)}
         />
-        <KpiCard
-          icon={Receipt}
-          label="Spesa fornitori"
-          value={euro(kpi.spesa_fornitori)}
-          hint="Confronta spesa per PV →"
-          onClick={() => setSpesaOpen(true)}
+        <SaluteGruppoCard
+          indice={overview.salute_indice}
+          colore={overview.salute_colore}
+          salutePv={overview.salute_pv}
+          onApriPV={(id) => vaiAlPV(id)}
+          switching={switching}
         />
       </div>
 
-      {/* Salute gruppo + Da vedere */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SaluteGauge
-          indice={overview.salute_indice}
-          colore={overview.salute_colore}
-          numPv={overview.num_pv}
-        />
-        <CardSegnali vaiAlPV={vaiAlPV} switching={switching} />
+      {/* Strumenti di confronto del gruppo: si aprono in finestra (no pagine) */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <ConfrontoCard icon={Receipt} titolo="Spesa per PV" sottotitolo="Dove spende di più ogni sede" onClick={() => setSpesaOpen(true)} />
+        <ConfrontoCard icon={TrendingUp} titolo="Margini e coperti" sottotitolo="Chi rende di più, per metrica" onClick={() => setMarginiOpen(true)} />
+        <ConfrontoCard icon={Tags} titolo="Tag di catena" sottotitolo="Confronta un prodotto fra i PV" onClick={() => setTagOpen(true)} />
       </div>
+
+      {/* Da vedere nella catena (segnali) */}
+      <CardSegnali vaiAlPV={vaiAlPV} switching={switching} />
 
       {/* Ranking punti vendita per margine % */}
       <div className="rounded-2xl border bg-card">
@@ -257,46 +437,44 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
           <h2 className="text-sm font-semibold">Ranking punti vendita</h2>
           <span className="flex items-baseline gap-3 text-xs text-muted-foreground">
             <span>{overview.periodo_label} · per margine %</span>
-            <button
-              type="button"
-              onClick={() => setMarginiOpen(true)}
-              className="font-medium text-primary hover:underline"
-            >
+            <button type="button" onClick={() => setMarginiOpen(true)} className="font-medium text-primary hover:underline">
               Confronta →
             </button>
           </span>
         </div>
         <ul className="divide-y">
-          {ranking.map((pv) => (
-            <li key={pv.ristorante_id}>
-              <button
-                type="button"
-                disabled={switching}
-                onClick={() => vaiAlPV(pv.ristorante_id)}
-                className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-accent disabled:opacity-50"
-              >
-                <span className={cn("size-2.5 shrink-0 rounded-full", DOT[pv.colore])} />
-                <span className="flex-1 truncate text-sm font-medium">{pv.nome}</span>
-                {pv.dati_incompleti ? (
-                  <span className="text-xs text-muted-foreground">dati incompleti</span>
-                ) : (
-                  <span className="flex items-baseline gap-3">
-                    <span className="text-sm font-semibold tabular-nums">{pct(pv.margine_perc)}</span>
-                    <span className="w-24 text-right text-xs text-muted-foreground tabular-nums">
-                      {euro(pv.fatturato)}
+          {ranking.map((pv) => {
+            const t = TINT[(pv.colore as ColoreTint) ?? "grigio"];
+            return (
+              <li key={pv.ristorante_id}>
+                <button
+                  type="button"
+                  disabled={switching}
+                  onClick={() => vaiAlPV(pv.ristorante_id)}
+                  className="flex w-full items-center gap-3 px-5 py-3.5 text-left transition-colors hover:bg-accent disabled:opacity-50"
+                >
+                  <span className={cn("size-2.5 shrink-0 rounded-full", t.dot)} />
+                  <span className="flex-1 truncate text-sm font-medium">{pv.nome}</span>
+                  {pv.dati_incompleti ? (
+                    <span className="text-xs text-muted-foreground">dati incompleti</span>
+                  ) : (
+                    <span className="flex items-baseline gap-3">
+                      <span className={cn("text-sm font-semibold tabular-nums", t.text)}>{pct(pv.margine_perc)}</span>
+                      <span className="w-24 text-right text-xs text-muted-foreground tabular-nums">{euro(pv.fatturato)}</span>
                     </span>
-                  </span>
-                )}
-                <ChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
-              </button>
-            </li>
-          ))}
+                  )}
+                  <ChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </div>
 
-      {/* Finestre di confronto: caricano i dati solo all'apertura (lazy). */}
+      {/* Finestre: caricano i dati solo all'apertura (lazy). */}
       <FinestraSpesaPV open={spesaOpen} onOpenChange={setSpesaOpen} />
       <FinestraMarginiCoperti open={marginiOpen} onOpenChange={setMarginiOpen} />
+      <TagCatenaDialog open={tagOpen} onOpenChange={setTagOpen} />
     </div>
   );
 }

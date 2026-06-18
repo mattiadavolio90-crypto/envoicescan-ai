@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { Moon, Sun, AlertTriangle } from "lucide-react";
+import { Moon, Sun, AlertTriangle, Building2, MapPin, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -370,9 +370,143 @@ function AspettoCard({ temaSalvato }: { temaSalvato: "dark" | "light" }) {
   );
 }
 
-export function AccountClient({ data }: { data: AccountData }) {
+type Sede = {
+  id: string;
+  nome: string;
+  indirizzo: string | null;
+  comune: string | null;
+  attiva: boolean;
+};
+
+// Vista GRUPPO (contesto catena): identità del gruppo + elenco sedi. I dati per
+// sede (piano, fatture) restano nel punto vendita — qui si entra, non si modifica.
+function GruppoCard({
+  nomeGruppo,
+  email,
+  membroDal,
+  numPv,
+}: {
+  nomeGruppo: string | null;
+  email: string;
+  membroDal: string | null;
+  numPv: number;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Building2 className="size-5 text-primary" />
+          Il tuo gruppo
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <dl className="grid grid-cols-1 gap-x-8 gap-y-3 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-muted-foreground">Gruppo</dt>
+            <dd className="mt-0.5 font-medium">{nomeGruppo || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Punti vendita</dt>
+            <dd className="mt-0.5 font-medium">{numPv}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Email</dt>
+            <dd className="mt-0.5 font-medium">{email}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">Membro dal</dt>
+            <dd className="mt-0.5 font-medium">{fmtDate(membroDal)}</dd>
+          </div>
+        </dl>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SediGruppoCard({ sedi }: { sedi: Sede[] }) {
+  const router = useRouter();
+  const [switching, setSwitching] = useState(false);
+
+  async function apri(id: string) {
+    if (switching) return;
+    setSwitching(true);
+    try {
+      const res = await fetch("/api/account/cambia-sede", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ristorante_id: id }),
+      });
+      if (!res.ok) throw new Error();
+      // Entrare in una sede = passare in modalità PV: la Home del PV imposta il
+      // cookie di vista, così le sue Impostazioni mostrano i suoi dati (piano,
+      // fatture), non più il gruppo.
+      router.push("/dashboard");
+    } catch {
+      toast.error("Impossibile aprire il punto vendita");
+      setSwitching(false);
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Punti vendita</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <p className="mb-2 text-sm text-muted-foreground">
+          Piano, fatture e dati di ogni sede si gestiscono dentro il punto vendita.
+        </p>
+        {sedi.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            disabled={switching}
+            onClick={() => apri(s.id)}
+            className="flex w-full items-center gap-3 rounded-xl border bg-background/40 px-4 py-3 text-left transition-colors hover:bg-accent disabled:opacity-50"
+          >
+            <MapPin className="size-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium">{s.nome}</span>
+              {(s.indirizzo || s.comune) && (
+                <span className="block truncate text-xs text-muted-foreground">
+                  {[s.indirizzo, s.comune].filter(Boolean).join(" · ")}
+                </span>
+              )}
+            </span>
+            <ArrowRight className="size-4 shrink-0 text-muted-foreground/50" />
+          </button>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function AccountClient({
+  data,
+  chain = false,
+  nomeGruppo = null,
+  sedi = [],
+}: {
+  data: AccountData;
+  chain?: boolean;
+  nomeGruppo?: string | null;
+  sedi?: Sede[];
+}) {
   const pianoLabel = PIANO_LABEL[data.piano] ?? data.piano;
   const pianoPrezzo = PIANO_PREZZO[data.piano] ?? "";
+
+  // Contesto catena: identità del gruppo + elenco sedi al posto della scheda
+  // "Il tuo ristorante" e del piano per-sede. Tema e password restano account-level.
+  if (chain) {
+    return (
+      <div className="space-y-6">
+        <GruppoCard nomeGruppo={nomeGruppo} email={data.email} membroDal={data.membro_dal} numPv={sedi.length} />
+        <SediGruppoCard sedi={sedi} />
+        <AspettoCard temaSalvato={data.tema ?? "dark"} />
+        <CambioPasswordForm />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

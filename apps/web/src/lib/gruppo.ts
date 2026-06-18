@@ -7,6 +7,19 @@ export type GruppoKpi = {
   fatturato: number;
   margine_medio_perc: number;
   spesa_fornitori: number;
+  mol: number;
+};
+
+export type MolMensile = {
+  mese: number;
+  mol: number;
+};
+
+export type SalutePV = {
+  ristorante_id: string;
+  nome: string;
+  indice: number;
+  colore: "verde" | "giallo" | "rosso";
 };
 
 export type RankingPV = {
@@ -30,8 +43,11 @@ export type GruppoOverview = {
   periodo_label: string;
   briefing: GruppoBriefing;
   kpi: GruppoKpi;
+  mol_mensile: MolMensile[];
+  mol_mensile_anno: number;
   salute_indice: number;
   salute_colore: "verde" | "giallo" | "rosso";
+  salute_pv: SalutePV[];
   ranking: RankingPV[];
 };
 

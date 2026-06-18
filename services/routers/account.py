@@ -312,7 +312,19 @@ def account_sedi(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
     sedi = resp.data or []
     attiva = _resolve_ristorante_id(user, sb)
 
+    # nome_gruppo (etichetta account, vive su users): la sidebar lo usa come
+    # identità del footer quando il cliente è nel contesto catena.
+    nome_gruppo = ""
+    try:
+        ug = (
+            sb.table("users").select("nome_gruppo").eq("id", user_id).single().execute()
+        )
+        nome_gruppo = str((ug.data or {}).get("nome_gruppo") or "").strip()
+    except Exception:
+        nome_gruppo = ""
+
     return {
+        "nome_gruppo": nome_gruppo or None,
         "sedi": [
             {
                 "id": str(s["id"]),

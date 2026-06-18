@@ -1114,12 +1114,30 @@ def auth_login(body: LoginRequest, request: Request) -> LoginResponse:
         logger.exception("Errore creazione sessione")
         raise HTTPException(status_code=500, detail="Errore creazione sessione")
 
+    # num_sedi serve subito al client per atterrare i clienti catena (≥2 sedi) su
+    # /catena invece che sulla Home del PV. Stessa count di auth_me.
+    num_sedi = 1
+    try:
+        cnt = (
+            _get_supabase_client()
+            .table("ristoranti")
+            .select("id", count="exact")
+            .eq("user_id", user["id"])
+            .eq("attivo", True)
+            .execute()
+        )
+        if cnt.count is not None:
+            num_sedi = int(cnt.count)
+    except Exception:
+        pass
+
     return LoginResponse(
         token=token,
         user=UserPublic(
             id=str(user["id"]),
             email=user["email"],
             nome_ristorante=user.get("nome_ristorante"),
+            num_sedi=num_sedi,
             pagine_abilitate=_normalize_pagine(user.get("pagine_abilitate")),
             is_admin=_is_admin_email(user.get("email")),
         ),

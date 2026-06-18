@@ -26,7 +26,15 @@ function euro(n: number): string {
   }).format(n);
 }
 
-export function GruppoTagSection() {
+// Tag di catena = FINESTRA della plancia /catena (non una pagina separata).
+// Raggruppa lo stesso prodotto su tutti i PV e confronta la spesa per sede.
+export function TagCatenaDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
   const [tags, setTags] = useState<GruppoTag[]>([]);
   const [loading, setLoading] = useState(true);
   const [nuovo, setNuovo] = useState("");
@@ -47,9 +55,10 @@ export function GruppoTagSection() {
     }
   }, []);
 
+  // Carica solo all'apertura della finestra (lazy → non pesa sulla Sintesi).
   useEffect(() => {
-    loadTags();
-  }, [loadTags]);
+    if (open) loadTags();
+  }, [open, loadTags]);
 
   async function creaTag() {
     const nome = nuovo.trim();
@@ -84,70 +93,78 @@ export function GruppoTagSection() {
   }
 
   return (
-    <section className="rounded-2xl border bg-card p-5">
-      <div className="flex items-center gap-2">
-        <Building2 className="size-5 text-primary" />
-        <h2 className="text-base font-semibold">Tag di catena</h2>
-      </div>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Raggruppa gli stessi prodotti su tutti i punti vendita e confronta la spesa
-        per sede. Sono separati dai tag del singolo locale.
-      </p>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[90vh] w-[min(96vw,46rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
+          <DialogHeader className="border-b px-5 py-4">
+            <DialogTitle className="flex items-center gap-2 text-base">
+              <Building2 className="size-5 text-primary" />
+              Tag di catena
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[calc(90vh-5rem)] overflow-auto p-5">
+            <p className="text-sm text-muted-foreground">
+              Raggruppa gli stessi prodotti su tutti i punti vendita e confronta la spesa
+              per sede. Sono separati dai tag del singolo locale.
+            </p>
 
-      {/* Crea nuovo tag */}
-      <div className="mt-4 flex gap-2">
-        <Input
-          value={nuovo}
-          onChange={(e) => setNuovo(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && creaTag()}
-          placeholder="Nuovo tag di catena (es. Salmone, Imballaggi…)"
-          disabled={creating}
-        />
-        <Button onClick={creaTag} disabled={creating || !nuovo.trim()}>
-          <Plus className="size-4" />
-          Crea
-        </Button>
-      </div>
-
-      {/* Lista tag */}
-      <div className="mt-4 space-y-2">
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Caricamento…</p>
-        ) : tags.length === 0 ? (
-          <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
-            Nessun tag di catena. Creane uno per confrontare un prodotto fra i punti vendita.
-          </p>
-        ) : (
-          tags.map((t) => (
-            <div
-              key={t.id}
-              className="flex items-center gap-3 rounded-xl border bg-background/40 px-4 py-3"
-            >
-              <TagIcon className="size-4 shrink-0 text-muted-foreground" />
-              <span className="flex-1 truncate text-sm font-medium">{t.nome}</span>
-              <span className="text-xs text-muted-foreground">
-                {t.n_prodotti ?? 0} {t.n_prodotti === 1 ? "prodotto" : "prodotti"}
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => setProdottiTag(t)}>
-                <Search className="size-4" />
-                Prodotti
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setAnalisiTag(t)}>
-                <BarChart3 className="size-4" />
-                Analisi
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-muted-foreground hover:text-destructive"
-                onClick={() => eliminaTag(t.id)}
-              >
-                <Trash2 className="size-4" />
+            {/* Crea nuovo tag */}
+            <div className="mt-4 flex gap-2">
+              <Input
+                value={nuovo}
+                onChange={(e) => setNuovo(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && creaTag()}
+                placeholder="Nuovo tag di catena (es. Salmone, Imballaggi…)"
+                disabled={creating}
+              />
+              <Button onClick={creaTag} disabled={creating || !nuovo.trim()}>
+                <Plus className="size-4" />
+                Crea
               </Button>
             </div>
-          ))
-        )}
-      </div>
+
+            {/* Lista tag */}
+            <div className="mt-4 space-y-2">
+              {loading ? (
+                <p className="text-sm text-muted-foreground">Caricamento…</p>
+              ) : tags.length === 0 ? (
+                <p className="rounded-xl border border-dashed py-6 text-center text-sm text-muted-foreground">
+                  Nessun tag di catena. Creane uno per confrontare un prodotto fra i punti vendita.
+                </p>
+              ) : (
+                tags.map((t) => (
+                  <div
+                    key={t.id}
+                    className="flex items-center gap-3 rounded-xl border bg-background/40 px-4 py-3"
+                  >
+                    <TagIcon className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="flex-1 truncate text-sm font-medium">{t.nome}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {t.n_prodotti ?? 0} {t.n_prodotti === 1 ? "prodotto" : "prodotti"}
+                    </span>
+                    <Button variant="ghost" size="sm" onClick={() => setProdottiTag(t)}>
+                      <Search className="size-4" />
+                      Prodotti
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => setAnalisiTag(t)}>
+                      <BarChart3 className="size-4" />
+                      Analisi
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-muted-foreground hover:text-destructive"
+                      onClick={() => eliminaTag(t.id)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {prodottiTag && (
         <ProdottiDialog
@@ -156,10 +173,8 @@ export function GruppoTagSection() {
           onChanged={loadTags}
         />
       )}
-      {analisiTag && (
-        <AnalisiDialog tag={analisiTag} onClose={() => setAnalisiTag(null)} />
-      )}
-    </section>
+      {analisiTag && <AnalisiDialog tag={analisiTag} onClose={() => setAnalisiTag(null)} />}
+    </>
   );
 }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Download } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -61,6 +62,33 @@ export function FinestraSpesaPV({
     ? Math.max(0, ...data.rows.flatMap((r) => data.pv.map((p) => r.per_pv[p.id] ?? 0)))
     : 0;
 
+  // Export Excel della pivot (xlsx lazy: libreria pesante, solo al click).
+  async function exportXls() {
+    if (!data) return;
+    const XLSX = await import("xlsx");
+    const dimLabel = data.dimensione === "fornitore" ? "Fornitore" : "Categoria";
+    const header = [dimLabel, ...data.pv.map((p) => p.nome), "Totale", "%"];
+    const rows = data.rows.map((r) => {
+      const row: Record<string, string | number> = { [dimLabel]: r.dim_val };
+      data.pv.forEach((p) => {
+        row[p.nome] = Math.round((r.per_pv[p.id] ?? 0) * 100) / 100;
+      });
+      row["Totale"] = Math.round(r.totale * 100) / 100;
+      row["%"] = `${r.incidenza_pct.toFixed(1)}%`;
+      return row;
+    });
+    const totaleRow: Record<string, string | number> = { [dimLabel]: "TOTALE" };
+    data.pv.forEach((p) => {
+      totaleRow[p.nome] = Math.round((data.totali_pv[p.id] ?? 0) * 100) / 100;
+    });
+    totaleRow["Totale"] = Math.round(data.grand_total * 100) / 100;
+    totaleRow["%"] = "100%";
+    const ws = XLSX.utils.json_to_sheet([...rows, totaleRow], { header });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, dimLabel.slice(0, 31));
+    XLSX.writeFile(wb, `spesa_per_pv_${data.dimensione}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] w-[min(96vw,72rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
@@ -77,6 +105,15 @@ export function FinestraSpesaPV({
                 <option value="categoria">Per categoria</option>
                 <option value="fornitore">Per fornitore</option>
               </NativeSelect>
+              <button
+                type="button"
+                onClick={exportXls}
+                disabled={!data || data.rows.length === 0}
+                className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                <Download className="size-3.5" />
+                Esporta
+              </button>
             </span>
           </DialogTitle>
         </DialogHeader>

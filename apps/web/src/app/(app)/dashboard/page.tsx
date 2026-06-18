@@ -1,6 +1,4 @@
 import { Suspense } from "react";
-import { redirect } from "next/navigation";
-import { getCurrentSession } from "@/lib/auth";
 import { fetchBriefing, fetchSalute, fetchConfig, fetchKpi } from "@/lib/home";
 import { fetchNotifiche } from "@/lib/notifiche";
 import { HomeBriefing } from "./home-briefing";
@@ -132,14 +130,11 @@ async function ChatBlock() {
 }
 
 export default async function DashboardPage() {
-  // Cliente catena (≥2 sedi): la sua Home è la plancia di gruppo, non quella del
-  // singolo PV. getCurrentSession è cache()ata col layout → nessun round-trip in
-  // più. Per i mono-sede (default) non cambia nulla.
-  const session = await getCurrentSession();
-  if (session.status === "ok" && (session.user.num_sedi ?? 1) >= 2) {
-    redirect("/catena");
-  }
-
+  // /dashboard è la Home del PUNTO VENDITA (sede attiva), anche per i clienti
+  // catena: ci si arriva scendendo in un PV dalla plancia /catena. L'atterraggio
+  // dei clienti catena su /catena avviene al login (vista di gruppo = il loro
+  // punto di vista naturale), non con un redirect qui — che altrimenti renderebbe
+  // la Home del PV irraggiungibile nel drill-down.
   return (
     <>
       <HomeAutoRefresh />

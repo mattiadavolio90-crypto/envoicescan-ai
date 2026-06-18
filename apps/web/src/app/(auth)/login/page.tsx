@@ -61,7 +61,13 @@ function LoginForm() {
         return;
       }
 
-      const destination = next || (data.user?.is_admin ? "/admin" : defaultNext());
+      // Atterraggio: admin → /admin; cliente catena (≥2 sedi) su desktop → /catena
+      // (la plancia di gruppo è il suo punto di vista naturale, "prima l'insieme,
+      // poi scendi nel PV"); tutti gli altri → default (/dashboard o /m su telefono).
+      const isCatena = (data.user?.num_sedi ?? 1) >= 2 && !isPhoneViewport();
+      const destination =
+        next ||
+        (data.user?.is_admin ? "/admin" : isCatena ? "/catena" : defaultNext());
       window.location.href = destination;
     } catch (err) {
       console.error(err);

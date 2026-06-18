@@ -57,6 +57,19 @@ class GruppoKpi(BaseModel):
     fatturato: float            # Σ fatturato_netto del periodo (totale gruppo)
     margine_medio_perc: float   # margine % aggregato del gruppo (Σmol / Σnetto)
     spesa_fornitori: float      # Σ costi_fb_totali del periodo
+    mol: float                  # Σ mol del periodo (totale gruppo, valore assoluto)
+
+
+class MolMensile(BaseModel):
+    mese: int
+    mol: float                  # Σ mol del mese su tutti i PV (per sparkline andamento)
+
+
+class SalutePV(BaseModel):
+    ristorante_id: str
+    nome: str
+    indice: int                 # 0-100, stessa formula della salute PV
+    colore: str                 # "verde" | "giallo" | "rosso"
 
 
 class RankingPV(BaseModel):
@@ -80,8 +93,11 @@ class GruppoOverviewResponse(BaseModel):
     periodo_label: str
     briefing: GruppoBriefing
     kpi: GruppoKpi
+    mol_mensile: List[MolMensile]   # serie MOL per mese (sparkline andamento gruppo)
+    mol_mensile_anno: int
     salute_indice: int          # media semplice degli indici di salute dei PV
     salute_colore: str          # "verde" | "giallo" | "rosso"
+    salute_pv: List[SalutePV]   # dettaglio per-PV (voci della card salute gruppo)
     ranking: List[RankingPV]
 
 
@@ -301,7 +317,7 @@ def _resolve_gruppo(authorization: Optional[str]):
 
     sedi_resp = (
         sb.table("ristoranti")
-        .select("id, nome_ristorante, nome_gruppo")
+        .select("id, nome_ristorante")
         .eq("user_id", user_id)
         .eq("attivo", True)
         .order("created_at")
@@ -311,11 +327,21 @@ def _resolve_gruppo(authorization: Optional[str]):
     if len(sedi) < 2:
         raise HTTPException(status_code=400, detail="Account non multi-sede: nessun gruppo da mostrare.")
 
-    nome_gruppo = ""
-    for s in sedi:
-        if s.get("nome_gruppo"):
-            nome_gruppo = str(s["nome_gruppo"])
-            break
+    # nome_gruppo è un'etichetta a livello account: vive su users, non su ristoranti.
+    # La sessione non porta sempre questo campo, quindi lo rileggiamo qui.
+    nome_gruppo = str(user.get("nome_gruppo") or "").strip()
+    if not nome_gruppo:
+        try:
+            ug = (
+                sb.table("users")
+                .select("nome_gruppo")
+                .eq("id", user_id)
+                .single()
+                .execute()
+            )
+            nome_gruppo = str((ug.data or {}).get("nome_gruppo") or "").strip()
+        except Exception:
+            nome_gruppo = ""
     if not nome_gruppo:
         nome_gruppo = "Gruppo"
 
@@ -350,7 +376,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # qui sommiamo per ristorante_id — niente loop sulle righe fattura.
     mm_resp = (
         sb.table("margini_mensili")
-        .select("ristorante_id,fatturato_netto,mol,costi_fb_totali")
+        .select("ristorante_id,mese,fatturato_netto,mol,costi_fb_totali")
         .in_("ristorante_id", ids)
         .eq("anno", anno)
         .execute()
@@ -358,6 +384,8 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     agg: Dict[str, Dict[str, float]] = {
         rid: {"netto": 0.0, "mol": 0.0, "fb": 0.0} for rid in ids
     }
+    mol_per_mese: Dict[int, float] = {}
+    netto_per_mese: Dict[int, float] = {}
     for r in (mm_resp.data or []):
         rid = str(r.get("ristorante_id"))
         a = agg.get(rid)
@@ -366,6 +394,13 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         a["netto"] += float(r.get("fatturato_netto") or 0)
         a["mol"] += float(r.get("mol") or 0)
         a["fb"] += float(r.get("costi_fb_totali") or 0)
+        try:
+            m = int(r.get("mese"))
+        except (TypeError, ValueError):
+            m = 0
+        if m:
+            mol_per_mese[m] = mol_per_mese.get(m, 0.0) + float(r.get("mol") or 0)
+            netto_per_mese[m] = netto_per_mese.get(m, 0.0) + float(r.get("fatturato_netto") or 0)
 
     tot_netto = sum(a["netto"] for a in agg.values())
     tot_mol = sum(a["mol"] for a in agg.values())
@@ -376,7 +411,16 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         fatturato=round(tot_netto, 2),
         margine_medio_perc=margine_medio,
         spesa_fornitori=round(tot_fb, 2),
+        mol=round(tot_mol, 2),
     )
+
+    # Serie MOL mensile del gruppo (solo mesi con ricavi → la sparkline non mostra
+    # i mesi futuri vuoti a zero). Σmol per mese su tutti i PV.
+    mol_mensile = [
+        MolMensile(mese=m, mol=round(mol_per_mese.get(m, 0.0), 2))
+        for m in sorted(mol_per_mese.keys())
+        if netto_per_mese.get(m, 0.0) > 0
+    ]
 
     # Ranking per margine%; PV senza ricavi = dati incompleti, in coda.
     ranking: List[RankingPV] = []
@@ -395,15 +439,30 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # Completi prima (margine% desc), incompleti in coda (per nome).
     ranking.sort(key=lambda x: (x.dati_incompleti, -(x.margine_perc or 0), x.nome))
 
-    # Salute del gruppo = MEDIA SEMPLICE degli indici di salute dei PV.
-    indici = [_salute_indice_sede(sb, rid) for rid in ids]
+    # Salute del gruppo = MEDIA SEMPLICE degli indici di salute dei PV. Esponiamo
+    # anche il dettaglio per-PV (le "voci" della card salute gruppo).
+    def _colore_salute(ix: int) -> str:
+        if ix >= 80:
+            return "verde"
+        if ix >= 50:
+            return "giallo"
+        return "rosso"
+
+    indici_map = {rid: _salute_indice_sede(sb, rid) for rid in ids}
+    indici = list(indici_map.values())
     salute_indice = round(sum(indici) / len(indici)) if indici else 0
-    if salute_indice >= 80:
-        salute_colore = "verde"
-    elif salute_indice >= 50:
-        salute_colore = "giallo"
-    else:
-        salute_colore = "rosso"
+    salute_colore = _colore_salute(salute_indice)
+    # Dettaglio per-PV, dal più debole (serve attenzione) al più sano.
+    salute_pv = [
+        SalutePV(
+            ristorante_id=rid,
+            nome=rid_to_nome[rid],
+            indice=indici_map[rid],
+            colore=_colore_salute(indici_map[rid]),
+        )
+        for rid in ids
+    ]
+    salute_pv.sort(key=lambda x: x.indice)
 
     # Briefing: legge il conteggio segnali dalla cache di OGGI (read-only, niente
     # ricalcolo qui → overview resta leggera; i segnali si calcolano alla loro
@@ -417,8 +476,11 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         periodo_label=periodo_label,
         briefing=briefing,
         kpi=kpi,
+        mol_mensile=mol_mensile,
+        mol_mensile_anno=anno,
         salute_indice=salute_indice,
         salute_colore=salute_colore,
+        salute_pv=salute_pv,
         ranking=ranking,
     )
 
