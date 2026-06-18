@@ -4508,6 +4508,20 @@ def _salute_indice_rosso(ristorante_id: str, supabase_client) -> bool:
         except Exception:
             pass
 
+        # Modalità 'mensile': fatturato in ricavi_modalita_mensile (vedi
+        # home_salute). Senza questo fallback un cliente che inserisce il totale
+        # mensile (es. CASATI 14) risulterebbe a fatturato mancante -> salute
+        # rossa fasulla e briefing soppresso a torto.
+        if not fatturato_ok:
+            try:
+                ov = _load_mensile_overrides(
+                    supabase_client, ristorante_id, [mc_anno]
+                ).get((mc_anno, mc_mese))
+                if ov and (ov.get("iva10", 0) + ov.get("iva22", 0) + ov.get("altri", 0)) > 0:
+                    fatturato_ok = True
+            except Exception:
+                pass
+
         score_fatture = 100 if fatture_ok else 0
         score_fatturato = 100 if fatturato_ok else 0
         score_personale = 100 if personale_ok else 0
@@ -5106,6 +5120,20 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
         fatturato_ok = netto > 0
     except Exception as exc:
         logger.warning("home_salute: lettura fatturato/personale margini fallita: %s", exc)
+
+    # Modalità 'mensile': il fatturato NON sta in margini_mensili ma in
+    # ricavi_modalita_mensile (il cliente inserisce il totale del mese, non i
+    # giornalieri). La pagina Margini e il segnale del briefing lo considerano;
+    # senza questo fallback la card Salute direbbe "manca maggio" anche se il
+    # fatturato è inserito (caso CASATI 14). Stessa fonte di
+    # _briefing_dati_mensili_mancanti -> card e briefing restano coerenti.
+    if not fatturato_ok:
+        try:
+            ov = _load_mensile_overrides(sb, ristorante_id, [mc_anno]).get((mc_anno, mc_mese))
+            if ov and (ov.get("iva10", 0) + ov.get("iva22", 0) + ov.get("altri", 0)) > 0:
+                fatturato_ok = True
+        except Exception as exc:
+            logger.warning("home_salute: lettura override mensile fallita: %s", exc)
 
     # ── Voce 4: Righe classificate (% righe del mese senza needs_review) ──
     tot_righe = len(righe_mese)
