@@ -216,81 +216,57 @@ def _conta_segnali_cache(sb, user_id: str) -> tuple[int, str]:
     return 0, "info"
 
 
-def _salute_indice_sede(sb, ristorante_id: str) -> int:
-    """Indice di salute (0-100) di una sede, stessa formula di /api/home/salute.
+def _salute_indici_batch(sb, ids: List[str]) -> Dict[str, int]:
+    """Indice di salute (0-100) per OGNI sede in UNA sola query (RPC
+    gruppo_salute_componenti), stessa formula 4-voci di /api/home/salute.
 
-    4 voci a peso uguale: fatture caricate di recente, fatturato ultimo mese
-    completo, costo personale ultimo mese completo, % righe classificate.
-    Versione compatta e autonoma (la catena fa la MEDIA SEMPLICE di questi
-    indici): non tocca l'endpoint PV vivo, replica solo il calcolo. Se la formula
-    PV cambia, allineare anche qui (come già fa _salute_indice_rosso).
-    """
+    Sostituisce le N chiamate per-sede in serie (2 query a sede, incl. full-load
+    fatture) che rallentavano l'overview a worker freddo. 4 voci a peso uguale:
+    fatture caricate di recente, fatturato ultimo mese completo, costo personale
+    ultimo mese completo, % righe classificate. Se la formula PV cambia, allineare
+    qui e nella RPC."""
     from datetime import datetime as _dt, timedelta as _td
     try:
         from zoneinfo import ZoneInfo
         oggi = _dt.now(tz=ZoneInfo("Europe/Rome")).date()
     except Exception:
         oggi = _dt.now().date()
-    inizio = oggi - _td(days=29)
-    inizio_dt = _dt.combine(inizio, _dt.min.time())
+    inizio_dt = _dt.combine(oggi - _td(days=29), _dt.min.time())
     if oggi.month == 1:
         mc_anno, mc_mese = oggi.year - 1, 12
     else:
         mc_anno, mc_mese = oggi.year, oggi.month - 1
 
-    # Voce 1 + voce 4: fatture caricate di recente + % classificate
-    fatture_ok = False
-    pct_classificate = 0
+    out: Dict[str, int] = {rid: 0 for rid in ids}
+    if not ids:
+        return out
     try:
-        resp = (
-            sb.table("fatture")
-            .select("needs_review")
-            .eq("ristorante_id", ristorante_id)
-            .is_("deleted_at", "null")
-            .gte("created_at", inizio_dt.isoformat())
-            .execute()
-        )
-        righe = resp.data or []
-        tot = len(righe)
-        fatture_ok = tot > 0
-        if tot > 0:
-            da_controllare = sum(1 for r in righe if r.get("needs_review"))
-            pct_classificate = round((tot - da_controllare) / tot * 100)
+        res = sb.rpc("gruppo_salute_componenti", {
+            "p_ristorante_ids": ids,
+            "p_inizio": inizio_dt.isoformat(),
+            "p_anno": mc_anno,
+            "p_mese": mc_mese,
+        }).execute()
+        for r in (res.data or []):
+            rid = str(r.get("ristorante_id"))
+            if rid not in out:
+                continue
+            n_fatture = int(r.get("n_fatture") or 0)
+            n_needs = int(r.get("n_needs_review") or 0)
+            netto = float(r.get("netto") or 0)
+            personale = float(r.get("personale") or 0)
+            fatture_ok = n_fatture > 0
+            pct_classificate = round((n_fatture - n_needs) / n_fatture * 100) if n_fatture > 0 else 0
+            score = (
+                (100 if fatture_ok else 0)
+                + (100 if netto > 0 else 0)
+                + (100 if personale > 0 else 0)
+                + (pct_classificate if fatture_ok else 0)
+            ) / 4
+            out[rid] = round(score)
     except Exception:
         pass
-
-    # Voci 2 e 3: fatturato + costo personale ultimo mese completo
-    fatturato_ok = False
-    personale_ok = False
-    try:
-        resp = (
-            sb.table("margini_mensili")
-            .select("fatturato_iva10,fatturato_iva22,altri_ricavi_noiva,costo_dipendenti,costo_personale_extra")
-            .eq("ristorante_id", ristorante_id)
-            .eq("anno", mc_anno)
-            .eq("mese", mc_mese)
-            .execute()
-        )
-        netto = 0.0
-        for r in (resp.data or []):
-            netto += (
-                float(r.get("fatturato_iva10") or 0)
-                + float(r.get("fatturato_iva22") or 0)
-                + float(r.get("altri_ricavi_noiva") or 0)
-            )
-            if (float(r.get("costo_dipendenti") or 0) + float(r.get("costo_personale_extra") or 0)) > 0:
-                personale_ok = True
-        fatturato_ok = netto > 0
-    except Exception:
-        pass
-
-    score = (
-        (100 if fatture_ok else 0)
-        + (100 if fatturato_ok else 0)
-        + (100 if personale_ok else 0)
-        + (pct_classificate if fatture_ok else 0)
-    ) / 4
-    return round(score)
+    return out
 
 
 def _periodo_anno_corrente() -> tuple[int, str]:
@@ -448,7 +424,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
             return "giallo"
         return "rosso"
 
-    indici_map = {rid: _salute_indice_sede(sb, rid) for rid in ids}
+    indici_map = _salute_indici_batch(sb, ids)
     indici = list(indici_map.values())
     salute_indice = round(sum(indici) / len(indici)) if indici else 0
     salute_colore = _colore_salute(salute_indice)
