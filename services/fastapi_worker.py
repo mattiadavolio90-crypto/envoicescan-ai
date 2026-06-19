@@ -3954,7 +3954,22 @@ def _briefing_dati_mensili_mancanti(
             .limit(1)
             .execute()
         )
+        # Storia incassi: segnaliamo il buco di IERI solo se la sede ha GIA' inserito
+        # almeno un incasso giornaliero in passato. Un cliente nuovo (o che lavora a
+        # mensile senza override registrato) non deve vedere "manca l'incasso di ieri"
+        # dal primo giorno: non e' un buco, e' una sede che non usa i giornalieri.
+        ha_storia_incassi = False
         if not mese_corrente_mensile and not (ric.data or []):
+            stor = (
+                supabase_client.table("ricavi_giornalieri")
+                .select("data")
+                .eq("ristorante_id", ristorante_id)
+                .lt("data", ieri)
+                .limit(1)
+                .execute()
+            )
+            ha_storia_incassi = bool(stor.data or [])
+        if not mese_corrente_mensile and not (ric.data or []) and ha_storia_incassi:
             out.append({
                 "id": f"incasso-mancante-live-{ieri}",
                 "topic_key": "incasso_mancante",

@@ -40,25 +40,42 @@ def _mese_corrente():
     return oggi.year, oggi.month
 
 
-def _sb(margini_rows, incasso_ieri=True, modalita_rows=None):
+def _sb(margini_rows, incasso_ieri=True, modalita_rows=None, ha_storia=True):
     """Mock supabase a tre tabelle.
 
     La funzione interroga 'margini_mensili', 'ricavi_modalita_mensile' (override
-    della modalità mensile) e 'ricavi_giornalieri'.
+    della modalità mensile) e 'ricavi_giornalieri' (due query: incasso di IERI con
+    .eq("data", ieri); storia incassi con .lt("data", ieri)).
     incasso_ieri=True -> riga di ieri presente (nessuna notifica incasso).
+    ha_storia=True -> esiste almeno un incasso giornaliero in passato.
     modalita_rows -> righe di ricavi_modalita_mensile (modalità 'mensile').
     """
     incasso_rows = [{"data": "2026-06-03"}] if incasso_ieri else []
+    storia_rows = [{"data": "2026-05-01"}] if ha_storia else []
     modalita_rows = modalita_rows or []
 
-    state = {"table": None}
+    state = {"table": None, "rg_query": None}
 
     def _table(name):
         state["table"] = name
+        state["rg_query"] = None
+        return q
+
+    def _eq(*a, **k):
+        # La query "incasso di ieri" usa .eq("data", ...): marcala.
+        if a and a[0] == "data":
+            state["rg_query"] = "ieri"
+        return q
+
+    def _lt(*a, **k):
+        # La query "storia incassi" usa .lt("data", ...): marcala.
+        state["rg_query"] = "storia"
         return q
 
     def _execute():
         if state["table"] == "ricavi_giornalieri":
+            if state["rg_query"] == "storia":
+                return MagicMock(data=storia_rows)
             return MagicMock(data=incasso_rows)
         if state["table"] == "ricavi_modalita_mensile":
             return MagicMock(data=modalita_rows)
@@ -67,7 +84,8 @@ def _sb(margini_rows, incasso_ieri=True, modalita_rows=None):
     q = MagicMock()
     q.table.side_effect = _table
     q.select.return_value = q
-    q.eq.return_value = q
+    q.eq.side_effect = _eq
+    q.lt.side_effect = _lt
     q.in_.return_value = q
     q.limit.return_value = q
     q.execute.side_effect = _execute
@@ -163,6 +181,19 @@ def test_incasso_ieri_mancante_genera_notifica():
     }]
     out = _briefing_dati_mensili_mancanti(RID, _sb(rows, incasso_ieri=False))
     assert _topics(out) == {"incasso_mancante"}
+
+
+def test_incasso_ieri_mancante_ma_senza_storia_nessun_alert():
+    # Decisione 19/06: niente "manca l'incasso di ieri" se la sede non ha MAI
+    # inserito incassi giornalieri (cliente nuovo / sede che non usa i giornalieri).
+    rows = [{
+        "fatturato_iva10": 1000, "fatturato_iva22": 0, "altri_ricavi_noiva": 0,
+        "costo_dipendenti": 500, "costo_personale_extra": 0,
+    }]
+    out = _briefing_dati_mensili_mancanti(
+        RID, _sb(rows, incasso_ieri=False, ha_storia=False)
+    )
+    assert "incasso_mancante" not in _topics(out)
 
 
 def test_incasso_e_mensili_insieme():
