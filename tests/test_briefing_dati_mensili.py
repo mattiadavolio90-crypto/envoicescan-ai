@@ -204,6 +204,16 @@ def test_incasso_e_mensili_insieme():
     }
 
 
+def test_toggle_spento_non_genera_il_topic():
+    # Toggle-gating 19/06: i topic spenti NON vengono generati (la funzione non
+    # gira il singolo check). Spengo fatturato e incasso: resta solo personale.
+    out = _briefing_dati_mensili_mancanti(
+        RID, _sb([], incasso_ieri=False),
+        spenti={"fatturato_mancante", "incasso_mancante"},
+    )
+    assert _topics(out) == {"costo_personale_mancante"}
+
+
 # ── Modalità mensile: il fatturato sta in ricavi_modalita_mensile ────────────
 
 def test_fatturato_mensile_soddisfa_alert():

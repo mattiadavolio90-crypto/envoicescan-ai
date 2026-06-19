@@ -3836,7 +3836,7 @@ def _briefing_appuntamenti_oggi(
 
 
 def _briefing_dati_mensili_mancanti(
-    ristorante_id: str, supabase_client,
+    ristorante_id: str, supabase_client, spenti: Optional[set] = None,
 ) -> List[Dict[str, Any]]:
     """Notifiche LIVE dati mancanti per il briefing Home: fatturato e costo
     personale del mese precedente (fonte: /api/home/salute) + incasso di ieri
@@ -3865,6 +3865,7 @@ def _briefing_dati_mensili_mancanti(
     else:
         mc_anno, mc_mese = oggi.year, oggi.month - 1
     mese_label = _MESI_IT_BRIEFING[mc_mese]
+    spenti = spenti or set()
 
     fatturato_ok = False
     personale_ok = False
@@ -3906,7 +3907,7 @@ def _briefing_dati_mensili_mancanti(
             logger.warning("briefing dati mensili: lettura override mensile fallita: %s", exc)
 
     out: List[Dict[str, Any]] = []
-    if not fatturato_ok:
+    if not fatturato_ok and "fatturato_mancante" not in spenti:
         out.append({
             "id": f"fatturato-mancante-live-{mc_anno}-{mc_mese:02d}",
             "topic_key": "fatturato_mancante",
@@ -3919,7 +3920,7 @@ def _briefing_dati_mensili_mancanti(
             "source_event_at": None,
             "dedupe_key": f"fatturato-mancante-live-{mc_anno}-{mc_mese:02d}",
         })
-    if not personale_ok:
+    if not personale_ok and "costo_personale_mancante" not in spenti:
         out.append({
             "id": f"costo-personale-mancante-live-{mc_anno}-{mc_mese:02d}",
             "topic_key": "costo_personale_mancante",
@@ -3937,59 +3938,64 @@ def _briefing_dati_mensili_mancanti(
     # (/api/ricavi/notifica-mancante) ma calcolata live qui, cosi' compare nel
     # briefing anche sull'app nuova senza dipendere da quella chiamata. Niente
     # tolleranza weekend/chiusura: identico all'endpoint (non inventiamo qui una
-    # semantica di chiusura che non esiste in DB).
-    try:
-        # Se il mese corrente è in modalità 'mensile' il cliente non inserisce i
-        # giornalieri di proposito: l'incasso di ieri non mancherà mai davvero,
-        # quindi niente alert (altrimenti tornerebbe ogni giorno).
-        mese_corrente_mensile = (oggi.year, oggi.month) in _load_mensile_overrides(
-            supabase_client, ristorante_id, [oggi.year]
-        )
-        ieri = (oggi - _td2(days=1)).isoformat()
-        ric = (
-            supabase_client.table("ricavi_giornalieri")
-            .select("data")
-            .eq("ristorante_id", ristorante_id)
-            .eq("data", ieri)
-            .limit(1)
-            .execute()
-        )
-        # Storia incassi: segnaliamo il buco di IERI solo se la sede ha GIA' inserito
-        # almeno un incasso giornaliero in passato. Un cliente nuovo (o che lavora a
-        # mensile senza override registrato) non deve vedere "manca l'incasso di ieri"
-        # dal primo giorno: non e' un buco, e' una sede che non usa i giornalieri.
-        ha_storia_incassi = False
-        if not mese_corrente_mensile and not (ric.data or []):
-            stor = (
+    # semantica di chiusura che non esiste in DB). Toggle spento -> non calcolare.
+    if "incasso_mancante" not in spenti:
+        try:
+            # Se il mese corrente è in modalità 'mensile' il cliente non inserisce i
+            # giornalieri di proposito: l'incasso di ieri non mancherà mai davvero,
+            # quindi niente alert (altrimenti tornerebbe ogni giorno).
+            mese_corrente_mensile = (oggi.year, oggi.month) in _load_mensile_overrides(
+                supabase_client, ristorante_id, [oggi.year]
+            )
+            ieri = (oggi - _td2(days=1)).isoformat()
+            ric = (
                 supabase_client.table("ricavi_giornalieri")
                 .select("data")
                 .eq("ristorante_id", ristorante_id)
-                .lt("data", ieri)
+                .eq("data", ieri)
                 .limit(1)
                 .execute()
             )
-            ha_storia_incassi = bool(stor.data or [])
-        if not mese_corrente_mensile and not (ric.data or []) and ha_storia_incassi:
-            out.append({
-                "id": f"incasso-mancante-live-{ieri}",
-                "topic_key": "incasso_mancante",
-                "source_type": "live",
-                "severity": "warning",
-                "title": "Manca l'incasso di ieri",
-                "body": "",
-                "action_page": "/margini",
-                "payload": {},
-                "source_event_at": None,
-                "dedupe_key": f"incasso-mancante-live-{ieri}",
-            })
-    except Exception as exc:
-        logger.warning("briefing dati mensili: check incasso ieri fallito: %s", exc)
+            # Storia incassi: segnaliamo il buco di IERI solo se la sede ha GIA'
+            # inserito almeno un incasso giornaliero in passato. Un cliente nuovo (o
+            # che lavora a mensile senza override registrato) non deve vedere "manca
+            # l'incasso di ieri" dal primo giorno: non e' un buco, e' una sede che
+            # non usa i giornalieri.
+            ha_storia_incassi = False
+            if not mese_corrente_mensile and not (ric.data or []):
+                stor = (
+                    supabase_client.table("ricavi_giornalieri")
+                    .select("data")
+                    .eq("ristorante_id", ristorante_id)
+                    .lt("data", ieri)
+                    .limit(1)
+                    .execute()
+                )
+                ha_storia_incassi = bool(stor.data or [])
+            if not mese_corrente_mensile and not (ric.data or []) and ha_storia_incassi:
+                out.append({
+                    "id": f"incasso-mancante-live-{ieri}",
+                    "topic_key": "incasso_mancante",
+                    "source_type": "live",
+                    "severity": "warning",
+                    "title": "Manca l'incasso di ieri",
+                    "body": "",
+                    "action_page": "/margini",
+                    "payload": {},
+                    "source_event_at": None,
+                    "dedupe_key": f"incasso-mancante-live-{ieri}",
+                })
+        except Exception as exc:
+            logger.warning("briefing dati mensili: check incasso ieri fallito: %s", exc)
 
     # Anomalia COPERTI di ieri: notifica SOLO su scostamento forte vs riferimento
-    # (settimana o mese precedente). Parametrizzata in COPERTI_ALERT, niente
-    # rumore quotidiano. Best-effort: non blocca le altre notifiche.
+    # (mese in corso). Parametrizzata in COPERTI_ALERT, niente rumore quotidiano.
+    # Toggle spento -> non calcolare. Best-effort: non blocca le altre notifiche.
     try:
-        anomalia = _briefing_anomalia_coperti(ristorante_id, supabase_client, oggi)
+        anomalia = (
+            _briefing_anomalia_coperti(ristorante_id, supabase_client, oggi)
+            if "coperti_anomalia" not in spenti else None
+        )
         if anomalia:
             out.append(anomalia)
     except Exception as exc:
@@ -4679,8 +4685,28 @@ def _briefing_raccogli_notifiche(
     budget 4s): tutti gli altri segnali live (fatture/righe/dati mancanti) sono
     leggeri. Serve al briefing ISTANTANEO del fast-path 2, che cosi' resta
     coerente (mai un falso "tutto in ordine") senza pagare i 4s dell'alert prezzi.
+
+    Toggle-gating (decisione 19/06): se un avviso e' SPENTO nel configuratore, la
+    sua funzione NON gira proprio (non si limita a filtrare il risultato a valle).
+    Conta soprattutto per l'alert prezzi (budget 4s) e i check con query dedicate:
+    calcolarli per poi buttarli e' lavoro sprecato.
     """
     from datetime import datetime as _dt, timezone as _tz
+
+    # Topic spenti dal configuratore (espansi alle key dello stesso tema). I topic
+    # bloccati (upload falliti) non si spengono mai. Best-effort: se la lettura
+    # fallisce, non spegniamo nulla (fail-open, come il filtro a valle).
+    spenti: set = set()
+    if ristorante_id:
+        try:
+            from services.daily_briefing_service import espandi_topic_spenti
+            _td_pref = _get_assistant_preferences(ristorante_id, supabase_client).get("topics_disabled")
+            spenti = {
+                t for t in espandi_topic_spenti(_td_pref)
+                if t not in _CONFIG_TOPICS_BLOCCATI
+            }
+        except Exception as exc:
+            logger.warning("home_briefing: lettura topic spenti fallita: %s", exc)
 
     # Notifiche attive (stesso filtro di /api/notifiche, senza dismissed).
     # Filtro per SEDE: il briefing di una sede non deve includere le notifiche
@@ -4714,7 +4740,7 @@ def _briefing_raccogli_notifiche(
         # alert sbagliato sui marginali. Per questo la rimozione sta PRIMA del
         # calcolo, fuori dal try — altrimenti su un timeout il legacy resterebbe.
         notifications = [n for n in notifications if n.get("topic_key") != "price_alert"]
-    if ristorante_id and includi_alert_prezzi:
+    if ristorante_id and includi_alert_prezzi and "price_alert" not in spenti:
         try:
             from services.price_impact_service import calcola_alert_prezzi_impatto
             # Budget di tempo: l'alert prezzi e' un "di piu'" del briefing, non deve
@@ -4842,7 +4868,7 @@ def _briefing_raccogli_notifiche(
                 )
             ]
             notifications.extend(
-                _briefing_dati_mensili_mancanti(ristorante_id, supabase_client)
+                _briefing_dati_mensili_mancanti(ristorante_id, supabase_client, spenti)
             )
         except Exception as exc:
             logger.warning("home_briefing: dati mensili mancanti falliti: %s", exc)
@@ -4854,7 +4880,7 @@ def _briefing_raccogli_notifiche(
     # fatture gia' caricate (nessun upload recente), la card Salute le mostrava ma
     # la campanella no -> incoerenza. Rimuovo la versione upload (puo' essere
     # stantia: non si aggiorna quando classifichi) e uso il conteggio live.
-    if ristorante_id:
+    if ristorante_id and "uncategorized_rows" not in spenti:
         try:
             notifications = [
                 n for n in notifications if n.get("topic_key") != "uncategorized_rows"
@@ -4869,7 +4895,7 @@ def _briefing_raccogli_notifiche(
     # card e' rossa su "Fatture caricate", anche il briefing deve segnalarlo —
     # tutte le sedi dentro l'app sono operative, non esiste lo stato "in avvio
     # silenzioso". Calcolo LIVE (created_at ultimi 30 gg), zero persistenza.
-    if ristorante_id:
+    if ristorante_id and "fatture_mancanti" not in spenti:
         try:
             _n_fatt = _briefing_fatture_mancanti(ristorante_id, supabase_client)
             if _n_fatt is not None:
