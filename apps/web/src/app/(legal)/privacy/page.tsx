@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <LegalProse>
       <h1 className="text-2xl font-bold text-foreground">Privacy & Cookie Policy</h1>
       <p className="text-xs text-muted-foreground">
-        Ultimo aggiornamento: 2 giugno 2026 — versione 4.0 (interfaccia Next.js)
+        Ultimo aggiornamento: 19 giugno 2026 — versione 4.1
       </p>
 
       <h2>Titolare del Trattamento</h2>
@@ -224,8 +224,8 @@ export default function PrivacyPage() {
         relativo timestamp viene registrato a fini probatori.
       </p>
       <p>
-        Il consenso è revocabile in qualsiasi momento eliminando l&apos;account tramite la funzione
-        &quot;Elimina Account&quot; nella sezione Impostazioni.
+        Il consenso è revocabile in qualsiasi momento eliminando l&apos;account da{" "}
+        <strong>Impostazioni → Privacy e dati → &quot;Elimina il mio account&quot;</strong>.
       </p>
 
       <h2>Misure di Sicurezza Tecniche e Organizzative</h2>
@@ -275,9 +275,12 @@ export default function PrivacyPage() {
           ["Accesso (Art. 15)", "Visualizzazione dati tramite interfaccia app"],
           [
             "Cancellazione (Art. 17)",
-            "Funzione \"Elimina Account\" self-service — eliminazione permanente immediata",
+            "Impostazioni → Privacy e dati → \"Elimina il mio account\": eliminazione permanente e immediata, self-service",
           ],
-          ["Portabilità (Art. 20)", "Download dati in formato strutturato"],
+          [
+            "Portabilità (Art. 20)",
+            "Impostazioni → Privacy e dati → \"Scarica i miei dati\": export in formato JSON strutturato",
+          ],
           ["Rettifica (Art. 16)", "Modifica dati anagrafici dal profilo"],
           ["Opposizione (Art. 21)", "Contatto email con il Titolare"],
           ["Limitazione (Art. 18)", "Richiesta via email al Titolare"],

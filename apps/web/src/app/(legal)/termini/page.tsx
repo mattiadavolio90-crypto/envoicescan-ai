@@ -11,7 +11,7 @@ export default function TerminiPage() {
   return (
     <LegalProse>
       <h1 className="text-2xl font-bold text-foreground">Termini di Servizio</h1>
-      <p className="text-xs text-muted-foreground">Ultimo aggiornamento: 2 giugno 2026</p>
+      <p className="text-xs text-muted-foreground">Ultimo aggiornamento: 19 giugno 2026</p>
 
       <h2>1. Oggetto del Servizio</h2>
       <p>

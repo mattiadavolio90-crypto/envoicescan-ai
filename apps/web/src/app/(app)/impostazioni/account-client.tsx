@@ -291,6 +291,128 @@ function ZonaPericolosa() {
   );
 }
 
+function PrivacyGdprCard() {
+  const router = useRouter();
+  const [downloading, setDownloading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [conferma, setConferma] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleEsporta() {
+    setDownloading(true);
+    try {
+      const res = await fetch("/api/account/esporta-dati");
+      if (!res.ok) {
+        toast.error("Errore durante l'esportazione. Riprova.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `oneflux-dati-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Dati scaricati.");
+    } catch {
+      toast.error("Errore di connessione. Riprova.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleElimina() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/account/elimina", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conferma: "ELIMINA" }),
+      });
+      if (res.ok) {
+        toast.success("Account eliminato.");
+        router.replace("/login");
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
+      toast.error(data?.detail || "Errore durante l'eliminazione.");
+    } catch {
+      toast.error("Errore di connessione. Riprova.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Card className="border-destructive/40">
+      <CardHeader>
+        <CardTitle className="text-base">Privacy e dati</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {/* Art. 20 — portabilità */}
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground max-w-prose">
+            Scarica una copia di tutti i tuoi dati (profilo, fatture, ricette, margini,
+            ricavi, diario…) in formato JSON strutturato.
+          </p>
+          <Button variant="outline" onClick={handleEsporta} disabled={downloading}>
+            {downloading ? "Preparazione…" : "Scarica i miei dati"}
+          </Button>
+        </div>
+
+        {/* Art. 17 — cancellazione */}
+        <div className="space-y-2 border-t pt-4">
+          <p className="text-sm text-muted-foreground max-w-prose">
+            <span className="font-medium text-destructive">Elimina il tuo account</span> e
+            tutti i dati collegati in modo <span className="font-medium text-foreground">permanente
+            e irreversibile</span>. L&apos;operazione non può essere annullata.
+          </p>
+          <Button variant="destructive" onClick={() => setOpen(true)}>
+            Elimina il mio account
+          </Button>
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setConferma(""); }}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Eliminare definitivamente l&apos;account?</DialogTitle>
+                <DialogDescription>
+                  Tutti i tuoi dati verranno eliminati in modo permanente e non
+                  recuperabile. Per procedere, scrivi{" "}
+                  <span className="font-semibold">ELIMINA</span> qui sotto.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-1.5">
+                <Label htmlFor="conferma-elimina">Conferma</Label>
+                <Input
+                  id="conferma-elimina"
+                  value={conferma}
+                  onChange={(e) => setConferma(e.target.value)}
+                  placeholder="ELIMINA"
+                  autoComplete="off"
+                  disabled={loading}
+                />
+              </div>
+              <DialogFooter>
+                <Button variant="outline" disabled={loading} onClick={() => setOpen(false)}>
+                  Annulla
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleElimina}
+                  disabled={loading || conferma.trim().toUpperCase() !== "ELIMINA"}
+                >
+                  {loading ? "Eliminazione…" : "Elimina definitivamente"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function AspettoCard({ temaSalvato }: { temaSalvato: "dark" | "light" }) {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
@@ -610,6 +732,9 @@ export function AccountClient({
 
       {/* Cambio password */}
       <CambioPasswordForm />
+
+      {/* Privacy e dati (GDPR) — solo clienti: export Art.20 + elimina account Art.17 */}
+      {!data.is_admin && <PrivacyGdprCard />}
 
       {/* Zona pericolosa — solo admin: svuota i dati del proprio ambiente di test */}
       {data.is_admin && <ZonaPericolosa />}

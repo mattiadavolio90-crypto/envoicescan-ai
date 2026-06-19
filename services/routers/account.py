@@ -293,6 +293,111 @@ def account_svuota_dati(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GDPR — diritti dell'interessato self-service (Art. 17 cancellazione, Art. 20 portabilità)
+# ─────────────────────────────────────────────────────────────────────────────
+# Esercitabili dall'utente stesso dalle Impostazioni, senza passare dall'admin.
+# L'id target è SEMPRE quello del token verificato (mai un parametro client), quindi
+# un utente può esportare/cancellare SOLO sé stesso.
+
+class EliminaAccountBody(BaseModel):
+    conferma: Optional[str] = None
+
+
+@router.get("/api/account/esporta-dati", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
+def account_esporta_dati(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
+    """GDPR Art. 20 (portabilità) — esporta in JSON strutturato tutti i dati
+    personali e operativi dell'utente che chiama. Mai password/hash, mai token.
+    L'id è quello del token: si esporta solo sé stessi."""
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user["id"])
+    sb = _get_supabase_client()
+
+    export: Dict[str, Any] = {
+        "esportato_il": datetime.now(timezone.utc).isoformat(),
+        "titolare_trattamento": "Recoma System S.r.l. (P.IVA IT09599210961)",
+        "nota": "Export dati personali ai sensi dell'art. 20 GDPR. Non include password (solo hash, non esportabile) né token di sessione.",
+    }
+
+    # Profilo (whitelist di campi: niente password_hash, reset_code, token)
+    try:
+        prof = sb.table("users").select(
+            "id,email,nome_ristorante,nome_referente,partita_iva,ragione_sociale,"
+            "tema,piano,privacy_accepted_at,created_at"
+        ).eq("id", user_id).limit(1).execute()
+        export["profilo"] = (prof.data or [None])[0]
+    except Exception as exc:
+        logger.warning("esporta-dati: profilo: %s", exc)
+        export["profilo"] = None
+
+    # Tabelle dati dell'utente. (tabella, colonna_user, etichetta_export)
+    _TABELLE = [
+        ("ristoranti", "user_id", "ristoranti"),
+        ("fatture", "user_id", "fatture"),
+        ("margini_mensili", "user_id", "margini_mensili"),
+        ("ricavi_giornalieri", "user_id", "ricavi_giornalieri"),
+        ("spese_extra", "user_id", "spese_extra"),
+        ("ricette", "userid", "ricette"),
+        ("ingredienti_utente", "userid", "ingredienti_utente"),
+        ("inventario_voci", "user_id", "inventario_voci"),
+        ("diario_eventi", "user_id", "diario_eventi"),
+        ("turni_personale", "user_id", "turni_personale"),
+        ("notification_inbox", "user_id", "notifiche"),
+    ]
+    for tabella, col, label in _TABELLE:
+        try:
+            r = sb.table(tabella).select("*").eq(col, user_id).execute()
+            export[label] = r.data or []
+        except Exception as exc:
+            logger.warning("esporta-dati: %s: %s", tabella, exc)
+            export[label] = []
+
+    return export
+
+
+@router.post("/api/account/elimina", tags=["Account"], dependencies=[Depends(_verify_worker_key)])
+def account_elimina(
+    body: EliminaAccountBody,
+    authorization: Optional[str] = Header(None),
+) -> Dict[str, Any]:
+    """GDPR Art. 17 (cancellazione) — l'utente elimina il PROPRIO account e tutti i
+    dati collegati, in modo permanente. L'id è quello del token verificato: si può
+    cancellare solo sé stessi. Gli account admin non sono cancellabili da qui (guard).
+
+    La cancellazione della riga `users` propaga via ON DELETE CASCADE a fatture,
+    ristoranti, ricette, sessioni, ricavi, margini, tag, notifiche, ecc. La memoria
+    AI globale (prodotti_master) NON è dato personale del singolo e resta.
+    """
+    if (body.conferma or "").strip().upper() != "ELIMINA":
+        raise HTTPException(status_code=400, detail="Scrivi ELIMINA per confermare")
+
+    user = _resolve_user_from_token(authorization)
+    user_id = str(user.get("id") or "").strip()
+    email = str(user.get("email") or "").lower()
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Utente non risolto")
+
+    # Guard: gli account admin non si auto-eliminano da questa route (evita lock-out
+    # accidentale dell'amministrazione). L'eventuale rimozione admin passa altrove.
+    if _is_admin_email(email):
+        raise HTTPException(status_code=403, detail="Gli account amministratore non possono essere eliminati da qui")
+
+    sb = _get_supabase_client()
+    # La cancellazione di users propaga in cascata (FK ON DELETE CASCADE). Una manciata
+    # di tabelle storiche con user_id TEXT/senza FK vengono ripulite esplicitamente prima.
+    deleted_extra: Dict[str, int] = {}
+    for tabella, col in [("upload_events", "user_id"), ("classificazioni_manuali", "user_id")]:
+        try:
+            r = sb.table(tabella).delete().eq(col, user_id).execute()
+            deleted_extra[tabella] = len(r.data or [])
+        except Exception as exc:
+            logger.warning("elimina-account: %s: %s", tabella, exc)
+
+    sb.table("users").delete().eq("id", user_id).execute()
+    logger.warning("ELIMINA_ACCOUNT_SELF: email=%s | id=%s | extra=%s", email, user_id, deleted_extra)
+    return {"ok": True, "messaggio": "Account e dati eliminati in modo permanente."}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SEDI — switch fra ristoranti dello stesso account (clienti multi-sede)
 # ─────────────────────────────────────────────────────────────────────────────
 # Un cliente con una sola P.IVA può avere più ristoranti (sedi). La sede attiva è
