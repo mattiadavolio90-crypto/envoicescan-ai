@@ -17090,6 +17090,11 @@
             "type": "boolean",
             "title": "Alert Prezzi Solo Preferiti",
             "default": false
+          },
+          "giorni_chiusura_settimanali": {
+            "type": "integer",
+            "title": "Giorni Chiusura Settimanali",
+            "default": 0
           }
         },
         "type": "object",
@@ -17186,6 +17191,17 @@
               }
             ],
             "title": "Alert Prezzi Solo Preferiti"
+          },
+          "giorni_chiusura_settimanali": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Giorni Chiusura Settimanali"
           }
         },
         "type": "object",

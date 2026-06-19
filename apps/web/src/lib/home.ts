@@ -43,6 +43,9 @@ export type AssistantConfig = {
   // Se true, gli avvisi prezzi si limitano ai prodotti preferiti (stella in pagina
   // Prezzi) + tag. Se non hai preferiti, ricevi solo gli avvisi sui tag.
   alert_prezzi_solo_preferiti: boolean;
+  // Giorni di chiusura a settimana (0-6): tolleranza dell'avviso "ricavi automatici
+  // assenti". 0 = sempre aperto -> avviso dopo 1 giorno senza ricavi.
+  giorni_chiusura_settimanali: number;
 };
 
 export type SaluteVoce = {

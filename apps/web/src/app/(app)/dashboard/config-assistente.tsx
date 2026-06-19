@@ -28,6 +28,7 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
   // solo un filtro di visualizzazione). Stringa per gestire input parziali ("5,").
   const [soglia, setSoglia] = useState(String(config.price_alert_threshold ?? 5));
   const [soloPreferiti, setSoloPreferiti] = useState(config.alert_prezzi_solo_preferiti ?? false);
+  const [giorniChiusura, setGiorniChiusura] = useState(config.giorni_chiusura_settimanali ?? 0);
   const [saving, setSaving] = useState(false);
 
   // L'avviso "Alert prezzi" governa la soglia: se è spento, il campo soglia non
@@ -55,6 +56,7 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
           chat_ai_enabled: chatEnabled,
           price_alert_threshold: sogliaNum,
           alert_prezzi_solo_preferiti: soloPreferiti,
+          giorni_chiusura_settimanali: giorniChiusura,
         }),
       });
       if (!res.ok) throw new Error();
@@ -174,6 +176,29 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
                 </div>
               ))}
             </div>
+
+            {/* Giorni di chiusura: regola la tolleranza dell'avviso sui ricavi
+                automatici (0 = sempre aperto -> avviso dopo 1 giorno). */}
+            <div className="flex items-start justify-between gap-3 rounded-lg border bg-card px-3 py-2.5">
+              <div className="text-sm">
+                <p className="font-medium">Giorni di chiusura a settimana</p>
+                <p className="text-xs text-muted-foreground">
+                  Se chiudi qualche giorno, non ti avviso per i ricavi mancanti in quei giorni.
+                </p>
+              </div>
+              <select
+                value={giorniChiusura}
+                onChange={(e) => setGiorniChiusura(Number(e.target.value))}
+                className="h-8 rounded-md border bg-background px-2 text-sm"
+              >
+                {[0, 1, 2, 3, 4, 5, 6].map((n) => (
+                  <option key={n} value={n}>
+                    {n === 0 ? "Sempre aperto" : `${n} ${n === 1 ? "giorno" : "giorni"}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <p className="text-xs text-muted-foreground">
               Gli avvisi sui caricamenti falliti restano sempre attivi: sono problemi tecnici
               da non perdere.

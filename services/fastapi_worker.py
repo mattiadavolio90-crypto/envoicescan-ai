@@ -1805,6 +1805,9 @@ class ConfigResponse(BaseModel):
     # Se true, gli avvisi prezzi (briefing + Home) si limitano ai prodotti
     # preferiti (stella in pagina Prezzi) + tag. Default false = Pareto + tag.
     alert_prezzi_solo_preferiti: bool = False
+    # Giorni di chiusura a settimana (0-6): regola la tolleranza dell'avviso
+    # "ricavi automatici assenti" (finestra = giorni_chiusura + 1).
+    giorni_chiusura_settimanali: int = 0
 
 
 class ConfigUpdateRequest(BaseModel):
@@ -1815,6 +1818,8 @@ class ConfigUpdateRequest(BaseModel):
     price_alert_threshold: Optional[float] = None
     # None = non toccare.
     alert_prezzi_solo_preferiti: Optional[bool] = None
+    # None = non toccare. Clamp [0,6] lato salvataggio.
+    giorni_chiusura_settimanali: Optional[int] = None
 
 
 class MolMensilePoint(BaseModel):
@@ -4433,7 +4438,7 @@ def _get_assistant_preferences(ristorante_id: str, supabase_client) -> Dict[str,
     try:
         resp = (
             supabase_client.table("assistant_preferences")
-            .select("nome_referente,topics_disabled,chat_ai_enabled,alert_prezzi_solo_preferiti")
+            .select("nome_referente,topics_disabled,chat_ai_enabled,alert_prezzi_solo_preferiti,giorni_chiusura_settimanali")
             .eq("ristorante_id", ristorante_id)
             .limit(1)
             .execute()
@@ -4721,20 +4726,22 @@ def _briefing_raccogli_notifiche(
     """
     from datetime import datetime as _dt, timezone as _tz
 
-    # Topic spenti dal configuratore (espansi alle key dello stesso tema). I topic
-    # bloccati (upload falliti) non si spengono mai. Best-effort: se la lettura
-    # fallisce, non spegniamo nulla (fail-open, come il filtro a valle).
+    # Topic spenti dal configuratore (espansi alle key dello stesso tema) + giorni
+    # di chiusura settimanali. I topic bloccati (upload falliti) non si spengono
+    # mai. Best-effort: se la lettura fallisce, non spegniamo nulla (fail-open).
     spenti: set = set()
+    giorni_chiusura = 0
     if ristorante_id:
         try:
             from services.daily_briefing_service import espandi_topic_spenti
-            _td_pref = _get_assistant_preferences(ristorante_id, supabase_client).get("topics_disabled")
+            _pref = _get_assistant_preferences(ristorante_id, supabase_client)
             spenti = {
-                t for t in espandi_topic_spenti(_td_pref)
+                t for t in espandi_topic_spenti(_pref.get("topics_disabled"))
                 if t not in _CONFIG_TOPICS_BLOCCATI
             }
+            giorni_chiusura = int(_pref.get("giorni_chiusura_settimanali") or 0)
         except Exception as exc:
-            logger.warning("home_briefing: lettura topic spenti fallita: %s", exc)
+            logger.warning("home_briefing: lettura preferenze assistente fallita: %s", exc)
 
     # Notifiche attive (stesso filtro di /api/notifiche, senza dismissed).
     # Filtro per SEDE: il briefing di una sede non deve includere le notifiche
@@ -4831,7 +4838,11 @@ def _briefing_raccogli_notifiche(
             mappato = bool(mapres.data)
             if mappato:
                 from datetime import date as _date, timedelta as _tdelta
-                finestra_giorni = 3
+                # Finestra = giorni di chiusura settimanali + 1 (decisione 19/06):
+                # sede sempre aperta (0) -> avviso dopo 1 giorno senza ricavi; con N
+                # giorni di chiusura ne tolleriamo N prima di allarmare. Cosi' una
+                # sede con chiusura fissa non riceve falsi allarmi nel suo giorno.
+                finestra_giorni = giorni_chiusura + 1
                 # _oggi_rome() (non date.today() = UTC su Railway): nella finestra
                 # notturna italiana l'UTC e' ancora il giorno prima e l'avviso
                 # comparirebbe/sparirebbe in modo incoerente con incasso_mancante.
@@ -5633,6 +5644,7 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     disabled: set = set()
     chat_ai_enabled = True
     solo_preferiti = False
+    giorni_chiusura = 0
     if ristorante_id:
         pref = _get_assistant_preferences(ristorante_id, sb)
         if pref:
@@ -5643,6 +5655,7 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
             if pref.get("chat_ai_enabled") is not None:
                 chat_ai_enabled = bool(pref["chat_ai_enabled"])
             solo_preferiti = bool(pref.get("alert_prezzi_solo_preferiti"))
+            giorni_chiusura = int(pref.get("giorni_chiusura_settimanali") or 0)
 
     if not nome:
         nome = str(user.get("nome_referente") or "")
@@ -5676,6 +5689,7 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
         chat_domande_oggi=domande_oggi,
         price_alert_threshold=price_alert_threshold,
         alert_prezzi_solo_preferiti=solo_preferiti,
+        giorni_chiusura_settimanali=giorni_chiusura,
     )
 
 
@@ -5720,6 +5734,9 @@ def home_config_post(
     # alert_prezzi_solo_preferiti: aggiornato solo se passato (None = non toccare).
     if body.alert_prezzi_solo_preferiti is not None:
         record["alert_prezzi_solo_preferiti"] = bool(body.alert_prezzi_solo_preferiti)
+    # giorni_chiusura_settimanali: clamp [0,6], aggiornato solo se passato.
+    if body.giorni_chiusura_settimanali is not None:
+        record["giorni_chiusura_settimanali"] = max(0, min(6, int(body.giorni_chiusura_settimanali)))
 
     try:
         sb.table("assistant_preferences").upsert(
@@ -5735,14 +5752,16 @@ def home_config_post(
     _invalidate_assist_pref_cache(ristorante_id)
     _LIVE_SEGNALI_CACHE.pop(ristorante_id, None)
 
-    # Cambiare quali prodotti generano avvisi (preferiti vs Pareto) cambia il
-    # briefing di oggi -> invalidalo cosi' si rigenera con la nuova logica.
-    if body.alert_prezzi_solo_preferiti is not None:
+    # Cambiare quali prodotti generano avvisi (preferiti vs Pareto) o i giorni di
+    # chiusura (tolleranza ricavi automatici) cambia il briefing di oggi ->
+    # invalidalo cosi' si rigenera con la nuova logica.
+    if (body.alert_prezzi_solo_preferiti is not None
+            or body.giorni_chiusura_settimanali is not None):
         try:
             from services.daily_briefing_service import invalidate_today_briefing
             invalidate_today_briefing(str(user["id"]), ristorante_id, sb)
         except Exception as exc:
-            logger.warning("home_config_post: invalidazione briefing (preferiti) fallita: %s", exc)
+            logger.warning("home_config_post: invalidazione briefing (preferiti/chiusura) fallita: %s", exc)
 
     # Soglia alert prezzi (per-utente). Qui e' l'UNICO punto che la imposta: in
     # pagina Prezzi e' solo un filtro di visualizzazione. Cambiarla cambia quali
