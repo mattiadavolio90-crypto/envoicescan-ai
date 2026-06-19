@@ -50,6 +50,7 @@ export function AscoltaButton({ testo, className }: { testo: string; className?:
       synth.cancel();
       const u = new SpeechSynthesisUtterance(testo);
       u.lang = "it-IT";
+      u.rate = 1.15; // un filo piu' svelto della voce di sistema di default
       const it = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith("it"));
       if (it) u.voice = it;
       u.onend = () => setStato("idle");
@@ -66,9 +67,17 @@ export function AscoltaButton({ testo, className }: { testo: string; className?:
     try {
       const audio = new Audio(`/api/tts?q=${encodeURIComponent(testo)}`);
       audioRef.current = audio;
+      // La voce Google Translate legge lenta: acceleriamo del 30%. preservesPitch
+      // mantiene il tono naturale (niente effetto "Paperino"). Va impostato anche
+      // a 'playing' perche' alcuni browser lo resettano al caricamento.
+      audio.preservesPitch = true;
+      audio.playbackRate = 1.3;
       audio.onended = () => setStato("idle");
       audio.onerror = () => fallbackWebSpeech();
-      audio.onplaying = () => setStato("playing");
+      audio.onplaying = () => {
+        audio.playbackRate = 1.3;
+        setStato("playing");
+      };
       await audio.play();
     } catch {
       // play() rifiutato o rete KO -> voce di sistema.
