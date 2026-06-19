@@ -1447,32 +1447,54 @@ class TagAnalisiPV(BaseModel):
     quantita: float
     n_righe: int
     n_fornitori: int
+    incidenza_pct: float                # % della spesa PV sul totale gruppo
+    prezzo_medio: Optional[float]       # spesa/quantità del PV (None se quantità 0)
+
+
+class TagFornitore(BaseModel):
+    nome: str
+    spesa: float
+    incidenza_pct: float
+    n_righe: int
+
+
+class TagTrendPunto(BaseModel):
+    anno: int
+    mese: int
+    spesa: float
 
 
 class GruppoTagAnalisiResponse(BaseModel):
     tag_id: int
     nome: str
+    emoji: Optional[str] = None
     periodo_label: str
     spesa_totale: float
+    quantita_totale: float
+    prezzo_medio: Optional[float]       # spesa/quantità di gruppo
+    n_fornitori: int                    # fornitori distinti sul gruppo
     per_pv: List[TagAnalisiPV]
+    fornitori: List[TagFornitore]
+    trend: List[TagTrendPunto]
 
 
 @router.get("/api/gruppo/tag/{tag_id}/analisi", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
 def gruppo_tag_analisi(
     tag_id: int,
-    data_da: Optional[str] = None,
-    data_a: Optional[str] = None,
+    mese: Optional[int] = None,
     authorization: Optional[str] = Header(None),
 ) -> GruppoTagAnalisiResponse:
-    """Analisi macro PER PV del tag di catena: spesa/quantità/righe/fornitori per
-    ogni punto vendita, via RPC SQL (no full-load)."""
+    """Analisi ricca del tag di catena, tutto via RPC SQL (no full-load):
+    per-PV (spesa, quantità, prezzo medio, incidenza, fornitori), classifica
+    fornitori del gruppo e trend mensile. `mese` opzionale per il periodo."""
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
     tag_row = (
-        sb.table("gruppo_tags").select("id,nome").eq("id", int(tag_id)).eq("user_id", user_id).limit(1).execute()
+        sb.table("gruppo_tags").select("id,nome,emoji").eq("id", int(tag_id)).eq("user_id", user_id).limit(1).execute()
     ).data or []
     if not tag_row:
         raise HTTPException(status_code=404, detail="Tag di catena non trovato")
     nome = tag_row[0].get("nome") or "Tag"
+    emoji = tag_row[0].get("emoji")
 
     keys = [
         r["descrizione_key"]
@@ -1481,35 +1503,82 @@ def gruppo_tag_analisi(
             .eq("tag_id", int(tag_id)).eq("user_id", user_id).execute()
         ).data or []
     ]
-    da, a, periodo_label = _periodo_da_query(data_da, data_a)
+
+    # Periodo: mese specifico o anno corrente fino a oggi (coerente con le altre
+    # finestre catena, niente mesi futuri).
+    import calendar as _cal
+    anno, mese_corr = _anno_mese_corrente()
+    mese_sel = mese if (mese and 1 <= mese <= 12) else None
+    if mese_sel:
+        da = f"{anno}-{mese_sel:02d}-01"
+        a = f"{anno}-{mese_sel:02d}-{_cal.monthrange(anno, mese_sel)[1]:02d}"
+        periodo_label = f"{_MESI_IT[mese_sel - 1].capitalize()} {anno}"
+    else:
+        da = f"{anno}-01-01"
+        a = f"{anno}-{mese_corr:02d}-{_cal.monthrange(anno, mese_corr)[1]:02d}"
+        periodo_label = f"Anno {anno}"
 
     per_pv: List[TagAnalisiPV] = []
+    fornitori: List[TagFornitore] = []
+    trend: List[TagTrendPunto] = []
     if keys:
-        res = sb.rpc("gruppo_tag_analisi", {
-            "p_ristorante_ids": ids,
-            "p_descrizione_keys": keys,
-            "p_data_da": da,
-            "p_data_a": a,
-        }).execute()
+        params = {
+            "p_ristorante_ids": ids, "p_descrizione_keys": keys,
+            "p_data_da": da, "p_data_a": a,
+        }
+        res = sb.rpc("gruppo_tag_analisi", params).execute()
         by_rid = {str(r.get("ristorante_id")): r for r in (res.data or [])}
+        tot = sum(float(r.get("spesa") or 0) for r in (res.data or []))
         for rid in ids:
             r = by_rid.get(rid)
+            spesa = float(r.get("spesa") or 0) if r else 0.0
+            qta = float(r.get("quantita") or 0) if r else 0.0
             per_pv.append(TagAnalisiPV(
                 ristorante_id=rid,
                 nome=rid_to_nome[rid],
-                spesa=round(float(r.get("spesa") or 0), 2) if r else 0.0,
-                quantita=round(float(r.get("quantita") or 0), 2) if r else 0.0,
+                spesa=round(spesa, 2),
+                quantita=round(qta, 2),
                 n_righe=int(r.get("n_righe") or 0) if r else 0,
                 n_fornitori=int(r.get("n_fornitori") or 0) if r else 0,
+                incidenza_pct=round(spesa / tot * 100, 1) if tot > 0 else 0.0,
+                prezzo_medio=round(spesa / qta, 2) if qta > 0 else None,
             ))
         per_pv.sort(key=lambda x: -x.spesa)
 
+        f_res = sb.rpc("gruppo_tag_fornitori", params).execute()
+        tot_f = sum(float(r.get("spesa") or 0) for r in (f_res.data or []))
+        for r in (f_res.data or []):
+            sp = float(r.get("spesa") or 0)
+            fornitori.append(TagFornitore(
+                nome=r.get("fornitore") or "—",
+                spesa=round(sp, 2),
+                incidenza_pct=round(sp / tot_f * 100, 1) if tot_f > 0 else 0.0,
+                n_righe=int(r.get("n_righe") or 0),
+            ))
+
+        t_res = sb.rpc("gruppo_tag_trend", params).execute()
+        trend = [
+            TagTrendPunto(
+                anno=int(r.get("anno")), mese=int(r.get("mese")),
+                spesa=round(float(r.get("spesa") or 0), 2),
+            )
+            for r in (t_res.data or []) if r.get("mese") is not None
+        ]
+
+    spesa_totale = round(sum(p.spesa for p in per_pv), 2)
+    quantita_totale = round(sum(p.quantita for p in per_pv), 2)
     return GruppoTagAnalisiResponse(
         tag_id=int(tag_id),
         nome=nome,
+        emoji=emoji,
         periodo_label=periodo_label,
-        spesa_totale=round(sum(p.spesa for p in per_pv), 2),
+        spesa_totale=spesa_totale,
+        quantita_totale=quantita_totale,
+        prezzo_medio=round(spesa_totale / quantita_totale, 2) if quantita_totale > 0 else None,
+        n_fornitori=len(fornitori),
         per_pv=per_pv,
+        fornitori=fornitori,
+        trend=trend,
     )
 
 

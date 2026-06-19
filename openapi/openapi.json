@@ -15033,7 +15033,7 @@
           "Catena"
         ],
         "summary": "Gruppo Tag Analisi",
-        "description": "Analisi macro PER PV del tag di catena: spesa/quantità/righe/fornitori per\nogni punto vendita, via RPC SQL (no full-load).",
+        "description": "Analisi ricca del tag di catena, tutto via RPC SQL (no full-load):\nper-PV (spesa, quantità, prezzo medio, incidenza, fornitori), classifica\nfornitori del gruppo e trend mensile. `mese` opzionale per il periodo.",
         "operationId": "gruppo_tag_analisi_api_gruppo_tag__tag_id__analisi_get",
         "parameters": [
           {
@@ -15046,35 +15046,19 @@
             }
           },
           {
-            "name": "data_da",
+            "name": "mese",
             "in": "query",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "type": "string"
+                  "type": "integer"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "title": "Data Da"
-            }
-          },
-          {
-            "name": "data_a",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Data A"
+              "title": "Mese"
             }
           },
           {
@@ -18203,6 +18187,17 @@
             "type": "string",
             "title": "Nome"
           },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
           "periodo_label": {
             "type": "string",
             "title": "Periodo Label"
@@ -18211,12 +18206,45 @@
             "type": "number",
             "title": "Spesa Totale"
           },
+          "quantita_totale": {
+            "type": "number",
+            "title": "Quantita Totale"
+          },
+          "prezzo_medio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prezzo Medio"
+          },
+          "n_fornitori": {
+            "type": "integer",
+            "title": "N Fornitori"
+          },
           "per_pv": {
             "items": {
               "$ref": "#/components/schemas/TagAnalisiPV"
             },
             "type": "array",
             "title": "Per Pv"
+          },
+          "fornitori": {
+            "items": {
+              "$ref": "#/components/schemas/TagFornitore"
+            },
+            "type": "array",
+            "title": "Fornitori"
+          },
+          "trend": {
+            "items": {
+              "$ref": "#/components/schemas/TagTrendPunto"
+            },
+            "type": "array",
+            "title": "Trend"
           }
         },
         "type": "object",
@@ -18225,7 +18253,12 @@
           "nome",
           "periodo_label",
           "spesa_totale",
-          "per_pv"
+          "quantita_totale",
+          "prezzo_medio",
+          "n_fornitori",
+          "per_pv",
+          "fornitori",
+          "trend"
         ],
         "title": "GruppoTagAnalisiResponse"
       },
@@ -21893,6 +21926,21 @@
           "n_fornitori": {
             "type": "integer",
             "title": "N Fornitori"
+          },
+          "incidenza_pct": {
+            "type": "number",
+            "title": "Incidenza Pct"
+          },
+          "prezzo_medio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prezzo Medio"
           }
         },
         "type": "object",
@@ -21902,7 +21950,9 @@
           "spesa",
           "quantita",
           "n_righe",
-          "n_fornitori"
+          "n_fornitori",
+          "incidenza_pct",
+          "prezzo_medio"
         ],
         "title": "TagAnalisiPV"
       },
@@ -21940,6 +21990,57 @@
           "nome"
         ],
         "title": "TagCreateRequest"
+      },
+      "TagFornitore": {
+        "properties": {
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "spesa": {
+            "type": "number",
+            "title": "Spesa"
+          },
+          "incidenza_pct": {
+            "type": "number",
+            "title": "Incidenza Pct"
+          },
+          "n_righe": {
+            "type": "integer",
+            "title": "N Righe"
+          }
+        },
+        "type": "object",
+        "required": [
+          "nome",
+          "spesa",
+          "incidenza_pct",
+          "n_righe"
+        ],
+        "title": "TagFornitore"
+      },
+      "TagTrendPunto": {
+        "properties": {
+          "anno": {
+            "type": "integer",
+            "title": "Anno"
+          },
+          "mese": {
+            "type": "integer",
+            "title": "Mese"
+          },
+          "spesa": {
+            "type": "number",
+            "title": "Spesa"
+          }
+        },
+        "type": "object",
+        "required": [
+          "anno",
+          "mese",
+          "spesa"
+        ],
+        "title": "TagTrendPunto"
       },
       "TagUpdateRequest": {
         "properties": {

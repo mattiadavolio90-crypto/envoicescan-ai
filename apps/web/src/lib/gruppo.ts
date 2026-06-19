@@ -162,12 +162,33 @@ export type TagAnalisiPV = {
   quantita: number;
   n_righe: number;
   n_fornitori: number;
+  incidenza_pct: number;
+  prezzo_medio: number | null;
+};
+
+export type TagFornitore = {
+  nome: string;
+  spesa: number;
+  incidenza_pct: number;
+  n_righe: number;
+};
+
+export type TagTrendPunto = {
+  anno: number;
+  mese: number;
+  spesa: number;
 };
 
 export type GruppoTagAnalisi = {
   tag_id: number;
   nome: string;
+  emoji?: string | null;
   periodo_label: string;
   spesa_totale: number;
+  quantita_totale: number;
+  prezzo_medio: number | null;
+  n_fornitori: number;
   per_pv: TagAnalisiPV[];
+  fornitori: TagFornitore[];
+  trend: TagTrendPunto[];
 };
