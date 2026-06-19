@@ -229,7 +229,7 @@ class TestAppuntamentoActionable:
         n = _notif("uncategorized_rows", "warning", {"uncategorized_rows": 7})
         b = _bullet_for(n)
         assert "7" in b
-        assert "classificazione" in b
+        assert "controllare" in b
 
     def test_uncategorized_rows_fallback_count_key(self):
         n = _notif("uncategorized_rows", "warning", {"count": 5})
@@ -423,7 +423,7 @@ class TestBuildSnapshot:
         ]
         snap = _build_snapshot(notifs, topics_disabled=["price_alert"])
         assert len(snap["bullets"]) == 1
-        assert "classificazione" in snap["bullets"][0]
+        assert "controllare" in snap["bullets"][0]
 
     def test_upload_failed_non_disattivabile(self):
         # upload_failed e' bloccato: resta attivo anche se messo tra gli spenti.
@@ -500,7 +500,7 @@ class TestActionFor:
         # verifica), NON in Analisi e Tag. Deep-link diretto sul filtro.
         n = _notif("uncategorized_rows", "warning", {"count": 7})
         a = _action_for(n)
-        assert a["cta_label"] == "Classifica righe"
+        assert a["cta_label"] == "Controlla righe"
         assert a["cta_page"] == "/analisi-fatture?tab=articoli&verifica=1"
         assert "analisi-e-tag" not in a["cta_page"]
 

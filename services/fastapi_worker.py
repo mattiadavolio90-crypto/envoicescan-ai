@@ -4023,7 +4023,7 @@ def _briefing_righe_da_classificare(
         "topic_key": "uncategorized_rows",
         "source_type": "live",
         "severity": "warning",
-        "title": f"{n} {'riga' if n == 1 else 'righe'} da classificare",
+        "title": f"{n} {'riga' if n == 1 else 'righe'} da controllare",
         "body": "",
         "action_page": "/analisi-fatture?tab=articoli&verifica=1",
         "payload": {"uncategorized_rows": n, "count": n},

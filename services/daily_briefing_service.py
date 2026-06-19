@@ -84,7 +84,7 @@ _TOPIC_PRIORITY: Dict[str, int] = {
     'upload_failed':            10,   # 1. Upload fatture fallito
     'upload_ricavi_failed':     15,   # 2. Upload ricavi fallito (solo se mappato)
     'price_alert':              20,   # 3. Alert prezzi
-    'uncategorized_rows':       30,   # 4. Righe da classificare
+    'uncategorized_rows':       30,   # 4. Righe dubbie da controllare
     'fatture_mancanti':         35,   #    Nessuna fattura caricata di recente (dato primario)
     'fatturato_mancante':       40,   # 5. Fatturato mancante (mese)
     'incasso_mancante':         45,   #    Incasso di ieri mancante (giorno), stesso tema
@@ -113,7 +113,7 @@ _TOPIC_ACTION: Dict[str, tuple] = {
     # controllare (needs_review). La classificazione si fa qui, in Analisi
     # Fatture — NON in Analisi e Tag (quella e' per i tag custom). Prima la CTA
     # portava a /analisi-e-tag: pagina sbagliata, l'utente non trovava cosa fare.
-    'uncategorized_rows':       ('Classifica righe',      '/analisi-fatture?tab=articoli&verifica=1'),
+    'uncategorized_rows':       ('Controlla righe',       '/analisi-fatture?tab=articoli&verifica=1'),
     'coperti_anomalia':         ('Vedi coperti',          '/margini?tab=coperti'),
     'appuntamento_imminente':   ('Vedi agenda',           '/agenda'),
 }
@@ -378,8 +378,8 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
     if topic == 'uncategorized_rows':
         count = payload.get('uncategorized_rows') or payload.get('count')
         if count:
-            righe = 'riga richiede' if count == 1 else 'righe richiedono'
-            return f"\U0001F3F7\ufe0f {count} {righe} classificazione manuale."
+            righe = 'riga dubbia da controllare' if count == 1 else 'righe dubbie da controllare'
+            return f"\U0001F3F7\ufe0f {count} {righe}."
         return f"\U0001F3F7\ufe0f {title}"
 
     if topic == 'appuntamento_imminente':
@@ -607,10 +607,10 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
     if topic == 'uncategorized_rows':
         count = payload.get('uncategorized_rows') or payload.get('count') or _parse_count_from_title(title)
         if count:
-            righe = 'riga attende' if count == 1 else 'righe attendono'
+            righe = 'riga dubbia da controllare' if count == 1 else 'righe dubbie da controllare'
             return (
-                f"{count} {righe} classificazione manuale: "
-                f"categorizzarle rende i tuoi report pi\u00f9 precisi e affidabili."
+                f"{count} {righe}: "
+                f"verificarle rende i tuoi report pi\u00f9 precisi e affidabili."
             )
         return f"{title}."
 

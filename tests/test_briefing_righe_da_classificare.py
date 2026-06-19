@@ -56,10 +56,19 @@ def test_singolare_una_riga():
 
 # ── Fatture mancanti: stesso pattern (voce 1 della Salute) ──
 
-def _sb_fatture(count, partita_iva=None):
-    """Mock a due tabelle: 'fatture' (conteggio) e 'ristoranti' (.single -> P.IVA)."""
+def _sb_fatture(count, partita_iva=None, ultima_created_at=None):
+    """Mock a tre tabelle del caso A:
+      - 'ristoranti' (.single -> P.IVA + user_id)
+      - 'margini_mensili' (caso B: vuoto -> fatturato 0 -> caso B saltato)
+      - 'fatture' (caso A: ultima fattura via order/limit created_at).
+    count=0 -> nessuna fattura recente -> avviso; count>0 -> fattura di OGGI -> ok.
+    """
+    from datetime import datetime, timezone
     sb = MagicMock()
     state = {"table": None}
+
+    if ultima_created_at is None and count:
+        ultima_created_at = datetime.now(timezone.utc).isoformat()
 
     def _table(name):
         state["table"] = name
@@ -67,16 +76,21 @@ def _sb_fatture(count, partita_iva=None):
 
     def _execute():
         if state["table"] == "ristoranti":
-            return MagicMock(data={"partita_iva": partita_iva})
-        return MagicMock(count=count, data=[{"id": i} for i in range(count or 0)])
+            return MagicMock(data={"partita_iva": partita_iva, "user_id": "u1"})
+        if state["table"] == "margini_mensili":
+            return MagicMock(data=[])  # nessun fatturato -> caso B non scatta
+        # fatture: ultima fattura (order created_at desc, limit 1)
+        rows = [{"created_at": ultima_created_at}] if ultima_created_at else []
+        return MagicMock(count=count, data=rows)
 
     q = MagicMock()
-    q.table = None
     sb.table.side_effect = _table
     q.select.return_value = q
     q.eq.return_value = q
     q.is_.return_value = q
     q.gte.return_value = q
+    q.lte.return_value = q
+    q.order.return_value = q
     q.limit.return_value = q
     q.single.return_value = q
     q.execute.side_effect = _execute
@@ -84,7 +98,7 @@ def _sb_fatture(count, partita_iva=None):
 
 
 def test_con_fatture_recenti_nessuna_notifica():
-    # Almeno una fattura negli ultimi 30 gg -> niente avviso.
+    # Una fattura caricata oggi (entro 7 gg) -> niente avviso.
     assert _briefing_fatture_mancanti(RID, _sb_fatture(3)) is None
 
 
@@ -103,3 +117,23 @@ def test_senza_fatture_recenti_canale_sdi():
     assert out is not None
     assert out["payload"]["canale"] == "sdi"
     assert "automatico" in out["title"].lower()
+
+
+def test_ultima_fattura_oltre_7_giorni_scatta():
+    # Decisione 19/06: ultima fattura piu' vecchia di 7 gg -> avviso (era 30 gg).
+    from datetime import datetime, timezone, timedelta
+    otto_gg_fa = (datetime.now(timezone.utc) - timedelta(days=8)).isoformat()
+    out = _briefing_fatture_mancanti(
+        RID, _sb_fatture(1, partita_iva=None, ultima_created_at=otto_gg_fa)
+    )
+    assert out is not None
+    assert out["topic_key"] == "fatture_mancanti"
+
+
+def test_ultima_fattura_entro_7_giorni_silenzio():
+    from datetime import datetime, timezone, timedelta
+    tre_gg_fa = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    out = _briefing_fatture_mancanti(
+        RID, _sb_fatture(1, partita_iva=None, ultima_created_at=tre_gg_fa)
+    )
+    assert out is None
