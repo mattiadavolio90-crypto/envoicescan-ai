@@ -577,45 +577,23 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
         return f"{title}."
 
     if topic == 'price_alert':
+        # Decisione Mattia 19/06: nel briefing si ACCENNA soltanto che ci sono
+        # prodotti/categorie con prezzi cambiati da controllare; il dettaglio
+        # (nome, %, impatto/mese) sta gia' nella card / negli avvisi sotto. Qui
+        # NON ripetiamo nomi propri ne' numeri del singolo prodotto.
         count = payload.get('count') or _parse_count_from_title(title)
-        top_product = payload.get('top_product')
-        top_pct = payload.get('top_increase_pct')
-        # 'tag' = categoria/raggruppamento (es. "BAR, CAFFE'"), non un prodotto:
-        # va chiamato "categoria", altrimenti il testo dice "prodotto" e tra
-        # parentesi cita una categoria -> incomprensibile.
         is_tag = str(payload.get('top_tipo') or '') == 'tag'
-        body = str(notif.get('body') or '')
-        legacy_products = _parse_products_from_price_alert_text(body)
-        if not top_product and legacy_products:
-            top_product = legacy_products[0]
-            if not count:
-                count = len(legacy_products)
-        impatto = payload.get('impatto_mese')
-        if count:
-            if count == 1 and top_product:
-                # Una sola voce: la nomino direttamente, niente "soprattutto"
-                # (che implicherebbe un elenco con count > 1).
-                if is_tag:
-                    soggetto = f"La categoria {top_product} è aumentata"
-                else:
-                    soggetto = f"Il prezzo di {top_product} è aumentato"
-                if top_pct is not None:
-                    soggetto += f" del +{top_pct:.1f}%"
-                    if impatto:
-                        soggetto += f", circa €{int(impatto)} in più al mese"
-                return soggetto + ": vale la pena controllare se puoi rinegoziare o cambiare fornitore."
-
-            # Piu' voci: numero + la piu' pesante come esempio.
-            base = f"Ho notato che {count} voci sono aumentate di prezzo in modo che pesa davvero"
-            if top_product:
-                qualifica = "categoria" if is_tag else "prodotto"
-                base += f" (il {qualifica} più pesante è {top_product}"
-                if top_pct is not None:
-                    base += f", +{top_pct:.1f}%"
-                    if impatto:
-                        base += f", circa €{int(impatto)} in più al mese"
-                base += ")"
-            return base + ": vale la pena controllare se puoi rinegoziare o cambiare fornitore."
+        if count and count > 1:
+            voci = 'categorie' if is_tag else 'prodotti'
+            return (
+                f"Ci sono {count} {voci} con prezzi in aumento da controllare: "
+                "trovi il dettaglio qui sotto."
+            )
+        soggetto = 'una categoria' if is_tag else 'un prodotto'
+        return (
+            f"C'è {soggetto} con il prezzo in aumento da controllare: "
+            "trovi il dettaglio qui sotto."
+        )
         return f"{title}."
 
     if topic == 'uncategorized_rows':
@@ -778,6 +756,17 @@ _NARRATION_SYSTEM_PROMPT = (
     "dati (fatturato, costi, fatture, incassi), NON trarre conclusioni sui margini "
     "e indica che servono quei dati per un quadro corretto. Mai un giudizio "
     "positivo o negativo sulla gestione quando i dati sono incompleti. "
+    "3-septies) ALERT PREZZI: nel briefing accenna SOLO che ci sono prodotti con "
+    "variazioni di prezzo (aumenti o cali) da controllare, rimandando alle card / "
+    "agli avvisi per il dettaglio. NON ripetere nel testo il nome del prodotto, la "
+    "percentuale del singolo prodotto ne' l'impatto in euro/mese: quei numeri stanno "
+    "gia' nella card sotto. Esempio buono: 'Ci sono alcuni prodotti con prezzi in "
+    "aumento da controllare'. Esempio da EVITARE: '...1/2 PROSC.COTTO +11,1%, circa "
+    "7 euro al mese...'. "
+    "3-octies) LINGUAGGIO UMANO E DIRETTO: niente burocratese. VIETATE formule come "
+    "'e' necessario gestire', 'si rende necessario', 'assicurati di procedere con le "
+    "necessarie modifiche', 'provvedi a'. Parla come una persona: 'controlla', "
+    "'da' un'occhiata a', 'ci sono X da sistemare'. "
     "4) Al massimo 1 emoji, solo se utile; spesso meglio nessuna. Mai dentro i "
     "numeri. Niente punti esclamativi se non strettamente necessari. "
     "5) Mantieni intatti i segnaposto tipo <<P1>> o <<F1>> se presenti. "

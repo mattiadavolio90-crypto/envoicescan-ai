@@ -54,14 +54,14 @@ def test_sushiland_tre_pv_senza_costi():
     assert "42" in testo
 
 
-def test_tutto_sano_dice_sotto_controllo():
+def test_tutto_sano_dice_tutto_in_ordine():
     ranking = [_rank("a", "PV A", 30.0), _rank("b", "PV B", 20.0)]
     salute_pv = [_sal("a", "PV A", 90), _sal("b", "PV B", 85)]
     out = _build_briefing(
         "GRUPPO", ranking, salute_indice=88, salute_colore="verde",
         n_segnali=0, sev_max="info", salute_pv=salute_pv,
     )
-    assert "tutto sotto controllo" in out.narrativa.lower()
+    assert "tutto in ordine" in out.narrativa.lower()
 
 
 def test_salute_rossa_mai_sotto_controllo_anche_senza_segnali():

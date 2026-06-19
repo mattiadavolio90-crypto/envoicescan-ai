@@ -1,13 +1,9 @@
-"""Test guardia: il briefing segnala le righe da classificare come la card Salute.
+"""Test guardia: il briefing segnala le righe da controllare come la pagina.
 
-Difetto osservato (LAND DEI SAPORI): la card "Salute della gestione" mostrava
-"2 righe da controllare" (conteggio LIVE di needs_review sulle fatture degli
-ultimi 30 giorni), ma campanella e briefing non le segnalavano — perche'
-leggevano solo la notifica 'uncategorized_rows' scritta all'UPLOAD, assente se
-le righe finivano in needs_review per una rilavorazione su fatture gia' caricate.
-
-_briefing_righe_da_classificare ricalcola il segnale LIVE dalla stessa fonte
-della Salute, cosi' le due sezioni Home restano coerenti.
+_briefing_righe_da_classificare ricalcola il segnale LIVE contando TUTTE le
+righe needs_review non cancellate (decisione Mattia 19/06: niente finestra 30gg,
+il numero deve combaciare con cio' che il cliente trova in Analisi Fatture; caso
+LAND: 2 recenti ma 9 totali -> il briefing deve dire 9).
 """
 from unittest.mock import MagicMock
 
@@ -52,6 +48,17 @@ def test_singolare_una_riga():
     out = _briefing_righe_da_classificare(RID, _sb(1))
     assert out is not None
     assert "1 riga" in out["title"]
+
+
+def test_conta_tutte_senza_finestra_temporale():
+    # Decisione 19/06: NESSUN filtro su created_at (.gte). Se qualcuno reintroduce
+    # la finestra 30gg, questo test si rompe.
+    sb = _sb(9)
+    out = _briefing_righe_da_classificare(RID, sb)
+    assert out["payload"]["count"] == 9
+    assert "9 righe" in out["title"]
+    q = sb.table.return_value
+    assert not q.gte.called, "Il conteggio non deve filtrare per created_at (niente finestra 30gg)"
 
 
 # ── Fatture mancanti: stesso pattern (voce 1 della Salute) ──

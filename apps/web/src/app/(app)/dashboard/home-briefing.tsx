@@ -23,11 +23,15 @@ const TYPEWRITER_ENABLED = true;
 
 // Topic "incombenza reale" calcolati live dal backend: la card sparisce da sola
 // quando inserisci il dato, e si rigenera ogni giorno finche' manca. "Ignora"
-// qui sarebbe ingannevole (ricomparirebbe al refresh): non lo mostriamo.
+// qui sarebbe ingannevole (ricomparirebbe al refresh): non lo mostriamo. Devono
+// esserci TUTTI i topic live ricalcolati ad ogni briefing (non solo i dati
+// mensili): anche fatture mancanti e righe da controllare tornano al refresh.
 const NON_IGNORABILI = new Set<string>([
   "fatturato_mancante",
   "costo_personale_mancante",
   "incasso_mancante",
+  "fatture_mancanti",
+  "uncategorized_rows",
 ]);
 
 function SeverityIcon({ severity }: { severity: BriefingAzione["severity"] }) {

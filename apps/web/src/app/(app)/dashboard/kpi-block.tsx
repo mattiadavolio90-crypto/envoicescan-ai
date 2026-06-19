@@ -16,6 +16,7 @@ function Trend({
   suffix,
   buonoSeSu,
   sopprimi = false,
+  neutro = false,
 }: {
   delta: number | null;
   suffix: string;
@@ -25,11 +26,17 @@ function Trend({
   // fuorviante ("−100%", "−29pp" da/verso zero). In quel caso mostriamo "—":
   // un calo a zero quasi sempre significa "manca il dato", non un crollo reale.
   sopprimi?: boolean;
+  // Mostra il delta ma MAI in verde: usato sul MOL quando il valore corrente e'
+  // negativo. Un MOL che sale da -5000 a -1188 e' "meno peggio", non una vittoria:
+  // colorarlo di verde con freccia in su festeggerebbe una perdita. Decisione
+  // Mattia 19/06 (niente falsa celebrazione del MOL). Resta visibile (la freccia
+  // su/giu) ma in tono neutro.
+  neutro?: boolean;
 }) {
   if (sopprimi || delta == null) return <span className="text-xs text-muted-foreground/40">—</span>;
   const su = delta > 0;
   const piatto = delta === 0;
-  const positivo = piatto ? null : su === buonoSeSu;
+  const positivo = neutro ? null : piatto ? null : su === buonoSeSu;
   const Icon = piatto ? Minus : su ? ArrowUp : ArrowDown;
   return (
     <span
@@ -227,7 +234,9 @@ export function KpiBlock({ kpi }: { kpi: HomeKpi }) {
         </div>
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground/60">
           {kpi.confronto_label && <span>{kpi.confronto_label}</span>}
-          <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu />
+          {/* MOL negativo -> trend neutro (mai verde): "meno in perdita" non e' una
+              vittoria da festeggiare. */}
+          <Trend delta={kpi.mol_delta_pct} suffix="%" buonoSeSu neutro={!molPos} />
         </div>
       </Link>
 

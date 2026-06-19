@@ -1869,10 +1869,10 @@ _CONFIG_TOPICS: List[tuple] = [
      "Ti avviso se i tuoi incassi automatici smettono di arrivare."),
     ("price_alert",              "Alert prezzi",             False,
      "Ti segnalo quando un prodotto che pesa sulla spesa rincara oltre la tua soglia."),
-    ("uncategorized_rows",       "Righe da classificare",    False,
-     "Ti ricordo le righe di fattura ancora senza categoria."),
+    ("uncategorized_rows",       "Righe da controllare",     False,
+     "Ti segnalo le righe di fattura con una categoria dubbia da verificare."),
     ("fatture_mancanti",         "Nessuna fattura recente",  False,
-     "Ti avviso se non risultano fatture caricate negli ultimi 30 giorni."),
+     "Ti avviso se non risultano fatture caricate da più di una settimana."),
     ("fatturato_mancante",       "Fatturato mancante",       False,
      "Ti ricordo di inserire il fatturato del mese, serve per food cost e MOL."),
     ("incasso_mancante",         "Incasso di ieri mancante", False,
@@ -4079,20 +4079,15 @@ def _briefing_dati_mensili_mancanti(
 def _briefing_righe_da_classificare(
     ristorante_id: str, supabase_client,
 ) -> Optional[Dict[str, Any]]:
-    """Notifica LIVE 'righe da classificare', allineata alla card Salute.
+    """Notifica LIVE 'righe da controllare': conta TUTTE le righe needs_review.
 
-    Stessa fonte e finestra della voce 4 di /api/home/salute: fatture con
-    needs_review=True caricate (created_at) negli ultimi 30 giorni. Cosi' se la
-    card mostra "N righe da controllare", anche briefing e campanella lo dicono.
-    None se non c'e' nulla da classificare (zero rumore).
+    Decisione Mattia 19/06: il numero del briefing deve corrispondere a quello
+    che il cliente trova aprendo Analisi Fatture (nessuna finestra temporale). Se
+    il briefing dicesse "2" (solo le caricate negli ultimi 30 giorni) e in pagina
+    ce ne fossero 9, il cliente non si raccapezza. Quindi contiamo TUTTE le righe
+    con needs_review=True non cancellate (caso LAND: 2 recenti, 9 totali -> 9).
+    None se non c'e' nulla da controllare (zero rumore).
     """
-    from datetime import datetime as _dt2, timedelta as _td2
-    try:
-        from zoneinfo import ZoneInfo as _ZI
-        oggi = _dt2.now(tz=_ZI("Europe/Rome")).date()
-    except Exception:
-        oggi = _dt2.now().date()
-    inizio_dt = _dt2.combine(oggi - _td2(days=29), _dt2.min.time())
     try:
         resp = (
             supabase_client.table("fatture")
@@ -4100,12 +4095,11 @@ def _briefing_righe_da_classificare(
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .eq("needs_review", True)
-            .gte("created_at", inizio_dt.isoformat())
             .execute()
         )
         n = resp.count if resp.count is not None else len(resp.data or [])
     except Exception as exc:
-        logger.warning("briefing righe da classificare: lettura fallita: %s", exc)
+        logger.warning("briefing righe da controllare: lettura fallita: %s", exc)
         return None
 
     if not n or n <= 0:
@@ -5009,13 +5003,14 @@ def _briefing_raccogli_notifiche(
         except Exception as exc:
             logger.warning("home_briefing: dati mensili mancanti falliti: %s", exc)
 
-    # Righe da classificare: calcolate LIVE dalla STESSA fonte/finestra della card
-    # Salute (fatture con needs_review caricate negli ultimi 30 giorni). Prima il
-    # briefing/campanella leggevano solo la notifica 'uncategorized_rows' scritta
-    # all'UPLOAD: se le righe finivano in needs_review per una rilavorazione AI su
-    # fatture gia' caricate (nessun upload recente), la card Salute le mostrava ma
-    # la campanella no -> incoerenza. Rimuovo la versione upload (puo' essere
-    # stantia: non si aggiorna quando classifichi) e uso il conteggio live.
+    # Righe da controllare: calcolate LIVE come la card Salute, contando TUTTE le
+    # righe needs_review non cancellate (decisione 19/06: niente finestra 30gg, il
+    # numero deve combaciare con Analisi Fatture). Prima il briefing/campanella
+    # leggevano solo la notifica 'uncategorized_rows' scritta all'UPLOAD: se le
+    # righe finivano in needs_review per una rilavorazione AI su fatture gia'
+    # caricate, la card Salute le mostrava ma la campanella no -> incoerenza.
+    # Rimuovo la versione upload (stantia: non si aggiorna quando classifichi) e
+    # uso il conteggio live.
     if ristorante_id and "uncategorized_rows" not in spenti:
         try:
             notifications = [
@@ -5360,14 +5355,33 @@ def home_salute(authorization: Optional[str] = Header(None)) -> SaluteResponse:
             logger.warning("home_salute: lettura override mensile fallita: %s", exc)
 
     # ── Voce 4: Righe classificate (% righe del mese senza needs_review) ──
+    # La % misura la qualita' della pipeline sul caricamento recente (30gg).
     tot_righe = len(righe_mese)
-    da_controllare = sum(1 for r in righe_mese if r.get("needs_review"))
     if tot_righe == 0:
         pct_classificate = 0
-        classificate_ok = False
     else:
-        pct_classificate = round((tot_righe - da_controllare) / tot_righe * 100)
-        classificate_ok = da_controllare == 0
+        recenti_da_rev = sum(1 for r in righe_mese if r.get("needs_review"))
+        pct_classificate = round((tot_righe - recenti_da_rev) / tot_righe * 100)
+
+    # Conteggio MOSTRATO al cliente = TUTTE le righe needs_review non cancellate
+    # (decisione Mattia 19/06): deve combaciare con cio' che si trova aprendo
+    # Analisi Fatture e con il briefing. La % sopra resta sulla finestra recente,
+    # ma il numero della voce e' il totale reale.
+    da_controllare = 0
+    try:
+        _rev = (
+            sb.table("fatture")
+            .select("id", count="exact")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .eq("needs_review", True)
+            .execute()
+        )
+        da_controllare = _rev.count if _rev.count is not None else len(_rev.data or [])
+    except Exception as exc:
+        logger.warning("home_salute: conteggio righe da controllare fallito: %s", exc)
+        da_controllare = sum(1 for r in righe_mese if r.get("needs_review"))
+    classificate_ok = da_controllare == 0
 
     # ── Indice: voci ATTIVE a peso uguale. Le voci binarie valgono 0/100;
     #    le righe usano la loro %. Senza fatture, le righe valgono 0. Le voci

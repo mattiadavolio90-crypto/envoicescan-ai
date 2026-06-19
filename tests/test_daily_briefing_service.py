@@ -242,63 +242,62 @@ class TestAppuntamentoActionable:
 
 
 # ────────────────────────────────────────────────
-# _narrative_phrase_for — price_alert (Difetto 1: prodotto vs categoria)
+# _narrative_phrase_for — price_alert
+# Decisione Mattia 19/06: il briefing ACCENNA soltanto agli alert prezzi e
+# rimanda al dettaglio nelle card/avvisi. NON deve ripetere nel testo il nome
+# del prodotto, la percentuale ne' l'impatto in euro/mese (quei numeri stanno
+# gia' nella card sotto): nel briefing sarebbero rumore e ridondanza.
 # ────────────────────────────────────────────────
 
 class TestNarrativePriceAlert:
-    def test_singolo_prodotto_nominato_senza_soprattutto(self):
-        # count==1 deve nominare il prodotto direttamente, mai "soprattutto"
-        # (che implicherebbe un elenco di piu' voci).
+    def test_non_ripete_nome_percentuale_ne_impatto(self):
+        n = _notif("price_alert", "warning", {
+            "count": 1, "top_product": "Mozzarella",
+            "top_increase_pct": 23.8, "impatto_mese": 50, "top_tipo": "prodotto",
+        })
+        frase = _narrative_phrase_for(n)
+        assert "Mozzarella" not in frase
+        assert "23.8" not in frase
+        assert "50" not in frase
+        assert "controllare" in frase
+
+    def test_singolo_prodotto_accenno_generico(self):
         n = _notif("price_alert", "warning", {
             "count": 1, "top_product": "Mozzarella",
             "top_increase_pct": 23.8, "top_tipo": "prodotto",
         })
         frase = _narrative_phrase_for(n)
-        assert "Mozzarella" in frase
-        assert "soprattutto" not in frase
-        assert "23.8" in frase
-        assert "prezzo di Mozzarella" in frase
+        assert "prodotto" in frase
+        assert "categoria" not in frase
 
-    def test_singolo_tag_chiamato_categoria(self):
-        # Un alert su un TAG non e' un "prodotto": va detto "categoria".
+    def test_singolo_tag_detto_categoria(self):
         n = _notif("price_alert", "warning", {
             "count": 1, "top_product": "BAR, CAFFE', PASTICCERIE",
             "top_increase_pct": 119.6, "impatto_mese": 80, "top_tipo": "tag",
         })
         frase = _narrative_phrase_for(n)
-        assert "categoria BAR, CAFFE', PASTICCERIE" in frase
-        assert "prodotto" not in frase.lower()
-        assert "soprattutto" not in frase
-        assert "119.6" in frase
-        assert "80" in frase
+        assert "categoria" in frase
+        assert "BAR" not in frase
+        assert "119.6" not in frase
 
-    def test_piu_voci_usa_piu_pesante(self):
-        # count>1: niente piu' "soprattutto", ma "il prodotto piu' pesante e' …".
+    def test_piu_voci_dice_il_numero_senza_dettagli(self):
         n = _notif("price_alert", "warning", {
             "count": 3, "top_product": "Mozzarella",
             "top_increase_pct": 12.5, "top_tipo": "prodotto",
         })
         frase = _narrative_phrase_for(n)
-        assert "3 voci" in frase
-        assert "più pesante" in frase
-        assert "Mozzarella" in frase
-        assert "soprattutto" not in frase
+        assert "3 prodotti" in frase
+        assert "Mozzarella" not in frase
+        assert "12.5" not in frase
 
-    def test_piu_voci_tag_qualifica_categoria(self):
+    def test_piu_voci_tag_dice_categorie(self):
         n = _notif("price_alert", "warning", {
             "count": 2, "top_product": "BIRRE",
             "top_increase_pct": 30.0, "top_tipo": "tag",
         })
         frase = _narrative_phrase_for(n)
-        assert "categoria più pesante è BIRRE" in frase
-
-    def test_tipo_assente_resta_prodotto(self):
-        # Retrocompat: senza top_tipo si assume prodotto (vecchi snapshot).
-        n = _notif("price_alert", "warning", {
-            "count": 1, "top_product": "Pomodori", "top_increase_pct": 10.0,
-        })
-        frase = _narrative_phrase_for(n)
-        assert "prezzo di Pomodori" in frase
+        assert "2 categorie" in frase
+        assert "BIRRE" not in frase
 
 
 # ────────────────────────────────────────────────
