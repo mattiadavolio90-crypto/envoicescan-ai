@@ -174,6 +174,32 @@ def test_salute_classifica_e_separa_orfane(monkeypatch):
     assert res["counts"]["ok"] == 1
 
 
+def test_salute_multisede_usa_nome_gruppo(monkeypatch):
+    """Una catena (multi-sede) mostra in testata il nome del gruppo, non la sede."""
+    monkeypatch.setattr(admin, "_verify_admin", lambda **k: {"email": "md@oneflux.it"})
+    sb = FakeClient({
+        "ristoranti": [
+            {"id": "r1", "user_id": "u1", "nome_ristorante": "SUSHI SAN GIULIANO", "partita_iva": "11111111111", "attivo": True},
+            {"id": "r2", "user_id": "u1", "nome_ristorante": "SUSHI MARIANO", "partita_iva": "22222222222", "attivo": True},
+            {"id": "r3", "user_id": "u2", "nome_ristorante": "TIME CAFE", "partita_iva": "33333333333", "attivo": True},
+        ],
+        "users": [
+            {"id": "u1", "nome_gruppo": "SUSHILAND"},
+            {"id": "u2", "nome_gruppo": None},
+        ],
+        "fatture_queue": [],
+    })
+    monkeypatch.setattr(admin, "get_supabase_client", lambda *a, **k: sb)
+
+    res = admin.admin_sistema_invoicetronic_salute(giorni=365)
+    per_user = {it["user_id"]: it for it in res["items"]}
+
+    # catena → nome del gruppo
+    assert per_user["u1"]["nome"] == "SUSHILAND"
+    # singola sede → nome del ristorante (nessun gruppo)
+    assert per_user["u2"]["nome"] == "TIME CAFE"
+
+
 # ─── A2: assegna-piva ─────────────────────────────────────────────────────────
 
 def test_assegna_piva_con_ristorante_sblocca_solo_unknown(monkeypatch):

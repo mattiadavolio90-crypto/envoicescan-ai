@@ -1910,10 +1910,30 @@ def admin_sistema_invoicetronic_salute(giorni: int = 30):
                 "partita_iva": piva,
             })
 
-    # Nome cliente per user_id (preferisce nome ristorante della prima sede)
+    # nome_gruppo è un'etichetta a livello account (vive su users): per i clienti
+    # multi-sede (catene) la testata deve mostrare il gruppo, non la prima sede.
+    gruppo_per_user: Dict[str, str] = {}
+    uids_multi = [uid for uid, sedi in sedi_per_user.items() if len(sedi) > 1]
+    if uids_multi:
+        try:
+            ug_rows = (
+                sb.table("users")
+                .select("id,nome_gruppo")
+                .in_("id", uids_multi)
+                .execute()
+            ).data or []
+            for u in ug_rows:
+                ng = str(u.get("nome_gruppo") or "").strip()
+                if ng:
+                    gruppo_per_user[str(u["id"])] = ng
+        except Exception as exc:
+            logger.error("admin invoicetronic-salute: nome_gruppo fallito: %s", exc)
+
+    # Nome cliente per user_id: gruppo se multi-sede con etichetta, altrimenti
+    # nome ristorante della prima sede.
     nome_cliente: Dict[str, str] = {}
     for uid, sedi in sedi_per_user.items():
-        nome_cliente[uid] = sedi[0]["nome_ristorante"] if sedi else "—"
+        nome_cliente[uid] = gruppo_per_user.get(uid) or (sedi[0]["nome_ristorante"] if sedi else "—")
 
     # ── Record problematici della coda (no XML) ──────────────────────────────
     try:
