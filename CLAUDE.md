@@ -21,7 +21,7 @@ genera report su margini, prezzi fornitori, foodcost.
 | Worker API | `services/fastapi_worker.py` | FastAPI — `/health`, `/api/classify`, `/api/parse` |
 | Worker async | `worker/run.py` | Processo separato per operazioni pesanti |
 | Edge Functions | `supabase/functions/` | Deno — webhook Invoicetronic |
-| Migrations | `supabase/migrations/*.sql`, `migrations/*.sql` | Schema PostgreSQL, RLS, trigger |
+| Migrations | `supabase/migrations/*.sql` (canonico) | Schema PostgreSQL, RLS, trigger. `migrations/*.sql` è LEGACY storico (vedi `migrations/_LEGGIMI_STATO.md`) |
 | Test | `tests/*.py` | ~760 test pytest |
 
 **Database:** Supabase PostgreSQL — chiave `service_role_key` (bypassa RLS).
@@ -72,7 +72,7 @@ python scripts/export_openapi.py --check-drift
 
 - Nessun commento nel codice se non per motivi non ovvi
 - `filter_active()` da `services.db_service` per tutte le query con soft-delete
-- Le migration SQL vanno in `supabase/migrations/` (numerazione sequenziale)
+- Le migration SQL vanno SOLO in `supabase/migrations/` con nome timestamp `AAAAMMGGHHMMSS_nome.sql` (formato Supabase CLI). La cartella `migrations/` (numerazione `001`–`082`) è storica e congelata: non aggiungere file lì. Stato reale applicato = DB live, non i file.
 - I file in `scripts/` e `tools/` sono operativi/manutentivi — non fanno parte del runtime
 
 ---
