@@ -15,19 +15,22 @@ $startTime = Get-Date
 $issues = @()
 $warnings = @()
 
-# Patterns pericolosi da cercare
+# Patterns pericolosi da cercare (single-quoted: PowerShell li tratta come letterali,
+# evita l'escaping ambiguo \" che faceva fallire il parse dell'intero script).
 $dangerPatterns = @(
-    "sk-[A-Za-z0-9]{20,}",                    # OpenAI API key
-    "xkeysib-[A-Za-z0-9]{20,}",               # Brevo API key
-    "Bearer\s+[A-Za-z0-9\-_\.]{20,}",         # JWT/Bearer token
-    "['\"]password['\"]?\s*:\s*['\"][^'\"]+" # Password string
-    "['\"]token['\"]?\s*:\s*['\"][^'\"]+"    # Token string
-    "SUPABASE_KEY.*=[A-Za-z0-9]+"             # Supabase key
+    'sk-[A-Za-z0-9]{20,}',                     # OpenAI API key
+    'xkeysib-[A-Za-z0-9]{20,}',                # Brevo API key
+    'Bearer\s+[A-Za-z0-9\-_\.]{20,}',          # JWT/Bearer token
+    '["'']password["'']?\s*:\s*["''][^"'']+',  # Password string
+    '["'']token["'']?\s*:\s*["''][^"'']+',     # Token string
+    'SUPABASE_KEY.*=[A-Za-z0-9]+'              # Supabase key
 )
 
 Write-Host "[1/4] Verifica .gitignore compliance..." -ForegroundColor Yellow
 
-$criticalFiles = @(".env", "secrets.toml", ".env.local")
+# Path reali dei file sensibili (non controllare path inesistenti alla root:
+# i .env.local veri vivono in supabase/functions/ e apps/web/).
+$criticalFiles = @(".env", "secrets.toml", "supabase/functions/.env", "apps/web/.env.local", "_arbitro_esiti.json", "_divergenze_categorie.json")
 foreach ($file in $criticalFiles) {
     $ignored = & git check-ignore $file 2>&1
     if ($LASTEXITCODE -eq 0) {
@@ -61,10 +64,14 @@ if (-not $QuickScan) {
 
 Write-Host "`n[3/4] Verifica credenziali dure in Python..." -ForegroundColor Yellow
 
-$pythonFiles = @(Get-ChildItem -Path . -Filter "*.py" -Recurse)
+# Solo codice del progetto: escludi dipendenze installate (falsi positivi a valanga).
+$pythonFiles = @(
+    Get-ChildItem -Path . -Filter "*.py" -Recurse |
+    Where-Object { $_.FullName -notmatch '\\(\.venv|venv|node_modules|\.git|site-packages|__pycache__)\\' }
+)
 $unsafePatterns = @(
-    "api_key\s*=\s*['\"]sk-",
-    "password\s*=\s*['\"][^'\"]+"
+    'api_key\s*=\s*["'']sk-',
+    'password\s*=\s*["''][^"'']+'
 )
 
 foreach ($pyFile in $pythonFiles) {
@@ -92,7 +99,7 @@ foreach ($service in $cliChecks.Keys) {
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  [OK] $service autenticato" -ForegroundColor Green
         } else {
-            Write-Host "  [WARN] $service: $result" -ForegroundColor Yellow
+            Write-Host "  [WARN] ${service}: $result" -ForegroundColor Yellow
             $warnings += "$service non autenticato"
         }
     } catch {
