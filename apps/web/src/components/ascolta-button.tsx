@@ -67,15 +67,15 @@ export function AscoltaButton({ testo, className }: { testo: string; className?:
     try {
       const audio = new Audio(`/api/tts?q=${encodeURIComponent(testo)}`);
       audioRef.current = audio;
-      // La voce Google Translate legge lenta: acceleriamo del 30%. preservesPitch
+      // La voce Google Translate legge lenta: acceleriamo del 25%. preservesPitch
       // mantiene il tono naturale (niente effetto "Paperino"). Va impostato anche
       // a 'playing' perche' alcuni browser lo resettano al caricamento.
       audio.preservesPitch = true;
-      audio.playbackRate = 1.3;
+      audio.playbackRate = 1.25;
       audio.onended = () => setStato("idle");
       audio.onerror = () => fallbackWebSpeech();
       audio.onplaying = () => {
-        audio.playbackRate = 1.3;
+        audio.playbackRate = 1.25;
         setStato("playing");
       };
       await audio.play();
