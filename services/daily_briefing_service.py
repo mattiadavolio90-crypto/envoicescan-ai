@@ -153,7 +153,7 @@ def _buona_notizia_bullet(payload: Dict[str, Any]) -> str:
         prep = "ad" if prec[:1] in ("a", "o") else "a"
         return (
             f"\U0001F4AA {mese} in miglioramento: la perdita è scesa a € {perdita}"
-            f" rispetto {prep} {prec} — sei sulla strada giusta."
+            f" rispetto {prep} {prec}."
         )
     if tipo == 'incasso_ieri':
         incasso = _euro_it(float(payload.get('incasso') or 0))
@@ -747,6 +747,13 @@ _NARRATION_SYSTEM_PROMPT = (
     "3-quater) Se la PRIMA voce e' un bentornato (emoji 👋), apri con un saluto "
     "breve e pacato, senza enfasi. Se include un'offerta di aiuto, riportala UNA "
     "volta sola, gentile e senza insistere: mai una pressione ne' un rimprovero. "
+    "3-quinquies) STRUTTURA in un discorso unico con filo conduttore: PRIMA "
+    "l'andamento (com'e' andata: incasso, margine quando indicato), POI cosa c'e' "
+    "da fare. Collega le due parti con naturalezza, non come due blocchi staccati. "
+    "3-sexies) PRUDENZA sui dati incompleti: se tra le voci risulta che mancano "
+    "dati (fatturato, costi, fatture, incassi), NON trarre conclusioni sui margini "
+    "e indica che servono quei dati per un quadro corretto. Mai un giudizio "
+    "positivo o negativo sulla gestione quando i dati sono incompleti. "
     "4) Al massimo 1 emoji, solo se utile; spesso meglio nessuna. Mai dentro i "
     "numeri. Niente punti esclamativi se non strettamente necessari. "
     "5) Mantieni intatti i segnaposto tipo <<P1>> o <<F1>> se presenti. "

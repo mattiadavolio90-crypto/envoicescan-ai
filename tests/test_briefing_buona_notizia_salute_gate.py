@@ -10,12 +10,19 @@ Regola decisa: se la Salute e' ROSSA non si apre con la festa del MOL. L'incasso
 di ieri resta (e' un fatto fresco e neutro, non una celebrazione del margine).
 Qui verifichiamo SOLO il gate, isolando il blocco MOL con i mock.
 """
+from datetime import date
 from unittest.mock import MagicMock, patch
 
 from services.fastapi_worker import _briefing_buona_notizia
 
 UID = "user-aaa"
 RID = "rist-bbb"
+
+# Il blocco MOL parla del mese chiuso SOLO nella finestra fine/inizio mese
+# (decisione 19/06). I test del MOL fissano "oggi" al 3 del mese (dentro i primi 7).
+_DENTRO_FINESTRA_MOL = patch(
+    "services.fastapi_worker._oggi_rome", return_value=date(2026, 7, 3)
+)
 
 
 def _sb_senza_incasso():
@@ -64,7 +71,7 @@ def _patch_loaders(costi=True):
 
 def test_salute_rossa_sopprime_buona_notizia_mol():
     sb = _sb_senza_incasso()
-    with _patch_loaders(), patch(
+    with _DENTRO_FINESTRA_MOL, _patch_loaders(), patch(
         "services.fastapi_worker._salute_indice_rosso", return_value=True
     ) as rosso:
         out = _briefing_buona_notizia(UID, RID, sb)
@@ -75,7 +82,7 @@ def test_salute_rossa_sopprime_buona_notizia_mol():
 
 def test_salute_non_rossa_mostra_buona_notizia_mol():
     sb = _sb_senza_incasso()
-    with _patch_loaders(), patch(
+    with _DENTRO_FINESTRA_MOL, _patch_loaders(), patch(
         "services.fastapi_worker._salute_indice_rosso", return_value=False
     ):
         out = _briefing_buona_notizia(UID, RID, sb)
@@ -88,8 +95,22 @@ def test_costi_mancanti_sopprime_buona_notizia_mol():
     """Anche con Salute non rossa, un mese con ricavi ma ZERO costi (food+spese)
     non si festeggia: il MOL sarebbe fatturato - personale, un '+X%' falso."""
     sb = _sb_senza_incasso()
-    with _patch_loaders(costi=False), patch(
+    with _DENTRO_FINESTRA_MOL, _patch_loaders(costi=False), patch(
         "services.fastapi_worker._salute_indice_rosso", return_value=False
     ):
         out = _briefing_buona_notizia(UID, RID, sb)
+    assert out is None
+
+
+def test_fuori_finestra_niente_mol():
+    """Decisione 19/06: fuori dalla finestra fine/inizio mese il MOL NON si cita,
+    anche se in crescita e Salute non rossa. Oggi = 15 del mese (fuori finestra)."""
+    sb = _sb_senza_incasso()
+    with patch(
+        "services.fastapi_worker._oggi_rome", return_value=date(2026, 7, 15)
+    ), _patch_loaders(), patch(
+        "services.fastapi_worker._salute_indice_rosso", return_value=False
+    ):
+        out = _briefing_buona_notizia(UID, RID, sb)
+    # Nessun incasso di ieri nel mock -> senza il MOL non resta nulla.
     assert out is None

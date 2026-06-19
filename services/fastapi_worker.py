@@ -3495,6 +3495,26 @@ _MESI_IT_BRIEFING = [
 # fatture" (caso A di _briefing_fatture_mancanti). Decisione 19/06: 7 giorni.
 FATTURE_MANCANTI_GIORNI = 7
 
+# Finestra in cui il briefing puo' parlare del MOL del mese chiuso (decisione
+# 19/06): l'ULTIMO giorno del mese (anteprima, tono prudente) + i PRIMI N giorni
+# del mese nuovo (mese chiuso, dato di fatto). Fuori da qui il MOL del mese in
+# corso e' incompleto (fatture non tutte caricate) -> non se ne parla.
+MOL_FINESTRA_PRIMI_GIORNI = 7
+
+
+def _in_finestra_mol(oggi) -> bool:
+    """True se oggi e' nella finestra in cui si puo' parlare del MOL del mese
+    chiuso: ultimo giorno del mese OPPURE entro i primi MOL_FINESTRA_PRIMI_GIORNI."""
+    from datetime import timedelta as _tdf
+    if oggi.day <= MOL_FINESTRA_PRIMI_GIORNI:
+        return True
+    # Ultimo giorno del mese: domani cambia mese.
+    return (oggi + _tdf(days=1)).month != oggi.month
+
+
+class _SaltaBloccoMol(Exception):
+    """Segnale interno: fuori dalla finestra MOL, salta al blocco incasso di ieri."""
+
 
 def _scontrino_medio_significativo(
     ristorante_id: str, supabase_client, ieri_d, coperti_ieri, netto_ieri: float,
@@ -3586,11 +3606,17 @@ def _briefing_buona_notizia(
     # ── 1) MOL del mese appena chiuso, SOLO se in crescita ──────────────────
     # Riusa la stessa logica/fonte di /api/home/kpi (margini_mensili) cosi' la
     # card "I tuoi conti" e il briefing non si contraddicono mai.
+    # FINESTRA TEMPORALE (decisione 19/06): si parla di MOL SOLO a fine/inizio mese
+    # (ultimo giorno + primi 7), come dato di fatto sul mese CHIUSO. Durante il mese
+    # le fatture non sono tutte caricate: un "+X%" sarebbe falso. Fuori finestra si
+    # salta direttamente all'incasso di ieri.
     try:
         from services.margine_service import (
             carica_margini_anno, calcola_costi_automatici_per_anno_sql,
         )
         oggi = _oggi_rome()
+        if not _in_finestra_mol(oggi):
+            raise _SaltaBloccoMol()
         mm, aa = (12, oggi.year - 1) if oggi.month == 1 else (oggi.month - 1, oggi.year)
 
         _cache_anno: Dict[int, tuple] = {}
@@ -3680,6 +3706,8 @@ def _briefing_buona_notizia(
                         "source_event_at": None,
                         "dedupe_key": f"buona-notizia-perdita-{anno_usato}-{mese_usato:02d}",
                     }
+    except _SaltaBloccoMol:
+        pass  # fuori finestra: si va all'incasso di ieri
     except Exception as exc:
         logger.warning("briefing buona notizia: blocco MOL fallito: %s", exc)
 
