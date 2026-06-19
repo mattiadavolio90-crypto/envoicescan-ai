@@ -5,7 +5,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   Building2,
-  ChevronsUpDown,
   TrendingUp,
   Receipt,
   ChevronRight,
@@ -22,13 +21,6 @@ import {
   type MolMensile,
 } from "@/lib/gruppo";
 import { cn } from "@/lib/utils";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { AscoltaButton } from "@/components/ascolta-button";
 import { FinestraSpesaPV } from "./finestra-spesa-pv";
 import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
@@ -443,38 +435,14 @@ export function SintesiCatena({ overview }: { overview: GruppoOverview }) {
 
   return (
     <div className="space-y-6">
-      {/* Header gruppo + selettore "Vai a un PV" */}
+      {/* Header gruppo (lo switch PV è nella sidebar, in basso a sinistra) */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="flex items-center gap-2 text-xl font-semibold">
           <Building2 className="size-6 text-primary" />
           Gruppo {overview.nome_gruppo}
           <span className="text-base font-normal text-muted-foreground">· {overview.num_pv} punti vendita</span>
         </h1>
-        <div className="flex items-center gap-2">
-          <ConfigAssistenteCatena />
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  disabled={switching}
-                  className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
-                >
-                  Vai a un punto vendita
-                  <ChevronsUpDown className="size-4" />
-                </button>
-              }
-            />
-            <DropdownMenuContent align="end" className="w-64">
-              <DropdownMenuLabel className="text-xs text-muted-foreground">Apri un punto vendita</DropdownMenuLabel>
-              {ranking.map((pv) => (
-                <DropdownMenuItem key={pv.ristorante_id} disabled={switching} onClick={() => vaiAlPV(pv.ristorante_id)}>
-                  {pv.nome}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <ConfigAssistenteCatena />
       </div>
 
       {/* Briefing di gruppo — la voce macro, in cima */}
