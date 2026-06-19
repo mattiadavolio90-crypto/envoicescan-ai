@@ -145,9 +145,7 @@ def get_margini(
     anno: Optional[int] = None,
     authorization: Optional[str] = Header(None),
 ) -> MarginiAnnoResponse:
-    import pandas as pd
     from datetime import datetime as _dt
-    _CATEGORIE_FB_M, _CATEGORIE_SPESE_M, _CAT_TO_CENTRO, _CENTRI_CON_FATTURATO, _CENTRI_DI_PRODUZIONE = _consts()
     if anno is None:
         anno = _dt.now().year
     user = _resolve_user_from_token(authorization)
@@ -166,43 +164,15 @@ def get_margini(
     )
     saved = {int(r["mese"]): r for r in (resp.data or [])}
 
-    page_size = 1000
-    all_rows: List[Dict[str, Any]] = []
-    offset = 0
-    while True:
-        q = (
-            sb.table("fatture")
-            .select("data_documento,data_competenza,totale_riga,categoria")
-            .eq("user_id", user_id)
-            .eq("ristorante_id", ristorante_id)
-            .is_("deleted_at", "null")
-            .neq("categoria", "Da Classificare")
-            .or_(
-                f"and(data_documento.gte.{anno}-01-01,data_documento.lt.{anno+1}-01-01),"
-                f"and(data_competenza.gte.{anno}-01-01,data_competenza.lt.{anno+1}-01-01)"
-            )
-            .range(offset, offset + page_size - 1)
-            .execute()
-        )
-        batch = q.data or []
-        all_rows.extend(batch)
-        if len(batch) < page_size:
-            break
-        offset += page_size
-
-    costi_fb_auto: Dict[int, float] = {}
-    costi_spese_auto: Dict[int, float] = {}
-    if all_rows:
-        df = pd.DataFrame(all_rows)
-        df["data_documento"] = pd.to_datetime(df.get("data_documento"), errors="coerce")
-        df["data_competenza"] = pd.to_datetime(df.get("data_competenza"), errors="coerce")
-        df["data_rif"] = df["data_competenza"].combine_first(df["data_documento"])
-        df = df.dropna(subset=["data_rif"])
-        df = df[df["data_rif"].dt.year == anno]
-        df["mese"] = df["data_rif"].dt.month
-        df["totale_riga"] = pd.to_numeric(df.get("totale_riga"), errors="coerce").fillna(0)
-        costi_fb_auto = df[df["categoria"].isin(_CATEGORIE_FB_M)].groupby("mese")["totale_riga"].sum().to_dict()
-        costi_spese_auto = df[df["categoria"].isin(_CATEGORIE_SPESE_M)].groupby("mese")["totale_riga"].sum().to_dict()
+    # Costi auto food/spese per mese: aggregazione SQL via RPC costi_automatici_mensili
+    # invece del full-load di tutte le righe fattura dell'anno + groupby pandas (era il
+    # collo di bottiglia su clienti con molte fatture). La RPC replica esattamente la
+    # logica storica — COALESCE(data_competenza, data_documento), stessi filtri, stesso
+    # split food/spese — e ricade automaticamente su pandas se fallisce.
+    from services.margine_service import calcola_costi_automatici_per_anno_sql
+    costi_fb_auto, costi_spese_auto = calcola_costi_automatici_per_anno_sql(
+        user_id, ristorante_id, int(anno)
+    )
 
     mesi = []
     for m in range(1, 13):
