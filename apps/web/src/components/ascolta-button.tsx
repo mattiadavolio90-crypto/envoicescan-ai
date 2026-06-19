@@ -1,94 +1,106 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Volume2, Square } from "lucide-react";
+import { Volume2, Square, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Pulsante "ascolta": legge il testo con la Web Speech API del browser
-// (speechSynthesis). Gratis, offline, voce di sistema. La qualità dipende dalle
-// voci installate: scegliamo la MIGLIORE voce italiana disponibile (le voci
-// "naturali"/cloud di Google e Microsoft suonano molto meglio di quelle locali
-// robotiche). Importante: su Chrome getVoices() è ASINCRONO — alla prima chiamata
-// può tornare [] e senza una voce italiana il browser legge l'italiano con la voce
-// inglese di default (il vero motivo per cui "fa schifo"). Qui aspettiamo l'evento
-// voiceschanged e teniamo le voci in stato.
+// Pulsante "ascolta": legge il briefing con una voce gratuita ma DECENTE e UGUALE
+// su ogni dispositivo. Strategia:
+//  1) TTS server-side via /api/tts (voce "Google italiano"): non dipende dalle voci
+//     installate sul telefono -> qualita' costante anche da PWA mobile.
+//  2) Fallback: Web Speech del browser (voce di sistema) se l'endpoint non risponde,
+//     cosi' il pulsante non resta mai muto.
 export function AscoltaButton({ testo, className }: { testo: string; className?: string }) {
-  const [supportato, setSupportato] = useState(false);
-  const [parla, setParla] = useState(false);
-  const voceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const [stato, setStato] = useState<"idle" | "loading" | "playing">("idle");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Stop completo (audio HTML + eventuale Web Speech) alla smontatura.
   useEffect(() => {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    setSupportato(true);
-    const synth = window.speechSynthesis;
-
-    // Sceglie la migliore voce italiana: preferisce le voci "naturali"/online
-    // (nomi noti di alta qualità), poi una qualunque it-IT, poi una it-*.
-    function scegliVoce() {
-      const voci = synth.getVoices().filter((v) => v.lang?.toLowerCase().startsWith("it"));
-      if (voci.length === 0) return;
-      const preferite = [
-        "Google italiano",
-        "Microsoft Elsa",
-        "Microsoft Cosimo",
-        "Alice", // macOS/iOS, voce italiana di buona qualità
-        "Federica",
-        "Luca",
-      ];
-      const perNome =
-        voci.find((v) => preferite.some((p) => v.name.includes(p))) ||
-        voci.find((v) => /natural|online|enhanced|premium/i.test(v.name)) ||
-        voci.find((v) => v.lang === "it-IT") ||
-        voci[0];
-      voceRef.current = perNome ?? null;
-    }
-
-    scegliVoce();
-    synth.addEventListener("voiceschanged", scegliVoce);
     return () => {
-      synth.removeEventListener("voiceschanged", scegliVoce);
+      audioRef.current?.pause();
       try {
-        synth.cancel();
+        window.speechSynthesis?.cancel();
       } catch {
         /* no-op */
       }
     };
   }, []);
 
-  if (!supportato || !testo.trim()) return null;
+  if (!testo.trim()) return null;
+
+  function stop() {
+    audioRef.current?.pause();
+    if (audioRef.current) audioRef.current.currentTime = 0;
+    try {
+      window.speechSynthesis?.cancel();
+    } catch {
+      /* no-op */
+    }
+    setStato("idle");
+  }
+
+  // Fallback voce di sistema (qualita' variabile, ma meglio di niente).
+  function fallbackWebSpeech() {
+    try {
+      const synth = window.speechSynthesis;
+      if (!synth) {
+        setStato("idle");
+        return;
+      }
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(testo);
+      u.lang = "it-IT";
+      const it = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith("it"));
+      if (it) u.voice = it;
+      u.onend = () => setStato("idle");
+      u.onerror = () => setStato("idle");
+      setStato("playing");
+      synth.speak(u);
+    } catch {
+      setStato("idle");
+    }
+  }
+
+  async function play() {
+    setStato("loading");
+    try {
+      const audio = new Audio(`/api/tts?q=${encodeURIComponent(testo)}`);
+      audioRef.current = audio;
+      audio.onended = () => setStato("idle");
+      audio.onerror = () => fallbackWebSpeech();
+      audio.onplaying = () => setStato("playing");
+      await audio.play();
+    } catch {
+      // play() rifiutato o rete KO -> voce di sistema.
+      fallbackWebSpeech();
+    }
+  }
 
   function toggle() {
-    const synth = window.speechSynthesis;
-    if (parla) {
-      synth.cancel();
-      setParla(false);
-      return;
-    }
-    synth.cancel(); // azzera eventuali code precedenti
-    const u = new SpeechSynthesisUtterance(testo);
-    u.lang = "it-IT";
-    u.rate = 1; // velocità naturale
-    u.pitch = 1;
-    if (voceRef.current) u.voice = voceRef.current;
-    u.onend = () => setParla(false);
-    u.onerror = () => setParla(false);
-    setParla(true);
-    synth.speak(u);
+    if (stato === "idle") void play();
+    else stop();
   }
 
   return (
     <button
       type="button"
       onClick={toggle}
-      aria-label={parla ? "Ferma la lettura" : "Ascolta il briefing"}
-      title={parla ? "Ferma" : "Ascolta"}
+      disabled={stato === "loading"}
+      aria-label={stato !== "idle" ? "Ferma la lettura" : "Ascolta il briefing"}
+      title={stato !== "idle" ? "Ferma" : "Ascolta"}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-background/60 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent",
+        "inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-background/60 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent disabled:opacity-60",
         className,
       )}
     >
-      {parla ? <Square className="size-3.5" /> : <Volume2 className="size-3.5" />}
-      {parla ? "Ferma" : "Ascolta"}
+      {stato === "loading" ? (
+        <Loader2 className="size-3.5 animate-spin" />
+      ) : stato === "playing" ? (
+        <Square className="size-3.5" />
+      ) : (
+        <Volume2 className="size-3.5" />
+      )}
+      {stato === "playing" ? "Ferma" : stato === "loading" ? "…" : "Ascolta"}
     </button>
   );
 }
