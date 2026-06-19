@@ -1366,6 +1366,47 @@ def dashboard_stats(authorization: Optional[str] = Header(None)) -> DashboardSta
     if _cached and (_time.monotonic() - _cached[0]) < _DASHBOARD_STATS_TTL:
         return _cached[1]
 
+    # Via veloce: aggregazione lato DB in un'unica RPC (GROUP BY) invece di
+    # scaricare TUTTE le righe (LAND: 6.315 in 7 query paginate) e ciclare in
+    # Python. La RPC replica fedelmente la logica sotto (trim+fallback '—', mese
+    # corrente/precedente su fuso Roma, ultimi 12 mesi, top 5). Se per qualunque
+    # motivo fallisce, si ricade sul percorso Python storico (resta sotto).
+    try:
+        _rpc = supabase_client.rpc(
+            "dashboard_stats_aggregata",
+            {"p_user_id": user_id, "p_ristorante_id": ristorante_id},
+        ).execute()
+        _agg = _rpc.data
+        if _agg:
+            _k = _agg.get("kpi") or {}
+            _result = DashboardStats(
+                kpi=DashboardKpi(
+                    fatture_uniche=int(_k.get("fatture_uniche") or 0),
+                    righe_totali=int(_k.get("righe_totali") or 0),
+                    spesa_totale=round(float(_k.get("spesa_totale") or 0), 2),
+                    spesa_mese_corrente=round(float(_k.get("spesa_mese_corrente") or 0), 2),
+                    spesa_mese_precedente=round(float(_k.get("spesa_mese_precedente") or 0), 2),
+                    prima_fattura=_k.get("prima_fattura"),
+                    ultima_fattura=_k.get("ultima_fattura"),
+                ),
+                spesa_mensile=[
+                    SpesaMensilePoint(mese=p["mese"], spesa=round(float(p["spesa"] or 0), 2))
+                    for p in (_agg.get("spesa_mensile") or [])
+                ],
+                top_fornitori=[
+                    TopItem(nome=t["nome"], spesa=round(float(t["spesa"] or 0), 2), righe=int(t["righe"] or 0))
+                    for t in (_agg.get("top_fornitori") or [])
+                ],
+                top_categorie=[
+                    TopItem(nome=t["nome"], spesa=round(float(t["spesa"] or 0), 2), righe=int(t["righe"] or 0))
+                    for t in (_agg.get("top_categorie") or [])
+                ],
+            )
+            _DASHBOARD_STATS_CACHE[_cache_key] = (_time.monotonic(), _result)
+            return _result
+    except Exception as _rpc_err:
+        logger.warning("dashboard_stats: RPC aggregata fallita, fallback full-load Python: %s", _rpc_err)
+
     rows: List[Dict[str, Any]] = []
     page_size = 1000
     start = 0
