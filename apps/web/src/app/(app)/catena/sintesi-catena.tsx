@@ -277,7 +277,7 @@ function ContiGruppoCard({
 
       {/* Breakdown: Fatturato e Food cost sempre; Personale/Spese/MOL solo se completo. */}
       <div className="mt-auto space-y-1.5">
-        <VoceConto colore="emerald" label="Fatturato gruppo" value={euro(kpi.fatturato)} onClick={onApriMargini} />
+        <VoceConto colore="emerald" label="Fatturato gruppo (IVA incl.)" value={euro(kpi.fatturato)} onClick={onApriMargini} />
         <VoceConto
           colore="amber"
           segno="−"

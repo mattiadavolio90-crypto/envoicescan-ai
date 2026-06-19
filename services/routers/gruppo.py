@@ -212,7 +212,7 @@ def _build_briefing(
             + " più sotto."
         )
     elif tutto_ok:
-        frasi.append("Nessuna segnalazione aperta: tutto sotto controllo.")
+        frasi.append("Nessuna segnalazione aperta: tutto in ordine.")
 
     if salute_colore == "rosso":
         frasi.append(
@@ -724,15 +724,20 @@ class MarginiCopertiResponse(BaseModel):
     dependencies=[Depends(_verify_worker_key)],
 )
 def gruppo_margini_coperti(
+    mese: Optional[int] = None,
     authorization: Optional[str] = Header(None),
 ) -> MarginiCopertiResponse:
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
     anno, mese_corr = _anno_mese_corrente()
-    periodo_label = f"Anno {anno}"
+    mese_sel = mese if (mese and 1 <= mese <= 12) else None
+    periodo_label = (
+        f"{_MESI_IT[mese_sel - 1].capitalize()} {anno}" if mese_sel else f"Anno {anno}"
+    )
 
-    # margini_mensili è già pre-aggregata: una lettura, somma per ristorante_id,
-    # SOLO fino al mese corrente (no mesi futuri, vedi gruppo_overview).
-    mm_resp = (
+    # margini_mensili è già pre-aggregata: una lettura, somma per ristorante_id.
+    # Mese specifico se richiesto, altrimenti l'anno FINO AL MESE CORRENTE (no mesi
+    # futuri, vedi gruppo_overview).
+    q = (
         sb.table("margini_mensili")
         .select(
             "ristorante_id,fatturato_netto,fatturato_iva10,fatturato_iva22,"
@@ -740,9 +745,17 @@ def gruppo_margini_coperti(
         )
         .in_("ristorante_id", ids)
         .eq("anno", anno)
-        .lte("mese", mese_corr)
-        .execute()
     )
+    q = q.eq("mese", mese_sel) if mese_sel else q.lte("mese", mese_corr)
+    mm_resp = q.execute()
+
+    # Un PV è "incompleto" se gli mancano i dati base (fatturato/fatture costo/
+    # personale): stesso criterio del briefing/overview. Senza, mostrerebbe 0% in
+    # rosso (sembra in perdita) invece di "dati incompleti".
+    try:
+        incompleti_set = set(_completezza_dati_pv(sb, ids).keys())
+    except Exception:
+        incompleti_set = set()
     agg: Dict[str, Dict[str, float]] = {
         rid: {"netto": 0.0, "lordo": 0.0, "mol": 0.0, "fb": 0.0, "cop": 0.0} for rid in ids
     }
@@ -761,10 +774,9 @@ def gruppo_margini_coperti(
         a["fb"] += float(r.get("costi_fb_totali") or 0)
         a["cop"] += float(r.get("coperti") or 0)
 
-    def _riga(rid: str, nome: str, a: Dict[str, float]) -> MarginiCopertiPV:
+    def _riga(rid: str, nome: str, a: Dict[str, float], incompleti: bool) -> MarginiCopertiPV:
         netto = a["netto"]
         cop = int(round(a["cop"]))
-        incompleti = netto <= 0
         # Tutto su base NETTA, coerente con la pagina Margini/Coperti del PV: così
         # fatturato, margine % e scontrino medio quadrano tra loro (scontrino =
         # fatturato/coperti). Il LORDO (IVA inclusa) resta nei "conti del gruppo".
@@ -779,7 +791,10 @@ def gruppo_margini_coperti(
             dati_incompleti=incompleti,
         )
 
-    righe = [_riga(rid, rid_to_nome[rid], agg[rid]) for rid in ids]
+    righe = [
+        _riga(rid, rid_to_nome[rid], agg[rid], agg[rid]["netto"] <= 0 or rid in incompleti_set)
+        for rid in ids
+    ]
     righe.sort(key=lambda x: (x.dati_incompleti, -(x.margine_perc or 0), x.nome))
 
     tot = {
@@ -789,7 +804,7 @@ def gruppo_margini_coperti(
         "fb": sum(a["fb"] for a in agg.values()),
         "cop": sum(a["cop"] for a in agg.values()),
     }
-    gruppo = _riga("", f"Gruppo {nome_gruppo}", tot)
+    gruppo = _riga("", f"Gruppo {nome_gruppo}", tot, tot["netto"] <= 0)
 
     return MarginiCopertiResponse(
         nome_gruppo=nome_gruppo,

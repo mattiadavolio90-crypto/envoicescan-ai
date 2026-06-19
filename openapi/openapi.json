@@ -14234,6 +14234,22 @@
         "operationId": "gruppo_margini_coperti_api_gruppo_margini_coperti_get",
         "parameters": [
           {
+            "name": "mese",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Mese"
+            }
+          },
+          {
             "name": "authorization",
             "in": "header",
             "required": false,

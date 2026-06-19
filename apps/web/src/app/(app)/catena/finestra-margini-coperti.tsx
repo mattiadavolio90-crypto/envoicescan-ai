@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ArrowDown, ArrowUp, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -9,7 +10,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { NativeSelect } from "@/components/ui/select";
 import { type MarginiCoperti, type MarginiCopertiPV } from "@/lib/gruppo";
+
+const MESI = [
+  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
+];
 
 function euro(n: number | null): string {
   if (n == null) return "—";
@@ -35,13 +42,19 @@ type Col = {
   label: string;
   fmt: (v: number | null) => string;
   altoMeglio: boolean;
+  tooltip?: string;
 };
 const COLS: Col[] = [
-  { key: "margine_perc", label: "Margine %", fmt: pct, altoMeglio: true },
-  { key: "fatturato", label: "Fatturato", fmt: euro, altoMeglio: true },
-  { key: "coperti", label: "Coperti", fmt: num, altoMeglio: true },
-  { key: "scontrino_medio", label: "Scontrino medio", fmt: euro, altoMeglio: true },
-  { key: "mp_per_coperto", label: "€ materia prima / coperto", fmt: euro, altoMeglio: false },
+  { key: "margine_perc", label: "Margine %", fmt: pct, altoMeglio: true,
+    tooltip: "MOL sul fatturato netto: quanto resta dopo food cost, personale e spese." },
+  { key: "fatturato", label: "Fatturato", fmt: euro, altoMeglio: true,
+    tooltip: "Fatturato al netto dell'IVA (come la pagina Margini del punto vendita)." },
+  { key: "coperti", label: "Coperti", fmt: num, altoMeglio: true,
+    tooltip: "Numero di coperti serviti nel periodo." },
+  { key: "scontrino_medio", label: "Scontrino medio", fmt: euro, altoMeglio: true,
+    tooltip: "Fatturato netto diviso i coperti: spesa media per coperto." },
+  { key: "mp_per_coperto", label: "€ materia prima / coperto", fmt: euro, altoMeglio: false,
+    tooltip: "Quanto costa in materie prime (food & beverage) servire un coperto. Più basso = meglio." },
 ];
 
 export function FinestraMarginiCoperti({
@@ -53,13 +66,20 @@ export function FinestraMarginiCoperti({
 }) {
   const [data, setData] = useState<MarginiCoperti | null>(null);
   const [loading, setLoading] = useState(false);
+  const [periodo, setPeriodo] = useState<string>("anno");
+  const [sortKey, setSortKey] = useState<keyof MarginiCopertiPV>("margine_perc");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const reqRef = useRef(0);
+
+  const annoCorrente = new Date().getFullYear();
+  const meseCorrente = new Date().getMonth() + 1;
 
   useEffect(() => {
     if (!open) return;
     const my = ++reqRef.current;
     setLoading(true);
-    fetch("/api/gruppo/margini-coperti", { cache: "no-store" })
+    const qs = periodo !== "anno" ? `?mese=${periodo}` : "";
+    fetch(`/api/gruppo/margini-coperti${qs}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((j) => {
         if (my === reqRef.current) setData(j);
@@ -70,7 +90,43 @@ export function FinestraMarginiCoperti({
       .finally(() => {
         if (my === reqRef.current) setLoading(false);
       });
-  }, [open]);
+  }, [open, periodo]);
+
+  function toggleSort(k: keyof MarginiCopertiPV) {
+    if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(k); setSortDir("desc"); }
+  }
+
+  // Ordina i PV per la colonna scelta; gli incompleti restano sempre in fondo.
+  const righeSorted = [...(data?.righe ?? [])].sort((a, b) => {
+    if (a.dati_incompleti !== b.dati_incompleti) return a.dati_incompleti ? 1 : -1;
+    const va = a[sortKey] as number | null;
+    const vb = b[sortKey] as number | null;
+    const na = va == null ? -Infinity : va;
+    const nb = vb == null ? -Infinity : vb;
+    return sortDir === "desc" ? nb - na : na - nb;
+  });
+
+  // Export Excel (xlsx lazy: libreria pesante, solo al click).
+  async function exportXls() {
+    if (!data) return;
+    const XLSX = await import("xlsx");
+    const header = ["Punto vendita", ...COLS.map((c) => c.label)];
+    const toRow = (r: MarginiCopertiPV): Record<string, string | number> => {
+      const row: Record<string, string | number> = { "Punto vendita": r.nome };
+      COLS.forEach((c) => {
+        const v = r[c.key] as number | null;
+        row[c.label] = r.dati_incompleti ? "dati incompleti" : v == null ? "—" : v;
+      });
+      return row;
+    };
+    const rows = [...righeSorted.map(toRow), toRow(data.gruppo)];
+    const ws = XLSX.utils.json_to_sheet(rows, { header });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Margini e coperti");
+    const slug = (data.periodo_label || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+    XLSX.writeFile(wb, `margini_coperti_${slug || new Date().toISOString().slice(0, 10)}.xlsx`);
+  }
 
   // Per ogni colonna, individua best/worst tra i PV con dati (esclude incompleti
   // e valori null). Se c'è un solo PV con dato, niente evidenza (non c'è confronto).
@@ -106,7 +162,23 @@ export function FinestraMarginiCoperti({
         <DialogHeader className="border-b px-5 py-4">
           <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
             <span>Margini e coperti per punto vendita</span>
-            <span className="text-xs font-normal text-muted-foreground">{data?.periodo_label}</span>
+            <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
+              <NativeSelect value={periodo} onValueChange={setPeriodo} className="h-8 w-40 text-xs">
+                <option value="anno">Anno in corso ({annoCorrente})</option>
+                {MESI.slice(0, meseCorrente).map((m, i) => (
+                  <option key={i + 1} value={String(i + 1)}>{m} {annoCorrente}</option>
+                ))}
+              </NativeSelect>
+              <button
+                type="button"
+                onClick={exportXls}
+                disabled={!data}
+                className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                <Download className="size-3.5" />
+                Esporta
+              </button>
+            </span>
           </DialogTitle>
         </DialogHeader>
 
@@ -124,14 +196,23 @@ export function FinestraMarginiCoperti({
                       Punto vendita
                     </th>
                     {COLS.map((c) => (
-                      <th key={c.key} className="px-3 py-2 text-right font-semibold">
-                        {c.label}
+                      <th key={c.key} className="px-3 py-2 text-right font-semibold" title={c.tooltip}>
+                        <button
+                          type="button"
+                          onClick={() => toggleSort(c.key)}
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                        >
+                          {c.label}
+                          {sortKey === c.key ? (
+                            sortDir === "desc" ? <ArrowDown className="size-3" /> : <ArrowUp className="size-3" />
+                          ) : null}
+                        </button>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {data.righe.map((r) => (
+                  {righeSorted.map((r) => (
                     <tr key={r.ristorante_id} className="border-t">
                       <td className="sticky left-0 z-10 max-w-[14rem] truncate bg-popover px-3 py-2 font-medium">
                         {r.nome}
@@ -166,7 +247,9 @@ export function FinestraMarginiCoperti({
               <p className="mt-3 text-xs text-muted-foreground">
                 <span className="text-emerald-600 dark:text-emerald-500">verde</span> = migliore della
                 catena, <span className="text-rose-600 dark:text-rose-500">rosso</span> = peggiore. Per «€
-                materia prima / coperto» il valore basso è il migliore.
+                materia prima / coperto» il valore basso è il migliore. «dati incompleti» = al punto
+                vendita mancano fatturato, fatture costo o costo personale del periodo. Importi al
+                <span className="font-medium"> netto IVA</span> (i «conti del gruppo» mostrano il lordo, IVA inclusa).
               </p>
             </>
           )}
