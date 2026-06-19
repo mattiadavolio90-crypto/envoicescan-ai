@@ -10,6 +10,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { type SpesaPivot } from "@/lib/gruppo";
 
 const MESI = [
@@ -103,7 +104,12 @@ export function FinestraSpesaPV({
     const ws = XLSX.utils.json_to_sheet([...rows, totaleRow], { header });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, dimLabel.slice(0, 31));
-    XLSX.writeFile(wb, `spesa_per_pv_${data.dimensione}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    // Nome file coerente col periodo selezionato (es. spesa_per_pv_categoria_giugno-2026.xlsx).
+    const periodoSlug = (data.periodo_label || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+    XLSX.writeFile(wb, `spesa_per_pv_${data.dimensione}_${periodoSlug || new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   return (
@@ -169,7 +175,15 @@ export function FinestraSpesaPV({
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map((row) => (
+                {data.rows.map((row) => {
+                  // PV più caro della riga: lo evidenziamo solo se almeno 2 PV hanno
+                  // speso (altrimenti "il più caro" è ovvio e diventa rumore).
+                  const conSpesa = data.pv.filter((p) => (row.per_pv[p.id] ?? 0) > 0);
+                  const maxPvId =
+                    conSpesa.length >= 2
+                      ? conSpesa.reduce((a, b) => ((row.per_pv[b.id] ?? 0) > (row.per_pv[a.id] ?? 0) ? b : a)).id
+                      : null;
+                  return (
                   <tr key={row.dim_val} className="border-t">
                     <td className="sticky left-0 z-10 max-w-[14rem] truncate bg-popover px-3 py-2 font-medium">
                       {row.emoji ? <span className="mr-1.5">{row.emoji}</span> : null}
@@ -177,13 +191,25 @@ export function FinestraSpesaPV({
                     </td>
                     {data.pv.map((p) => {
                       const v = row.per_pv[p.id] ?? 0;
+                      const isMax = p.id === maxPvId;
                       return (
                         <td
                           key={p.id}
                           style={cellStyle(v, maxCell)}
-                          className="px-3 py-2 text-right tabular-nums"
+                          className={cn(
+                            "px-3 py-2 text-right tabular-nums",
+                            isMax && "font-semibold text-primary",
+                          )}
+                          title={isMax ? "Punto vendita che spende di più in questa voce" : undefined}
                         >
-                          {v > 0 ? euro(v) : <span className="text-muted-foreground/40">—</span>}
+                          {v > 0 ? (
+                            <>
+                              {isMax && <span className="mr-1 text-[0.65rem] align-middle">▲</span>}
+                              {euro(v)}
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground/40">—</span>
+                          )}
                         </td>
                       );
                     })}
@@ -195,18 +221,26 @@ export function FinestraSpesaPV({
                       </span>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {/* Riga TOTALE per PV */}
                 <tr className="border-t-2 border-foreground/20 font-semibold">
                   <td className="sticky left-0 z-10 bg-popover px-3 py-2">Totale</td>
-                  {data.pv.map((p) => (
-                    <td key={p.id} className="px-3 py-2 text-right tabular-nums">
-                      {euro(data.totali_pv[p.id] ?? 0)}
-                    </td>
-                  ))}
+                  {data.pv.map((p) => {
+                    const tot = data.totali_pv[p.id] ?? 0;
+                    const inc = data.grand_total > 0 ? (tot / data.grand_total) * 100 : 0;
+                    return (
+                      <td key={p.id} className="px-3 py-2 text-right tabular-nums">
+                        <span className="block">{euro(tot)}</span>
+                        <span className="block text-xs font-normal text-muted-foreground">
+                          {inc.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
+                        </span>
+                      </td>
+                    );
+                  })}
                   <td className="px-3 py-2 text-right tabular-nums">
                     <span className="block">{euro(data.grand_total)}</span>
-                    <span className="block text-xs text-muted-foreground">100%</span>
+                    <span className="block text-xs font-normal text-muted-foreground">100%</span>
                   </td>
                 </tr>
               </tbody>
