@@ -64,8 +64,8 @@ Scalano con l'uso di ciascun cliente.
 
 | Piano | Domande/giorno | Costo max chat/mese |
 |---|---|---|
-| Base | 8 | €0,53 |
-| Plus | 15 | €1,00 |
+| Base | 10 | €0,67 |
+| Plus | 20 | €1,33 |
 | Pro | 30 | €2,00 |
 
 ### Invoicetronic — incluso nei piani, costo per fattura SDI
@@ -82,8 +82,8 @@ Il costo unitario scende all'aumentare del volume aggregato (tutti i clienti).
 
 | Piano | AI cat. | AI chat | SDI max | **Var. tot./cliente** |
 |---|---|---|---|---|
-| Base €39 | €0,08 | €0,53 | €5,00 | **€5,61** |
-| Plus €59 | €0,16 | €1,00 | €10,00 | **€11,16** |
+| Base €39 | €0,08 | €0,67 | €5,00 | **€5,75** |
+| Plus €59 | €0,16 | €1,33 | €10,00 | **€11,49** |
 | Pro €79 | €0,32 | €2,00 | €20,00 | **€22,32** |
 
 ---
@@ -94,16 +94,16 @@ Il costo unitario scende all'aumentare del volume aggregato (tutti i clienti).
 
 | Piano | Ricavo | Costi AI | Margine | % |
 |---|---|---|---|---|
-| Base €39 | €39 | €0,61 | €38,39 | **98%** |
-| Plus €59 | €59 | €1,16 | €57,84 | **98%** |
+| Base €39 | €39 | €0,75 | €38,25 | **98%** |
+| Plus €59 | €59 | €1,49 | €57,51 | **97%** |
 | Pro €79 | €79 | €2,32 | €76,68 | **97%** |
 
 ### Scenario worst case — tutte le fatture via SDI (fascia €0,10)
 
 | Piano | Ricavo | AI + SDI | Margine | % |
 |---|---|---|---|---|
-| Base €39 | €39 | €5,61 | €33,39 | **86%** |
-| Plus €59 | €59 | €11,16 | €47,84 | **81%** |
+| Base €39 | €39 | €5,75 | €33,25 | **85%** |
+| Plus €59 | €59 | €11,49 | €47,51 | **81%** |
 | Pro €79 | €79 | €22,32 | €56,68 | **72%** ⚠ |
 
 > Il margine lordo per cliente resta ≥80% tranne il Pro in fascia €0,10 con uso SDI massimo (fase early). Dalla fascia €0,06 in poi tutti i piani tornano sopra l'80%.

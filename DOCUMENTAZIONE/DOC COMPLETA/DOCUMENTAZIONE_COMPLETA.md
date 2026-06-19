@@ -909,8 +909,8 @@ Widget flottante solo sulla Home (bottone a contorno col logo ONEFLUX). Cronolog
 | Piano | Limite |
 |-------|--------|
 | Free | 0 (chat nascosta, 403) |
-| Base | 8 |
-| Plus | 15 |
+| Base | 10 |
+| Plus | 20 |
 | Pro | 30 |
 
 - Costo ~€0,0007/domanda, budget Pro ≤ €3/mese

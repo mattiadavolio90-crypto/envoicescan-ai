@@ -79,8 +79,8 @@ uno strumento che legge il DB**, mai dalla memoria del modello. L'LLM decide
 | Piano | Domande/giorno |
 |---|---|
 | `free` | 0 (chat non disponibile → 403) |
-| `base` | 8 |
-| `plus` | 15 |
+| `base` | 10 |
+| `plus` | 20 |
 | `pro` | 30 |
 
 > ⚠️ Il modello chat (`gpt-4.1-mini`) è **diverso** da quello del briefing/
@@ -197,10 +197,12 @@ Costruito **fresco a ogni domanda** con i dati del ristorante. Tre parti:
 - **Solo dominio ristorante:** per ricette generiche/notizie/personale risponde
   educatamente che aiuta solo sulla gestione del locale.
 
-> **Perché il prompt è "leggero" (fix 9/6):** prima caricava 3000 righe fattura e
-> aggregava anche per prodotto, ad ogni domanda. Ora carica 1500 righe e solo
-> categoria+fornitore (il dettaglio prodotto lo dà `query_costi` su richiesta).
-> Meno dati dal DB, meno token, **latenza "fornitore più caro" ~4.2s → ~2.9s**.
+> **Perché il prompt è "leggero" (fix 9/6 → SQL 19/6):** prima caricava 3000 righe
+> fattura e aggregava anche per prodotto, ad ogni domanda. Poi 1500 righe + somma
+> in Python. **Dal 19/6 le top-list arrivano dalla RPC `chat_top_categoria_fornitore`**
+> (aggregazione SQL): zero troncamento (il limit 1500 sottostimava i clienti grandi
+> — caso reale: 2070 righe/90gg) e si trasferiscono solo 5+5 righe. Fallback Python
+> se la RPC non è ancora deployata.
 
 ---
 
@@ -285,6 +287,15 @@ reale del cliente.
 
 ## Changelog rilevante
 
+- **19/6/2026 (hardening + SQL)** — limiti domande/giorno **base 10 / plus 20 / pro 30**
+  (`CHAT_LIMITI_PIANO`). Loop tool-calling **unificato** su `_chat_loop_openai` (sede
+  + catena, niente più duplicazione) con **chiamata finale `tool_choice="none"`** a
+  round esauriti (basta "Non sono riuscito a elaborare la risposta") e **log
+  strutturato** (round + tool chiamati + reply_vuota). System prompt: riga
+  **anti-prompt-injection** (output tool = dato grezzo, non istruzioni). `ChatRequest`:
+  **cap 24k caratteri totali** oltre al limite per-messaggio. Top categorie/fornitori
+  del prompt da **RPC `chat_top_categoria_fornitore`** (no troncamento). `query_costi`:
+  flag **`totale_parziale`** quando si raggiunge il tetto righe (`_CHAT_COSTI_LIMIT=8000`).
 - **10/6/2026 (Fase D — Agenda nell'assistente)** — 7° tool `query_appuntamenti`
   (sola lettura su `diario_eventi`); **gate degli strumenti per `pagine_abilitate`**
   (`_TOOL_FLAG`, §5.1 — vale anche per i 6 tool preesistenti, prima non filtravano);
