@@ -13,6 +13,7 @@ export type Documento = {
   data_pagamento: string | null;
   pagata_at: string | null;
   stato_scadenza: string;
+  is_nuovo?: boolean;
 };
 
 export type RegolaPagamento = {

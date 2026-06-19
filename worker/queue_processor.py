@@ -462,12 +462,61 @@ def _process_item(supabase, item: dict[str, Any]) -> ItemResult:
             error=f"auto_classify error={exc}",
         )
 
+    # Blocco giornaliero "Nuovo" per gli arrivi automatici: il primo documento di
+    # oggi avanza nuovi_da, cosi' il badge "Nuovo" resta sui documenti del giorno
+    # fino al caricamento del giorno successivo (niente piu' scadenza fissa a 24h).
+    # Solo flusso Invoicetronic: il flusso manuale gestisce nuovi_da da se' (start-session).
+    if item.get("source", "invoicetronic") == "invoicetronic":
+        _advance_nuovi_da_daily(supabase, ristorante_id)
+
     return ItemResult(
         queue_id=queue_id,
         event_id=event_id,
         status="done",
         righe=result.get("righe", 0),
     )
+
+
+def _advance_nuovi_da_daily(supabase, ristorante_id: str) -> None:
+    """Avanza ristoranti.nuovi_da a mezzanotte (Europe/Rome) di OGGI.
+
+    Idempotente: aggiorna solo se nuovi_da e' NULL o anteriore a mezzanotte di oggi
+    -> al massimo una UPDATE al giorno per ristorante (i documenti successivi dello
+    stesso giorno trovano nuovi_da >= mezzanotte e non fanno nulla). Effetto: i
+    documenti arrivati oggi restano "Nuovi" finche' non arriva il blocco del giorno
+    dopo. Non bloccante: in caso di errore il badge usa il fallback 24h, l'elaborazione
+    della fattura non fallisce mai per questo.
+    """
+    try:
+        from datetime import datetime, time as _time
+        try:
+            from zoneinfo import ZoneInfo
+            _rome = ZoneInfo("Europe/Rome")
+        except Exception:
+            from datetime import timezone as _tz
+            _rome = _tz.utc
+        now_rome = datetime.now(_rome)
+        midnight_rome = datetime.combine(now_rome.date(), _time.min, tzinfo=_rome)
+
+        res = supabase.table("ristoranti").select("nuovi_da").eq("id", ristorante_id).single().execute()
+        nd_raw = (res.data or {}).get("nuovi_da")
+        if nd_raw:
+            try:
+                nd_dt = datetime.fromisoformat(str(nd_raw).replace("Z", "+00:00"))
+                if nd_dt >= midnight_rome:
+                    return  # gia' aggiornato per oggi
+            except Exception:
+                pass  # data non parsabile: forziamo l'avanzamento
+
+        supabase.table("ristoranti").update(
+            {"nuovi_da": midnight_rome.isoformat()}
+        ).eq("id", ristorante_id).execute()
+        logger.info(
+            "nuovi_da avanzato a %s per ristorante %s (blocco giornaliero auto)",
+            midnight_rome.date(), ristorante_id,
+        )
+    except Exception as exc:
+        logger.warning("_advance_nuovi_da_daily fallita per %s: %s", ristorante_id, exc)
 
 
 # ─── Utilità interne ─────────────────────────────────────────────────────────

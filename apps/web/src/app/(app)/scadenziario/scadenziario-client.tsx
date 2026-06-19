@@ -1205,14 +1205,16 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
   const [filtroFornitori, setFiltroFornitori] = useState<Set<string>>(new Set());
   const [filtroDateDa, setFiltroDateDa] = useState("");
   const [filtroDateA, setFiltroDateA] = useState("");
+  const [filtroSoloNuove, setFiltroSoloNuove] = useState(false);
 
-  const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "";
+  const filtriAttivi = filtroPeriodo !== "tutti" || filtroFornitori.size > 0 || filtroDateDa !== "" || filtroDateA !== "" || filtroSoloNuove;
 
   function resetFiltri() {
     setFiltroPeriodo("tutti");
     setFiltroFornitori(new Set());
     setFiltroDateDa("");
     setFiltroDateA("");
+    setFiltroSoloNuove(false);
   }
 
   // Lista fornitori unici ordinati
@@ -1231,6 +1233,10 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
     return documenti.filter(d => {
       // Filtro fornitori (multi)
       if (filtroFornitori.size > 0 && !filtroFornitori.has(d.fornitore)) return false;
+
+      // Filtro "Nuove": solo i documenti arrivati dall'ultimo caricamento
+      // (flag is_nuovo calcolato server-side da nuovi_da, stesso criterio del tab Articoli).
+      if (filtroSoloNuove && !d.is_nuovo) return false;
 
       // Filtro periodo (solo su non pagate con scadenza, tranne "tutti").
       // parseLocalDate interpreta "YYYY-MM-DD" a mezzanotte LOCALE: con new Date()
@@ -1262,7 +1268,7 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
 
       return true;
     });
-  }, [documenti, filtroPeriodo, filtroFornitori, filtroDateDa, filtroDateA]);
+  }, [documenti, filtroPeriodo, filtroFornitori, filtroDateDa, filtroDateA, filtroSoloNuove]);
 
   // KPI e bucket calcolati sui documenti filtrati
   const kpi = useMemo(() => computeKpi(documentiFiltrati), [documentiFiltrati]);
@@ -1271,10 +1277,11 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
   // Il calendario ha già la propria navigazione mensile: applica solo il filtro
   // fornitore (i chip periodo sono specifici dell'agenda).
   const documentiCalendario = useMemo(() =>
-    filtroFornitori.size === 0
-      ? documenti
-      : documenti.filter(d => filtroFornitori.has(d.fornitore)),
-    [documenti, filtroFornitori]
+    documenti.filter(d =>
+      (filtroFornitori.size === 0 || filtroFornitori.has(d.fornitore)) &&
+      (!filtroSoloNuove || d.is_nuovo)
+    ),
+    [documenti, filtroFornitori, filtroSoloNuove]
   );
 
   const loadData = useCallback(async () => {
@@ -1650,8 +1657,8 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
           </div>
         )}
 
-        {/* Filtro fornitori multi-select */}
-        <div className="flex items-center gap-2">
+        {/* Filtro fornitori multi-select + toggle "Nuove" */}
+        <div className="flex items-center gap-2 flex-wrap">
           <FornitoreMultiSelect
             fornitori={fornitoriUnici}
             selected={filtroFornitori}
@@ -1662,6 +1669,17 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
               <X className="size-3" /> Rimuovi
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setFiltroSoloNuove(v => !v)}
+            title="Mostra solo le fatture arrivate dall'ultimo caricamento"
+            className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
+              ${filtroSoloNuove
+                ? "bg-sky-500 text-white border-sky-500"
+                : "border-sky-500/30 bg-sky-500/5 text-sky-600 dark:text-sky-400 hover:bg-sky-500/10"}`}
+          >
+            Nuove
+          </button>
         </div>
 
         {/* Risultati + select all */}

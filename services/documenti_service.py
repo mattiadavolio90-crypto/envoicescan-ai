@@ -755,6 +755,19 @@ def get_documenti_scadenziario(
     sb = supabase_client or get_supabase_client()
     today = date.today()
 
+    # cutoff "Nuovo": stesso criterio del tab Articoli (nuovi_da del ristorante,
+    # fallback 24h). Un documento e' "nuovo" se arrivato dall'ultimo caricamento
+    # (manuale: inizio sessione upload; automatico: blocco giornaliero da worker).
+    from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+    try:
+        _rist = (
+            sb.table("ristoranti").select("nuovi_da").eq("id", ristorante_id).single().execute()
+        )
+        _nuovi_da_raw = (_rist.data or {}).get("nuovi_da")
+    except Exception:
+        _nuovi_da_raw = None
+    cutoff_nuovo = _nuovi_da_raw or (_dt.now(_tz.utc) - _td(hours=24)).isoformat()
+
     # ── Step 1: leggi tutte le righe fatture (filter_active, group per file_origine)
     fatture_rows: List[Dict[str, Any]] = []
     page_size = 1000
@@ -884,6 +897,7 @@ def get_documenti_scadenziario(
             "pagata_at": pagata_at,
             "stato_scadenza": _compute_stato_scadenza(scadenza_eff, pagata=pagata, today=today),
             "created_at": base.get("created_at"),
+            "is_nuovo": (base.get("created_at") or "") >= cutoff_nuovo,
         })
 
     result.sort(key=lambda d: (
