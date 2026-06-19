@@ -35,3 +35,17 @@ enabled = false
 enabled = true
 policy = "oneshot"
 inspector_port = 8083
+
+# ─── Edge Functions ───────────────────────────────────────────────────────────
+# verify_jwt FALSE su entrambi i webhook: chi li chiama (Invoicetronic, Gmail/Apps
+# Script) NON manda un JWT Supabase. L'autenticazione vera e' nel codice:
+#   - invoicetronic-webhook → firma HMAC-SHA256 (header Invoicetronic-Signature) + anti-replay
+#   - ricavi-email-webhook  → token segreto nell'header/body verificato dalla function
+# Se verify_jwt restasse TRUE, Supabase rifiuterebbe 401 PRIMA del codice e le fatture
+# SDI / le email ricavi rimbalzerebbero in silenzio. Dichiarato qui per renderlo
+# riproducibile e impedire drift dal dashboard.
+[functions.invoicetronic-webhook]
+verify_jwt = false
+
+[functions.ricavi-email-webhook]
+verify_jwt = false
