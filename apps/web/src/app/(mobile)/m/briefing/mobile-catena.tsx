@@ -12,11 +12,13 @@ import {
   CheckCircle2,
   ChevronRight,
   ArrowRight,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GruppoOverview, Segnale, SegnaliGruppo } from "@/lib/gruppo";
 
 const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
+  dati_mancanti: ClipboardList,
   margine_calo: TrendingDown,
   prezzi_sopra: Tag,
   ricavi_mancanti: CalendarX,

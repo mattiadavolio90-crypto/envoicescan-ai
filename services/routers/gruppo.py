@@ -718,7 +718,7 @@ _PREZZI_MIN_PV = 2                 # serve almeno 2 PV con la categoria per la m
 
 
 class Segnale(BaseModel):
-    tipo: str                       # "margine_calo" | "prezzi_sopra" | "ricavi_mancanti"
+    tipo: str                       # "dati_mancanti" | "margine_calo" | "prezzi_sopra" | "ricavi_mancanti"
     severity: str                   # "warning" | "error"
     ristorante_id: str
     pv_nome: str
@@ -747,6 +747,8 @@ def _mesi_indietro(anno: int, mese: int, n: int) -> List[tuple]:
 
 # Catalogo dei segnali di catena (per la config "Configura assistente catena").
 _SEGNALI_CATALOGO = [
+    {"key": "dati_mancanti", "label": "Dati mancanti nei PV",
+     "descrizione": "Avvisa quando a un PV mancano fatturato, fatture costo o costo personale: senza, i confronti di margine sono falsi."},
     {"key": "margine_calo", "label": "Margine in calo",
      "descrizione": "Avvisa quando il margine di un PV scende sotto la media dei mesi precedenti."},
     {"key": "prezzi_sopra", "label": "Prezzi sopra la media catena",
@@ -779,6 +781,58 @@ def _get_gruppo_config(sb, user_id: str) -> tuple:
     return set(), set()
 
 
+def _elenco_it(voci: List[str]) -> str:
+    """Unisce le voci in italiano: 'a', 'a e b', 'a, b e c'."""
+    if not voci:
+        return ""
+    if len(voci) == 1:
+        return voci[0]
+    return ", ".join(voci[:-1]) + " e " + voci[-1]
+
+
+def _completezza_dati_pv(sb, ids: List[str]) -> Dict[str, List[str]]:
+    """Per ogni PV, la lista dei dati BASE mancanti (vuota = completo).
+
+    Criterio deciso (presenza dati, non % salute): un PV è affidabile per i confronti
+    di margine/MOL solo se ha fatturato + fatture costo (F&B) + costo personale del
+    mese. Riusa la RPC gruppo_salute_componenti (netto/personale/n_fatture) già usata
+    dalla salute: niente query nuove. Best-effort: su errore RPC, nessun segnale."""
+    from datetime import datetime as _dt, timedelta as _td
+    try:
+        from zoneinfo import ZoneInfo
+        oggi = _dt.now(tz=ZoneInfo("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt.now().date()
+    inizio_dt = _dt.combine(oggi - _td(days=29), _dt.min.time())
+    if oggi.month == 1:
+        mc_anno, mc_mese = oggi.year - 1, 12
+    else:
+        mc_anno, mc_mese = oggi.year, oggi.month - 1
+
+    out: Dict[str, List[str]] = {}
+    if not ids:
+        return out
+    res = sb.rpc("gruppo_salute_componenti", {
+        "p_ristorante_ids": ids,
+        "p_inizio": inizio_dt.isoformat(),
+        "p_anno": mc_anno,
+        "p_mese": mc_mese,
+    }).execute()
+    by_id = {str(r.get("ristorante_id")): r for r in (res.data or [])}
+    for rid in ids:
+        r = by_id.get(rid) or {}
+        manca: List[str] = []
+        if float(r.get("netto") or 0) <= 0:
+            manca.append("il fatturato")
+        if int(r.get("n_fatture") or 0) <= 0:
+            manca.append("le fatture costo")
+        if float(r.get("personale") or 0) <= 0:
+            manca.append("il costo del personale")
+        if manca:
+            out[rid] = manca
+    return out
+
+
 def _calcola_segnali(
     sb,
     ids: List[str],
@@ -803,6 +857,29 @@ def _calcola_segnali(
     segnali_off = segnali_off or set()
     if pv_esclusi:
         ids = [r for r in ids if r not in pv_esclusi]
+
+    # ── Segnale 0: dati mancanti per PV (la catena INDIRIZZA, non spiega) ──
+    # Completezza per PRESENZA di dati (non % salute): un PV è affidabile solo se ha
+    # fatturato + fatture costo (F&B) + costo personale del mese. Senza, margine e
+    # MOL del PV (e del gruppo) sono falsi: lo si dice PRIMA di ogni confronto, e si
+    # manda l'utente nel PV a sistemare (il dettaglio del cosa fare è nella Home PV).
+    # Riusa la RPC della salute (stesse componenti netto/personale/n_fatture).
+    if "dati_mancanti" not in segnali_off:
+        try:
+            comp = _completezza_dati_pv(sb, ids)
+            for rid in ids:
+                manca = comp.get(rid)
+                if manca:
+                    segnali.append({
+                        "tipo": "dati_mancanti",
+                        "severity": "warning",
+                        "ristorante_id": rid,
+                        "pv_nome": rid_to_nome[rid],
+                        "testo": "Mancano " + _elenco_it(manca) + " — vai a completare nel punto vendita",
+                        "cta_page": "/dashboard",
+                    })
+        except Exception:
+            pass
 
     # ── Segnale 1: margine in calo (per PV vs se stesso) ──
     # margini_mensili pre-aggregata: prendo gli ultimi 5 mesi possibili per ogni
@@ -919,9 +996,15 @@ def _calcola_segnali(
     if segnali_off:
         segnali = [s for s in segnali if s["tipo"] not in segnali_off]
 
-    # Ordine: errori prima, poi per nome PV. (tutti warning in v1, ma futuro-proof)
+    # Ordine: i DATI MANCANTI per primi (senza, il resto è falso), poi per gravità,
+    # poi per nome PV. La catena indirizza: prima "vai a completare", poi i confronti.
     sev_rank = {"error": 0, "warning": 1, "info": 2}
-    segnali.sort(key=lambda s: (sev_rank.get(s["severity"], 9), s["pv_nome"]))
+    tipo_rank = {"dati_mancanti": 0}
+    segnali.sort(key=lambda s: (
+        tipo_rank.get(s["tipo"], 1),
+        sev_rank.get(s["severity"], 9),
+        s["pv_nome"],
+    ))
     return segnali
 
 

@@ -100,7 +100,10 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
   }
 
   const visibili = briefing.azioni.filter((a) => !dismissed.has(a.id));
-  const tuttoOk = briefing.tutto_ok || visibili.length === 0;
+  const datiMancanti = briefing.dati_mancanti ?? [];
+  // Verde deciso SOLO dal backend (gate dati mancanti + Salute): l'archiviazione
+  // locale non lo forza. Parità con la Home desktop.
+  const tuttoOk = briefing.tutto_ok && visibili.length === 0;
 
   return (
     <div className="space-y-5">
@@ -131,6 +134,19 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
             Tutto in ordine
           </p>
           <p className="text-sm text-muted-foreground">Nessuna azione da fare oggi.</p>
+        </div>
+      ) : visibili.length === 0 && datiMancanti.length > 0 ? (
+        <div className="flex flex-col items-center gap-2.5 rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/[0.07] to-transparent py-8 text-center">
+          <div className="rounded-full bg-amber-500/15 p-2.5 ring-1 ring-amber-500/20">
+            <Info className="size-6 text-amber-500" />
+          </div>
+          <p className="text-[15px] font-semibold text-amber-700 dark:text-amber-400">
+            Nessuna azione urgente
+          </p>
+          <p className="px-4 text-sm text-muted-foreground">
+            Per il quadro completo mancano:{" "}
+            <span className="font-medium text-foreground">{datiMancanti.join(", ")}</span>.
+          </p>
         </div>
       ) : (
         <div className="space-y-2.5">

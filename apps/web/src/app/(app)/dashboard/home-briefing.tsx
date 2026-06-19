@@ -108,7 +108,11 @@ export function HomeBriefing({ briefing }: Props) {
   }
 
   const visibili = briefing.azioni.filter((a) => !dismissed.has(a.id));
-  const tuttoOk = briefing.tutto_ok || visibili.length === 0;
+  const datiMancanti = briefing.dati_mancanti ?? [];
+  // Il verde "tutto a posto" lo decide SOLO il backend (gateato su dati mancanti e
+  // Salute): l'archiviazione locale non deve poterlo forzare. Se non ci sono card
+  // visibili ma il backend non dice tutto_ok, mostriamo la nota neutra, mai il verde.
+  const tuttoOk = briefing.tutto_ok && visibili.length === 0;
 
   return (
     <section className="space-y-6">
@@ -142,6 +146,21 @@ export function HomeBriefing({ briefing }: Props) {
           </p>
           <p className="text-sm text-muted-foreground">
             Nessuna azione da fare. Buon lavoro!
+          </p>
+        </div>
+      ) : visibili.length === 0 && datiMancanti.length > 0 ? (
+        // Nessuna card urgente, ma mancano dati: senza quelli i numeri sono falsi.
+        // Niente verde: nota neutra che dice cosa completare per il quadro reale.
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-amber-500/20 bg-gradient-to-br from-amber-500/[0.07] via-transparent to-transparent py-8 text-center">
+          <div className="rounded-full bg-amber-500/15 p-3 ring-1 ring-amber-500/20">
+            <Info className="size-6 text-amber-500" />
+          </div>
+          <p className="text-base font-semibold text-amber-700 dark:text-amber-400">
+            Nessuna azione urgente
+          </p>
+          <p className="max-w-md text-sm text-muted-foreground">
+            Per avere il quadro completo, però, mancano ancora:{" "}
+            <span className="font-medium text-foreground">{datiMancanti.join(", ")}</span>.
           </p>
         </div>
       ) : (

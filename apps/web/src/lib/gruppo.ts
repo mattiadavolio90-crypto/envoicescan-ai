@@ -112,7 +112,7 @@ export type MarginiCoperti = {
 // ─── Segnali "Da vedere nella catena" ─────────────────────────────────────
 
 export type Segnale = {
-  tipo: "margine_calo" | "prezzi_sopra" | "ricavi_mancanti";
+  tipo: "dati_mancanti" | "margine_calo" | "prezzi_sopra" | "ricavi_mancanti";
   severity: "warning" | "error";
   ristorante_id: string;
   pv_nome: string;

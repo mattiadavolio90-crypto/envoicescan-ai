@@ -1738,6 +1738,11 @@ class BriefingResponse(BaseModel):
     narrativa: str
     severity_max: str = "info"
     tutto_ok: bool
+    # Dati mancanti (label brevi) che rendono falsi i numeri di margine/MOL. Se non
+    # vuota, la Home NON mostra il verde "tutto a posto" ma una nota neutra con la
+    # lista. Gateato a monte: tutto_ok e dati_mancanti non vuota sono mutuamente
+    # esclusivi.
+    dati_mancanti: List[str] = []
     azioni: List[BriefingAzione]
     generated_at: Optional[str] = None
 
@@ -4313,6 +4318,7 @@ def _briefing_response_from_snapshot(snapshot: Dict[str, Any], nome: Optional[st
         narrativa=str(snapshot.get("narrative") or ""),
         severity_max=str(snapshot.get("severity_max") or "info"),
         tutto_ok=bool(snapshot.get("tutto_ok", len(azioni) == 0)),
+        dati_mancanti=list(snapshot.get("dati_mancanti") or []),
         azioni=azioni,
         generated_at=snapshot.get("generated_at"),
     )
@@ -4954,6 +4960,7 @@ def home_briefing(
 
     if ristorante_id:
         background_tasks.add_task(_briefing_rigenera_async, user_id, ristorante_id)
+        raccolta_ok = True
         try:
             notifications = _briefing_raccogli_notifiche(
                 user_id, ristorante_id, supabase_client, includi_alert_prezzi=False,
@@ -4961,7 +4968,13 @@ def home_briefing(
         except Exception as exc:
             logger.warning("home_briefing: raccolta istantanea fallita: %s", exc)
             notifications = []
+            raccolta_ok = False
         snapshot = _build_snapshot(notifications, use_ai=False, topics_disabled=topics_disabled)
+        # Se la raccolta e' fallita NON affermare "tutto a posto": un verde su una
+        # raccolta vuota-per-errore e' il falso positivo che vogliamo evitare. La
+        # rigenerazione async dara' il quadro vero al load successivo.
+        if not raccolta_ok:
+            snapshot["tutto_ok"] = False
         return _briefing_response_from_snapshot(snapshot, nome)
 
     # Nessun ristorante associato: niente da raccogliere, briefing vuoto.

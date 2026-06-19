@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from services.daily_briefing_service import (
+    _MAX_CARD,
     _action_for,
     _anonymize_bullets,
     _build_snapshot,
@@ -362,8 +363,8 @@ class TestBuildSnapshot:
         snap = _build_snapshot(notifs)
         assert snap["notif_count"] == 10
 
-    def test_max_5_card(self):
-        # Tutti azionabili: la gerarchia tiene al massimo 5 card.
+    def test_max_card(self):
+        # Tutti azionabili: la gerarchia tiene al massimo _MAX_CARD card (4 da 19/06).
         notifs = [
             _notif("upload_failed",            "error",   {"count": 1}),
             _notif("price_alert",              "warning", {"count": 2}),
@@ -373,7 +374,7 @@ class TestBuildSnapshot:
             _notif("scadenza_superata",        "error",   {"count": 2, "totale": 800}),
         ]
         snap = _build_snapshot(notifs)
-        assert len(snap["bullets"]) == 5
+        assert len(snap["bullets"]) == _MAX_CARD
 
     def test_gerarchia_tematica_upload_prima_di_scadenza(self):
         # Gerarchia tematica pura: upload_failed (10) prima di scadenza_superata

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, TrendingDown, Tag, CalendarX, ArrowRight, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, TrendingDown, Tag, CalendarX, ArrowRight, CheckCircle2, ClipboardList } from "lucide-react";
 import { type Segnale, type SegnaliGruppo } from "@/lib/gruppo";
 
 const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
+  dati_mancanti: ClipboardList,
   margine_calo: TrendingDown,
   prezzi_sopra: Tag,
   ricavi_mancanti: CalendarX,

@@ -29,8 +29,21 @@ logger = get_logger('daily_briefing')
 # ============================================================
 
 # Numero massimo di card mostrate in "Da fare oggi". Oltre questo numero,
-# il resto resta nella pagina Notifiche (link "Vedi tutte"). Decisione Mattia.
-_MAX_CARD = 5
+# il resto resta nella pagina Avvisi (link "Vedi tutti"). Decisione Mattia 19/06:
+# l'andamento sta nel testo del briefing, le card sono SOLO cose da fare -> 4.
+_MAX_CARD = 4
+
+# Topic che rappresentano un DATO MANCANTE (non un task qualsiasi): senza questi i
+# numeri di margine/MOL sono falsi. Servono a gateare il verde "tutto a posto": se
+# ce n'e' anche solo uno, NON si puo' dire che e' tutto in ordine, a prescindere da
+# quante card entrano nel taglio a _MAX_CARD. Label brevi per la nota "mancano: …".
+_TOPIC_DATO_MANCANTE_LABEL = {
+    "fatturato_mancante": "il fatturato del mese",
+    "costo_personale_mancante": "il costo del personale",
+    "incasso_mancante": "l'incasso di ieri",
+    "fatture_mancanti": "le fatture costo",
+    "uncategorized_rows": "righe da controllare",
+}
 
 # Topic che il cliente NON puo' spegnere dal configuratore: sono guasti tecnici
 # (perdita dati) e vanno sempre mostrati. Decisione Mattia (Step 6).
@@ -895,6 +908,18 @@ def _build_snapshot(
     azioni = [_action_for(n) for n in selected]
     sev_max = _severity_max(notifications)
 
+    # Dati mancanti: calcolati su TUTTI i candidati azionabili (non solo le 4 card
+    # selezionate), perche' un dato mancante in posizione 5+ verrebbe tagliato ma
+    # NON deve far comparire il verde "tutto a posto". Senza questi i numeri di
+    # margine/MOL sono falsi: il verde si spegne se la lista non e' vuota.
+    dati_mancanti = [
+        _TOPIC_DATO_MANCANTE_LABEL[str(n.get('topic_key'))]
+        for n in ordinati
+        if str(n.get('topic_key') or '') in _TOPIC_DATO_MANCANTE_LABEL
+    ]
+    # Dedup mantenendo l'ordine di priorita'.
+    dati_mancanti = list(dict.fromkeys(dati_mancanti))
+
     # Aperture come primi bullet per l'AI (anonimizzati come gli altri), cosi' la
     # narrativa inizia dal contesto e poi passa alle to-do. Ordine: prima il
     # bentornato (sei tornato), poi la buona notizia (decisione Mattia: "prima il
@@ -921,7 +946,10 @@ def _build_snapshot(
     return {
         'bullets': bullets,
         'azioni': azioni,
-        'tutto_ok': len(selected) == 0,
+        # Verde "tutto a posto" SOLO se nessuna card da fare E nessun dato mancante:
+        # un dato mancante rende falsi i numeri, quindi mai un verde trionfale sopra.
+        'tutto_ok': len(selected) == 0 and len(dati_mancanti) == 0,
+        'dati_mancanti': dati_mancanti,
         'narrative': narrative,
         'generated_at': datetime.now(timezone.utc).isoformat(),
         'notif_count': len(notifications),

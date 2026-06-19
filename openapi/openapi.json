@@ -16408,6 +16408,14 @@
             "type": "boolean",
             "title": "Tutto Ok"
           },
+          "dati_mancanti": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Dati Mancanti",
+            "default": []
+          },
           "azioni": {
             "items": {
               "$ref": "#/components/schemas/BriefingAzione"

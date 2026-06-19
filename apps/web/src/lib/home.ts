@@ -16,6 +16,9 @@ export type Briefing = {
   narrativa: string;
   severity_max: "info" | "warning" | "error" | "success";
   tutto_ok: boolean;
+  // Dati mancanti (label brevi): se non vuota, NON si mostra il verde "tutto a
+  // posto" ma una nota neutra. Gateato dal backend con tutto_ok.
+  dati_mancanti?: string[];
   azioni: BriefingAzione[];
   generated_at: string | null;
 };
