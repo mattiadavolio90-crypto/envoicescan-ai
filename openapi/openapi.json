@@ -14729,9 +14729,25 @@
           "Catena"
         ],
         "summary": "Gruppo Tag Descrizioni",
-        "description": "Descrizioni distinte su tutti i PV del gruppo (per costruire il tag).",
+        "description": "Descrizioni distinte su tutti i PV del gruppo (per costruire il tag).\n\n`q` = ricerca testo lato DB su TUTTE le sedi: senza, restituisce le prime 500\nper spesa (lista iniziale); con testo, filtra fra tutte le descrizioni (così\nanche i prodotti meno costosi oltre le prime 500 sono trovabili).",
         "operationId": "gruppo_tag_descrizioni_api_gruppo_tag_descrizioni_get",
         "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
           {
             "name": "authorization",
             "in": "header",

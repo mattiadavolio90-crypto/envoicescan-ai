@@ -1370,10 +1370,17 @@ def gruppo_tag_delete(tag_id: int, authorization: Optional[str] = Header(None)):
 
 
 @router.get("/api/gruppo/tag/descrizioni", tags=["Catena"], dependencies=[Depends(_verify_worker_key)])
-def gruppo_tag_descrizioni(authorization: Optional[str] = Header(None)):
-    """Descrizioni distinte su tutti i PV del gruppo (per costruire il tag)."""
+def gruppo_tag_descrizioni(q: Optional[str] = None, authorization: Optional[str] = Header(None)):
+    """Descrizioni distinte su tutti i PV del gruppo (per costruire il tag).
+
+    `q` = ricerca testo lato DB su TUTTE le sedi: senza, restituisce le prime 500
+    per spesa (lista iniziale); con testo, filtra fra tutte le descrizioni (così
+    anche i prodotti meno costosi oltre le prime 500 sono trovabili)."""
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
-    res = sb.rpc("gruppo_tag_descrizioni", {"p_ristorante_ids": ids, "p_limit": 500}).execute()
+    q_clean = (q or "").strip() or None
+    res = sb.rpc("gruppo_tag_descrizioni", {
+        "p_ristorante_ids": ids, "p_q": q_clean, "p_limit": 500,
+    }).execute()
     out = [
         {
             "descrizione": r.get("descrizione"),

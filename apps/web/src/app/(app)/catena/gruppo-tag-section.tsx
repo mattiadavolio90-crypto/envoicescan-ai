@@ -191,6 +191,8 @@ function ProdottiDialog({
 }) {
   const [assoc, setAssoc] = useState<GruppoTagProdotto[]>([]);
   const [disponibili, setDisponibili] = useState<GruppoTagDescrizione[]>([]);
+  const [risultati, setRisultati] = useState<GruppoTagDescrizione[] | null>(null);
+  const [cercando, setCercando] = useState(false);
   const [filtro, setFiltro] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -221,13 +223,41 @@ function ProdottiDialog({
     [assoc],
   );
 
+  // Ricerca SERVER-SIDE (debounce): con ≥2 caratteri interroga il DB su tutte le
+  // sedi, così si trovano anche i prodotti oltre le prime 500 per spesa. Sotto i
+  // 2 caratteri si mostra/filtra la lista iniziale (top per spesa).
+  useEffect(() => {
+    const f = filtro.trim();
+    if (f.length < 2) {
+      setRisultati(null);
+      setCercando(false);
+      return;
+    }
+    let alive = true;
+    setCercando(true);
+    const t = setTimeout(() => {
+      fetch(`/api/gruppo/tag/descrizioni?q=${encodeURIComponent(f)}`, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((j) => { if (alive) setRisultati(j.descrizioni ?? []); })
+        .catch(() => { if (alive) setRisultati([]); })
+        .finally(() => { if (alive) setCercando(false); });
+    }, 250);
+    return () => { alive = false; clearTimeout(t); };
+  }, [filtro]);
+
   const candidati = useMemo(() => {
-    const f = filtro.trim().toUpperCase();
+    const f = filtro.trim();
+    if (f.length >= 2) {
+      return (risultati ?? [])
+        .filter((d) => !giaAssociate.has(d.descrizione_key))
+        .slice(0, 60);
+    }
+    const fu = f.toUpperCase();
     return disponibili
       .filter((d) => !giaAssociate.has(d.descrizione_key))
-      .filter((d) => (f ? d.descrizione.toUpperCase().includes(f) : true))
+      .filter((d) => (fu ? d.descrizione.toUpperCase().includes(fu) : true))
       .slice(0, 60);
-  }, [disponibili, giaAssociate, filtro]);
+  }, [disponibili, risultati, giaAssociate, filtro]);
 
   async function aggiungi(d: GruppoTagDescrizione) {
     try {
@@ -298,8 +328,12 @@ function ProdottiDialog({
             />
             {loading ? (
               <p className="text-sm text-muted-foreground">Caricamento…</p>
+            ) : cercando && candidati.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Cerco fra tutti i punti vendita…</p>
             ) : candidati.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nessun prodotto da aggiungere.</p>
+              <p className="text-sm text-muted-foreground">
+                {filtro.trim().length >= 2 ? "Nessun prodotto trovato." : "Nessun prodotto da aggiungere."}
+              </p>
             ) : (
               <ul className="space-y-1">
                 {candidati.map((d) => (
