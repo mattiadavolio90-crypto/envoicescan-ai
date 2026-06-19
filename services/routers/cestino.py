@@ -157,20 +157,26 @@ def elimina_fattura_soft(
         raise HTTPException(status_code=400, detail="file_origine obbligatorio")
 
     try:
-        # Cerca la fattura per user_id + file_origine, SENZA filtro deleted_at nel check
-        # (problemi di compatibilità con is_() in alcuni contesti FastAPI).
-        # deleted_at viene controllato manualmente sul record trovato.
+        # Cerca la fattura per user_id + file_origine + ristorante_id (sede ATTIVA),
+        # SENZA filtro deleted_at nel check (problemi di compatibilità con is_() in
+        # alcuni contesti FastAPI). deleted_at viene controllato manualmente sul
+        # record trovato.
+        # Il filtro su ristorante_id è essenziale per gli account multi-sede con
+        # stessa P.IVA: lo stesso file_origine può esistere su più sedi e senza il
+        # vincolo di sede si rischierebbe di cestinare la fattura della sede sbagliata.
         check = (
             sb.table("fatture")
             .select("id, ristorante_id, deleted_at")
             .eq("user_id", user_id)
             .eq("file_origine", file_origine)
+            .eq("ristorante_id", ristorante_id)
             .limit(1)
             .execute()
         )
         if not check.data:
             logger.warning(
-                f"elimina_fattura_soft: record non trovato — file={file_origine!r} user={user_id}"
+                f"elimina_fattura_soft: record non trovato — file={file_origine!r} "
+                f"user={user_id} ristorante={ristorante_id}"
             )
             raise HTTPException(status_code=404, detail="not_found")
 
@@ -178,22 +184,24 @@ def elimina_fattura_soft(
         if row.get("deleted_at"):
             raise HTTPException(status_code=409, detail="already_in_trash")
 
-        # Usa il ristorante_id del record (non quello risolto dal token)
-        actual_ristorante_id = row.get("ristorante_id") or ristorante_id
-
-        # Soft delete su tutte le righe della fattura
-        (
+        # Soft delete su tutte le righe attive della fattura, vincolato alla sede attiva.
+        upd = (
             sb.table("fatture")
             .update({"deleted_at": "now()"})
             .eq("user_id", user_id)
             .eq("file_origine", file_origine)
-            .eq("ristorante_id", actual_ristorante_id)
+            .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
             .execute()
         )
 
-        logger.info(f"Fattura spostata nel cestino: {file_origine} | user={user_id} | ristorante={actual_ristorante_id}")
-        return {"success": True, "righe_eliminate": 1}
+        righe = len(upd.data or [])
+        if righe == 0:
+            # Tra il check e l'update il record è già finito nel cestino (race).
+            raise HTTPException(status_code=409, detail="already_in_trash")
+
+        logger.info(f"Fattura spostata nel cestino: {file_origine} | user={user_id} | ristorante={ristorante_id} | righe={righe}")
+        return {"success": True, "righe_eliminate": righe}
 
     except HTTPException:
         raise

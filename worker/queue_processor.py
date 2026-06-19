@@ -77,6 +77,20 @@ except Exception:  # pragma: no cover - fallback difensivo
     def descrizione_e_dubbia(_descrizione, _fornitore=None, _categoria=None):
         return False
 
+try:
+    from services.ai_service import _applica_guardrail_note_con_importo
+except Exception:  # pragma: no cover - fallback difensivo
+    def _applica_guardrail_note_con_importo(_descrizione, categoria, prezzo):
+        cat = str(categoria or "")
+        if cat not in {"📝 NOTE E DICITURE", "NOTE E DICITURE"}:
+            return cat
+        try:
+            if float(prezzo or 0) != 0:
+                return "SERVIZI E CONSULENZE"
+        except (TypeError, ValueError):
+            return "SERVIZI E CONSULENZE"
+        return cat
+
 logger = logging.getLogger(__name__)
 
 
@@ -122,7 +136,7 @@ def _auto_classify_saved_rows(
     unresolved = (
         filter_active(
             supabase.table("fatture")
-            .select("id, descrizione, fornitore, iva_percentuale")
+            .select("id, descrizione, fornitore, iva_percentuale, totale_riga")
             .eq("user_id", user_id)
             .eq("ristorante_id", ristorante_id)
             .eq("file_origine", nome_file)
@@ -142,6 +156,11 @@ def _auto_classify_saved_rows(
     # (spazi/troncamento) che poteva lasciare righe non classificate.
     desc_map: dict[str, tuple[str, int]] = {}
     desc_to_ids: dict[str, list] = {}
+    # Importo per descrizione: serve al guardrail NOTE E DICITURE (regola di dominio:
+    # NOTE E DICITURE solo su righe a importo zero). Tengo il MASSIMO valore assoluto
+    # del gruppo di righe con la stessa descrizione: se anche una sola ha importo != 0,
+    # il guardrail deve scattare (prudente). Stessa protezione del path upload manuale.
+    desc_importo: dict[str, float] = {}
     for row in rows:
         desc = str(row.get("descrizione") or "").strip()
         if not desc:
@@ -149,6 +168,12 @@ def _auto_classify_saved_rows(
         row_id = row.get("id")
         if row_id is not None:
             desc_to_ids.setdefault(desc, []).append(row_id)
+        try:
+            importo = abs(float(row.get("totale_riga") or 0))
+        except (TypeError, ValueError):
+            importo = 0.0
+        if importo > desc_importo.get(desc, 0.0):
+            desc_importo[desc] = importo
         if desc in desc_map:
             continue
         fornitore = str(row.get("fornitore") or "")
@@ -202,6 +227,13 @@ def _auto_classify_saved_rows(
                 cat,
                 desc,
                 source="worker_queue_auto_classify",
+            )
+            # Guardrail NOTE E DICITURE: vietata su righe con importo != 0 (regola di
+            # dominio #2). Il path upload manuale lo applica già; qui serve perché le
+            # regole forti / il dizionario possono restituire NOTE E DICITURE (es.
+            # COUPON, "RIGA FATTURA") anche su righe con totale_riga > 0.
+            categoria = _applica_guardrail_note_con_importo(
+                desc, categoria, desc_importo.get(desc, 0.0)
             )
             # Confidence routing: media → pre-classificato ma in coda per review.
             # + segnali deterministici (descrizione criptica, fornitore non-food su

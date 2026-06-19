@@ -1039,6 +1039,15 @@ def fatture_sposta_sede(
             {"p_user_id": user_id, "p_file_origine": fo, "p_ristorante_id": rid},
         ).execute()
     except Exception as exc:
+        msg = str(exc)
+        # Collisione: lo stesso file esiste già nella sede destinazione (account
+        # multi-sede con stessa P.IVA). La RPC blocca atomicamente: messaggio chiaro.
+        if "collisione_file_in_sede_destinazione" in msg:
+            logger.warning("sposta_fattura_a_sede collisione user=%s file=%s rid=%s", user_id, fo, rid)
+            raise HTTPException(
+                status_code=409,
+                detail="Questa fattura esiste già nella sede di destinazione: spostamento bloccato per evitare duplicati.",
+            )
         # Guard DB (sede non del cliente / non attiva): non esporre l'SQL grezzo.
         logger.warning("sposta_fattura_a_sede fallita user=%s: %s", user_id, exc)
         raise HTTPException(status_code=400, detail="Sede non valida")

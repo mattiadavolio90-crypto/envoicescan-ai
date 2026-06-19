@@ -28,6 +28,10 @@ __test_archive__/test_brevo.py
 # File temporanei di audit/debug (possono contenere dati cliente reali)
 tmp_*.json
 tmp_audit_*.json
+# Output catscan/arbitro categorie (user_id + ragioni sociali reali)
+_arbitro_esiti.json
+_divergenze_categorie.json
+_*.json
 
 # Altri file sensibili
 memoria_ai_correzioni.json
