@@ -1,0 +1,5 @@
+# Gli script di shell DEVONO restare LF: un CRLF rompe l'esecuzione nel container
+# Linux (`/bin/bash^M: bad interpreter`). Vale soprattutto per docker-entrypoint.sh,
+# che e' l'ENTRYPOINT dei servizi Railway.
+*.sh text eol=lf
+docker/docker-entrypoint.sh text eol=lf
