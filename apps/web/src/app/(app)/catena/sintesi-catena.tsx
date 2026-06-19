@@ -208,8 +208,32 @@ function ContiGruppoCard({
   onApriMargini: () => void;
 }) {
   const { kpi } = overview;
+  const livello = kpi.livello_dati ?? "completo";
   const molPos = kpi.mol >= 0;
-  const tint = molPos ? TINT.verde : TINT.rosso;
+  // A cascata: con dati incompleti il MOL e' falso -> card neutra (no verde/rosso).
+  const tint = livello === "completo" ? (molPos ? TINT.verde : TINT.rosso) : TINT.giallo;
+
+  // Livello "nessuno": niente numeri, si indirizza a completare i PV.
+  if (livello === "nessuno") {
+    return (
+      <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border bg-card p-6 sm:p-7">
+        <div className="mb-4 flex items-baseline justify-between gap-2">
+          <h2 className="text-sm font-semibold">I conti del gruppo</h2>
+          <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+          <div className="rounded-full bg-amber-500/15 p-3 ring-1 ring-amber-500/20">
+            <Receipt className="size-6 text-amber-500" />
+          </div>
+          <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Dati ancora incompleti</p>
+          <p className="max-w-xs text-sm text-muted-foreground">
+            Mancano fatturato e costi nei punti vendita: completa i dati per leggere
+            food cost e margini del gruppo.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn("relative flex h-full flex-col overflow-hidden rounded-2xl border p-6 sm:p-7", tint.card)}>
@@ -221,24 +245,41 @@ function ContiGruppoCard({
         <span className="text-xs text-muted-foreground/70">{overview.periodo_label}</span>
       </div>
 
-      {/* MOL gruppo + margine medio → apre il confronto Margini e Coperti */}
-      <button
-        type="button"
-        onClick={onApriMargini}
-        className="group flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-4 text-center transition-colors hover:bg-background/40"
-      >
-        <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">MOL del gruppo</span>
-        <div className={cn("text-5xl font-black tabular-nums leading-none sm:text-6xl", tint.text)}>{euro(kpi.mol)}</div>
-        <div className="mt-1 inline-flex items-center gap-2 text-xs text-muted-foreground/70">
-          <span className={cn("rounded-full px-2 py-0.5 font-medium", tint.badge)}>margine {pct(kpi.margine_medio_perc)}</span>
-          <span className="inline-flex items-center gap-0.5 font-medium text-primary">
-            confronta i PV <ArrowRight className="size-3" />
+      {livello === "completo" ? (
+        /* MOL gruppo + margine medio → apre il confronto Margini e Coperti */
+        <button
+          type="button"
+          onClick={onApriMargini}
+          className="group flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-4 text-center transition-colors hover:bg-background/40"
+        >
+          <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">MOL del gruppo</span>
+          <div className={cn("text-5xl font-black tabular-nums leading-none sm:text-6xl", tint.text)}>{euro(kpi.mol)}</div>
+          <div className="mt-1 inline-flex items-center gap-2 text-xs text-muted-foreground/70">
+            <span className={cn("rounded-full px-2 py-0.5 font-medium", tint.badge)}>margine {pct(kpi.margine_medio_perc)}</span>
+            <span className="inline-flex items-center gap-0.5 font-medium text-primary">
+              confronta i PV <ArrowRight className="size-3" />
+            </span>
+          </div>
+        </button>
+      ) : (
+        /* Livello "food": food cost si', MOL no (sarebbe gonfiato). Si mostra il
+           food cost come dato principale e si avvisa che mancano dati per il MOL. */
+        <button
+          type="button"
+          onClick={onApriSpesa}
+          className="group flex flex-1 flex-col items-center justify-center gap-1 rounded-xl py-4 text-center transition-colors hover:bg-background/40"
+        >
+          <span className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">Food cost del gruppo</span>
+          <div className={cn("text-5xl font-black tabular-nums leading-none sm:text-6xl", tint.text)}>
+            {kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
+          </div>
+          <span className="mt-1 text-xs text-muted-foreground/70">
+            {kpi.pv_da_completare} {kpi.pv_da_completare === 1 ? "PV" : "PV"} senza costo personale: MOL non ancora calcolabile
           </span>
-        </div>
-      </button>
+        </button>
+      )}
 
-      {/* Breakdown come la Home PV: Fatturato, Food cost %, Costo personale,
-          Spese generali. Le voci di costo aprono il confronto giusto. */}
+      {/* Breakdown: Fatturato e Food cost sempre; Personale/Spese/MOL solo se completo. */}
       <div className="mt-auto space-y-1.5">
         <VoceConto colore="emerald" label="Fatturato gruppo" value={euro(kpi.fatturato)} onClick={onApriMargini} />
         <VoceConto
@@ -248,11 +289,15 @@ function ContiGruppoCard({
           value={kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
           onClick={onApriSpesa}
         />
-        <VoceConto colore="amber" segno="−" label="Costo personale" value={euro(kpi.costo_personale)} onClick={onApriMargini} />
-        <VoceConto colore="amber" segno="−" label="Spese generali" value={euro(kpi.spese_generali)} onClick={onApriMargini} />
+        {livello === "completo" && (
+          <>
+            <VoceConto colore="amber" segno="−" label="Costo personale" value={euro(kpi.costo_personale)} onClick={onApriMargini} />
+            <VoceConto colore="amber" segno="−" label="Spese generali" value={euro(kpi.spese_generali)} onClick={onApriMargini} />
+          </>
+        )}
       </div>
 
-      <MolSparkline punti={overview.mol_mensile} anno={overview.mol_mensile_anno} />
+      {livello === "completo" && <MolSparkline punti={overview.mol_mensile} anno={overview.mol_mensile_anno} />}
     </div>
   );
 }

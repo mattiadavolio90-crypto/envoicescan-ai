@@ -61,6 +61,13 @@ class GruppoKpi(BaseModel):
     food_cost_pct: Optional[float]  # Σ costi_fb_totali / Σ lordo — come food cost % della Home PV
     costo_personale: float      # Σ (costo_dipendenti + costo_personale_extra)
     spese_generali: float       # Σ (costi_spese_auto + altri_costi_spese)
+    # Cascata dati (decisione 19/06): "nessuno" = nessun PV ha fatturato/F&B ->
+    # non mostrare numeri; "food" = ci sono F&B ma manca personale/spese in qualche
+    # PV -> food cost e 1° margine si', MOL no (sarebbe gonfiato); "completo" = tutti
+    # i PV hanno fatturato + F&B + personale -> MOL affidabile.
+    livello_dati: str = "completo"
+    # Quanti PV hanno ancora dati base da completare (per la nota nella card).
+    pv_da_completare: int = 0
 
 
 class MolMensile(BaseModel):
@@ -141,23 +148,25 @@ def _build_briefing(
     n_segnali: int,
     sev_max: str,
     salute_pv: Optional[List["SalutePV"]] = None,
+    incompleti_ids: Optional[set] = None,
 ) -> "GruppoBriefing":
     """Narrativa di gruppo DETERMINISTICA (no AI): si fonda sugli STESSI dati di
     overview + segnali → coerente per costruzione, tono sobrio.
 
-    Completezza misurata sulla SALUTE per-PV (che rileva i costi mancanti), non
-    solo sul fatturato: una sede con ricavi ma food cost 0% ha un margine FINTO,
-    quindi non la usiamo per dire "va meglio/peggio" e la contiamo tra quelle da
-    completare. E non diciamo MAI "tutto sotto controllo" se la salute è rossa o
-    se ci sono sedi incomplete (sarebbe una contraddizione con la card Salute)."""
-    # Salute per-PV: una sede è "affidabile" per il confronto margini solo se la
-    # salute è decente (>=50). Sotto, i dati di costo mancano e il margine non è
-    # reale. Se salute_pv non è disponibile, ripiego sul vecchio criterio (ricavi).
+    Completezza misurata per PRESENZA di dati (decisione 19/06): una sede è
+    affidabile per il confronto margini solo se ha fatturato + fatture costo (F&B) +
+    costo personale. Senza, il margine è FINTO: non la usiamo per dire "va
+    meglio/peggio" e la contiamo tra quelle da completare. Mai "tutto sotto
+    controllo" se la salute è rossa o ci sono sedi incomplete. Fallback alla salute
+    per-PV (<50) se incompleti_ids non è disponibile."""
+    incompleti_ids = incompleti_ids or set()
     salute_by_id = {s.ristorante_id: s.indice for s in (salute_pv or [])}
 
     def _affidabile(r: "RankingPV") -> bool:
         if r.dati_incompleti or r.margine_perc is None:
             return False
+        if incompleti_ids:
+            return r.ristorante_id not in incompleti_ids
         ix = salute_by_id.get(r.ristorante_id)
         return ix is None or ix >= 50
 
@@ -177,8 +186,11 @@ def _build_briefing(
     elif len(completi) == 1:
         frasi.append(f"{completi[0].nome} è al {completi[0].margine_perc:.0f}% di margine.")
 
-    # Sedi con dati da completare: dalla salute (costi mancanti), non solo ricavi.
-    if salute_by_id:
+    # Sedi con dati da completare: per PRESENZA di dati (costi mancanti). Fallback
+    # alla salute (<50) o, in ultima istanza, al solo fatturato.
+    if incompleti_ids:
+        n_incompleti = len(incompleti_ids)
+    elif salute_by_id:
         n_incompleti = sum(1 for ix in salute_by_id.values() if ix < 50)
     else:
         n_incompleti = sum(1 for r in ranking if r.dati_incompleti)
@@ -434,6 +446,24 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     # Food cost %: come la Home PV → costi F&B sul fatturato LORDO.
     food_cost_pct = round(tot_fb / tot_lordo * 100, 1) if tot_lordo > 0 else None
 
+    # Cascata dati del gruppo (decisione 19/06): senza i costi di alcuni PV il MOL
+    # aggregato e' falso. Stesso criterio del PV (presenza dati, non % salute):
+    #  - nessun fatturato/F&B nel gruppo -> "nessuno" (niente numeri, completa i PV);
+    #  - F&B presenti ma qualche PV senza personale -> "food" (food cost/1° margine
+    #    si', MOL no: sarebbe gonfiato);
+    #  - tutti i PV con fatturato + F&B + personale -> "completo" (MOL affidabile).
+    try:
+        completezza = _completezza_dati_pv(sb, ids)
+    except Exception:
+        completezza = {}
+    pv_da_completare = len(completezza)
+    if tot_lordo <= 0 or tot_fb <= 0:
+        livello_dati = "nessuno"
+    elif pv_da_completare > 0:
+        livello_dati = "food"
+    else:
+        livello_dati = "completo"
+
     kpi = GruppoKpi(
         fatturato=round(tot_lordo, 2),
         margine_medio_perc=margine_medio,
@@ -442,6 +472,8 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         food_cost_pct=food_cost_pct,
         costo_personale=round(tot_pers, 2),
         spese_generali=round(tot_spese, 2),
+        livello_dati=livello_dati,
+        pv_da_completare=pv_da_completare,
     )
 
     # Serie MOL mensile del gruppo (solo mesi con ricavi → la sparkline non mostra
@@ -500,7 +532,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     n_segnali, sev_max = _conta_segnali_cache(sb, user_id)
     briefing = _build_briefing(
         nome_gruppo, ranking, salute_indice, salute_colore, n_segnali, sev_max,
-        salute_pv=salute_pv,
+        salute_pv=salute_pv, incompleti_ids=set(completezza.keys()),
     )
 
     return GruppoOverviewResponse(

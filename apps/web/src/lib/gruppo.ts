@@ -11,6 +11,10 @@ export type GruppoKpi = {
   food_cost_pct: number | null;
   costo_personale: number;
   spese_generali: number;
+  // Cascata dati: "nessuno" (niente numeri, completa i PV) | "food" (food cost/1°
+  // margine si', MOL no) | "completo" (MOL affidabile).
+  livello_dati: "nessuno" | "food" | "completo";
+  pv_da_completare: number;
 };
 
 export type MolMensile = {

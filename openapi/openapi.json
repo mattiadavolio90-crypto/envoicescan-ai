@@ -18035,6 +18035,16 @@
           "spese_generali": {
             "type": "number",
             "title": "Spese Generali"
+          },
+          "livello_dati": {
+            "type": "string",
+            "title": "Livello Dati",
+            "default": "completo"
+          },
+          "pv_da_completare": {
+            "type": "integer",
+            "title": "Pv Da Completare",
+            "default": 0
           }
         },
         "type": "object",

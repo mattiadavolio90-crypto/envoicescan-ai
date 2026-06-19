@@ -86,3 +86,21 @@ def test_segnali_aperti_mostra_conteggio():
     )
     assert "2 cose da vedere" in out.narrativa
     assert "tutto sotto controllo" not in out.narrativa.lower()
+
+
+def test_completezza_per_presenza_dati_non_salute():
+    # Decisione 19/06: la completezza si misura per PRESENZA di dati (incompleti_ids),
+    # non per % salute. Qui le salute sono alte (>=50) ma B e' in incompleti_ids ->
+    # B NON entra nel confronto e viene contato tra i da-completare.
+    ranking = [_rank("a", "PV A", 40.0), _rank("b", "PV B", 30.0)]
+    salute_pv = [_sal("a", "PV A", 85), _sal("b", "PV B", 80)]
+    out = _build_briefing(
+        "GRUPPO", ranking, salute_indice=82, salute_colore="verde",
+        n_segnali=0, sev_max="info", salute_pv=salute_pv,
+        incompleti_ids={"b"},
+    )
+    # Un solo PV affidabile: niente confronto "va meglio/peggio".
+    assert "Va meglio" not in out.narrativa
+    assert "1 punto vendita" in out.narrativa and "da completare" in out.narrativa
+    # Con una sede incompleta non si dice "tutto sotto controllo".
+    assert "tutto sotto controllo" not in out.narrativa.lower()
