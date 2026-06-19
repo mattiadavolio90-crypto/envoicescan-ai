@@ -331,6 +331,19 @@ def _periodo_anno_corrente() -> tuple[int, str]:
     return oggi.year, f"Anno {oggi.year}"
 
 
+def _anno_mese_corrente() -> tuple[int, int]:
+    """(anno, mese) correnti in fuso Europe/Rome. Serve a NON sommare i mesi
+    futuri: margini_mensili può contenere righe di mesi non ancora trascorsi
+    (proiezioni/seed di test) che gonfierebbero i totali anno-su-anno."""
+    from datetime import datetime as _dt
+    try:
+        from zoneinfo import ZoneInfo
+        oggi = _dt.now(tz=ZoneInfo("Europe/Rome")).date()
+    except Exception:
+        oggi = _dt.now().date()
+    return oggi.year, oggi.month
+
+
 def _resolve_gruppo(authorization: Optional[str]):
     """(sb, user_id, sedi, nome_gruppo, rid_to_nome, ids) per le viste catena.
 
@@ -416,11 +429,13 @@ def _periodo_da_query(data_da: Optional[str], data_a: Optional[str]) -> tuple[st
 def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOverviewResponse:
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
 
-    anno, periodo_label = _periodo_anno_corrente()
+    anno, mese_corr = _anno_mese_corrente()
+    periodo_label = f"Anno {anno}"
 
-    # UNICA lettura aggregabile: tutte le righe margini_mensili dell'anno per le
-    # sedi del gruppo. margini_mensili è già pre-aggregata (1 riga per PV×mese):
-    # qui sommiamo per ristorante_id — niente loop sulle righe fattura.
+    # UNICA lettura aggregabile: righe margini_mensili dell'anno FINO AL MESE
+    # CORRENTE per le sedi del gruppo (niente mesi futuri: sarebbero proiezioni/seed
+    # che gonfiano i totali). margini_mensili è già pre-aggregata (1 riga per
+    # PV×mese): qui sommiamo per ristorante_id — niente loop sulle righe fattura.
     mm_resp = (
         sb.table("margini_mensili")
         .select(
@@ -430,6 +445,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         )
         .in_("ristorante_id", ids)
         .eq("anno", anno)
+        .lte("mese", mese_corr)
         .execute()
     )
     # Fatturato LORDO (iva10+iva22+altri): è quello che mostra la Home del PV.
@@ -711,9 +727,11 @@ def gruppo_margini_coperti(
     authorization: Optional[str] = Header(None),
 ) -> MarginiCopertiResponse:
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
-    anno, periodo_label = _periodo_anno_corrente()
+    anno, mese_corr = _anno_mese_corrente()
+    periodo_label = f"Anno {anno}"
 
-    # margini_mensili è già pre-aggregata: una lettura, somma per ristorante_id.
+    # margini_mensili è già pre-aggregata: una lettura, somma per ristorante_id,
+    # SOLO fino al mese corrente (no mesi futuri, vedi gruppo_overview).
     mm_resp = (
         sb.table("margini_mensili")
         .select(
@@ -722,6 +740,7 @@ def gruppo_margini_coperti(
         )
         .in_("ristorante_id", ids)
         .eq("anno", anno)
+        .lte("mese", mese_corr)
         .execute()
     )
     agg: Dict[str, Dict[str, float]] = {
@@ -746,13 +765,14 @@ def gruppo_margini_coperti(
         netto = a["netto"]
         cop = int(round(a["cop"]))
         incompleti = netto <= 0
-        # Fatturato mostrato = LORDO (come la Home PV). Margine % e scontrino medio
-        # restano sul NETTO (come pagina Margini/Coperti del PV).
+        # Tutto su base NETTA, coerente con la pagina Margini/Coperti del PV: così
+        # fatturato, margine % e scontrino medio quadrano tra loro (scontrino =
+        # fatturato/coperti). Il LORDO (IVA inclusa) resta nei "conti del gruppo".
         return MarginiCopertiPV(
             ristorante_id=rid,
             nome=nome,
             margine_perc=None if incompleti else round(a["mol"] / netto * 100, 1),
-            fatturato=round(a["lordo"], 2),
+            fatturato=round(netto, 2),
             coperti=cop,
             scontrino_medio=round(netto / cop, 2) if cop > 0 else None,
             mp_per_coperto=round(a["fb"] / cop, 2) if cop > 0 else None,
