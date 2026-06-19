@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
+from config.constants import TUTTE_LE_CATEGORIE
+
 # Import LAZY da fastapi_worker per evitare il ciclo router<->fastapi_worker
 # (fastapi_worker importa questo router in coda al file). I simboli condivisi sono
 # WRAPPER espliciti risolti al primo uso (pattern di ricavi.py): un module-level
@@ -889,6 +891,13 @@ def aggiorna_categoria_riga(
     categoria = body.categoria.strip()
     if not categoria or categoria in ("Da Clasificare", "Da Classificare"):
         raise HTTPException(status_code=400, detail="Categoria non valida")
+    # La categoria deve appartenere al set ufficiale: il constraint DB rifiuta solo
+    # "Da Clasificare", ma una categoria inventata/refuso passerebbe e sporcherebbe
+    # margini e report. NOTE E DICITURE è ammessa solo a importo zero, ma qui non
+    # tocchiamo l'importo: la lasciamo passare e il guardrail upstream la corregge.
+    _categorie_ammesse = set(TUTTE_LE_CATEGORIE) | {"📝 NOTE E DICITURE", "NOTE E DICITURE"}
+    if categoria not in _categorie_ammesse:
+        raise HTTPException(status_code=400, detail=f"Categoria '{categoria}' non riconosciuta")
 
     supabase_client = _get_supabase_client()
     check = (

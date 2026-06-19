@@ -952,7 +952,10 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                     if isinstance(sconto_maggiorazione, list):
                         for sm in sconto_maggiorazione:
                             tipo_sm = sm.get('Tipo', 'SC')  # SC=Sconto, MG=Maggiorazione
-                            perc = float(sm.get('Percentuale', 0) or 0)
+                            # _to_float_safe: la percentuale può arrivare con virgola
+                            # decimale ("5,00") o malformata; float() crasherebbe l'intero
+                            # parsing della fattura. Fallback 0 = nessuno sconto.
+                            perc = _to_float_safe(sm.get('Percentuale'), 0.0) or 0.0
                             if tipo_sm == 'SC':
                                 sconto_percentuale += perc
                             elif tipo_sm == 'MG':

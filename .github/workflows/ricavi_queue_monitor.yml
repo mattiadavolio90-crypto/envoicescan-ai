@@ -78,10 +78,15 @@ jobs:
 
       - name: Invia email di allerta via Brevo
         if: steps.check.outputs.stuck != '0' && steps.check.outputs.stuck != ''
+        env:
+          # Passa i valori via env, NON via interpolazione ${{ }} dentro lo script:
+          # il sample contiene dati cliente (ragioni sociali con apici, es. "L'Osteria")
+          # che, interpolati inline, romperebbero il quoting shell → command injection.
+          STUCK: ${{ steps.check.outputs.stuck }}
+          SAMPLE_RAW: ${{ steps.check.outputs.sample }}
         run: |
-          STUCK="${{ steps.check.outputs.stuck }}"
           # Serializza il sample JSON dentro l'htmlContent in modo sicuro (jq -Rs)
-          SAMPLE=$(printf '%s' '${{ steps.check.outputs.sample }}' | jq -Rs . )
+          SAMPLE=$(printf '%s' "$SAMPLE_RAW" | jq -Rs . )
           curl -s -X POST https://api.brevo.com/v3/smtp/email \
             -H "api-key: ${{ secrets.BREVO_API_KEY }}" \
             -H "Content-Type: application/json" \

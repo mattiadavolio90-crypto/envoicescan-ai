@@ -225,6 +225,51 @@ def _xml_td01_explicit_zero_total_with_discount():
 </p:FatturaElettronica>"""
 
 
+def _xml_td01_discount_comma_decimal():
+    """XML con Percentuale sconto in formato italiano (virgola): '5,00'.
+    Regressione: float('5,00') solleva ValueError e fa crashare l'INTERO parsing
+    della fattura (audit 19/06). Con _to_float_safe la riga viene estratta."""
+    return b"""<?xml version="1.0" encoding="UTF-8"?>
+<p:FatturaElettronica xmlns:p="http://ivaservizi.agenziaentrate.gov.it/docs/xsd/fatture/v1.2">
+  <FatturaElettronicaHeader>
+    <CedentePrestatore>
+      <DatiAnagrafici>
+        <Anagrafica><Denominazione>FORNITORE TEST SRL</Denominazione></Anagrafica>
+      </DatiAnagrafici>
+    </CedentePrestatore>
+    <CessionarioCommittente>
+      <DatiAnagrafici>
+        <IdFiscaleIVA><IdPaese>IT</IdPaese><IdCodice>01234567890</IdCodice></IdFiscaleIVA>
+      </DatiAnagrafici>
+    </CessionarioCommittente>
+  </FatturaElettronicaHeader>
+  <FatturaElettronicaBody>
+    <DatiGenerali>
+      <DatiGeneraliDocumento>
+        <TipoDocumento>TD01</TipoDocumento>
+        <Data>2025-01-15</Data>
+        <Numero>F010</Numero>
+      </DatiGeneraliDocumento>
+    </DatiGenerali>
+    <DatiBeniServizi>
+      <DettaglioLinee>
+        <NumeroLinea>1</NumeroLinea>
+        <Descrizione>OLIO EXTRAVERGINE</Descrizione>
+        <Quantita>10.00</Quantita>
+        <UnitaMisura>LT</UnitaMisura>
+        <PrezzoUnitario>8.00</PrezzoUnitario>
+        <ScontoMaggiorazione>
+          <Tipo>SC</Tipo>
+          <Percentuale>5,00</Percentuale>
+        </ScontoMaggiorazione>
+        <PrezzoTotale>76.00</PrezzoTotale>
+        <AliquotaIVA>10.00</AliquotaIVA>
+      </DettaglioLinee>
+    </DatiBeniServizi>
+  </FatturaElettronicaBody>
+</p:FatturaElettronica>"""
+
+
 def _run_estrai_xml(xml_bytes, user_id='user_test'):
     """
     Esegue estrai_dati_da_xml su xml_bytes con tutti gli esterni mockati.
@@ -317,3 +362,10 @@ class TestRighePrezzoZero:
       assert len(righe) == 1
       assert righe[0]['Totale_Riga'] == 0.0
       assert righe[0]['Prezzo_Unitario'] == 30.99
+
+    def test_sconto_percentuale_con_virgola_non_crasha(self):
+        """Percentuale sconto '5,00' (formato italiano): prima float() crashava
+        l'intero parsing; ora la fattura viene estratta normalmente."""
+        righe = _run_estrai_xml(_xml_td01_discount_comma_decimal())
+        assert len(righe) == 1
+        assert righe[0]['Totale_Riga'] == 76.0
