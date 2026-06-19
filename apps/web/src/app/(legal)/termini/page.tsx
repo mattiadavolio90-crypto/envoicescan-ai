@@ -17,8 +17,10 @@ export default function TerminiPage() {
       <p>
         Il servizio <strong>ONEFLUX</strong> (di seguito &quot;Servizio&quot;) è una piattaforma SaaS
         di analisi e gestione dei costi per attività di ristorazione, fornita da{" "}
-        <strong>Recoma System S.r.l.</strong> (P.IVA: IT09599210961, referente: Mattia
-        D&apos;Avolio).
+        <strong>Recoma System S.r.l.</strong> (P.IVA: IT09599210961, sede legale in Viale
+        Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)). ONEFLUX è ideato e
+        sviluppato da <strong>Mattia D&apos;Avolio</strong>, fondatore e creatore della
+        piattaforma.
       </p>
       <p>Il Servizio include:</p>
       <ul>
@@ -138,11 +140,13 @@ export default function TerminiPage() {
       <p>
         <strong>Recoma System S.r.l.</strong>
         <br />
-        Referente: Mattia D&apos;Avolio
+        Sede legale: Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
+        <br />
+        P.IVA: IT09599210961
         <br />
         Email: <a href="mailto:md@oneflux.it">md@oneflux.it</a>
         <br />
-        P.IVA: IT09599210961
+        Fondatore e creatore della piattaforma: Mattia D&apos;Avolio
       </p>
 
       <p className="pt-4">

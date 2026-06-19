@@ -6,7 +6,9 @@ che lo richiedano o in caso di controllo.
 
 **Ultimo aggiornamento:** 19 giugno 2026
 **Titolare del trattamento:** Recoma System S.r.l. — P.IVA IT09599210961
-**Referente:** Mattia D'Avolio — md@oneflux.it
+**Sede legale:** Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
+**Email:** md@oneflux.it
+**Fondatore e creatore della piattaforma / referente tecnico:** Mattia D'Avolio
 **DPO:** non nominato (non ricorrono gli obblighi dell'art. 37 GDPR: no trattamento
 su larga scala di categorie particolari, no monitoraggio sistematico su larga scala).
 
@@ -130,7 +132,7 @@ Tutti `HttpOnly + Secure + SameSite=Lax`.
 
 ## 8. Materiale da completare / verificare prima del go-live (1/7/2026)
 
-- [ ] **Sede legale del Titolare** da inserire nell'informativa (`/privacy`, `/termini`,
-      sezione Titolare) e in questo dossier — al momento è indicata solo P.IVA + email.
+- [x] **Sede legale del Titolare** inserita in informativa (`/privacy`, `/termini`) e
+      in questo dossier: Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI).
 - [ ] Eventuale **nomina formale dei sub-responsabili** (DPA firmati con i fornitori),
       se richiesto da clienti B2B strutturati.

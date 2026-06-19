@@ -19,11 +19,16 @@ export default function PrivacyPage() {
       <p>
         <strong>Recoma System S.r.l.</strong>
         <br />
+        Sede legale: Viale Leonardo da Vinci 249, 20090 Trezzano sul Naviglio (MI)
+        <br />
         P.IVA: IT09599210961
         <br />
-        Referente tecnico: Mattia D&apos;Avolio
-        <br />
         Email: <a href="mailto:md@oneflux.it">md@oneflux.it</a>
+      </p>
+      <p>
+        ONEFLUX è ideato e sviluppato da <strong>Mattia D&apos;Avolio</strong>, fondatore e
+        creatore della piattaforma, che ne cura lo sviluppo e funge da referente tecnico
+        per il trattamento dei dati.
       </p>
 
       <h2>Dati Raccolti</h2>
