@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, CopyPlus, LayoutGrid, List } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Download, CopyPlus } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -55,18 +55,16 @@ interface PersonaleResponse {
 
 // ─── Utilità ──────────────────────────────────────────────────────────────────
 
-const GIORNI = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
-
-// Palette colori dipendenti — ciclica, usata sia nell'expander che nel calendario
+// Palette colori dipendenti — ciclica, usata nell'accordion per dipendente.
 const DIP_PALETTE = [
-  { ring: "ring-sky-500/60",     bg: "bg-sky-500/10",     bgChip: "bg-sky-100 dark:bg-sky-900/50",     textChip: "text-sky-800 dark:text-sky-200",     subChip: "text-sky-600 dark:text-sky-300"     },
-  { ring: "ring-emerald-500/60", bg: "bg-emerald-500/10", bgChip: "bg-emerald-100 dark:bg-emerald-900/50", textChip: "text-emerald-800 dark:text-emerald-200", subChip: "text-emerald-600 dark:text-emerald-300" },
-  { ring: "ring-violet-500/60",  bg: "bg-violet-500/10",  bgChip: "bg-violet-100 dark:bg-violet-900/50",  textChip: "text-violet-800 dark:text-violet-200",  subChip: "text-violet-600 dark:text-violet-300"  },
-  { ring: "ring-rose-500/60",    bg: "bg-rose-500/10",    bgChip: "bg-rose-100 dark:bg-rose-900/50",    textChip: "text-rose-800 dark:text-rose-200",    subChip: "text-rose-600 dark:text-rose-300"    },
-  { ring: "ring-orange-500/60",  bg: "bg-orange-500/10",  bgChip: "bg-orange-100 dark:bg-orange-900/50",  textChip: "text-orange-800 dark:text-orange-200",  subChip: "text-orange-600 dark:text-orange-300"  },
-  { ring: "ring-teal-500/60",    bg: "bg-teal-500/10",    bgChip: "bg-teal-100 dark:bg-teal-900/50",    textChip: "text-teal-800 dark:text-teal-200",    subChip: "text-teal-600 dark:text-teal-300"    },
-  { ring: "ring-pink-500/60",    bg: "bg-pink-500/10",    bgChip: "bg-pink-100 dark:bg-pink-900/50",    textChip: "text-pink-800 dark:text-pink-200",    subChip: "text-pink-600 dark:text-pink-300"    },
-  { ring: "ring-indigo-500/60",  bg: "bg-indigo-500/10",  bgChip: "bg-indigo-100 dark:bg-indigo-900/50",  textChip: "text-indigo-800 dark:text-indigo-200",  subChip: "text-indigo-600 dark:text-indigo-300"  },
+  { ring: "ring-sky-500/60",     bg: "bg-sky-500/10"     },
+  { ring: "ring-emerald-500/60", bg: "bg-emerald-500/10" },
+  { ring: "ring-violet-500/60",  bg: "bg-violet-500/10"  },
+  { ring: "ring-rose-500/60",    bg: "bg-rose-500/10"    },
+  { ring: "ring-orange-500/60",  bg: "bg-orange-500/10"  },
+  { ring: "ring-teal-500/60",    bg: "bg-teal-500/10"    },
+  { ring: "ring-pink-500/60",    bg: "bg-pink-500/10"    },
+  { ring: "ring-indigo-500/60",  bg: "bg-indigo-500/10"  },
 ] as const;
 
 function getDipColor(nomi: string[], nome: string) {
@@ -732,14 +730,12 @@ function MensileDialog({ open, turno, mese, nomiSuggeriti, onClose, onSaved }: M
 // (turno per turno), mensile = totali aggregati del mese. Niente più toggle
 // settimana/mese separato (era ridondante con la modalità).
 type Modalita = "giornaliero" | "mensile";
-type Vista = "calendario" | "lista";
 
 // ─── Tab principale ───────────────────────────────────────────────────────────
 
 export function PersonaleTab() {
   const oggi = toISO(new Date());
   const [modalita, setModalita] = useState<Modalita>("giornaliero");
-  const [vista, setVista] = useState<Vista>("calendario");
   const [lunedi, setLunedi] = useState<Date>(() => lunediDi(oggi));
   const [meseBase, setMeseBase] = useState(() => oggi.slice(0, 7));
   const [risposta, setRisposta] = useState<PersonaleResponse | null>(null);
@@ -926,16 +922,7 @@ export function PersonaleTab() {
   const giorniConTurni = new Set(turni.map(t => t.data_turno)).size;
   const mediaGiornaliera = giorniConTurni > 0 ? totaleOre / giorniConTurni : 0;
 
-  const perData: Record<string, Turno[]> = {};
-  for (const t of turni) {
-    if (!perData[t.data_turno]) perData[t.data_turno] = [];
-    perData[t.data_turno].push(t);
-  }
-
   const giorniSettimana = Array.from({ length: 7 }, (_, i) => toISO(addDays(lunedi, i)));
-
-  // Giornaliero: calendario = 7 giorni della settimana; lista = solo giorni con turni.
-  const giorniVista = vista === "calendario" ? giorniSettimana : Object.keys(perData).sort();
 
   return (
     <div className="space-y-4">
@@ -992,26 +979,6 @@ export function PersonaleTab() {
             <ChevronRight className="size-4" />
           </button>
         </div>
-
-        {/* Toggle vista calendario / lista: solo in giornaliero */}
-        {!isMensile && (
-          <div className="flex rounded-md border border-border overflow-hidden">
-            <button
-              onClick={() => setVista("calendario")}
-              title="Vista calendario"
-              className={`px-2.5 py-1.5 transition-colors ${vista === "calendario" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
-            >
-              <LayoutGrid className="size-4" />
-            </button>
-            <button
-              onClick={() => setVista("lista")}
-              title="Vista lista"
-              className={`px-2.5 py-1.5 transition-colors ${vista === "lista" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
-            >
-              <List className="size-4" />
-            </button>
-          </div>
-        )}
 
         {/* Destra: azioni */}
         <div className="ml-auto flex items-center gap-2">
@@ -1102,11 +1069,8 @@ export function PersonaleTab() {
           <div className="space-y-1">
             {nomi.map(n => {
               const oreN = monteOre[n] ?? 0;
-              const stdN = oreStdPerPersona[n] ?? 0;
               const extN = oreExtPerPersona[n] ?? 0;
               const costoN = costoPerPersona[n] ?? 0;
-              const costoStdN = costoStdPerPersona[n] ?? 0;
-              const costoExtN = costoExtPerPersona[n] ?? 0;
               const turniN = turni.filter(t => t.nome === n).sort((a, b) => a.data_turno.localeCompare(b.data_turno));
               const isOpen = expandedDip === n;
               const col = getDipColor(nomi, n);
@@ -1126,31 +1090,7 @@ export function PersonaleTab() {
                   </button>
 
                   {isOpen && (
-                    <div className="border-t border-border px-4 py-3 space-y-3">
-                      {/* Riepilogo numerico */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <div className="rounded-md bg-muted/40 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">Ore ord.</p>
-                          <p className="text-lg font-bold tabular-nums">{fmtOreDisplay(stdN)}</p>
-                          {costoStdN > 0 && <p className="text-xs text-green-600 dark:text-green-400">{fmtEuro(costoStdN)}</p>}
-                        </div>
-                        <div className="rounded-md bg-amber-500/8 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-amber-600 dark:text-amber-400 font-medium">Straord.</p>
-                          <p className="text-lg font-bold tabular-nums text-amber-700 dark:text-amber-300">{fmtOreDisplay(extN)}</p>
-                          {costoExtN > 0 && <p className="text-xs text-amber-600 dark:text-amber-400">{fmtEuro(costoExtN)}</p>}
-                        </div>
-                        <div className="rounded-md bg-sky-500/8 px-3 py-2">
-                          <p className="text-[10px] uppercase tracking-wide text-sky-600 dark:text-sky-400 font-medium">Totale ore</p>
-                          <p className="text-lg font-bold tabular-nums text-sky-700 dark:text-sky-300">{fmtOreDisplay(oreN)}</p>
-                        </div>
-                        {costoN > 0 && (
-                          <div className="rounded-md bg-sky-500/8 px-3 py-2">
-                            <p className="text-[10px] uppercase tracking-wide text-sky-600 dark:text-sky-400 font-medium">Costo totale</p>
-                            <p className="text-lg font-bold tabular-nums text-sky-700 dark:text-sky-300">{fmtEuro(costoN)}</p>
-                          </div>
-                        )}
-                      </div>
-
+                    <div className="border-t border-border px-4 py-3">
                       {/* Lista turni */}
                       <div className="divide-y divide-border rounded-md border border-border">
                         {turniN.map(t => {
@@ -1208,121 +1148,16 @@ export function PersonaleTab() {
         </div>
       )}
 
-      {/* Vista */}
+      {/* Stati vuoti / caricamento. I turni si vedono espandendo il dipendente sopra. */}
       {loading ? (
         <div className="py-12 text-center text-sm text-muted-foreground">Caricamento…</div>
-      ) : isMensile ? (
-        // ── Vista mensile: il riepilogo per dipendente sopra è la vista. ──
-        turni.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            Nessun inserimento mensile per {fmtMese(meseBase)}. Usa &ldquo;Inserisci mese&rdquo; per aggiungere i totali da busta paga.
-          </div>
-        ) : null
-      ) : vista === "calendario" ? (
-        // ── Vista calendario settimanale: 7 colonne fisse ──
-        <>
-          {/* Intestazioni giorni */}
-          <div className="grid grid-cols-7 gap-1.5 mb-1">
-            {GIORNI.map(g => (
-              <div key={g} className="text-center text-[11px] font-medium text-muted-foreground">{g}</div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1.5">
-            {giorniVista.map((iso) => {
-              const isOggi = iso === oggi;
-              const turniGiorno = (perData[iso] ?? []).sort((a, b) => a.ora_inizio.localeCompare(b.ora_inizio));
-              return (
-                <div key={iso} className={`rounded-lg border ${isOggi ? "border-primary/60" : "border-border"} p-2 min-h-[200px]`}>
-                  <div className={`text-center mb-1.5 ${isOggi ? "text-primary font-semibold" : "text-muted-foreground"}`}>
-                    <div className="text-base font-bold leading-none">{iso.split("-")[2]}</div>
-                  </div>
-                  <div className="space-y-1">
-                    {turniGiorno.map(t => {
-                      const chipCol = getDipColor(nomi, t.nome);
-                      return (
-                        <div
-                          key={t.id}
-                          className={`rounded-md ${chipCol.bgChip} px-1.5 py-1 cursor-pointer transition-colors hover:opacity-80`}
-                          onClick={() => { setEditTurno(t); setDialogOpen(true); }}
-                        >
-                          <div className={`text-xs font-semibold ${chipCol.textChip} truncate`}>{t.nome}</div>
-                          <div className={`text-[10px] ${chipCol.subChip}`}>
-                            {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
-                          </div>
-                          {!!t.ore_extra && t.ore_extra > 0 && (
-                            <div className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
-                              +{fmtOreDisplay(t.ore_extra)} extra
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                    <button
-                      className="w-full text-xs text-muted-foreground/40 hover:text-muted-foreground hover:bg-muted/40 rounded-md text-center py-1 transition-colors"
-                      onClick={() => { setEditTurno(null); setDataDefault(iso); setDialogOpen(true); }}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      ) : (
-        // ── Vista lista ────────────────────────────────────────────────────────
-        turni.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            Nessun turno in questo periodo. Usa &ldquo;Aggiungi turno&rdquo; per iniziare.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {giorniVista.map(iso => {
-              const turniGiorno = (perData[iso] ?? []).sort((a, b) => a.nome.localeCompare(b.nome));
-              if (turniGiorno.length === 0) return null;
-              return (
-                <div key={iso}>
-                  <p className="text-xs font-semibold text-muted-foreground mb-1.5">
-                    {new Date(iso + "T00:00:00").toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" })}
-                  </p>
-                  <div className="space-y-1">
-                    {turniGiorno.map(t => {
-                      const rowCol = getDipColor(nomi, t.nome);
-                      return (
-                      <div key={t.id} className={`flex items-center gap-3 rounded-md border px-3 py-2 hover:${rowCol.bg} group ring-1 ${rowCol.ring}`}>
-                        <span className={`font-semibold text-sm min-w-[100px] ${rowCol.textChip}`}>{t.nome}</span>
-                        <span className="text-sm text-muted-foreground tabular-nums">
-                          {fmtOra(t.ora_inizio)}–{fmtOra(t.ora_fine)}
-                          {t.ora_inizio2 && t.ora_fine2 && (
-                            <span className="ml-1.5 text-muted-foreground/70">· {fmtOra(t.ora_inizio2)}–{fmtOra(t.ora_fine2)}</span>
-                          )}
-                        </span>
-                        <span className="text-xs text-muted-foreground tabular-nums">{fmtOreDisplay(calcolaOreTotali(t))}</span>
-                        {!!t.ore_extra && t.ore_extra > 0 && (
-                          <span className="text-[11px] text-amber-600 dark:text-amber-500 tabular-nums">+{fmtOreDisplay(t.ore_extra)} extra</span>
-                        )}
-                        {calcolaCostoTurno(t) > 0 && (
-                          <span className="text-[11px] text-sky-700 dark:text-sky-400 tabular-nums">{fmtEuro(calcolaCostoTurno(t))}</span>
-                        )}
-                        {t.note && <span className="text-xs text-muted-foreground italic truncate flex-1">{t.note}</span>}
-                        <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button size="icon" variant="ghost" className="size-7" onClick={() => { setEditTurno(t); setDialogOpen(true); }}>
-                            <Pencil className="size-3.5" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="size-7 text-muted-foreground hover:text-destructive" onClick={() => elimina(t)}>
-                            <Trash2 className="size-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )
-      )}
+      ) : turni.length === 0 ? (
+        <div className="py-12 text-center text-sm text-muted-foreground">
+          {isMensile
+            ? <>Nessun inserimento mensile per {fmtMese(meseBase)}. Usa &ldquo;Inserisci mese&rdquo; per aggiungere i totali da busta paga.</>
+            : <>Nessun turno in questo periodo. Usa &ldquo;Aggiungi turno&rdquo; per iniziare.</>}
+        </div>
+      ) : null}
 
       <TurnoDialog
         open={dialogOpen}
