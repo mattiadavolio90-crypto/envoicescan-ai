@@ -122,7 +122,7 @@ export function NotificheWidget({ count }: Props) {
         }
       >
         <Bell className="size-3.5" />
-        Vedi tutte le notifiche
+        Vedi tutti gli avvisi
         {count > 0 && (
           <span className="ml-0.5 flex min-w-4 items-center justify-center rounded-full bg-amber-500/20 px-1 text-[11px] font-bold text-amber-700 dark:text-amber-400">
             {count}
@@ -132,7 +132,7 @@ export function NotificheWidget({ count }: Props) {
 
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Notifiche</DialogTitle>
+          <DialogTitle>Avvisi</DialogTitle>
           <DialogDescription>
             Tutti gli avvisi del tuo assistente. Archivia quelli che hai gestito.
           </DialogDescription>

@@ -13,8 +13,8 @@ export default async function NotifichePage() {
     <div className="space-y-6 max-w-2xl">
       <PageHeader
         icon="bell"
-        title="Notifiche"
-        hint={unread > 0 ? `${unread} ${unread === 1 ? "avviso" : "avvisi"} da gestire` : "Nessuna notifica da gestire"}
+        title="Avvisi"
+        hint={unread > 0 ? `${unread} ${unread === 1 ? "avviso" : "avvisi"} da gestire` : "Nessun avviso da gestire"}
         badge={
           unread > 0 ? (
             <span className="inline-flex min-w-6 items-center justify-center rounded-full bg-emerald-600 px-1.5 text-sm font-bold text-white">
@@ -27,7 +27,7 @@ export default async function NotifichePage() {
       {notifiche.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-16 text-center text-muted-foreground">
           <Bell className="size-10 opacity-30" />
-          <p className="text-sm">Nessuna notifica attiva</p>
+          <p className="text-sm">Nessun avviso attivo</p>
         </div>
       ) : (
         <NotificheList notifiche={notifiche} />

@@ -5,10 +5,9 @@ import { AppSidebar } from "@/components/nav/app-sidebar";
 import { Wordmark } from "@/components/brand/logo";
 import { Separator } from "@/components/ui/separator";
 import { getCurrentSession } from "@/lib/auth";
-import { fetchNotifiche } from "@/lib/notifiche";
 import { ImpersonaBanner } from "@/components/admin/impersona-banner";
 import { MobileRedirect } from "@/components/mobile-redirect";
-import { Bell, LifeBuoy, WifiOff } from "lucide-react";
+import { LifeBuoy, WifiOff } from "lucide-react";
 
 function getInitials(nome: string | null, email: string): string {
   if (nome) {
@@ -53,13 +52,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const user = session.user;
 
-  // Fonte UNICA del contatore: le notifiche reali non archiviate
-  // (notification_inbox), le stesse che vedi nel widget Home e nella pagina
-  // /notifiche. Prima il badge contava le "azioni" del briefing — una fonte
-  // diversa — e il numero non combaciava con cio' che si apriva davvero.
-  const notifiche = await fetchNotifiche();
-  const unreadNotifiche = notifiche?.unread ?? 0;
-
   return (
     <>
     <MobileRedirect />
@@ -85,18 +77,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             >
               <LifeBuoy className="size-5" />
             </Link>
-            <Link
-              href="/dashboard"
-              title="Vai alle notifiche in Home"
-              className="relative inline-flex items-center justify-center size-9 rounded-md text-primary transition-colors hover:bg-accent"
-            >
-              <Bell className="size-5" />
-              {unreadNotifiche > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1 text-[10px] font-bold text-white">
-                  {unreadNotifiche > 9 ? "9+" : unreadNotifiche}
-                </span>
-              )}
-            </Link>
+            {/* Campanella eliminata (decisione 19/06): agli Avvisi si accede dalla
+                Home (widget) o dalla pagina /notifiche, non da un'icona in header. */}
           </div>
         </header>
         <main className="flex-1 p-6">{children}</main>
