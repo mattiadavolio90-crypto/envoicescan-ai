@@ -10,15 +10,21 @@ import { BlockRetry } from "../dashboard/block-retry";
 // l'inserimento vive solo nel punto vendita.
 
 function SintesiSkeleton() {
+  // Rispecchia il layout reale: testata + briefing + 2 card grandi + 3 confronti + ranking.
   return (
-    <div className="space-y-8">
-      <div className="h-10 w-72 animate-pulse rounded-xl bg-muted/40" />
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="h-28 animate-pulse rounded-2xl border bg-muted/40" />
-        <div className="h-28 animate-pulse rounded-2xl border bg-muted/40" />
-        <div className="h-28 animate-pulse rounded-2xl border bg-muted/40" />
+    <div className="space-y-6">
+      <div className="h-8 w-64 animate-pulse rounded-xl bg-muted/40" />
+      <div className="h-32 animate-pulse rounded-2xl border bg-muted/40" />
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="h-72 animate-pulse rounded-2xl border bg-muted/40" />
+        <div className="h-72 animate-pulse rounded-2xl border bg-muted/40" />
       </div>
-      <div className="h-64 animate-pulse rounded-2xl border bg-muted/40" />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <div className="h-20 animate-pulse rounded-2xl border bg-muted/40" />
+        <div className="h-20 animate-pulse rounded-2xl border bg-muted/40" />
+        <div className="h-20 animate-pulse rounded-2xl border bg-muted/40" />
+      </div>
+      <div className="h-56 animate-pulse rounded-2xl border bg-muted/40" />
     </div>
   );
 }

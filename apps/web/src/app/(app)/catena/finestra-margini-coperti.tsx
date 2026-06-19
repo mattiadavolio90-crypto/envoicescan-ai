@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, Download } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -172,7 +172,7 @@ export function FinestraMarginiCoperti({
               <button
                 type="button"
                 onClick={exportXls}
-                disabled={!data}
+                disabled={!data || data.righe.length === 0}
                 className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
               >
                 <Download className="size-3.5" />
@@ -239,11 +239,24 @@ export function FinestraMarginiCoperti({
                     {COLS.map((c) => (
                       <td key={c.key} className="px-3 py-2 text-right tabular-nums">
                         {c.fmt(data.gruppo[c.key] as number | null)}
+                        {/* Margine di gruppo parziale: alcune sedi non hanno i costi. */}
+                        {c.key === "margine_perc" && data.n_incompleti > 0 && (
+                          <span className="ml-1 align-middle text-[10px] font-normal text-amber-600 dark:text-amber-500">
+                            parziale
+                          </span>
+                        )}
                       </td>
                     ))}
                   </tr>
                 </tbody>
               </table>
+              {data.n_incompleti > 0 && (
+                <p className="mt-3 flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="size-3.5 shrink-0" />
+                  Margine di gruppo <span className="font-medium">parziale</span>: {data.n_incompleti}{" "}
+                  {data.n_incompleti === 1 ? "sede non ha" : "sedi non hanno"} ancora i costi caricati.
+                </p>
+              )}
               <p className="mt-3 text-xs text-muted-foreground">
                 <span className="text-emerald-600 dark:text-emerald-500">verde</span> = migliore della
                 catena, <span className="text-rose-600 dark:text-rose-500">rosso</span> = peggiore. Per «€

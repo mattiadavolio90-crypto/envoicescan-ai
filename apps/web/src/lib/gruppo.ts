@@ -112,6 +112,7 @@ export type MarginiCoperti = {
   periodo_label: string;
   righe: MarginiCopertiPV[];
   gruppo: MarginiCopertiPV;
+  n_incompleti: number;
 };
 
 // ─── Segnali "Da vedere nella catena" ─────────────────────────────────────

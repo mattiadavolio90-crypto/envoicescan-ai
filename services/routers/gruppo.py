@@ -502,6 +502,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
         completezza = _completezza_dati_pv(sb, ids, rows=salute_rows)
     except Exception:
         completezza = {}
+    incompleti_ids = set(completezza.keys())
     pv_da_completare = len(completezza)
     if tot_lordo <= 0 or tot_fb <= 0:
         livello_dati = "nessuno"
@@ -534,7 +535,10 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     ranking: List[RankingPV] = []
     for rid in ids:
         a = agg[rid]
-        incompleti = a["netto"] <= 0
+        # Incompleto = nessun ricavo OPPURE mancano i costi (food/personale): stesso
+        # criterio del briefing, così il ranking non mostra "0% rosso" per le sedi
+        # che semplicemente non hanno ancora caricato i costi.
+        incompleti = a["netto"] <= 0 or rid in incompleti_ids
         mol_perc = None if incompleti else round(a["mol"] / a["netto"] * 100, 1)
         ranking.append(RankingPV(
             ristorante_id=rid,
@@ -578,7 +582,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     n_segnali, sev_max = _conta_segnali_cache(sb, user_id)
     briefing = _build_briefing(
         nome_gruppo, ranking, salute_indice, salute_colore, n_segnali, sev_max,
-        salute_pv=salute_pv, incompleti_ids=set(completezza.keys()),
+        salute_pv=salute_pv, incompleti_ids=incompleti_ids,
     )
 
     return GruppoOverviewResponse(
@@ -715,6 +719,7 @@ class MarginiCopertiResponse(BaseModel):
     periodo_label: str
     righe: List[MarginiCopertiPV]
     gruppo: MarginiCopertiPV             # riga totale gruppo (in fondo)
+    n_incompleti: int = 0               # sedi senza dati completi (margine gruppo parziale)
 
 
 @router.get(
@@ -811,6 +816,7 @@ def gruppo_margini_coperti(
         periodo_label=periodo_label,
         righe=righe,
         gruppo=gruppo,
+        n_incompleti=sum(1 for r in righe if r.dati_incompleti),
     )
 
 
@@ -1038,18 +1044,42 @@ def _calcola_segnali(
             })
 
     # ── Segnale 3: ricavi mancanti nel mese in corso (per PV) ──
-    primo_mese = oggi.replace(day=1).isoformat()
-    for rid in ids:
+    # Un PV ha "ricavi" se ne ha registrato in QUALSIASI modo del mese: giornalieri
+    # (import gestionale) O mensili (margini_mensili / override modalità mensile).
+    # Controllare solo i giornalieri darebbe falsi positivi ai clienti in modalità
+    # mensile. 3 query AGGREGATE (no loop per-PV).
+    if "ricavi_mancanti" not in segnali_off:
+        primo_mese = oggi.replace(day=1).isoformat()
+        con_ricavi: set = set()
         try:
             rg = (
-                sb.table("ricavi_giornalieri")
-                .select("data", count="exact")
-                .eq("ristorante_id", rid)
-                .gte("data", primo_mese)
-                .lte("data", oggi.isoformat())
+                sb.table("ricavi_giornalieri").select("ristorante_id")
+                .in_("ristorante_id", ids).gte("data", primo_mese).lte("data", oggi.isoformat())
                 .execute()
             )
-            if (rg.count or 0) == 0:
+            con_ricavi |= {str(r.get("ristorante_id")) for r in (rg.data or [])}
+        except Exception:
+            pass
+        try:
+            mmc = (
+                sb.table("margini_mensili").select("ristorante_id,fatturato_netto")
+                .in_("ristorante_id", ids).eq("anno", oggi.year).eq("mese", oggi.month)
+                .execute()
+            )
+            con_ricavi |= {str(r.get("ristorante_id")) for r in (mmc.data or []) if float(r.get("fatturato_netto") or 0) > 0}
+        except Exception:
+            pass
+        try:
+            rmm = (
+                sb.table("ricavi_modalita_mensile").select("ristorante_id")
+                .in_("ristorante_id", ids).eq("anno", oggi.year).eq("mese", oggi.month)
+                .execute()
+            )
+            con_ricavi |= {str(r.get("ristorante_id")) for r in (rmm.data or [])}
+        except Exception:
+            pass
+        for rid in ids:
+            if rid not in con_ricavi:
                 segnali.append({
                     "tipo": "ricavi_mancanti",
                     "severity": "warning",
@@ -1058,8 +1088,6 @@ def _calcola_segnali(
                     "testo": "Nessun ricavo registrato questo mese",
                     "cta_page": "/margini",
                 })
-        except Exception:
-            pass
 
     # ── Segnale 2: prezzi categoria sopra la media catena (PV vs media catena) ──
     # Finestra: ultimi ~90 giorni sull'effective date. RPC aggregata.

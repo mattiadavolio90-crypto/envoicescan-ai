@@ -18886,6 +18886,11 @@
           },
           "gruppo": {
             "$ref": "#/components/schemas/MarginiCopertiPV"
+          },
+          "n_incompleti": {
+            "type": "integer",
+            "title": "N Incompleti",
+            "default": 0
           }
         },
         "type": "object",

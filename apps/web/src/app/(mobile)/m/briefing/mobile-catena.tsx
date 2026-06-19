@@ -89,6 +89,9 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
 
   const { kpi } = overview;
   const molPos = kpi.mol >= 0;
+  // Cascata come il desktop: il MOL si mostra solo se i dati sono completi,
+  // altrimenti sarebbe gonfiato → si mostra il food cost e si avvisa.
+  const completo = kpi.livello_dati === "completo";
 
   return (
     <div className="space-y-4">
@@ -107,38 +110,56 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
         <p className="mt-2 text-sm leading-relaxed text-foreground/90">{overview.briefing.narrativa}</p>
       </div>
 
-      {/* Conti del gruppo (compatto) */}
+      {/* Conti del gruppo (compatto) — MOL se completo, altrimenti food cost */}
       <div
         className={cn(
           "rounded-2xl border p-5 text-center",
-          molPos
-            ? "bg-gradient-to-br from-emerald-500/10 to-background"
-            : "bg-gradient-to-br from-rose-500/10 to-background",
+          !completo
+            ? "bg-gradient-to-br from-amber-500/10 to-background"
+            : molPos
+              ? "bg-gradient-to-br from-emerald-500/10 to-background"
+              : "bg-gradient-to-br from-rose-500/10 to-background",
         )}
       >
-        <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
-          MOL del gruppo · {overview.periodo_label}
-        </div>
-        <div className={cn("mt-1 text-4xl font-black tabular-nums", molPos ? TXT.verde : TXT.rosso)}>
-          {euro(kpi.mol)}
-        </div>
-        <div className="mt-1 text-xs text-muted-foreground">
-          margine {pct(kpi.margine_medio_perc)} · fatturato {euro(kpi.fatturato)}
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-center">
-          <div>
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Food cost</div>
-            <div className="text-sm font-semibold tabular-nums">{pct(kpi.food_cost_pct)}</div>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Personale</div>
-            <div className="text-sm font-semibold tabular-nums">{euro(kpi.costo_personale)}</div>
-          </div>
-          <div>
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Spese gen.</div>
-            <div className="text-sm font-semibold tabular-nums">{euro(kpi.spese_generali)}</div>
-          </div>
-        </div>
+        {completo ? (
+          <>
+            <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
+              MOL del gruppo · {overview.periodo_label}
+            </div>
+            <div className={cn("mt-1 text-4xl font-black tabular-nums", molPos ? TXT.verde : TXT.rosso)}>
+              {euro(kpi.mol)}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              margine {pct(kpi.margine_medio_perc)} · fatturato {euro(kpi.fatturato)}
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 border-t pt-3 text-center">
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Food cost</div>
+                <div className="text-sm font-semibold tabular-nums">{pct(kpi.food_cost_pct)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Personale</div>
+                <div className="text-sm font-semibold tabular-nums">{euro(kpi.costo_personale)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">Spese gen.</div>
+                <div className="text-sm font-semibold tabular-nums">{euro(kpi.spese_generali)}</div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground/60">
+              Food cost del gruppo · {overview.periodo_label}
+            </div>
+            <div className="mt-1 text-4xl font-black tabular-nums">
+              {kpi.food_cost_pct != null ? pct(kpi.food_cost_pct) : "—"}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              fatturato {euro(kpi.fatturato)} · {kpi.pv_da_completare} PV da completare: MOL non ancora calcolabile
+            </div>
+          </>
+        )}
       </div>
 
       {/* Salute del gruppo */}

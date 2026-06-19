@@ -511,7 +511,7 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[90vh] w-[min(96vw,52rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
+      <DialogContent className="max-h-[90vh] w-[min(96vw,68rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
         <DialogHeader className="border-b px-5 py-4">
           <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
             <span className="flex items-center gap-2">
@@ -585,6 +585,15 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                     </li>
                   ))}
                 </ul>
+                {/* Hint: se un solo PV ha spesa, le descrizioni del tag sono di
+                    quella sede → il confronto prezzi tra PV si abilita aggiungendo
+                    le varianti delle altre. */}
+                {data!.per_pv.filter((p) => p.spesa > 0).length === 1 && data!.per_pv.length > 1 && (
+                  <p className="mt-2 rounded-md border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-700 dark:text-sky-400">
+                    Solo un punto vendita ha spesa: aggiungi al tag anche le descrizioni «{tag.nome}» delle
+                    altre sedi (da «Prodotti») per confrontare i prezzi tra i punti vendita.
+                  </p>
+                )}
               </div>
 
               {/* Fornitori del gruppo */}

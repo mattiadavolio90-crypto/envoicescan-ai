@@ -114,7 +114,7 @@ export function FinestraSpesaPV({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-[min(96vw,72rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
+      <DialogContent className="max-h-[90vh] w-[min(96vw,68rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
         <DialogHeader className="border-b px-5 py-4">
           <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
             <span>Spesa per punto vendita</span>
