@@ -1616,14 +1616,15 @@ KPI_SOGLIE = {
 # riferimento. Tutte le soglie sono qui: cambiarle non tocca la logica.
 COPERTI_ALERT = {
     # Briefing: cita lo scontrino medio di ieri solo se |Δ| ≥ questa frazione
-    # rispetto alla media dei giorni con coperti del mese in corso (0.15 = 15%).
-    'scontrino_medio_delta_pct': 0.15,
+    # rispetto alla media dei giorni con coperti del mese in corso (0.10 = 10%).
+    'scontrino_medio_delta_pct': 0.10,
     # Notifica: scatta solo se i coperti di ieri si scostano di ≥ questa frazione
-    # rispetto al riferimento (0.30 = 30%, in più o in meno).
-    'coperti_anomalia_delta_pct': 0.30,
-    # Riferimento per l'anomalia coperti: 'settimana_prec' = stesso giorno della
-    # settimana precedente; 'mese_prec' = media giorni con coperti del mese scorso.
-    'riferimento': 'settimana_prec',
+    # rispetto al riferimento (0.20 = 20%, in più o in meno).
+    'coperti_anomalia_delta_pct': 0.20,
+    # Riferimento per l'anomalia coperti: 'mese_corr' = media dei giorni con coperti
+    # del mese IN CORSO (esclusa ieri); 'settimana_prec' = i 7 giorni precedenti;
+    # 'mese_prec' = media giorni con coperti del mese scorso.
+    'riferimento': 'mese_corr',
     # Niente alert se la baseline ha meno di N giorni con coperti (dato troppo
     # magro per essere affidabile).
     'min_giorni_baseline': 4,

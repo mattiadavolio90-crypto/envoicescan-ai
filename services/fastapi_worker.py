@@ -3491,6 +3491,10 @@ _MESI_IT_BRIEFING = [
     "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
 ]
 
+# Giorni di silenzio della pipeline fatture oltre i quali si segnala "non arrivano
+# fatture" (caso A di _briefing_fatture_mancanti). Decisione 19/06: 7 giorni.
+FATTURE_MANCANTI_GIORNI = 7
+
 
 def _scontrino_medio_significativo(
     ristorante_id: str, supabase_client, ieri_d, coperti_ieri, netto_ieri: float,
@@ -4122,30 +4126,36 @@ def _briefing_fatture_mancanti(
                 "dedupe_key": f"fatture-mancanti-live-{ristorante_id}",
             }
 
-    # ── Caso A: pipeline ferma, nessuna fattura caricata negli ultimi 30 giorni ──
-    inizio_dt = _dt2.combine(oggi - _td2(days=29), _dt2.min.time())
+    # ── Caso A: pipeline ferma, ultima fattura caricata da piu' di 7 giorni ──
+    # Decisione 19/06 (Mattia): non aspettare 30 giorni vuoti. Se l'ULTIMA fattura
+    # caricata e' piu' vecchia di FATTURE_MANCANTI_GIORNI, la pipeline si e' fermata
+    # e va segnalato subito (con SDI: "non stanno arrivando"; manuale: "carica").
+    soglia_dt = _dt2.combine(oggi - _td2(days=FATTURE_MANCANTI_GIORNI), _dt2.min.time())
     try:
         resp = (
             supabase_client.table("fatture")
-            .select("id", count="exact")
+            .select("created_at")
             .eq("ristorante_id", ristorante_id)
             .is_("deleted_at", "null")
-            .gte("created_at", inizio_dt.isoformat())
+            .order("created_at", desc=True)
             .limit(1)
             .execute()
         )
-        n = resp.count if resp.count is not None else len(resp.data or [])
+        rows = resp.data or []
     except Exception as exc:
         logger.warning("briefing fatture mancanti: lettura fallita: %s", exc)
         return None
 
-    if n and n > 0:
-        return None
+    # Almeno una fattura recente (<= soglia): pipeline viva, nessun segnale.
+    if rows and rows[0].get("created_at"):
+        ultima = str(rows[0]["created_at"])
+        if ultima >= soglia_dt.isoformat():
+            return None
 
     if canale == "sdi":
-        title = "Non stanno arrivando fatture dal flusso automatico"
+        title = "Non arrivano fatture dal flusso automatico da oltre una settimana"
     else:
-        title = "Nessuna fattura caricata di recente"
+        title = "Nessuna fattura caricata nell'ultima settimana"
 
     return {
         "id": f"fatture-mancanti-live-{ristorante_id}",
@@ -4254,12 +4264,17 @@ def _briefing_anomalia_coperti(
         return None
 
     # Baseline: media dei coperti dei giorni di confronto.
-    if riferimento == "mese_prec":
+    if riferimento == "mese_corr":
+        # Media dei giorni con coperti del mese IN CORSO, fino a ieri ESCLUSA: il
+        # confronto è col proprio andamento recente, non con un periodo passato.
+        base_da = ieri.replace(day=1)
+        base_a = ieri - _td3(days=1)
+    elif riferimento == "mese_prec":
         primo_mese = ieri.replace(day=1)
         fine_prec = primo_mese - _td3(days=1)
         inizio_prec = fine_prec.replace(day=1)
         base_da, base_a = inizio_prec, fine_prec
-    else:  # settimana_prec (default): i 7 giorni precedenti a ieri
+    else:  # settimana_prec: i 7 giorni precedenti a ieri
         base_a = ieri - _td3(days=1)
         base_da = ieri - _td3(days=7)
 
@@ -4284,7 +4299,12 @@ def _briefing_anomalia_coperti(
 
     su = delta > 0
     pct = abs(round(delta * 100))
-    rif_label = "della settimana scorsa" if riferimento != "mese_prec" else "del mese scorso"
+    if riferimento == "mese_corr":
+        rif_label = "del mese"
+    elif riferimento == "mese_prec":
+        rif_label = "del mese scorso"
+    else:
+        rif_label = "della settimana scorsa"
     titolo = (
         f"Ieri {coperti_ieri} coperti, {pct}% in più della media {rif_label}"
         if su else

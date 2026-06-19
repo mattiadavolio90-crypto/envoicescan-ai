@@ -145,6 +145,25 @@ def test_anomalia_coperti_silenzio_se_ieri_senza_dato():
     assert _briefing_anomalia_coperti("RID", sb, date(2026, 6, 16)) is None
 
 
+def test_anomalia_coperti_soglia_20_pct():
+    # Decisione 19/06: soglia 20% (era 30%). Uno scostamento del 22% deve scattare.
+    from services.fastapi_worker import _briefing_anomalia_coperti
+    # ieri 78, baseline 100 → -22%, oltre la nuova soglia 0.20 (ma sotto la vecchia 0.30)
+    sb = _sb_coperti(78, [100, 100, 100, 100])
+    notif = _briefing_anomalia_coperti("RID", sb, date(2026, 6, 16))
+    assert notif is not None
+    assert notif["topic_key"] == "coperti_anomalia"
+
+
+def test_anomalia_coperti_riferimento_mese_label():
+    # Con riferimento 'mese_corr' (default 19/06) il titolo cita "del mese".
+    from services.fastapi_worker import _briefing_anomalia_coperti
+    sb = _sb_coperti(40, [100, 100, 100, 100, 100])
+    notif = _briefing_anomalia_coperti("RID", sb, date(2026, 6, 16))
+    assert notif is not None
+    assert "del mese" in notif["title"]
+
+
 # ── Parser email multi-ristorante (worker) ────────────────────────────────────
 def _sb_email(owned_ids, mapping):
     """Mock supabase per il worker: ristoranti owned + ricavi_ragione_sociale_map."""
