@@ -12,6 +12,11 @@ import {
 import { NativeSelect } from "@/components/ui/select";
 import { type SpesaPivot } from "@/lib/gruppo";
 
+const MESI = [
+  "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
+  "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre",
+];
+
 function euro(n: number): string {
   return new Intl.NumberFormat("it-IT", {
     style: "currency",
@@ -37,15 +42,27 @@ export function FinestraSpesaPV({
   onOpenChange: (v: boolean) => void;
 }) {
   const [dimensione, setDimensione] = useState<"categoria" | "fornitore">("categoria");
+  // Periodo: "anno" = anno in corso (default), oppure un mese (1-12) dell'anno in corso.
+  const [periodo, setPeriodo] = useState<string>("anno");
   const [data, setData] = useState<SpesaPivot | null>(null);
   const [loading, setLoading] = useState(false);
   const reqRef = useRef(0);
+
+  const annoCorrente = new Date().getFullYear();
+  const meseCorrente = new Date().getMonth() + 1; // 1-12
 
   useEffect(() => {
     if (!open) return;
     const my = ++reqRef.current;
     setLoading(true);
-    fetch(`/api/gruppo/spesa-pivot?dimensione=${dimensione}`, { cache: "no-store" })
+    const qs = new URLSearchParams({ dimensione });
+    if (periodo !== "anno") {
+      const m = Number(periodo);
+      const ultimo = new Date(annoCorrente, m, 0).getDate(); // ultimo giorno del mese
+      qs.set("data_da", `${annoCorrente}-${String(m).padStart(2, "0")}-01`);
+      qs.set("data_a", `${annoCorrente}-${String(m).padStart(2, "0")}-${String(ultimo).padStart(2, "0")}`);
+    }
+    fetch(`/api/gruppo/spesa-pivot?${qs.toString()}`, { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((j) => {
         if (my === reqRef.current) setData(j);
@@ -56,7 +73,7 @@ export function FinestraSpesaPV({
       .finally(() => {
         if (my === reqRef.current) setLoading(false);
       });
-  }, [open, dimensione]);
+  }, [open, dimensione, periodo, annoCorrente]);
 
   const maxCell = data
     ? Math.max(0, ...data.rows.flatMap((r) => data.pv.map((p) => r.per_pv[p.id] ?? 0)))
@@ -96,7 +113,18 @@ export function FinestraSpesaPV({
           <DialogTitle className="flex flex-wrap items-center justify-between gap-3 text-base">
             <span>Spesa per punto vendita</span>
             <span className="flex items-center gap-2 text-xs font-normal text-muted-foreground">
-              {data?.periodo_label}
+              <NativeSelect
+                value={periodo}
+                onValueChange={setPeriodo}
+                className="h-8 w-40 text-xs"
+              >
+                <option value="anno">Anno in corso ({annoCorrente})</option>
+                {MESI.slice(0, meseCorrente).map((m, i) => (
+                  <option key={i + 1} value={String(i + 1)}>
+                    {m} {annoCorrente}
+                  </option>
+                ))}
+              </NativeSelect>
               <NativeSelect
                 value={dimensione}
                 onValueChange={(v) => setDimensione(v as "categoria" | "fornitore")}
@@ -138,13 +166,13 @@ export function FinestraSpesaPV({
                     </th>
                   ))}
                   <th className="px-3 py-2 text-right font-semibold">Totale</th>
-                  <th className="px-3 py-2 text-right font-semibold">%</th>
                 </tr>
               </thead>
               <tbody>
                 {data.rows.map((row) => (
                   <tr key={row.dim_val} className="border-t">
                     <td className="sticky left-0 z-10 max-w-[14rem] truncate bg-popover px-3 py-2 font-medium">
+                      {row.emoji ? <span className="mr-1.5">{row.emoji}</span> : null}
                       {row.dim_val}
                     </td>
                     {data.pv.map((p) => {
@@ -159,9 +187,12 @@ export function FinestraSpesaPV({
                         </td>
                       );
                     })}
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums">{euro(row.totale)}</td>
-                    <td className="px-3 py-2 text-right text-xs text-muted-foreground tabular-nums">
-                      {row.incidenza_pct.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
+                    {/* Totale riga: valore assoluto con l'incidenza % sotto. */}
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      <span className="block font-semibold">{euro(row.totale)}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {row.incidenza_pct.toLocaleString("it-IT", { maximumFractionDigits: 1 })}%
+                      </span>
                     </td>
                   </tr>
                 ))}
@@ -173,8 +204,10 @@ export function FinestraSpesaPV({
                       {euro(data.totali_pv[p.id] ?? 0)}
                     </td>
                   ))}
-                  <td className="px-3 py-2 text-right tabular-nums">{euro(data.grand_total)}</td>
-                  <td className="px-3 py-2" />
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    <span className="block">{euro(data.grand_total)}</span>
+                    <span className="block text-xs text-muted-foreground">100%</span>
+                  </td>
                 </tr>
               </tbody>
             </table>

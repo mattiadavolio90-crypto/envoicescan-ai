@@ -78,6 +78,7 @@ export const fetchGruppoChatConfig = cache(
 
 export type SpesaPivotRow = {
   dim_val: string;
+  emoji?: string | null; // icona categoria (null per fornitore)
   per_pv: Record<string, number>; // ristorante_id -> spesa
   totale: number;
   incidenza_pct: number;

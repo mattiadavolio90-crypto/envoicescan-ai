@@ -377,13 +377,33 @@ def _resolve_gruppo(authorization: Optional[str]):
     return sb, user_id, sedi, nome_gruppo, rid_to_nome, ids
 
 
+_MESI_IT = [
+    "gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno",
+    "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre",
+]
+
+
 def _periodo_da_query(data_da: Optional[str], data_a: Optional[str]) -> tuple[str, str, str]:
-    """Normalizza il periodo: default = anno corrente. Ritorna (da_iso, a_iso, label)."""
+    """Normalizza il periodo: default = anno corrente. Ritorna (da_iso, a_iso, label).
+
+    Etichetta leggibile: anno intero → "Anno YYYY"; mese di calendario intero →
+    "Giugno 2026"; altro range → "da → a"."""
     anno, label = _periodo_anno_corrente()
     da = data_da or f"{anno}-01-01"
     a = data_a or f"{anno}-12-31"
     if data_da or data_a:
         label = f"{da} → {a}"
+        try:
+            from datetime import date as _date
+            d0, d1 = _date.fromisoformat(da), _date.fromisoformat(a)
+            ultimo = (_date(d0.year + (d0.month == 12), (d0.month % 12) + 1, 1)
+                      - _date.resolution)
+            if d0.day == 1 and d0.year == d1.year and d0.month == d1.month and d1 == ultimo:
+                label = f"{_MESI_IT[d0.month - 1].capitalize()} {d0.year}"
+            elif d0 == _date(d0.year, 1, 1) and d1 == _date(d0.year, 12, 31):
+                label = f"Anno {d0.year}"
+        except Exception:
+            pass
     return da, a, label
 
 
@@ -566,6 +586,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
 
 class SpesaPivotRow(BaseModel):
     dim_val: str                    # categoria o fornitore
+    emoji: Optional[str] = None     # icona categoria (None per fornitore)
     per_pv: Dict[str, float]        # ristorante_id -> spesa nel periodo
     totale: float                   # somma riga (tutti i PV)
     incidenza_pct: float            # % della riga sul grand total
@@ -621,12 +642,26 @@ def gruppo_spesa_pivot(
         agg[dim_val][rid] += val
         totali_pv[rid] += val
 
+    # Icone categoria dal catalogo (solo dimensione=categoria): 1 query, non per riga.
+    emoji_map: Dict[str, str] = {}
+    if dimensione == "categoria":
+        try:
+            cat_rows = (sb.table("categorie").select("nome,icona").execute()).data or []
+            emoji_map = {
+                (c.get("nome") or "").strip(): (c.get("icona") or "").strip()
+                for c in cat_rows
+                if (c.get("icona") or "").strip()
+            }
+        except Exception:
+            emoji_map = {}
+
     grand_total = sum(totali_pv.values())
     rows: List[SpesaPivotRow] = []
     for dim_val, per_pv in agg.items():
         tot = sum(per_pv.values())
         rows.append(SpesaPivotRow(
             dim_val=dim_val,
+            emoji=emoji_map.get(dim_val.strip()) or None,
             per_pv={rid: round(per_pv.get(rid, 0.0), 2) for rid in ids},
             totale=round(tot, 2),
             incidenza_pct=round(tot / grand_total * 100, 1) if grand_total > 0 else 0.0,

@@ -21657,6 +21657,17 @@
             "type": "string",
             "title": "Dim Val"
           },
+          "emoji": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Emoji"
+          },
           "per_pv": {
             "additionalProperties": {
               "type": "number"
