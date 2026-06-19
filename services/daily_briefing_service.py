@@ -79,6 +79,7 @@ def espandi_topic_spenti(topics_disabled) -> set:
 # (piu' basso = prima). I numeri lasciano spazio per i topic futuri:
 #   upload_ricavi_failed (Step 5) ~ 15, tra upload fatture e prezzi.
 _TOPIC_PRIORITY: Dict[str, int] = {
+    'onboarding':               -2,   # -2. Benvenuto cliente nuovo (apertura, prima di tutto)
     'rientro_assenza':          -1,   # -1. Bentornato al rientro (apertura, prima di tutto)
     'buona_notizia':             0,   # 0. Apertura positiva (NON e' una card to-do)
     'upload_failed':            10,   # 1. Upload fatture fallito
@@ -176,6 +177,15 @@ def _rientro_bullet(payload: Dict[str, Any]) -> str:
         # Amo SOFT, in coda e senza pressione: e' un'offerta, non un rimprovero.
         base += " Se vuoi, possiamo gestire noi l'app e i tuoi dati al posto tuo."
     return base
+
+
+def _onboarding_frase(payload: Dict[str, Any]) -> str:
+    """Frase di benvenuto per il cliente NUOVO (ancora senza dati). Tono sobrio e
+    accogliente: spiega che per partire servono i primi dati, senza allarmare."""
+    return (
+        "\U0001F44B Benvenuto in ONEFLUX. Qui troverai ogni giorno la sintesi del "
+        "tuo locale. Per iniziare bastano i primi dati."
+    )
 
 
 def _today_rome() -> date:
@@ -280,6 +290,9 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
     topic = str(notif.get('topic_key') or '')
     payload = notif.get('payload') or {}
     title = str(notif.get('title') or '')
+
+    if topic == 'onboarding':
+        return _onboarding_frase(payload)
 
     if topic == 'buona_notizia':
         return _buona_notizia_bullet(payload)
@@ -660,6 +673,7 @@ def _compose_narrative(
     severity_max: str,
     apertura_buona: Optional[Dict[str, Any]] = None,
     apertura_rientro: Optional[Dict[str, Any]] = None,
+    apertura_onboarding: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Compone il testo narrativo colloquiale con apertura, corpo e chiusura.
 
@@ -667,7 +681,16 @@ def _compose_narrative(
     quando si riferiscono allo stesso mese/anno. Le aperture, se presenti, vanno
     in testa nell'ordine: prima il bentornato di rientro, poi la buona notizia,
     poi le to-do (decisione Mattia: prima il contesto, poi il bene, poi la rogna).
+    Per un cliente NUOVO (onboarding) l'apertura e' SOLO il benvenuto, seguito dai
+    primi passi (le card dati-mancanti).
     """
+    if apertura_onboarding is not None:
+        benvenuto = _onboarding_frase(apertura_onboarding.get('payload') or {})
+        if not selected:
+            return benvenuto
+        passi = "; ".join(_narrative_phrase_for(n).rstrip(".") for n in selected)
+        return f"{benvenuto}\nPer partire: {passi}."
+
     rientro = _rientro_bullet(apertura_rientro.get('payload') or {}) if apertura_rientro else ""
     buona = _buona_notizia_frase(apertura_buona.get('payload') or {}) if apertura_buona else ""
     # Aperture concatenate, ognuna sulla sua riga, nell'ordine voluto.
@@ -884,14 +907,16 @@ def _build_snapshot(
     # Aperture: estratte a parte. NON sono card "Da fare oggi" (non si ignorano,
     # non hanno CTA-card) e non contano per 'tutto_ok': sono il contesto con cui
     # l'AI apre il briefing. Restano fuori da candidati/azioni.
-    #  - rientro_assenza: bentornato dopo un'assenza (la primissima cosa).
+    #  - onboarding: benvenuto al cliente nuovo (senza dati), prima di tutto.
+    #  - rientro_assenza: bentornato dopo un'assenza.
     #  - buona_notizia: il fatto fresco positivo (MOL/incasso).
+    onboarding = seen_topics.get('onboarding')
     rientro = seen_topics.get('rientro_assenza') if 'rientro_assenza' not in spenti else None
     buona_notizia = seen_topics.get('buona_notizia') if 'buona_notizia' not in spenti else None
 
     # Solo topic noti (presenti nella gerarchia), non spenti, E azionabili/utili.
     # Le aperture sono escluse qui: sono narrativa, non to-do.
-    _APERTURE = {'rientro_assenza', 'buona_notizia'}
+    _APERTURE = {'onboarding', 'rientro_assenza', 'buona_notizia'}
     candidati = [
         n for n in seen_topics.values()
         if str(n.get('topic_key') or '') in _TOPIC_PRIORITY
@@ -928,18 +953,24 @@ def _build_snapshot(
     dati_mancanti = list(dict.fromkeys(dati_mancanti))
 
     # Aperture come primi bullet per l'AI (anonimizzati come gli altri), cosi' la
-    # narrativa inizia dal contesto e poi passa alle to-do. Ordine: prima il
-    # bentornato (sei tornato), poi la buona notizia (decisione Mattia: "prima il
-    # bene, poi la rogna"). Nel template entrano come frasi d'apertura.
-    aperture_bullets = [
-        _bullet_for(n) for n in (rientro, buona_notizia) if n is not None
-    ]
+    # narrativa inizia dal contesto e poi passa alle to-do. Per un cliente NUOVO
+    # (onboarding) l'apertura e' SOLO il benvenuto: rientro e buona notizia non
+    # hanno senso senza dati. Altrimenti: prima il bentornato, poi la buona notizia
+    # (decisione Mattia: "prima il bene, poi la rogna").
+    if onboarding is not None:
+        aperture_bullets = [_bullet_for(onboarding)]
+        template_narrative = _compose_narrative(
+            selected, sev_max, apertura_onboarding=onboarding,
+        )
+    else:
+        aperture_bullets = [
+            _bullet_for(n) for n in (rientro, buona_notizia) if n is not None
+        ]
+        template_narrative = _compose_narrative(
+            selected, sev_max, apertura_rientro=rientro, apertura_buona=buona_notizia,
+        )
     bullets_ai = aperture_bullets + bullets
-
-    template_narrative = _compose_narrative(
-        selected, sev_max, apertura_rientro=rientro, apertura_buona=buona_notizia,
-    )
-    if use_ai and (selected or rientro or buona_notizia):
+    if use_ai and (selected or onboarding or rientro or buona_notizia):
         narrative = _narrate_with_ai(bullets_ai, template_narrative)
     else:
         narrative = template_narrative
@@ -953,9 +984,10 @@ def _build_snapshot(
     return {
         'bullets': bullets,
         'azioni': azioni,
-        # Verde "tutto a posto" SOLO se nessuna card da fare E nessun dato mancante:
-        # un dato mancante rende falsi i numeri, quindi mai un verde trionfale sopra.
-        'tutto_ok': len(selected) == 0 and len(dati_mancanti) == 0,
+        # Verde "tutto a posto" SOLO se nessuna card da fare E nessun dato mancante
+        # E non e' un cliente nuovo (onboarding): un dato mancante o una sede senza
+        # dati rendono falso/prematuro il verde trionfale.
+        'tutto_ok': len(selected) == 0 and len(dati_mancanti) == 0 and onboarding is None,
         'dati_mancanti': dati_mancanti,
         'narrative': narrative,
         'generated_at': datetime.now(timezone.utc).isoformat(),

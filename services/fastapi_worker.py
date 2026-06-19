@@ -4683,6 +4683,64 @@ def _briefing_rientro_assenza(
         return None
 
 
+def _briefing_onboarding(
+    user_id: str, ristorante_id: str, supabase_client,
+) -> Optional[Dict[str, Any]]:
+    """Apertura di benvenuto per una sede NUOVA: nessun dato ancora caricato.
+
+    Scatta solo se la sede non ha NESSUNA fattura, NESSUN ricavo giornaliero e
+    NESSUNA riga margini_mensili. In quel caso un cliente nuovo (es. appena creato,
+    pre-go-live) non deve vedere un briefing vuoto o un falso "tutto a posto": gli
+    si da' il benvenuto e i primi passi (le card dati-mancanti gia' generate).
+    Best-effort: su errore None (briefing normale). Tre conteggi leggeri.
+    """
+    try:
+        f = (
+            supabase_client.table("fatture")
+            .select("id", count="exact")
+            .eq("ristorante_id", ristorante_id)
+            .is_("deleted_at", "null")
+            .limit(1)
+            .execute()
+        )
+        if (f.count or 0) > 0:
+            return None
+        r = (
+            supabase_client.table("ricavi_giornalieri")
+            .select("data", count="exact")
+            .eq("ristorante_id", ristorante_id)
+            .limit(1)
+            .execute()
+        )
+        if (r.count or 0) > 0:
+            return None
+        m = (
+            supabase_client.table("margini_mensili")
+            .select("mese", count="exact")
+            .eq("ristorante_id", ristorante_id)
+            .limit(1)
+            .execute()
+        )
+        if (m.count or 0) > 0:
+            return None
+    except Exception as exc:
+        logger.warning("home_briefing: check onboarding fallito: %s", exc)
+        return None
+
+    return {
+        "id": f"onboarding-live-{ristorante_id}",
+        "topic_key": "onboarding",
+        "source_type": "live",
+        "severity": "info",
+        "title": "Benvenuto in ONEFLUX",
+        "body": "",
+        "action_page": "/analisi-fatture",
+        "payload": {},
+        "source_event_at": None,
+        "dedupe_key": f"onboarding-live-{ristorante_id}",
+    }
+
+
 def _briefing_aggiorna_last_seen(user_id: str, supabase_client) -> None:
     """Segna 'ora' come ultima volta che l'utente ha visto un briefing.
 
@@ -4978,6 +5036,18 @@ def _briefing_raccogli_notifiche(
     except Exception as exc:
         logger.warning("home_briefing: rientro assenza fallito: %s", exc)
     _briefing_aggiorna_last_seen(user_id, supabase_client)
+
+    # Apertura ONBOARDING: cliente NUOVO senza alcun dato (niente fatture, ricavi,
+    # margini). Sostituisce le altre aperture (rientro/buona notizia non hanno senso
+    # senza dati) -> _build_snapshot, vedendo 'onboarding', la usa come unica
+    # apertura. Va in testa. Best-effort.
+    if ristorante_id:
+        try:
+            ob = _briefing_onboarding(user_id, ristorante_id, supabase_client)
+            if ob is not None:
+                notifications.insert(0, ob)
+        except Exception as exc:
+            logger.warning("home_briefing: onboarding fallito: %s", exc)
 
     return notifications
 

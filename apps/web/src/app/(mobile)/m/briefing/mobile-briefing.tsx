@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { type Briefing, type BriefingAzione } from "@/lib/home";
+import { AscoltaButton } from "@/components/ascolta-button";
 import { cn } from "@/lib/utils";
 
 // Effetto typewriter sulla narrativa, come la Home desktop: solo al primo load
@@ -110,9 +111,12 @@ export function MobileBriefing({ briefing }: { briefing: Briefing }) {
       {/* Hero briefing con typewriter */}
       <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.04] to-background p-5">
         <div className="pointer-events-none absolute -right-12 -top-12 size-40 rounded-full bg-sky-400/15 blur-3xl" />
-        <div className="flex items-center gap-1.5 text-xs font-medium text-primary/80">
-          <Sparkles className="size-3.5" />
-          <span>Il tuo assistente</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-primary/80">
+            <Sparkles className="size-3.5" />
+            <span>Il tuo assistente</span>
+          </div>
+          <AscoltaButton testo={`${briefing.saluto}. ${briefing.narrativa}`} />
         </div>
         <h1 className="mt-2 text-xl font-bold tracking-tight">{briefing.saluto}</h1>
         <p className="mt-3 whitespace-pre-line text-[15px] leading-relaxed text-foreground/90">

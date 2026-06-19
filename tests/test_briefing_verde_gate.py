@@ -56,6 +56,17 @@ class TestVerdeGate:
         assert snap["tutto_ok"] is False
         assert snap["dati_mancanti"] == []
 
+    def test_onboarding_e_apertura_e_sopprime_le_altre(self):
+        # Cliente nuovo: l'onboarding e' l'unica apertura; rientro/buona notizia
+        # vengono soppressi. Non e' una card da fare e non produce il verde.
+        from services.daily_briefing_service import _compose_narrative
+        ob = _notif("onboarding", "info")
+        snap = _build_snapshot([ob, _notif("rientro_assenza", "info"), _notif("buona_notizia", "success")])
+        # Nessuna card (le aperture non sono to-do) ma nemmeno il verde.
+        assert snap["azioni"] == []
+        assert snap["tutto_ok"] is False
+        assert "Benvenuto" in snap["narrative"]
+
     def test_dati_mancanti_deduplicati_e_ordinati(self):
         notifs = [
             _notif("fatture_mancanti"),
