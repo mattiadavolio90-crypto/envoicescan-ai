@@ -15,6 +15,7 @@ import {
   ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AscoltaButton } from "@/components/ascolta-button";
 import type { GruppoOverview, Segnale, SegnaliGruppo } from "@/lib/gruppo";
 
 const ICONA: Record<Segnale["tipo"], typeof AlertTriangle> = {
@@ -93,9 +94,12 @@ export function MobileCatena({ overview }: { overview: GruppoOverview }) {
     <div className="space-y-4">
       {/* Briefing di gruppo */}
       <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.05] to-background p-5">
-        <div className="flex items-center gap-1.5 text-xs font-medium text-primary/80">
-          <Sparkles className="size-3.5" />
-          Il tuo assistente · catena
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-primary/80">
+            <Sparkles className="size-3.5" />
+            Il tuo assistente · catena
+          </div>
+          <AscoltaButton testo={`${overview.briefing.saluto}, ${overview.nome_gruppo}. ${overview.briefing.narrativa}`} />
         </div>
         <h1 className="mt-2 text-xl font-bold tracking-tight">
           {overview.briefing.saluto}, {overview.nome_gruppo}

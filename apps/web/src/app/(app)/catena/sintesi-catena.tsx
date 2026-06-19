@@ -29,6 +29,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AscoltaButton } from "@/components/ascolta-button";
 import { FinestraSpesaPV } from "./finestra-spesa-pv";
 import { FinestraMarginiCoperti } from "./finestra-margini-coperti";
 import { CardSegnali } from "./card-segnali";
@@ -101,9 +102,12 @@ function BriefingGruppo({ briefing, nomeGruppo }: { briefing: GruppoBriefing; no
     <div className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-sky-500/10 via-violet-500/[0.04] to-background p-6 sm:p-8">
       <div className="pointer-events-none absolute -right-16 -top-16 size-56 rounded-full bg-sky-400/15 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-20 left-1/3 size-52 rounded-full bg-violet-400/10 blur-3xl" />
-      <div className="flex items-center gap-2 text-xs font-medium text-primary/80">
-        <Sparkles className="size-4" />
-        <span>Il tuo assistente · catena</span>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-medium text-primary/80">
+          <Sparkles className="size-4" />
+          <span>Il tuo assistente · catena</span>
+        </div>
+        <AscoltaButton testo={`${briefing.saluto}, ${nomeGruppo}. ${briefing.narrativa}`} />
       </div>
       <h1 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
         {briefing.saluto}, {nomeGruppo}
