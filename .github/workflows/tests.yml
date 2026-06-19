@@ -37,3 +37,21 @@ jobs:
         env:
           WORKER_DEV_MODE: '1'
         run: python -m pytest tests/ -q
+
+  deno-test:
+    # Test delle Edge Functions (Deno): auth HMAC + routing multi-sede del webhook
+    # fatture. È il path critico del go-live e non gira in pytest.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Run Deno unit tests (Edge Functions)
+        # Solo i file *_test.ts (unit). Esclude test.ts (script di integration
+        # manuale che richiede `supabase functions serve` + WEBHOOK_SECRET).
+        run: deno test --allow-env --allow-net supabase/functions/**/*_test.ts

@@ -158,7 +158,7 @@ async function safeFetch(
 // Header formato: "Invoicetronic-Signature: t=1733395200,v1=a1b2c3..."
 // Messaggio firmato: "{timestamp}.{rawBody}"
 
-async function verifyHmac(
+export async function verifyHmac(
   rawBody: string,
   header:  string | null,
   secret:  string,
