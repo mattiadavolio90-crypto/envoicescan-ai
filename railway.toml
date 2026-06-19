@@ -1,2 +1,27 @@
+# ════════════════════════════════════════════════════════════════════════════
+# ONEFLUX — Railway config (progetto: ingenious-fascination, env: production)
+# ════════════════════════════════════════════════════════════════════════════
+# Una sola immagine (docker/Dockerfile) alimenta DUE servizi, distinti dallo
+# Start Command. railway.toml NON puo' impostare startCommand per-servizio (vale
+# per il servizio collegato), quindi i comandi REALI sono override sul dashboard
+# Railway. Li documentiamo qui come fonte di verita' — vedi DOCS/DEPLOY_RUNBOOK.md
+# per la procedura completa di ricreazione da zero.
+#
+#   Servizio "worker"        (FastAPI API: /health, /api/*)
+#     Start Command:  python -m services.fastapi_worker
+#     PORT=8000  WORKER_WEB_CONCURRENCY=4
+#     Env extra:  WORKER_SECRET_KEY, INVOICETRONIC_WEBHOOK_SECRET,
+#                 SUPABASE_ANON_KEY, ENABLE_INLINE_QUEUE_PROCESSOR=0
+#
+#   Servizio "queue-worker"  (ingest coda fatture, no HTTP)
+#     Start Command:  python worker/run.py
+#     Env extra:  WORKER_ENABLED=1 (killswitch), WORKER_POLL_INTERVAL_SECONDS,
+#                 WORKER_ERROR_BACKOFF_SECONDS, WORKER_MAX_BACKOFF_SECONDS
+#     Healthcheck: DISABILITATO (non espone HTTP)
+#
+# Env comuni obbligatorie (entrambi): SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
+# OPENAI_API_KEY. L'entrypoint fallisce esplicito se mancano.
+# ════════════════════════════════════════════════════════════════════════════
+
 [build]
 dockerfilePath = "docker/Dockerfile"
