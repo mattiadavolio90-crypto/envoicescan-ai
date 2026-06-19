@@ -17862,6 +17862,10 @@
             "type": "string",
             "title": "Nome Gruppo"
           },
+          "chat_enabled": {
+            "type": "boolean",
+            "title": "Chat Enabled"
+          },
           "segnali": {
             "items": {
               "$ref": "#/components/schemas/GruppoAssistantSegnale"
@@ -17880,6 +17884,7 @@
         "type": "object",
         "required": [
           "nome_gruppo",
+          "chat_enabled",
           "segnali",
           "pv"
         ],
@@ -17897,6 +17902,17 @@
               }
             ],
             "title": "Nome Gruppo"
+          },
+          "chat_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chat Enabled"
           },
           "segnali_disattivati": {
             "items": {

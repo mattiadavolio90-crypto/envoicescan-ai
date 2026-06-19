@@ -26,9 +26,9 @@ const PIANO_LABEL: Record<string, string> = {
 };
 
 const PIANO_PREZZO: Record<string, string> = {
-  base: "€39/mese",
-  plus: "€49/mese",
-  pro: "€69/mese",
+  base: "€39/mese + IVA",
+  plus: "€59/mese + IVA",
+  pro: "€79/mese + IVA",
 };
 
 type AccountData = {
@@ -41,6 +41,7 @@ type AccountData = {
   fatture_usate_mese: number;
   chat_usate_oggi?: number;
   chat_limite_giorno?: number;
+  chat_pool?: boolean;
   price_alert_threshold: number | null;
   tema?: "dark" | "light";
   membro_dal: string | null;
@@ -578,13 +579,15 @@ export function AccountClient({
               {data.chat_limite_giorno > 0 ? (
                 <>
                   <UsageBar
-                    label="Domande all'assistente AI (oggi)"
+                    label={data.chat_pool ? "Domande all'assistente AI del gruppo (oggi)" : "Domande all'assistente AI (oggi)"}
                     usate={data.chat_usate_oggi ?? 0}
                     limite={data.chat_limite_giorno}
                     avviso="Hai quasi esaurito le domande di oggi."
                   />
                   <p className="mt-1.5 text-xs text-muted-foreground">
-                    Il contatore si azzera ogni giorno a mezzanotte.
+                    {data.chat_pool
+                      ? "Pool condiviso tra tutti i punti vendita e la modalità catena. Si azzera ogni giorno a mezzanotte."
+                      : "Il contatore si azzera ogni giorno a mezzanotte."}
                   </p>
                 </>
               ) : (

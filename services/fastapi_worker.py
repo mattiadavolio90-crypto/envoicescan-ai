@@ -2148,14 +2148,17 @@ def _chat_limite_per_piano(piano: Optional[str]) -> int:
     return CHAT_LIMITI_PIANO.get((piano or "base").lower().strip(), CHAT_LIMITI_PIANO["base"])
 
 
-def _chat_limite_pool_gruppo(user: Dict[str, Any], supabase_client) -> int:
-    """Limite chat del POOL di gruppo = SOMMA dei limiti effettivi di ogni sede.
+def _chat_quota_pool(user: Dict[str, Any], supabase_client) -> tuple[int, bool]:
+    """(limite, is_pool) della chat per l'account.
 
-    Modalità catena: un solo contatore condiviso, niente piano-catena. Ogni sede
-    contribuisce col limite del SUO piano (es. 3 Base 8 + 1 Pro 30 = 54), non
-    n×costante (i piani possono differire). Le sedi 'free' (limite 0) non
-    contribuiscono. Fallback prudente al limite della sede attiva se la lettura
-    sedi fallisce (non blocca la chat di gruppo)."""
+    Il limite è la SOMMA dei limiti effettivi di ogni sede attiva: per una sola
+    sede coincide col limite di quel piano; per più sedi è il pool condiviso del
+    gruppo (es. 3 Base 8 + 1 Pro 30 = 54). Ogni sede contribuisce col limite del
+    SUO piano (fallback sede.piano → users.piano → 'base', mai users.piano
+    diretto); le sedi 'free' (0) non contribuiscono. `is_pool` = account multi-sede
+    (>1 sede attiva): in quel caso il conteggio è condiviso per user_id e lo stesso
+    pool è speso tra catena e tutti i punti vendita. Fallback prudente al limite
+    della sede attiva se la lettura sedi fallisce (non blocca la chat)."""
     try:
         sedi = (
             supabase_client.table("ristoranti")
@@ -2165,16 +2168,49 @@ def _chat_limite_pool_gruppo(user: Dict[str, Any], supabase_client) -> int:
             .execute()
         ).data or []
         if sedi:
-            # Risolve il piano per sede col fallback corretto (sede.piano →
-            # users.piano → 'base'), mai users.piano diretto.
-            tot = 0
-            for s in sedi:
-                piano_sede = (s.get("piano") or user.get("piano") or "base")
-                tot += _chat_limite_per_piano(piano_sede)
-            return tot
+            tot = sum(
+                _chat_limite_per_piano(s.get("piano") or user.get("piano") or "base")
+                for s in sedi
+            )
+            return tot, len(sedi) > 1
     except Exception as exc:
         logger.warning("chat: calcolo pool gruppo fallito, fallback sede: %s", exc)
-    return _chat_limite_per_piano(_resolve_piano_effettivo(user, supabase_client))
+    return _chat_limite_per_piano(_resolve_piano_effettivo(user, supabase_client)), False
+
+
+def _chat_limite_pool_gruppo(user: Dict[str, Any], supabase_client) -> int:
+    """Limite chat del POOL di gruppo = SOMMA dei limiti effettivi di ogni sede."""
+    return _chat_quota_pool(user, supabase_client)[0]
+
+
+def _chat_quota_view(
+    user: Dict[str, Any], supabase_client, ristorante_id: Optional[str]
+) -> tuple[int, int, bool]:
+    """(limite, usate_oggi, is_pool) coerente con l'enforcement: per gli account
+    multi-sede il pool è condiviso (limite = somma sedi, conteggio per user_id);
+    per la sede singola resta il limite del piano contato sulla sede. Usato per
+    mostrare ovunque lo STESSO contatore che la chat applica davvero."""
+    limite, is_pool = _chat_quota_pool(user, supabase_client)
+    usate = _chat_domande_oggi(None if is_pool else ristorante_id, str(user["id"]), supabase_client)
+    return limite, usate, is_pool
+
+
+def _gruppo_chat_disabilitata(user_id: str, supabase_client) -> bool:
+    """True se la chat di catena è stata spenta dal «Configura assistente» (toggle
+    a livello account, indipendente dal pool). Default False (accesa)."""
+    try:
+        r = (
+            supabase_client.table("gruppo_assistant_config")
+            .select("chat_disabilitata")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if r.data:
+            return bool(r.data[0].get("chat_disabilitata"))
+    except Exception as exc:
+        logger.warning("chat: lettura toggle chat catena fallita: %s", exc)
+    return False
 
 
 def _chat_domande_oggi(ristorante_id: Optional[str], user_id: str, supabase_client) -> int:
@@ -3102,24 +3138,26 @@ def chat_ai(
     # Contesto: catena (vista gruppo /catena) o sede (singolo PV, default).
     is_catena = body.contesto == "catena"
 
-    if is_catena:
-        # Pool AI unico: limite = SOMMA dei limiti effettivi di ogni sede; il
-        # conteggio è a livello ACCOUNT (p_ristorante_id NULL → la RPC conta per
-        # user_id, cioè tutte le righe chat dell'account). Un solo contatore.
-        limite = _chat_limite_pool_gruppo(user, supabase_client)
-        rate_ristorante = None
-    else:
-        # Limite domande/giorno in base al piano EFFETTIVO del cliente: piano della
-        # sede attiva (modello piano-per-sede), con fallback a users.piano.
-        piano = _resolve_piano_effettivo(user, supabase_client)
-        limite = _chat_limite_per_piano(piano)
-        rate_ristorante = ristorante_id
+    # Quota AI: un SOLO pool per account. Multi-sede → limite = somma sedi e
+    # conteggio condiviso per user_id (lo stesso pool è speso tra catena e tutti i
+    # PV); sede singola → limite del piano contato sulla sede. La riga è sempre
+    # loggata con la sede d'origine (p_ristorante_id) per l'attribuzione.
+    limite, is_pool = _chat_quota_pool(user, supabase_client)
+    rate_ristorante = ristorante_id
 
     # Piano free: chat non disponibile.
     if limite <= 0:
         raise HTTPException(
             status_code=403,
             detail="La chat con l'assistente non è inclusa nel tuo piano. Passa a un piano superiore per attivarla.",
+        )
+
+    # Catena: l'assistente di gruppo può essere spento dal "Configura assistente"
+    # anche con pool > 0 (toggle a livello account).
+    if is_catena and _gruppo_chat_disabilitata(user_id, supabase_client):
+        raise HTTPException(
+            status_code=403,
+            detail="La chat dell'assistente di catena è disattivata. Riattivala da «Configura assistente».",
         )
 
     # Rate limit giornaliero atomico (RPC): conta+inserisce in un solo statement
@@ -3131,6 +3169,7 @@ def chat_ai(
             "p_user_id": user_id,
             "p_ristorante_id": rate_ristorante,
             "p_limite": limite,
+            "p_pool": is_pool,
         }).execute()
         domande_oggi = int(_rpc.data) if _rpc.data is not None else -1
     except Exception as exc:
@@ -5733,13 +5772,16 @@ def home_config_get(authorization: Optional[str] = Header(None)) -> ConfigRespon
     # Limite chat dal piano EFFETTIVO (sede attiva, fallback account). DEVE usare
     # la stessa risoluzione dell'endpoint chat, altrimenti il "ti restano N" mostrato
     # in Home non combacia col limite realmente applicato. (0 = free, chat off)
-    chat_limite = _chat_limite_per_piano(_resolve_piano_effettivo(user, sb))
+    # Pool condiviso per gli account multi-sede: limite = somma sedi e conteggio per
+    # user_id, così il "ti restano N" combacia col limite realmente applicato dalla
+    # chat (che ora scala lo stesso pool da catena e da ogni PV).
+    chat_limite, _chat_pool = _chat_quota_pool(user, sb)
 
     # Domande gia' fatte oggi, solo se la chat e' disponibile (piano > 0 e attiva):
     # evita una query inutile per i piani free / chat spenta.
     domande_oggi = 0
     if chat_limite > 0 and chat_ai_enabled:
-        domande_oggi = _chat_domande_oggi(ristorante_id, str(user["id"]), sb)
+        domande_oggi = _chat_domande_oggi(None if _chat_pool else ristorante_id, str(user["id"]), sb)
 
     # Soglia alert prezzi (per-utente): qui si IMPOSTA quando scatta l'avviso.
     try:
@@ -5856,11 +5898,11 @@ def home_config_post(
         for (key, label, bloccato, descrizione) in _CONFIG_TOPICS
     ]
     chat_ai = True if body.chat_ai_enabled is None else bool(body.chat_ai_enabled)
-    # Piano EFFETTIVO (sede attiva, fallback account): coerente con l'endpoint chat.
-    chat_limite = _chat_limite_per_piano(_resolve_piano_effettivo(user, sb))
+    # Pool condiviso per gli account multi-sede (coerente con l'endpoint chat).
+    chat_limite, _chat_pool = _chat_quota_pool(user, sb)
     domande_oggi = 0
     if chat_limite > 0 and chat_ai:
-        domande_oggi = _chat_domande_oggi(ristorante_id, str(user["id"]), sb)
+        domande_oggi = _chat_domande_oggi(None if _chat_pool else ristorante_id, str(user["id"]), sb)
     # Rileggi la flag effettiva: il body puo' non averla passata (None=non toccare),
     # quindi il valore corrente sta nel record salvato o resta quello esistente.
     solo_preferiti = False

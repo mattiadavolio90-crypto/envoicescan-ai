@@ -801,6 +801,24 @@ _SEGNALI_CATALOGO = [
 _SEGNALI_KEYS = {s["key"] for s in _SEGNALI_CATALOGO}
 
 
+def _gruppo_chat_disabilitata(sb, user_id: str) -> bool:
+    """True se la chat di catena è spenta dal «Configura assistente» (toggle a
+    livello account, indipendente dal pool). Default False (accesa)."""
+    try:
+        r = (
+            sb.table("gruppo_assistant_config")
+            .select("chat_disabilitata")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
+        if r.data:
+            return bool(r.data[0].get("chat_disabilitata"))
+    except Exception:
+        pass
+    return False
+
+
 def _get_gruppo_config(sb, user_id: str) -> tuple:
     """(segnali_disattivati:set, pv_esclusi:set) dalla config assistente catena.
     Default (nessuna riga) = tutto attivo, nessun PV escluso."""
@@ -1119,12 +1137,14 @@ class GruppoAssistantPV(BaseModel):
 
 class GruppoAssistantConfigResponse(BaseModel):
     nome_gruppo: str
+    chat_enabled: bool
     segnali: List[GruppoAssistantSegnale]
     pv: List[GruppoAssistantPV]
 
 
 class GruppoAssistantConfigSave(BaseModel):
     nome_gruppo: Optional[str] = None
+    chat_enabled: Optional[bool] = None
     segnali_disattivati: List[str] = []
     pv_esclusi: List[str] = []
 
@@ -1140,6 +1160,7 @@ def gruppo_assistant_config_get(authorization: Optional[str] = Header(None)) -> 
     seg_off, pv_excl = _get_gruppo_config(sb, user_id)
     return GruppoAssistantConfigResponse(
         nome_gruppo=nome_gruppo,
+        chat_enabled=not _gruppo_chat_disabilitata(sb, user_id),
         segnali=[
             GruppoAssistantSegnale(
                 key=s["key"], label=s["label"], descrizione=s["descrizione"],
@@ -1180,12 +1201,17 @@ def gruppo_assistant_config_save(
 
     from datetime import datetime as _dt, timezone as _tz
     now = _dt.now(_tz.utc).isoformat()
-    sb.table("gruppo_assistant_config").upsert({
+    payload = {
         "user_id": user_id,
         "segnali_disattivati": seg_off,
         "pv_esclusi": pv_excl,
         "updated_at": now,
-    }, on_conflict="user_id").execute()
+    }
+    # chat_enabled è opzionale: lo scriviamo solo se passato, così non azzeriamo il
+    # toggle quando si salvano solo segnali/PV (upsert aggiorna solo le colonne date).
+    if body.chat_enabled is not None:
+        payload["chat_disabilitata"] = not body.chat_enabled
+    sb.table("gruppo_assistant_config").upsert(payload, on_conflict="user_id").execute()
     # La config cambia i segnali: butto lo snapshot in cache così alla prossima
     # lettura si ricalcolano con le nuove regole (niente attesa fino a domani).
     try:
@@ -1434,7 +1460,7 @@ def gruppo_chat_config(authorization: Optional[str] = Header(None)) -> GruppoCha
     # tutte le righe chat dell'account (catena + ogni PV), coerente col pool unico.
     domande = _chat_domande_oggi(None, user_id, sb)
     return GruppoChatConfig(
-        enabled=limite > 0,
+        enabled=limite > 0 and not _gruppo_chat_disabilitata(sb, user_id),
         limite_giorno=limite,
         domande_oggi=domande,
     )

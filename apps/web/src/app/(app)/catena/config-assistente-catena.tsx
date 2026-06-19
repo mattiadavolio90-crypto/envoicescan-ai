@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Sparkles, Loader2, MapPin } from "lucide-react";
+import { Sparkles, Loader2, MapPin, MessageCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +29,7 @@ export function ConfigAssistenteCatena() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [nome, setNome] = useState("");
+  const [chatEnabled, setChatEnabled] = useState(true);
   const [segnali, setSegnali] = useState<SegnaleCfg[]>([]);
   const [pv, setPv] = useState<PvCfg[]>([]);
 
@@ -39,6 +40,7 @@ export function ConfigAssistenteCatena() {
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((j) => {
         setNome(j.nome_gruppo ?? "");
+        setChatEnabled(j.chat_enabled ?? true);
         setSegnali(j.segnali ?? []);
         setPv(j.pv ?? []);
       })
@@ -61,6 +63,7 @@ export function ConfigAssistenteCatena() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nome_gruppo: nome.trim() || null,
+          chat_enabled: chatEnabled,
           segnali_disattivati: segnali.filter((s) => !s.enabled).map((s) => s.key),
           pv_esclusi: pv.filter((p) => !p.incluso).map((p) => p.ristorante_id),
         }),
@@ -95,6 +98,19 @@ export function ConfigAssistenteCatena() {
             <p className="py-8 text-center text-sm text-muted-foreground">Caricamento…</p>
           ) : (
             <div className="space-y-5 py-2">
+              <div className="flex items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2.5">
+                <div className="flex items-center gap-2 text-sm">
+                  <MessageCircle className="size-4 text-primary" />
+                  <div>
+                    <p className="font-medium">Chat AI in catena</p>
+                    <p className="text-xs text-muted-foreground">
+                      Il pulsante per chiedere all&apos;assistente dei dati del gruppo
+                    </p>
+                  </div>
+                </div>
+                <Switch checked={chatEnabled} onCheckedChange={(v: boolean) => setChatEnabled(v)} />
+              </div>
+
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Nome del gruppo</label>
                 <Input

@@ -47,6 +47,10 @@ def _chat_limite_per_piano(*args, **kwargs):
     return _fw()._chat_limite_per_piano(*args, **kwargs)
 
 
+def _chat_quota_view(*args, **kwargs):
+    return _fw()._chat_quota_view(*args, **kwargs)
+
+
 def _is_admin_email(*args, **kwargs):
     return _fw()._is_admin_email(*args, **kwargs)
 
@@ -134,8 +138,10 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # Contatore domande Chat AI di oggi (per il rate limit visibile al cliente)
-    chat_oggi = _chat_domande_oggi(ristorante_id, user_id, sb)
+    # Contatore domande Chat AI di oggi (per il rate limit visibile al cliente).
+    # Account multi-sede → pool condiviso del gruppo (stesso contatore in ogni PV e
+    # in catena); sede singola → limite del piano sulla sede.
+    chat_limite_g, chat_oggi, chat_pool = _chat_quota_view(user, sb, ristorante_id)
 
     return {
         "email": row.get("email", user.get("email", "")),
@@ -146,7 +152,8 @@ def account_me(authorization: Optional[str] = Header(None)) -> Dict[str, Any]:
         "limite_fatture_mese": limite_fatture,
         "fatture_usate_mese": fatture_mese,
         "chat_usate_oggi": chat_oggi,
-        "chat_limite_giorno": _chat_limite_per_piano(piano_raw),
+        "chat_limite_giorno": chat_limite_g,
+        "chat_pool": chat_pool,
         "price_alert_threshold": row.get("price_alert_threshold"),
         "tema": (row.get("tema") or "dark"),
         "membro_dal": row.get("created_at"),
