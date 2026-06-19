@@ -3,6 +3,10 @@
 **Creato:** 3 giugno 2026
 **Riferimento completo:** `ONEFLUX_MASTER.md` §14-16
 
+> ✅ **MIGRAZIONE COMPLETATA (switch 8/6/2026).** `app.oneflux.it` serve Next.js su
+> Vercel; Streamlit e `nuovo.oneflux.it` sono dismessi. Questo documento è il piano
+> STORICO dello switch — conservato come traccia, non descrive più lo stato corrente.
+
 ---
 
 ## Stato attuale

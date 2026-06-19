@@ -1,6 +1,13 @@
 # ONEFLUX — Sicurezza e Compliance GDPR
 
-Versione: 6.0 | Aggiornamento: 5 Giugno 2026
+Versione: 6.1 | Aggiornamento: 19 Giugno 2026
+
+> **Esito audit sicurezza 19/06/2026** (pre go-live 1/7): advisor Supabase **0 ERROR
+> sicurezza, 0 WARN performance**. Chiusi 2 leak via RLS — tabella `sessioni` e 6 RPC
+> worker erano leggibili con la anon key (account takeover / lettura fatture cross-tenant);
+> ora RLS attiva+forzata e GRANT solo a `service_role`. Webhook fatture: `verify_jwt=false`
+> dichiarato nel repo, auth solo via HMAC (non dipende più dalla anon key). Le sezioni
+> che confrontano con Streamlit sono storiche (frontend ora solo Next.js).
 
 ---
 

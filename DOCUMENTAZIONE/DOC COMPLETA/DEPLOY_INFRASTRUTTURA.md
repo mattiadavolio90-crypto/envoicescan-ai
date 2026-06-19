@@ -1,6 +1,6 @@
 # ONEFLUX — Deploy e Infrastruttura
 
-Versione: 6.0 | Aggiornamento: 5 Giugno 2026
+Versione: 6.1 | Aggiornamento: 19 Giugno 2026
 
 ---
 
@@ -9,10 +9,10 @@ Versione: 6.0 | Aggiornamento: 5 Giugno 2026
 ```
                     ┌─────────────────────────┐
                     │    Vercel                │
-                    │    nuovo.oneflux.it      │
-                    │    Next.js 16.2.6        │
+                    │    app.oneflux.it        │
+                    │    Next.js 16            │
                     └──────────┬──────────────┘
-                               │ HTTP proxy /api/*
+                               │ HTTP proxy /api/* (X-Worker-Key)
          ┌─────────────────────┼─────────────────────────┐
          │                     │                         │
          │    ┌────────────────▼────────────────────┐    │
@@ -20,9 +20,9 @@ Versione: 6.0 | Aggiornamento: 5 Giugno 2026
          │    │                                     │    │
          │    │  ┌─────────────────────────────┐   │    │
          │    │  │ service: worker              │   │    │
-         │    │  │ FastAPI + Uvicorn            │   │    │
-         │    │  │ PORT 8000 (interna)          │   │    │
-         │    │  │ WORKER_WEB_CONCURRENCY=4     │   │    │
+         │    │  │ python -m services.          │   │    │
+         │    │  │   fastapi_worker (Uvicorn)   │   │    │
+         │    │  │ PORT 8000, concurrency 4     │   │    │
          │    │  └─────────────────────────────┘   │    │
          │    │                                     │    │
          │    │  ┌─────────────────────────────┐   │    │
@@ -31,23 +31,23 @@ Versione: 6.0 | Aggiornamento: 5 Giugno 2026
          │    │  │ loop 24/7, ogni 15 secondi   │   │    │
          │    │  │ nessuna porta pubblica       │   │    │
          │    │  └─────────────────────────────┘   │    │
-         │    │                                     │    │
-         │    │  ┌─────────────────────────────┐   │    │
-         │    │  │ service: ohyeah (legacy)     │   │    │
-         │    │  │ Streamlit + FastAPI locale   │   │    │
-         │    │  │ app.oneflux.it               │   │    │
-         │    │  └─────────────────────────────┘   │    │
          │    └────────────────────────────────────┘    │
+         │              (Streamlit DISMESSO 8/6)         │
          │                     │                         │
          │    ┌────────────────▼────────────────────┐   │
          │    │    Supabase                         │   │
          │    │    vthikmfpywilukizputn.supabase.co │   │
          │    │    PostgreSQL 15, EU Frankfurt       │   │
-         │    │    Edge Functions (Deno)             │   │
+         │    │    Edge Functions (Deno):            │   │
+         │    │      invoicetronic-webhook (HMAC)    │   │
+         │    │      ricavi-email-webhook            │   │
          │    └─────────────────────────────────────┘   │
          │                                               │
          └───────────────────────────────────────────────┘
 ```
+
+> Riferimento operativo per ricreare/verificare i servizi Railway:
+> [docs/DEPLOY_RUNBOOK.md](../../docs/DEPLOY_RUNBOOK.md).
 
 ---
 
@@ -56,18 +56,17 @@ Versione: 6.0 | Aggiornamento: 5 Giugno 2026
 | Parametro | Valore |
 |-----------|--------|
 | Piattaforma | Vercel |
-| Piano | Free → Pro €20/mese quando serve |
-| URL produzione | `nuovo.oneflux.it` |
+| Piano | Pro (deciso per go-live, vedi infrastruttura) |
+| URL produzione | `app.oneflux.it` |
 | Branch | `main` → deploy automatico |
-| Framework | Next.js 16.2.6 con Turbopack |
+| Framework | Next.js 16 con Turbopack |
 | Region | Edge (auto) |
 
 ### Variabili d'ambiente Vercel
 
 ```
-WORKER_BASE_URL=https://[railway-worker-url].up.railway.app
-WORKER_SECRET_KEY=[64 char]
-NEXT_PUBLIC_APP_URL=https://nuovo.oneflux.it
+WORKER_URL=https://[railway-worker-url].up.railway.app
+WORKER_SECRET_KEY=[64 char]   # solo server-side, mai NEXT_PUBLIC_*
 ```
 
 ### Proxy routes
@@ -117,23 +116,28 @@ Protegge tutte le route tranne le 3 pubbliche (login, forgot-password, reset-pas
 | Porta | Nessuna (no HTTP) |
 | `ENABLE_INLINE_QUEUE_PROCESSOR` | `0` (disabilitato nel service `worker`) |
 
-### Service: `ohyeah` (Streamlit legacy)
+> **Service Streamlit `ohyeah`: DISMESSO (8/6/2026).** Il frontend è Next.js su
+> Vercel; su Railway restano solo i due servizi worker qui sopra. Il Dockerfile non
+> avvia più Streamlit.
 
-| Parametro | Valore |
-|-----------|--------|
-| Entry point | `streamlit run app.py` |
-| URL | `app.oneflux.it` |
-| Stato | Attivo fino al completamento Fase 10 |
+### `railway.toml` e Start Command
 
-### `railway.toml`
+`railway.toml` imposta solo il build (Dockerfile). Lo **Start Command è per-servizio**
+(override sul dashboard Railway, documentato in `railway.toml` come fonte di verità):
+
+```
+worker        →  python -m services.fastapi_worker
+queue-worker  →  python worker/run.py
+```
 
 ```toml
 [build]
 dockerfilePath = "docker/Dockerfile"
-
-[deploy]
-startCommand = "uvicorn services.fastapi_worker:app --host 0.0.0.0 --port 8000"
 ```
+
+L'entrypoint (`docker/docker-entrypoint.sh`) allinea `WORKER_PORT=$PORT`, valida le
+env obbligatorie e **fallisce esplicito se non riceve un comando** (niente più default
+Streamlit). Procedura completa: [docs/DEPLOY_RUNBOOK.md](../../docs/DEPLOY_RUNBOOK.md).
 
 ### Variabili d'ambiente Railway (service `worker`)
 
@@ -175,12 +179,10 @@ WORKER_SECRET_KEY=[identico]
 | Piano | Free → Pro €25/mese SOLO se free dà problemi reali |
 | Region | EU Frankfurt |
 | PostgreSQL | v15 |
-| RLS | Attivo su tutte le tabelle |
-| Backup | Automatici giornalieri (piano free) |
-| Limite storage | 500 MB |
-| Limite transfer | 2 GB |
-| Pausa | Dopo 7 giorni di inattività (free tier) |
-| Accesso | Solo via `service_role_key` (bypass RLS) |
+| RLS | Attiva e FORZATA sulle tabelle con dati cliente |
+| Backup | Point-in-Time Recovery (piano Pro per go-live) |
+| Accesso | Solo via `service_role_key` (bypass RLS); `auth.uid()` è sempre NULL (auth custom) |
+| Advisor | 0 ERROR sicurezza, 0 WARN performance (audit 19/06/2026) |
 | Progetto | `vthikmfpywilukizputn.supabase.co` |
 
 ### Edge Function: `invoicetronic-webhook`
@@ -189,9 +191,13 @@ WORKER_SECRET_KEY=[identico]
 |-----------|--------|
 | Runtime | Deno (TypeScript) |
 | File | `supabase/functions/invoicetronic-webhook/index.ts` |
-| Deploy | `supabase functions deploy invoicetronic-webhook --no-verify-jwt` |
-| Sviluppo locale | `.\scripts\dev-serve.ps1` (porta 54321) |
-| Test locale | `.\scripts\dev-serve.ps1 -Test` |
+| Deploy | `supabase functions deploy invoicetronic-webhook` |
+| Gate JWT | `verify_jwt = false` (dichiarato in `supabase/config.toml`) |
+| Autenticazione | Firma HMAC-SHA256 (`Invoicetronic-Signature`) + anti-replay ±300s |
+| Test unit | `deno test --allow-env --allow-net supabase/functions/**/*_test.ts` (18 test: HMAC + routing) |
+
+> Il `verify_jwt=false` è ora **dichiarato nel repo** (`config.toml`): il webhook non
+> dipende più dall'anon key nel Bearer. L'auth vera è l'HMAC nel codice.
 
 ### Secrets Edge Function
 
@@ -218,35 +224,24 @@ File nella cartella `docker/`:
 
 | File | Uso |
 |------|-----|
-| `Dockerfile` | Build immagine unica (Streamlit + FastAPI worker) |
-| `docker-compose.yml` | Stack sviluppo locale completo |
-| `docker-compose.prod.yml` | Stack produzione (porta worker non esposta) |
-| `docker-entrypoint.sh` | Script avvio container |
+| `Dockerfile` | Build immagine unica per worker FastAPI + queue-worker (EXPOSE 8000, healthcheck `/health`) |
+| `docker-compose.yml` | Stack sviluppo locale (i service Streamlit residui sono legacy/inattivi) |
+| `docker-compose.prod.yml` | Riferimento produzione (porta worker non esposta) |
+| `docker-entrypoint.sh` | Avvio container: allinea `WORKER_PORT=$PORT`, valida env, esegue il comando del servizio (fail-closed senza comando) |
 
-### `docker-compose.prod.yml` — 3 service
-
-```yaml
-services:
-  ohyeah:       # Streamlit, porta 8501 esposta
-  worker:        # FastAPI, porta 8000 NON esposta (solo rete interna)
-  queue-worker:  # Worker asincrono, nessuna porta
-```
-
-**Comunicazione:** `WORKER_BASE_URL=http://worker:8000` — le route `/api/classify` e `/api/parse` raggiungibili solo dall'interno della rete Docker privata.
+> I file `docker-compose*.yml` sono per sviluppo locale/VPS, NON sono il path Railway
+> (Railway usa solo il Dockerfile + Start Command per-servizio).
 
 ### Sviluppo locale
 
 ```powershell
-# Stack completo locale
-docker-compose -f docker/docker-compose.yml up
+# FastAPI worker (porta 8000)
+python -m services.fastapi_worker
 
-# Solo FastAPI worker (porta 8003)
-uvicorn services.fastapi_worker:app --host 0.0.0.0 --port 8003
+# Queue worker
+python worker/run.py
 
-# Solo Streamlit
-streamlit run app.py
-
-# Solo Next.js (in apps/web/)
+# Frontend Next.js (in apps/web/)
 npm run dev   # Turbopack attivo automaticamente
 ```
 
@@ -254,25 +249,16 @@ npm run dev   # Turbopack attivo automaticamente
 
 ## 6. Secrets Management
 
-### Streamlit Cloud
+I secret vivono su **3 piattaforme** (mai in `.streamlit/secrets.toml` — Streamlit è
+dismesso):
 
-File `.streamlit/secrets.toml` (non versionato):
+| Piattaforma | Dove | Secret principali |
+|---|---|---|
+| **Railway** (worker + queue-worker) | Variables del servizio | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENAI_API_KEY`, `WORKER_SECRET_KEY`, `INVOICETRONIC_*`, `BREVO_*` |
+| **Vercel** (Next.js) | Environment Variables | `WORKER_URL`, `WORKER_SECRET_KEY` (server-side) |
+| **Supabase** (Edge Functions) | `supabase secrets set` | `SUPABASE_SERVICE_ROLE_KEY`, `INVOICETRONIC_WEBHOOK_SECRET`, `INVOICETRONIC_API_KEY`, `BREVO_*` |
 
-```toml
-SUPABASE_URL = "https://vthikmfpywilukizputn.supabase.co"
-SUPABASE_KEY = "eyJhbG..."            # service_role_key
-OPENAI_API_KEY = "sk-..."
-WORKER_BASE_URL = "http://worker:8000"
-ADMIN_EMAILS = "md@oneflux.it"
-WORKER_SECRET_KEY = "[64 char]"
-
-[brevo]
-api_key = "xkeysib-..."
-sender_email = "noreply@oneflux.it"
-sender_name = "ONEFLUX"
-reply_to_email = "md@oneflux.it"
-reply_to_name = "ONEFLUX Support"
-```
+Contratto env completo per servizio: [docs/DEPLOY_RUNBOOK.md](../../docs/DEPLOY_RUNBOOK.md).
 
 ### GitHub Actions (Settings → Secrets → Actions)
 

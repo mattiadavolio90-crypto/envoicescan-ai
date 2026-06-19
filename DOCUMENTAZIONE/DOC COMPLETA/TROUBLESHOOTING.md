@@ -148,16 +148,15 @@ pytest tests/ --cov=services --cov=utils --cov-report=html
 .\scripts\run-tests.ps1
 
 # ── AVVIO LOCALE ──────────────────────────────────────────────
-# Streamlit
-streamlit run app.py
-
-# FastAPI Worker (porta 8003, dev mode senza chiave)
+# FastAPI Worker (dev mode senza chiave; legge WORKER_PORT, default 8000)
 $env:WORKER_DEV_MODE = "1"
-uvicorn services.fastapi_worker:app --host 0.0.0.0 --port 8003
+python -m services.fastapi_worker
 
-# Next.js
+# Next.js (frontend)
 cd apps/web
 npm run dev      # Turbopack
+
+# (Streamlit dismesso: `app.py`/`pages/` non più serviti)
 
 # Worker coda (richiede env vars)
 $env:SUPABASE_URL = "..."
@@ -189,10 +188,11 @@ npm run build
 # Test Edge Function
 .\scripts\dev-serve.ps1 -Test
 
-# Deploy su Supabase Cloud
-.\scripts\dev-serve.ps1 -Deploy
-# oppure
-supabase functions deploy invoicetronic-webhook --no-verify-jwt
+# Deploy su Supabase Cloud (verify_jwt=false è in supabase/config.toml)
+supabase functions deploy invoicetronic-webhook --project-ref vthikmfpywilukizputn
+
+# Test unit Edge Functions (HMAC + routing)
+deno test --allow-env --allow-net supabase/functions/**/*_test.ts
 
 # ── DOCKER ────────────────────────────────────────────────────
 # Sviluppo locale

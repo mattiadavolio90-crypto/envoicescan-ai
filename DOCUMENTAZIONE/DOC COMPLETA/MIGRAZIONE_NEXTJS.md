@@ -1,9 +1,12 @@
 # ONEFLUX — Stato Migrazione Next.js
 
-Versione: 6.1 | Aggiornamento: 10 Giugno 2026 (Agenda/Strumenti split + guard per-pagina)
+Versione: 6.2 | Aggiornamento: 19 Giugno 2026
 
 Questo documento riassume lo stato della migrazione da Streamlit a Next.js.
 Il documento di riferimento primario (con changelog dettagliato) è `ONEFLUX_MASTER.md`.
+
+> ✅ **Migrazione COMPLETATA (switch 8/6).** Streamlit dismesso; la tabella sotto e i
+> riferimenti alla coesistenza sono storici.
 
 ---
 
@@ -11,10 +14,10 @@ Il documento di riferimento primario (con changelog dettagliato) è `ONEFLUX_MAS
 
 | Frontend | URL | Stato | Clienti |
 |---------|-----|-------|---------|
-| Next.js | `nuovo.oneflux.it` | Attivo (Fasi 0–8 complete) | 2 clienti di test |
-| Streamlit | `app.oneflux.it` | Attivo (legacy) | 1 cliente operativo |
+| Next.js | `app.oneflux.it` (Vercel) | **Unico frontend attivo** | tutti (2 test + 1 operativo) |
+| Streamlit | — | Dismesso (8/6) | nessuno |
 
-Entrambi i frontend puntano allo **stesso database Supabase**. Un cliente che opera su Streamlit vede i dati immediatamente anche su Next.js e viceversa.
+Il frontend Next.js e il worker FastAPI puntano allo **stesso database Supabase**.
 
 **Stack Next.js:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + Vercel
 

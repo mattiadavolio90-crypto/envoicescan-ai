@@ -2,9 +2,12 @@
 
 **Sistema SaaS di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 6.1 | Aggiornamento: 10 Giugno 2026 | Autore: Mattia D'Avolio
+Versione: 6.2 | Aggiornamento: 19 Giugno 2026 | Autore: Mattia D'Avolio
 Titolare: Recoma System S.r.l. (P.IVA IT09599210961)
-Frontend: `nuovo.oneflux.it` (Next.js) | Legacy: `app.oneflux.it` (Streamlit)
+Frontend: `app.oneflux.it` (Next.js su Vercel) | Streamlit DISMESSO (switch 8/6)
+
+> Migrazione Next.js completata. Le righe che citano Streamlit come frontend attivo
+> o `nuovo.oneflux.it` sono STORICHE: oggi gira solo Next.js + worker FastAPI.
 
 ---
 
@@ -92,8 +95,8 @@ ONEFLUX/
 ├── worker/             # Coda Invoicetronic (Railway, loop 15s)
 ├── supabase/functions/ # Edge Function Deno (webhook SDI)
 ├── config/             # constants.py (31 categorie, 600+ keyword)
-├── migrations/         # SQL legacy (001→068) + timestamp-based Supabase
-└── tests/              # 760+ test pytest
+├── migrations/         # SQL legacy storico (001→082, congelato); canonico = supabase/migrations/ (timestamp)
+└── tests/              # ~9530 test pytest (+ 18 Deno per le Edge Functions)
 ```
 
 ---
@@ -220,11 +223,11 @@ ONEFLUX/
 
 | Servizio | Piano | Uso |
 |---------|-------|-----|
-| Vercel | Free → Pro €20 quando serve | Next.js `nuovo.oneflux.it` |
-| Railway `ingenious-fascination` | €5/mese | Streamlit + FastAPI Worker + queue-worker |
-| Supabase | Free → Pro €25 solo se problemi reali | Database + Edge Functions |
+| Vercel | Pro (go-live) | Next.js `app.oneflux.it` |
+| Railway `ingenious-fascination` | Hobby (~$9/mese) | worker FastAPI + queue-worker (NO Streamlit) |
+| Supabase | Pro (go-live: backup PITR) | Database + Edge Functions |
 | Brevo | Free tier | Email transazionali |
-| GitHub Actions | Free | Uptime check 5min + fallback worker manuale |
+| GitHub Actions | Free | Uptime check + monitor coda ricavi |
 
 > Dettaglio deploy e secrets: [DEPLOY_INFRASTRUTTURA.md](DEPLOY_INFRASTRUTTURA.md)
 
@@ -232,7 +235,8 @@ ONEFLUX/
 
 ## 12. Testing
 
-- **760+ test pytest** — tutti PASSED
+- **~9530 test pytest** — tutti PASSED (1 skipped)
+- **18 test Deno** sulle Edge Functions (auth HMAC + routing multi-sede webhook)
 - Mock completi per Supabase e OpenAI (nessun servizio esterno toccato)
 - Next.js: `tsc --noEmit` + ESLint + `next build`
 - OpenAPI drift check: `python scripts/export_openapi.py --check-drift`

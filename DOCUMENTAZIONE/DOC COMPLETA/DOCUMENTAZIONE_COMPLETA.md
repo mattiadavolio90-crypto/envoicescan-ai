@@ -2,18 +2,20 @@
 
 **Sistema SaaS di Analisi Fatture e Controllo Costi per la Ristorazione**
 
-Versione: 6.1
-Ultimo aggiornamento: 10 Giugno 2026
+Versione: 6.2
+Ultimo aggiornamento: 19 Giugno 2026
 Autore: Mattia D'Avolio
 Repository: `mattiadavolio90-crypto/envoicescan-ai` (privato)
 Titolare: Recoma System S.r.l. (P.IVA IT09599210961)
-URL Streamlit (legacy): https://app.oneflux.it
-URL Next.js (produzione): https://nuovo.oneflux.it
+URL produzione (Next.js su Vercel): https://app.oneflux.it
 
-> **v6.0** — Documentazione riscritta e aggiornata. Riflette lo stato reale al 5 giugno 2026:
-> migrazione Next.js Fasi 0–8 completate, PWA mobile, Chat AI, Marketplace, Admin Panel completo,
-> Privacy v4.0 (Recoma System S.r.l.), 760+ test, 122+ endpoint worker.
-> Streamlit resta attivo in parallelo su `app.oneflux.it` fino al completamento della Fase 10 (switch DNS).
+> **v6.2 (19/06/2026)** — Migrazione Next.js COMPLETATA: lo switch è avvenuto l'8/6,
+> `app.oneflux.it` serve Next.js su Vercel e **Streamlit è dismesso** (rimossi i deploy
+> Railway/Cloud, `nuovo.oneflux.it` non più usato). Le sezioni che descrivono Streamlit
+> e la "coesistenza" sotto sono **STORICHE**: il runtime attuale è solo Next.js +
+> worker FastAPI. Audit 19/06: sicurezza advisor 0 ERROR, performance 0 WARN,
+> ~9530 test Python + 18 Deno. Codice Streamlit (`app.py`, `pages/`) ancora nel repo
+> ma non servito; archiviazione post go-live (1/7/2026).
 
 ---
 
@@ -124,9 +126,9 @@ STRATO 3 — SERVIZI (pay-per-use, upselling)
 
 ### Clienti attuali (giugno 2026)
 
-- 2 clienti in fase di test su `nuovo.oneflux.it`
-- 1 cliente operativo su Streamlit (`app.oneflux.it`)
-- Streamlit resta acceso in parallelo fino al completamento Fase 10
+- Tutti i clienti su `app.oneflux.it` (Next.js): 2 in test + 1 operativo
+- **Go-live ufficiale clienti: 1 luglio 2026** (code fatture vuote prima di allora sono normali)
+- Streamlit dismesso: non più un canale per nessun cliente
 
 ---
 
@@ -239,9 +241,9 @@ Durante il periodo di migrazione (Fasi 1–9), entrambi i frontend coesistono e 
 
 | Servizio | Piano | Uso |
 |---------|-------|-----|
-| Vercel | Free (Pro quando serve, €20) | Next.js frontend `nuovo.oneflux.it` |
-| Railway `ingenious-fascination` | €5/mese | Streamlit + FastAPI worker + queue-worker |
-| Supabase | Free (Pro solo se problemi reali, €25) | Database + Edge Functions |
+| Vercel | Pro (per go-live) | Next.js frontend `app.oneflux.it` |
+| Railway `ingenious-fascination` | Hobby (~$9/mese) | worker FastAPI + queue-worker (NO Streamlit) |
+| Supabase | Pro (per go-live: backup PITR) | Database + Edge Functions |
 | Brevo | Free tier | Email transazionali |
 | GitHub Actions | Free | Uptime check ogni 5 min + fallback worker manuale |
 | Invoicetronic | A consumo | SDI intermediario |
@@ -392,8 +394,8 @@ ONEFLUX/
 │   ├── logger_setup.py                # RotatingFileHandler (50 MB × 10)
 │   └── prompt_ai_potenziato.py        # Prompt GPT-4o-mini classificazione
 │
-├── migrations/                        # SQL legacy (001→068)
-├── tests/                             # 760+ test pytest
+├── migrations/                        # SQL legacy storico (001→082, congelato — vedi _LEGGIMI_STATO.md)
+├── tests/                             # ~9530 test pytest
 ├── docker/                            # Dockerfile + docker-compose
 ├── scripts/                           # Script PowerShell operativi
 ├── tools/                             # Script manutenzione DB
@@ -958,7 +960,10 @@ Route group `(mobile)` servito su `/m`. Layout dedicato (no sidebar — bottom n
 
 ## 19. Testing e Qualità
 
-### Suite di test (760+ test pytest)
+### Suite di test (~9530 test pytest + 18 test Deno)
+
+> CI (`.github/workflows/tests.yml`): pytest su tutta `tests/` + `deno test` sulle
+> Edge Functions (auth HMAC + routing multi-sede webhook), su ogni push e PR.
 
 | File | Copertura |
 |------|-----------|

@@ -2,7 +2,7 @@
 
 **Versione:** 5.5  
 **Status:**  Produzione  
-**Ultimo aggiornamento:** 22 Maggio 2026
+**Ultimo aggiornamento:** 19 Giugno 2026
 
 ---
 
@@ -38,35 +38,48 @@ Analizza fatture elettroniche (XML, P7M, PDF), categorizza i prodotti con intell
 
 | Componente | Tecnologia |
 |---|---|
-| Frontend/App | Streamlit |
+| Frontend/App | Next.js 16 (App Router) su Vercel |
 | Database | Supabase (PostgreSQL) |
 | Ingestion SDI | Invoicetronic + Supabase Edge Function |
-| Worker API | FastAPI |
+| Worker API | FastAPI (Railway) |
+| Queue worker | `python worker/run.py` (Railway, servizio dedicato) |
 | AI | OpenAI GPT-4o-mini |
 | Email | Brevo SMTP API |
 | Password hashing | Argon2 |
-| Hosting | Railway |
-| Monitoraggio | GitHub Actions (uptime check ogni 15 min) |
+| Hosting | Vercel (frontend) + Railway (worker) |
+| Monitoraggio | GitHub Actions (uptime + coda ricavi) |
 
-### Topologia deploy consigliata
+> **Nota:** Streamlit (`app.py` + `pages/`) è stato il frontend storico fino a giugno
+> 2026; ora è dismesso. Il container Railway serve il worker FastAPI, non Streamlit.
 
-- Streamlit frontend pubblico
-- FastAPI pubblico solo per `/health`, `/api/classify`, `/api/parse`
-- Queue worker separato per `python worker/run.py`
-- Webhook Invoicetronic pubblico solo su Supabase Edge Function deployata con `--no-verify-jwt` e protetta da HMAC/replay protection
+### Topologia deploy (stato attuale)
+
+- **Frontend Next.js** su Vercel (`app.oneflux.it`)
+- **Worker FastAPI** su Railway (servizio `worker`): `/health`, `/api/*` — gate via `X-Worker-Key`
+- **Queue worker** su Railway (servizio `queue-worker`): `python worker/run.py`, ingest coda fatture
+- **Webhook Invoicetronic**: Supabase Edge Function con `verify_jwt=false` (dichiarato in `supabase/config.toml`), auth via firma HMAC-SHA256 + anti-replay
+- Dettagli riproducibili in [docs/DEPLOY_RUNBOOK.md](docs/DEPLOY_RUNBOOK.md)
 
 ---
 
 ##  Avvio locale
 
+**Worker FastAPI** (backend):
 ```bash
 pip install -r requirements-lock.txt
-streamlit run app.py
+python -m services.fastapi_worker        # API su :8000
 ```
 
-Per avere la stessa resa grafica del deploy Railway, usa il lockfile anche in locale.
-Il container di produzione installa le dipendenze da requirements-lock.txt.
-Su Windows il lockfile esclude automaticamente uvloop, che non e' supportato dalla piattaforma.
+**Frontend Next.js**:
+```bash
+cd apps/web
+npm install
+npm run dev                              # :3000
+```
+
+Il container di produzione installa le dipendenze Python da `requirements-lock.txt`.
+Su Windows il lockfile esclude automaticamente uvloop, non supportato dalla piattaforma.
+Guida servizi locali completa: [DEV_SERVICES_GUIDE.md](DEV_SERVICES_GUIDE.md).
 
 ---
 
@@ -85,6 +98,10 @@ Su Windows il lockfile esclude automaticamente uvloop, che non e' supportato dal
 - Rotazione log automatica: 50 MB / 10 backup
 - PII rimossi dai log (GDPR Art. 32)
 - XSRF protection attiva, CORS limitato a origin espliciti
+- Cookie di sessione `httpOnly` + `secure` + `sameSite` (token mai esposto a JS)
+- RLS attiva e forzata sulle tabelle con dati cliente; accesso applicativo solo via `service_role`
+- Webhook fatture autenticato via HMAC-SHA256 + anti-replay (no dipendenza da chiavi JWT)
+- Advisor Supabase: 0 ERROR sicurezza, 0 WARN performance (audit 19/06/2026)
 
 ### Strategia di Backup
 
@@ -99,10 +116,13 @@ Su Windows il lockfile esclude automaticamente uvloop, che non e' supportato dal
 ##  Test
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/ -q                              # suite Python
+deno test --allow-env --allow-net supabase/functions/**/*_test.ts   # Edge Functions
 ```
 
-760 test automatici (759 passed, 1 skipped).
+~9530 test Python (9533 passed, 1 skipped) + 18 test Deno (auth HMAC + routing
+multi-sede del webhook fatture). La CI (`.github/workflows/tests.yml`) lancia entrambe
+le suite su ogni push e pull request.
 
 ---
 

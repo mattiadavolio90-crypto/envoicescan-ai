@@ -3,10 +3,16 @@
 **Ultima revisione:** 2 giugno 2026 (rev. 26 — **PWA mobile**: prima versione mobile dedicata, route group `(mobile)` su `/m`, 5 sezioni (Oggi/Avvisi/Diario/Turni/Assistente), installabile (manifest + service worker manuale + banner installazione Android/iOS), redirect mobile→/m, zero nuovi endpoint backend. Vedi changelog)
 **Revisione precedente:** rev. 25 (2/6) — **Conformità privacy/cookie/GDPR Next.js**: pagine legali `/privacy` (Privacy & Cookie Policy v4.0) e `/termini` (ToS) con layout pubblico, banner cookie tecnici, consenso esplicito all'onboarding con prova reale (fix G1), cookie impersonazione HttpOnly senza PII (G7), link legali persistenti. 7 gap dell'audit chiusi.
 **Chi lavora:** Mattia D'Avolio (+ Claude come assistente)
-**Clienti attivi:** 2 in fase di test + 1 operativo — Streamlit deve restare acceso in parallelo
-**Stack:** Next.js 16.2.6 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase
+**Clienti attivi:** 2 in fase di test + 1 operativo — tutti su Next.js (`app.oneflux.it`). **Go-live ufficiale 1/7/2026**
+**Stack:** Next.js 16 + Tailwind v4 + shadcn/ui v4 + FastAPI (Railway) + Supabase. **Streamlit dismesso (switch 8/6, Fase 10 chiusa).**
 
 > Questo è l'unico documento di riferimento. Ogni decisione futura va presa in coerenza con quanto scritto qui. Se qualcosa cambia in modo significativo, si aggiorna questo file.
+
+> **Stato al 19/6/2026:** migrazione Next.js completata; audit pre go-live chiuso
+> (sicurezza advisor 0 ERROR, performance 0 WARN, ~9530 test Python + 18 Deno,
+> deploy Railway/webhook resi riproducibili dal repo). Il changelog rev.26 qui sotto
+> è fermo al 2/6: per lo stato di dettaglio post-2/6 vedi le note di lavoro e i
+> documenti in `DOCUMENTAZIONE/`.
 
 ---
 
