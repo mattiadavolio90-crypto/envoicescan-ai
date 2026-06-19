@@ -33,16 +33,17 @@ logger = get_logger('daily_briefing')
 # l'andamento sta nel testo del briefing, le card sono SOLO cose da fare -> 4.
 _MAX_CARD = 4
 
-# Topic che rappresentano un DATO MANCANTE (non un task qualsiasi): senza questi i
-# numeri di margine/MOL sono falsi. Servono a gateare il verde "tutto a posto": se
-# ce n'e' anche solo uno, NON si puo' dire che e' tutto in ordine, a prescindere da
-# quante card entrano nel taglio a _MAX_CARD. Label brevi per la nota "mancano: …".
+# Topic che rappresentano un DATO STRUTTURALE MANCANTE del mese: senza questi i
+# numeri di margine/MOL sono FALSI. Solo questi gateano il verde "tutto a posto":
+# se ce n'e' anche solo uno, NON si puo' dire che e' tutto in ordine, a prescindere
+# dal taglio a _MAX_CARD. Sono le stesse voci strutturali della card Salute.
+# NB: incasso_mancante (rumore quotidiano: l'incasso di ieri si inserisce a fine
+# giornata) e uncategorized_rows (task, non dato strutturale) NON sono qui: restano
+# normali card da fare e non bloccano il verde quando sono l'unica cosa rimasta.
 _TOPIC_DATO_MANCANTE_LABEL = {
     "fatturato_mancante": "il fatturato del mese",
     "costo_personale_mancante": "il costo del personale",
-    "incasso_mancante": "l'incasso di ieri",
     "fatture_mancanti": "le fatture costo",
-    "uncategorized_rows": "righe da controllare",
 }
 
 # Topic che il cliente NON puo' spegnere dal configuratore: sono guasti tecnici

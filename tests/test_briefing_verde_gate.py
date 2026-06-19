@@ -42,18 +42,30 @@ class TestVerdeGate:
             _notif("uncategorized_rows", payload={"count": 3}),
             _notif("scadenza_superata", payload={"count": 1, "totale": 10.0}),
         ][:_MAX_CARD]
-        notifs = alte + [_notif("incasso_mancante")]
+        # dati_mancanti è calcolato su TUTTI i candidati (ordinati), non solo sulle
+        # _MAX_CARD selezionate: un dato strutturale è rilevato anche se finisse
+        # oltre il taglio. Qui aggiungo un dato strutturale e verifico il gate.
+        notifs = alte + [_notif("costo_personale_mancante")]
         snap = _build_snapshot(notifs)
-        # Il taglio lascia _MAX_CARD card, ma il dato mancante è comunque rilevato.
         assert len(snap["azioni"]) == _MAX_CARD
         assert snap["tutto_ok"] is False
-        assert "l'incasso di ieri" in snap["dati_mancanti"]
+        assert "il costo del personale" in snap["dati_mancanti"]
 
     def test_task_non_dato_non_finisce_in_dati_mancanti(self):
         # Una scadenza è un task, NON un dato mancante: spegne il verde (c'è una card)
         # ma non entra nella lista dati_mancanti.
         snap = _build_snapshot([_notif("scadenza_superata", payload={"count": 2, "totale": 5.0})])
         assert snap["tutto_ok"] is False
+        assert snap["dati_mancanti"] == []
+
+    def test_solo_incasso_o_righe_non_bloccano_il_verde_strutturale(self):
+        # incasso_mancante e uncategorized_rows sono task/rumore quotidiano: generano
+        # card (quindi niente verde mentre ci sono), ma NON entrano in dati_mancanti
+        # (non sono dati strutturali del mese che falsano i numeri).
+        snap = _build_snapshot([
+            _notif("incasso_mancante"),
+            _notif("uncategorized_rows", payload={"count": 2}),
+        ])
         assert snap["dati_mancanti"] == []
 
     def test_onboarding_e_apertura_e_sopprime_le_altre(self):

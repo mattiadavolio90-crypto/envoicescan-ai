@@ -259,16 +259,14 @@ def _conta_segnali_cache(sb, user_id: str) -> tuple[int, str]:
     return 0, "info"
 
 
-def _salute_indici_batch(sb, ids: List[str]) -> Dict[str, int]:
-    """Indice di salute (0-100) per OGNI sede in UNA sola query (RPC
-    gruppo_salute_componenti), stessa formula 4-voci di /api/home/salute.
-
-    Sostituisce le N chiamate per-sede in serie (2 query a sede, incl. full-load
-    fatture) che rallentavano l'overview a worker freddo. 4 voci a peso uguale:
-    fatture caricate di recente, fatturato ultimo mese completo, costo personale
-    ultimo mese completo, % righe classificate. Se la formula PV cambia, allineare
-    qui e nella RPC."""
+def _salute_componenti_raw(sb, ids: List[str]) -> List[Dict[str, Any]]:
+    """Righe grezze della RPC gruppo_salute_componenti (n_fatture, n_needs_review,
+    netto, personale per PV). Fonte UNICA condivisa da _salute_indici_batch e
+    _completezza_dati_pv: cosi' l'overview chiama la RPC una sola volta. Mese
+    precedente + finestra 30gg, come /api/home/salute."""
     from datetime import datetime as _dt, timedelta as _td
+    if not ids:
+        return []
     try:
         from zoneinfo import ZoneInfo
         oggi = _dt.now(tz=ZoneInfo("Europe/Rome")).date()
@@ -279,10 +277,6 @@ def _salute_indici_batch(sb, ids: List[str]) -> Dict[str, int]:
         mc_anno, mc_mese = oggi.year - 1, 12
     else:
         mc_anno, mc_mese = oggi.year, oggi.month - 1
-
-    out: Dict[str, int] = {rid: 0 for rid in ids}
-    if not ids:
-        return out
     try:
         res = sb.rpc("gruppo_salute_componenti", {
             "p_ristorante_ids": ids,
@@ -290,25 +284,39 @@ def _salute_indici_batch(sb, ids: List[str]) -> Dict[str, int]:
             "p_anno": mc_anno,
             "p_mese": mc_mese,
         }).execute()
-        for r in (res.data or []):
-            rid = str(r.get("ristorante_id"))
-            if rid not in out:
-                continue
-            n_fatture = int(r.get("n_fatture") or 0)
-            n_needs = int(r.get("n_needs_review") or 0)
-            netto = float(r.get("netto") or 0)
-            personale = float(r.get("personale") or 0)
-            fatture_ok = n_fatture > 0
-            pct_classificate = round((n_fatture - n_needs) / n_fatture * 100) if n_fatture > 0 else 0
-            score = (
-                (100 if fatture_ok else 0)
-                + (100 if netto > 0 else 0)
-                + (100 if personale > 0 else 0)
-                + (pct_classificate if fatture_ok else 0)
-            ) / 4
-            out[rid] = round(score)
+        return res.data or []
     except Exception:
-        pass
+        return []
+
+
+def _salute_indici_batch(
+    sb, ids: List[str], rows: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, int]:
+    """Indice di salute (0-100) per OGNI sede, stessa formula 4-voci di
+    /api/home/salute (fatture recenti, fatturato, costo personale, % classificate).
+    `rows` opzionale per riusare una RPC gia' fatta (overview)."""
+    out: Dict[str, int] = {rid: 0 for rid in ids}
+    if not ids:
+        return out
+    if rows is None:
+        rows = _salute_componenti_raw(sb, ids)
+    for r in rows:
+        rid = str(r.get("ristorante_id"))
+        if rid not in out:
+            continue
+        n_fatture = int(r.get("n_fatture") or 0)
+        n_needs = int(r.get("n_needs_review") or 0)
+        netto = float(r.get("netto") or 0)
+        personale = float(r.get("personale") or 0)
+        fatture_ok = n_fatture > 0
+        pct_classificate = round((n_fatture - n_needs) / n_fatture * 100) if n_fatture > 0 else 0
+        score = (
+            (100 if fatture_ok else 0)
+            + (100 if netto > 0 else 0)
+            + (100 if personale > 0 else 0)
+            + (pct_classificate if fatture_ok else 0)
+        ) / 4
+        out[rid] = round(score)
     return out
 
 
@@ -452,8 +460,10 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
     #  - F&B presenti ma qualche PV senza personale -> "food" (food cost/1° margine
     #    si', MOL no: sarebbe gonfiato);
     #  - tutti i PV con fatturato + F&B + personale -> "completo" (MOL affidabile).
+    # RPC salute componenti UNA volta sola: la condividono completezza e indici.
+    salute_rows = _salute_componenti_raw(sb, ids)
     try:
-        completezza = _completezza_dati_pv(sb, ids)
+        completezza = _completezza_dati_pv(sb, ids, rows=salute_rows)
     except Exception:
         completezza = {}
     pv_da_completare = len(completezza)
@@ -510,7 +520,7 @@ def gruppo_overview(authorization: Optional[str] = Header(None)) -> GruppoOvervi
             return "giallo"
         return "rosso"
 
-    indici_map = _salute_indici_batch(sb, ids)
+    indici_map = _salute_indici_batch(sb, ids, rows=salute_rows)
     indici = list(indici_map.values())
     salute_indice = round(sum(indici) / len(indici)) if indici else 0
     salute_colore = _colore_salute(salute_indice)
@@ -822,35 +832,21 @@ def _elenco_it(voci: List[str]) -> str:
     return ", ".join(voci[:-1]) + " e " + voci[-1]
 
 
-def _completezza_dati_pv(sb, ids: List[str]) -> Dict[str, List[str]]:
+def _completezza_dati_pv(
+    sb, ids: List[str], rows: Optional[List[Dict[str, Any]]] = None,
+) -> Dict[str, List[str]]:
     """Per ogni PV, la lista dei dati BASE mancanti (vuota = completo).
 
     Criterio deciso (presenza dati, non % salute): un PV è affidabile per i confronti
     di margine/MOL solo se ha fatturato + fatture costo (F&B) + costo personale del
-    mese. Riusa la RPC gruppo_salute_componenti (netto/personale/n_fatture) già usata
-    dalla salute: niente query nuove. Best-effort: su errore RPC, nessun segnale."""
-    from datetime import datetime as _dt, timedelta as _td
-    try:
-        from zoneinfo import ZoneInfo
-        oggi = _dt.now(tz=ZoneInfo("Europe/Rome")).date()
-    except Exception:
-        oggi = _dt.now().date()
-    inizio_dt = _dt.combine(oggi - _td(days=29), _dt.min.time())
-    if oggi.month == 1:
-        mc_anno, mc_mese = oggi.year - 1, 12
-    else:
-        mc_anno, mc_mese = oggi.year, oggi.month - 1
-
+    mese. Riusa la RPC gruppo_salute_componenti (netto/personale/n_fatture). `rows`
+    opzionale per riusare una RPC gia' fatta (overview). Best-effort."""
     out: Dict[str, List[str]] = {}
     if not ids:
         return out
-    res = sb.rpc("gruppo_salute_componenti", {
-        "p_ristorante_ids": ids,
-        "p_inizio": inizio_dt.isoformat(),
-        "p_anno": mc_anno,
-        "p_mese": mc_mese,
-    }).execute()
-    by_id = {str(r.get("ristorante_id")): r for r in (res.data or [])}
+    if rows is None:
+        rows = _salute_componenti_raw(sb, ids)
+    by_id = {str(r.get("ristorante_id")): r for r in (rows or [])}
     for rid in ids:
         r = by_id.get(rid) or {}
         manca: List[str] = []
