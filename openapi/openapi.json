@@ -17858,6 +17858,10 @@
       },
       "GruppoAssistantConfigResponse": {
         "properties": {
+          "nome_gruppo": {
+            "type": "string",
+            "title": "Nome Gruppo"
+          },
           "segnali": {
             "items": {
               "$ref": "#/components/schemas/GruppoAssistantSegnale"
@@ -17875,6 +17879,7 @@
         },
         "type": "object",
         "required": [
+          "nome_gruppo",
           "segnali",
           "pv"
         ],
@@ -17882,6 +17887,17 @@
       },
       "GruppoAssistantConfigSave": {
         "properties": {
+          "nome_gruppo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome Gruppo"
+          },
           "segnali_disattivati": {
             "items": {
               "type": "string"

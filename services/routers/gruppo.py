@@ -1118,11 +1118,13 @@ class GruppoAssistantPV(BaseModel):
 
 
 class GruppoAssistantConfigResponse(BaseModel):
+    nome_gruppo: str
     segnali: List[GruppoAssistantSegnale]
     pv: List[GruppoAssistantPV]
 
 
 class GruppoAssistantConfigSave(BaseModel):
+    nome_gruppo: Optional[str] = None
     segnali_disattivati: List[str] = []
     pv_esclusi: List[str] = []
 
@@ -1137,6 +1139,7 @@ def gruppo_assistant_config_get(authorization: Optional[str] = Header(None)) -> 
     sb, user_id, sedi, nome_gruppo, rid_to_nome, ids = _resolve_gruppo(authorization)
     seg_off, pv_excl = _get_gruppo_config(sb, user_id)
     return GruppoAssistantConfigResponse(
+        nome_gruppo=nome_gruppo,
         segnali=[
             GruppoAssistantSegnale(
                 key=s["key"], label=s["label"], descrizione=s["descrizione"],
@@ -1164,6 +1167,17 @@ def gruppo_assistant_config_save(
     id_set = set(ids)
     seg_off = sorted({k for k in body.segnali_disattivati if k in _SEGNALI_KEYS})
     pv_excl = sorted({p for p in body.pv_esclusi if p in id_set})
+
+    # nome_gruppo è l'etichetta del gruppo (saluto "Buongiorno, X" + testata): vive
+    # su users. La aggiorniamo solo se è stata passata una stringa non vuota.
+    if body.nome_gruppo is not None:
+        nuovo = body.nome_gruppo.strip()[:60]
+        if nuovo and nuovo != nome_gruppo:
+            try:
+                sb.table("users").update({"nome_gruppo": nuovo}).eq("id", user_id).execute()
+            except Exception:
+                pass
+
     from datetime import datetime as _dt, timezone as _tz
     now = _dt.now(_tz.utc).isoformat()
     sb.table("gruppo_assistant_config").upsert({
