@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
+import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -37,7 +38,6 @@ function coloreInfo(key: string) {
 
 // ─── Utilità date ─────────────────────────────────────────────────────────────
 
-const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
 const GIORNI_BREVI = ["L","M","M","G","V","S","D"];
 
 function meseISO(anno: number, mese: number) {

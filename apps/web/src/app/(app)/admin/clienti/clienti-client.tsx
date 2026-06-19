@@ -207,7 +207,7 @@ export function ClientiClient({ clientiIniziali }: Props) {
                   ) : (
                     <span className="inline-flex flex-wrap gap-1">
                       {pianiSede(c).map((p, idx) => (
-                        <span key={idx} className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PIANO_COLOR[p] || "bg-slate-100 text-slate-600"}`}>
+                        <span key={idx} className={`rounded-full px-2 py-0.5 text-xs font-semibold ${PIANO_COLOR[p] || "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
                           {PIANO_LABEL[p] || p}
                         </span>
                       ))}

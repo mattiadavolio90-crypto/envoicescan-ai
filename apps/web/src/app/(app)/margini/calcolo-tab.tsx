@@ -320,7 +320,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
           <button
             onClick={() => setVista("totale")}
             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded transition-colors ${
-              vista === "totale" ? "bg-sky-500 text-white" : "text-muted-foreground hover:bg-muted"
+              vista === "totale" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
             }`}
             title="Somma del periodo"
           >
@@ -330,7 +330,7 @@ export function CalcoloTab({ dataDa, dataA }: Props) {
           <button
             onClick={() => setVista("media")}
             className={`inline-flex items-center gap-1 px-2.5 py-1 rounded transition-colors ${
-              vista === "media" ? "bg-sky-500 text-white" : "text-muted-foreground hover:bg-muted"
+              vista === "media" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"
             }`}
             title={`Media mensile sui ${data?.num_mesi_attivi ?? 0} mesi con dati`}
           >
@@ -1131,7 +1131,7 @@ function DettaglioGiornalieroDialog({
                   onClick={() => onMeseChange({ anno: m.anno, mese: m.mese, label: m.label })}
                   className={`px-3 py-1.5 rounded-md text-xs font-semibold border transition-colors ${
                     active
-                      ? "bg-sky-500 text-white border-sky-500"
+                      ? "bg-primary text-primary-foreground border-primary"
                       : "border-input hover:bg-muted"
                   }`}
                 >

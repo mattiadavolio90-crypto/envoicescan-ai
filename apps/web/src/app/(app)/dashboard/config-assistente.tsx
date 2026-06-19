@@ -78,7 +78,7 @@ export function ConfigAssistente({ config }: { config: AssistantConfig }) {
         render={
           <Button
             size="sm"
-            className="gap-1.5 bg-sky-500 text-white shadow-sm hover:bg-sky-600 dark:bg-sky-500 dark:hover:bg-sky-400"
+            className="gap-1.5 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90"
           />
         }
       >

@@ -136,9 +136,9 @@ export function InventarioDatePicker({ value, snapshots, onChange }: Props) {
                   className={[
                     "relative flex flex-col items-center justify-center rounded-md text-sm h-9 w-full transition-colors",
                     isSelected
-                      ? "bg-sky-500 text-white font-semibold"
+                      ? "bg-primary text-primary-foreground font-semibold"
                       : isToday
-                      ? "border border-sky-600 text-sky-600 dark:border-sky-400 dark:text-sky-400 hover:bg-accent"
+                      ? "border border-primary text-primary hover:bg-accent"
                       : "hover:bg-accent",
                   ].join(" ")}
                 >

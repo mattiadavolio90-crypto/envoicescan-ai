@@ -139,12 +139,12 @@ export function CopertiTab({ dataDa, dataA }: Props) {
         <div className="ml-auto inline-flex items-center rounded-md border border-input p-0.5 text-xs font-semibold">
           <button
             onClick={() => setVista("totale")}
-            className={`px-2.5 py-1 rounded transition-colors ${vista === "totale" ? "bg-sky-500 text-white" : "text-muted-foreground hover:bg-muted"}`}
+            className={`px-2.5 py-1 rounded transition-colors ${vista === "totale" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
             title="Somma del periodo"
           >Totale</button>
           <button
             onClick={() => setVista("media")}
-            className={`px-2.5 py-1 rounded transition-colors ${vista === "media" ? "bg-sky-500 text-white" : "text-muted-foreground hover:bg-muted"}`}
+            className={`px-2.5 py-1 rounded transition-colors ${vista === "media" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
             title={`Media sui ${numMesiAttivi} mesi con coperti`}
           >Media</button>
         </div>

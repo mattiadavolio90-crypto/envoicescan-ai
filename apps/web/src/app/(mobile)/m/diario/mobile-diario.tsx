@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../confirm-dialog";
+import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -32,7 +33,6 @@ function coloreInfo(key: string) {
   return COLORI.find((c) => c.key === key) ?? COLORI[0];
 }
 
-const MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 const GIORNI_BREVI = ["L", "M", "M", "G", "V", "S", "D"];
 
 function meseISO(anno: number, mese: number) {

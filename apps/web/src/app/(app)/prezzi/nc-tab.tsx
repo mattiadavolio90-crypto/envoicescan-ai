@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import { RefreshCw, FileX2, Building2, Euro, FileText } from "lucide-react";
 import { toast } from "sonner";
 import type { NoteCreditoResponse } from "@/lib/prezzi";
+import { FiltroMeseAnno } from "@/components/ui/filtro-mese-anno";
 
 const ANNO_CORRENTE = new Date().getFullYear();
 const ANNI = Array.from({ length: 5 }, (_, i) => ANNO_CORRENTE - i);
-const MESI = ["Gen","Feb","Mar","Apr","Mag","Giu","Lug","Ago","Set","Ott","Nov","Dic"];
 
 function fmtEuro(v: number): string {
   if (v === 0) return "—";
@@ -79,41 +79,13 @@ export function NcTab() {
     <div className="space-y-4">
       {/* Filtro periodo */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-muted-foreground">Anno</label>
-          <select
-            value={anno}
-            onChange={(e) => handleAnno(Number(e.target.value))}
-            className="rounded border border-border px-2 py-1 text-sm bg-background"
-          >
-            {ANNI.map((y) => <option key={y} value={y}>{y}</option>)}
-          </select>
-        </div>
-        <div className="flex flex-wrap gap-1">
-          <button
-            onClick={() => handleMese(null)}
-            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-              mese === null
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground hover:bg-muted/80"
-            }`}
-          >
-            Tutto l&apos;anno
-          </button>
-          {MESI.map((label, idx) => (
-            <button
-              key={idx}
-              onClick={() => handleMese(mese === idx + 1 ? null : idx + 1)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
-                mese === idx + 1
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        <FiltroMeseAnno
+          anno={anno}
+          mese={mese}
+          anni={ANNI}
+          onAnnoChange={handleAnno}
+          onMeseChange={handleMese}
+        />
         <button
           onClick={() => load()}
           disabled={loading}

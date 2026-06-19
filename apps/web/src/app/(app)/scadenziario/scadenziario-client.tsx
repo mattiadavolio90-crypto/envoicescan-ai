@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -309,7 +310,6 @@ function NoteCreditoSection({
 
 // ── Calendar view ────────────────────────────────────────────────────────────
 
-const MESI = ["Gennaio","Febbraio","Marzo","Aprile","Maggio","Giugno","Luglio","Agosto","Settembre","Ottobre","Novembre","Dicembre"];
 const GIORNI_SETTIMANA = ["Lun","Mar","Mer","Gio","Ven","Sab","Dom"];
 
 type CalendarViewProps = {
@@ -1675,8 +1675,8 @@ export function ScadenziarioClient({ initialDocumenti }: { initialDocumenti: Doc
             title="Mostra solo le fatture arrivate dall'ultimo caricamento"
             className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors
               ${filtroSoloNuove
-                ? "bg-sky-500 text-white border-sky-500"
-                : "border-sky-500/30 bg-sky-500/5 text-sky-600 dark:text-sky-400 hover:bg-sky-500/10"}`}
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"}`}
           >
             Nuove
           </button>

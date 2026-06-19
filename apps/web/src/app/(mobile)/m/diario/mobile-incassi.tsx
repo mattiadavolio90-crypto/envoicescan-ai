@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../confirm-dialog";
+import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 // Forma allineata a /api/ricavi/giornalieri (GET → items[], POST upsert per data).
@@ -29,7 +30,6 @@ interface IncassiResponse {
   giorni_con_dati: number;
 }
 
-const MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
 // Stessa formula di periodi.ts (desktop) e _calc_netto (worker): scorporo IVA.
 function scorporoNetto(iva10: number, iva22: number, altri: number): number {

@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ConfirmDialog } from "../confirm-dialog";
+import { MESI_LUNGHI as MESI } from "@/lib/mesi";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,6 @@ interface SpeseResponse {
   totale: number;
 }
 
-const MESI = ["Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"];
 
 function meseISO(anno: number, mese: number) {
   return `${anno}-${String(mese + 1).padStart(2, "0")}`;

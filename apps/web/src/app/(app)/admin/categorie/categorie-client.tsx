@@ -562,8 +562,10 @@ const AZIONE_LABEL: Record<string, string> = {
   classifica: "Classifica manuale", auto_review: "Auto-review", risolvi_conflitto: "Risolvi conflitto", annulla: "Annullata",
 };
 const AZIONE_COLOR: Record<string, string> = {
-  classifica: "bg-sky-100 text-sky-700", auto_review: "bg-violet-100 text-violet-700",
-  risolvi_conflitto: "bg-amber-100 text-amber-700", annulla: "bg-slate-100 text-slate-500",
+  classifica: "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
+  auto_review: "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300",
+  risolvi_conflitto: "bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300",
+  annulla: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
 };
 
 function StoricoTab() {
@@ -648,7 +650,7 @@ function StoricoTab() {
                   {new Date(r.created_at).toLocaleString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                 </td>
                 <td className="px-3 py-2">
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${AZIONE_COLOR[r.azione] || "bg-slate-100 text-slate-600"}`}>
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${AZIONE_COLOR[r.azione] || "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}>
                     {AZIONE_LABEL[r.azione] || r.azione}
                   </span>
                 </td>

@@ -52,10 +52,10 @@ export const PIANO_LABEL: Record<string, string> = {
 };
 
 export const PIANO_COLOR: Record<string, string> = {
-  free: "bg-slate-100 text-slate-600",
-  base: "bg-sky-100 text-sky-700",
-  plus: "bg-emerald-100 text-emerald-700",
-  pro: "bg-violet-100 text-violet-700",
+  free: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+  base: "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300",
+  plus: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300",
+  pro: "bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300",
 };
 
 export const PIANO_OPTIONS: { value: string; label: string }[] = [
