@@ -35,6 +35,23 @@ function num(n: number | null): string {
   return n.toLocaleString("it-IT");
 }
 
+// Heatmap a token di tema (come "Spesa per PV"): intensità sfondo dalla frazione
+// sul massimo di colonna. Dà "forma" alla tabella senza colori hardcoded.
+function heatStyle(v: number | null, max: number): React.CSSProperties {
+  if (v == null || max <= 0 || v <= 0) return {};
+  const a = 0.05 + (v / max) * 0.30;
+  return { backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(a * 100)}%, transparent)` };
+}
+// Pallino salute dal margine % — stesse soglie del ranking (≥15 verde, ≥8 giallo).
+function margineDot(perc: number | null, incompleti: boolean): string {
+  if (incompleti || perc == null) return "bg-muted-foreground/30";
+  if (perc >= 15) return "bg-emerald-500";
+  if (perc >= 8) return "bg-amber-500";
+  return "bg-rose-500";
+}
+// Colonne "di grandezza" su cui applicare la heatmap.
+const HEAT: ReadonlySet<string> = new Set(["fatturato", "coperti"]);
+
 // Metriche con la LORO direzione: per €MP/coperto il BASSO è meglio (regola
 // catena: NON è sempre "numero alto = verde").
 type Col = {
@@ -106,6 +123,12 @@ export function FinestraMarginiCoperti({
     const nb = vb == null ? -Infinity : vb;
     return sortDir === "desc" ? nb - na : na - nb;
   });
+
+  // Massimo per colonna (solo PV con dati) per la heatmap di fatturato/coperti.
+  const heatMax: Record<string, number> = {};
+  for (const k of HEAT) {
+    heatMax[k] = Math.max(0, ...(data?.righe ?? []).map((r) => (r[k as keyof MarginiCopertiPV] as number) ?? 0));
+  }
 
   // Export Excel (xlsx lazy: libreria pesante, solo al click).
   async function exportXls() {
@@ -213,9 +236,18 @@ export function FinestraMarginiCoperti({
                 </thead>
                 <tbody>
                   {righeSorted.map((r) => (
-                    <tr key={r.ristorante_id} className="border-t">
-                      <td className="sticky left-0 z-10 max-w-[14rem] truncate bg-popover px-3 py-2 font-medium">
-                        {r.nome}
+                    <tr
+                      key={r.ristorante_id}
+                      className={cn(
+                        "border-t transition-colors",
+                        r.dati_incompleti ? "bg-muted/20" : "hover:bg-muted/30",
+                      )}
+                    >
+                      <td className="sticky left-0 z-10 max-w-[14rem] bg-popover px-3 py-2 font-medium">
+                        <span className="flex items-center gap-2">
+                          <span className={cn("size-2 shrink-0 rounded-full", margineDot(r.margine_perc, r.dati_incompleti))} />
+                          <span className="truncate">{r.nome}</span>
+                        </span>
                       </td>
                       {r.dati_incompleti ? (
                         <td colSpan={COLS.length} className="px-3 py-2 text-right text-xs text-muted-foreground">
@@ -225,6 +257,7 @@ export function FinestraMarginiCoperti({
                         COLS.map((c) => (
                           <td
                             key={c.key}
+                            style={HEAT.has(c.key) ? heatStyle(r[c.key] as number | null, heatMax[c.key]) : undefined}
                             className={cn("px-3 py-2 text-right tabular-nums", cellTone(c, r))}
                           >
                             {c.fmt(r[c.key] as number | null)}
@@ -234,8 +267,13 @@ export function FinestraMarginiCoperti({
                     </tr>
                   ))}
                   {/* Riga GRUPPO in fondo */}
-                  <tr className="border-t-2 border-foreground/20 font-semibold">
-                    <td className="sticky left-0 z-10 bg-popover px-3 py-2">{data.gruppo.nome}</td>
+                  <tr className="border-t-2 border-foreground/20 bg-primary/5 font-semibold">
+                    <td className="sticky left-0 z-10 bg-popover px-3 py-2">
+                      <span className="flex items-center gap-2">
+                        <span className="size-2 shrink-0 rounded-full bg-primary" />
+                        <span className="truncate">{data.gruppo.nome}</span>
+                      </span>
+                    </td>
                     {COLS.map((c) => (
                       <td key={c.key} className="px-3 py-2 text-right tabular-nums">
                         {c.fmt(data.gruppo[c.key] as number | null)}
