@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Building2, Plus, Trash2, Tag as TagIcon, BarChart3, Search, Check, Download } from "lucide-react";
+import { Building2, Plus, Trash2, Tag as TagIcon, BarChart3, Search, Check, Download, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -604,8 +604,11 @@ function AnalisiDialog({ tag, onClose }: { tag: GruppoTag; onClose: () => void }
                     {data!.fornitori.map((f) => (
                       <li key={f.nome} className="rounded-lg border bg-background/40 px-3 py-2">
                         <div className="flex items-baseline justify-between gap-2 text-sm">
-                          <span className="truncate font-medium">{f.nome}</span>
-                          <span className="tabular-nums">{euro(f.spesa)} · {pct(f.incidenza_pct)}</span>
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <Truck className="size-3.5 shrink-0 text-muted-foreground/60" />
+                            <span className="truncate font-medium">{f.nome}</span>
+                          </span>
+                          <span className="shrink-0 tabular-nums">{euro(f.spesa)} · {pct(f.incidenza_pct)}</span>
                         </div>
                         <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
                           <div className="h-full rounded-full bg-primary/70"

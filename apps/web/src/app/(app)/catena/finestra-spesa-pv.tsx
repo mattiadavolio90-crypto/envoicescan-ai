@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Download } from "lucide-react";
+import { Download, Truck } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -185,9 +185,15 @@ export function FinestraSpesaPV({
                       : null;
                   return (
                   <tr key={row.dim_val} className="border-t">
-                    <td className="sticky left-0 z-10 max-w-[14rem] truncate bg-popover px-3 py-2 font-medium">
-                      {row.emoji ? <span className="mr-1.5">{row.emoji}</span> : null}
-                      {row.dim_val}
+                    <td className="sticky left-0 z-10 max-w-[14rem] bg-popover px-3 py-2 font-medium">
+                      <span className="flex items-center gap-1.5">
+                        {row.emoji ? (
+                          <span className="shrink-0">{row.emoji}</span>
+                        ) : (
+                          <Truck className="size-3.5 shrink-0 text-muted-foreground/60" />
+                        )}
+                        <span className="truncate">{row.dim_val}</span>
+                      </span>
                     </td>
                     {data.pv.map((p) => {
                       const v = row.per_pv[p.id] ?? 0;
