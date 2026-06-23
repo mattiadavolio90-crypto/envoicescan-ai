@@ -398,11 +398,13 @@ _DOC_REFERENCE_RE = re.compile(
 
 
 def _is_fallback_servizi_da_riclassificare(row: dict) -> bool:
-    """True se la riga è finita in SERVIZI E CONSULENZE SOLO per fallback forzato.
+    """True se la riga è finita in SERVIZI E CONSULENZE SOLO per vecchio fallback forzato.
 
-    In upload (estrai_dati_da_xml) un prodotto non riconosciuto da memoria/regole/
-    fornitore/UM/dizionario viene forzato a SERVIZI E CONSULENZE con needs_review=True.
-    Quelle righe NON sono servizi reali: vanno ripescate dalla riconciliazione AI.
+    STORICO: fino al 23/06 un prodotto non riconosciuto veniva forzato a
+    SERVIZI E CONSULENZE con needs_review=True. Ora il flusso lascia quelle righe
+    come 'Da Classificare' (catturate direttamente dal filtro principale), quindi
+    questo controllo serve solo a ripescare le righe SERVIZI-fallback PREGRESSE
+    già a DB. Resta finché non viene completata la bonifica di quelle righe.
 
     Per non toccare i servizi LEGITTIMI (DELUXY, HACCP, POS, cedolini, ecc.) la riga
     viene inclusa solo se il dizionario keyword NON la riconosce come servizio: se il
@@ -648,15 +650,14 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                     # Guardrail dominio #2: "📝 NOTE E DICITURE" solo se totale_riga == 0.
                     # classify_special_row assegna il bucket DICITURA anche a righe con
                     # importo negativo (storni/note di credito) -> qui le riportiamo a
-                    # SERVIZI E CONSULENZE, allineandoci al parser XML. Senza questo, una
-                    # riga con importo != 0 veniva scritta come NOTE E DICITURE (violazione).
+                    # 'Da Classificare' (il sistema non sa quale costo sia), allineandoci
+                    # al parser XML. Senza questo, una riga con importo != 0 veniva scritta
+                    # come NOTE E DICITURE (violazione). Una riga riportata a Da Classificare
+                    # va sempre rivista a mano.
                     if categoria_target in ('📝 NOTE E DICITURE', 'NOTE E DICITURE'):
                         _imp = totale_riga if totale_riga != 0 else prezzo
                         categoria_target = _applica_guardrail_note_con_importo(desc, categoria_target, _imp)
-                        if categoria_target == 'SERVIZI E CONSULENZE':
-                            needs_review_target_force = True
-                        else:
-                            needs_review_target_force = False
+                        needs_review_target_force = categoria_target == 'Da Classificare'
                     else:
                         needs_review_target_force = False
                     # Confidence routing: media → pre-classificato ma in coda per review

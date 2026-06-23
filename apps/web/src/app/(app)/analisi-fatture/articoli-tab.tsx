@@ -344,7 +344,7 @@ export function ArticoliTab({
             onChange={(e) => setUrlParam({ verifica: e.target.checked ? "1" : undefined })}
           />
           <AlertTriangle className="size-3.5 text-amber-500" />
-          Solo verifica categoria
+          Solo da classificare
         </label>
       </div>
 
@@ -544,7 +544,8 @@ const ArticoloRiga = memo(function ArticoloRiga({
             {needsReview && (
               <>
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 font-semibold inline-flex items-center gap-0.5 whitespace-nowrap">
-                  <AlertTriangle className="size-2.5" /> Verifica
+                  <AlertTriangle className="size-2.5" />{" "}
+                  {!currentCat || currentCat === "Da Classificare" ? "Da classificare" : "Verifica"}
                 </span>
                 {currentCat && (
                   <button

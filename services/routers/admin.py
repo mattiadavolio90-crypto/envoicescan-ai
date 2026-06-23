@@ -20,6 +20,7 @@ admin. Tutto il resto resta nel worker ed e' importato:
 Path/gate/response/forma dei body invariati rispetto all'originale.
 """
 import os
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
@@ -666,6 +667,42 @@ def _descrizioni_impronta_umana(sb, allowed_ids: list) -> set:
     return umane
 
 
+def _suggerimento_deterministico(desc: str, cat_attuale: str):
+    """Suggerimento di categoria affidabile per la coda di revisione.
+
+    Restituisce (categoria_suggerita, fonte) oppure (None, None). Il suggerimento
+    "deterministico" compare SOLO se l'INTERA pipeline del runtime (dizionario →
+    regole forti, stesso ordine di categorizza_con_memoria, dove le regole forti
+    hanno l'ultima parola) produce una categoria REALE e diversa dall'attuale.
+
+    Prima dizionario e regole erano valutati separatamente: bastava un match cieco
+    su una parola (es. "VASC. LIMONE" → FRUTTA dal dizionario) per proporre di
+    rovinare una categoria già giusta (gelato al limone). Inoltre, se la descrizione
+    cita un contenitore/formato (VASC, BUSTA, CONF...) e a suggerire è il solo
+    dizionario, il caso è ambiguo (alimento dentro un confezionato) e NON si
+    auto-suggerisce: lo decide l'admin con "Scegli".
+    """
+    from services.ai_service import (
+        applica_regole_categoria_forti,
+        applica_correzioni_dizionario,
+        _KEYWORDS_CONTENITORI,
+    )
+    desc = str(desc or "")
+    if not desc:
+        return None, None
+    cat_attuale = str(cat_attuale or "")
+    cat_dict = applica_correzioni_dizionario(desc, "Da Classificare")
+    cat_runtime, motivo_forte = applica_regole_categoria_forti(desc, cat_dict)
+    consolidata = (cat_runtime or cat_dict or "").strip()
+    if not consolidata or consolidata in ("Da Classificare", "SERVIZI E CONSULENZE", cat_attuale):
+        return None, None
+    if not motivo_forte:
+        desc_tokens = {t for t in re.findall(r"[A-ZÀ-Ý]+", desc.upper()) if len(t) >= 3}
+        if desc_tokens & _KEYWORDS_CONTENITORI:
+            return None, None
+    return consolidata, ("regola" if motivo_forte else "memoria")
+
+
 @router.get("/api/admin/qualita-ai/coda", tags=["Admin"])
 def admin_qualita_coda(
     cliente_id: Optional[str] = None,
@@ -771,8 +808,6 @@ def admin_qualita_coda(
     grp["prezzo_max"] = grp["prezzo_max"].fillna(0).round(4)
     grp = grp.sort_values(["bucket", "count"], ascending=[True, False])
 
-    from services.ai_service import applica_regole_categoria_forti, applica_correzioni_dizionario
-
     # A2: pre-carica i suggerimenti AI gia' preparati (categoria_suggerita su prodotti_master)
     descrizioni_coda = grp["descrizione"].dropna().astype(str).tolist()
     suggerimenti_ai: dict = {}
@@ -805,23 +840,14 @@ def admin_qualita_coda(
         else:
             g["cliente"] = f"{len(uids)} clienti"
 
-        # A2: suggerimento a 3 livelli con FONTE esplicita
+        # A2: suggerimento con FONTE esplicita (deterministico affidabile, poi AI).
         desc = str(g.get("descrizione") or "")
         cat_attuale = str(g.get("categoria") or "")
-        suggerita = None
-        fonte = None
-        if desc:
-            cat_forte, _ = applica_regole_categoria_forti(desc, "Da Classificare")
-            if cat_forte and cat_forte not in ("Da Classificare", cat_attuale):
-                suggerita, fonte = cat_forte, "regola"
-            if not suggerita:
-                cat_dict = applica_correzioni_dizionario(desc, "Da Classificare")
-                if cat_dict and cat_dict not in ("Da Classificare", cat_attuale):
-                    suggerita, fonte = cat_dict, "memoria"
-            if not suggerita:
-                ai = suggerimenti_ai.get(desc.strip().upper())
-                if ai and ai[0] and ai[0] != cat_attuale:
-                    suggerita, fonte = ai[0], (ai[1] or "ai")
+        suggerita, fonte = _suggerimento_deterministico(desc, cat_attuale)
+        if not suggerita and desc:
+            ai = suggerimenti_ai.get(desc.strip().upper())
+            if ai and ai[0] and ai[0] != cat_attuale:
+                suggerita, fonte = ai[0], (ai[1] or "ai")
         g["categoria_suggerita"] = suggerita
         g["fonte"] = fonte
 

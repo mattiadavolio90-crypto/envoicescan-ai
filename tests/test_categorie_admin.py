@@ -271,3 +271,33 @@ def test_modulo_admin_importa_helper_categorie():
     assert hasattr(m, "_descrizioni_impronta_umana")
     assert hasattr(m, "prepara_suggerimenti_ai")
     assert hasattr(m, "admin_qualita_suggerisci_ai")
+    assert hasattr(m, "_suggerimento_deterministico")
+
+
+# ─── Suggerimento coda: affidabile, niente match ciechi su parola singola ──────
+# Contesto (23/06): la colonna "Suggerita" proponeva di PEGGIORARE categorie già
+# giuste perché dizionario e regole erano valutati separatamente (es. "VASC. LIMONE"
+# = gelato al limone → suggeriva FRUTTA dal solo match su LIMONE). Ora il suggerimento
+# deterministico compare solo se l'intera pipeline runtime concorda e il prodotto non
+# è in un contenitore/formato ambiguo non confermato da una regola forte.
+
+def test_suggerimento_non_propone_su_contenitore_ambiguo():
+    # "VASC. LIMONE" è già GELATI E DESSERT (giusto): NESSUN suggerimento (era FRUTTA).
+    sugg, fonte = admin._suggerimento_deterministico("VASC. LIMONE 4,8 LT", "GELATI E DESSERT")
+    assert sugg is None and fonte is None
+    # Salvietta al limone, già MATERIALE: niente suggerimento FRUTTA.
+    sugg, fonte = admin._suggerimento_deterministico("SALV.LIMONE X100 TNT 70X100", "MATERIALE DI CONSUMO")
+    assert sugg is None and fonte is None
+
+
+def test_suggerimento_propone_correzione_vera():
+    # SALMONE in coda SERVIZI (fallback): suggerisce PESCE.
+    sugg, fonte = admin._suggerimento_deterministico("SALMONE 5-6", "SERVIZI E CONSULENZE")
+    assert sugg == "PESCE"
+    assert fonte in ("regola", "memoria")
+
+
+def test_suggerimento_niente_se_gia_giusto():
+    # Categoria già corretta → nessun suggerimento da mostrare.
+    sugg, fonte = admin._suggerimento_deterministico("FINOCCHIO", "VERDURE")
+    assert sugg is None and fonte is None

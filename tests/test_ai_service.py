@@ -365,8 +365,8 @@ class TestPrioritaMemoria:
         )
         assert result == 'SCATOLAME E CONSERVE'
 
-    def test_categorizza_con_memoria_dicitura_admin_con_importo_positivo_va_in_servizi(self):
-        """Una dicitura con importo positivo non puo' restare NOTE E DICITURE."""
+    def test_categorizza_con_memoria_dicitura_admin_con_importo_positivo_va_in_da_classificare(self):
+        """Una dicitura con importo positivo non puo' restare NOTE E DICITURE: Da Classificare."""
         self._inject_cache(
             classificazioni_manuali={
                 'FATTURA DI ACCONTO FORNITURA MERCE': {'categoria': 'QUALSIASI', 'is_dicitura': True}
@@ -383,7 +383,7 @@ class TestPrioritaMemoria:
             fornitore='FORNITORE TEST',
             unita_misura='PZ',
         )
-        assert result == 'SERVIZI E CONSULENZE'
+        assert result == 'Da Classificare'
 
     def test_categorizza_con_memoria_dicitura_admin_importo_zero_restano_note(self):
         """Le vere diciture a importo zero restano NOTE E DICITURE."""
@@ -408,8 +408,13 @@ class TestPrioritaMemoria:
     # ----------------------------------------------------------------
     # TEST T1: guardrail NOTE su memoria locale con prezzo positivo
     # ----------------------------------------------------------------
-    def test_memoria_locale_dicitura_con_importo_positivo_va_in_servizi(self):
-        """T1: memoria locale ha DICITURA stale; con prezzo>0 il guardrail deve convertire."""
+    def test_memoria_locale_dicitura_con_importo_positivo_va_in_da_classificare(self):
+        """T1: memoria locale ha DICITURA stale; con prezzo>0 il guardrail deve convertire.
+
+        Una dicitura con importo non puo' restare NOTE (regola dominio #2) ma il
+        sistema non sa quale costo sia: va lasciata 'Da Classificare', non forzata
+        a SERVIZI E CONSULENZE (fallback travestito).
+        """
         self._inject_cache(
             classificazioni_manuali={},
             prodotti_utente={'FATTURA DI ACCONTO': '📝 NOTE E DICITURE'},
@@ -422,8 +427,8 @@ class TestPrioritaMemoria:
             user_id='user_test',
             supabase_client=None,
         )
-        assert result == 'SERVIZI E CONSULENZE', (
-            "La memoria locale stale (DICITURA) con prezzo>0 deve essere corretta dal guardrail"
+        assert result == 'Da Classificare', (
+            "La memoria locale stale (DICITURA) con prezzo>0 deve essere riportata a Da Classificare"
         )
 
     def test_memoria_locale_dicitura_con_importo_zero_resta_nota(self):
@@ -488,8 +493,8 @@ class TestPrioritaMemoria:
                 supabase_client=None,
                 fornitore='FORNITORE SPECIALE',
             )
-        assert result == 'SERVIZI E CONSULENZE', (
-            "Il guardrail deve correggere DICITURA→SERVIZI anche quando arriva dal livello FORNITORE"
+        assert result == 'Da Classificare', (
+            "Il guardrail deve correggere DICITURA→Da Classificare anche quando arriva dal livello FORNITORE"
         )
 
     def test_fornitore_utility_euristico_energia_idrico(self):
@@ -556,8 +561,8 @@ class TestPrioritaMemoria:
             categoria='📝 NOTE E DICITURE',
             prezzo=250.0,
         )
-        assert result == 'SERVIZI E CONSULENZE', (
-            "Una riga DISOSSO con prezzo>0 non può restare NOTE E DICITURE"
+        assert result == 'Da Classificare', (
+            "Una riga DISOSSO con prezzo>0 non può restare NOTE E DICITURE: va in Da Classificare"
         )
 
     def test_guardrail_note_alias_senza_emoji(self):
@@ -568,8 +573,8 @@ class TestPrioritaMemoria:
             categoria='NOTE E DICITURE',
             prezzo=100.0,
         )
-        assert result == 'SERVIZI E CONSULENZE', (
-            "L'alias senza emoji deve essere riconosciuto come DICITURA e convertito su prezzo>0"
+        assert result == 'Da Classificare', (
+            "L'alias senza emoji deve essere riconosciuto come DICITURA e riportato a Da Classificare su prezzo>0"
         )
 
 
@@ -720,7 +725,12 @@ class TestDescrizioneEDubbia:
 
 
 class TestCategorizzaConMemoriaFallbackFlag:
-    """return_fallback_flag distingue match veri da fallback forzato a SERVIZI."""
+    """return_fallback_flag distingue match veri da riga non risolta.
+
+    Una riga che né memoria/regole né dizionario sanno classificare resta
+    'Da Classificare' (stato esplicito), NON più forzata a 'SERVIZI E CONSULENZE'.
+    is_fallback=True segnala al chiamante che va passata all'AI / messa in coda.
+    """
 
     def test_fallback_flag_true_su_non_matchato(self):
         invalida_cache_memoria()
@@ -731,7 +741,7 @@ class TestCategorizzaConMemoriaFallbackFlag:
                 prezzo=10.0, quantita=1.0, user_id=None,
                 supabase_client=None, return_fallback_flag=True,
             )
-        assert cat == "SERVIZI E CONSULENZE"
+        assert cat == "Da Classificare"
         assert is_fallback is True
 
     def test_fallback_flag_false_su_match_regola(self):

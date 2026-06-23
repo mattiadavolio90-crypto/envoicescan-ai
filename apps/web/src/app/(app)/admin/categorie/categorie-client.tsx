@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { NativeSelect } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import {
   RefreshCw, CheckCircle, Trash2, ArrowRightLeft, Search, Undo2, Activity,
@@ -153,26 +153,20 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
       <div className="flex gap-2 flex-wrap items-center">
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-muted-foreground">Cliente:</span>
-          <Select value={filtroCliente} onValueChange={setFiltroCliente}>
-            <SelectTrigger className="w-44 border-border bg-background"><SelectValue placeholder="Tutti i clienti" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="tutti">Tutti i clienti</SelectItem>
-              {clienti.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <NativeSelect value={filtroCliente} onValueChange={setFiltroCliente} className="w-44 border-border bg-background">
+            <option value="tutti">Tutti i clienti</option>
+            {clienti.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          </NativeSelect>
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-xs text-muted-foreground">Tipo:</span>
-          <Select value={filtroBucket} onValueChange={setFiltroBucket}>
-            <SelectTrigger className="w-40 border-border bg-background"><SelectValue placeholder="Tutti i tipi" /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="tutti">Tutti i tipi</SelectItem>
-              <SelectItem value="da_verificare">Da decidere</SelectItem>
-              <SelectItem value="dicitura">Diciture</SelectItem>
-              <SelectItem value="sconto_omaggio">Sconti/Omaggi</SelectItem>
-              <SelectItem value="storno">Storni</SelectItem>
-            </SelectContent>
-          </Select>
+          <NativeSelect value={filtroBucket} onValueChange={setFiltroBucket} className="w-40 border-border bg-background">
+            <option value="tutti">Tutti i tipi</option>
+            <option value="da_verificare">Da decidere</option>
+            <option value="dicitura">Diciture</option>
+            <option value="sconto_omaggio">Sconti/Omaggi</option>
+            <option value="storno">Storni</option>
+          </NativeSelect>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
@@ -268,12 +262,9 @@ function DaControllareTab({ clienti, filtroCliente, setFiltroCliente }: {
             <p className="text-sm text-muted-foreground">{String(classGruppo?.count || 0)} occorrenze · {String(classGruppo?.cliente || "")}</p>
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Categoria</label>
-              <Select value={classCategoria} onValueChange={setClassCategoria}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent className="max-h-72">
-                  {CATEGORIE_TUTTE.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <NativeSelect value={classCategoria} onValueChange={setClassCategoria}>
+                {CATEGORIE_TUTTE.map((c) => <option key={c} value={c}>{c}</option>)}
+              </NativeSelect>
             </div>
             <p className="text-xs text-amber-600">⚠️ La scelta verrà salvata in memoria globale e varrà per tutti i clienti.</p>
           </div>
@@ -316,13 +307,10 @@ function ScelteClientiTab({ clienti, filtroCliente, setFiltroCliente }: {
   return (
     <div className="space-y-4">
       <div className="flex gap-2 items-center flex-wrap">
-        <Select value={filtroCliente} onValueChange={setFiltroCliente}>
-          <SelectTrigger className="w-44"><SelectValue placeholder="Tutti i clienti" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="tutti">Tutti i clienti</SelectItem>
-            {clienti.map((c) => <SelectItem key={c.id} value={c.id}>{c.nome}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <NativeSelect value={filtroCliente} onValueChange={setFiltroCliente} className="w-44">
+          <option value="tutti">Tutti i clienti</option>
+          {clienti.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+        </NativeSelect>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
         </Button>
@@ -425,15 +413,12 @@ function MemoriaTab() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input placeholder="Cerca descrizione…" className="pl-9" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} />
         </div>
-        <Select value={stato} onValueChange={(v) => { setStato(v); setPage(1); }}>
-          <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="tutti">Tutti</SelectItem>
-            <SelectItem value="verified">Verificati</SelectItem>
-            <SelectItem value="non_verified">Non verificati</SelectItem>
-            <SelectItem value="sospette">Sospetti AI</SelectItem>
-          </SelectContent>
-        </Select>
+        <NativeSelect value={stato} onValueChange={(v) => { setStato(v); setPage(1); }} className="w-36">
+          <option value="tutti">Tutti</option>
+          <option value="verified">Verificati</option>
+          <option value="non_verified">Non verificati</option>
+          <option value="sospette">Sospetti AI</option>
+        </NativeSelect>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`size-4 mr-1 ${loading ? "animate-spin" : ""}`} /> Aggiorna
         </Button>
@@ -481,12 +466,9 @@ function MemoriaTab() {
           <DialogHeader><DialogTitle>Modifica categoria</DialogTitle></DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm truncate text-muted-foreground">{editRow?.descrizione}</p>
-            <Select value={editCat} onValueChange={setEditCat}>
-              <SelectTrigger><SelectValue placeholder="Seleziona categoria…" /></SelectTrigger>
-              <SelectContent className="max-h-72">
-                {CATEGORIE_TUTTE.map((cat) => <SelectItem key={cat} value={cat}>{cat}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <NativeSelect value={editCat} onValueChange={setEditCat} placeholder="Seleziona categoria…">
+              {CATEGORIE_TUTTE.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+            </NativeSelect>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditRow(null)}>Annulla</Button>
@@ -758,14 +740,11 @@ function AgentNotturnoDialog({ open, onOpenChange }: { open: boolean; onOpenChan
           <div className="flex flex-wrap gap-3 items-end">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Ora esecuzione (UTC)</label>
-              <Select value={oraUtc} onValueChange={setOraUtc}>
-                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                <SelectContent className="max-h-60">
-                  {Array.from({ length: 24 }, (_, h) => (
-                    <SelectItem key={h} value={String(h)}>{String(h).padStart(2, "0")}:00 UTC ({String((h + 2) % 24).padStart(2, "0")}:00 IT)</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <NativeSelect value={oraUtc} onValueChange={setOraUtc} className="w-40">
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={String(h)}>{String(h).padStart(2, "0")}:00 UTC ({String((h + 2) % 24).padStart(2, "0")}:00 IT)</option>
+                ))}
+              </NativeSelect>
             </div>
             <div className="flex gap-2">
               {status?.enabled ? (

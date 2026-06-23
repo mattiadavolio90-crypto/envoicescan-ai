@@ -84,6 +84,7 @@ from config.constants import (
     CATEGORIA_PER_FORNITORE,
     UNITA_MISURA_CATEGORIA,
     CATEGORIA_FALLBACK,
+    CATEGORIA_NON_CLASSIFICATA,
 )
 # PROP-6: pre-normalizza chiavi fornitore una volta sola (evita .upper() per riga)
 _CATEGORIA_PER_FORNITORE_NORM: tuple[tuple[str, str], ...] = tuple(
@@ -433,7 +434,9 @@ _CATEGORIA_REGEX_FORTI: list[tuple[str, str]] = [
     # --- Pesce e frutti di mare (incluso tonno; lo stato di conservazione non cambia la categoria) ---
     (
         "PESCE",
-        r"\b(PESCE|SALMON[EI]|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|ORATE|BRANZIN[OI]|SPIGOLA|"
+        # SALAR = Salmo salar (nome scientifico del salmone atlantico): compare nelle
+        # fatture ittiche ed è robusto ai typo del nome comune (es. "SALOMNE", "SALMOM").
+        r"\b(PESCE|SALMON[EI]|SALAR|TONNO|GAMBERI|GAMBERETTI|GAMBERONE|GAMBERONI|MAZZANCOLL[AE]|ORATA|ORATE|BRANZIN[OI]|SPIGOLA|"
         r"CALAMARI|CALAMARO|POLPO|POLPI|COZZ[AE]|SEPPI[AE]|ACCIUGH[AE]|ALIC[EI]|MERLUZZO|SCAMPI|SCAMPO|"
         r"VONGOL[AE]|BACCALA|ASTICE|ARAGOSTA|FRUTTI\s*DI\s*MARE|RICCI\s*DI\s*MARE|CERNIA|TROTA|DENTIC[EI]|"
         r"ROMBO|SOGLIOLA|PLATESSA|PESCE\s*SPADA|SURIMI|CANNOLICCHI[OA]?|RICCIOLA|SCOFANO|CORVINA|CAPPASANTA|OSTRICH\w*|HOKKIGAI|SPUMILIA|"
@@ -514,23 +517,27 @@ def enforce_no_unclassified_category(
     *,
     source: str = "pipeline",
 ) -> tuple[str, bool]:
-    """Garantisce che la categoria non sia mai vuota/'Da Classificare'.
+    """Normalizza una categoria assente/non risolta nello stato esplicito 'Da Classificare'.
+
+    NON inventa più una categoria di comodo (storicamente 'SERVIZI E CONSULENZE'):
+    una riga che né dizionario/regole né AI sanno classificare deve restare
+    onestamente 'Da Classificare' e finire in coda di verifica. Il secondo valore
+    di ritorno (True quando la riga è non risolta) viene usato a valle per marcare
+    needs_review e per ripescarla in riclassificazione AI.
 
     Returns:
-        (categoria_finale, fallback_forzato)
+        (categoria_finale, da_classificare)
     """
     cat = str(categoria or "").strip()
     if cat and cat.upper() != "DA CLASSIFICARE":
         return cat, False
 
-    fallback = _FALLBACK_CATEGORIA_NON_CLASSIFICATO
-    logger.warning(
-        "🛟 FALLBACK CATEGORIA: source=%s, descrizione='%s' -> %s",
+    logger.info(
+        "🏷️ NON CLASSIFICATA: source=%s, descrizione='%s' -> Da Classificare",
         source,
         (descrizione or "")[:80],
-        fallback,
     )
-    return fallback, True
+    return CATEGORIA_NON_CLASSIFICATA, True
 
 # Eccezioni: pattern nel descrizione che BLOCCANO una specifica regola forte.
 # Se (desc matcha eccezione_pattern) E (regola target == regola_bloccata) → skip.
@@ -2996,7 +3003,14 @@ def _applica_guardrail_note_con_importo(
     categoria: str,
     prezzo: float,
 ) -> str:
-    """NOTE E DICITURE e' consentita solo per righe a importo zero."""
+    """NOTE E DICITURE e' consentita solo per righe a importo zero.
+
+    Una dicitura con importo != 0 non e' davvero una nota a costo nullo: ma il
+    sistema non sa quale categoria di costo sia (acconto? servizio? merce non
+    dettagliata?). Anziche' forzarla a SERVIZI E CONSULENZE (fallback travestito),
+    la lascia 'Da Classificare' cosi' resta visibile in coda al cliente e non
+    entra nei margini con una categoria inventata. Appena classificata, rientra.
+    """
     categoria_norm = _normalize_category_name(categoria) or categoria
     if categoria_norm not in {"📝 NOTE E DICITURE", "NOTE E DICITURE"}:
         return categoria_norm
@@ -3009,12 +3023,12 @@ def _applica_guardrail_note_con_importo(
     if prezzo_val != 0:
         label = "importo positivo" if prezzo_val > 0 else "importo negativo"
         logger.info(
-            "🛡️ GUARDRAIL NOTE: '%s' con %s (%.2f) non puo' restare in NOTE E DICITURE -> SERVIZI E CONSULENZE",
+            "🛡️ GUARDRAIL NOTE: '%s' con %s (%.2f) non puo' restare in NOTE E DICITURE -> Da Classificare",
             str(descrizione or "")[:60],
             label,
             prezzo_val,
         )
-        return "SERVIZI E CONSULENZE"
+        return CATEGORIA_NON_CLASSIFICATA
 
     return "📝 NOTE E DICITURE"
 

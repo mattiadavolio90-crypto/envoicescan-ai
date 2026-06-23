@@ -1662,10 +1662,16 @@ TRUNCATE_DESC_LOG = 40
 TRUNCATE_DESC_QUERY = 30
 TRUNCATE_ERROR_DISPLAY = 150
 
-# Categoria di fallback quando la classificazione non produce un valore valido
-# (regola di dominio #1). Il constraint DB vieta 'DA CLASSIFICARE'; questo e' il
-# rimpiazzo canonico. Fonte unica: prima era un literal ripetuto in piu' moduli.
-CATEGORIA_FALLBACK = "SERVIZI E CONSULENZE"
+# Stato esplicito per le righe che né dizionario/regole né AI sanno classificare.
+# Sostituisce il vecchio fallback travestito in 'SERVIZI E CONSULENZE': una riga
+# non riconosciuta resta onestamente 'Da Classificare' e finisce in coda di
+# verifica (visibile al cliente dal filtro "Da classificare" in Analisi Fatture).
+# Il constraint DB ora la consente (vieta solo NULL/vuoto). Fonte unica.
+CATEGORIA_NON_CLASSIFICATA = "Da Classificare"
+
+# Alias storico mantenuto per compatibilità: tutti i punti che invocavano il
+# "fallback" ora ricadono sullo stato non-classificato, non più su SERVIZI.
+CATEGORIA_FALLBACK = CATEGORIA_NON_CLASSIFICATA
 
 # Limiti upload e batch
 MAX_FILE_SIZE_P7M = 50_000_000  # 50 MB (decimali) — usato dai validatori storici
