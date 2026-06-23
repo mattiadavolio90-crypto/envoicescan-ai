@@ -317,6 +317,21 @@ function ProdottiDialog({
     });
   }
 
+  const tuttiSelezionati =
+    candidati.length > 0 && candidati.every((d) => selected.has(d.descrizione_key));
+
+  function toggleTutti() {
+    setSelected((prev) => {
+      const m = new Map(prev);
+      if (tuttiSelezionati) {
+        candidati.forEach((d) => m.delete(d.descrizione_key));
+      } else {
+        candidati.forEach((d) => m.set(d.descrizione_key, d.descrizione));
+      }
+      return m;
+    });
+  }
+
   async function salvaSelezionati() {
     if (selected.size === 0) return;
     setSalvando(true);
@@ -385,7 +400,18 @@ function ProdottiDialog({
           </div>
           {/* Disponibili */}
           <div>
-            <h3 className="mb-2 text-sm font-semibold">Aggiungi prodotti</h3>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold">Aggiungi prodotti</h3>
+              {candidati.length > 0 && (
+                <button
+                  type="button"
+                  onClick={toggleTutti}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  {tuttiSelezionati ? "Deseleziona tutti" : "Seleziona tutti"}
+                </button>
+              )}
+            </div>
             <Input
               value={filtro}
               onChange={(e) => setFiltro(e.target.value)}
