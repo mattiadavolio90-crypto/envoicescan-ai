@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ArrowDown, ArrowUp, Download, AlertTriangle } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, AlertTriangle, Sprout } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Dialog,
@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { NativeSelect } from "@/components/ui/select";
-import { type MarginiCoperti, type MarginiCopertiPV } from "@/lib/gruppo";
+import { type MarginiCoperti, type MarginiCopertiPV, type SprecoCategorie } from "@/lib/gruppo";
 
 const MESI = [
   "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno",
@@ -86,6 +86,7 @@ export function FinestraMarginiCoperti({
   const [periodo, setPeriodo] = useState<string>("anno");
   const [sortKey, setSortKey] = useState<keyof MarginiCopertiPV>("margine_perc");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [categorieOpen, setCategorieOpen] = useState(false);
   const reqRef = useRef(0);
 
   const annoCorrente = new Date().getFullYear();
@@ -192,6 +193,16 @@ export function FinestraMarginiCoperti({
                   <option key={i + 1} value={String(i + 1)}>{m} {annoCorrente}</option>
                 ))}
               </NativeSelect>
+              <button
+                type="button"
+                onClick={() => setCategorieOpen(true)}
+                disabled={!data || data.righe.length === 0}
+                className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium transition-colors hover:bg-accent disabled:opacity-50"
+                title="Costo materia prima per coperto, per categoria, a confronto tra i punti vendita"
+              >
+                <Sprout className="size-3.5 text-emerald-500" />
+                Categorie
+              </button>
               <button
                 type="button"
                 onClick={exportXls}
@@ -301,6 +312,140 @@ export function FinestraMarginiCoperti({
                 materia prima / coperto» il valore basso è il migliore. «dati incompleti» = al punto
                 vendita mancano fatturato, fatture costo o costo personale del periodo. Importi al
                 <span className="font-medium"> netto IVA</span> (i «conti del gruppo» mostrano il lordo, IVA inclusa).
+              </p>
+            </>
+          )}
+        </div>
+      </DialogContent>
+
+      {categorieOpen && (
+        <FinestraSprecoCategorie
+          mese={periodo !== "anno" ? Number(periodo) : null}
+          onClose={() => setCategorieOpen(false)}
+        />
+      )}
+    </Dialog>
+  );
+}
+
+// ─── Dialog: spreco (€MP/coperto) per categoria, confronto fra PV ───────────
+
+function euro2(n: number | null): string {
+  if (n == null) return "—";
+  return `${n.toFixed(2).replace(".", ",")} €`;
+}
+
+function FinestraSprecoCategorie({
+  mese,
+  onClose,
+}: {
+  mese: number | null;
+  onClose: () => void;
+}) {
+  const [data, setData] = useState<SprecoCategorie | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    const qs = mese ? `?mese=${mese}` : "";
+    fetch(`/api/gruppo/spreco-categorie${qs}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((j) => { if (alive) setData(j); })
+      .catch(() => { if (alive) { setData(null); toast.error("Errore nel caricamento dello spreco per categoria"); } })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [mese]);
+
+  // Best/worst per RIGA (categoria) tra i PV con dato: la cella più bassa è la
+  // migliore (meno materia prima per coperto = meno spreco), la più alta peggiore.
+  function rigaExtremes(r: SprecoCategorie["righe"][number]): { best: number | null; worst: number | null } {
+    const vals = r.per_pv.map((c) => c.valore).filter((v): v is number => v != null);
+    if (vals.length < 2) return { best: null, worst: null };
+    return { best: Math.min(...vals), worst: Math.max(...vals) };
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-h-[88vh] w-[min(96vw,68rem)] max-w-none overflow-hidden p-0 sm:max-w-none">
+        <DialogHeader className="border-b px-5 py-4">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Sprout className="size-4 text-emerald-500" />
+            Spreco per categoria · confronto punti vendita
+            {data?.periodo_label && (
+              <span className="text-xs font-normal text-muted-foreground">· {data.periodo_label}</span>
+            )}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="max-h-[calc(88vh-5rem)] overflow-auto px-5 pb-5">
+          {loading && !data ? (
+            <div className="py-16 text-center text-sm text-muted-foreground">Caricamento…</div>
+          ) : !data || data.righe.length === 0 ? (
+            <div className="py-16 text-center text-sm text-muted-foreground">
+              Nessun dato: servono coperti e fatture F&amp;B classificate nel periodo.
+            </div>
+          ) : (
+            <>
+              <table className="w-full border-separate border-spacing-0 text-sm">
+                <thead className="sticky top-0 z-10 bg-popover">
+                  <tr>
+                    <th className="sticky left-0 z-20 bg-popover px-3 py-2 text-left font-semibold">
+                      Categoria
+                    </th>
+                    {data.pv.map((p) => (
+                      <th
+                        key={p.ristorante_id}
+                        className="max-w-[10rem] px-3 py-2 text-right font-semibold"
+                        title={p.nome}
+                      >
+                        <span className="block truncate">{p.nome}</span>
+                      </th>
+                    ))}
+                    <th className="px-3 py-2 text-right font-bold text-emerald-700 dark:text-emerald-400">
+                      Media gruppo
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.righe.map((r) => {
+                    const ex = rigaExtremes(r);
+                    return (
+                      <tr key={r.categoria} className="border-t transition-colors hover:bg-muted/30">
+                        <td className="sticky left-0 z-10 max-w-[16rem] bg-popover px-3 py-2 font-medium">
+                          <span className="block truncate">{r.categoria}</span>
+                        </td>
+                        {r.per_pv.map((c) => {
+                          const v = c.valore;
+                          const tone =
+                            v == null || ex.best == null
+                              ? ""
+                              : v === ex.best && v !== ex.worst
+                                ? "text-emerald-600 dark:text-emerald-500 font-semibold"
+                                : v === ex.worst && v !== ex.best
+                                  ? "text-rose-600 dark:text-rose-500 font-semibold"
+                                  : "";
+                          return (
+                            <td key={c.ristorante_id} className={cn("px-3 py-2 text-right tabular-nums", tone)}>
+                              {euro2(v)}
+                            </td>
+                          );
+                        })}
+                        <td className="px-3 py-2 text-right font-bold tabular-nums text-emerald-700 dark:text-emerald-400">
+                          {euro2(r.media_gruppo)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Quanto costa in <span className="font-medium">materie prime per coperto</span> ogni
+                categoria, a confronto tra i punti vendita. Per categoria:{" "}
+                <span className="font-medium">spesa F&amp;B ÷ coperti</span> dei soli mesi con fatture
+                caricate. <span className="text-emerald-600 dark:text-emerald-500">verde</span> = il PV
+                più efficiente sulla categoria, <span className="text-rose-600 dark:text-rose-500">rosso</span>{" "}
+                = il più caro. SHOP escluso (merce da rivendita). «—» = nessun dato per quel PV.
               </p>
             </>
           )}

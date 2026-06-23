@@ -9,8 +9,8 @@ function workerHeaders(token: string): Record<string, string> {
   return h;
 }
 
-// Finestra "Margini e Coperti per PV": fetch client-side (click sul KPI).
-// Inoltra ?mese= così il selettore periodo della finestra filtra davvero.
+// Finestra "Spreco per categoria" (confronto PV): fetch client-side (click sul
+// pulsante Categorie). Inoltra ?mese= per restare allineata al selettore periodo.
 export async function GET(req: NextRequest) {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE)?.value;
@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
   const qs = mese ? `?mese=${encodeURIComponent(mese)}` : "";
 
   try {
-    const res = await fetch(`${WORKER_URL}/api/gruppo/margini-coperti${qs}`, {
+    const res = await fetch(`${WORKER_URL}/api/gruppo/spreco-categorie${qs}`, {
       method: "GET",
       headers: workerHeaders(token),
       cache: "no-store",
