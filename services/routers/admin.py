@@ -1198,7 +1198,7 @@ def admin_qualita_auto_review(body: AutoReviewBody, admin_user: dict = Depends(_
         try:
             row = df[df["descrizione"] == desc].iloc[0]
             cat = row.get("categoria") or ""
-            if not cat or cat == "Da Clasificare":
+            if not cat or cat in ("Da Classificare", "Da Clasificare"):
                 continue
             ids = df[df["descrizione"] == desc]["id"].tolist()
             sb.table("fatture").update({

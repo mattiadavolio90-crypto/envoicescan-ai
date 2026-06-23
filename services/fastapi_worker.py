@@ -325,7 +325,7 @@ def _run_agent_notturno() -> dict:
             try:
                 row = df[df["descrizione"] == desc].iloc[0]
                 cat = row.get("categoria") or ""
-                if not cat or cat == "Da Clasificare":
+                if not cat or cat in ("Da Classificare", "Da Clasificare"):
                     continue
                 ids = df[df["descrizione"] == desc]["id"].tolist()
                 sb.table("fatture").update({
