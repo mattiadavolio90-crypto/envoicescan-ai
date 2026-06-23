@@ -392,7 +392,7 @@ def _bullet_for(notif: Dict[str, Any]) -> str:
     if topic == 'uncategorized_rows':
         count = payload.get('uncategorized_rows') or payload.get('count')
         if count:
-            righe = 'riga dubbia da controllare' if count == 1 else 'righe dubbie da controllare'
+            righe = 'riga da controllare' if count == 1 else 'righe da controllare'
             return f"\U0001F3F7\ufe0f {count} {righe}."
         return f"\U0001F3F7\ufe0f {title}"
 
@@ -599,10 +599,16 @@ def _narrative_phrase_for(notif: Dict[str, Any]) -> str:
     if topic == 'uncategorized_rows':
         count = payload.get('uncategorized_rows') or payload.get('count') or _parse_count_from_title(title)
         if count:
-            righe = 'riga dubbia da controllare' if count == 1 else 'righe dubbie da controllare'
+            # Tono rassicurante: niente numero crudo nella voce dell'assistente
+            # (il conteggio sta nella card "Da fare oggi" sotto). Una riga vs molte.
+            if count == 1:
+                return (
+                    "C'\u00e8 una riga da controllare: "
+                    "trovi il dettaglio qui sotto."
+                )
             return (
-                f"{count} {righe}: "
-                f"verificarle rende i tuoi report pi\u00f9 precisi e affidabili."
+                "Ci sono alcune righe da controllare: "
+                "trovi il dettaglio qui sotto."
             )
         return f"{title}."
 

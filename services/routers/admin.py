@@ -383,7 +383,8 @@ def admin_dettaglio_cliente(cliente_id: str):
         raise HTTPException(status_code=403, detail="Non puoi gestire account admin")
 
     sedi_resp = sb.table("ristoranti").select(
-        "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo"
+        "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,"
+        "sdi_attivo,sdi_attivo_dal"
     ).eq("user_id", cliente_id).execute()
     sedi = sedi_resp.data or []
 
@@ -2420,7 +2421,7 @@ def admin_impersona_exit(body: ImpersonaExitBody, admin_user: dict = Depends(_ve
 # sedi con stessa P.IVA: un trigger DB calcola `indirizzo_match` da questi tre e il
 # webhook Invoicetronic lo confronta con l'indirizzo della fattura. Senza, le
 # fatture multi-sede finiscono in coda `da_assegnare` (smistamento manuale).
-_SEDE_SELECT = "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo"
+_SEDE_SELECT = "id,nome_ristorante,partita_iva,ragione_sociale,indirizzo,cap,comune,piano,piano_inizio_at,attivo,sdi_attivo,sdi_attivo_dal"
 
 
 class NuovaSedeBody(BaseModel):
@@ -2443,6 +2444,10 @@ class ModificaSedeBody(BaseModel):
     comune: Optional[str] = Field(None, max_length=100)
     piano: Optional[str] = Field(None, pattern="^(free|base|plus|pro)$")
     piano_inizio_at: Optional[str] = None
+    # Ricezione SDI automatica (Invoicetronic) attiva per la sede. Lo accende
+    # l'admin all'attivazione del servizio: decide il canale del briefing
+    # fatture-mancanti ("verifica flusso" vs "carica a mano").
+    sdi_attivo: Optional[bool] = None
 
 
 @router.get("/api/admin/clienti/{cliente_id}/sedi", tags=["Admin"], dependencies=[Depends(_verify_admin)])
@@ -2536,11 +2541,25 @@ def admin_modifica_sede(
         upd["piano"] = body.piano
     if body.piano_inizio_at is not None:
         upd["piano_inizio_at"] = body.piano_inizio_at or None
+    if body.sdi_attivo is not None:
+        upd["sdi_attivo"] = bool(body.sdi_attivo)
+        # Traccia la data di attivazione la prima volta che si accende; la azzera
+        # quando si spegne. Informativa (non usata dalla logica del canale).
+        from datetime import date as _date
+        upd["sdi_attivo_dal"] = _date.today().isoformat() if body.sdi_attivo else None
 
     if not upd:
         raise HTTPException(status_code=400, detail="Nessun campo da aggiornare")
 
     sb.table("ristoranti").update(upd).eq("id", sede_id).execute()
+    # Il canale del briefing dipende da sdi_attivo: invalida il briefing di oggi
+    # della sede cosi' il messaggio fatture-mancanti si aggiorna subito.
+    if body.sdi_attivo is not None:
+        try:
+            from services.daily_briefing_service import invalidate_today_briefing
+            invalidate_today_briefing(cliente_id, sede_id, sb)
+        except Exception as exc:
+            logger.warning("admin_modifica_sede: invalidazione briefing SDI fallita: %s", exc)
     logger.info("admin_modifica_sede: sede=%s campi=%s | admin=%s", sede_id, list(upd.keys()), admin_user.get("email"))
     resp = sb.table("ristoranti").select(_SEDE_SELECT).eq("id", sede_id).single().execute()
     return resp.data or {"ok": True}

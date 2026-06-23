@@ -4235,9 +4235,10 @@ def _briefing_fatture_mancanti(
          (created_at). Per i clienti nuovi/pre-go-live senza ricavi nel mese, e'
          l'unico segnale (B non scatta su un mese vuoto).
 
-    Distingue il CANALE di ricezione: con P.IVA configurata le fatture arrivano
-    in automatico via SDI/Invoicetronic ("non stanno arrivando, verifica"), senza
-    P.IVA il caricamento e' manuale ("carica le fatture"). payload['canale'].
+    Distingue il CANALE di ricezione dal flag ristoranti.sdi_attivo (non dalla
+    P.IVA): sdi_attivo=true -> SDI ("non stanno arrivando, verifica"); false ->
+    manuale ("carica le fatture"). Il flag lo accende l'admin quando attiva la
+    ricezione automatica per la sede. payload['canale'].
     """
     from datetime import datetime as _dt2, timedelta as _td2
     try:
@@ -4252,22 +4253,29 @@ def _briefing_fatture_mancanti(
     else:
         mc_anno, mc_mese = oggi.year, oggi.month - 1
 
-    # P.IVA + user_id in un colpo: la P.IVA decide il canale, l'user_id serve
-    # alla RPC dei costi. Canale: P.IVA presente -> SDI; assente -> manuale.
+    # CANALE di ricezione dal FLAG ESPLICITO ristoranti.sdi_attivo, non dalla
+    # P.IVA. Prima si assumeva "SDI" per chiunque avesse una P.IVA (cioe' tutti):
+    # cosi' un cliente che carica a mano si vedeva dire "verifica il flusso
+    # automatico" — un flusso che NESSUN cliente ha ancora attivo. Il flag lo
+    # accende l'admin all'attivazione reale del servizio (a breve: SUSHILAND +
+    # OFFSIDE). Vantaggio sul dedurlo da source_origin: funziona anche nei PRIMI
+    # giorni dopo l'attivazione, prima che arrivi il primo documento automatico
+    # (e' proprio allora che "verifica la ricezione" serve). Default false =
+    # manuale = "carica le fatture". user_id_r serve alla RPC dei costi (caso B).
     canale = "manuale"
     user_id_r = None
     try:
         rinfo = (
             supabase_client.table("ristoranti")
-            .select("partita_iva,user_id")
+            .select("user_id,sdi_attivo")
             .eq("id", ristorante_id)
             .single()
             .execute()
         )
         rd = rinfo.data or {}
-        if rd.get("partita_iva"):
-            canale = "sdi"
         user_id_r = rd.get("user_id")
+        if rd.get("sdi_attivo"):
+            canale = "sdi"
     except Exception as exc:
         logger.warning("briefing fatture mancanti: lettura ristorante fallita: %s", exc)
 

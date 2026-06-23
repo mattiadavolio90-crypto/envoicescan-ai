@@ -9,6 +9,10 @@ export type Sede = {
   piano: string | null;
   piano_inizio_at: string | null;
   attivo: boolean;
+  // Ricezione SDI automatica (Invoicetronic) attiva per la sede. Lo accende
+  // l'admin all'attivazione del servizio: decide il canale del briefing.
+  sdi_attivo?: boolean;
+  sdi_attivo_dal?: string | null;
 };
 
 export type TrialInfo = {
