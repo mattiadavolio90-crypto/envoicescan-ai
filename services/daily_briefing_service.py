@@ -28,6 +28,25 @@ logger = get_logger('daily_briefing')
 # COSTANTI
 # ============================================================
 
+# Versione della LOGICA del briefing. Va incrementata a OGNI modifica che cambia
+# come il briefing viene costruito (testi, conteggi, soglie, regole). Lo snapshot
+# salvato la porta dentro: al load, se la versione salvata e' diversa da questa, lo
+# snapshot e' STANTIO (generato dal codice vecchio) e va rigenerato — senza dover
+# svuotare la cache a mano dopo ogni deploy. Vedi snapshot_is_stale().
+#
+# STORICO bump (per non perdere il filo):
+#   1 -> baseline
+#   2 -> 23/06: righe da controllare = totale, canale SDI da flag, tono testi
+_BRIEFING_CODE_VERSION = 2
+
+# Quanto resta valido uno snapshot prima di essere comunque rigenerato (anche se
+# nulla l'ha invalidato esplicitamente). Copre i dati che cambiano DURANTE il
+# giorno senza un evento di invalidazione (es. righe classificate, fatture
+# elaborate dal worker async): senza TTL il cliente vedrebbe il numero della
+# mattina fino a mezzanotte. 30 min e' un buon compromesso freschezza/costo
+# (la generazione pesante gira comunque in background, non blocca la Home).
+_BRIEFING_TTL_MINUTI = 30
+
 # Numero massimo di card mostrate in "Da fare oggi". Oltre questo numero,
 # il resto resta nella pagina Avvisi (link "Vedi tutti"). Decisione Mattia 19/06:
 # l'andamento sta nel testo del briefing, le card sono SOLO cose da fare -> 4.
@@ -990,12 +1009,54 @@ def _build_snapshot(
         'notif_count': len(notifications),
         'notif_fingerprint': fingerprint,
         'severity_max': sev_max,
+        # Versione della logica che ha prodotto questo snapshot: se al load non
+        # combacia con _BRIEFING_CODE_VERSION, lo snapshot e' di un codice vecchio
+        # e va rigenerato (auto-invalidazione su deploy). Vedi snapshot_is_stale().
+        'code_version': _BRIEFING_CODE_VERSION,
     }
 
 
 # ============================================================
 # CRUD
 # ============================================================
+
+def snapshot_is_stale(snapshot: Optional[Dict[str, Any]]) -> bool:
+    """True se lo snapshot in cache NON va piu' servito e va rigenerato.
+
+    Due motivi, entrambi a costo zero (nessuna query):
+      1) DEPLOY: lo snapshot e' stato prodotto da una versione diversa della
+         logica (code_version != _BRIEFING_CODE_VERSION). Cosi' un deploy che
+         cambia testi/conteggi/regole invalida da solo gli snapshot vecchi —
+         niente piu' svuotamento manuale della cache dopo ogni rilascio.
+      2) TTL: lo snapshot e' piu' vecchio di _BRIEFING_TTL_MINUTI. Copre i dati
+         che cambiano DURANTE il giorno senza un evento di invalidazione (righe
+         classificate, fatture elaborate in background): senza questo il cliente
+         vedrebbe il numero della mattina fino a mezzanotte.
+
+    Best-effort: su snapshot malformato o data illeggibile -> stantio (rigenera),
+    mai servire qualcosa di dubbio.
+    """
+    if not snapshot:
+        return True
+    # 1) Versione logica
+    try:
+        if int(snapshot.get('code_version') or 0) != _BRIEFING_CODE_VERSION:
+            return True
+    except (TypeError, ValueError):
+        return True
+    # 2) TTL sull'istante di scrittura (created_at del record DB, fallback generated_at)
+    ts = snapshot.get('_db_created_at') or snapshot.get('generated_at')
+    if not ts:
+        return True
+    try:
+        scritto = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+        if scritto.tzinfo is None:
+            scritto = scritto.replace(tzinfo=timezone.utc)
+        eta_min = (datetime.now(timezone.utc) - scritto).total_seconds() / 60.0
+        return eta_min >= _BRIEFING_TTL_MINUTI
+    except (ValueError, TypeError):
+        return True
+
 
 def get_today_briefing(
     user_id: str,

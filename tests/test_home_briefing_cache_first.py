@@ -18,9 +18,11 @@ Questi test verificano il comportamento osservabile: l'endpoint risponde sempre
 senza pagare in linea alert prezzi/AI, riflette i segnali live, e la generazione
 pesante e' schedulata in background.
 """
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import services.fastapi_worker as fw
+from services.daily_briefing_service import _BRIEFING_CODE_VERSION
 
 
 def _bg():
@@ -33,12 +35,17 @@ def _bg():
 
 _USER = {"id": "u-1", "nome_referente": "Marco"}
 _RID = "rist-abc"
+# Snapshot FRESCO e con la versione corrente: il fast-path 1 lo serve dalla cache
+# solo se snapshot_is_stale() lo considera valido (versione giusta + entro TTL).
+_GENERATED_AT = datetime.now(timezone.utc).isoformat()
 _SNAP_OGGI = {
     "azioni": [],
     "narrative": "Tutto sotto controllo oggi.",
     "severity_max": "info",
     "tutto_ok": True,
-    "generated_at": "2026-06-08T07:00:00+00:00",
+    "generated_at": _GENERATED_AT,
+    "_db_created_at": _GENERATED_AT,
+    "code_version": _BRIEFING_CODE_VERSION,
 }
 
 
@@ -75,7 +82,7 @@ def test_cache_first_serve_snapshot_senza_calcolo_pesante():
     # Snapshot di oggi servito dalla cache
     assert resp.narrativa == "Tutto sotto controllo oggi."
     assert resp.tutto_ok is True
-    assert resp.generated_at == "2026-06-08T07:00:00+00:00"
+    assert resp.generated_at == _GENERATED_AT
     # Saluto popolato (nome referente dell'utente)
     assert "Marco" in resp.saluto
     # La cache di oggi e' stata letta...

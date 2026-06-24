@@ -5236,6 +5236,7 @@ def home_briefing(
     from services import get_supabase_client
     from services.daily_briefing_service import (
         get_today_briefing,
+        snapshot_is_stale,
         _build_snapshot,
     )
 
@@ -5249,13 +5250,16 @@ def home_briefing(
     supabase_client = get_supabase_client()
     ristorante_id = _resolve_ristorante_id(user, supabase_client)
 
-    # ── Fast-path 1: cache-first di OGGI ─────────────────────────────────────
+    # ── Fast-path 1: cache-first di OGGI (solo se FRESCO) ────────────────────
     # Il briefing e' un dato GIORNALIERO: se lo snapshot di oggi esiste gia' in
     # daily_briefing_state, lo serviamo subito (~0.5s) senza ricalcolare nulla di
-    # pesante. Caso normale dopo la prima apertura della giornata.
+    # pesante. MA solo se non e' stantio: snapshot_is_stale() scarta gli snapshot
+    # di una versione di codice precedente (auto-invalidazione sui deploy: niente
+    # piu' svuotamento cache a mano) e quelli piu' vecchi del TTL (dati cambiati
+    # in giornata). Se stantio, cade nel fast-path 2 che rigenera fresco e veloce.
     if ristorante_id:
         cached_today = get_today_briefing(user_id, ristorante_id, supabase_client)
-        if cached_today is not None:
+        if cached_today is not None and not snapshot_is_stale(cached_today):
             nome, _ = _briefing_nome_referente(nome, ristorante_id, supabase_client)
             return _briefing_response_from_snapshot(cached_today, nome)
 
