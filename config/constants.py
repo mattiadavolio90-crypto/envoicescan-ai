@@ -682,6 +682,25 @@ DIZIONARIO_CORREZIONI = {
     "PANZEROTTINI": "PRODOTTI DA FORNO",
     "MOZZ BUFALA": "LATTICINI",
     "MERLUZ": "PESCE",
+    # Sfoglie tempura giapponesi (Shidu): impasto -> PASTA E CEREALI
+    "PASTELLA": "PASTA E CEREALI",
+    "PASTO DI WONTON": "PASTA E CEREALI",
+    # Foglie/alghe fresche per sushi (Asiantrade)
+    "FOGLIE FRESCA": "SUSHI VARIE",
+    # Latticini abbreviati che il GPT non riconosceva
+    "MOZZAR": "LATTICINI",          # MOZZAR.JULIENNE; MOZZARELLA/MOZZARELLE gia' coperte
+    "FORM GRATTUGIATI": "LATTICINI", # MIX FORM GRATTUGIATI
+    "FORM GRATTUGIATO": "LATTICINI",
+    "CHEESE MONTEROSA": "LATTICINI",
+    # Uova: mancavano del tutto nel dizionario
+    "UOVA": "UOVA",
+    "UOVO": "UOVA",
+    # Semi di finocchio = spezia (FINOCCHI da solo resta VERDURE)
+    "FINOCCHIO SEMI": "SPEZIE E AROMI",
+    "SEMI FINOCCHIO": "SPEZIE E AROMI",
+    "SEMI DI FINOCCHIO": "SPEZIE E AROMI",
+    # Gelato confezionato M&M
+    "TWITTY": "GELATI E DESSERT",
 
     # ===== CONSERVE (include scatolame, marmellate, sott'olio) =====
     # Scatolame
