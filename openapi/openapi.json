@@ -3769,6 +3769,152 @@
         }
       }
     },
+    "/api/account/esporta-dati": {
+      "get": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Account Esporta Dati",
+        "description": "GDPR Art. 20 (portabilità) — esporta in JSON strutturato tutti i dati\npersonali e operativi dell'utente che chiama. Mai password/hash, mai token.\nL'id è quello del token: si esporta solo sé stessi.",
+        "operationId": "account_esporta_dati_api_account_esporta_dati_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Account Esporta Dati Api Account Esporta Dati Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/account/elimina": {
+      "post": {
+        "tags": [
+          "Account"
+        ],
+        "summary": "Account Elimina",
+        "description": "GDPR Art. 17 (cancellazione) — l'utente elimina il PROPRIO account e tutti i\ndati collegati, in modo permanente. L'id è quello del token verificato: si può\ncancellare solo sé stessi. Gli account admin non sono cancellabili da qui (guard).\n\nLa cancellazione della riga `users` propaga via ON DELETE CASCADE a fatture,\nristoranti, ricette, sessioni, ricavi, margini, tag, notifiche, ecc. La memoria\nAI globale (prodotti_master) NON è dato personale del singolo e resta.",
+        "operationId": "account_elimina_api_account_elimina_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "name": "x-worker-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Worker-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EliminaAccountBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Account Elimina Api Account Elimina Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/account/sedi": {
       "get": {
         "tags": [
@@ -17671,6 +17817,23 @@
           "top_categorie"
         ],
         "title": "DashboardStats"
+      },
+      "EliminaAccountBody": {
+        "properties": {
+          "conferma": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conferma"
+          }
+        },
+        "type": "object",
+        "title": "EliminaAccountBody"
       },
       "FatturaEliminaRequest": {
         "properties": {
