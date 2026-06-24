@@ -1,32 +1,15 @@
 import Link from "next/link";
-import {
-  Sparkles,
-  Receipt,
-  BarChart3,
-  Bell,
-  Check,
-  CheckCircle2,
-  ArrowRight,
-  MessageCircle,
-} from "lucide-react";
+import { Sparkles, Check, X, ArrowRight, MessageCircle, Send } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
 import { WHATSAPP_NUMERO } from "@/lib/assistenza";
 import { LANDING, WHATSAPP_LANDING_MSG } from "@/lib/landing-content";
 
-const FEATURE_ICONS = {
-  Sparkles,
-  Receipt,
-  BarChart3,
-  Bell,
-} as const;
-
 function waLink(msg: string = WHATSAPP_LANDING_MSG): string {
   return `https://wa.me/${WHATSAPP_NUMERO}?text=${encodeURIComponent(msg)}`;
 }
 
-// CTA primario (verde WhatsApp) e secondario (outline brand), riusati ovunque.
 const CTA_PRIMARY =
   "inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-6 py-3 text-base font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 hover:shadow-primary/40";
 const CTA_SECONDARY =
@@ -43,9 +26,7 @@ export function LandingPage() {
           <Logo size={30} />
           <Link
             href={c.nav.accediHref}
-            className={cn(
-              "rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted",
-            )}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
           >
             {c.nav.accediLabel}
           </Link>
@@ -55,22 +36,45 @@ export function LandingPage() {
       <main>
         {/* ---- Hero ---- */}
         <section className="relative overflow-hidden">
-          {/* glow di sfondo */}
           <div
             aria-hidden
-            className="pointer-events-none absolute -top-40 left-1/2 size-[600px] -translate-x-1/2 rounded-full bg-primary/20 blur-[120px]"
+            className="pointer-events-none absolute -top-40 left-1/2 size-[640px] -translate-x-1/2 rounded-full bg-primary/20 blur-[130px]"
           />
-          <div className="relative mx-auto max-w-6xl px-5 pt-20 pb-16 text-center sm:pt-28">
+          <div className="relative mx-auto max-w-6xl px-5 pt-20 pb-14 text-center sm:pt-28">
             <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
               <Sparkles className="size-4" />
               {c.hero.eyebrow}
             </span>
-            <h1 className="mx-auto mt-6 max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
+            <h1 className="mx-auto mt-6 max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight sm:text-6xl">
               {c.hero.title}
             </h1>
-            <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
+            <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground sm:text-xl">
               {c.hero.subtitle}
             </p>
+
+            {/* finta barra "chiedi" + chips di domande */}
+            <div className="mx-auto mt-9 max-w-xl">
+              <div className="flex items-center gap-2 rounded-2xl border border-border bg-card p-2 pl-4 shadow-lg ring-1 ring-foreground/5">
+                <Sparkles className="size-5 shrink-0 text-primary" />
+                <span className="flex-1 truncate text-left text-sm text-muted-foreground">
+                  {c.hero.askPlaceholder}
+                </span>
+                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                  <Send className="size-4" />
+                </span>
+              </div>
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                {c.hero.chips.map((q) => (
+                  <span
+                    key={q}
+                    className="rounded-full border border-border bg-muted/40 px-3 py-1.5 text-xs text-muted-foreground"
+                  >
+                    {q}
+                  </span>
+                ))}
+              </div>
+            </div>
+
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <a href={waLink()} target="_blank" rel="noopener noreferrer" className={CTA_PRIMARY}>
                 <MessageCircle className="size-5" />
@@ -84,58 +88,100 @@ export function LandingPage() {
           </div>
         </section>
 
-        {/* ---- Anteprima app (mockup) ---- */}
-        <section className="mx-auto max-w-6xl px-5 pb-20">
-          <AppPreview />
-        </section>
-
-        {/* ---- Problema ---- */}
+        {/* ---- Contrasto: gli altri vs ONEFLUX ---- */}
         <section className="border-y border-border/60 bg-muted/30">
-          <div className="mx-auto max-w-4xl px-5 py-20 text-center">
-            <h2 className="text-3xl font-bold tracking-tight">{c.problema.title}</h2>
-            <p className="mx-auto mt-5 max-w-2xl text-lg text-muted-foreground">
-              {c.problema.paragrafo}
-            </p>
-            <ul className="mx-auto mt-8 grid max-w-2xl gap-3 text-left sm:grid-cols-1">
-              {c.problema.bullets.map((b) => (
-                <li
-                  key={b}
-                  className="flex items-start gap-3 rounded-xl border border-border bg-card px-4 py-3"
+          <div className="mx-auto max-w-5xl px-5 py-20">
+            <div className="text-center">
+              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{c.contrasto.title}</h2>
+              <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
+                {c.contrasto.subtitle}
+              </p>
+            </div>
+            <div className="mt-12 space-y-4">
+              {c.contrasto.righe.map((r) => (
+                <div
+                  key={r.tema}
+                  className="grid items-stretch gap-3 sm:grid-cols-[1fr_1fr_1fr]"
                 >
-                  <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-destructive/15 text-destructive">
-                    ✕
-                  </span>
-                  <span className="text-sm">{b}</span>
-                </li>
+                  <div className="flex items-center justify-center rounded-xl border border-border bg-card px-4 py-4 text-center font-semibold sm:justify-start sm:text-left">
+                    {r.tema}
+                  </div>
+                  <div className="flex items-start gap-3 rounded-xl border border-border bg-background/40 px-4 py-4">
+                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-destructive/15 text-destructive">
+                      <X className="size-3.5" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Gli altri
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">{r.altri}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 px-4 py-4">
+                    <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                      <Check className="size-3.5" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-primary">
+                        ONEFLUX
+                      </p>
+                      <p className="mt-1 text-sm font-medium">{r.oneflux}</p>
+                    </div>
+                  </div>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         </section>
 
-        {/* ---- Funzionalità ---- */}
-        <section className="mx-auto max-w-6xl px-5 py-20">
+        {/* ---- WOW: la conversazione AI ---- */}
+        <section className="mx-auto max-w-5xl px-5 py-20">
           <div className="text-center">
-            <h2 className="text-3xl font-bold tracking-tight">{c.features.title}</h2>
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{c.chat.title}</h2>
             <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-              {c.features.subtitle}
+              {c.chat.subtitle}
             </p>
           </div>
-          <div className="mt-12 grid gap-5 sm:grid-cols-2">
-            {c.features.items.map((f) => {
-              const Icon = FEATURE_ICONS[f.icon as keyof typeof FEATURE_ICONS];
-              return (
+          <ChatMockup />
+          <p className="mt-7 text-center text-base font-medium text-primary">{c.chat.nota}</p>
+        </section>
+
+        {/* ---- Come funziona (3 step) ---- */}
+        <section className="border-y border-border/60 bg-muted/30">
+          <div className="mx-auto max-w-6xl px-5 py-20">
+            <h2 className="text-center text-3xl font-bold tracking-tight sm:text-4xl">
+              {c.comeFunziona.title}
+            </h2>
+            <div className="mt-12 grid gap-6 md:grid-cols-3">
+              {c.comeFunziona.step.map((s) => (
                 <div
-                  key={f.title}
-                  className="rounded-2xl border border-border bg-card p-6 ring-1 ring-foreground/5 transition-colors hover:border-primary/40"
+                  key={s.n}
+                  className="relative rounded-2xl border border-border bg-card p-6 ring-1 ring-foreground/5"
                 >
-                  <div className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    {Icon ? <Icon className="size-6" /> : null}
-                  </div>
-                  <h3 className="mt-4 text-lg font-semibold">{f.title}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">{f.text}</p>
+                  <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10 text-lg font-bold text-primary">
+                    {s.n}
+                  </span>
+                  <h3 className="mt-4 text-lg font-semibold">{s.titolo}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">{s.testo}</p>
                 </div>
-              );
-            })}
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ---- Cosa tieni sotto controllo ---- */}
+        <section className="mx-auto max-w-4xl px-5 py-20 text-center">
+          <h2 className="text-3xl font-bold tracking-tight">{c.controllo.title}</h2>
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            {c.controllo.chips.map((chip) => (
+              <span
+                key={chip}
+                className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-2 text-sm"
+              >
+                <Check className="size-4 text-primary" />
+                {chip}
+              </span>
+            ))}
           </div>
         </section>
 
@@ -167,7 +213,7 @@ export function LandingPage() {
         <section className="border-y border-border/60 bg-muted/30">
           <div className="mx-auto max-w-6xl px-5 py-20">
             <div className="text-center">
-              <h2 className="text-3xl font-bold tracking-tight">{c.prezzi.title}</h2>
+              <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">{c.prezzi.title}</h2>
               <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
                 {c.prezzi.subtitle}
               </p>
@@ -273,18 +319,10 @@ export function LandingPage() {
             <p className="text-sm text-muted-foreground">{c.footer.tagline}</p>
           </div>
           <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
-            <a
-              href={waLink()}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="transition-colors hover:text-foreground"
-            >
+            <a href={waLink()} target="_blank" rel="noopener noreferrer" className="transition-colors hover:text-foreground">
               WhatsApp
             </a>
-            <a
-              href={`mailto:${c.footer.email}`}
-              className="transition-colors hover:text-foreground"
-            >
+            <a href={`mailto:${c.footer.email}`} className="transition-colors hover:text-foreground">
               {c.footer.email}
             </a>
             <Link href={c.footer.privacyHref} className="transition-colors hover:text-foreground">
@@ -303,52 +341,47 @@ export function LandingPage() {
   );
 }
 
-// Mockup stilizzato dell'app (non uno screenshot reale): mostra a colpo d'occhio
-// il "buongiorno" + un KPI + un alert prezzi. Da sostituire con screenshot veri
-// quando li avremo.
-function AppPreview() {
+// Mockup della conversazione con l'assistente AI: il pezzo "wow". Mostra qualche
+// scambio domanda-cliente / risposta-AI, stilizzato come la chat dell'app.
+function ChatMockup() {
   return (
-    <div className="relative mx-auto max-w-3xl">
+    <div className="relative mx-auto mt-12 max-w-2xl">
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-8 -top-6 bottom-0 rounded-3xl bg-primary/20 blur-2xl"
+        className="pointer-events-none absolute inset-x-10 -top-6 bottom-0 rounded-3xl bg-primary/20 blur-2xl"
       />
       <div className="relative rounded-3xl border border-border bg-card p-4 shadow-2xl ring-1 ring-foreground/10 sm:p-6">
-        {/* finta barra finestra */}
-        <div className="mb-4 flex items-center gap-1.5">
-          <span className="size-3 rounded-full bg-destructive/40" />
-          <span className="size-3 rounded-full bg-amber-400/40" />
-          <span className="size-3 rounded-full bg-emerald-400/40" />
-          <span className="ml-3 text-xs text-muted-foreground">{LANDING.preview.title}</span>
+        {/* intestazione chat */}
+        <div className="mb-5 flex items-center gap-3 border-b border-border/60 pb-4">
+          <span className="flex size-9 items-center justify-center rounded-xl bg-primary/10">
+            <Logo variant="icon" size={20} />
+          </span>
+          <div className="text-left">
+            <p className="text-sm font-semibold">Assistente ONEFLUX</p>
+            <p className="text-xs text-emerald-500">● sa tutto dei tuoi numeri</p>
+          </div>
         </div>
 
-        {/* briefing */}
-        <div className="rounded-2xl border border-border bg-background/60 p-5">
-          <p className="text-sm font-semibold text-primary">Buongiorno, Marco 👋</p>
-          <p className="mt-2 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">🔥 Maggio chiuso con €&nbsp;12.480 di margine</span>, +14% rispetto ad aprile. Oggi c&apos;è un rincaro da tenere d&apos;occhio.
-          </p>
-        </div>
-
-        {/* riga KPI + alert */}
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <div className="rounded-2xl border border-border bg-background/60 p-4">
-            <p className="text-xs text-muted-foreground">Food cost</p>
-            <p className="mt-1 text-2xl font-bold">28,4%</p>
-            <p className="mt-1 text-xs text-emerald-500">in linea</p>
-          </div>
-          <div className="rounded-2xl border border-border bg-background/60 p-4">
-            <p className="text-xs text-muted-foreground">Margine mese</p>
-            <p className="mt-1 text-2xl font-bold">€ 12.480</p>
-            <p className="mt-1 text-xs text-emerald-500">▲ +14%</p>
-          </div>
-          <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
-            <p className="flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
-              <Bell className="size-3.5" /> Alert prezzi
-            </p>
-            <p className="mt-1 text-sm font-semibold">Olio EVO +9%</p>
-            <p className="mt-1 text-xs text-muted-foreground">~ €&nbsp;120/mese in più</p>
-          </div>
+        <div className="space-y-4">
+          {LANDING.chat.scambi.map((s) => (
+            <div key={s.q} className="space-y-3">
+              {/* domanda cliente (destra) */}
+              <div className="flex justify-end">
+                <p className="max-w-[80%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-left text-sm text-primary-foreground">
+                  {s.q}
+                </p>
+              </div>
+              {/* risposta AI (sinistra) */}
+              <div className="flex items-end gap-2">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                  <Logo variant="icon" size={14} />
+                </span>
+                <p className="max-w-[85%] rounded-2xl rounded-bl-md border border-border bg-background/60 px-4 py-2.5 text-left text-sm">
+                  {s.a}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

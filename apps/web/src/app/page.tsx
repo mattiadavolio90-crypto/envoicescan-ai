@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { LandingPage } from "@/components/landing/landing-page";
 
 export const metadata: Metadata = {
-  title: "ONEFLUX — Costi e margini del ristorante sotto controllo",
+  title: "ONEFLUX — Il gestionale del ristorante che non devi compilare",
   description:
-    "ONEFLUX legge le tue fatture elettroniche, le categorizza con l'AI e ti mostra food cost, margini e alert prezzi fornitori. Pensato per ristoratori, non per ragionieri.",
+    "Niente magazzino, niente inventario, niente Excel. Le fatture entrano da sole, l'AI le legge e tu, per sapere come va il locale, fai una domanda all'assistente.",
   openGraph: {
-    title: "ONEFLUX — Costi e margini del ristorante sotto controllo",
+    title: "ONEFLUX — Il gestionale del ristorante che non devi compilare",
     description:
-      "Sai ogni mattina se il tuo ristorante sta guadagnando. Fatture in ordine da sole, food cost e margini reali, alert sui rincari dei fornitori.",
+      "Data-entry free: niente magazzino né Excel. Le fatture le legge l'AI e per sapere food cost, margini e rincari basta chiedere all'assistente.",
     type: "website",
     locale: "it_IT",
   },
