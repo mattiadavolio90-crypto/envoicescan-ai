@@ -2831,13 +2831,13 @@ def _build_compiled_patterns() -> Tuple[list, list]:
     """
     Costruisce le liste di (pattern_compilato, categoria) ordinate per lunghezza keyword decrescente.
     Chiamata UNA VOLTA all'import del modulo. Ritorna (patterns_alimenti, patterns_contenitori).
-    
+
     Il pattern boundary accetta anche cifre come separatore sinistro per gestire
     codici GDO con numeri incollati (es. "200CANGURINO", "G500STOP-TOAST").
     """
     patterns_alimenti = []
     patterns_contenitori = []
-    
+
     for keyword, categoria in sorted(DIZIONARIO_CORREZIONI.items(), key=lambda x: len(x[0]), reverse=True):
         # Boundary sinistro: inizio stringa, whitespace, non-alfanumerico, O cifra (per codici GDO)
         pattern = re.compile(r'(?:^|[\s\W\d])' + re.escape(keyword) + r'(?:[\s\W]|$)')
@@ -2845,7 +2845,7 @@ def _build_compiled_patterns() -> Tuple[list, list]:
             patterns_contenitori.append((pattern, categoria))
         else:
             patterns_alimenti.append((pattern, categoria))
-    
+
     return patterns_alimenti, patterns_contenitori
 
 # Compilati una volta all'avvio (0 overhead nelle chiamate successive)
@@ -2854,6 +2854,66 @@ try:
 except Exception as e:
     logger.error(f"Errore buildcompiledpatterns: {e}")
     _PATTERNS_ALIMENTI, _PATTERNS_CONTENITORI = [], []
+
+
+# ── MATCH TOLLERANTE AI REFUSI TIPOGRAFICI (doppie) ─────────────────────────
+# Obiettivo: catturare refusi comuni nelle descrizioni fornitore senza introdurre
+# errori. Trasformazione UNICA e reversibile: collasso le lettere doppie a singola
+# (MOZZARELLA->MOZZARELA, MOZZARELA->MOZZARELA: convergono alla stessa forma).
+# Applicata IDENTICA a descrizione e keyword, quindi non puo' creare falsi match
+# tra parole diverse (al massimo unisce varianti della STESSA parola).
+# IMPORTANTE: usata SOLO come fallback quando il match esatto fallisce, mai prima
+# (un match gia' funzionante non puo' essere rotto).
+_DOPPIE_RE = re.compile(r'(.)\1+')
+
+
+def _collassa_doppie(testo: str) -> str:
+    return _DOPPIE_RE.sub(r'\1', testo)
+
+
+def _build_patterns_collassati() -> Tuple[list, list]:
+    """Stessa logica di _build_compiled_patterns ma su keyword con doppie collassate.
+
+    Salta le keyword troppo corte (<=2 char dopo collasso) per non generare match
+    troppo larghi, e quelle che collassando diventerebbero identiche a un'altra
+    keyword di categoria diversa (ambiguita' -> meglio non rischiare).
+    """
+    from collections import defaultdict
+    collapsed_map: dict = defaultdict(set)
+    for keyword, categoria in DIZIONARIO_CORREZIONI.items():
+        ck = _collassa_doppie(keyword)
+        if len(ck) <= 2:
+            continue
+        collapsed_map[ck].add((keyword, categoria))
+
+    patterns_alimenti = []
+    patterns_contenitori = []
+    for ck, items in collapsed_map.items():
+        categorie = {cat for _kw, cat in items}
+        # Se la forma collassata e' ambigua (piu' categorie) o coincide gia' con
+        # una keyword non-collassata diversa, NON la uso: priorita' alla correttezza.
+        if len(categorie) != 1:
+            continue
+        categoria = next(iter(categorie))
+        # Se la keyword collassata e' identica alla originale, il match esatto la
+        # copre gia': inutile duplicarla.
+        if any(ck == kw for kw, _ in items):
+            continue
+        pattern = re.compile(r'(?:^|[\s\W\d])' + re.escape(ck) + r'(?:[\s\W]|$)')
+        if any(kw in _KEYWORDS_CONTENITORI for kw, _ in items):
+            patterns_contenitori.append((pattern, categoria))
+        else:
+            patterns_alimenti.append((pattern, categoria))
+    # Ordina per lunghezza decrescente come i pattern principali
+    patterns_alimenti.sort(key=lambda x: len(x[0].pattern), reverse=True)
+    patterns_contenitori.sort(key=lambda x: len(x[0].pattern), reverse=True)
+    return patterns_alimenti, patterns_contenitori
+
+try:
+    _PATTERNS_ALIMENTI_COLLASSATI, _PATTERNS_CONTENITORI_COLLASSATI = _build_patterns_collassati()
+except Exception as e:
+    logger.error(f"Errore build_patterns_collassati: {e}")
+    _PATTERNS_ALIMENTI_COLLASSATI, _PATTERNS_CONTENITORI_COLLASSATI = [], []
 
 # Regex controllo caratteri (compilata a livello modulo, non ad ogni chiamata)
 _CTRL_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
@@ -2895,12 +2955,25 @@ def applica_correzioni_dizionario(descrizione: str, categoria_ai: str) -> str:
     for pattern, categoria in _PATTERNS_ALIMENTI:
         if pattern.search(desc_padded):
             return categoria
-    
+
     # STEP 2: Cerca CONTENITORI (priorità bassa) - solo se nessun alimento trovato
     for pattern, categoria in _PATTERNS_CONTENITORI:
         if pattern.search(desc_padded):
             return categoria
-    
+
+    # STEP 3: FALLBACK refusi tipografici (doppie). Solo se i match esatti sopra
+    # hanno fallito: collasso le doppie nella descrizione e cerco tra le keyword
+    # anch'esse collassate. Cattura es. "MOZZARELA"->LATTICINI, "POMODOLLO"->VERDURE
+    # senza poter rompere alcun match esatto preesistente (questo blocco non viene
+    # nemmeno raggiunto se sopra c'e' stato un match).
+    desc_padded_collassato = ' ' + _collassa_doppie(desc_upper) + ' '
+    for pattern, categoria in _PATTERNS_ALIMENTI_COLLASSATI:
+        if pattern.search(desc_padded_collassato):
+            return categoria
+    for pattern, categoria in _PATTERNS_CONTENITORI_COLLASSATI:
+        if pattern.search(desc_padded_collassato):
+            return categoria
+
     return categoria_ai
 
 

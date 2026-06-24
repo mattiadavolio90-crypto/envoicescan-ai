@@ -653,6 +653,36 @@ DIZIONARIO_CORREZIONI = {
     "BESCIAMELLA": "SALSE E CREME",
     "SALSA": "SALSE E CREME",
     
+    # ===== PRODOTTI ETNICI/ASIATICI (fornitori SHIDU, MEFON, ASIANTRADE, METRO) =====
+    # Ricorrenti nei ristoranti sushi/asiatici, ignoti al dizionario base: il GPT
+    # li tirava a indovinare (spesso in VERDURE). Categorie confermate con l'owner.
+    # Verdure/ortaggi cinesi
+    "CRAUDI": "VERDURE",
+    "BERGA": "VERDURE",
+    "PIATTONE": "VERDURE",
+    "PIATONE": "VERDURE",
+    "KANKONG": "VERDURE",
+    "CAISUN": "VERDURE",
+    "ZUCCA": "VERDURE",
+    # Sfoglie/impasti asiatici -> PASTA E CEREALI
+    "WONTON": "PASTA E CEREALI",
+    "KADAIFI": "PASTA E CEREALI",
+    "RICE FLAKES": "PASTA E CEREALI",
+    "GNOCCO DA FRIGGERE": "PASTA E CEREALI",
+    # Salse/condimenti asiatici -> SALSE E CREME
+    "PEKING DUCK SAUCE": "SALSE E CREME",
+    "BLACK PEPPER SAUCE": "SALSE E CREME",
+    "MUSTARD": "SALSE E CREME",
+    # Brodi/dadi/preparati -> SCATOLAME E CONSERVE
+    "BOUILLON": "SCATOLAME E CONSERVE",
+    "BUILLON": "SCATOLAME E CONSERVE",
+    "HUMMUS": "SCATOLAME E CONSERVE",
+    "PURE PFANNI": "SCATOLAME E CONSERVE",
+    # Altri ricorrenti GDO/METRO
+    "PANZEROTTINI": "PRODOTTI DA FORNO",
+    "MOZZ BUFALA": "LATTICINI",
+    "MERLUZ": "PESCE",
+
     # ===== CONSERVE (include scatolame, marmellate, sott'olio) =====
     # Scatolame
     "PELATI": "SCATOLAME E CONSERVE",

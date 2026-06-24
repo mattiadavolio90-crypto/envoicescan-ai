@@ -170,9 +170,13 @@ def test_media_confermata_dal_runtime_non_va_in_review():
 
 def test_media_non_confermata_dal_runtime_va_in_review():
     """GPT 'media' su una descrizione che il runtime NON sa classificare da solo
-    (sigla gergale) → resta in coda."""
+    (sigla gergale ignota a dizionario e regole) → resta in coda.
+
+    NB: si usa una sigla volutamente inventata e non un prodotto reale, così il
+    test resta valido anche quando il dizionario viene arricchito (un prodotto
+    vero potrebbe diventare 'confermabile' e cambiare il comportamento atteso)."""
     rows = [
-        {"id": 1, "descrizione": "CRAUDI", "fornitore": "MEFON SRL", "iva_percentuale": 4,
+        {"id": 1, "descrizione": "XQZ TLP GERGALE 88", "fornitore": "MEFON SRL", "iva_percentuale": 4,
          "totale_riga": 12.0, "categoria": None},
     ]
     sb = _run(rows, categorie=["VERDURE"], confidenze=["media"])
