@@ -28,9 +28,37 @@ from services.ai_service import (
     carica_memoria_completa,
     ottieni_hint_per_ai,
     applica_correzioni_dizionario,
+    applica_regole_categoria_forti,
     descrizione_e_dubbia,
     _applica_guardrail_note_con_importo,
 )
+
+
+def _categoria_affidabile(descrizione: str, categoria: str, confidence: str, fornitore: str) -> bool:
+    """True se la categoria può essere SCRITTA con certezza (principio 24/06).
+
+    Affidabile se il runtime deterministico (dizionario + regole forti) conferma
+    la categoria, OPPURE se GPT è 'alta' e la descrizione non è dubbia. Tutto il
+    resto (GPT 'media'/'bassa' non confermata) NON è abbastanza sicuro: meglio
+    lasciare 'Da Classificare' che scrivere un'ipotesi.
+    """
+    cat = str(categoria or "").strip()
+    if not cat or cat.upper() in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE"):
+        return False
+    # Conferma deterministica (vale anche per GPT 'media')
+    try:
+        cat_dz = applica_correzioni_dizionario(descrizione, "Da Classificare")
+        cat_rf, _m = applica_regole_categoria_forti(descrizione, cat_dz)
+        finale = (cat_rf or cat_dz or "").strip()
+        if finale and finale.upper() not in ("DA CLASSIFICARE", "SERVIZI E CONSULENZE") \
+           and finale.upper() == cat.upper():
+            return True
+    except Exception:
+        pass
+    # GPT 'alta' su descrizione non dubbia
+    if str(confidence) == "alta" and not descrizione_e_dubbia(descrizione, fornitore, cat):
+        return True
+    return False
 from services.invoice_service import (
     estrai_dati_da_scontrino_vision,
     salva_fattura_processata,
@@ -660,17 +688,26 @@ def _run_post_upload_ai_categorization(supabase_client, user_id: str, file_names
                         needs_review_target_force = categoria_target == 'Da Classificare'
                     else:
                         needs_review_target_force = False
-                    # Confidence routing: media → pre-classificato ma in coda per review
-                    if confidence in ('bassa', 'media') and not special_row['should_review']:
-                        needs_review_target = True
+
+                    # PRINCIPIO 24/06: scrivo la categoria SOLO se affidabile (runtime
+                    # conferma, o GPT 'alta' non dubbia). Altrimenti non indovino: lascio
+                    # 'Da Classificare'. Le righe NOTE forzate dal guardrail seguono la
+                    # loro via (needs_review_target_force).
+                    if categoria_target not in ('Da Classificare',) and not needs_review_target_force:
+                        if special_row['force_categoria']:
+                            # categoria forzata da regola speciale (dicitura/sconto): affidabile
+                            needs_review_target = bool(special_row['should_review'])
+                        elif _categoria_affidabile(desc, categoria_target, confidence, meta.get('fornitore')):
+                            needs_review_target = bool(special_row['should_review'])
+                        else:
+                            categoria_target = 'Da Classificare'
+                            needs_review_target = True
                     else:
-                        needs_review_target = bool(special_row['should_review'])
-                    # Segnali deterministici: descrizione criptica o fornitore non-food
-                    # su categoria food → in coda di verifica anche con confidence alta.
-                    if descrizione_e_dubbia(desc, meta.get('fornitore'), categoria_target):
+                        needs_review_target = bool(special_row['should_review']) or needs_review_target_force
+
+                    # Invariante: ogni riga 'Da Classificare' va in coda.
+                    if str(categoria_target).strip() == 'Da Classificare':
                         needs_review_target = True
-                    # Una riga corretta dal guardrail NOTE va sempre rivista a mano
-                    needs_review_target = needs_review_target or needs_review_target_force
                     chunk_update_groups.setdefault((categoria_target, needs_review_target), []).append(row_id)
                     if special_row['include_in_dashboard']:
                         memory_candidate_ids.append(row_id)

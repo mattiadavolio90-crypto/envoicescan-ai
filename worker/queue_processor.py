@@ -263,25 +263,34 @@ def _auto_classify_saved_rows(
             categoria = _applica_guardrail_note_con_importo(
                 desc, categoria, desc_importo.get(desc, 0.0)
             )
-            # Confidence routing:
-            # - 'bassa' → sempre in coda (GPT stesso ammette di non sapere).
-            # - 'media' o descrizione "dubbia" (criptica / fornitore non-food su
-            #   categoria food / pochi token) → in coda SOLO se il runtime deterministico
-            #   (dizionario + regole forti) NON conferma la stessa categoria. Se conferma,
-            #   due fonti indipendenti concordano: nessun motivo di revisione. Prima la
-            #   coda si riempiva di prodotti ovvi (ICEBERG, SALMONE 5-6, LATTE): GPT 'media'
-            #   E/O descrizione corta li marcavano da rivedere benché certi.
-            # - fallback forzato → sempre in coda (categoria non davvero determinata).
+            # PRINCIPIO (rev. 24/06): una categoria viene SCRITTA solo se affidabile.
+            # Nel dubbio NON si indovina: si lascia 'Da Classificare'. Così il cliente
+            # può fidarsi al 100% di ciò che è categorizzato e concentrarsi solo sulle
+            # poche righe esplicitamente Da Classificare.
+            #
+            # Affidabile =
+            #   - il runtime deterministico (dizionario + regole forti) conferma la
+            #     categoria proposta (vale anche per GPT 'media': due fonti concordano), OPPURE
+            #   - GPT è 'alta' E la descrizione non presenta segnali di dubbio.
+            # Tutto il resto (GPT 'bassa', GPT 'media' NON confermata, fallback,
+            # descrizione dubbia non confermata) → 'Da Classificare' + coda.
             _forn = desc_map.get(desc, ("", 0))[0]
-            if fallback_forzato or conf == 'bassa':
-                needs_review = True
-            elif _runtime_conferma_categoria(desc, categoria):
+            _confermata_runtime = _runtime_conferma_categoria(desc, categoria)
+            _alta_affidabile = (
+                conf == 'alta'
+                and not fallback_forzato
+                and not descrizione_e_dubbia(desc, _forn, categoria)
+            )
+            affidabile = _confermata_runtime or _alta_affidabile
+
+            if affidabile:
                 needs_review = False
             else:
-                needs_review = conf == 'media' or descrizione_e_dubbia(desc, _forn, categoria)
-            # Invariante: una riga 'Da Classificare' (es. dicitura con importo riportata
-            # dal guardrail NOTE) deve SEMPRE essere in coda, altrimenti resterebbe non
-            # classificata ma invisibile al filtro del cliente.
+                # Categoria non affidabile: non la scriviamo, resta Da Classificare.
+                categoria = "Da Classificare"
+                needs_review = True
+
+            # Invariante di sicurezza: qualunque riga 'Da Classificare' va in coda.
             if str(categoria).strip() == "Da Classificare":
                 needs_review = True
             target_ids = desc_to_ids.get(desc, [])

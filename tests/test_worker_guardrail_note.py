@@ -168,28 +168,42 @@ def test_media_confermata_dal_runtime_non_va_in_review():
     assert sb._rows[0]["needs_review"] is False
 
 
-def test_media_non_confermata_dal_runtime_va_in_review():
-    """GPT 'media' su una descrizione che il runtime NON sa classificare da solo
-    (sigla gergale ignota a dizionario e regole) → resta in coda.
+def test_media_non_confermata_NON_viene_scritta_resta_da_classificare():
+    """PRINCIPIO 24/06: GPT 'media' su descrizione che il runtime NON conferma →
+    la categoria proposta da GPT NON viene scritta (sarebbe un'ipotesi). La riga
+    resta 'Da Classificare' + coda: meglio onesta che classificata male.
 
-    NB: si usa una sigla volutamente inventata e non un prodotto reale, così il
-    test resta valido anche quando il dizionario viene arricchito (un prodotto
-    vero potrebbe diventare 'confermabile' e cambiare il comportamento atteso)."""
+    Sigla inventata (non prodotto reale) così il test resta valido anche con
+    dizionario arricchito."""
     rows = [
         {"id": 1, "descrizione": "XQZ TLP GERGALE 88", "fornitore": "MEFON SRL", "iva_percentuale": 4,
          "totale_riga": 12.0, "categoria": None},
     ]
     sb = _run(rows, categorie=["VERDURE"], confidenze=["media"])
-    assert sb._rows[0]["categoria"] == "VERDURE"
+    assert sb._rows[0]["categoria"] == "Da Classificare"   # NON la VERDURE ipotizzata da GPT
     assert sb._rows[0]["needs_review"] is True
 
 
-def test_bassa_va_sempre_in_review_anche_se_confermata():
-    """Confidence 'bassa': in coda comunque, anche se il runtime confermerebbe."""
+def test_bassa_non_confermata_NON_viene_scritta_resta_da_classificare():
+    """GPT 'bassa' su descrizione che il runtime non conferma → Da Classificare.
+    Non si scrive un'ipotesi incerta."""
+    rows = [
+        {"id": 1, "descrizione": "ZZWQ IGNOTO 77", "fornitore": "MEFON SRL", "iva_percentuale": 4,
+         "totale_riga": 8.0, "categoria": None},
+    ]
+    sb = _run(rows, categorie=["VERDURE"], confidenze=["bassa"])
+    assert sb._rows[0]["categoria"] == "Da Classificare"
+    assert sb._rows[0]["needs_review"] is True
+
+
+def test_bassa_MA_confermata_dal_dizionario_e_affidabile():
+    """GPT 'bassa' ma il dizionario CONFERMA (ICEBERG→VERDURE): la certezza viene
+    dal dizionario deterministico, non da GPT → categoria scritta, niente coda.
+    Due fonti d'accordo = affidabile, anche se GPT era incerto."""
     rows = [
         {"id": 1, "descrizione": "ICEBERG", "fornitore": "MEFON SRL", "iva_percentuale": 4,
          "totale_riga": 8.0, "categoria": None},
     ]
     sb = _run(rows, categorie=["VERDURE"], confidenze=["bassa"])
     assert sb._rows[0]["categoria"] == "VERDURE"
-    assert sb._rows[0]["needs_review"] is True
+    assert sb._rows[0]["needs_review"] is False
