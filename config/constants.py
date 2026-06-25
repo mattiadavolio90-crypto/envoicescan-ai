@@ -1271,6 +1271,14 @@ DIZIONARIO_CORREZIONI = {
         "GAMB.ROSSO": "PESCE",
         "SEPPIOLINE": "PESCE",
     
+    # ===== "VINO/SAKE da cucina": NON bevanda da tavola → dispensa (scelta dominio Mattia 25/06) =====
+    # Fornitori asiatici vendono sake/vino di riso da CUCINA: non vanno tra i VINI (margini bevande)
+    # ma trattati come ingrediente/conserva. Stringhe lunghe = match prioritario (longest-first).
+    "SAKE PER CUCINA": "SCATOLAME E CONSERVE",
+    "SAKE DA CUCINA": "SCATOLAME E CONSERVE",
+    "VINO FERMENTATO": "SCATOLAME E CONSERVE",
+    "VINO DI RISO": "SCATOLAME E CONSERVE",
+
     # ===== SALSE ASIATICHE =====
     "SAKE CUCINA": "SALSE E CREME",
     "MIRIN": "SALSE E CREME",
@@ -1487,6 +1495,8 @@ DIZIONARIO_CORREZIONI = {
     "MELOGRANO": "FRUTTA",
     "MANDORLE": "SCATOLAME E CONSERVE",    # frutta secca da dispensa/banco (scelta dominio Mattia 16/06)
     "MANDORLA": "SCATOLAME E CONSERVE",
+    "MANDORE": "SCATOLAME E CONSERVE",     # refuso fornitore (MANDORE FETTATO = mandorle a fette)
+    "GRANELLA": "SCATOLAME E CONSERVE",    # granella di pistacchio/mandorle = ingrediente da dispensa (scelta dominio Mattia 25/06)
 
     # ===== BATCH FIX: Carne - keyword generiche sicure =====
     "BOVINO": "CARNE",           # copre: roast-beef bovino, coscia bovino, nervetti bovino (×5)
