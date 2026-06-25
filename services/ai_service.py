@@ -919,6 +919,20 @@ _CORNETTO_GELATO_RE = re.compile(
 # (patatine fritte ingrediente, fish&chips, patatine di gamberi, tortilla chips...).
 # Restano all'AI, che ora con needs_review li rende visibili nella coda di verifica.
 
+# === CERTIFICAZIONE SUSHILAND 25/06 — regole forti da pattern errori reali ===
+# GELATO esplicito: deve battere il gusto ("LIMONE"→FRUTTA, "CREMA"→SALSE).
+# Escludo i gelati-banco di marca, già gestiti sopra come SHOP.
+_GELATO_PRODOTTO_RE = re.compile(r"\b(GELAT[OI]|SEMIFREDD[OI])\b")
+# Noodle/pasta asiatici: cadevano in BEVANDE ("soia") o VERDURE (fornitore SHIDU).
+_NOODLE_ASIA_RE = re.compile(r"\b(VERMICELLI|NOODLES?|SOBA|RAMEN|UDON|PASTA\s+DI\s+RISO)\b")
+# Condimento agrumi giapponese: "PONZU" batte "SUCCO"→BEVANDE.
+# NB: solo PONZU, NON tutto il brand MIZKAN — che produce anche mirin (HONTERI →
+# OLIO E CONDIMENTI) e aceto di riso (SHIRAGIKU → OLIO E CONDIMENTI), già gestiti
+# da regole forti dedicate. Catturare "MIZKAN" li dirotterebbe erroneamente a SALSE.
+_PONZU_SALSA_RE = re.compile(r"\bPONZU\b")
+# Carta igienica anche quando scritta solo "IGIENICA" (Tork mini).
+_CARTA_IGIENICA_RE = re.compile(r"\bIGIENIC\w*\b")
+
 # Regole forti che devono battere cache locali/globali automatiche errate.
 # Non include la memoria admin, che resta prioritaria e intenzionale.
 _NON_NEGOZIABILI_CACHE_OVERRIDE = {
@@ -955,6 +969,11 @@ _NON_NEGOZIABILI_CACHE_OVERRIDE = {
     "attrezzatura_leggera_durevole",
     "carta_calcolatrice_consumo",
     "bustina_forno_consumo",
+    # Cert. SUSHILAND 25/06
+    "gelato_prodotto_dessert",
+    "ponzu_salsa_condimento",
+    "noodle_asia_pasta",
+    "carta_igienica_consumo",
 }
 
 
@@ -977,6 +996,35 @@ def applica_regole_categoria_forti(descrizione: str, categoria_predetta: str) ->
         mapped = "SERVIZI E CONSULENZE"
         if cat != mapped:
             return mapped, f"termine_ambiguo:{desc_u}"
+        return cat, None
+
+    # --- Cert. SUSHILAND: regole forti che battono il gusto/keyword generiche ---
+    # GELATO domina il gusto (GELATO LIMONE non è FRUTTA). Esclude i gelati-banco
+    # di marca, già intercettati come SHOP dalle regole più sotto.
+    if _GELATO_PRODOTTO_RE.search(desc_u) and not (
+        _GELATO_BANCO_BRAND_RE.search(desc_u) or _CORNETTO_GELATO_RE.search(desc_u)
+    ):
+        mapped = "GELATI E DESSERT"
+        if cat != mapped:
+            return mapped, "gelato_prodotto_dessert"
+        return cat, None
+
+    if _PONZU_SALSA_RE.search(desc_u):
+        mapped = "SALSE E CREME"
+        if cat != mapped:
+            return mapped, "ponzu_salsa_condimento"
+        return cat, None
+
+    if _NOODLE_ASIA_RE.search(desc_u):
+        mapped = "PASTA E CEREALI"
+        if cat != mapped:
+            return mapped, "noodle_asia_pasta"
+        return cat, None
+
+    if _CARTA_IGIENICA_RE.search(desc_u):
+        mapped = "MATERIALE DI CONSUMO"
+        if cat != mapped:
+            return mapped, "carta_igienica_consumo"
         return cat, None
 
     if _CASTAGNE_ACQUA_RE.search(desc_u) or _CASTAGNE_D_ACQUA_RE.search(desc_u):

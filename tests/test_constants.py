@@ -90,13 +90,23 @@ class TestCostantiCategorie:
 class TestCategoriaPerFornitore:
     """Verifica le nuove regole fornitore aggiunte nel fix M1 (audit 2026-04-20)."""
 
-    def test_shidu_international_presente(self):
-        assert 'SHIDU INTERNATIONAL' in CATEGORIA_PER_FORNITORE
-        assert CATEGORIA_PER_FORNITORE['SHIDU INTERNATIONAL'] == 'VERDURE'
+    def test_shidu_international_rimosso(self):
+        # Cert. SUSHILAND 25/06: SHIDU vende anche noodle/pasta (SOBA, VERMICELLI),
+        # non solo verdure. La regola-fornitore secca VERDURE era essa stessa fonte
+        # di errore. I prodotti SHIDU ora sono categorizzati per keyword/regole forti.
+        assert 'SHIDU INTERNATIONAL' not in CATEGORIA_PER_FORNITORE
 
     def test_nova_horeca_presente(self):
         assert 'NOVA HORECA' in CATEGORIA_PER_FORNITORE
         assert CATEGORIA_PER_FORNITORE['NOVA HORECA'] == 'MANUTENZIONE E ATTREZZATURE'
+
+    def test_fornitori_mono_categoria_cert_sushiland(self):
+        # Fornitori mono-categoria verificati a DB (cert. MARIANO 25/06).
+        assert CATEGORIA_PER_FORNITORE['BRICOMAN'] == 'MANUTENZIONE E ATTREZZATURE'
+        assert CATEGORIA_PER_FORNITORE['CIESSECI'] == 'MANUTENZIONE E ATTREZZATURE'
+        assert CATEGORIA_PER_FORNITORE['PARAMIDANI'] == 'MANUTENZIONE E ATTREZZATURE'
+        assert CATEGORIA_PER_FORNITORE['HAL SERVICE'] == 'UTENZE E LOCALI'
+        assert CATEGORIA_PER_FORNITORE['TAURUSLAB'] == 'SERVIZI E CONSULENZE'
 
 
 class TestDizionarioKeywordNuovi:

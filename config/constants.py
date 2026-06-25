@@ -257,6 +257,8 @@ FORNITORI_UTENZE_SEMPRE = [
     'ACEA',
     'HERA',
     'SORGENIA',
+    'COMO ACQUA',   # gestore acquedotto (cert. SUSHILAND 25/06: ONERI PEREQUAZIONE finiva in FRUTTA)
+    'LARIO RETI',   # gestore idrico zona Como
 ]
 
 
@@ -273,8 +275,16 @@ FORNITORI_UTENZE_SEMPRE = [
 CATEGORIA_PER_FORNITORE = {
     "CP S.P.A": "UTENZE E LOCALI",              # Bollette energia/gas
     "M&M SRL": "GELATI E DESSERT",                        # Fornitore gelati (solo gelati)
-    "SHIDU INTERNATIONAL": "VERDURE",           # Fornitore prodotti asiatici/verdure
+    # NB: SHIDU INTERNATIONAL rimosso 25/06 — NON è mono-categoria (vende noodle/pasta
+    # oltre a verdure): una regola-fornitore secca classificava SOBA/VERMICELLI come
+    # VERDURE. Ora gestito dalle keyword pasta + regole forti.
     "NOVA HORECA": "MANUTENZIONE E ATTREZZATURE",  # Fornitore attrezzature horeca
+    # --- Cert. SUSHILAND 25/06: fornitori mono-categoria VERIFICATI a DB (1 sola categoria reale) ---
+    "BRICOMAN": "MANUTENZIONE E ATTREZZATURE",     # Bricolage/ferramenta (era 83% Da Classificare)
+    "CIESSECI": "MANUTENZIONE E ATTREZZATURE",     # Materiale elettrico/ferramenta
+    "PARAMIDANI": "MANUTENZIONE E ATTREZZATURE",   # Carpenteria/materiali metallici
+    "HAL SERVICE": "UTENZE E LOCALI",              # Telefonia/connettività (canoni)
+    "TAURUSLAB": "SERVIZI E CONSULENZE",           # Servizi IT/web
 }
 
 
@@ -1557,6 +1567,47 @@ DIZIONARIO_CORREZIONI = {
     "SCATOLAME": "SCATOLAME E CONSERVE",
     # Frutta secca → SCATOLAME E CONSERVE (dispensa/banco, scelta dominio Mattia 16/06)
     "NOCI": "SCATOLAME E CONSERVE",
+
+    # ===== CERTIFICAZIONE SUSHILAND 25/06 — pattern errori reali =====
+    # Noodle/pasta asiatici: cadevano in BEVANDE ("soia") o VERDURE
+    "VERMICELLI": "PASTA E CEREALI",
+    "VERMICELLI DI SOIA": "PASTA E CEREALI",
+    "VERMICELLI DI RISO": "PASTA E CEREALI",
+    "SOBA": "PASTA E CEREALI",
+    "RAMEN": "PASTA E CEREALI",
+    "UDON": "PASTA E CEREALI",
+    "NOODLE": "PASTA E CEREALI",
+    "NOODLES": "PASTA E CEREALI",
+    "PASTA DI RISO": "PASTA E CEREALI",
+    # Salse/condimenti asiatici scambiati per bevande (per "succo"/"bevanda")
+    "PONZU": "SALSE E CREME",
+    # Gelati scambiati per FRUTTA (gusto) o SALSE (crema): GELATO domina sempre
+    "GELATO": "GELATI E DESSERT",
+    "SEMIFREDDO": "GELATI E DESSERT",
+    # Esaltatori sapidità (anche refuso GLUTTAMATO con due T)
+    "GLUTAMMATO": "SPEZIE E AROMI",
+    "GLUTTAMATO": "SPEZIE E AROMI",
+    "GLUTAMMATO MONOSODICO": "SPEZIE E AROMI",
+    # Pesce: nomenclatura specifica che non veniva riconosciuta
+    "MITILI": "PESCE",
+    "MYTILUS": "PESCE",
+    "SCORFANO": "PESCE",
+    "UNAGHI": "PESCE",
+    "MAZZANCOLLE": "PESCE",
+    # Ferramenta/elettrico/utensili (BRICOMAN, CIESSECI, PARAMIDANI, ma anche righe sparse)
+    "NASTRO ISOLANTE": "MANUTENZIONE E ATTREZZATURE",
+    "MULTIPRESA": "MANUTENZIONE E ATTREZZATURE",
+    "IDROPULITRICE": "MANUTENZIONE E ATTREZZATURE",
+    "LUCCHETTO": "MANUTENZIONE E ATTREZZATURE",
+    "RIVETTATRICE": "MANUTENZIONE E ATTREZZATURE",
+    "RETE STIRATA": "MANUTENZIONE E ATTREZZATURE",
+    "TUBOLARE": "MANUTENZIONE E ATTREZZATURE",
+    "ASPIRAPOLVERE": "MANUTENZIONE E ATTREZZATURE",
+    # Pulizia/igiene/cancelleria → MATERIALE DI CONSUMO
+    "CARTA IGIENICA": "MATERIALE DI CONSUMO",
+    "SAPONE": "MATERIALE DI CONSUMO",
+    "TIPP-EX": "MATERIALE DI CONSUMO",
+    "AMMORBIDENTE": "MATERIALE DI CONSUMO",
 
 }
 
