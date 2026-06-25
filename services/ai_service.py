@@ -2971,9 +2971,37 @@ def _zucchero_monodose_bar(descrizione: str, categoria: str) -> str:
     return categoria
 
 
+# ── REGOLA DOMINIO (Mattia 25/06): pasta ripiena per FORMA, non per ripieno ──
+# Raviolo/wonton/gyoza/dumpling/involtino-primavera = pasta ripiena → PASTA E
+# CEREALI a prescindere dal ripieno. Il ripieno (gamberi→PESCE, manzo→CARNE) NON
+# deve vincere: "ravioli di gamberi" è pasta, non pesce. L'involtino "di carne"
+# all'italiana NON è coperto (manca il marcatore asiatico) → resta CARNE.
+_RE_PASTA_RIPIENA = re.compile(
+    r"(?:"
+    r"RAVIOL|WONTON|WANTAN|GYOZ|GYOUZA|DUMPLING|JIAOZI|BAOZI|XIAOLONGBAO|"
+    r"HAUKAU|HAR\s*GOW|SHUMAI|SHAOMAI|"
+    r"INVOLTIN[OI]\s+(?:PRIMAVERA|VIETNAM|CINES|THAI|ASIATIC)|"
+    r"SPRING\s*ROLL|HARUMAKI"
+    r")",
+    re.IGNORECASE,
+)
+# Categorie "ripieno" che la forma-pasta deve scavalcare.
+_CATEGORIE_RIPIENO = {"PESCE", "CARNE", "VERDURE", "SCATOLAME E CONSERVE", "LATTICINI"}
+
+
+def _pasta_ripiena_per_forma(descrizione: str, categoria: str) -> str:
+    """Se è pasta ripiena (raviolo/wonton/gyoza/dumpling/involtino-asiatico) ma la
+    categoria riflette il RIPIENO (pesce/carne/verdure...), riporta a PASTA E CEREALI."""
+    if categoria in _CATEGORIE_RIPIENO and _RE_PASTA_RIPIENA.search(descrizione or ""):
+        return "PASTA E CEREALI"
+    return categoria
+
+
 def _post_regole_dominio(descrizione: str, categoria: str) -> str:
     """Applica in sequenza le regole di dominio post-match (25/06):
-    ortofrutta trasformata → SCATOLAME, zucchero monodose → VARIE BAR."""
+    pasta ripiena per forma → PASTA E CEREALI, ortofrutta trasformata → SCATOLAME,
+    zucchero monodose → VARIE BAR."""
+    categoria = _pasta_ripiena_per_forma(descrizione, categoria)
     categoria = _ortofrutta_trasformata_in_scatolame(descrizione, categoria)
     categoria = _zucchero_monodose_bar(descrizione, categoria)
     return categoria
