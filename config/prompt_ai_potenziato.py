@@ -246,11 +246,23 @@ Classifica questi articoli di fatture usando RAGIONAMENTO INTELLIGENTE e CONTEST
    
    Se incerto tra food/no-food, leggi attentamente: è commestibile? → categoria food appropriata
 
-Rispondi SOLO in JSON con DUE array paralleli (stesso numero di elementi):
+Ogni articolo in input ha un campo "idx" (numero progressivo da 0). DEVI restituire
+UN risultato per OGNI idx ricevuto, riportando lo STESSO idx. Questo serve ad
+ancorare ogni categoria al suo articolo: NON affidarti all'ordine, usa l'idx.
+
+Rispondi SOLO in JSON con un array "risultati", un oggetto per ogni articolo:
 {
-  "categorie": ["CATEGORIA1", "CATEGORIA2", ...],
-  "confidence": ["alta", "media", ...]
+  "risultati": [
+    {"idx": 0, "categoria": "CATEGORIA", "confidence": "alta"},
+    {"idx": 1, "categoria": "CATEGORIA", "confidence": "media"}
+  ]
 }
+
+REGOLE FERREE sull'allineamento:
+- Un solo oggetto per ciascun idx ricevuto. NON aggiungere idx non richiesti.
+- NON unire due articoli in uno, NON dividere un articolo in due.
+- Il numero di oggetti in "risultati" DEVE essere uguale al numero di articoli ricevuti.
+- Riporta sempre l'idx esatto dell'articolo che stai classificando.
 
 Livelli di confidenza (scegli uno per ogni articolo):
 - "alta"  → descrizione chiara, classificazione certa
@@ -258,7 +270,6 @@ Livelli di confidenza (scegli uno per ogni articolo):
 - "bassa" → descrizione troppo generica/vaga/in codice per essere certa (es. "VARIE", "ASSORTITI", "PRODOTTO 01", solo un codice numerico)
              Anche con confidence "bassa" scegli comunque la categoria più probabile.
 
-Mantieni lo STESSO ordine degli articoli forniti.
 Usa esattamente i nomi categoria sopra (26 food + MATERIALE DI CONSUMO + 3 spese = 30 categorie).
 
 ═══════════════════════════════════════════════════════════════════

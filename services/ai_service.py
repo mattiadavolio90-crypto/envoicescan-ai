@@ -3944,6 +3944,39 @@ def svuota_memoria_globale(supabase_client=None) -> bool:
 # CLASSIFICAZIONE BATCH CON OPENAI
 # ============================================================
 
+def _mappa_categorie_ai_per_idx(dati: Dict[str, Any]) -> Tuple[Dict[int, str], Dict[int, str]]:
+    """Estrae da una risposta GPT la mappa idx -> categoria / confidence.
+
+    Formato nuovo (robusto): {"risultati": [{"idx", "categoria", "confidence"}, ...]}.
+    L'accoppiamento è per IDENTITÀ (idx esplicito): se l'AI sbaglia il conteggio o
+    l'ordine, le categorie NON slittano sull'articolo sbagliato (causa radice degli
+    errori "ad alta confidenza"). Fallback retro-compatibile: vecchi array paralleli
+    {"categorie": [...], "confidence": [...]} accoppiati per posizione.
+    """
+    cat_by_idx: Dict[int, str] = {}
+    conf_by_idx: Dict[int, str] = {}
+    risultati_raw = dati.get("risultati")
+    if isinstance(risultati_raw, list):
+        for obj in risultati_raw:
+            if not isinstance(obj, dict):
+                continue
+            try:
+                i = int(obj.get("idx"))
+            except (TypeError, ValueError):
+                continue
+            if i in cat_by_idx:
+                logger.warning(f"⚠️ AI ha restituito idx {i} duplicato — ignoro la ripetizione")
+                continue
+            cat_by_idx[i] = obj.get("categoria")
+            conf_by_idx[i] = obj.get("confidence")
+    else:
+        for i, c in enumerate(dati.get("categorie", [])):
+            cat_by_idx[i] = c
+        for i, cf in enumerate(dati.get("confidence", [])):
+            conf_by_idx[i] = cf
+    return cat_by_idx, conf_by_idx
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=30),
@@ -3993,10 +4026,14 @@ def _chiama_gpt_classificazione(
     _ha_iva = lista_iva and len(lista_iva) == len(da_chiedere_gpt)
     _ha_hint = lista_hint and len(lista_hint) == len(da_chiedere_gpt)
     _items_with_hint = 0
+    # idx esplicito su OGNI item: il parsing mappa per idx, non per posizione,
+    # così un eventuale slittamento/conteggio errato dell'AI non assegna la
+    # categoria di un articolo a un altro (causa radice degli errori "ad alta
+    # confidenza"). Vale sia per payload arricchito che plain.
     if _ha_fornitori or _ha_iva or _ha_hint:
         payload = []
         for idx, desc_norm in enumerate(da_chiedere_normalizzate):
-            item: Dict[str, Any] = {"articolo": desc_norm}
+            item: Dict[str, Any] = {"idx": idx, "articolo": desc_norm}
             if _ha_fornitori:
                 forn = (lista_fornitori[idx] or "").strip()
                 if forn:
@@ -4013,7 +4050,11 @@ def _chiama_gpt_classificazione(
             payload.append(item)
         articoli_json = json.dumps(payload, ensure_ascii=False)
     else:
-        articoli_json = json.dumps(da_chiedere_normalizzate, ensure_ascii=False)
+        payload = [
+            {"idx": idx, "articolo": desc_norm}
+            for idx, desc_norm in enumerate(da_chiedere_normalizzate)
+        ]
+        articoli_json = json.dumps(payload, ensure_ascii=False)
 
     prompt = get_prompt_classificazione(articoli_json)
     
@@ -4052,41 +4093,46 @@ def _chiama_gpt_classificazione(
     if not testo:
         raise ValueError("Risposta GPT vuota (content None/empty)")
     dati = json.loads(testo)
-    categorie_gpt = dati.get("categorie", [])
-    confidence_gpt = dati.get("confidence", [])
+    cat_by_idx, conf_by_idx = _mappa_categorie_ai_per_idx(dati)
 
-    # Valida e costruisci lista risultati + confidenze
+    # Valida e costruisci lista risultati + confidenze, mappando per IDX
     risultati = []
     confidenze_out = []
+    mancanti = 0
     for idx, desc in enumerate(da_chiedere_gpt):
-        if idx < len(categorie_gpt):
-            cat = categorie_gpt[idx]
-
-            # ⚠️ VALIDAZIONE: Blocca categorie non valide (incluso NOTE E DICITURE)
-            # Fix B1: recupero a 2 stadi (regole forti → dizionario) invece del solo
-            # dizionario. Le regole forti sono più precise, quindi una categoria GPT
-            # vietata (es. NOTE E DICITURE) viene rimappata a una categoria reale più
-            # spesso, evitando di degradare a "Da Classificare" e innescare retry inutili.
-            if cat not in TUTTE_LE_CATEGORIE and cat != "Da Classificare":
-                logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → recupero regole forti/dizionario")
-                cat_recuperata, _motivo_rec = applica_regole_categoria_forti(desc, "Da Classificare")
-                if cat_recuperata == "Da Classificare":
-                    cat_recuperata = applica_correzioni_dizionario(desc, "Da Classificare")
-                cat = cat_recuperata
-            risultati.append(cat)
-
-            # Confidence: usa quella del GPT se presente e valida, altrimenti "media"
-            conf = (confidence_gpt[idx] if idx < len(confidence_gpt) else None) or "media"
-            if conf not in ("alta", "media", "bassa"):
-                conf = "media"
-            confidenze_out.append(conf)
-        else:
-            logger.warning(f"⚠️ AI non ha restituito categoria per indice {idx}: '{desc[:40]}' → Da Classificare")
+        cat = cat_by_idx.get(idx)
+        if cat is None:
+            # l'AI non ha restituito QUESTO idx: NON slittiamo, lo marchiamo aperto
+            logger.warning(f"⚠️ AI non ha restituito idx {idx}: '{desc[:40]}' → Da Classificare")
             risultati.append("Da Classificare")
             confidenze_out.append("bassa")
+            mancanti += 1
+            continue
 
-    if len(categorie_gpt) != len(da_chiedere_gpt):
-        logger.warning(f"⚠️ MISMATCH: inviate {len(da_chiedere_gpt)} descrizioni, ricevute {len(categorie_gpt)} categorie")
+        # ⚠️ VALIDAZIONE: Blocca categorie non valide (incluso NOTE E DICITURE)
+        # Fix B1: recupero a 2 stadi (regole forti → dizionario) invece del solo
+        # dizionario. Le regole forti sono più precise, quindi una categoria GPT
+        # vietata (es. NOTE E DICITURE) viene rimappata a una categoria reale più
+        # spesso, evitando di degradare a "Da Classificare" e innescare retry inutili.
+        if cat not in TUTTE_LE_CATEGORIE and cat != "Da Classificare":
+            logger.warning(f"⚠️ AI ha generato categoria non valida '{cat}' per '{desc}' → recupero regole forti/dizionario")
+            cat_recuperata, _motivo_rec = applica_regole_categoria_forti(desc, "Da Classificare")
+            if cat_recuperata == "Da Classificare":
+                cat_recuperata = applica_correzioni_dizionario(desc, "Da Classificare")
+            cat = cat_recuperata
+        risultati.append(cat)
+
+        conf = conf_by_idx.get(idx) or "media"
+        if conf not in ("alta", "media", "bassa"):
+            conf = "media"
+        confidenze_out.append(conf)
+
+    if mancanti or len(cat_by_idx) != len(da_chiedere_gpt):
+        logger.warning(
+            f"⚠️ ALLINEAMENTO: inviati {len(da_chiedere_gpt)} articoli, "
+            f"ricevuti {len(cat_by_idx)} idx validi, {mancanti} non mappati "
+            f"(→ Da Classificare, NESSUNO slittamento)"
+        )
 
     if return_confidenze:
         return risultati, confidenze_out

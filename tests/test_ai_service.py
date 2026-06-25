@@ -244,6 +244,47 @@ class TestClassificaConAiFallback:
             ], openai_client=fake_client)
         assert result == ['Da Classificare', 'Da Classificare']
 
+    def test_allineamento_per_idx_no_slittamento(self):
+        """CAUSA RADICE errori 'alta confidenza': se l'AI restituisce gli idx in
+        ordine SPARSO, la mappa per identità mantiene ogni categoria sul suo idx."""
+        dati = {"risultati": [
+            {"idx": 2, "categoria": "VINI", "confidence": "alta"},
+            {"idx": 0, "categoria": "MANUTENZIONE E ATTREZZATURE", "confidence": "alta"},
+            {"idx": 1, "categoria": "CARNE", "confidence": "alta"},
+        ]}
+        cat_by_idx, _ = ai_mod._mappa_categorie_ai_per_idx(dati)
+        assert cat_by_idx[0] == "MANUTENZIONE E ATTREZZATURE"   # smartphone (idx 0)
+        assert cat_by_idx[1] == "CARNE"                          # pollo (idx 1)
+        assert cat_by_idx[2] == "VINI"                           # vino (idx 2)
+
+    def test_idx_mancante_non_produce_categoria(self):
+        """Se l'AI omette un idx, quell'idx NON è in mappa (→ Da Classificare a valle),
+        e gli altri NON ereditano una categoria sbagliata."""
+        dati = {"risultati": [
+            {"idx": 0, "categoria": "CARNE", "confidence": "alta"},
+            {"idx": 2, "categoria": "PESCE", "confidence": "alta"},
+        ]}
+        cat_by_idx, _ = ai_mod._mappa_categorie_ai_per_idx(dati)
+        assert cat_by_idx[0] == "CARNE"
+        assert 1 not in cat_by_idx           # idx mancante: nessuna categoria slittata
+        assert cat_by_idx[2] == "PESCE"
+
+    def test_idx_duplicato_non_sovrascrive(self):
+        """idx duplicato dall'AI: tengo il primo, ignoro la ripetizione (no ambiguità)."""
+        dati = {"risultati": [
+            {"idx": 0, "categoria": "CARNE", "confidence": "alta"},
+            {"idx": 0, "categoria": "PESCE", "confidence": "alta"},
+        ]}
+        cat_by_idx, _ = ai_mod._mappa_categorie_ai_per_idx(dati)
+        assert cat_by_idx[0] == "CARNE"
+
+    def test_formato_legacy_array_paralleli_retrocompat(self):
+        """Vecchio formato (array paralleli) ancora supportato per posizione."""
+        dati = {"categorie": ["CARNE", "PESCE"], "confidence": ["alta", "media"]}
+        cat_by_idx, conf_by_idx = ai_mod._mappa_categorie_ai_per_idx(dati)
+        assert cat_by_idx == {0: "CARNE", 1: "PESCE"}
+        assert conf_by_idx == {0: "alta", 1: "media"}
+
     def test_guardrail_iva_bassa_blocca_spese_generali_ai(self):
         fake_client = MagicMock()
         with patch('services.ai_service._chiama_gpt_classificazione', return_value=['MATERIALE DI CONSUMO']):
