@@ -294,11 +294,16 @@ def get_fatture_kpi(
         cutoff_nuovo = nuovi_da_raw or (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
 
     def _calc(rows):
-        rows_valid = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) > 0]
-        totale = sum(float(r["totale_riga"]) for r in rows_valid)
-        num_righe = len(rows_valid)
-        prodotti = {r.get("descrizione", "").strip().lower() for r in rows_valid if r.get("descrizione")}
-        mesi = {(r.get("data_documento") or "")[:7] for r in rows_valid if r.get("data_documento")}
+        # "Spesa totale" = spesa NETTA: le note di credito (righe negative) sono
+        # storni reali e DEVONO ridurre la spesa, altrimenti il KPI gonfia il
+        # costo e non coincide con la tabella Articoli (che somma tutto).
+        # Conteggio righe/prodotti resta sulle righe con importo != 0 (le righe
+        # a 0 sono note/diciture/omaggi, non acquisti).
+        rows_nonzero = [r for r in rows if r.get("totale_riga") and float(r["totale_riga"]) != 0]
+        totale = sum(float(r["totale_riga"]) for r in rows_nonzero)
+        num_righe = len(rows_nonzero)
+        prodotti = {r.get("descrizione", "").strip().lower() for r in rows_nonzero if r.get("descrizione")}
+        mesi = {(r.get("data_documento") or "")[:7] for r in rows_nonzero if r.get("data_documento")}
         num_mesi = max(len(mesi), 1)
         media = totale / num_mesi
         return totale, num_righe, len(prodotti), media

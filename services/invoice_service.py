@@ -898,7 +898,41 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
         
         if isinstance(linee, dict):
             linee = [linee]
-        
+
+        # ============================================================
+        # NOTA DI CREDITO (TD04): strategia di segno ancorata alla testata
+        # ============================================================
+        # Una nota di credito riduce i costi, quindi nel nostro sistema il
+        # NETTO delle righe deve essere negativo (concorde con l'imponibile di
+        # testata, che per una NC è il valore stornato).
+        #
+        # Caso A — il gestionale emette TUTTE LE RIGHE POSITIVE: è la convenzione
+        #   "importi sempre positivi"; invertiamo in blocco ogni riga così il
+        #   netto diventa negativo (riduce i costi).
+        # Caso B — il documento contiene GIÀ righe negative (resi/storni, anche
+        #   insieme a riaddebiti positivi): i segni li ha messi il gestionale e
+        #   sono corretti rispetto alla testata — NON tocchiamo nulla. È il caso
+        #   LODI (riga +2174.67 riaddebito, riga -2072.47 storno, netto +102.20
+        #   = imponibile): invertire riga-per-riga rompeva il documento
+        #   (-4247 invece di +102).
+        #
+        # Discriminante = "esiste almeno una riga già negativa", NON il segno del
+        # netto: una NC a segni misti può avere netto positivo (LODI) e va comunque
+        # lasciata intatta.
+        nc_inverti_in_blocco = False
+        if is_nota_credito:
+            _ha_riga_negativa = any(
+                (_to_float_safe(_r.get('PrezzoTotale'), 0.0) or 0.0) < 0
+                for _r in linee if isinstance(_r, dict)
+            )
+            nc_inverti_in_blocco = not _ha_riga_negativa
+            logger.info(
+                "📋 NOTA DI CREDITO: "
+                + ("nessuna riga negativa → inverto in blocco (gestionale tutto positivo)"
+                   if nc_inverti_in_blocco
+                   else "presenti righe negative → rispetto i segni del documento (segni misti)")
+            )
+
         righe_prodotti = []
         # PROP-1: buffer per batch upsert auto-keyword in memoria locale.
         # Riempito da categorizza_con_memoria, flushato a fine loop con UNA sola
@@ -929,16 +963,14 @@ def estrai_dati_da_xml(file_caricato, user_id: str = None):
                 xml_has_explicit_zero_total = prezzo_totale_raw not in (None, '') and abs(totale_riga) < 1e-9
                 
                 # ============================================================
-                # NOTA DI CREDITO: Inverti segno importi se positivi
+                # NOTA DI CREDITO: applica la strategia di segno decisa sopra
                 # ============================================================
-                # Le note di credito (TD04) rappresentano rimborsi/resi.
-                # Se il gestionale emette importi positivi, li neghiamo
-                # perché nel nostro sistema devono RIDURRE i costi.
-                if is_nota_credito:
-                    if totale_riga > 0:
-                        totale_riga = -totale_riga
-                    if prezzo_base > 0:
-                        prezzo_base = -prezzo_base
+                # Inverto SOLO se il documento è "tutto positivo" (convenzione
+                # gestionale). Se ha già segni interni (LODI: +riaddebito/-storno)
+                # li lascio intatti: sono corretti rispetto alla testata.
+                if is_nota_credito and nc_inverti_in_blocco:
+                    totale_riga = -totale_riga
+                    prezzo_base = -prezzo_base
                 
                 # ============================================================
                 # ESTRAZIONE SCONTO MAGGIORAZIONE XML
@@ -1458,11 +1490,30 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
         
         righe_prodotti = []
         current_user_id = st.session_state.get('user_data', {}).get('id')
-        
+
         # Precarica memoria per categorizzazione (come in XML path)
         if current_user_id:
             carica_memoria_completa(current_user_id)
-        
+
+        # NOTA DI CREDITO (path Vision/PDF): stessa strategia ancorata del path XML.
+        # Inverto in blocco solo se NESSUNA riga è già negativa (convenzione
+        # gestionale "tutto positivo"); se ci sono righe negative il documento ha
+        # già segni interni corretti e li rispetto.
+        nc_inverti_in_blocco = False
+        if is_nota_credito:
+            def _tot_grezzo(_r):
+                try:
+                    return float(_r.get('totale', 0) or 0)
+                except (ValueError, TypeError):
+                    return 0.0
+            _ha_riga_negativa = any(_tot_grezzo(_r) < 0 for _r in dati.get('righe', []))
+            nc_inverti_in_blocco = not _ha_riga_negativa
+            logger.info(
+                "📋 NOTA DI CREDITO (PDF): "
+                + ("nessuna riga negativa → inverto in blocco" if nc_inverti_in_blocco
+                   else "presenti righe negative → rispetto i segni del documento")
+            )
+
         for idx, riga in enumerate(dati.get('righe', []), start=1):
             descrizione = normalizza_stringa(riga.get('descrizione', 'Articolo senza nome'))
             
@@ -1495,12 +1546,11 @@ IMPORTANTE: Rispondi SOLO con il JSON, niente altro testo."""
             if prezzo_unitario == 0 and totale_riga > 0 and quantita > 0:
                 prezzo_unitario = totale_riga / quantita
 
-            # Nota di credito: inverti il segno se positivo (stessa logica del path XML).
-            if is_nota_credito:
-                if totale_riga > 0:
-                    totale_riga = -totale_riga
-                if prezzo_unitario > 0:
-                    prezzo_unitario = -prezzo_unitario
+            # Nota di credito: applica la strategia di segno decisa sopra
+            # (inverto in blocco solo se il documento è tutto positivo).
+            if is_nota_credito and nc_inverti_in_blocco:
+                totale_riga = -totale_riga
+                prezzo_unitario = -prezzo_unitario
 
             # Categorizzazione (usa stesso sistema moderno del path XML)
             categoria_iniziale = ottieni_categoria_prodotto(descrizione, current_user_id) if current_user_id else "Da Classificare"
